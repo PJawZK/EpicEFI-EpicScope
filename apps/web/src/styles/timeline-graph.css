@@ -15,6 +15,12 @@
   height: 100%;
   min-height: 220px;
   background: #081722;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-viewport--panning .graph-canvas {
+  cursor: grabbing;
 }
 
 .graph-overlay {
@@ -90,6 +96,23 @@
 .timeline-progress {
   cursor: crosshair;
   touch-action: none;
+}
+
+.timeline-focus-placeholder {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  min-width: 3px;
+  border: 1px solid rgba(129, 187, 239, 0.9);
+  background: rgba(62, 143, 214, 0.12);
+  cursor: grab;
+  touch-action: none;
+}
+
+.timeline-focus-placeholder:active {
+  cursor: grabbing;
 }
 
 .timeline-progress[tabindex="0"]:focus-visible {
