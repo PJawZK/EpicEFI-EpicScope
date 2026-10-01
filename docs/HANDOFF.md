@@ -28,8 +28,10 @@ Phase 0 foundation is complete.
 
 Phase 1 `WEB-REFERENCE` has now been completed using both:
 
-- the exact `EpicHub-1.12.1_TabletLandscape.html` prototype found in the Project Library;
+- the authoritative `EpicHub-Tablet-Landscape-0.0.45(2).html` prototype supplied by the project owner;
 - current EpicHub authority on `PJawZK/EpicHub-EpicEFI-Android`, branch `phase2/ui-diagnostics-foundation`, especially `docs/HANDOFF.md`, `docs/architecture/UI_FOUNDATION_LAYOUT.md`, and `docs/architecture/ANALYSIS_RESPONSIBILITY_MAP.md`.
+
+`EpicHub-Tablet-Landscape-0.0.45(2).html` supersedes the older `EpicHub-1.12.1_TabletLandscape.html` prototype for EpicScope UI-reference purposes.
 
 A new authority document now exists:
 
@@ -39,13 +41,16 @@ It records the EpicHub Logger/Analyzer concepts EpicScope inherits and the delib
 
 ## UI-reference decisions
 
-EpicScope inherits the following interaction families:
+EpicScope inherits the following interaction families from the 0.0.45 reference:
 
 - graph-centric primary analysis workspace;
 - named graph workspaces and multiple graph layouts;
+- contextual workspace rename/duplicate/delete behavior;
 - Full Sensor List / channel search/filter/sort/favorites/recent behavior;
 - Channel Statistics/details;
+- explicit side-edge sensor-panel show/hide control;
 - persistent timeline/range/cursor concepts;
+- expandable/compact timeline-control behavior with its own edge control;
 - saved ranges and markers;
 - A/B cursors;
 - source/session comparison concepts;
@@ -54,13 +59,15 @@ EpicScope inherits the following interaction families:
 - Math Channels / derived channels;
 - named filters and analysis presets;
 - linked navigation from analysis results to graph/source context;
-- snapshots/session metadata where useful.
+- snapshots/session metadata where useful;
+- explicit loaded-log identity in the header;
+- visible recording-state/action semantics, without implying that initial EpicScope Web already supports live acquisition.
 
 Approved EpicScope deviations from the EpicHub prototype:
 
 1. EpicScope uses a dedicated product shell rather than EpicHub's Dashboard/Tuner/Logger/Diagnostics module switcher.
 2. Wide-layout analysis/detail controls are standardized on the **right side**. This deliberately moves Scatter and Histogram/Table control responsibility from the prototype's left side to the right for EpicScope.
-3. Initial Web development is offline/imported-log focused; live ECU acquisition is deferred.
+3. Initial Web development is offline/imported-log focused; live ECU acquisition and functional recording are deferred.
 4. Trigger Logger is not an initial EpicScope requirement and is deferred unless explicitly added later.
 5. Performance, RAM usage, and maintainability outrank exact visual reproduction.
 6. EpicHub prototype localStorage/JSON/demo-state machinery is not EpicScope production architecture.
@@ -86,7 +93,8 @@ Notable current decisions include:
 - raw source decoding in `core/parsers/`, normalized semantics in appropriate core models;
 - domain Session separated from UI WorkspaceState;
 - capability-driven Boost Analyzer;
-- `docs/UI_REFERENCE.md` is now the EpicScope UI-reference authority.
+- `docs/UI_REFERENCE.md` is now the EpicScope UI-reference authority;
+- `EpicHub-Tablet-Landscape-0.0.45(2).html` is the currently reviewed Tablet Landscape source for that authority.
 
 ## Architecture authority
 
@@ -139,9 +147,9 @@ Do not create all documented future directories as empty placeholders.
 
 ## Repository state validated before this handoff update
 
-`7e4b9354f3c41b9fd2da92d51a485b3b622d335a`
+`dc5dc90d0fa57389aec0e51fc338ba1739fbd5b9`
 
-This is the active `phase1/web-reference` branch state after UI-reference, file-architecture, decision-log, roadmap, and README updates and before this handoff-file update.
+This is the active `phase1/web-reference` branch state after correcting the UI-reference authority to EpicHub Tablet Landscape 0.0.45 and before this handoff-file update.
 
 Because a file cannot reliably contain the SHA of the commit that writes itself, this SHA is not presented as the final branch head. A resumed chat must inspect current `main` and the active branch/PR first.
 
