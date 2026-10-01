@@ -10,133 +10,94 @@
 
 ## Active development branch / PR
 
-- branch: `phase1/log-mlg-plan`
-- PR: not opened yet
-- current task: `LOG-MLG-001` planning / format-support contract
+- branch: `phase1/log-mlg-foundation`
+- PR: implementation PR not opened yet
+- current tasks: `TEST-CORE-001`, `LOG-MODEL-001`, `LOG-SOURCE-001`
 
 ## Current phase
 
 **Phase 1 — Web log foundation**
 
 - Phase 0 — complete
-- WEB-REFERENCE — complete and merged
-- WEB-BOOT — complete and hosted
-- LOG-MLG — planning/investigation in progress
+- WEB-REFERENCE — complete
+- WEB-BOOT — complete, hosted, and validated in Brave
+- LOG-MLG planning — complete and merged in `99f8f26f3008731fec9d775dee0e07860b71c9a1`
+- LOG-MLG implementation foundation — in progress
+
+## Hosted application
+
+`https://pjawzk.github.io/EpicEFI-EpicScope/`
+
+GitHub Actions is the required Web validation path and GitHub Pages is the project-owner test surface. No local clone/Node/npm is required for normal project-owner testing.
 
 ## Authoritative UI reference
 
 `EpicHub-Tablet-Landscape-0.0.45(2).html`
 
-`docs/UI_REFERENCE.md` contains the EpicScope interpretation of that reference.
+`docs/UI_REFERENCE.md` contains the EpicScope interpretation.
 
-## WEB-BOOT validated result
+## Active LOG-MLG authority
 
-WEB-BOOT is complete.
+Read `docs/LOG_MLG_PLAN.md` before MLG implementation work.
 
-Implemented and validated:
+Initial guaranteed parser scope:
 
-- npm + committed lockfile;
-- Vite 8.x + TypeScript 7.x;
-- dedicated EpicScope Logger/Analyzer shell;
-- right-side Full Sensor List / inspector shell;
-- sensor-panel hide/show edge control;
-- bottom timeline/transport shell;
-- timeline compact/expanded edge control;
-- GitHub Actions branch/PR validation;
-- GitHub Actions `main` → GitHub Pages deployment;
-- Vite base path `/EpicEFI-EpicScope/`;
-- zero-install project-owner testing through the hosted Pages build.
+- MLVLG v1 and v2;
+- big-endian v1/v2 structures;
+- standard logger records and marker records;
+- scalar and bit-field descriptors defined by the v1/v2 specifications;
+- explicit unsupported-version handling for unverified newer versions;
+- bounded/untrusted-input handling;
+- no public parser contract that requires full-file materialization.
 
-Hosted Web application:
+MLG v3 is intentionally deferred until authoritative format details or validated real-file evidence are available.
 
-`https://pjawzk.github.io/EpicEFI-EpicScope/`
+## Approved parser/core test runner
 
-The project owner validated the hosted build in Brave.
+The project owner explicitly approved **Vitest 5.x** on 2026-10-01.
 
-Initial hosted validation exposed two presentation bugs:
+Implementation pins the current 5.x release used by this branch and runs parser/core tests through GitHub Web CI. This is a development/CI dependency only and does not become a browser runtime dependency.
 
-1. hiding the right sensor panel caused it to auto-place underneath the graph because the panel's `display:grid` rule overrode the HTML `hidden` behavior;
-2. the old narrow-width CSS deliberately removed header/workspace objects at the 1100 px breakpoint.
+## Current implementation state
 
-Both were fixed and deployed in main commit:
+On `phase1/log-mlg-foundation`:
 
-`2729f41ae78f7e2734b1fa8ca26a219bbb7a5ac0`
+- Vitest added to the Web development toolchain;
+- `npm test` added;
+- GitHub Web CI now includes a Test step;
+- `tsconfig.json` includes `core/**/*.ts` and `tests/**/*.ts`;
+- first normalized contracts added under `core/log-model/`;
+- format-neutral `RandomAccessByteSource` added under `core/parsers/`;
+- in-memory bounded byte-source implementation and tests added;
+- npm lockfile regenerated on GitHub;
+- temporary lockfile-bootstrap workflow removed after use.
 
-The project owner then confirmed the corrected behavior works.
+The next gate is GitHub CI on the current branch. After that, continue with `LOG-MLG-002` header/field-descriptor decoding rather than adding UI parsing logic.
 
-WEB-BOOT therefore no longer has a pending hosted-browser gate.
+## Required task order
 
-## Web workflow authority
+1. `TEST-CORE-001` — parser/core test runner and CI gate
+2. `LOG-MODEL-001` — minimal normalized log contracts
+3. `LOG-SOURCE-001` — bounded random-access byte source
+4. `LOG-MLG-002` — v1/v2 header and field-descriptor parser
+5. `LOG-MLG-003` — record/marker scan and monotonic timebase
+6. `LOG-MLG-004` — hosted local-file integration and Full Sensor List population
+7. `LOG-MLG-005` — real EpicEFI/TunerStudio log validation and first Web performance baseline
 
-D-035 defines the Web stage as zero-install for the project owner.
+## Key constraints still in force
 
-```text
-branch / PR
-  ↓
-GitHub Actions Web CI
-  ↓
-merge to main
-  ↓
-GitHub Actions Pages deployment
-  ↓
-GitHub Pages
-  ↓
-Brave / Chromium validation
-```
-
-The project owner is not expected to maintain a local clone or install Node/npm merely to test EpicScope.
-
-GitHub Pages is application hosting only. Local log/tune files remain client-side unless a future explicit sharing/upload feature is approved and invoked.
-
-## LOG-MLG planning state
-
-Detailed planning authority is being established in:
-
-`docs/LOG_MLG_PLAN.md`
-
-Current format findings:
-
-- authoritative EFI Analytics MLVLG v1 and v2 specifications are available;
-- v1 uses 55-byte logger-field descriptors;
-- v2 uses 89-byte logger-field descriptors and adds category/group metadata;
-- v1/v2 are big-endian;
-- standard data records and marker records are defined;
-- the per-record timestamp is 16-bit and requires rollover handling for a monotonic normalized timeline;
-- values use the specified scale/transform conversion;
-- imported MLG is untrusted input and every file-provided offset/count/length must be bounds-checked;
-- TunerStudio later introduced MLVLG version 3 support with F64 and little-endian variants, but exact v3 decoding is deliberately deferred until authoritative format details or validated real-file evidence are available.
-
-The parser public contract must support bounded/random-access byte reads rather than requiring a full-file `ArrayBuffer`, so browser `File`/`Blob` slicing and later native random access can share the same semantics.
-
-Initial guaranteed implementation target is MLVLG v1 + v2 with explicit unsupported-version behavior for unverified versions.
-
-## Pending project-owner decision
-
-Recommended parser/core test runner:
-
-**Vitest 5.x**
-
-Reasons recorded in `docs/LOG_MLG_PLAN.md`:
-
-- direct TypeScript/Vite integration;
-- CI/development dependency only;
-- no browser runtime cost;
-- EpicScope GitHub Actions already runs Node 22.12.0, which satisfies the current Vitest requirement;
-- suitable for parser fixtures, malformed-input tests, and regression tests.
-
-Under D-015/D-025 this dependency must not be added to `package.json` until the project owner explicitly approves it.
-
-## Next implementation sequence after plan approval
-
-1. `TEST-CORE-001` — add approved TypeScript core test runner and CI test gate;
-2. `LOG-MODEL-001` — minimal normalized log/channel/time contracts;
-3. `LOG-SOURCE-001` — bounded random-access byte-source contract;
-4. `LOG-MLG-002` — v1/v2 header and field-descriptor parsing;
-5. `LOG-MLG-003` — record/marker scan, timestamp rollover, corruption diagnostics;
-6. `LOG-MLG-004` — hosted Web local-file integration and channel population;
-7. `LOG-MLG-005` — real EpicEFI/TunerStudio log validation and first Web performance baseline.
-
-At least one real EpicEFI/TunerStudio `.mlg` must be validated before LOG-MLG is considered complete. Large real logs do not need to be committed to normal Git history.
+- Web → Linux → Android/EpicHub.
+- Chromium/Brave first.
+- MLG first, CSV second.
+- local-first privacy; opening a local log must not upload it.
+- source formats normalize before UI/analyzers.
+- imported files are untrusted input.
+- parser reads must be bounded and must not silently fabricate missing bytes as zero.
+- parser/public data contracts must permit later streaming/indexed/native implementations.
+- no graph library selected yet.
+- no MLG v3 decoding by guesswork.
+- a representative real current EpicEFI/TunerStudio `.mlg` is required before LOG-MLG completion.
+- branch protection/ruleset enforcement remains unresolved.
 
 ## Architecture authority
 
@@ -147,46 +108,12 @@ Read before significant implementation:
 3. `docs/FILE_ARCHITECTURE.md`
 4. `docs/DATA_MODEL.md`
 5. `docs/UI_REFERENCE.md`
-6. `docs/LOG_MLG_PLAN.md` while LOG-MLG is active
+6. `docs/LOG_MLG_PLAN.md`
 7. `docs/PERFORMANCE.md`
 8. `docs/PLATFORMS.md`
 9. `docs/ROADMAP.md`
 10. `docs/WORKFLOW.md`
 11. `docs/DECISIONS.md`
-
-`docs/WEB_BOOT_PLAN.md` remains historical authority for the completed WEB-BOOT batch but is no longer the active task plan.
-
-## Key constraints still in force
-
-- Web → Linux → Android/EpicHub.
-- Chromium/Brave first.
-- MLG first, CSV second.
-- local-first privacy.
-- source formats normalize before UI/analyzers.
-- controlled file architecture; project-owner approval required for architectural changes.
-- no graph library chosen until graph/timeline workload requirements are concrete.
-- imported files are untrusted input.
-- parser design must not force whole-file memory loading.
-- mature Linux target remains a supported 1 GiB log on a 2 GiB RAM system without loading the complete source into memory.
-
-## Known unresolved items
-
-- project-owner approval of the proposed Vitest 5.x parser/core test dependency;
-- exact MLG version 3 format support is intentionally deferred until verified;
-- a representative real current EpicEFI/TunerStudio `.mlg` is still needed for LOG-MLG real-file validation;
-- exact graph rendering approach remains intentionally deferred;
-- branch protection/ruleset enforcement is not yet configured;
-- Linux runtime/UI architecture is intentionally deferred;
-- share/backend architecture is not approved yet;
-- narrow/mobile layout is not defined by the current Tablet Landscape authority.
-
-## Repository state validated before this handoff update
-
-Authoritative `main` WEB-BOOT/fix state:
-
-`2729f41ae78f7e2734b1fa8ca26a219bbb7a5ac0`
-
-The `phase1/log-mlg-plan` branch contains newer planning-document commits. Resumed work must inspect current branch/PR/CI state rather than treating the SHA above as branch head.
 
 ## Continuation instruction
 
@@ -194,4 +121,4 @@ A new chat should be able to say:
 
 > Read the EpicScope repository handoff and continue from there.
 
-The new chat must read this file first and use current repository authority rather than reconstructing state from older chat history.
+The new chat must inspect the current repository/branch/CI state rather than reconstructing state from older chat history.
