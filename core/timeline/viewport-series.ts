@@ -2,10 +2,13 @@ import type { NumericChannelRange } from '../log-model/log-types';
 
 export interface ViewportEnvelopeColumn {
   readonly x: number;
-  readonly min: number;
-  readonly max: number;
-  readonly mean: number;
+  readonly first: number;
   readonly firstTimeMs: number;
+  readonly min: number;
+  readonly minTimeMs: number;
+  readonly max: number;
+  readonly maxTimeMs: number;
+  readonly last: number;
   readonly lastTimeMs: number;
 }
 
@@ -15,6 +18,17 @@ export interface ViewportEnvelope {
   readonly valueMax: number;
   readonly validSampleCount: number;
   readonly invalidSampleCount: number;
+}
+
+interface BucketState {
+  first: number;
+  firstTimeMs: number;
+  min: number;
+  minTimeMs: number;
+  max: number;
+  maxTimeMs: number;
+  last: number;
+  lastTimeMs: number;
 }
 
 export function buildViewportEnvelope(
@@ -31,14 +45,7 @@ export function buildViewportEnvelope(
   }
 
   const span = Math.max(1e-9, endMs - startMs);
-  const buckets = new Map<number, {
-    min: number;
-    max: number;
-    sum: number;
-    count: number;
-    first: number;
-    last: number;
-  }>();
+  const buckets = new Map<number, BucketState>();
   let valueMin = Number.POSITIVE_INFINITY;
   let valueMax = Number.NEGATIVE_INFINITY;
   let validSampleCount = 0;
@@ -63,19 +70,26 @@ export function buildViewportEnvelope(
     const x = Math.min(pixelWidth - 1, Math.max(0, Math.floor(normalized * pixelWidth)));
     const bucket = buckets.get(x);
     if (bucket) {
-      bucket.min = Math.min(bucket.min, value);
-      bucket.max = Math.max(bucket.max, value);
-      bucket.sum += value;
-      bucket.count += 1;
-      bucket.last = timeMs;
+      if (value < bucket.min) {
+        bucket.min = value;
+        bucket.minTimeMs = timeMs;
+      }
+      if (value > bucket.max) {
+        bucket.max = value;
+        bucket.maxTimeMs = timeMs;
+      }
+      bucket.last = value;
+      bucket.lastTimeMs = timeMs;
     } else {
       buckets.set(x, {
+        first: value,
+        firstTimeMs: timeMs,
         min: value,
+        minTimeMs: timeMs,
         max: value,
-        sum: value,
-        count: 1,
-        first: timeMs,
-        last: timeMs,
+        maxTimeMs: timeMs,
+        last: value,
+        lastTimeMs: timeMs,
       });
     }
   }
@@ -83,14 +97,7 @@ export function buildViewportEnvelope(
   return {
     columns: [...buckets.entries()]
       .sort(([left], [right]) => left - right)
-      .map(([x, bucket]) => ({
-        x,
-        min: bucket.min,
-        max: bucket.max,
-        mean: bucket.sum / bucket.count,
-        firstTimeMs: bucket.first,
-        lastTimeMs: bucket.last,
-      })),
+      .map(([x, bucket]) => ({ x, ...bucket })),
     valueMin: validSampleCount > 0 ? valueMin : 0,
     valueMax: validSampleCount > 0 ? valueMax : 0,
     validSampleCount,
