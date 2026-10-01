@@ -4,6 +4,14 @@
 
 EpicScope uses a controlled repository workflow so implementation follows approved architecture rather than redefining it implicitly.
 
+## Project-owner approval authority
+
+Architectural approval belongs to the project owner.
+
+Contributors, future chats, and implementation agents may propose architectural changes, but they must not self-approve a deviation by merely editing `DECISIONS.md` or introducing a new structure in code.
+
+A change that requires approval must be presented clearly enough that the project owner can approve, reject, or request revision before implementation proceeds.
+
 ## Branching model
 
 `main` is the authoritative integration branch.
@@ -35,7 +43,7 @@ A PR should state:
 - performance impact where relevant;
 - architecture/decision references where applicable.
 
-Direct commits to `main` should be limited to controlled repository initialization, urgent maintenance, or other explicitly approved cases.
+Direct commits to `main` should be limited to controlled repository initialization/foundation work, urgent maintenance, or other explicitly approved cases.
 
 ## Task definition
 
@@ -57,8 +65,8 @@ If a task cannot be implemented cleanly inside the approved architecture:
 1. stop implementation at the design level;
 2. describe the mismatch;
 3. propose an architecture change;
-4. obtain approval;
-5. record the decision in `DECISIONS.md`;
+4. obtain project-owner approval;
+5. record the approved decision in `DECISIONS.md`;
 6. update affected architecture documents;
 7. only then implement the change.
 
@@ -84,6 +92,50 @@ The Web implementation uses lightweight TypeScript as the approved direction.
 
 Framework adoption is not automatic. If a framework is proposed, it must demonstrate that its benefits justify runtime weight, complexity, and future Linux migration implications.
 
+## Naming conventions
+
+Unless an approved subsystem has a stronger external convention, use these defaults:
+
+- directories: `kebab-case`;
+- TypeScript source files: `kebab-case.ts`;
+- TypeScript test files: `kebab-case.test.ts`;
+- exported types, interfaces, enums, and classes: `PascalCase`;
+- functions, methods, variables, and object properties: `camelCase`;
+- true global/module constants: `UPPER_SNAKE_CASE` when appropriate;
+- task identifiers: `AREA-NNN` or a documented task-family equivalent;
+- decision identifiers: `D-NNN`;
+- exact external/source channel names should be preserved in metadata even when an internal canonical identifier differs.
+
+Naming should favor stable domain meaning over implementation-history labels such as `new`, `final`, `v2`, `helper2`, or `temp`.
+
+A subsystem may define a more specific naming rule if documented and approved.
+
+## Input-security policy
+
+All imported logs, tune files, metadata, session files, and shared analysis artifacts are untrusted input.
+
+Parsers/importers must not trust file-provided sizes, counts, offsets, strings, expressions, or metadata without validation.
+
+Implementations should defend against at least:
+
+- truncated or malformed structures;
+- invalid offsets/lengths/counts;
+- absurd allocation requests;
+- unexpected encodings/strings;
+- invalid numeric values;
+- recursive or pathological structures where applicable;
+- resource-exhaustion behavior.
+
+A malformed file should fail or degrade predictably rather than crash the whole application or allocate unbounded memory.
+
+## Privacy and network behavior
+
+Local-first privacy applies to more than file upload.
+
+Without explicit user action/consent, EpicScope must not transmit log contents, tune contents, derived values, analysis results, filenames, or other user analysis data to remote services.
+
+Any future telemetry/analytics must be separately reviewed and must not silently include tune/log content.
+
 ## Testing
 
 Testing should follow the architecture.
@@ -95,7 +147,8 @@ Expected categories include:
 - analyzer regression cases;
 - integration tests across normalized data boundaries;
 - performance benchmarks;
-- compatibility/schema tests for persisted sessions when introduced.
+- compatibility/schema tests for persisted sessions when introduced;
+- malformed/untrusted-input tests for importers.
 
 Large real logs should not be committed casually into normal Git history.
 
@@ -135,11 +188,13 @@ When the user requests a handoff:
 3. preserve only the latest valid project state;
 4. reference authoritative documents rather than duplicating them;
 5. record completed work, current objective, open tasks, unresolved issues, and next action;
-6. record the latest validated/authoritative commit;
+6. record the repository state that was validated before the handoff update;
 7. clearly distinguish approved state from pending ideas;
 8. provide the user a short continuation prompt.
 
 Do not create a growing sequence of handoff files.
+
+Because a file cannot reliably contain the SHA of the commit that writes itself, `HANDOFF.md` must not pretend that its embedded SHA is necessarily the current repository head. A resumed chat must inspect current `main` and reconcile it with the handoff before making changes.
 
 A new chat should be able to continue with a prompt such as:
 
