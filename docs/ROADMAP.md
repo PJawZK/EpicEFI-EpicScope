@@ -75,6 +75,9 @@ Approved bootstrap direction:
 - GitHub Actions as the required automated build/type-check path;
 - GitHub Pages as the normal project-owner Web test/distribution surface;
 - no local clone/Node/npm required for project-owner testing;
+- GitHub Actions as the required automated build/type-check path;
+- GitHub Pages as the normal project-owner Web test/distribution surface;
+- no local clone/Node/npm required for project-owner testing;
 - application shell based on `docs/UI_REFERENCE.md`;
 - right-side inspector responsibility and bottom timeline responsibility;
 - no parser/domain-analysis implementation;
