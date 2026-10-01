@@ -288,19 +288,20 @@ Presentation/application workspace state may be persisted alongside a session ar
 
 `docs/UI_REFERENCE.md` is the authoritative EpicScope interpretation of the reviewed EpicHub Logger/Analyzer reference.
 
-The exact `EpicHub-1.12.1_TabletLandscape.html` prototype and current EpicHub UI architecture were inspected during `WEB-REFERENCE`.
+The authoritative prototype inspected during `WEB-REFERENCE` is `EpicHub-Tablet-Landscape-0.0.45(2).html`, together with current EpicHub UI architecture. It supersedes the older `EpicHub-1.12.1_TabletLandscape.html` prototype for EpicScope UI-reference purposes.
 
-EpicScope inherits the Logger/Analyzer graph, timeline, channel, Scatter, Histogram/Table, Math Channels, comparison, range/marker, and related analysis interaction concepts, but not the broader EpicHub application shell or Android implementation architecture.
+EpicScope inherits the Logger/Analyzer graph, timeline, channel, Scatter, Histogram/Table, Math Channels, comparison, range/marker, workspace, sensor/timeline visibility, and related analysis interaction concepts, but not the broader EpicHub application shell or Android implementation architecture.
 
 Approved EpicScope refinements include:
 
 - a dedicated EpicScope shell rather than EpicHub's module switcher;
 - consistent right-side analysis/detail controls on wide layouts, including moving Scatter/Histogram/Table control responsibility from the prototype's left side to the right;
+- preserve 0.0.45's explicit loaded-log identity and sensor/timeline edge-control concepts where applicable;
 - offline/imported-log focus for initial Web development;
 - Trigger Logger deferred unless deliberately added later;
 - performance and memory requirements may simplify visual implementation while preserving capability.
 
-Prototype demo/localStorage/JSON machinery is not production architecture.
+Prototype demo/localStorage/JSON machinery is not production architecture. The 0.0.45 `REC` control is a UI/reference concept only until EpicScope live acquisition/recording architecture is explicitly approved.
 
 Future changes to this UI reference require explicit review and a superseding decision where they alter these approved semantics.
 
