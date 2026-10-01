@@ -2,9 +2,11 @@
 
 ## Purpose
 
-EpicScope uses a normalized internal model so import formats, analyzers, UI, and future native implementations remain decoupled.
+EpicScope uses normalized internal models so import formats, analyzers, UI, and future native implementations remain decoupled.
 
-MLG, CSV, future MDF4 support, and any later source format must normalize into the same conceptual model before general analysis.
+Log sources such as MLG, CSV, future MDF4 support, and later log formats normalize into common log/channel/time concepts before general analysis.
+
+Tune/configuration sources such as INI and MSQ normalize into tune/firmware concepts rather than being forced into the log model.
 
 This document defines the initial authority. Exact TypeScript/native structures may evolve through approved decisions while preserving these responsibilities.
 
@@ -12,7 +14,7 @@ This document defines the initial authority. Exact TypeScript/native structures 
 
 ### Session
 
-A **Session** is the top-level analysis context.
+A **Session** is the top-level domain analysis context.
 
 A session may contain:
 
@@ -24,10 +26,41 @@ A session may contain:
 - tune/firmware context;
 - annotations/bookmarks;
 - analyzer state/results;
-- comparison relationships;
-- UI workspace state when saved.
+- comparison relationships.
 
 A session must not require cloud storage.
+
+The domain Session does not own presentation layout or become a general UI-state container.
+
+### Workspace state
+
+**WorkspaceState** represents presentation/application state associated with how a user is viewing a session.
+
+Examples may include:
+
+- open graph panes;
+- selected channels;
+- panel visibility/sizing;
+- active tabs/workspaces;
+- viewport/cursor state;
+- UI-specific filter selections where they are not themselves part of the analytical result.
+
+Workspace state may be persisted alongside a session artifact for convenience, but it remains conceptually separate from the domain Session so `core/session/` does not become coupled to a particular UI implementation.
+
+Web, Linux, and Android may have different workspace-state representations while sharing the same underlying Session semantics.
+
+### Persisted session artifact
+
+A **PersistedSessionArtifact** is a versioned saved representation that may contain:
+
+- domain Session data/references;
+- analyzer results that are intended to persist;
+- compatible annotations/bookmarks;
+- optional platform/application workspace state;
+- schema/version metadata;
+- migration/compatibility metadata.
+
+The persistence layer owns serialization/version/migration concerns. Saving workspace state with a session does not make workspace state part of the core domain Session.
 
 ### Log source
 
