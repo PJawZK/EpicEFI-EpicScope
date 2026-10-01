@@ -1,13 +1,20 @@
 import type {
   ImportedLogSummary,
+  NumericChannelDataSource,
   ParserDiagnostic,
 } from '../../../../core/log-model/log-types';
+import { createGraphViewport } from '../components/graph-viewport';
 import { createTimelineShell } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 
 export interface LoggerPageController {
   readonly element: HTMLElement;
-  setLog(summary: ImportedLogSummary, recordCount: number, formatVersion: number): void;
+  setLog(
+    summary: ImportedLogSummary,
+    recordCount: number,
+    formatVersion: number,
+    channelData: NumericChannelDataSource,
+  ): void;
   setImportError(message: string): void;
 }
 
@@ -80,6 +87,7 @@ function createDiagnosticsSummary(diagnostics: readonly ParserDiagnostic[]): HTM
 export function createLoggerPage(): LoggerPageController {
   const inspector = createInspectorPanel();
   const timeline = createTimelineShell();
+  const graph = createGraphViewport();
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -103,31 +111,23 @@ export function createLoggerPage(): LoggerPageController {
 
   const graphHost = document.createElement('main');
   graphHost.className = 'graph-workspace';
-  graphHost.innerHTML = `
-    <article class="graph-window graph-window--active">
-      <header class="graph-window-header">
-        <div>
-          <span class="eyebrow">Graph workspace</span>
-          <strong>General</strong>
-        </div>
-        <span class="graph-window-state">No source</span>
-      </header>
-      <div class="graph-empty">
-        <div class="graph-empty-mark" aria-hidden="true"></div>
-        <strong>Open a log to start scoping</strong>
-        <p>Graph rendering is intentionally deferred until the normalized log model and large-log viewport requirements are defined.</p>
-        <div class="graph-diagnostics-host"></div>
+  const graphWindow = document.createElement('article');
+  graphWindow.className = 'graph-window graph-window--active';
+  graphWindow.innerHTML = `
+    <header class="graph-window-header">
+      <div>
+        <span class="eyebrow">Graph workspace</span>
+        <strong>General</strong>
       </div>
-    </article>
+      <span class="graph-window-state">No source</span>
+    </header>
   `;
-
-  const graphState = graphHost.querySelector<HTMLElement>('.graph-window-state');
-  const graphEmptyTitle = graphHost.querySelector<HTMLElement>('.graph-empty > strong');
-  const graphEmptyDetail = graphHost.querySelector<HTMLElement>('.graph-empty > p');
-  const diagnosticsHost = graphHost.querySelector<HTMLElement>('.graph-diagnostics-host');
-  if (!graphState || !graphEmptyTitle || !graphEmptyDetail || !diagnosticsHost) {
-    throw new Error('Logger graph shell structure is incomplete.');
-  }
+  const graphState = graphWindow.querySelector<HTMLElement>('.graph-window-state');
+  if (!graphState) throw new Error('Logger graph shell structure is incomplete.');
+  const diagnosticsHost = document.createElement('div');
+  diagnosticsHost.className = 'graph-diagnostics-host';
+  graphWindow.append(graph.element, diagnosticsHost);
+  graphHost.append(graphWindow);
 
   const sensorToggle = document.createElement('button');
   sensorToggle.type = 'button';
@@ -166,6 +166,12 @@ export function createLoggerPage(): LoggerPageController {
     timelineToggle.setAttribute('aria-expanded', String(next));
   });
 
+  inspector.onChannelSelected((channelId) => {
+    inspector.setSelectedChannel(channelId);
+    void graph.selectChannel(channelId);
+  });
+  timeline.onCursorChange((timeMs) => graph.setCursorTime(timeMs));
+
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceBar, workspaceRow, timelineWrap);
 
@@ -173,21 +179,20 @@ export function createLoggerPage(): LoggerPageController {
     summary: ImportedLogSummary,
     recordCount: number,
     formatVersion: number,
+    channelData: NumericChannelDataSource,
   ): void => {
     inspector.setChannels(summary.channels, summary.source.displayName);
     timeline.setDuration(summary.timeRange?.durationMs, recordCount);
+    graph.setLog(summary.channels, channelData, summary.timeRange);
     graphState.textContent = `MLG v${formatVersion} · ${recordCount.toLocaleString()} records`;
-    graphEmptyTitle.textContent = 'Log indexed successfully';
-    graphEmptyDetail.textContent = `${summary.channels.length.toLocaleString()} channels discovered. Graph rendering follows after channel-query and timeline contracts are connected.`;
     diagnosticsHost.replaceChildren(createDiagnosticsSummary(summary.diagnostics));
   };
 
   const setImportError = (message: string): void => {
     inspector.setError(message);
     timeline.setDuration(undefined, 0);
+    graph.clear();
     graphState.textContent = 'Import failed';
-    graphEmptyTitle.textContent = 'Could not open log';
-    graphEmptyDetail.textContent = message;
     diagnosticsHost.replaceChildren();
   };
 
