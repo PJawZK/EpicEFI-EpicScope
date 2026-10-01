@@ -185,6 +185,63 @@ button:disabled { opacity: .48; cursor: default; }
   opacity: .8;
 }
 
+.graph-diagnostics-host {
+  width: min(760px, 92%);
+  margin-top: 6px;
+}
+.parser-diagnostics {
+  width: 100%;
+  border: 1px solid #5c4930;
+  border-radius: 4px;
+  background: #151711;
+  color: #c7bfa9;
+  text-align: left;
+}
+.parser-diagnostics > summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #e4c98c;
+  font-size: 10px;
+  font-weight: 750;
+}
+.parser-diagnostics-content {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.8fr);
+  gap: 12px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 0 10px 10px;
+  border-top: 1px solid #3d3628;
+}
+.parser-diagnostic-groups {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding-top: 8px;
+}
+.parser-diagnostic-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 7px;
+  align-items: center;
+  padding: 5px 6px;
+  border: 1px solid #3a372c;
+  border-radius: 3px;
+  background: #11150f;
+  font-size: 9px;
+}
+.parser-diagnostic-group strong { overflow: hidden; color: #e7d9b1; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.parser-diagnostic-group span { color: #fff0bd; font-weight: 800; }
+.parser-diagnostic-group small { color: #998d72; text-transform: uppercase; }
+.parser-diagnostic-occurrences {
+  min-width: 0;
+  padding-top: 8px;
+  font-size: 9px;
+}
+.parser-diagnostic-occurrences > strong { color: #cbbd9d; font-size: 9px; }
+.parser-diagnostic-occurrences ol { margin: 5px 0 0; padding-left: 20px; }
+.parser-diagnostic-occurrences li { margin: 0 0 4px; line-height: 1.35; overflow-wrap: anywhere; }
+
 .inspector-panel {
   min-width: 0;
   min-height: 0;
@@ -306,4 +363,6 @@ button:disabled { opacity: .48; cursor: default; }
 
   .graph-empty,
   .panel-empty { padding: 16px; }
+
+  .parser-diagnostics-content { grid-template-columns: 1fr; }
 }
