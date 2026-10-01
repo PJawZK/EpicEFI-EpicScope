@@ -24,7 +24,9 @@ Source file / platform data source
       Presentation / UI
 ```
 
-Dependencies should normally flow downward through this stack. Lower layers must not depend on higher presentation or feature-specific layers.
+This diagram describes product flow, not a rule that every code dependency must point linearly downward.
+
+`core/log-model/` is a neutral contract boundary: parsers depend on those contracts to produce normalized data, while analysis/services depend on them to consume normalized data.
 
 ## Layer responsibilities
 
@@ -38,12 +40,16 @@ Responsibilities:
 - report recoverable and fatal parse errors;
 - produce normalized data through approved contracts.
 
+Initial source-format ownership includes MLG, CSV, and—when tune-awareness is implemented—INI/MSQ decoding.
+
 Parsers must not:
 
 - implement UI behaviour;
 - contain boost/idle/AE-specific analysis;
 - own tune recommendations;
 - expose source-format quirks directly to presentation code unless explicitly represented in normalized metadata.
+
+All parser/importer inputs are untrusted and must be bounded/validated before using file-provided sizes, offsets, counts, or other allocation-driving values.
 
 ### Normalized log model
 
@@ -53,7 +59,9 @@ Responsibilities:
 - provide stable contracts to analysis layers;
 - isolate analyzers from individual import formats.
 
-All supported formats must normalize into this model before general analysis.
+All supported log formats must normalize into this model before general analysis.
+
+Parsers produce these contracts; consumers query them. The model itself should not contain source-specific parsing behavior.
 
 ### Generic analysis primitives
 
@@ -84,10 +92,12 @@ Responsibilities:
 
 Responsibilities:
 
-- represent tune and firmware context;
+- represent normalized tune and firmware context;
 - map logged operating points to tune structures;
 - expose table axes, cells, current values, targets, and relevant metadata;
 - avoid embedding presentation assumptions.
+
+Raw INI/MSQ syntax decoding belongs to the parser layer. Tune services consume normalized decoded information rather than becoming source-format parsers themselves.
 
 ### Compare services
 
@@ -97,6 +107,25 @@ Responsibilities:
 - calculate deltas;
 - normalize comparable metrics;
 - support before/after and revision analysis.
+
+### Session services
+
+Responsibilities:
+
+- compose logs, tune context, events, comparisons, annotations, and analyzer state into a coherent analysis session;
+- expose stable session-level relationships independently of presentation layout;
+- avoid becoming a second UI state store.
+
+### Persistence services
+
+Responsibilities:
+
+- versioned serialization/deserialization;
+- schema migration;
+- storage-independent persisted-artifact contracts;
+- explicit compatibility errors for unsupported versions.
+
+Browser storage, Linux filesystem storage, cloud/share services, and future Android storage are platform adapters around these contracts rather than assumptions embedded into the session model.
 
 ### Specialized analyzers
 
@@ -140,6 +169,8 @@ Linux UI → Native optimized analysis/data implementation
 
 without redesigning every analyzer and workflow.
 
+The exact Linux application/runtime directory structure is intentionally not invented before the Linux architecture is approved. Future platform areas require explicit architecture decisions rather than implicit additions.
+
 ## Platform independence
 
 No core product concept should require a browser-specific API unless that concept is explicitly a Web-only adapter.
@@ -163,8 +194,16 @@ Errors should be classified by layer and severity:
 
 Missing data should disable or degrade only affected functions where possible.
 
+Malformed/untrusted input should not be allowed to turn a recoverable parser error into uncontrolled allocation, application-wide crash, or silent fabricated data.
+
+## Network/privacy boundary
+
+Opening and analyzing local data does not imply permission to transmit it.
+
+Remote sharing, publishing, telemetry, or analytics are separate capabilities and must not silently transmit log contents, tune contents, filenames, derived values, or analysis results.
+
 ## Architectural change control
 
 Architecture may evolve, but implementation must not silently redefine it.
 
-A new top-level subsystem, dependency direction, or cross-layer responsibility requires an explicit documented decision in `DECISIONS.md` and corresponding updates to architecture/file-architecture documentation before code lands.
+A new top-level subsystem, dependency direction, or cross-layer responsibility requires project-owner approval, an explicit documented decision in `DECISIONS.md`, and corresponding updates to architecture/file-architecture documentation before code lands.
