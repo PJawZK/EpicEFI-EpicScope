@@ -10,34 +10,71 @@
 
 ## Active development branch
 
-`phase1/web-reference`
+`phase1/web-boot-plan`
 
 ## Current project phase
 
 **Phase 1 — Web log foundation**
 
-`WEB-REFERENCE` is complete on the active branch. The next task is to define `WEB-BOOT` precisely before application code is created.
+`WEB-REFERENCE` has been merged to `main`. `WEB-BOOT` is now fully planned on the active branch; no application code has been created yet.
 
 ## Current objective
 
-Review/merge the completed UI-reference work, then define the first concrete Web bootstrap task batch, exact file locations, and minimal tooling stack under the existing lightweight-TypeScript and dependency policies.
+Review/merge the WEB-BOOT planning authority, then create a fresh short-lived implementation branch and execute only the approved bootstrap tasks/files from `docs/WEB_BOOT_PLAN.md`.
 
 ## Latest completed work
 
 Phase 0 foundation is complete.
 
-Phase 1 `WEB-REFERENCE` has now been completed using both:
+Phase 1 `WEB-REFERENCE` is complete and merged to `main` as squash commit:
 
-- the authoritative `EpicHub-Tablet-Landscape-0.0.45(2).html` prototype supplied by the project owner;
-- current EpicHub authority on `PJawZK/EpicHub-EpicEFI-Android`, branch `phase2/ui-diagnostics-foundation`, especially `docs/HANDOFF.md`, `docs/architecture/UI_FOUNDATION_LAYOUT.md`, and `docs/architecture/ANALYSIS_RESPONSIBILITY_MAP.md`.
+`59b4e5171a1cce5e34c5b900ca2e4cbfe6c0b5a7`
 
-`EpicHub-Tablet-Landscape-0.0.45(2).html` supersedes the older `EpicHub-1.12.1_TabletLandscape.html` prototype for EpicScope UI-reference purposes.
+The authoritative UI source is:
 
-A new authority document now exists:
+- `EpicHub-Tablet-Landscape-0.0.45(2).html`
 
-- `docs/UI_REFERENCE.md`
+It supersedes the older Tablet Landscape prototype for EpicScope UI-reference purposes.
 
-It records the EpicHub Logger/Analyzer concepts EpicScope inherits and the deliberate EpicScope deviations.
+The current planning branch adds:
+
+- `docs/WEB_BOOT_PLAN.md`;
+- detailed `WEB-BOOT-001` through `WEB-BOOT-004` task definitions;
+- approved root Web tooling files and initial physical Web source files in `FILE_ARCHITECTURE.md`;
+- D-034 for the initial Web toolchain;
+- roadmap alignment and correction of the remaining stale older-prototype reference.
+
+## WEB-BOOT approved direction
+
+Toolchain:
+
+- npm with committed `package-lock.json`;
+- Vite 8.x;
+- vanilla TypeScript 7.x;
+- browser-native HTML/CSS/DOM APIs;
+- Chromium/Brave-first smoke testing.
+
+Not approved as part of WEB-BOOT:
+
+- React/Vue/Svelte/Lit or another frontend framework;
+- graph/chart library;
+- state-management framework;
+- CSS framework;
+- general UI component library;
+- dedicated test framework solely for static shell code.
+
+The Vite/Node requirement is Web build tooling only; it does not redefine the eventual Linux runtime/platform baseline.
+
+## WEB-BOOT task split
+
+1. `WEB-BOOT-001` — toolchain scaffold.
+2. `WEB-BOOT-002` — dedicated EpicScope application shell.
+3. `WEB-BOOT-003` — Logger workspace/right inspector/bottom timeline skeleton.
+4. `WEB-BOOT-004` — bootstrap quality gate.
+
+Exact files, responsibilities, prohibitions, validation, and completion criteria are defined in `docs/WEB_BOOT_PLAN.md`.
+
+The initial implementation must not create parser, analyzer, fake log-data, or graph-library architecture merely to make the shell look functional.
 
 ## UI-reference decisions
 
@@ -66,13 +103,13 @@ EpicScope inherits the following interaction families from the 0.0.45 reference:
 Approved EpicScope deviations from the EpicHub prototype:
 
 1. EpicScope uses a dedicated product shell rather than EpicHub's Dashboard/Tuner/Logger/Diagnostics module switcher.
-2. Wide-layout analysis/detail controls are standardized on the **right side**. This deliberately moves Scatter and Histogram/Table control responsibility from the prototype's left side to the right for EpicScope.
+2. Wide-layout analysis/detail controls are standardized on the **right side**.
 3. Initial Web development is offline/imported-log focused; live ECU acquisition and functional recording are deferred.
-4. Trigger Logger is not an initial EpicScope requirement and is deferred unless explicitly added later.
+4. Trigger Logger is deferred unless explicitly added later.
 5. Performance, RAM usage, and maintainability outrank exact visual reproduction.
-6. EpicHub prototype localStorage/JSON/demo-state machinery is not EpicScope production architecture.
+6. Prototype localStorage/JSON/demo-state machinery is not EpicScope production architecture.
 
-The approved cursor-follow behavior is explicit: the playback cursor moves independently until it reaches the middle of the visible range; after that, the viewport follows while retaining the current width. A cursor jump behind the window must recover sensibly.
+The approved cursor-follow behavior remains: the playback cursor moves independently until it reaches the middle of the visible range; after that, the viewport follows while retaining the current width.
 
 ## Current approved decisions
 
@@ -93,8 +130,9 @@ Notable current decisions include:
 - raw source decoding in `core/parsers/`, normalized semantics in appropriate core models;
 - domain Session separated from UI WorkspaceState;
 - capability-driven Boost Analyzer;
-- `docs/UI_REFERENCE.md` is now the EpicScope UI-reference authority;
-- `EpicHub-Tablet-Landscape-0.0.45(2).html` is the currently reviewed Tablet Landscape source for that authority.
+- `docs/UI_REFERENCE.md` is the EpicScope UI-reference authority;
+- `docs/WEB_BOOT_PLAN.md` is the detailed initial Web bootstrap authority;
+- initial Web bootstrap uses npm + Vite 8.x + vanilla TypeScript 7.x with no frontend framework.
 
 ## Architecture authority
 
@@ -105,40 +143,42 @@ Read these before significant implementation:
 3. `docs/FILE_ARCHITECTURE.md`
 4. `docs/DATA_MODEL.md`
 5. `docs/UI_REFERENCE.md`
-6. `docs/PERFORMANCE.md`
-7. `docs/PLATFORMS.md`
-8. `docs/ROADMAP.md`
-9. `docs/WORKFLOW.md`
-10. `docs/DECISIONS.md`
+6. `docs/WEB_BOOT_PLAN.md` when working on WEB-BOOT
+7. `docs/PERFORMANCE.md`
+8. `docs/PLATFORMS.md`
+9. `docs/ROADMAP.md`
+10. `docs/WORKFLOW.md`
+11. `docs/DECISIONS.md`
 
 ## Current implementation state
 
 No application code has been added yet.
 
-This remains intentional. `WEB-REFERENCE` was a design/authority task. `WEB-BOOT` must first be split into concrete tasks with approved file ownership and a justified minimal toolchain.
+This remains intentional. The planning branch defines exact files before implementation, in accordance with the project's controlled-file-architecture rules.
 
 ## Current roadmap position
 
 - Phase 0 — **Complete**
 - Phase 1 — **In progress**
-- `WEB-REFERENCE` — **Complete on active branch**
-- next — define and execute `WEB-BOOT`
+- `WEB-REFERENCE` — **Complete and merged**
+- `WEB-BOOT` — **Planned on active branch; implementation pending**
+- next after WEB-BOOT — `LOG-MLG`
 
 ## Next recommended actions
 
-1. Review/merge `phase1/web-reference` through a pull request.
-2. Define the concrete `WEB-BOOT` task split, including exact files, owners, dependencies, tests, and completion criteria.
-3. Select the minimal Web build/tooling stack under the dependency policy.
-4. Create a new short-lived implementation branch after the reference branch is merged.
-5. Bootstrap only the files/directories required by the approved tasks.
-6. Begin MLG format investigation/parser-contract work only after the bootstrap/data-contract ownership is clear.
+1. Review/merge `phase1/web-boot-plan` through a pull request.
+2. Create a fresh short-lived `phase1/web-boot` implementation branch from the resulting `main`.
+3. Execute `WEB-BOOT-001` through `WEB-BOOT-004` exactly as defined in `docs/WEB_BOOT_PLAN.md`.
+4. Merge only after type-check, production-build, and Brave/Chromium smoke validation pass.
+5. Before `LOG-MLG` implementation, select/document the parser/core automated test strategy.
+6. Investigate MLG format/parser contracts without allowing source-format details into the Web UI.
 
 Do not create all documented future directories as empty placeholders.
 
 ## Known unresolved items
 
-- Exact Web bundler/build tooling has not yet been selected.
-- Exact graph rendering library/approach has not yet been selected.
+- Exact graph rendering library/approach remains intentionally unselected until graph/timeline workload requirements are concrete.
+- Parser/core automated test runner/strategy remains intentionally unselected until LOG-MLG planning.
 - MLG parser implementation/spec details have not yet been investigated in EpicScope.
 - Branch protection/ruleset enforcement has not yet been configured; workflow policy remains documented authority.
 - Final Linux UI toolkit/runtime architecture remains intentionally deferred until Web functionality matures.
@@ -147,9 +187,9 @@ Do not create all documented future directories as empty placeholders.
 
 ## Repository state validated before this handoff update
 
-`dc5dc90d0fa57389aec0e51fc338ba1739fbd5b9`
+`0fd2889243b1cc40e73fd3d182bcc0c1f7ec0164`
 
-This is the active `phase1/web-reference` branch state after correcting the UI-reference authority to EpicHub Tablet Landscape 0.0.45 and before this handoff-file update.
+This is the active `phase1/web-boot-plan` branch state after the WEB-BOOT plan, roadmap, decision, and file-architecture updates and before this handoff-file update.
 
 Because a file cannot reliably contain the SHA of the commit that writes itself, this SHA is not presented as the final branch head. A resumed chat must inspect current `main` and the active branch/PR first.
 
