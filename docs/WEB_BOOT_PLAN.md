@@ -2,47 +2,58 @@
 
 ## Status
 
-**Approved planning baseline — implementation has not started.**
+**Implementation in progress.**
 
-This document defines the exact first Web implementation batch for EpicScope. It exists to keep bootstrap work inside approved architectural ownership and to prevent convenience-driven file growth.
-
-`docs/UI_REFERENCE.md` remains the UI/interaction authority. This document only defines how the first implementation slice is organized.
+This document defines the first Web implementation batch for EpicScope. `docs/UI_REFERENCE.md` remains the UI/interaction authority.
 
 ## Goal
 
-Create the smallest runnable EpicScope Web shell that:
+Create the smallest usable EpicScope Web shell while keeping the project genuinely browser-accessible for the project owner.
 
-- uses the approved EpicScope product identity;
-- follows the Tablet Landscape 0.0.45 Logger/Analyzer reference at the shell/responsibility level;
-- proves the build/type-check/development path;
-- establishes stable Web composition boundaries before log parsing begins;
-- contains no source-format parser, fake domain analysis, tune interpretation, or hidden prototype architecture.
+The normal project-owner workflow must not require a local clone, Node.js, npm, or a development environment. GitHub performs build validation and GitHub Pages provides the browser test surface.
+
+Local development remains supported for contributors, but it is optional.
+
+## Approved Web delivery model
+
+```text
+short-lived branch / pull request
+        ↓
+GitHub Actions Web CI
+        ├── npm ci
+        ├── TypeScript check
+        └── Vite production build
+        ↓
+merge to main
+        ↓
+GitHub Actions Pages workflow
+        ↓
+GitHub Pages
+        ↓
+Brave / Chromium browser validation
+```
+
+GitHub Pages is the distribution and functional test surface for the Web stage. It is **not** an EpicScope backend.
+
+Opening a local log from the Pages-hosted application must remain client-side unless the user explicitly invokes a future approved sharing/upload feature.
 
 ## Approved toolchain
 
-WEB-BOOT uses:
-
-- npm for package management and lockfile generation;
-- Vite 8.x as development server/build tool;
+- npm with committed `package-lock.json`;
+- Vite 8.x;
 - vanilla TypeScript 7.x;
 - browser-native HTML/CSS/DOM APIs;
-- Chromium/Brave as the primary smoke-test browser.
+- GitHub Actions for CI/build/deployment;
+- GitHub Pages for the normal hosted Web build;
+- Chromium/Brave as the primary browser target.
 
-No frontend framework is approved for WEB-BOOT.
+No frontend framework, graph/chart library, state-management framework, CSS framework, or general UI component library is approved by WEB-BOOT.
 
-Specifically, WEB-BOOT does **not** add React, Vue, Svelte, Lit, a state-management framework, a CSS framework, a graph/chart library, or a general UI component library.
+The Node.js requirement belongs to CI/local development tooling only. It is not a user requirement and does not redefine the eventual Linux runtime baseline.
 
-The installed package lockfile is the exact dependency authority for a given commit. Major dependency changes require review under the project dependency policy.
+## Approved repository files
 
-### Development runtime
-
-Vite 8 supports Node.js 20.19+ or 22.12+.
-
-This Node requirement applies to Web development/build tooling. It does not redefine the eventual EpicScope Linux end-user runtime/platform baseline.
-
-## Root tooling files approved by WEB-BOOT
-
-The following repository-root files are approved because they configure the Web development/build process rather than own application behaviour:
+Repository root:
 
 ```text
 .gitignore
@@ -52,261 +63,141 @@ tsconfig.json
 vite.config.ts
 ```
 
-Responsibilities:
-
-### `.gitignore`
-
-Ignore generated dependency/build/editor artifacts only. It must not become a substitute for deciding where generated project data belongs.
-
-### `package.json`
-
-Own the minimal Web development scripts and development dependencies.
-
-Initial script responsibilities:
-
-- start development server;
-- type-check;
-- production build;
-- preview production build.
-
-It must not become a general task runner for unrelated platform architecture.
-
-### `package-lock.json`
-
-Generated npm lockfile. Commit it so builds use a reviewable dependency graph.
-
-### `tsconfig.json`
-
-Strict TypeScript compiler policy for the currently implemented TypeScript source tree.
-
-The initial configuration should emphasize:
-
-- strict type checking;
-- no emitted JavaScript from `tsc` during normal validation;
-- modern browser/ES module targets compatible with the Chromium-first Web policy;
-- no path-alias complexity until real cross-area imports justify it.
-
-### `vite.config.ts`
-
-Own Web build/dev-server configuration only.
-
-Initial responsibility:
-
-- use `apps/web/` as the Web root;
-- output generated production assets outside source directories;
-- avoid plugins unless an approved task requires them.
-
-## Initial physical Web tree
-
-Only the following Web implementation files/directories are approved for the first bootstrap batch:
+Web application:
 
 ```text
 apps/web/
 ├── index.html
 └── src/
     ├── main.ts
-    ├── app/
-    │   └── app-shell.ts
-    ├── pages/
-    │   └── logger-page.ts
-    ├── panels/
-    │   └── inspector-panel.ts
-    ├── components/
-    │   └── timeline-shell.ts
+    ├── app/app-shell.ts
+    ├── pages/logger-page.ts
+    ├── panels/inspector-panel.ts
+    ├── components/timeline-shell.ts
     └── styles/
         ├── tokens.css
         └── app.css
 ```
 
-Do not create unused placeholder directories such as `state/`, additional pages, parser directories, analyzer directories, or future platform trees during WEB-BOOT.
+GitHub automation:
+
+```text
+.github/workflows/
+├── web-ci.yml
+└── pages.yml
+```
+
+Temporary bootstrap workflows may be used only to establish required generated repository artifacts and must be removed before merge.
+
+## Vite / Pages path
+
+The repository Pages URL is expected under the project path, so Vite uses:
+
+```text
+/EpicEFI-EpicScope/
+```
+
+as its production base path. This is build/deployment configuration only.
 
 ## Task split
 
 ### WEB-BOOT-001 — Toolchain scaffold
 
-**Goal:** establish the minimal build/type-check path.
+Establish npm, Vite, TypeScript, the committed lockfile, Vite Pages base path, and GitHub Actions validation.
 
-**Files:**
+Validation:
 
-- `.gitignore`
-- `package.json`
-- `package-lock.json`
-- `tsconfig.json`
-- `vite.config.ts`
-- `apps/web/index.html`
+- `package-lock.json` exists and matches the approved dependency set;
+- GitHub Actions can execute `npm ci`;
+- `npm run typecheck` passes in CI;
+- `npm run build` passes in CI.
 
-**Dependencies:**
-
-- Vite 8.x
-- TypeScript 7.x
-
-**Validation:**
-
-- clean dependency install succeeds;
-- TypeScript validation succeeds;
-- production build succeeds;
-- generated build output is ignored by Git.
-
-**Completion criteria:**
-
-A new checkout can install dependencies and launch/build the empty EpicScope Web application without additional undocumented setup.
-
----
+The project owner is not required to perform these commands locally.
 
 ### WEB-BOOT-002 — EpicScope application shell
 
-**Goal:** implement the dedicated EpicScope shell without importing the broader EpicHub module shell.
+Implement the dedicated EpicScope shell without importing the broader EpicHub module shell.
 
-**Files:**
+Responsibilities:
 
-- `apps/web/src/main.ts`
-- `apps/web/src/app/app-shell.ts`
-- `apps/web/src/styles/tokens.css`
-- `apps/web/src/styles/app.css`
-
-**Responsibilities:**
-
-- product header/identity;
-- loaded-log identity placeholder/state presentation;
+- EpicScope identity/header;
+- loaded-log identity presentation;
 - primary Logger/Analyzer surface host;
 - right-side inspector host;
 - bottom timeline host;
-- layout behavior for wide Chromium/Brave viewports;
-- dark technical visual language derived from the approved reference without copying prototype state/data machinery.
+- wide-layout technical styling based on the approved reference.
 
-**Not allowed:**
+Not allowed:
 
 - fake MLG decoding;
-- embedded sample-domain calculations;
-- application-wide mutable object copied from the prototype;
+- parser/domain calculations;
+- prototype global-state architecture;
 - live ECU/recording implementation;
-- Dashboard/Tuner/Diagnostics module navigation.
-
-**Validation:**
-
-- shell renders without console errors in Brave/Chromium;
-- main workspace, inspector responsibility, and timeline responsibility are visually distinct;
-- resizing the browser does not cause uncontrolled overflow at normal desktop/tablet-landscape widths.
-
-**Completion criteria:**
-
-EpicScope visibly exists as its own product shell and its main layout responsibilities match `UI_REFERENCE.md`.
-
----
+- Dashboard/Tuner/Diagnostics navigation.
 
 ### WEB-BOOT-003 — Logger workspace skeleton
 
-**Goal:** establish the first Logger/Analyzer presentation boundaries without implementing graph rendering or domain data.
+Establish data-source-agnostic presentation boundaries for:
 
-**Files:**
+- graph workspace host;
+- workspace/tab presentation;
+- right-side Full Sensor List/inspector responsibility;
+- sensor panel show/hide edge control;
+- bottom timeline/transport responsibility;
+- expanded/compact timeline edge control.
 
-- `apps/web/src/pages/logger-page.ts`
-- `apps/web/src/panels/inspector-panel.ts`
-- `apps/web/src/components/timeline-shell.ts`
+No fake playback or graph data is introduced.
 
-**Responsibilities:**
+### WEB-BOOT-004 — GitHub-hosted quality gate
 
-`logger-page.ts`:
+Required automated checks before merge:
 
-- graph-workspace host;
-- named-workspace/tab presentation boundary;
-- empty-state/main-surface composition;
-- responsibility hooks for future graph windows without implementing graph data/rendering.
+1. GitHub Actions `npm ci` succeeds from the committed lockfile;
+2. TypeScript validation succeeds;
+3. Vite production build succeeds;
+4. no unapproved runtime dependencies are introduced;
+5. no parser/domain-analysis implementation appears under `apps/web/`;
+6. no uncontrolled file architecture appears.
 
-`inspector-panel.ts`:
+Required post-merge hosted check:
 
-- right-side inspector shell;
-- Full Sensor List responsibility placeholder;
-- search/filter/sort responsibility locations;
-- show/hide edge-control behavior derived from 0.0.45;
-- no real channel list until normalized log/channel contracts exist.
+1. GitHub Pages deployment succeeds from `main`;
+2. the Pages build opens in Brave/Chromium;
+3. shell layout renders correctly;
+4. sensor panel show/hide works;
+5. timeline expanded/compact behavior works;
+6. resizing at normal desktop/tablet-landscape widths is usable;
+7. browser console shows no application errors during these interactions.
 
-`timeline-shell.ts`:
+If GitHub Pages repository settings require enabling **Settings → Pages → Source: GitHub Actions**, that is a one-time repository configuration step, not a local development requirement.
 
-- timeline overview/transport responsibility shell;
-- expanded/compact control state;
-- timeline edge-control behavior derived from 0.0.45;
-- no fake playback data or timeline calculations.
+## CI and Pages ownership
 
-**Validation:**
+### `.github/workflows/web-ci.yml`
 
-- inspector can be shown/hidden without destroying the workspace;
-- timeline controls can switch between expanded/compact shell states;
-- layout changes remain presentation-only;
-- no parser/core/analyzer responsibilities appear in these files.
+PR/branch validation only. It must not deploy production Pages or mutate source code.
 
-**Completion criteria:**
+### `.github/workflows/pages.yml`
 
-The first Logger/Analyzer shell demonstrates the approved interaction geography while remaining data-source agnostic.
+Builds and deploys only the authoritative `main` Web application to GitHub Pages. Deployment output comes from `dist/web`.
 
----
-
-### WEB-BOOT-004 — Bootstrap quality gate
-
-**Goal:** verify that bootstrap code is clean enough to become the base for LOG-MLG.
-
-**Files changed:** normally none unless defects are found.
-
-**Required checks:**
-
-1. clean `npm install` from the committed lockfile;
-2. `tsc --noEmit` passes;
-3. production Vite build passes;
-4. Brave/Chromium smoke test passes;
-5. no console errors during shell interactions;
-6. no runtime dependencies beyond browser-native APIs;
-7. no source parser/domain-analysis code exists under `apps/web/`;
-8. no unapproved top-level directory/file architecture has appeared;
-9. generated output and dependencies are not committed;
-10. current handoff/roadmap accurately identify the next task.
-
-**Completion criteria:**
-
-WEB-BOOT can be merged and `LOG-MLG` investigation can begin from a clean, controlled application base.
-
-## Test policy for WEB-BOOT
-
-No dedicated test-framework dependency is approved for WEB-BOOT because the batch contains only build configuration and static/presentation shell behavior.
-
-Automated validation for this batch is:
-
-- TypeScript static checking;
-- production build validation.
-
-Browser behavior receives a documented Chromium/Brave smoke check.
-
-Before parser/core logic is implemented, the relevant task must select and document an automated test runner/strategy. The choice must not be smuggled into LOG-MLG as an incidental dependency.
+GitHub Pages hosting does not grant permission to upload user-selected log/tune data. Local-first privacy remains authoritative.
 
 ## Graph rendering policy
 
-WEB-BOOT does not select a graph library.
+WEB-BOOT does not select a graph library. That decision waits until graph/timeline requirements include concrete sample-count, decimation, synchronization, overlay, latency, and memory constraints.
 
-The graph workspace is a responsibility boundary only. Graph rendering will be selected when the TIMELINE/graph task has concrete requirements for:
+## Test policy
 
-- large sample counts;
-- viewport decimation;
-- cursor synchronization;
-- overlays/comparison;
-- interaction latency;
-- memory use.
+WEB-BOOT requires CI type-check/build validation and hosted browser smoke validation. A dedicated automated test framework remains deferred until parser/core logic requires it.
 
-This avoids choosing a chart dependency based solely on appearance before EpicScope's workload is known.
+## Exit state
 
-## State policy
+WEB-BOOT is complete when:
 
-WEB-BOOT may maintain only minimal presentation state required to demonstrate shell interactions such as inspector visibility or timeline expanded/compact state.
-
-It must not establish a persistence schema or general application state architecture by accident.
-
-Domain `Session` and future persisted `WorkspaceState` remain governed by `DATA_MODEL.md` and later roadmap tasks.
-
-## WEB-BOOT exit state
-
-After WEB-BOOT, the repository should have:
-
-- a minimal reproducible Web toolchain;
-- an independent EpicScope shell;
-- Logger workspace, right inspector, and bottom timeline presentation boundaries;
-- no fake parser/analysis functionality;
-- no graph-library commitment;
-- a clean place to begin MLG/parser-contract investigation.
+- reproducible GitHub Actions CI passes;
+- the Web shell is merged to `main`;
+- GitHub Pages deploys successfully;
+- the hosted shell passes the Brave/Chromium interaction smoke check;
+- the project owner can test EpicScope by opening the hosted site without installing project tooling locally;
+- the repository is ready to begin `LOG-MLG` planning.

@@ -8,195 +8,146 @@
 
 `main`
 
-## Active development branch
+## Active development branch / PR
 
-`phase1/web-boot-plan`
+- branch: `phase1/web-boot`
+- PR: `#3 — Phase 1: implement WEB-BOOT shell`
 
-## Current project phase
+## Current phase
 
 **Phase 1 — Web log foundation**
 
-`WEB-REFERENCE` has been merged to `main`. `WEB-BOOT` is now fully planned on the active branch; no application code has been created yet.
+- Phase 0 — complete
+- WEB-REFERENCE — complete and merged
+- WEB-BOOT planning — complete and merged
+- WEB-BOOT implementation — pre-merge CI gate passed
+- next after hosted Pages validation — LOG-MLG planning/investigation
 
-## Current objective
+## Authoritative UI reference
 
-Review/merge the WEB-BOOT planning authority, then create a fresh short-lived implementation branch and execute only the approved bootstrap tasks/files from `docs/WEB_BOOT_PLAN.md`.
+`EpicHub-Tablet-Landscape-0.0.45(2).html`
 
-## Latest completed work
+`docs/UI_REFERENCE.md` contains the EpicScope interpretation of that reference.
 
-Phase 0 foundation is complete.
+## Web workflow authority
 
-Phase 1 `WEB-REFERENCE` is complete and merged to `main` as squash commit:
+D-035 defines the Web stage as zero-install for the project owner.
 
-`59b4e5171a1cce5e34c5b900ca2e4cbfe6c0b5a7`
+The project owner is not expected to maintain a local clone or install Node/npm merely to test EpicScope.
 
-The authoritative UI source is:
+```text
+branch / PR
+  ↓
+GitHub Actions Web CI
+  ↓
+merge to main
+  ↓
+GitHub Actions Pages deployment
+  ↓
+GitHub Pages
+  ↓
+Brave / Chromium validation
+```
 
-- `EpicHub-Tablet-Landscape-0.0.45(2).html`
+Local development remains optional for contributors.
 
-It supersedes the older Tablet Landscape prototype for EpicScope UI-reference purposes.
+GitHub Pages is only the application host. Local logs/tunes remain client-side unless a future explicit sharing/upload feature is approved and invoked.
 
-The current planning branch adds:
+## WEB-BOOT implementation
 
-- `docs/WEB_BOOT_PLAN.md`;
-- detailed `WEB-BOOT-001` through `WEB-BOOT-004` task definitions;
-- approved root Web tooling files and initial physical Web source files in `FILE_ARCHITECTURE.md`;
-- D-034 for the initial Web toolchain;
-- roadmap alignment and correction of the remaining stale older-prototype reference.
+Implemented:
 
-## WEB-BOOT approved direction
+- npm + committed `package-lock.json`;
+- Vite 8.x + TypeScript 7.x;
+- Vite production base path `/EpicEFI-EpicScope/`;
+- `.github/workflows/web-ci.yml` for branch/PR validation;
+- `.github/workflows/pages.yml` for `main` → GitHub Pages deployment;
+- dedicated EpicScope shell;
+- Logger/Analyzer workspace host;
+- right-side Full Sensor List / inspector shell;
+- sensor-panel edge show/hide behavior;
+- bottom timeline/transport shell;
+- expanded/compact timeline edge behavior;
+- dark technical styling based on the approved reference;
+- no frontend framework, graph library, parser, analyzer, tune, or fake session architecture.
 
-Toolchain:
+Temporary repository-establishment workflows were removed before merge candidate review.
 
-- npm with committed `package-lock.json`;
-- Vite 8.x;
-- vanilla TypeScript 7.x;
-- browser-native HTML/CSS/DOM APIs;
-- Chromium/Brave-first smoke testing.
+## Validation
 
-Not approved as part of WEB-BOOT:
+GitHub Actions Web CI passes on the implementation branch:
 
-- React/Vue/Svelte/Lit or another frontend framework;
-- graph/chart library;
-- state-management framework;
-- CSS framework;
-- general UI component library;
-- dedicated test framework solely for static shell code.
+- dependency install from committed lockfile — PASS;
+- TypeScript 7 type-check — PASS;
+- Vite production build — PASS.
 
-The Vite/Node requirement is Web build tooling only; it does not redefine the eventual Linux runtime/platform baseline.
+A TypeScript 7 issue with CSS side-effect imports was found by CI and corrected by adding Vite client types to `tsconfig.json`.
 
-## WEB-BOOT task split
+## Remaining WEB-BOOT gate
 
-1. `WEB-BOOT-001` — toolchain scaffold.
-2. `WEB-BOOT-002` — dedicated EpicScope application shell.
-3. `WEB-BOOT-003` — Logger workspace/right inspector/bottom timeline skeleton.
-4. `WEB-BOOT-004` — bootstrap quality gate.
+The branch is ready to merge.
 
-Exact files, responsibilities, prohibitions, validation, and completion criteria are defined in `docs/WEB_BOOT_PLAN.md`.
+After merge:
 
-The initial implementation must not create parser, analyzer, fake log-data, or graph-library architecture merely to make the shell look functional.
+1. GitHub Pages workflow must succeed from `main`;
+2. if required, repository Pages source must be set once to **Settings → Pages → Source: GitHub Actions**;
+3. hosted EpicScope must open in Brave/Chromium;
+4. sensor panel toggle must work;
+5. timeline compact/expanded behavior must work;
+6. normal desktop/tablet-landscape resizing must remain usable;
+7. browser console must show no application errors during these interactions.
 
-## UI-reference decisions
-
-EpicScope inherits the following interaction families from the 0.0.45 reference:
-
-- graph-centric primary analysis workspace;
-- named graph workspaces and multiple graph layouts;
-- contextual workspace rename/duplicate/delete behavior;
-- Full Sensor List / channel search/filter/sort/favorites/recent behavior;
-- Channel Statistics/details;
-- explicit side-edge sensor-panel show/hide control;
-- persistent timeline/range/cursor concepts;
-- expandable/compact timeline-control behavior with its own edge control;
-- saved ranges and markers;
-- A/B cursors;
-- source/session comparison concepts;
-- Scatter Plot;
-- Histogram / Table;
-- Math Channels / derived channels;
-- named filters and analysis presets;
-- linked navigation from analysis results to graph/source context;
-- snapshots/session metadata where useful;
-- explicit loaded-log identity in the header;
-- visible recording-state/action semantics, without implying that initial EpicScope Web already supports live acquisition.
-
-Approved EpicScope deviations from the EpicHub prototype:
-
-1. EpicScope uses a dedicated product shell rather than EpicHub's Dashboard/Tuner/Logger/Diagnostics module switcher.
-2. Wide-layout analysis/detail controls are standardized on the **right side**.
-3. Initial Web development is offline/imported-log focused; live ECU acquisition and functional recording are deferred.
-4. Trigger Logger is deferred unless explicitly added later.
-5. Performance, RAM usage, and maintainability outrank exact visual reproduction.
-6. Prototype localStorage/JSON/demo-state machinery is not EpicScope production architecture.
-
-The approved cursor-follow behavior remains: the playback cursor moves independently until it reaches the middle of the visible range; after that, the viewport follows while retaining the current width.
-
-## Current approved decisions
-
-The authoritative decision log is `docs/DECISIONS.md`.
-
-Notable current decisions include:
-
-- **EpicEFI – EpicScope** / **EpicScope** naming;
-- Web → Linux → Android/EpicHub development order;
-- lightweight TypeScript, Chromium/Brave-first Web direction;
-- MLG first, CSV second;
-- Debian 13 Stable Linux baseline;
-- mature Linux target: supported 1 GiB log on a 2 GiB RAM system without holding the complete source in memory;
-- performance and low RAM outrank visual polish;
-- controlled architecture/task-to-file planning;
-- project-owner approval required for architectural changes;
-- local-first privacy and untrusted-input handling;
-- raw source decoding in `core/parsers/`, normalized semantics in appropriate core models;
-- domain Session separated from UI WorkspaceState;
-- capability-driven Boost Analyzer;
-- `docs/UI_REFERENCE.md` is the EpicScope UI-reference authority;
-- `docs/WEB_BOOT_PLAN.md` is the detailed initial Web bootstrap authority;
-- initial Web bootstrap uses npm + Vite 8.x + vanilla TypeScript 7.x with no frontend framework.
+The project owner should not need any local installation for these checks.
 
 ## Architecture authority
 
-Read these before significant implementation:
+Read before significant implementation:
 
 1. `docs/PRODUCT.md`
 2. `docs/ARCHITECTURE.md`
 3. `docs/FILE_ARCHITECTURE.md`
 4. `docs/DATA_MODEL.md`
 5. `docs/UI_REFERENCE.md`
-6. `docs/WEB_BOOT_PLAN.md` when working on WEB-BOOT
+6. `docs/WEB_BOOT_PLAN.md` while WEB-BOOT is active
 7. `docs/PERFORMANCE.md`
 8. `docs/PLATFORMS.md`
 9. `docs/ROADMAP.md`
 10. `docs/WORKFLOW.md`
 11. `docs/DECISIONS.md`
 
-## Current implementation state
+## Key constraints still in force
 
-No application code has been added yet.
-
-This remains intentional. The planning branch defines exact files before implementation, in accordance with the project's controlled-file-architecture rules.
-
-## Current roadmap position
-
-- Phase 0 — **Complete**
-- Phase 1 — **In progress**
-- `WEB-REFERENCE` — **Complete and merged**
-- `WEB-BOOT` — **Planned on active branch; implementation pending**
-- next after WEB-BOOT — `LOG-MLG`
-
-## Next recommended actions
-
-1. Review/merge `phase1/web-boot-plan` through a pull request.
-2. Create a fresh short-lived `phase1/web-boot` implementation branch from the resulting `main`.
-3. Execute `WEB-BOOT-001` through `WEB-BOOT-004` exactly as defined in `docs/WEB_BOOT_PLAN.md`.
-4. Merge only after type-check, production-build, and Brave/Chromium smoke validation pass.
-5. Before `LOG-MLG` implementation, select/document the parser/core automated test strategy.
-6. Investigate MLG format/parser contracts without allowing source-format details into the Web UI.
-
-Do not create all documented future directories as empty placeholders.
+- Web → Linux → Android/EpicHub.
+- Chromium/Brave first.
+- MLG first, CSV second.
+- local-first privacy.
+- source formats normalize before UI/analyzers.
+- controlled file architecture; project-owner approval required for architectural changes.
+- no graph library chosen until graph/timeline workload requirements are concrete.
+- parser/core automated test strategy must be selected during LOG-MLG planning.
+- mature Linux target remains a supported 1 GiB log on a 2 GiB RAM system without loading the complete source into memory.
 
 ## Known unresolved items
 
-- Exact graph rendering library/approach remains intentionally unselected until graph/timeline workload requirements are concrete.
-- Parser/core automated test runner/strategy remains intentionally unselected until LOG-MLG planning.
-- MLG parser implementation/spec details have not yet been investigated in EpicScope.
-- Branch protection/ruleset enforcement has not yet been configured; workflow policy remains documented authority.
-- Final Linux UI toolkit/runtime architecture remains intentionally deferred until Web functionality matures.
-- Future share/backend architecture has not been approved and must not be introduced incidentally.
-- Narrow/portrait/mobile presentation is not defined by the Tablet Landscape authority and should not be guessed during the first Web shell work.
+- hosted Pages validation is pending merge/deployment;
+- exact graph rendering approach is intentionally deferred;
+- MLG format/parser work has not yet started in EpicScope;
+- parser/core test runner is intentionally deferred to LOG-MLG planning;
+- branch protection/ruleset enforcement is not yet configured;
+- Linux runtime/UI architecture is intentionally deferred;
+- share/backend architecture is not approved yet;
+- narrow/mobile layout is not defined by the current Tablet Landscape authority.
 
 ## Repository state validated before this handoff update
 
-`0fd2889243b1cc40e73fd3d182bcc0c1f7ec0164`
+`ed13e564be415537db1626088a8d5707927ba702`
 
-This is the active `phase1/web-boot-plan` branch state after the WEB-BOOT plan, roadmap, decision, and file-architecture updates and before this handoff-file update.
-
-Because a file cannot reliably contain the SHA of the commit that writes itself, this SHA is not presented as the final branch head. A resumed chat must inspect current `main` and the active branch/PR first.
+The Web CI run for this state completed successfully. This handoff update itself creates a newer commit; resumed work must inspect current repository/CI state rather than treating the SHA above as final head.
 
 ## Continuation instruction
 
-In a new chat, the user should be able to say:
+A new chat should be able to say:
 
 > Read the EpicScope repository handoff and continue from there.
 
-The new chat must read this file first, inspect current `main` and any active branch/PR, then inspect referenced authoritative repository files before making changes. Do not reconstruct current architecture from old chat history when newer repository authority exists.
+The new chat must read this file first and use current repository authority rather than reconstructing state from older chat history.

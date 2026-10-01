@@ -61,7 +61,7 @@ Completed outcomes:
 
 Approved EpicScope refinements include a dedicated EpicScope shell, consistent right-side controls/details on wide layouts, offline/imported-log focus initially, Trigger Logger deferral, and performance taking priority over exact visual reproduction.
 
-### WEB-BOOT — Planned
+### WEB-BOOT — In progress
 
 Detailed authority: `docs/WEB_BOOT_PLAN.md`.
 
@@ -72,6 +72,12 @@ Approved bootstrap direction:
 - vanilla TypeScript 7.x;
 - no frontend framework;
 - Chromium/Brave-first development target;
+- GitHub Actions as the required automated build/type-check path;
+- GitHub Pages as the normal project-owner Web test/distribution surface;
+- no local clone/Node/npm required for project-owner testing;
+- GitHub Actions as the required automated build/type-check path;
+- GitHub Pages as the normal project-owner Web test/distribution surface;
+- no local clone/Node/npm required for project-owner testing;
 - application shell based on `docs/UI_REFERENCE.md`;
 - right-side inspector responsibility and bottom timeline responsibility;
 - no parser/domain-analysis implementation;
@@ -83,7 +89,7 @@ Approved task split:
 1. `WEB-BOOT-001` — toolchain scaffold;
 2. `WEB-BOOT-002` — EpicScope application shell;
 3. `WEB-BOOT-003` — Logger workspace/inspector/timeline skeleton;
-4. `WEB-BOOT-004` — bootstrap quality gate.
+4. `WEB-BOOT-004` — GitHub-hosted CI/Pages quality gate.
 
 The exact files, responsibilities, validation, and completion criteria are defined in `docs/WEB_BOOT_PLAN.md` and must be followed unless deliberately revised before implementation.
 

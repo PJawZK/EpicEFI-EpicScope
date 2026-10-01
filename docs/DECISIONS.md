@@ -325,6 +325,20 @@ The Web-development Node.js requirement imposed by Vite is a build-tool requirem
 
 `docs/WEB_BOOT_PLAN.md` is the detailed authority for the initial bootstrap task split and exact files.
 
+## D-035 — GitHub-hosted Web delivery
+
+**Status:** Approved
+
+During the Web stage, the normal project-owner workflow must not require a local clone, Node.js, npm, or a development environment.
+
+GitHub Actions is the authoritative automated Web build/type-check path and GitHub Pages is the normal hosted browser test/distribution surface. Local development remains optional for contributors.
+
+The Pages-hosted application is still local-first: selecting a local log/tune file for analysis must not upload its contents merely because the application itself is hosted by GitHub Pages.
+
+The initial repository Pages path is `/EpicEFI-EpicScope/`, and Vite build configuration must respect that base path.
+
+`web-ci.yml` owns branch/PR validation. `pages.yml` owns `main` build/deployment. Pages source may require the one-time repository setting **Settings → Pages → Source: GitHub Actions**.
+
 ## Superseding decisions
 
 A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.

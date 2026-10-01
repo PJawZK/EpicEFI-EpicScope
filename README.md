@@ -53,3 +53,8 @@ The project is defined by the documentation under [`docs/`](docs/):
 ## Status
 
 EpicScope is currently in **Phase 1 — Web log foundation**. `WEB-REFERENCE` has established the initial UI/interaction authority; application code still waits for the concrete `WEB-BOOT` task split and tooling decision.
+
+
+## Web delivery
+
+During the Web stage, EpicScope is built and validated by GitHub Actions and deployed from `main` to GitHub Pages. The project owner should be able to test the current Web build in Brave/Chromium without cloning the repository or installing Node/npm locally. Local log analysis remains client-side unless an explicit future sharing feature is invoked.
