@@ -4,6 +4,7 @@ export interface ViewportEnvelopeColumn {
   readonly x: number;
   readonly min: number;
   readonly max: number;
+  readonly mean: number;
   readonly firstTimeMs: number;
   readonly lastTimeMs: number;
 }
@@ -30,7 +31,14 @@ export function buildViewportEnvelope(
   }
 
   const span = Math.max(1e-9, endMs - startMs);
-  const buckets = new Map<number, { min: number; max: number; first: number; last: number }>();
+  const buckets = new Map<number, {
+    min: number;
+    max: number;
+    sum: number;
+    count: number;
+    first: number;
+    last: number;
+  }>();
   let valueMin = Number.POSITIVE_INFINITY;
   let valueMax = Number.NEGATIVE_INFINITY;
   let validSampleCount = 0;
@@ -57,9 +65,18 @@ export function buildViewportEnvelope(
     if (bucket) {
       bucket.min = Math.min(bucket.min, value);
       bucket.max = Math.max(bucket.max, value);
+      bucket.sum += value;
+      bucket.count += 1;
       bucket.last = timeMs;
     } else {
-      buckets.set(x, { min: value, max: value, first: timeMs, last: timeMs });
+      buckets.set(x, {
+        min: value,
+        max: value,
+        sum: value,
+        count: 1,
+        first: timeMs,
+        last: timeMs,
+      });
     }
   }
 
@@ -70,6 +87,7 @@ export function buildViewportEnvelope(
         x,
         min: bucket.min,
         max: bucket.max,
+        mean: bucket.sum / bucket.count,
         firstTimeMs: bucket.first,
         lastTimeMs: bucket.last,
       })),
