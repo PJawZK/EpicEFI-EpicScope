@@ -34,6 +34,7 @@ EpicEFI-EpicScope/
 │   ├── DATA_MODEL.md
 │   ├── UI_REFERENCE.md
 │   ├── WEB_BOOT_PLAN.md
+│   ├── LOG_MLG_PLAN.md
 │   ├── PERFORMANCE.md
 │   ├── PLATFORMS.md
 │   ├── ROADMAP.md
@@ -110,6 +111,8 @@ This tree is a controlled guideline with approval requirements, not permission t
 
 Authoritative Web branch/PR validation. It installs from the committed lockfile, type-checks, and performs the production Vite build. It must not deploy production Pages or become a source-code mutation mechanism.
 
+When parser/core automated tests are introduced by an approved task, this workflow is also the required CI gate for those tests unless a separate workflow is deliberately approved.
+
 ### `.github/workflows/pages.yml`
 
 Authoritative `main` → GitHub Pages build/deployment workflow. It builds the same Web application and deploys `dist/web` through GitHub Pages actions. Hosting must not weaken local-first privacy or imply a backend/upload path.
@@ -133,7 +136,7 @@ It is a product/presentation contract, not permission to copy prototype implemen
 
 ### `docs/WEB_BOOT_PLAN.md`
 
-Authoritative task/file plan for the initial Web bootstrap batch.
+Historical task/file authority for the completed initial Web bootstrap batch.
 
 It defines:
 
@@ -144,7 +147,24 @@ It defines:
 - validation and completion criteria;
 - explicit deferral of graph-library and parser/core test-framework decisions.
 
-It is a task-specific implementation authority. Later Web tasks must not treat it as blanket approval to add arbitrary dependencies or files.
+It is not blanket approval to add arbitrary dependencies or files in later Web tasks.
+
+### `docs/LOG_MLG_PLAN.md`
+
+Active task/file authority for the first MLG import/parser batch while LOG-MLG is in progress.
+
+It defines:
+
+- v1/v2 format authority and initial support scope;
+- unsupported-version behavior for unverified newer MLG versions;
+- corruption/untrusted-input requirements;
+- bounded/random-access source-access requirements;
+- minimal normalized log-model responsibilities needed by the parser;
+- fixture and real-log validation strategy;
+- the proposed parser/core automated-test strategy and its approval gate;
+- exact LOG-MLG task ordering and completion criteria.
+
+It does not authorize graph rendering, analyzer logic, tune parsing, CSV parsing, cloud upload, or speculative MLG v3 decoding.
 
 ## Repository-root tooling responsibilities
 
@@ -193,11 +213,15 @@ Not allowed:
 
 The exact initial physical files authorized for WEB-BOOT are listed in `docs/WEB_BOOT_PLAN.md`. Other approved logical areas under `apps/web/` remain uncreated until a legitimate task requires them.
 
+LOG-MLG may create a Web-specific adapter under `apps/web/src/adapters/` only for browser `File`/`Blob` source access and import orchestration; binary MLG decoding remains in `core/parsers/mlg/`.
+
 ### `core/log-model/`
 
 Normalized session/log/channel/sample contracts that form the neutral boundary between importers and consumers.
 
 Parsers depend on these contracts to produce normalized data. Analysis and higher-level services depend on these contracts to consume normalized data.
+
+LOG-MLG may create the first physical contracts here, but only those required for source identity/provenance, channel definitions, time/sample validity, markers/diagnostics, and bounded data access needed by the Phase 1 import path.
 
 ### `core/parsers/`
 
@@ -211,6 +235,8 @@ Initial approved parser ownership includes:
 - `msq/` — MSQ source decoding needed for tune context.
 
 Parser modules own format-specific syntax/structure only. They produce approved normalized contracts and must not own analyzer semantics.
+
+A format-neutral bounded byte-source contract may live directly under `core/parsers/` when needed by LOG-MLG and later binary parsers. Browser APIs must remain in the Web adapter layer.
 
 ### `core/channels/`
 
