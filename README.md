@@ -42,6 +42,7 @@ The project is defined by the documentation under [`docs/`](docs/):
 - [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and dependency boundaries.
 - [`FILE_ARCHITECTURE.md`](docs/FILE_ARCHITECTURE.md) — approved repository and source layout.
 - [`DATA_MODEL.md`](docs/DATA_MODEL.md) — normalized log, channel, event, session, and analyzer concepts.
+- [`UI_REFERENCE.md`](docs/UI_REFERENCE.md) — approved EpicHub Logger/Analyzer interaction/layout reference as adapted for EpicScope.
 - [`PERFORMANCE.md`](docs/PERFORMANCE.md) — performance and memory requirements.
 - [`PLATFORMS.md`](docs/PLATFORMS.md) — Web, Linux, and Android platform policy.
 - [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation plan.
@@ -51,4 +52,4 @@ The project is defined by the documentation under [`docs/`](docs/):
 
 ## Status
 
-EpicScope is currently in its **foundation / specification stage**. Application code should not be added until the documented architecture, data model, file structure, roadmap, and workflow provide an approved home and responsibility for that work.
+EpicScope is currently in **Phase 1 — Web log foundation**. `WEB-REFERENCE` has established the initial UI/interaction authority; application code still waits for the concrete `WEB-BOOT` task split and tooling decision.
