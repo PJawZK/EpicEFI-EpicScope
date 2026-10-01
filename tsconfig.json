@@ -18,5 +18,9 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true
   },
-  "include": ["apps/web/src/**/*.ts"]
+  "include": [
+    "apps/web/src/**/*.ts",
+    "core/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }
