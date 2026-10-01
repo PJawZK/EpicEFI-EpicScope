@@ -10,7 +10,7 @@ const MARKER_BLOCK_LENGTH = 54;
 const MARKER_MESSAGE_LENGTH = 50;
 const TIMESTAMP_MODULUS = 65_536;
 const TIMESTAMP_TICK_MS = 0.01;
-const COUNTER_MODULUS = 255;
+const COUNTER_MODULUS = 256;
 
 export interface MlgRecordIndex {
   readonly offsets: Float64Array;
