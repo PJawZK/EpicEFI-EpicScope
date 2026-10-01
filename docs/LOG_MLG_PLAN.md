@@ -148,9 +148,9 @@ The initial normalized contracts need enough information for Phase 1 without pre
 
 The parser must not expose MLG descriptor offsets/block ordinals as UI contracts.
 
-## Automated test strategy
+## Automated test strategy — recommendation pending project-owner approval
 
-Adopt **Vitest 5.x** for TypeScript parser/core tests.
+Recommended: **Vitest 5.x** for TypeScript parser/core tests.
 
 Reasoning:
 
@@ -160,7 +160,9 @@ Reasoning:
 - current EpicScope GitHub Actions already uses Node 22.12.0, matching the current Vitest requirement;
 - it provides straightforward fixture, malformed-input, and regression tests before parser code grows.
 
-`web-ci.yml` must run the parser/core test suite in addition to type-check and build once Vitest is introduced.
+This dependency is not approved merely by appearing in this plan. Under D-015 and D-025, project-owner approval is required before `package.json`/lockfile changes introduce it.
+
+If approved, `web-ci.yml` will run the parser/core test suite in addition to type-check and build.
 
 Browser-only behavior should remain separately testable; LOG-MLG core tests must not require a DOM.
 
@@ -209,10 +211,14 @@ Completion:
 
 Goal:
 
-- add Vitest as the approved TypeScript core test runner;
+- after project-owner approval, add the selected TypeScript core test runner;
 - wire tests into GitHub Web CI.
 
-Expected files:
+Recommended dependency:
+
+- Vitest 5.x — pending approval.
+
+Expected files if approved:
 
 - `package.json`
 - `package-lock.json`
