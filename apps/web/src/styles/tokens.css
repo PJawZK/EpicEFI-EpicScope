@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+  --bg: #081019;
+  --panel: #0c1620;
+  --panel-2: #101c27;
+  --panel-3: #13212d;
+  --line: #263746;
+  --line-soft: #1b2a36;
+  --headline: #f1f6f8;
+  --text: #d0dce2;
+  --detail: #99adb7;
+  --muted: #718895;
+  --accent: #2788ff;
+  --accent-soft: #154968;
+  --good: #35d07f;
+  --warn: #f1c84b;
+  --danger: #ff4d59;
+  --header-h: 54px;
+  --status-h: 24px;
+  --inspector-w: 340px;
+  --radius: 5px;
+  font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
