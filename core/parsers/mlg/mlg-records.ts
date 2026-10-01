@@ -179,6 +179,7 @@ export async function scanMlgRecords(
   let previousRawTimestamp: number | undefined;
   let timestampEpoch = 0;
   let firstUnwrappedTimestamp: number | undefined;
+  let standardRecordIndex = 0;
 
   while (offset < source.size) {
     if (source.size - offset < BLOCK_HEADER_LENGTH) {
@@ -217,10 +218,13 @@ export async function scanMlgRecords(
       const isCrcValid = expectedCrc === actualCrc;
 
       if (!isCrcValid) {
+        const blockHeaderSum = calculateRecordCrc(blockHeader);
+        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
         diagnostics.push({
           code: 'mlg-crc-mismatch',
           severity: 'warning',
-          message: `MLG record checksum expected ${expectedCrc}, found ${actualCrc}.`,
+          message: `MLG record ${standardRecordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
           recoverable: true,
           offset: offset + blockLength - 1,
         });
@@ -243,6 +247,7 @@ export async function scanMlgRecords(
       counters.push(counter);
       crcValid.push(isCrcValid ? 1 : 0);
 
+      standardRecordIndex += 1;
       offset += blockLength;
       continue;
     }
