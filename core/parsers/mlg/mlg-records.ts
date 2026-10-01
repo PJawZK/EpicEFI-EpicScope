@@ -67,7 +67,7 @@ class ChunkedSourceReader {
   private readonly source: RandomAccessByteSource;
   private readonly chunkSize: number;
   private cachedOffset = -1;
-  private cachedBytes = new Uint8Array(0);
+  private cachedBytes: Uint8Array = new Uint8Array(0);
 
   public constructor(source: RandomAccessByteSource, chunkSize = 256 * 1024) {
     this.source = source;
@@ -96,7 +96,15 @@ class ChunkedSourceReader {
     }
 
     if (length > this.chunkSize) {
-      return this.source.read(offset, length);
+      const bytes = await this.source.read(offset, length);
+      if (bytes.byteLength !== length) {
+        throw new MlgFormatError(
+          'short-read',
+          `Expected ${length} bytes at offset ${offset}, received ${bytes.byteLength}.`,
+          offset,
+        );
+      }
+      return bytes;
     }
 
     const available = this.source.size - offset;
