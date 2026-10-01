@@ -282,6 +282,28 @@ Presentation/application workspace state may be persisted alongside a session ar
 
 `core/persistence/` may serialize both through a versioned persisted artifact while preserving that separation.
 
+## D-033 — EpicScope UI reference authority
+
+**Status:** Approved
+
+`docs/UI_REFERENCE.md` is the authoritative EpicScope interpretation of the reviewed EpicHub Logger/Analyzer reference.
+
+The exact `EpicHub-1.12.1_TabletLandscape.html` prototype and current EpicHub UI architecture were inspected during `WEB-REFERENCE`.
+
+EpicScope inherits the Logger/Analyzer graph, timeline, channel, Scatter, Histogram/Table, Math Channels, comparison, range/marker, and related analysis interaction concepts, but not the broader EpicHub application shell or Android implementation architecture.
+
+Approved EpicScope refinements include:
+
+- a dedicated EpicScope shell rather than EpicHub's module switcher;
+- consistent right-side analysis/detail controls on wide layouts, including moving Scatter/Histogram/Table control responsibility from the prototype's left side to the right;
+- offline/imported-log focus for initial Web development;
+- Trigger Logger deferred unless deliberately added later;
+- performance and memory requirements may simplify visual implementation while preserving capability.
+
+Prototype demo/localStorage/JSON machinery is not production architecture.
+
+Future changes to this UI reference require explicit review and a superseding decision where they alter these approved semantics.
+
 ## Superseding decisions
 
 A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.
