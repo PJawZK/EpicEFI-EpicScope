@@ -233,7 +233,7 @@ export function createTimelineShell(): TimelineShellController {
   };
 
   const beginHandleDrag = (event: PointerEvent, edge: TimelineViewportEdge, handle: HTMLElement): void => {
-    if (!viewport || fullDuration() <= 0 || viewportIsFull()) return;
+    if (!viewport || fullDuration() <= 0) return;
     event.preventDefault();
     event.stopPropagation();
     handle.setPointerCapture(event.pointerId);

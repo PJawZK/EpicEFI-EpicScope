@@ -5,6 +5,7 @@ import type {
   NumericChannelRange,
 } from '../../../../core/log-model/log-types';
 import type { TimelineViewport } from '../../../../core/timeline/viewport-state';
+import { buildStableValueScale, type StableValueScale } from '../../../../core/timeline/value-scale';
 import {
   buildViewportEnvelope,
   type ViewportEnvelopeColumn,
@@ -60,6 +61,7 @@ export function createGraphViewport(): GraphViewportController {
   let viewport: TimelineViewport | undefined;
   let selectedChannel: ChannelDefinition | undefined;
   let selectedRange: NumericChannelRange | undefined;
+  let selectedScale: StableValueScale | undefined;
   let cursorTimeMs = 0;
   let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
   let panListener: ((deltaMs: number) => void) | undefined;
@@ -146,7 +148,7 @@ export function createGraphViewport(): GraphViewportController {
       context.stroke();
     }
 
-    if (!selectedRange || !selectedChannel || !viewport) return;
+    if (!selectedRange || !selectedChannel || !selectedScale || !viewport) return;
     const visibleStartMs = viewport.visibleStartMs;
     const visibleEndMs = viewport.visibleEndMs;
 
@@ -156,14 +158,13 @@ export function createGraphViewport(): GraphViewportController {
       visibleEndMs,
       Math.max(1, Math.floor(plotWidth)),
     );
-    const rawSpan = envelope.valueMax - envelope.valueMin;
-    const padding = rawSpan > 0 ? rawSpan * 0.04 : Math.max(1, Math.abs(envelope.valueMax) * 0.04);
-    const axisMin = envelope.valueMin >= 0
-      ? Math.max(0, envelope.valueMin - padding)
-      : envelope.valueMin - padding;
-    const axisMax = envelope.valueMax <= 0
-      ? Math.min(0, envelope.valueMax + padding)
-      : envelope.valueMax + padding;
+
+    // Vertical scale is intentionally computed once from the complete selected
+    // channel and stays fixed while the horizontal time viewport zooms/pans.
+    // This preserves apparent graph resolution like MegaLogViewer instead of
+    // stretching the trace vertically to fit whichever extrema happen to be visible.
+    const axisMin = selectedScale.min;
+    const axisMax = selectedScale.max;
     const axisSpan = Math.max(1e-9, axisMax - axisMin);
     const yForValue = (value: number): number => {
       const normalized = (value - axisMin) / axisSpan;
@@ -275,6 +276,7 @@ export function createGraphViewport(): GraphViewportController {
       : undefined;
     selectedChannel = undefined;
     selectedRange = undefined;
+    selectedScale = undefined;
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
     overlay.hidden = false;
     overlayTitle.textContent = 'Select a channel';
@@ -294,6 +296,7 @@ export function createGraphViewport(): GraphViewportController {
       const range = await channelData.readChannelRange(channel.id, 0, channelData.sampleCount);
       selectedChannel = channel;
       selectedRange = range;
+      selectedScale = buildStableValueScale(range);
       overlay.hidden = true;
       readout.hidden = false;
       draw();
@@ -323,6 +326,7 @@ export function createGraphViewport(): GraphViewportController {
     viewport = undefined;
     selectedChannel = undefined;
     selectedRange = undefined;
+    selectedScale = undefined;
     cursorTimeMs = 0;
     overlay.hidden = false;
     overlayTitle.textContent = 'Open a log to start scoping';

@@ -152,8 +152,20 @@
   right: -5px;
 }
 
+/* At full-log fit the focus body deliberately passes pointer input through to
+   the cursor, but the edge handles remain visible and interactive so the user
+   can begin zooming directly from either end without using the + button. */
 .timeline-focus-placeholder--full .timeline-focus-handle {
-  display: none;
+  display: block;
+  pointer-events: auto;
+}
+
+.timeline-focus-placeholder--full .timeline-focus-handle--start {
+  left: 0;
+}
+
+.timeline-focus-placeholder--full .timeline-focus-handle--end {
+  right: 0;
 }
 
 .timeline-progress[tabindex="0"]:focus-visible {
