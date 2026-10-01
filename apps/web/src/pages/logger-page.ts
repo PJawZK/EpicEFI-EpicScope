@@ -1,8 +1,11 @@
+import type { ImportedLogSummary } from '../../../../core/log-model/log-types';
 import { createTimelineShell } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 
 export interface LoggerPageController {
   readonly element: HTMLElement;
+  setLog(summary: ImportedLogSummary, recordCount: number, formatVersion: number): void;
+  setImportError(message: string): void;
 }
 
 export function createLoggerPage(): LoggerPageController {
@@ -48,6 +51,13 @@ export function createLoggerPage(): LoggerPageController {
     </article>
   `;
 
+  const graphState = graphHost.querySelector<HTMLElement>('.graph-window-state');
+  const graphEmptyTitle = graphHost.querySelector<HTMLElement>('.graph-empty strong');
+  const graphEmptyDetail = graphHost.querySelector<HTMLElement>('.graph-empty p');
+  if (!graphState || !graphEmptyTitle || !graphEmptyDetail) {
+    throw new Error('Logger graph shell structure is incomplete.');
+  }
+
   const sensorToggle = document.createElement('button');
   sensorToggle.type = 'button';
   sensorToggle.className = 'edge-toggle edge-toggle--sensor';
@@ -88,5 +98,25 @@ export function createLoggerPage(): LoggerPageController {
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceBar, workspaceRow, timelineWrap);
 
-  return { element: page };
+  const setLog = (
+    summary: ImportedLogSummary,
+    recordCount: number,
+    formatVersion: number,
+  ): void => {
+    inspector.setChannels(summary.channels, summary.source.displayName);
+    timeline.setDuration(summary.timeRange?.durationMs, recordCount);
+    graphState.textContent = `MLG v${formatVersion} · ${recordCount.toLocaleString()} records`;
+    graphEmptyTitle.textContent = 'Log indexed successfully';
+    graphEmptyDetail.textContent = `${summary.channels.length.toLocaleString()} channels discovered. Graph rendering follows after channel-query and timeline contracts are connected.`;
+  };
+
+  const setImportError = (message: string): void => {
+    inspector.setError(message);
+    timeline.setDuration(undefined, 0);
+    graphState.textContent = 'Import failed';
+    graphEmptyTitle.textContent = 'Could not open log';
+    graphEmptyDetail.textContent = message;
+  };
+
+  return { element: page, setLog, setImportError };
 }
