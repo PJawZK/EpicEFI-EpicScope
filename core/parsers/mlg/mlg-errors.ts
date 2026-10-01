@@ -5,6 +5,7 @@ export type MlgFormatErrorCode =
   | 'invalid-header-offset'
   | 'descriptor-range-out-of-bounds'
   | 'unsupported-field-type'
+  | 'unsupported-block-type'
   | 'invalid-bit-field'
   | 'record-length-mismatch'
   | 'short-read';
