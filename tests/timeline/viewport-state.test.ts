@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  centerViewportOn,
   createFullViewport,
   fitViewport,
   followCursor,
   panViewport,
+  resizeViewport,
   viewportSpan,
   zoomViewport,
 } from '../../core/timeline/viewport-state';
@@ -23,6 +25,20 @@ describe('timeline viewport state', () => {
     const zoomed = zoomViewport(createFullViewport(0, 1000), 0.5, 500);
     expect(panViewport(zoomed, 400)).toMatchObject({ visibleStartMs: 500, visibleEndMs: 1000 });
     expect(panViewport(zoomed, -400)).toMatchObject({ visibleStartMs: 0, visibleEndMs: 500 });
+  });
+
+  it('centers the visible window on the requested time while preserving span and bounds', () => {
+    const viewport = { fullStartMs: 0, fullEndMs: 1000, visibleStartMs: 100, visibleEndMs: 500 };
+    expect(centerViewportOn(viewport, 700)).toMatchObject({ visibleStartMs: 500, visibleEndMs: 900 });
+    expect(centerViewportOn(viewport, 950)).toMatchObject({ visibleStartMs: 600, visibleEndMs: 1000 });
+  });
+
+  it('resizes either viewport edge while enforcing minimum span and full-log bounds', () => {
+    const viewport = { fullStartMs: 0, fullEndMs: 1000, visibleStartMs: 200, visibleEndMs: 800 };
+    expect(resizeViewport(viewport, 'start', 300)).toMatchObject({ visibleStartMs: 300, visibleEndMs: 800 });
+    expect(resizeViewport(viewport, 'end', 650)).toMatchObject({ visibleStartMs: 200, visibleEndMs: 650 });
+    expect(resizeViewport(viewport, 'start', 790, 100)).toMatchObject({ visibleStartMs: 700, visibleEndMs: 800 });
+    expect(resizeViewport(viewport, 'end', 210, 100)).toMatchObject({ visibleStartMs: 200, visibleEndMs: 300 });
   });
 
   it('lets a forward cursor move freely until the viewport midpoint then follows it', () => {

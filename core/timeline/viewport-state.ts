@@ -5,6 +5,8 @@ export interface TimelineViewport {
   readonly visibleEndMs: number;
 }
 
+export type TimelineViewportEdge = 'start' | 'end';
+
 const DEFAULT_MIN_SPAN_MS = 100;
 
 function finite(value: number, name: string): number {
@@ -89,6 +91,45 @@ export function panViewport(viewport: TimelineViewport, deltaMs: number): Timeli
   const span = viewportSpan(viewport);
   if (span <= 0) return viewport;
   return clampVisibleWindow(viewport, viewport.visibleStartMs + deltaMs, viewport.visibleEndMs + deltaMs, span);
+}
+
+export function centerViewportOn(viewport: TimelineViewport, centerMs: number): TimelineViewport {
+  finite(centerMs, 'centerMs');
+  const span = viewportSpan(viewport);
+  if (span <= 0) return viewport;
+  return clampVisibleWindow(viewport, centerMs - span / 2, centerMs + span / 2, span);
+}
+
+export function resizeViewport(
+  viewport: TimelineViewport,
+  edge: TimelineViewportEdge,
+  edgeTimeMs: number,
+  minSpanMs = DEFAULT_MIN_SPAN_MS,
+): TimelineViewport {
+  finite(edgeTimeMs, 'edgeTimeMs');
+  const fullSpan = fullViewportSpan(viewport);
+  if (fullSpan <= 0) return viewport;
+  const minimumSpan = Math.min(fullSpan, Math.max(1, minSpanMs));
+
+  if (edge === 'start') {
+    const start = Math.min(
+      viewport.visibleEndMs - minimumSpan,
+      Math.max(viewport.fullStartMs, edgeTimeMs),
+    );
+    return {
+      ...viewport,
+      visibleStartMs: start,
+    };
+  }
+
+  const end = Math.max(
+    viewport.visibleStartMs + minimumSpan,
+    Math.min(viewport.fullEndMs, edgeTimeMs),
+  );
+  return {
+    ...viewport,
+    visibleEndMs: end,
+  };
 }
 
 export function followCursor(

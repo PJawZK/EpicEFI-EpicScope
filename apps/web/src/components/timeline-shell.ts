@@ -1,10 +1,11 @@
 import type { LogTimeRange } from '../../../../core/log-model/log-types';
-import type { TimelineViewport } from '../../../../core/timeline/viewport-state';
+import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
 
 export type TimelineViewportIntent =
   | { readonly type: 'fit' }
-  | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number }
-  | { readonly type: 'pan'; readonly deltaMs: number };
+  | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean };
 
 export interface TimelineShellController {
   readonly element: HTMLElement;
@@ -42,8 +43,11 @@ export function createTimelineShell(): TimelineShellController {
   timeline.innerHTML = `
     <div class="timeline-overview">
       <div class="timeline-overview-empty">Timeline overview becomes available after a log is loaded.</div>
-      <div class="timeline-focus-placeholder" title="Drag visible window to pan"></div>
-      <span class="timeline-overview-cursor" hidden></span>
+      <div class="timeline-focus-placeholder" title="Drag visible window to pan">
+        <span class="timeline-focus-handle timeline-focus-handle--start" data-focus-edge="start" title="Drag to resize visible range"></span>
+        <span class="timeline-focus-handle timeline-focus-handle--end" data-focus-edge="end" title="Drag to resize visible range"></span>
+      </div>
+      <span class="timeline-overview-cursor" title="Drag timeline cursor" hidden></span>
     </div>
     <div class="timeline-controls">
       <div class="transport" aria-label="Playback controls">
@@ -76,6 +80,8 @@ export function createTimelineShell(): TimelineShellController {
   const overview = timeline.querySelector<HTMLElement>('.timeline-overview');
   const overviewText = timeline.querySelector<HTMLElement>('.timeline-overview-empty');
   const focusWindow = timeline.querySelector<HTMLElement>('.timeline-focus-placeholder');
+  const focusStartHandle = timeline.querySelector<HTMLElement>('.timeline-focus-handle--start');
+  const focusEndHandle = timeline.querySelector<HTMLElement>('.timeline-focus-handle--end');
   const overviewCursor = timeline.querySelector<HTMLElement>('.timeline-overview-cursor');
   const timelineTime = timeline.querySelector<HTMLElement>('.timeline-time');
   const cursorText = timeline.querySelector<HTMLElement>('.timeline-cursor-value');
@@ -84,12 +90,17 @@ export function createTimelineShell(): TimelineShellController {
   const progressFill = progress?.querySelector<HTMLElement>('span');
   const transportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('.transport button')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewText || !focusWindow || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !progress || !progressFill) {
+  if (!overview || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
 
   const fullDuration = (): number => Math.max(0, fullEndMs - fullStartMs);
   const visibleSpan = (): number => viewport ? Math.max(0, viewport.visibleEndMs - viewport.visibleStartMs) : fullDuration();
+  const viewportIsFull = (): boolean => {
+    if (!viewport) return true;
+    const duration = fullDuration();
+    return duration <= 0 || visibleSpan() >= duration - 0.5;
+  };
 
   const renderViewport = (): void => {
     const duration = fullDuration();
@@ -97,6 +108,7 @@ export function createTimelineShell(): TimelineShellController {
       focusWindow.style.left = '0%';
       focusWindow.style.width = '100%';
       focusWindow.hidden = duration <= 0;
+      focusWindow.classList.add('timeline-focus-placeholder--full');
       visibleRangeText.textContent = '—';
       return;
     }
@@ -105,6 +117,7 @@ export function createTimelineShell(): TimelineShellController {
     focusWindow.hidden = false;
     focusWindow.style.left = `${Math.max(0, Math.min(100, left))}%`;
     focusWindow.style.width = `${Math.max(0.2, Math.min(100, width))}%`;
+    focusWindow.classList.toggle('timeline-focus-placeholder--full', viewportIsFull());
     visibleRangeText.textContent = `${formatDuration(viewport.visibleStartMs - fullStartMs)}–${formatDuration(viewport.visibleEndMs - fullStartMs)}`;
   };
 
@@ -172,53 +185,85 @@ export function createTimelineShell(): TimelineShellController {
     return fullStartMs + ratio * fullDuration();
   };
 
-  const beginCursorDrag = (event: PointerEvent, element: HTMLElement): void => {
+  const beginCursorDrag = (event: PointerEvent, captureElement: HTMLElement, coordinateElement: HTMLElement): void => {
     if (fullDuration() <= 0) return;
     event.preventDefault();
-    element.setPointerCapture(event.pointerId);
-    updateCursor(pointerToTime(event.clientX, element));
-    const move = (moveEvent: PointerEvent): void => updateCursor(pointerToTime(moveEvent.clientX, element));
+    event.stopPropagation();
+    captureElement.setPointerCapture(event.pointerId);
+    updateCursor(pointerToTime(event.clientX, coordinateElement));
+    const move = (moveEvent: PointerEvent): void => updateCursor(pointerToTime(moveEvent.clientX, coordinateElement));
     const end = (endEvent: PointerEvent): void => {
-      if (element.hasPointerCapture(endEvent.pointerId)) element.releasePointerCapture(endEvent.pointerId);
-      element.removeEventListener('pointermove', move);
-      element.removeEventListener('pointerup', end);
-      element.removeEventListener('pointercancel', end);
+      if (captureElement.hasPointerCapture(endEvent.pointerId)) captureElement.releasePointerCapture(endEvent.pointerId);
+      captureElement.removeEventListener('pointermove', move);
+      captureElement.removeEventListener('pointerup', end);
+      captureElement.removeEventListener('pointercancel', end);
     };
-    element.addEventListener('pointermove', move);
-    element.addEventListener('pointerup', end);
-    element.addEventListener('pointercancel', end);
+    captureElement.addEventListener('pointermove', move);
+    captureElement.addEventListener('pointerup', end);
+    captureElement.addEventListener('pointercancel', end);
   };
 
   const beginViewportDrag = (event: PointerEvent): void => {
     if (!viewport || fullDuration() <= 0) return;
+    if (viewportIsFull()) {
+      beginCursorDrag(event, overview, overview);
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     focusWindow.setPointerCapture(event.pointerId);
+    viewportListener?.({ type: 'pan', deltaMs: 0, centerCursor: true });
     let lastX = event.clientX;
-    let moved = false;
     const move = (moveEvent: PointerEvent): void => {
       const rect = overview.getBoundingClientRect();
       if (rect.width <= 0) return;
       const deltaX = moveEvent.clientX - lastX;
       lastX = moveEvent.clientX;
-      if (Math.abs(deltaX) > 0.25) moved = true;
-      viewportListener?.({ type: 'pan', deltaMs: (deltaX / rect.width) * fullDuration() });
+      viewportListener?.({ type: 'pan', deltaMs: (deltaX / rect.width) * fullDuration(), centerCursor: true });
     };
     const end = (endEvent: PointerEvent): void => {
       if (focusWindow.hasPointerCapture(endEvent.pointerId)) focusWindow.releasePointerCapture(endEvent.pointerId);
       focusWindow.removeEventListener('pointermove', move);
       focusWindow.removeEventListener('pointerup', end);
       focusWindow.removeEventListener('pointercancel', end);
-      if (!moved) updateCursor(pointerToTime(endEvent.clientX, overview));
     };
     focusWindow.addEventListener('pointermove', move);
     focusWindow.addEventListener('pointerup', end);
     focusWindow.addEventListener('pointercancel', end);
   };
 
-  progress.addEventListener('pointerdown', (event) => beginCursorDrag(event, progress));
-  overview.addEventListener('pointerdown', (event) => beginCursorDrag(event, overview));
+  const beginHandleDrag = (event: PointerEvent, edge: TimelineViewportEdge, handle: HTMLElement): void => {
+    if (!viewport || fullDuration() <= 0 || viewportIsFull()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    handle.setPointerCapture(event.pointerId);
+    const update = (clientX: number): void => {
+      viewportListener?.({
+        type: 'resize',
+        edge,
+        edgeTimeMs: pointerToTime(clientX, overview),
+        centerCursor: true,
+      });
+    };
+    update(event.clientX);
+    const move = (moveEvent: PointerEvent): void => update(moveEvent.clientX);
+    const end = (endEvent: PointerEvent): void => {
+      if (handle.hasPointerCapture(endEvent.pointerId)) handle.releasePointerCapture(endEvent.pointerId);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  };
+
+  progress.addEventListener('pointerdown', (event) => beginCursorDrag(event, progress, progress));
+  overview.addEventListener('pointerdown', (event) => beginCursorDrag(event, overview, overview));
+  overviewCursor.addEventListener('pointerdown', (event) => beginCursorDrag(event, overviewCursor, overview));
   focusWindow.addEventListener('pointerdown', beginViewportDrag);
+  focusStartHandle.addEventListener('pointerdown', (event) => beginHandleDrag(event, 'start', focusStartHandle));
+  focusEndHandle.addEventListener('pointerdown', (event) => beginHandleDrag(event, 'end', focusEndHandle));
 
   progress.addEventListener('keydown', (event) => {
     if (fullDuration() <= 0) return;
@@ -255,8 +300,8 @@ export function createTimelineShell(): TimelineShellController {
       if (!viewport) return;
       const action = button.dataset.viewportAction;
       if (action === 'fit') viewportListener?.({ type: 'fit' });
-      if (action === 'zoom-in') viewportListener?.({ type: 'zoom', factor: 0.5, anchorMs: cursorTimeMs });
-      if (action === 'zoom-out') viewportListener?.({ type: 'zoom', factor: 2, anchorMs: cursorTimeMs });
+      if (action === 'zoom-in') viewportListener?.({ type: 'zoom', factor: 0.5, anchorMs: cursorTimeMs, centerCursor: true });
+      if (action === 'zoom-out') viewportListener?.({ type: 'zoom', factor: 2, anchorMs: cursorTimeMs, centerCursor: true });
     });
   }
 

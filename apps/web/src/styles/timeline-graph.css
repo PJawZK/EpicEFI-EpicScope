@@ -109,10 +109,51 @@
   background: rgba(62, 143, 214, 0.12);
   cursor: grab;
   touch-action: none;
+  z-index: 2;
 }
 
 .timeline-focus-placeholder:active {
   cursor: grabbing;
+}
+
+.timeline-focus-placeholder--full {
+  pointer-events: none;
+}
+
+.timeline-focus-handle {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 10px;
+  background: rgba(129, 187, 239, 0.22);
+  border: 1px solid rgba(170, 216, 255, 0.95);
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.timeline-focus-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 58%;
+  transform: translate(-50%, -50%);
+  border-left: 1px solid rgba(224, 244, 255, 0.92);
+  border-right: 1px solid rgba(224, 244, 255, 0.92);
+}
+
+.timeline-focus-handle--start {
+  left: -5px;
+}
+
+.timeline-focus-handle--end {
+  right: -5px;
+}
+
+.timeline-focus-placeholder--full .timeline-focus-handle {
+  display: none;
 }
 
 .timeline-progress[tabindex="0"]:focus-visible {
@@ -124,9 +165,24 @@
   position: absolute;
   top: 0;
   bottom: 0;
+  width: 9px;
+  margin-left: -4px;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+.timeline-overview-cursor::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
   width: 1px;
   background: #d9edf7;
-  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(5, 23, 34, 0.55);
 }
 
 .timeline-progress > span {
