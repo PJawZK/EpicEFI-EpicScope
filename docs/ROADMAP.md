@@ -61,48 +61,69 @@ Completed outcomes:
 
 Approved EpicScope refinements include a dedicated EpicScope shell, consistent right-side controls/details on wide layouts, offline/imported-log focus initially, Trigger Logger deferral, and performance taking priority over exact visual reproduction.
 
-### WEB-BOOT — In progress
+### WEB-BOOT — Complete
 
-Detailed authority: `docs/WEB_BOOT_PLAN.md`.
+Detailed historical authority: `docs/WEB_BOOT_PLAN.md`.
 
-Approved bootstrap direction:
+Validated outcomes:
 
 - npm package management with committed lockfile;
 - Vite 8.x;
 - vanilla TypeScript 7.x;
 - no frontend framework;
-- Chromium/Brave-first development target;
-- GitHub Actions as the required automated build/type-check path;
-- GitHub Pages as the normal project-owner Web test/distribution surface;
+- Chromium/Brave-first target;
+- GitHub Actions branch/PR type-check and production-build validation;
+- GitHub Pages deployment from authoritative `main`;
 - no local clone/Node/npm required for project-owner testing;
-- GitHub Actions as the required automated build/type-check path;
-- GitHub Pages as the normal project-owner Web test/distribution surface;
-- no local clone/Node/npm required for project-owner testing;
-- application shell based on `docs/UI_REFERENCE.md`;
-- right-side inspector responsibility and bottom timeline responsibility;
-- no parser/domain-analysis implementation;
-- no graph/chart library selected during bootstrap;
-- no dedicated test framework introduced merely for static shell code.
+- dedicated EpicScope Logger/Analyzer shell;
+- right-side Full Sensor List / inspector responsibility;
+- bottom timeline/transport responsibility;
+- sensor-panel and timeline edge controls;
+- no parser/domain-analysis implementation leaked into the Web shell;
+- no graph/chart library selected during bootstrap.
 
-Approved task split:
+Hosted Web application:
 
-1. `WEB-BOOT-001` — toolchain scaffold;
-2. `WEB-BOOT-002` — EpicScope application shell;
-3. `WEB-BOOT-003` — Logger workspace/inspector/timeline skeleton;
-4. `WEB-BOOT-004` — GitHub-hosted CI/Pages quality gate.
+`https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-The exact files, responsibilities, validation, and completion criteria are defined in `docs/WEB_BOOT_PLAN.md` and must be followed unless deliberately revised before implementation.
+Hosted Brave validation exposed and then verified fixes for the sensor-panel hide behavior and narrow-width object preservation. WEB-BOOT has no remaining quality gate.
 
-### LOG-MLG
+### LOG-MLG — Planning/investigation in progress
 
-- MLG format investigation/specification;
+Detailed active authority: `docs/LOG_MLG_PLAN.md`.
+
+Approved direction being established:
+
+- EFI Analytics MLVLG v1/v2 specifications as primary format authority;
+- version-dispatched parser architecture;
+- initial guaranteed support for MLVLG v1 + v2;
+- explicit unsupported-version handling for unverified newer versions;
+- bounded/random-access source reads rather than requiring full-file `ArrayBuffer` materialization;
 - parser implementation under `core/parsers/mlg/`;
+- minimal normalized log/channel/time contracts under `core/log-model/`;
 - metadata/channel discovery;
-- normalized channel/time model;
+- standard records and markers;
+- timestamp rollover handling;
 - error handling for malformed/unsupported/untrusted content;
 - bounded validation of file-provided sizes/counts/offsets;
 - curated small MLG fixtures;
-- select/document automated parser/core test strategy before implementation logic lands.
+- at least one representative real EpicEFI/TunerStudio MLG before completion;
+- first Web parser/index performance baseline.
+
+Planned task split:
+
+1. `LOG-MLG-001` — format/support contract;
+2. `TEST-CORE-001` — parser/core automated test gate;
+3. `LOG-MODEL-001` — minimal normalized log contracts;
+4. `LOG-SOURCE-001` — bounded random-access byte source;
+5. `LOG-MLG-002` — v1/v2 header and field-descriptor parsing;
+6. `LOG-MLG-003` — record/marker scan and monotonic timebase;
+7. `LOG-MLG-004` — hosted Web local-file integration;
+8. `LOG-MLG-005` — real-log validation and first performance baseline.
+
+Vitest 5.x is the current recommended TypeScript parser/core test runner, but adding that dependency remains pending explicit project-owner approval under D-015/D-025.
+
+TunerStudio has newer MLVLG v3 support with additional data types/endianness options. EpicScope must detect unverified versions cleanly; speculative v3 decoding is not authorized by this task.
 
 ### LOG-CSV
 
