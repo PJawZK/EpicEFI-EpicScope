@@ -18,12 +18,18 @@ Directories should be created physically only when their first legitimate task r
 EpicEFI-EpicScope/
 ├── README.md
 ├── LICENSE
+├── .gitignore                  # created by WEB-BOOT
+├── package.json                # created by WEB-BOOT
+├── package-lock.json           # generated/committed by WEB-BOOT
+├── tsconfig.json               # created by WEB-BOOT
+├── vite.config.ts              # created by WEB-BOOT
 ├── docs/
 │   ├── PRODUCT.md
 │   ├── ARCHITECTURE.md
 │   ├── FILE_ARCHITECTURE.md
 │   ├── DATA_MODEL.md
 │   ├── UI_REFERENCE.md
+│   ├── WEB_BOOT_PLAN.md
 │   ├── PERFORMANCE.md
 │   ├── PLATFORMS.md
 │   ├── ROADMAP.md
@@ -33,14 +39,22 @@ EpicEFI-EpicScope/
 │
 ├── apps/
 │   └── web/
+│       ├── index.html
 │       ├── src/
+│       │   ├── main.ts
 │       │   ├── app/
+│       │   │   └── app-shell.ts
 │       │   ├── pages/
+│       │   │   └── logger-page.ts
 │       │   ├── panels/
+│       │   │   └── inspector-panel.ts
 │       │   ├── components/
-│       │   ├── state/
+│       │   │   └── timeline-shell.ts
+│       │   ├── state/          # approved area; create only when a real state task needs it
 │       │   └── styles/
-│       └── tests/
+│       │       ├── tokens.css
+│       │       └── app.css
+│       └── tests/              # approved area; create only when a real test task needs it
 │
 ├── core/
 │   ├── log-model/
@@ -101,6 +115,45 @@ It records:
 
 It is a product/presentation contract, not permission to copy prototype implementation machinery into production code.
 
+### `docs/WEB_BOOT_PLAN.md`
+
+Authoritative task/file plan for the initial Web bootstrap batch.
+
+It defines:
+
+- approved Web bootstrap dependencies;
+- approved repository-root tooling files;
+- exact first physical Web source files;
+- responsibilities and prohibited ownership for each bootstrap task;
+- validation and completion criteria;
+- explicit deferral of graph-library and parser/core test-framework decisions.
+
+It is a task-specific implementation authority. Later Web tasks must not treat it as blanket approval to add arbitrary dependencies or files.
+
+## Repository-root tooling responsibilities
+
+The following root files are approved specifically by WEB-BOOT:
+
+### `.gitignore`
+
+Generated dependency/build/editor artifact exclusions only.
+
+### `package.json`
+
+Minimal Web development scripts and approved development dependencies. It must not become a substitute for platform architecture.
+
+### `package-lock.json`
+
+Committed npm lockfile generated from the approved dependency set.
+
+### `tsconfig.json`
+
+Shared TypeScript compiler/type-check policy for currently implemented TypeScript source. Cross-area path aliases or project-reference complexity require a real need before introduction.
+
+### `vite.config.ts`
+
+Web build/dev-server configuration only. It must not contain domain/parser/analyzer logic.
+
 ## Directory responsibilities
 
 ### `apps/web/`
@@ -121,6 +174,8 @@ Not allowed:
 - independent source-file parsers duplicated from `core/parsers/`;
 - hidden domain analysis that should belong to `core/` or `analyzers/`;
 - authoritative tune interpretation embedded only in UI components.
+
+The exact initial physical files authorized for WEB-BOOT are listed in `docs/WEB_BOOT_PLAN.md`. Other approved logical areas under `apps/web/` remain uncreated until a legitimate task requires them.
 
 ### `core/log-model/`
 
