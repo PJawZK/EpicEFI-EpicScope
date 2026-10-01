@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { createArrayBufferByteSource } from '../../../core/parsers/byte-source';
+import { MemoryByteSource } from '../../../core/parsers/byte-source';
 import type { MlgHeader } from '../../../core/parsers/mlg/mlg-format';
 import { scanMlgRecords } from '../../../core/parsers/mlg/mlg-records';
 
 const header: MlgHeader = {
   version: 2,
-  timestampSeconds: 0,
+  logStartUnixSeconds: 0,
   infoDataStart: 0,
   dataBeginIndex: 24,
   recordLength: 1,
-  numLoggerFields: 1,
+  loggerFieldCount: 1,
+  loggerFieldsStart: 24,
+  loggerFieldDescriptorLength: 89,
 };
 
 function makeRecord(counter: number, timestamp: number, value: number): Uint8Array {
@@ -30,8 +32,7 @@ describe('MLG block counter wrap', () => {
     bytes.set(makeRecord(255, 101, 2), 30);
     bytes.set(makeRecord(0, 102, 3), 36);
 
-    const source = createArrayBufferByteSource(bytes.buffer);
-    const result = await scanMlgRecords(source, header);
+    const result = await scanMlgRecords(new MemoryByteSource(bytes), header);
 
     expect(result.records.counters).toEqual(new Uint8Array([254, 255, 0]));
     expect(
