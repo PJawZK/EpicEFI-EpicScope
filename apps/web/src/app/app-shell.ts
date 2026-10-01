@@ -91,7 +91,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   brandButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    const nextOpen = brandMenu.hidden;
+    const nextOpen = brandMenu.hidden === true;
     brandMenu.hidden = !nextOpen;
     brandButton.classList.toggle('brand-button--open', nextOpen);
     brandButton.setAttribute('aria-expanded', String(nextOpen));
