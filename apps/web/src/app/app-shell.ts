@@ -88,6 +88,7 @@ export function mountAppShell(root: HTMLElement): void {
           parsed.summary,
           parsed.recordIndex.offsets.length,
           parsed.header.version,
+          parsed.channelData,
         );
         loadedLog.textContent = parsed.summary.source.displayName;
         appStatus.textContent = parsed.summary.diagnostics.length > 0
