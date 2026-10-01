@@ -4,8 +4,10 @@ html,
 body,
 #app { width: 100%; height: 100%; margin: 0; }
 
+[hidden] { display: none !important; }
+
 body {
-  min-width: 780px;
+  min-width: 0;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
@@ -255,8 +257,53 @@ button:disabled { opacity: .48; cursor: default; }
 .status-bar { gap: 16px; padding: 0 8px; border-top: 1px solid var(--line); background: #08121a; color: var(--muted); font-size: 9px; }
 
 @media (max-width: 1100px) {
-  :root { --inspector-w: 270px; }
-  .brand-context { display: none; }
-  .loaded-log span { display: none; }
-  .workspace-context .status-chip { display: none; }
+  :root { --inspector-w: 250px; }
+
+  .app-header {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .brand { gap: 6px; }
+  .brand-product { font-size: 14px; }
+  .brand-context { font-size: 12px; }
+
+  .header-context { gap: 5px; }
+  .header-actions { gap: 4px; }
+  .header-actions button { min-width: 32px; padding-inline: 7px; }
+  .surface-select { min-width: 142px; padding-inline: 7px; }
+
+  .mode-chip,
+  .status-chip { padding-inline: 6px; font-size: 8px; }
+  .loaded-log { gap: 4px; font-size: 9px; }
+
+  .workspace-bar { gap: 5px; }
+  .workspace-tab,
+  .workspace-add { padding-inline: 9px; }
+  .workspace-context { gap: 4px; }
+  .workspace-context button { padding-inline: 6px; }
+}
+
+@media (max-width: 860px) {
+  :root { --inspector-w: 220px; }
+
+  .app-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 5px;
+    padding-inline: 5px;
+  }
+
+  .brand-mark { width: 17px; height: 17px; }
+  .brand-product { font-size: 13px; }
+  .brand-context { font-size: 11px; }
+  .surface-select { min-width: 122px; }
+  .header-actions button { min-width: 30px; padding-inline: 5px; }
+
+  .workspace-bar { padding-inline: 5px; }
+  .workspace-tab,
+  .workspace-add { padding-inline: 7px; }
+  .workspace-context button { padding-inline: 5px; }
+
+  .graph-empty,
+  .panel-empty { padding: 16px; }
 }
