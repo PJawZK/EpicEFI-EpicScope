@@ -2,6 +2,7 @@ import type {
   ImportedLogSummary,
   NumericChannelDataSource,
   ParserDiagnostic,
+  ParserDiagnosticSeverity,
 } from '../../../../core/log-model/log-types';
 import { createGraphViewport } from '../components/graph-viewport';
 import { createTimelineShell } from '../components/timeline-shell';
@@ -18,76 +19,146 @@ export interface LoggerPageController {
   setImportError(message: string): void;
 }
 
-function createDiagnosticsSummary(diagnostics: readonly ParserDiagnostic[]): HTMLElement {
-  const details = document.createElement('details');
-  details.className = 'parser-diagnostics';
+interface DiagnosticsIndicatorController {
+  readonly element: HTMLElement;
+  setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
+  clear(): void;
+}
 
-  if (diagnostics.length === 0) {
-    details.hidden = true;
-    return details;
+function severityRank(severity: ParserDiagnosticSeverity): number {
+  if (severity === 'error') return 3;
+  if (severity === 'warning') return 2;
+  return 1;
+}
+
+function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
+  const root = document.createElement('div');
+  root.className = 'parser-indicator-wrap';
+  root.innerHTML = `
+    <button type="button" class="parser-indicator parser-indicator--good" aria-haspopup="dialog" aria-expanded="false" title="No parser diagnostics">
+      <span class="parser-indicator-light" aria-hidden="true"></span>
+      <span class="parser-indicator-count" hidden></span>
+      <span class="sr-only">Parser diagnostics</span>
+    </button>
+    <div class="parser-diagnostic-popover" role="dialog" aria-label="Parser diagnostics" hidden></div>
+  `;
+
+  const button = root.querySelector<HTMLButtonElement>('.parser-indicator');
+  const count = root.querySelector<HTMLElement>('.parser-indicator-count');
+  const popover = root.querySelector<HTMLElement>('.parser-diagnostic-popover');
+  if (!button || !count || !popover) {
+    throw new Error('Parser diagnostics indicator structure is incomplete.');
   }
 
-  const grouped = new Map<string, { count: number; severity: string; message: string }>();
-  for (const diagnostic of diagnostics) {
-    const existing = grouped.get(diagnostic.code);
-    if (existing) {
-      existing.count += 1;
-      continue;
+  const close = (): void => {
+    popover.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  };
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = popover.hidden;
+    popover.hidden = !nextOpen;
+    button.setAttribute('aria-expanded', String(nextOpen));
+  });
+  popover.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', close);
+
+  const setDiagnostics = (diagnostics: readonly ParserDiagnostic[]): void => {
+    const grouped = new Map<string, { count: number; severity: ParserDiagnosticSeverity; message: string }>();
+    let worst: ParserDiagnosticSeverity | 'good' = 'good';
+
+    for (const diagnostic of diagnostics) {
+      if (worst === 'good' || severityRank(diagnostic.severity) > severityRank(worst)) {
+        worst = diagnostic.severity;
+      }
+      const existing = grouped.get(diagnostic.code);
+      if (existing) {
+        existing.count += 1;
+        if (severityRank(diagnostic.severity) > severityRank(existing.severity)) {
+          existing.severity = diagnostic.severity;
+        }
+      } else {
+        grouped.set(diagnostic.code, {
+          count: 1,
+          severity: diagnostic.severity,
+          message: diagnostic.message,
+        });
+      }
     }
-    grouped.set(diagnostic.code, {
-      count: 1,
-      severity: diagnostic.severity,
-      message: diagnostic.message,
-    });
-  }
 
-  const summary = document.createElement('summary');
-  summary.textContent = `Parser diagnostics · ${diagnostics.length.toLocaleString()} warning${diagnostics.length === 1 ? '' : 's'}`;
-  details.append(summary);
+    button.classList.remove(
+      'parser-indicator--good',
+      'parser-indicator--info',
+      'parser-indicator--warning',
+      'parser-indicator--error',
+    );
+    button.classList.add(`parser-indicator--${worst}`);
 
-  const content = document.createElement('div');
-  content.className = 'parser-diagnostics-content';
+    if (diagnostics.length === 0) {
+      count.hidden = true;
+      count.textContent = '';
+      button.title = 'No parser diagnostics';
+      popover.innerHTML = '<div class="parser-popover-empty">No parser diagnostics.</div>';
+      close();
+      return;
+    }
 
-  const groups = document.createElement('div');
-  groups.className = 'parser-diagnostic-groups';
-  for (const [code, item] of grouped) {
-    const row = document.createElement('div');
-    row.className = 'parser-diagnostic-group';
-    row.innerHTML = `
-      <strong>${code}</strong>
-      <span>${item.count.toLocaleString()}</span>
-      <small>${item.severity}</small>
+    count.hidden = false;
+    count.textContent = diagnostics.length.toLocaleString();
+    button.title = `${diagnostics.length.toLocaleString()} parser diagnostic${diagnostics.length === 1 ? '' : 's'}`;
+
+    const heading = document.createElement('div');
+    heading.className = 'parser-popover-heading';
+    heading.innerHTML = `
+      <strong>Parser diagnostics</strong>
+      <span>${diagnostics.length.toLocaleString()} total</span>
     `;
-    row.title = item.message;
-    groups.append(row);
-  }
 
-  const firstOccurrences = document.createElement('div');
-  firstOccurrences.className = 'parser-diagnostic-occurrences';
-  const heading = document.createElement('strong');
-  heading.textContent = 'First occurrences';
-  firstOccurrences.append(heading);
+    const groups = document.createElement('div');
+    groups.className = 'parser-popover-groups';
+    for (const [code, item] of grouped) {
+      const row = document.createElement('div');
+      row.className = `parser-popover-group parser-popover-group--${item.severity}`;
+      row.innerHTML = `
+        <span class="parser-popover-severity" aria-hidden="true"></span>
+        <strong>${code}</strong>
+        <span>${item.count.toLocaleString()}</span>
+      `;
+      row.title = item.message;
+      groups.append(row);
+    }
 
-  const list = document.createElement('ol');
-  for (const diagnostic of diagnostics.slice(0, 8)) {
-    const item = document.createElement('li');
-    const offset = diagnostic.offset === undefined
-      ? ''
-      : ` · byte ${diagnostic.offset.toLocaleString()}`;
-    item.textContent = `${diagnostic.code}${offset} — ${diagnostic.message}`;
-    list.append(item);
-  }
-  firstOccurrences.append(list);
+    const occurrences = document.createElement('div');
+    occurrences.className = 'parser-popover-occurrences';
+    const occurrenceHeading = document.createElement('strong');
+    occurrenceHeading.textContent = 'First occurrences';
+    occurrences.append(occurrenceHeading);
 
-  content.append(groups, firstOccurrences);
-  details.append(content);
-  return details;
+    const list = document.createElement('ol');
+    for (const diagnostic of diagnostics.slice(0, 40)) {
+      const item = document.createElement('li');
+      const offset = diagnostic.offset === undefined
+        ? ''
+        : ` · byte ${diagnostic.offset.toLocaleString()}`;
+      item.textContent = `${diagnostic.code}${offset} — ${diagnostic.message}`;
+      list.append(item);
+    }
+    occurrences.append(list);
+
+    popover.replaceChildren(heading, groups, occurrences);
+  };
+
+  const clear = (): void => setDiagnostics([]);
+  clear();
+  return { element: root, setDiagnostics, clear };
 }
 
 export function createLoggerPage(): LoggerPageController {
   const inspector = createInspectorPanel();
   const timeline = createTimelineShell();
   const graph = createGraphViewport();
+  const diagnostics = createDiagnosticsIndicator();
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -105,6 +176,9 @@ export function createLoggerPage(): LoggerPageController {
       <button type="button" disabled>Compare Run B</button>
     </div>
   `;
+  const workspaceContext = workspaceBar.querySelector<HTMLElement>('.workspace-context');
+  if (!workspaceContext) throw new Error('Logger workspace bar structure is incomplete.');
+  workspaceContext.prepend(diagnostics.element);
 
   const workspaceRow = document.createElement('div');
   workspaceRow.className = 'workspace-row';
@@ -124,9 +198,7 @@ export function createLoggerPage(): LoggerPageController {
   `;
   const graphState = graphWindow.querySelector<HTMLElement>('.graph-window-state');
   if (!graphState) throw new Error('Logger graph shell structure is incomplete.');
-  const diagnosticsHost = document.createElement('div');
-  diagnosticsHost.className = 'graph-diagnostics-host';
-  graphWindow.append(graph.element, diagnosticsHost);
+  graphWindow.append(graph.element);
   graphHost.append(graphWindow);
 
   const sensorToggle = document.createElement('button');
@@ -185,7 +257,7 @@ export function createLoggerPage(): LoggerPageController {
     timeline.setDuration(summary.timeRange?.durationMs, recordCount);
     graph.setLog(summary.channels, channelData, summary.timeRange);
     graphState.textContent = `MLG v${formatVersion} · ${recordCount.toLocaleString()} records`;
-    diagnosticsHost.replaceChildren(createDiagnosticsSummary(summary.diagnostics));
+    diagnostics.setDiagnostics(summary.diagnostics);
   };
 
   const setImportError = (message: string): void => {
@@ -193,7 +265,12 @@ export function createLoggerPage(): LoggerPageController {
     timeline.setDuration(undefined, 0);
     graph.clear();
     graphState.textContent = 'Import failed';
-    diagnosticsHost.replaceChildren();
+    diagnostics.setDiagnostics([{
+      code: 'import-failed',
+      severity: 'error',
+      message,
+      recoverable: false,
+    }]);
   };
 
   return { element: page, setLog, setImportError };

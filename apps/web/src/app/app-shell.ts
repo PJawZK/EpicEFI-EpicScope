@@ -21,15 +21,28 @@ export function mountAppShell(root: HTMLElement): void {
   const header = document.createElement('header');
   header.className = 'app-header';
   header.innerHTML = `
-    <div class="brand" aria-label="EpicScope">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <span class="brand-product">EpicScope</span>
-      <span class="brand-context">Logger / Analyzer</span>
+    <div class="brand-switch">
+      <button type="button" class="brand brand-button" aria-label="EpicScope workspace menu" aria-haspopup="menu" aria-expanded="false">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-product">EpicScope</span>
+        <span class="brand-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="global-switch-menu" role="menu" hidden>
+        <div class="global-switch-head">
+          <strong>EpicScope</strong>
+          <small>Analysis workspace</small>
+        </div>
+        <button type="button" class="global-module-choice global-module-choice--active" role="menuitem" aria-current="page">
+          <span class="module-icon" aria-hidden="true">⌁</span>
+          <span>
+            <strong>Logger / Analyzer</strong>
+            <small>Recorded log analysis</small>
+          </span>
+          <span class="module-state">Active</span>
+        </button>
+      </div>
     </div>
     <div class="header-context">
-      <button type="button" class="surface-select" aria-haspopup="menu" disabled>
-        <span>Logger / Analyzer</span><span>▾</span>
-      </button>
       <span class="mode-chip">RECORDED</span>
       <span class="loaded-log" title="Loaded recorded log"><span>Log</span><strong>No log loaded</strong></span>
     </div>
@@ -59,14 +72,32 @@ export function mountAppShell(root: HTMLElement): void {
   fileInput.hidden = true;
   fileInput.setAttribute('aria-label', 'Open MLG log');
 
+  const brandButton = header.querySelector<HTMLButtonElement>('.brand-button');
+  const brandMenu = header.querySelector<HTMLElement>('.global-switch-menu');
   const openButton = header.querySelector<HTMLButtonElement>('.open-log');
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
 
-  if (!openButton || !loadedLog || !appStatus || !parserStatus) {
+  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
+
+  const closeBrandMenu = (): void => {
+    brandMenu.hidden = true;
+    brandButton.classList.remove('brand-button--open');
+    brandButton.setAttribute('aria-expanded', 'false');
+  };
+
+  brandButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = brandMenu.hidden === true;
+    brandMenu.hidden = !nextOpen;
+    brandButton.classList.toggle('brand-button--open', nextOpen);
+    brandButton.setAttribute('aria-expanded', String(nextOpen));
+  });
+  brandMenu.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', closeBrandMenu);
 
   openButton.addEventListener('click', () => fileInput.click());
 
