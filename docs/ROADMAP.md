@@ -51,24 +51,41 @@ Planned task groups:
 
 Completed outcomes:
 
-- exact `EpicHub-1.12.1_TabletLandscape.html` inspected;
+- authoritative `EpicHub-Tablet-Landscape-0.0.45(2).html` inspected;
 - current EpicHub Logger/Analyzer semantic UI authority inspected;
 - inherited interaction rules recorded in `docs/UI_REFERENCE.md`;
 - deliberate EpicScope deviations recorded;
 - no application implementation code introduced during the reference task.
 
+`EpicHub-Tablet-Landscape-0.0.45(2).html` supersedes the older Tablet Landscape prototype for EpicScope reference purposes.
+
 Approved EpicScope refinements include a dedicated EpicScope shell, consistent right-side controls/details on wide layouts, offline/imported-log focus initially, Trigger Logger deferral, and performance taking priority over exact visual reproduction.
 
-### WEB-BOOT
+### WEB-BOOT — Planned
 
-- define the concrete bootstrap task split and exact files first;
-- select minimal Web build/tooling stack under the dependency policy;
-- lightweight TypeScript project bootstrap;
+Detailed authority: `docs/WEB_BOOT_PLAN.md`.
+
+Approved bootstrap direction:
+
+- npm package management with committed lockfile;
+- Vite 8.x;
+- vanilla TypeScript 7.x;
+- no frontend framework;
 - Chromium/Brave-first development target;
 - application shell based on `docs/UI_REFERENCE.md`;
-- right-side details/settings panel convention;
-- minimal styling focused on readability and responsiveness;
-- no unnecessary framework or dependency introduced without justification.
+- right-side inspector responsibility and bottom timeline responsibility;
+- no parser/domain-analysis implementation;
+- no graph/chart library selected during bootstrap;
+- no dedicated test framework introduced merely for static shell code.
+
+Approved task split:
+
+1. `WEB-BOOT-001` — toolchain scaffold;
+2. `WEB-BOOT-002` — EpicScope application shell;
+3. `WEB-BOOT-003` — Logger workspace/inspector/timeline skeleton;
+4. `WEB-BOOT-004` — bootstrap quality gate.
+
+The exact files, responsibilities, validation, and completion criteria are defined in `docs/WEB_BOOT_PLAN.md` and must be followed unless deliberately revised before implementation.
 
 ### LOG-MLG
 
@@ -78,7 +95,8 @@ Approved EpicScope refinements include a dedicated EpicScope shell, consistent r
 - normalized channel/time model;
 - error handling for malformed/unsupported/untrusted content;
 - bounded validation of file-provided sizes/counts/offsets;
-- curated small MLG fixtures.
+- curated small MLG fixtures;
+- select/document automated parser/core test strategy before implementation logic lands.
 
 ### LOG-CSV
 
@@ -94,7 +112,8 @@ Approved EpicScope refinements include a dedicated EpicScope shell, consistent r
 - graph panes;
 - viewport-follow behaviour: cursor moves independently until reaching the center region, then the viewport follows;
 - markers/bookmarks;
-- channel selection/search.
+- channel selection/search;
+- select graph rendering approach only after concrete large-log/interaction requirements are defined.
 
 Exit criteria:
 
