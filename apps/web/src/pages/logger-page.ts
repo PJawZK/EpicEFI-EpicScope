@@ -4,8 +4,17 @@ import type {
   ParserDiagnostic,
   ParserDiagnosticSeverity,
 } from '../../../../core/log-model/log-types';
+import {
+  createFullViewport,
+  fitViewport,
+  followCursor,
+  panViewport,
+  viewportEquals,
+  zoomViewport,
+  type TimelineViewport,
+} from '../../../../core/timeline/viewport-state';
 import { createGraphViewport } from '../components/graph-viewport';
-import { createTimelineShell } from '../components/timeline-shell';
+import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 
 export interface LoggerPageController {
@@ -159,6 +168,8 @@ export function createLoggerPage(): LoggerPageController {
   const timeline = createTimelineShell();
   const graph = createGraphViewport();
   const diagnostics = createDiagnosticsIndicator();
+  let viewport: TimelineViewport | undefined;
+  let previousCursorTimeMs = 0;
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -238,11 +249,37 @@ export function createLoggerPage(): LoggerPageController {
     timelineToggle.setAttribute('aria-expanded', String(next));
   });
 
+  const syncViewport = (nextViewport: TimelineViewport | undefined): void => {
+    viewport = nextViewport;
+    timeline.setViewport(nextViewport);
+    graph.setViewport(nextViewport);
+  };
+
+  const applyViewportIntent = (intent: TimelineViewportIntent): void => {
+    if (!viewport) return;
+    let next = viewport;
+    if (intent.type === 'fit') next = fitViewport(viewport);
+    if (intent.type === 'zoom') next = zoomViewport(viewport, intent.factor, intent.anchorMs);
+    if (intent.type === 'pan') next = panViewport(viewport, intent.deltaMs);
+    if (!viewportEquals(viewport, next)) syncViewport(next);
+  };
+
   inspector.onChannelSelected((channelId) => {
     inspector.setSelectedChannel(channelId);
     void graph.selectChannel(channelId);
   });
-  timeline.onCursorChange((timeMs) => graph.setCursorTime(timeMs));
+
+  timeline.onCursorChange((timeMs) => {
+    if (viewport) {
+      const nextViewport = followCursor(viewport, previousCursorTimeMs, timeMs);
+      if (!viewportEquals(viewport, nextViewport)) syncViewport(nextViewport);
+    }
+    previousCursorTimeMs = timeMs;
+    graph.setCursorTime(timeMs);
+  });
+  timeline.onViewportIntent(applyViewportIntent);
+  graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
+  graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceBar, workspaceRow, timelineWrap);
@@ -254,15 +291,23 @@ export function createLoggerPage(): LoggerPageController {
     channelData: NumericChannelDataSource,
   ): void => {
     inspector.setChannels(summary.channels, summary.source.displayName);
-    timeline.setDuration(summary.timeRange?.durationMs, recordCount);
+    timeline.setTimeRange(summary.timeRange, recordCount);
     graph.setLog(summary.channels, channelData, summary.timeRange);
+    if (summary.timeRange) {
+      previousCursorTimeMs = summary.timeRange.startMs;
+      syncViewport(createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs));
+    } else {
+      previousCursorTimeMs = 0;
+      syncViewport(undefined);
+    }
     graphState.textContent = `MLG v${formatVersion} · ${recordCount.toLocaleString()} records`;
     diagnostics.setDiagnostics(summary.diagnostics);
   };
 
   const setImportError = (message: string): void => {
     inspector.setError(message);
-    timeline.setDuration(undefined, 0);
+    timeline.setTimeRange(undefined, 0);
+    syncViewport(undefined);
     graph.clear();
     graphState.textContent = 'Import failed';
     diagnostics.setDiagnostics([{

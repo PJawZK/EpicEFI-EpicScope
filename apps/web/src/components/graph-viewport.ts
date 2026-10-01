@@ -4,6 +4,7 @@ import type {
   NumericChannelDataSource,
   NumericChannelRange,
 } from '../../../../core/log-model/log-types';
+import type { TimelineViewport } from '../../../../core/timeline/viewport-state';
 import {
   buildViewportEnvelope,
   type ViewportEnvelopeColumn,
@@ -18,6 +19,9 @@ export interface GraphViewportController {
   ): void;
   selectChannel(channelId: string): Promise<void>;
   setCursorTime(timeMs: number): void;
+  setViewport(viewport: TimelineViewport | undefined): void;
+  onZoom(listener: (factor: number, anchorMs: number) => void): void;
+  onPan(listener: (deltaMs: number) => void): void;
   clear(): void;
 }
 
@@ -43,9 +47,7 @@ function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRe
   const result: RawRepresentativePoint[] = [];
   for (const candidate of candidates) {
     const previous = result[result.length - 1];
-    if (previous && previous.timeMs === candidate.timeMs && previous.value === candidate.value) {
-      continue;
-    }
+    if (previous && previous.timeMs === candidate.timeMs && previous.value === candidate.value) continue;
     result.push(candidate);
   }
   return result;
@@ -55,9 +57,12 @@ export function createGraphViewport(): GraphViewportController {
   let channels: readonly ChannelDefinition[] = [];
   let channelData: NumericChannelDataSource | undefined;
   let timeRange: LogTimeRange | undefined;
+  let viewport: TimelineViewport | undefined;
   let selectedChannel: ChannelDefinition | undefined;
   let selectedRange: NumericChannelRange | undefined;
   let cursorTimeMs = 0;
+  let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
+  let panListener: ((deltaMs: number) => void) | undefined;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -141,13 +146,14 @@ export function createGraphViewport(): GraphViewportController {
       context.stroke();
     }
 
-    if (!selectedRange || !timeRange || !selectedChannel) return;
-    const viewportTimeRange = timeRange;
+    if (!selectedRange || !selectedChannel || !viewport) return;
+    const visibleStartMs = viewport.visibleStartMs;
+    const visibleEndMs = viewport.visibleEndMs;
 
     const envelope = buildViewportEnvelope(
       selectedRange,
-      viewportTimeRange.startMs,
-      viewportTimeRange.endMs,
+      visibleStartMs,
+      visibleEndMs,
       Math.max(1, Math.floor(plotWidth)),
     );
     const rawSpan = envelope.valueMax - envelope.valueMin;
@@ -163,15 +169,12 @@ export function createGraphViewport(): GraphViewportController {
       const normalized = (value - axisMin) / axisSpan;
       return inset + plotHeight - normalized * plotHeight;
     };
-    const duration = Math.max(1e-9, viewportTimeRange.durationMs);
-    const xForTime = (timeMs: number): number => (
-      inset + ((timeMs - viewportTimeRange.startMs) / duration) * plotWidth
-    );
+    const duration = Math.max(1e-9, visibleEndMs - visibleStartMs);
+    const xForTime = (timeMs: number): number => inset + ((timeMs - visibleStartMs) / duration) * plotWidth;
 
-    // Raw-preserving downsample: each horizontal pixel bucket contributes only
-    // its first, min, max and last valid source samples, in chronological order.
-    // This caps rendering work to ~4 points per CSS pixel without averaging away
-    // short spikes, dropouts or conditional-channel transitions.
+    // Experimental renderer: preserve first/min/max/last raw values per horizontal
+    // bucket while bounding work. Visual tuning is deliberately deferred until the
+    // viewport and multi-channel feature set is established.
     context.strokeStyle = '#42a5f5';
     context.lineWidth = 1.15;
     context.lineJoin = 'miter';
@@ -197,13 +200,15 @@ export function createGraphViewport(): GraphViewportController {
     }
     if (hasTrace) context.stroke();
 
-    const cursorX = xForTime(cursorTimeMs);
-    context.strokeStyle = 'rgba(216, 237, 248, 0.92)';
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(cursorX + 0.5, inset);
-    context.lineTo(cursorX + 0.5, height - inset);
-    context.stroke();
+    if (cursorTimeMs >= visibleStartMs && cursorTimeMs <= visibleEndMs) {
+      const cursorX = xForTime(cursorTimeMs);
+      context.strokeStyle = 'rgba(216, 237, 248, 0.92)';
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(cursorX + 0.5, inset);
+      context.lineTo(cursorX + 0.5, height - inset);
+      context.stroke();
+    }
 
     const value = nearestValue();
     readoutName.textContent = selectedChannel.sourceName;
@@ -213,6 +218,45 @@ export function createGraphViewport(): GraphViewportController {
   const resizeObserver = new ResizeObserver(draw);
   resizeObserver.observe(root);
 
+  canvas.addEventListener('wheel', (event) => {
+    if (!viewport || !zoomListener) return;
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const anchorMs = viewport.visibleStartMs + ratio * (viewport.visibleEndMs - viewport.visibleStartMs);
+    const factor = event.deltaY < 0 ? 0.72 : 1.38;
+    zoomListener(factor, anchorMs);
+  }, { passive: false });
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!viewport || !panListener || event.button !== 0) return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    root.classList.add('graph-viewport--panning');
+    let lastX = event.clientX;
+
+    const move = (moveEvent: PointerEvent): void => {
+      if (!viewport) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const deltaX = moveEvent.clientX - lastX;
+      lastX = moveEvent.clientX;
+      const span = viewport.visibleEndMs - viewport.visibleStartMs;
+      panListener?.(-(deltaX / rect.width) * span);
+    };
+    const end = (endEvent: PointerEvent): void => {
+      if (canvas.hasPointerCapture(endEvent.pointerId)) canvas.releasePointerCapture(endEvent.pointerId);
+      root.classList.remove('graph-viewport--panning');
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', end);
+      canvas.removeEventListener('pointercancel', end);
+    };
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+  });
+
   const setLog = (
     nextChannels: readonly ChannelDefinition[],
     nextChannelData: NumericChannelDataSource,
@@ -221,6 +265,14 @@ export function createGraphViewport(): GraphViewportController {
     channels = nextChannels;
     channelData = nextChannelData;
     timeRange = nextTimeRange;
+    viewport = nextTimeRange
+      ? {
+          fullStartMs: nextTimeRange.startMs,
+          fullEndMs: nextTimeRange.endMs,
+          visibleStartMs: nextTimeRange.startMs,
+          visibleEndMs: nextTimeRange.endMs,
+        }
+      : undefined;
     selectedChannel = undefined;
     selectedRange = undefined;
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
@@ -259,10 +311,16 @@ export function createGraphViewport(): GraphViewportController {
     draw();
   };
 
+  const setViewport = (nextViewport: TimelineViewport | undefined): void => {
+    viewport = nextViewport;
+    draw();
+  };
+
   const clear = (): void => {
     channels = [];
     channelData = undefined;
     timeRange = undefined;
+    viewport = undefined;
     selectedChannel = undefined;
     selectedRange = undefined;
     cursorTimeMs = 0;
@@ -274,5 +332,14 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   clear();
-  return { element: root, setLog, selectChannel, setCursorTime, clear };
+  return {
+    element: root,
+    setLog,
+    selectChannel,
+    setCursorTime,
+    setViewport,
+    onZoom: (listener) => { zoomListener = listener; },
+    onPan: (listener) => { panListener = listener; },
+    clear,
+  };
 }
