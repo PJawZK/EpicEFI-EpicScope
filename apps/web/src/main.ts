@@ -1,6 +1,7 @@
 import './styles/tokens.css';
 import './styles/app.css';
 import './styles/log-import.css';
+import './styles/timeline-graph.css';
 import { mountAppShell } from './app/app-shell';
 
 const root = document.querySelector<HTMLElement>('#app');

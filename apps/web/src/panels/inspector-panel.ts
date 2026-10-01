@@ -6,11 +6,17 @@ export interface InspectorPanelController {
   isVisible(): boolean;
   setChannels(channels: readonly ChannelDefinition[], sourceName: string): void;
   setError(message: string): void;
+  onChannelSelected(listener: (channelId: string) => void): void;
+  setSelectedChannel(channelId: string | undefined): void;
+  setSelectedValue(channelId: string, value: string): void;
 }
 
 export function createInspectorPanel(): InspectorPanelController {
   let visible = true;
   let channels: readonly ChannelDefinition[] = [];
+  let selectedChannelId: string | undefined;
+  let selectionListener: ((channelId: string) => void) | undefined;
+  const currentValues = new Map<string, string>();
 
   const panel = document.createElement('aside');
   panel.className = 'inspector-panel';
@@ -75,9 +81,12 @@ export function createInspectorPanel(): InspectorPanelController {
 
     channelList.replaceChildren();
     for (const channel of filtered) {
-      const row = document.createElement('div');
+      const row = document.createElement('button');
+      row.type = 'button';
       row.className = 'channel-row';
+      row.classList.toggle('channel-row--selected', channel.id === selectedChannelId);
       row.setAttribute('role', 'listitem');
+      row.dataset.channelId = channel.id;
 
       const identity = document.createElement('div');
       identity.className = 'channel-identity';
@@ -90,10 +99,15 @@ export function createInspectorPanel(): InspectorPanelController {
         identity.append(category);
       }
 
-      const unit = document.createElement('span');
-      unit.className = 'channel-unit';
-      unit.textContent = channel.unit ?? '—';
-      row.append(identity, unit);
+      const value = document.createElement('span');
+      value.className = 'channel-unit';
+      value.textContent = currentValues.get(channel.id) ?? channel.unit ?? '—';
+      row.append(identity, value);
+      row.addEventListener('click', () => {
+        selectedChannelId = channel.id;
+        renderChannels();
+        selectionListener?.(channel.id);
+      });
       channelList.append(row);
     }
 
@@ -115,6 +129,8 @@ export function createInspectorPanel(): InspectorPanelController {
 
   const setChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void => {
     channels = nextChannels;
+    selectedChannelId = undefined;
+    currentValues.clear();
     panelState.textContent = sourceName;
     search.disabled = false;
     groupSelect.disabled = false;
@@ -135,6 +151,8 @@ export function createInspectorPanel(): InspectorPanelController {
 
   const setError = (message: string): void => {
     channels = [];
+    selectedChannelId = undefined;
+    currentValues.clear();
     panelState.textContent = 'Import failed';
     search.disabled = true;
     groupSelect.disabled = true;
@@ -147,6 +165,16 @@ export function createInspectorPanel(): InspectorPanelController {
     channelCount.textContent = '0 channels';
   };
 
+  const setSelectedChannel = (channelId: string | undefined): void => {
+    selectedChannelId = channelId;
+    renderChannels();
+  };
+
+  const setSelectedValue = (channelId: string, value: string): void => {
+    currentValues.set(channelId, value);
+    if (channelId === selectedChannelId) renderChannels();
+  };
+
   renderChannels();
 
   return {
@@ -155,5 +183,8 @@ export function createInspectorPanel(): InspectorPanelController {
     isVisible: () => visible,
     setChannels,
     setError,
+    onChannelSelected: (listener) => { selectionListener = listener; },
+    setSelectedChannel,
+    setSelectedValue,
   };
 }
