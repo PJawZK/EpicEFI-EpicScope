@@ -4,7 +4,10 @@ import type {
   NumericChannelDataSource,
   NumericChannelRange,
 } from '../../../../core/log-model/log-types';
-import { buildViewportEnvelope } from '../../../../core/timeline/viewport-series';
+import {
+  buildViewportEnvelope,
+  type ViewportEnvelopeColumn,
+} from '../../../../core/timeline/viewport-series';
 
 export interface GraphViewportController {
   readonly element: HTMLElement;
@@ -18,9 +21,34 @@ export interface GraphViewportController {
   clear(): void;
 }
 
+interface RawRepresentativePoint {
+  readonly timeMs: number;
+  readonly value: number;
+}
+
 function formatValue(value: number, precision = 2): string {
   if (!Number.isFinite(value)) return '—';
   return value.toFixed(Math.min(6, Math.max(0, precision)));
+}
+
+function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRepresentativePoint[] {
+  const candidates: RawRepresentativePoint[] = [
+    { timeMs: column.firstTimeMs, value: column.first },
+    { timeMs: column.minTimeMs, value: column.min },
+    { timeMs: column.maxTimeMs, value: column.max },
+    { timeMs: column.lastTimeMs, value: column.last },
+  ];
+  candidates.sort((left, right) => left.timeMs - right.timeMs);
+
+  const result: RawRepresentativePoint[] = [];
+  for (const candidate of candidates) {
+    const previous = result[result.length - 1];
+    if (previous && previous.timeMs === candidate.timeMs && previous.value === candidate.value) {
+      continue;
+    }
+    result.push(candidate);
+  }
+  return result;
 }
 
 export function createGraphViewport(): GraphViewportController {
@@ -114,11 +142,12 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     if (!selectedRange || !timeRange || !selectedChannel) return;
+    const viewportTimeRange = timeRange;
 
     const envelope = buildViewportEnvelope(
       selectedRange,
-      timeRange.startMs,
-      timeRange.endMs,
+      viewportTimeRange.startMs,
+      viewportTimeRange.endMs,
       Math.max(1, Math.floor(plotWidth)),
     );
     const rawSpan = envelope.valueMax - envelope.valueMin;
@@ -134,39 +163,41 @@ export function createGraphViewport(): GraphViewportController {
       const normalized = (value - axisMin) / axisSpan;
       return inset + plotHeight - normalized * plotHeight;
     };
+    const duration = Math.max(1e-9, viewportTimeRange.durationMs);
+    const xForTime = (timeMs: number): number => (
+      inset + ((timeMs - viewportTimeRange.startMs) / duration) * plotWidth
+    );
 
-    context.strokeStyle = 'rgba(66, 165, 245, 0.18)';
-    context.lineWidth = 1;
-    for (const column of envelope.columns) {
-      const x = inset + column.x + 0.5;
-      context.beginPath();
-      context.moveTo(x, yForValue(column.min));
-      context.lineTo(x, yForValue(column.max));
-      context.stroke();
-    }
-
+    // Raw-preserving downsample: each horizontal pixel bucket contributes only
+    // its first, min, max and last valid source samples, in chronological order.
+    // This caps rendering work to ~4 points per CSS pixel without averaging away
+    // short spikes, dropouts or conditional-channel transitions.
     context.strokeStyle = '#42a5f5';
-    context.lineWidth = 1.35;
-    context.lineJoin = 'round';
-    context.lineCap = 'round';
+    context.lineWidth = 1.15;
+    context.lineJoin = 'miter';
+    context.lineCap = 'butt';
     context.beginPath();
-    let previousX: number | undefined;
+    let previousBucketX: number | undefined;
     let hasTrace = false;
+
     for (const column of envelope.columns) {
-      const x = inset + column.x + 0.5;
-      const y = yForValue(column.mean);
-      if (previousX === undefined || x - previousX > 2.5) {
-        context.moveTo(x, y);
-      } else {
-        context.lineTo(x, y);
+      const points = rawRepresentativePoints(column);
+      if (points.length === 0) continue;
+      const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
+      for (let index = 0; index < points.length; index += 1) {
+        const point = points[index];
+        if (!point) continue;
+        const x = xForTime(point.timeMs);
+        const y = yForValue(point.value);
+        if (breakBeforeBucket && index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+        hasTrace = true;
       }
-      previousX = x;
-      hasTrace = true;
+      previousBucketX = column.x;
     }
     if (hasTrace) context.stroke();
 
-    const duration = Math.max(1e-9, timeRange.durationMs);
-    const cursorX = inset + ((cursorTimeMs - timeRange.startMs) / duration) * plotWidth;
+    const cursorX = xForTime(cursorTimeMs);
     context.strokeStyle = 'rgba(216, 237, 248, 0.92)';
     context.lineWidth = 1;
     context.beginPath();
