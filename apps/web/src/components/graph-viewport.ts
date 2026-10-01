@@ -142,11 +142,12 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     if (!selectedRange || !timeRange || !selectedChannel) return;
+    const viewportTimeRange = timeRange;
 
     const envelope = buildViewportEnvelope(
       selectedRange,
-      timeRange.startMs,
-      timeRange.endMs,
+      viewportTimeRange.startMs,
+      viewportTimeRange.endMs,
       Math.max(1, Math.floor(plotWidth)),
     );
     const rawSpan = envelope.valueMax - envelope.valueMin;
@@ -162,9 +163,9 @@ export function createGraphViewport(): GraphViewportController {
       const normalized = (value - axisMin) / axisSpan;
       return inset + plotHeight - normalized * plotHeight;
     };
-    const duration = Math.max(1e-9, timeRange.durationMs);
+    const duration = Math.max(1e-9, viewportTimeRange.durationMs);
     const xForTime = (timeMs: number): number => (
-      inset + ((timeMs - timeRange.startMs) / duration) * plotWidth
+      inset + ((timeMs - viewportTimeRange.startMs) / duration) * plotWidth
     );
 
     // Raw-preserving downsample: each horizontal pixel bucket contributes only
