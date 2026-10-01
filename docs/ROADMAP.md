@@ -41,30 +41,34 @@ Phase 0 does **not** require the EpicHub UI reference itself to be inspected. Th
 
 ## Phase 1 — Web log foundation
 
-Status: **Ready to begin**
+Status: **In progress**
 
 Purpose: create the smallest useful EpicScope Web application and prove the import/data/navigation path.
 
 Planned task groups:
 
-### WEB-REFERENCE
+### WEB-REFERENCE — Complete
 
-- inspect/identify the exact current EpicHub Logger/Analyzer layout/design reference;
-- capture only the relevant Logger/Analyzer interaction rules for EpicScope;
-- confirm right-side details/settings and timeline behavior against the source/reference rather than reconstructing from memory;
-- document any deliberate EpicScope deviations before implementation.
+Completed outcomes:
 
-Completion of `WEB-REFERENCE` is required before `WEB-BOOT` implements the reference layout.
+- exact `EpicHub-1.12.1_TabletLandscape.html` inspected;
+- current EpicHub Logger/Analyzer semantic UI authority inspected;
+- inherited interaction rules recorded in `docs/UI_REFERENCE.md`;
+- deliberate EpicScope deviations recorded;
+- no application implementation code introduced during the reference task.
+
+Approved EpicScope refinements include a dedicated EpicScope shell, consistent right-side controls/details on wide layouts, offline/imported-log focus initially, Trigger Logger deferral, and performance taking priority over exact visual reproduction.
 
 ### WEB-BOOT
 
+- define the concrete bootstrap task split and exact files first;
+- select minimal Web build/tooling stack under the dependency policy;
 - lightweight TypeScript project bootstrap;
 - Chromium/Brave-first development target;
-- application shell based on the approved EpicHub Logger/Analyzer interaction model;
+- application shell based on `docs/UI_REFERENCE.md`;
 - right-side details/settings panel convention;
-- minimal styling focused on readability and responsiveness.
-
-`WEB-BOOT` should not implement the reference layout before `WEB-REFERENCE` is complete.
+- minimal styling focused on readability and responsiveness;
+- no unnecessary framework or dependency introduced without justification.
 
 ### LOG-MLG
 
