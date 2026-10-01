@@ -170,6 +170,8 @@ Promotion requires validation evidence.
 
 Consistent file/module/analyzer/channel terminology will be maintained. Exact source channel names should be preserved where useful, especially TunerStudio/MegaLogViewer terminology.
 
+Default code naming rules are defined in `WORKFLOW.md`: kebab-case directories/files, PascalCase exported types/classes, camelCase functions/variables, and documented task/decision identifiers.
+
 Generic dumping-ground names such as `misc`, `stuff`, or `helpers2` are not acceptable architectural ownership.
 
 ## D-022 — Compatibility policy
@@ -190,6 +192,8 @@ Relevant established behaviours include a consistent right-side details/settings
 
 EpicScope may refine these behaviours as its analysis requirements mature.
 
+The exact current reference must be inspected/identified before Phase 1 shell implementation so the UI is not reconstructed from memory alone.
+
 ## D-024 — Handoff system
 
 **Status:** Approved
@@ -199,6 +203,72 @@ EpicScope uses a single continuously updated `docs/HANDOFF.md` file for chat con
 The handoff summarizes the latest valid project state and points to authoritative documents. It is not a transcript or duplicate architecture specification.
 
 A new chat should be able to continue from a short instruction such as: **“Read the EpicScope repository handoff and continue from there.”**
+
+## D-025 — Project-owner architecture approval
+
+**Status:** Approved
+
+Architectural changes require project-owner approval before implementation.
+
+Contributors, implementation agents, and future chats may propose changes but may not self-authorize structural deviation simply by editing architecture documents or the decision log.
+
+## D-026 — Parser/tune ownership
+
+**Status:** Approved
+
+Raw source-format decoding belongs under `core/parsers/`.
+
+MLG and CSV are log parsers. INI and MSQ decoding also belong under parser ownership when tune-awareness is implemented.
+
+`core/tune/` owns normalized firmware/tune/table semantics and relationships, not raw INI/MSQ syntax parsing.
+
+## D-027 — Session and persistence ownership
+
+**Status:** Approved
+
+`core/session/` is the approved home for non-UI session composition/orchestration.
+
+`core/persistence/` is the approved home for storage-independent serialization, schema versioning, migration, and persisted-artifact compatibility logic.
+
+Platform-specific storage remains behind application/platform adapters.
+
+## D-028 — Untrusted input policy
+
+**Status:** Approved
+
+Imported logs, tune files, session files, metadata, and shared artifacts are untrusted input.
+
+Parsers/importers must validate file-provided sizes, offsets, counts, strings, and similar fields before allowing them to drive allocation or execution behavior.
+
+Malformed input must not cause uncontrolled memory allocation or silently fabricated data.
+
+## D-029 — Extended local-first privacy
+
+**Status:** Approved
+
+Local-first privacy includes network behavior.
+
+Without explicit user action/consent, EpicScope must not transmit log contents, tune contents, filenames, derived values, or analysis results to remote services or analytics systems.
+
+Any future telemetry requires separate review and must not silently include tune/log content.
+
+## D-030 — Capability-driven boost analyzer
+
+**Status:** Approved
+
+The Boost Analyzer must not be architecturally limited to the user's current upper/lower chamber setup.
+
+It should support single-duty, dual-solenoid, upper/lower chamber, open-loop, and closed-loop arrangements where logged channels/context permit, while keeping the current upper/lower chamber system as an important first-class use case.
+
+## D-031 — Current file tree is deliberately incomplete
+
+**Status:** Approved
+
+`FILE_ARCHITECTURE.md` defines approved currently known implementation areas, not a speculative complete future tree.
+
+Linux, Android, sharing/backend, live-acquisition, or other new platform areas require explicit approval before their directories/layers are introduced.
+
+This does not permit deviation from the current map; it requires deliberate extension of the map first.
 
 ## Superseding decisions
 
