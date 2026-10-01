@@ -10,7 +10,9 @@ Architectural evolution is allowed. Silent deviation is not.
 
 ## Authoritative logical tree
 
-The structure below is the approved logical destination. Directories should be created physically only when their first legitimate task requires them; empty placeholder trees are discouraged.
+The structure below is the approved architecture for currently defined implementation areas. It is not a claim that all future Linux/Android directories can be predicted today.
+
+Directories should be created physically only when their first legitimate task requires them; empty placeholder trees are discouraged.
 
 ```text
 EpicEFI-EpicScope/
@@ -42,12 +44,18 @@ EpicEFI-EpicScope/
 ├── core/
 │   ├── log-model/
 │   ├── parsers/
+│   │   ├── mlg/
+│   │   ├── csv/
+│   │   ├── ini/
+│   │   └── msq/
 │   ├── channels/
 │   ├── timeline/
 │   ├── analysis/
 │   ├── events/
 │   ├── tune/
-│   └── compare/
+│   ├── compare/
+│   ├── session/
+│   └── persistence/
 │
 ├── analyzers/
 │   ├── boost/
@@ -73,7 +81,9 @@ EpicEFI-EpicScope/
 └── tools/
 ```
 
-This tree is a guideline with approval control, not permission to place code approximately where it seems convenient.
+Future Linux, Android, sharing/backend, live-acquisition, or other application areas require an explicit architecture decision before their directories are added.
+
+This tree is a controlled guideline with approval requirements, not permission to place code approximately where it seems convenient.
 
 ## Directory responsibilities
 
@@ -98,11 +108,22 @@ Not allowed:
 
 ### `core/log-model/`
 
-Normalized session/log/channel/sample model and contracts.
+Normalized session/log/channel/sample contracts that form the neutral boundary between importers and consumers.
+
+Parsers depend on these contracts to produce normalized data. Analysis and higher-level services depend on these contracts to consume normalized data.
 
 ### `core/parsers/`
 
-Source-format readers such as MLG and CSV. Format-specific logic stays here.
+Source-format decoders/importers.
+
+Initial approved parser ownership includes:
+
+- `mlg/` — MLG log decoding;
+- `csv/` — CSV log decoding;
+- `ini/` — INI source decoding needed for firmware/tune context;
+- `msq/` — MSQ source decoding needed for tune context.
+
+Parser modules own format-specific syntax/structure only. They produce approved normalized contracts and must not own analyzer semantics.
 
 ### `core/channels/`
 
@@ -122,11 +143,25 @@ Reusable event definitions and detection services.
 
 ### `core/tune/`
 
-Firmware/tune context, table representations, axis/cell mapping, and tune-aware correlations.
+Normalized firmware/tune context, table representations, axis/cell mapping, relationships between source settings and normalized tune structures, and tune-aware correlations.
+
+`core/tune/` must not become the raw INI/MSQ syntax parser. Raw source decoding stays in `core/parsers/ini/` and `core/parsers/msq/`.
 
 ### `core/compare/`
 
 Session/event alignment, deltas, and comparison primitives.
+
+### `core/session/`
+
+Session composition/orchestration concepts that do not belong to presentation: relationships between logs, events, tune context, annotations, comparisons, and analyzer state.
+
+This area must not become a second UI-state container.
+
+### `core/persistence/`
+
+Versioned serialization/deserialization, persistence contracts, migrations, and storage-independent persisted-artifact logic.
+
+Platform-specific storage APIs stay behind application/platform adapters. Persistence logic must not assume that all sessions are cloud-backed or browser-backed.
 
 ### `analyzers/*/`
 
@@ -152,7 +187,17 @@ Repository/development tooling that is not part of the shipped runtime applicati
 
 ## Dependency direction
 
-The normal dependency direction is:
+`core/log-model/` is a neutral contract boundary rather than merely the bottom of a simple linear stack.
+
+Conceptually:
+
+```text
+source formats
+     ↓
+  parsers ───────→ log-model contracts ←────── core/analyzers consumers
+```
+
+Higher-level application flow remains:
 
 ```text
 apps/web
@@ -161,8 +206,10 @@ analyzers
    ↓
 core services
    ↓
-log-model / parser contracts
+log-model contracts
 ```
+
+Parsers are allowed to depend on `log-model` contracts because they produce normalized data. Consumers depend on the same contracts because they read normalized data.
 
 Cross-cutting dependencies through `shared/` must remain small and justified.
 
@@ -171,6 +218,7 @@ Examples of prohibited coupling:
 - `core/parsers/` importing `apps/web/`;
 - `core/analysis/` depending on `analyzers/boost/`;
 - `analyzers/idle/` reading MLG binary structures directly;
+- `core/tune/` duplicating raw MSQ/INI decoding;
 - UI components becoming the sole owner of calculations required by other analyzers.
 
 ## File creation rule
@@ -202,10 +250,11 @@ If an implementation does not fit cleanly, stop at the design level and review t
 
 Approved architecture changes require:
 
-1. an entry in `docs/DECISIONS.md`;
-2. an update to this file;
-3. an update to `docs/ARCHITECTURE.md` if system boundaries change;
-4. roadmap/task adjustments where affected.
+1. project-owner approval;
+2. an entry in `docs/DECISIONS.md`;
+3. an update to this file;
+4. an update to `docs/ARCHITECTURE.md` if system boundaries change;
+5. roadmap/task adjustments where affected.
 
 ### FILE-ARCH-005 — No uncontrolled utility growth
 
@@ -240,4 +289,4 @@ The exact file names can evolve during implementation, but architectural ownersh
 
 Do not populate the repository with empty placeholder directories merely to mirror the logical tree. Create directories when their first approved task lands.
 
-The documented tree remains authoritative even when parts do not yet exist physically.
+The documented structure remains authoritative for currently approved areas even when parts do not yet exist physically.
