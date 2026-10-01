@@ -72,6 +72,22 @@ The initial planned specialized analyzer families are:
 
 Analyzer availability may evolve through explicit roadmap and architecture decisions.
 
+### Boost analyzer scope
+
+Boost analysis must be capability-driven rather than tied to one wastegate plumbing strategy.
+
+The analyzer should be able to support, where channels/context permit:
+
+- single-solenoid / single-duty systems;
+- dual-solenoid systems;
+- upper/lower chamber control;
+- open-loop control;
+- closed-loop control;
+- target vs actual boost behavior;
+- spool, overshoot, undershoot, and steady-state behavior.
+
+The user's current upper/lower chamber setup is an important first-class use case, but must not define the analyzer so narrowly that other EpicEFI boost-control arrangements require a separate architecture.
+
 ## Analysis principles
 
 ### Evidence before recommendation
@@ -137,7 +153,9 @@ EpicScope should support:
 
 Opening and analyzing a local log must not require upload.
 
-Any future sharing/publishing function must be explicit and separate from normal analysis.
+Local-first also means EpicScope must not silently transmit log contents, tune contents, filenames, derived values, or analysis results as telemetry/analytics.
+
+Any future sharing, publishing, or telemetry function must be explicit, separately reviewed, and clearly distinguished from ordinary local analysis.
 
 ## Feature maturity
 
