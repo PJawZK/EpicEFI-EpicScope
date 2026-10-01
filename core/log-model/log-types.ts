@@ -29,6 +29,23 @@ export interface ChannelDefinition {
   readonly precision?: number;
 }
 
+export interface NumericChannelRange {
+  readonly startSampleIndex: number;
+  readonly timeMs: Float64Array;
+  readonly values: Float64Array;
+  /** 1 = valid source record, 0 = invalid/corrupt source record. */
+  readonly validity: Uint8Array;
+}
+
+export interface NumericChannelDataSource {
+  readonly sampleCount: number;
+  readChannelRange(
+    channelId: string,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): Promise<NumericChannelRange>;
+}
+
 export interface LogMarker {
   readonly timeMs: number;
   readonly label: string;
