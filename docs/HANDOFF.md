@@ -14,11 +14,15 @@
 
 ## Current objective
 
-Complete the repository foundation before application code is introduced, then begin Phase 1 Web implementation from the approved architecture and roadmap.
+Complete the final foundation checks before application code is introduced, then define the first Phase 1 Web task batch from the approved architecture and roadmap.
 
 ## Latest completed work
 
-The repository has been initialized and populated with the first authoritative project documents:
+The repository was initialized with the foundation documents and then audited for contradictions, ambiguous ownership, missing authority boundaries, and roadmap/file-architecture mismatches.
+
+The audit fixes have been applied to the authoritative documents.
+
+Current foundation documents:
 
 - `README.md`
 - `LICENSE`
@@ -51,13 +55,20 @@ Key current decisions include:
 - Performance and low RAM outrank visual polish.
 - Source formats normalize into a common internal data model.
 - File architecture is controlled; silent structural deviation is prohibited.
-- Architecture changes require explicit review and decision logging.
+- Architecture changes require project-owner approval plus explicit decision logging before implementation.
 - `main` is authoritative; normal implementation should use short-lived branches and PR review.
 - Apache License 2.0.
 - Local analysis remains local unless sharing/upload is explicitly chosen.
+- Local-first privacy also prohibits silent transmission of log/tune/analysis content through telemetry/analytics.
+- All imported files/artifacts are treated as untrusted input.
 - Major features use Experimental / Beta / Stable maturity states.
 - Persisted/public schema compatibility must be versioned/migrated rather than silently broken.
 - EpicHub Logger/Analyzer interaction concepts are the starting UI authority, not the entire EpicHub application.
+- The exact current EpicHub Logger/Analyzer reference must be inspected before implementing the EpicScope Web shell.
+- Raw MLG/CSV/INI/MSQ decoding belongs to `core/parsers/`; normalized tune semantics belong to `core/tune/`.
+- `core/session/` and `core/persistence/` are approved ownership areas for future session composition and persistence/migration logic.
+- The Boost Analyzer is capability-driven and must support more than the current upper/lower chamber arrangement where data permits.
+- The currently documented file tree is authoritative for approved areas but deliberately does not invent future Linux/Android/backend trees; those require explicit extension decisions.
 
 ## Architecture authority
 
@@ -77,30 +88,44 @@ Read these before significant implementation:
 
 No application code has been added yet.
 
-This is intentional. The project is still at the controlled foundation/specification stage.
+This remains intentional. The repository is still at the controlled foundation/specification stage.
+
+## Foundation audit result
+
+The initial audit found no fundamental architectural contradiction.
+
+The following issues were corrected:
+
+- naming conventions were made explicit;
+- project-owner approval authority was made explicit;
+- MLG/CSV/INI/MSQ parser ownership was separated from normalized tune ownership;
+- session and persistence ownership were added to the approved architecture;
+- `log-model` was clarified as a neutral contract boundary rather than a simplistic bottom-only dependency;
+- the file tree wording was corrected so future Linux/Android/backend architecture must be deliberately approved instead of either pre-guessed or silently improvised;
+- the exact EpicHub UI-reference inspection became a Phase 1 gate;
+- local-first privacy was expanded to network/telemetry behavior;
+- untrusted-input/resource-allocation rules were added;
+- Boost Analyzer scope was generalized beyond a single wastegate plumbing arrangement;
+- handoff SHA semantics were clarified so resumed chats always inspect current `main` rather than assuming the embedded validation SHA is the repository head.
 
 ## Current roadmap position
 
-`docs/ROADMAP.md` Phase 0 is substantially established.
+`docs/ROADMAP.md` Phase 0 is now close to completion.
 
-The next implementation phase is **Phase 1 — Web log foundation**, beginning with approved bootstrap and MLG data-path tasks.
+The next implementation phase is **Phase 1 — Web log foundation**.
+
+Before `WEB-BOOT`, Phase 1 now begins with `WEB-REFERENCE`: inspect/identify the exact EpicHub Logger/Analyzer reference and capture only the relevant interaction rules for EpicScope.
 
 ## Next recommended actions
 
 Before writing feature code:
 
-1. Review the foundation documents together for contradictions or missing rules.
-2. Define the first concrete Phase 1 task split and exact approved file locations.
-3. Decide the minimal Web build/tooling stack while respecting the lightweight-TypeScript and dependency policies.
-4. Create the first short-lived implementation branch rather than developing normal feature work directly on `main`.
-5. Bootstrap only the files/directories needed for those approved first tasks.
-
-A likely first task group is:
-
-- Web project bootstrap/application shell.
-- MLG format investigation/parser contract.
-- Normalized log/channel/time contracts.
-- Small curated MLG test fixture strategy.
+1. perform one final post-audit consistency check of the updated foundation documents;
+2. inspect/identify the exact EpicHub Logger/Analyzer UI reference (`WEB-REFERENCE`);
+3. define the first concrete Phase 1 task split and exact approved file locations;
+4. decide the minimal Web build/tooling stack under the lightweight-TypeScript/dependency rules;
+5. create the first short-lived implementation branch;
+6. bootstrap only the files/directories required by those approved tasks.
 
 Do not create all documented future directories as empty placeholders.
 
@@ -112,12 +137,15 @@ Do not create all documented future directories as empty placeholders.
 - Exact EpicHub Logger/Analyzer layout source/reference has not yet been imported or inspected for EpicScope implementation.
 - Branch protection/ruleset enforcement has not yet been configured; workflow policy is currently documented authority.
 - Final Linux UI toolkit/runtime architecture is intentionally deferred until Web functionality matures.
+- Future share/backend architecture has not been approved and must not be introduced incidentally.
 
-## Latest validated foundation commit before this handoff update
+## Repository state validated before this handoff update
 
-`14b5848f4aa71c7286c27130c552f5e0ee4514f5`
+`81b7ed9f0ce8ca49f1cbfabf99f82176e956c9de`
 
-This commit contains the initial decision log and all preceding foundation documents. The commit that adds/updates this handoff will naturally be newer.
+This is the repository state after the foundation-audit decision updates and before this handoff-file update.
+
+Because a file cannot reliably contain the SHA of the commit that writes itself, this SHA is not presented as the final repository head. A resumed chat must inspect current `main` first.
 
 ## Continuation instruction
 
@@ -125,4 +153,4 @@ In a new chat, the user should be able to say:
 
 > Read the EpicScope repository handoff and continue from there.
 
-The new chat must read this file first, then inspect the referenced authoritative repository files/current branch state before making changes. Do not reconstruct current architecture from old chat history when newer repository authority exists.
+The new chat must read this file first, then inspect current `main` and the referenced authoritative repository files before making changes. Do not reconstruct current architecture from old chat history when newer repository authority exists.
