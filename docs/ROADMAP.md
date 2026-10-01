@@ -26,19 +26,30 @@ Goals:
 - establish performance/platform requirements;
 - establish repository workflow and handoff system;
 - establish initial decisions and roadmap;
+- establish naming, approval, input-security, and privacy/network rules;
 - keep repository code-free until these authorities exist.
 
 Exit criteria:
 
 - all foundation documents exist and agree;
+- approval authority and naming rules are explicit;
+- parser/tune/session/persistence ownership is unambiguous;
 - initial task/branch workflow is documented;
-- first Web implementation tasks have approved architectural homes.
+- first Web implementation tasks have approved architectural homes;
+- the exact EpicHub Logger/Analyzer reference to be used for EpicScope Web has been identified/inspected before shell implementation begins.
 
 ## Phase 1 — Web log foundation
 
 Purpose: create the smallest useful EpicScope Web application and prove the import/data/navigation path.
 
 Planned task groups:
+
+### WEB-REFERENCE
+
+- inspect/identify the exact current EpicHub Logger/Analyzer layout/design reference;
+- capture only the relevant Logger/Analyzer interaction rules for EpicScope;
+- confirm right-side details/settings and timeline behavior against the source/reference rather than reconstructing from memory;
+- document any deliberate EpicScope deviations before implementation.
 
 ### WEB-BOOT
 
@@ -48,19 +59,23 @@ Planned task groups:
 - right-side details/settings panel convention;
 - minimal styling focused on readability and responsiveness.
 
+`WEB-BOOT` should not implement the reference layout before `WEB-REFERENCE` is complete.
+
 ### LOG-MLG
 
 - MLG format investigation/specification;
-- parser implementation;
+- parser implementation under `core/parsers/mlg/`;
 - metadata/channel discovery;
 - normalized channel/time model;
-- error handling for malformed/unsupported content;
+- error handling for malformed/unsupported/untrusted content;
+- bounded validation of file-provided sizes/counts/offsets;
 - curated small MLG fixtures.
 
 ### LOG-CSV
 
 - CSV import after MLG path is established;
-- normalization through the same log model.
+- normalization through the same log model;
+- malformed/untrusted-input handling equivalent in principle to MLG.
 
 ### TIMELINE
 
@@ -77,7 +92,8 @@ Exit criteria:
 - local MLG opens without upload;
 - channels can be inspected and graphed;
 - timeline navigation is usable for real tuning logs;
-- parser/UI boundaries conform to architecture.
+- parser/UI boundaries conform to architecture;
+- invalid input does not cause unbounded allocation or whole-app failure where graceful handling is possible.
 
 ## Phase 2 — Generic analysis toolkit
 
@@ -130,13 +146,14 @@ Task groups:
 
 ### TUNE-INI
 
-- EpicEFI/TunerStudio INI context import/interpretation as required;
+- EpicEFI/TunerStudio INI source decoding under `core/parsers/ini/` as required;
+- normalization into `core/tune/` firmware/tune context;
 - firmware identity and channel/table metadata.
 
 ### TUNE-MSQ
 
-- MSQ tune import;
-- normalized tune/table model;
+- MSQ source decoding under `core/parsers/msq/`;
+- normalized tune/table model under `core/tune/`;
 - compatibility/validation reporting.
 
 ### TABLE-MAP
@@ -147,7 +164,7 @@ Task groups:
 
 Exit criteria:
 
-- supported logs can be correlated with supported tune tables without UI-specific interpretation.
+- supported logs can be correlated with supported tune tables without UI-specific or source-format-specific interpretation leaking into analyzers.
 
 ## Phase 4 — Specialized analyzers
 
@@ -157,7 +174,13 @@ Initial analyzer tracks:
 
 ### BOOST
 
-- upper/lower wastegate duty analysis;
+Capability-driven boost analysis supporting, where available:
+
+- single duty/solenoid systems;
+- dual-solenoid systems;
+- upper/lower chamber control;
+- open-loop control;
+- closed-loop control;
 - target vs MAP error;
 - spool/steady-state segmentation;
 - overshoot/undershoot detection;
@@ -204,12 +227,17 @@ Each analyzer begins as **Experimental**, advances to **Beta**, then **Stable** 
 
 ## Phase 5 — Sessions, sharing, and reporting
 
+- establish `core/session/` orchestration as required;
+- establish `core/persistence/` schema/version/migration logic as required;
 - persist local session/workspace state;
 - annotations/bookmarks;
 - analysis snapshots/results;
 - optional publish/share flow inspired by EpicEFI Tune Viewer;
 - explicit local-vs-shared privacy boundary;
+- no silent transmission of log/tune/analysis content;
 - schema/version/migration support.
+
+Any backend/share service architecture must be approved before a new top-level service/backend area is created.
 
 ## Phase 6 — Web functional maturity review
 
@@ -229,6 +257,7 @@ Primary target: Debian 13 Stable.
 
 Goals:
 
+- approve the Linux application/runtime file architecture before implementation;
 - native high-performance data path;
 - low RAM;
 - large-log indexing;
@@ -253,6 +282,7 @@ After core production performance is stable:
 ## Phase 9 — Android / EpicHub integration
 
 - identify reusable core components;
+- approve Android/EpicHub integration architecture before adding platform directories;
 - adapt proven analyzer workflows to EpicHub;
 - design tablet/mobile presentation separately where needed;
 - avoid importing Linux desktop assumptions unchanged.
