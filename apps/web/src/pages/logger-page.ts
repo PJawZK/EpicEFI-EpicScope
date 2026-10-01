@@ -5,10 +5,12 @@ import type {
   ParserDiagnosticSeverity,
 } from '../../../../core/log-model/log-types';
 import {
+  centerViewportOn,
   createFullViewport,
   fitViewport,
   followCursor,
   panViewport,
+  resizeViewport,
   viewportEquals,
   zoomViewport,
   type TimelineViewport,
@@ -255,13 +257,29 @@ export function createLoggerPage(): LoggerPageController {
     graph.setViewport(nextViewport);
   };
 
+  const setCursorWithoutFollow = (timeMs: number): void => {
+    previousCursorTimeMs = timeMs;
+    timeline.setCursorTime(timeMs);
+    graph.setCursorTime(timeMs);
+  };
+
+  const centerCursorInViewport = (targetViewport: TimelineViewport): void => {
+    setCursorWithoutFollow((targetViewport.visibleStartMs + targetViewport.visibleEndMs) / 2);
+  };
+
   const applyViewportIntent = (intent: TimelineViewportIntent): void => {
     if (!viewport) return;
     let next = viewport;
     if (intent.type === 'fit') next = fitViewport(viewport);
-    if (intent.type === 'zoom') next = zoomViewport(viewport, intent.factor, intent.anchorMs);
+    if (intent.type === 'zoom') {
+      next = zoomViewport(viewport, intent.factor, intent.anchorMs);
+      if (intent.centerCursor) next = centerViewportOn(next, intent.anchorMs);
+    }
     if (intent.type === 'pan') next = panViewport(viewport, intent.deltaMs);
+    if (intent.type === 'resize') next = resizeViewport(viewport, intent.edge, intent.edgeTimeMs);
+
     if (!viewportEquals(viewport, next)) syncViewport(next);
+    if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
 
   inspector.onChannelSelected((channelId) => {
