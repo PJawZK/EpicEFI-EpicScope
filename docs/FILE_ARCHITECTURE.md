@@ -23,6 +23,7 @@ EpicEFI-EpicScope/
 │   ├── ARCHITECTURE.md
 │   ├── FILE_ARCHITECTURE.md
 │   ├── DATA_MODEL.md
+│   ├── UI_REFERENCE.md
 │   ├── PERFORMANCE.md
 │   ├── PLATFORMS.md
 │   ├── ROADMAP.md
@@ -84,6 +85,21 @@ EpicEFI-EpicScope/
 Future Linux, Android, sharing/backend, live-acquisition, or other application areas require an explicit architecture decision before their directories are added.
 
 This tree is a controlled guideline with approval requirements, not permission to place code approximately where it seems convenient.
+
+## Documentation responsibilities
+
+### `docs/UI_REFERENCE.md`
+
+Authoritative EpicScope interpretation of the approved EpicHub Logger/Analyzer interaction/layout reference.
+
+It records:
+
+- which EpicHub Logger/Analyzer concepts EpicScope inherits;
+- which unrelated EpicHub application concepts are excluded;
+- deliberate EpicScope UI deviations;
+- reference behavior that implementation must preserve unless explicitly superseded.
+
+It is a product/presentation contract, not permission to copy prototype implementation machinery into production code.
 
 ## Directory responsibilities
 
