@@ -2,8 +2,10 @@ import type {
   ImportedLogSummary,
   LogSourceIdentity,
   LogTimeRange,
+  NumericChannelDataSource,
 } from '../../log-model/log-types';
 import type { RandomAccessByteSource } from '../byte-source';
+import { MlgNumericChannelDataSource } from './mlg-channel-data';
 import type { MlgFieldDescriptor, MlgHeader } from './mlg-format';
 import { parseMlgHeader } from './mlg-header';
 import { scanMlgRecords, type MlgRecordIndex } from './mlg-records';
@@ -13,6 +15,7 @@ export interface ParsedMlgLog {
   readonly header: MlgHeader;
   readonly fields: readonly MlgFieldDescriptor[];
   readonly recordIndex: MlgRecordIndex;
+  readonly channelData: NumericChannelDataSource;
 }
 
 function buildTimeRange(timeMs: Float64Array): LogTimeRange | undefined {
@@ -35,6 +38,11 @@ export async function parseMlg(
   const headerResult = await parseMlgHeader(source);
   const scanResult = await scanMlgRecords(source, headerResult.header);
   const timeRange = buildTimeRange(scanResult.records.timeMs);
+  const channelData = new MlgNumericChannelDataSource(
+    source,
+    headerResult.fields,
+    scanResult.records,
+  );
 
   return {
     summary: {
@@ -47,5 +55,6 @@ export async function parseMlg(
     header: headerResult.header,
     fields: headerResult.fields,
     recordIndex: scanResult.records,
+    channelData,
   };
 }
