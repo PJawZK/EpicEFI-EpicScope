@@ -129,39 +129,68 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 0 6px;
+  gap: 6px;
+  padding: 0 7px 0 5px;
   border-color: #2a4152;
   background: #0b1821;
 }
 
 .parser-indicator-light {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  clip-path: polygon(50% 0, 94% 24%, 94% 76%, 50% 100%, 6% 76%, 6% 24%);
   background: #35d07f;
-  box-shadow: 0 0 0 2px rgba(53, 208, 127, .12);
+  color: #07130d;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255,255,255,.2);
+  filter: drop-shadow(0 0 3px rgba(53, 208, 127, .24));
+}
+
+.parser-indicator-light::before {
+  content: "!";
+  transform: translateY(-.5px);
+}
+
+.parser-indicator--good .parser-indicator-light::before {
+  content: "✓";
+  font-size: 10px;
 }
 
 .parser-indicator-count {
-  color: #9fb0bc;
+  color: #aebdc7;
   font-size: 8px;
+  font-weight: 750;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.parser-indicator-count::after {
+  content: " diagnostics";
+  color: #8195a2;
+  font-weight: 600;
 }
 
 .parser-indicator--info .parser-indicator-light {
   background: #58aef6;
-  box-shadow: 0 0 0 2px rgba(88, 174, 246, .13);
+  color: #06121c;
+  filter: drop-shadow(0 0 3px rgba(88, 174, 246, .28));
 }
 
 .parser-indicator--warning .parser-indicator-light {
   background: #f1c84b;
-  box-shadow: 0 0 0 2px rgba(241, 200, 75, .13);
+  color: #1b1503;
+  filter: drop-shadow(0 0 4px rgba(241, 200, 75, .32));
 }
 
 .parser-indicator--error .parser-indicator-light {
   background: #ff4d59;
-  box-shadow: 0 0 0 2px rgba(255, 77, 89, .13);
+  color: #210407;
+  filter: drop-shadow(0 0 4px rgba(255, 77, 89, .34));
 }
 
 .parser-diagnostic-popover {
@@ -303,13 +332,16 @@
 .edge-toggle--timeline {
   left: 50%;
   top: 0;
-  min-width: 84px;
-  height: 19px;
-  padding: 0 9px;
-  transform: translate(-50%, -100%);
+  width: 70px;
+  min-width: 70px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0 5px;
+  transform: translate(-50%, -50%);
   border: 0;
   border-top: 1px solid #263746;
   border-radius: 7px 7px 0 0;
+  line-height: 17px;
 }
 
 .graph-workspace {
