@@ -23,6 +23,10 @@ EpicEFI-EpicScope/
 ├── package-lock.json           # generated/committed by WEB-BOOT
 ├── tsconfig.json               # created by WEB-BOOT
 ├── vite.config.ts              # created by WEB-BOOT
+├── .github/
+│   └── workflows/
+│       ├── web-ci.yml          # Web validation
+│       └── pages.yml           # main → GitHub Pages
 ├── docs/
 │   ├── PRODUCT.md
 │   ├── ARCHITECTURE.md
@@ -99,6 +103,18 @@ EpicEFI-EpicScope/
 Future Linux, Android, sharing/backend, live-acquisition, or other application areas require an explicit architecture decision before their directories are added.
 
 This tree is a controlled guideline with approval requirements, not permission to place code approximately where it seems convenient.
+
+## GitHub workflow responsibilities
+
+### `.github/workflows/web-ci.yml`
+
+Authoritative Web branch/PR validation. It installs from the committed lockfile, type-checks, and performs the production Vite build. It must not deploy production Pages or become a source-code mutation mechanism.
+
+### `.github/workflows/pages.yml`
+
+Authoritative `main` → GitHub Pages build/deployment workflow. It builds the same Web application and deploys `dist/web` through GitHub Pages actions. Hosting must not weaken local-first privacy or imply a backend/upload path.
+
+Temporary bootstrap workflows are allowed only for a narrowly defined repository-establishment task and must be removed before merge.
 
 ## Documentation responsibilities
 
