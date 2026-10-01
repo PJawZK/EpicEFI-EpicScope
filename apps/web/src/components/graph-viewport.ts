@@ -23,6 +23,27 @@ function formatValue(value: number, precision = 2): string {
   return value.toFixed(Math.min(6, Math.max(0, precision)));
 }
 
+function formatAxisValue(value: number, span: number, preferredPrecision = 2): string {
+  if (!Number.isFinite(value)) return '—';
+  if (Math.abs(span) >= 100) return value.toFixed(0);
+  if (Math.abs(span) >= 10) return value.toFixed(Math.min(1, preferredPrecision));
+  return value.toFixed(Math.min(3, Math.max(1, preferredPrecision)));
+}
+
+function formatTimeLabel(timeMs: number): string {
+  const safe = Math.max(0, timeMs);
+  const minutes = Math.floor(safe / 60_000);
+  const seconds = Math.floor((safe % 60_000) / 1_000);
+  const milliseconds = Math.floor(safe % 1_000);
+  if (minutes > 0) {
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+  if (safe >= 10_000) {
+    return `${seconds}s`;
+  }
+  return `${seconds}.${Math.floor(milliseconds / 100)}s`;
+}
+
 export function createGraphViewport(): GraphViewportController {
   let channels: readonly ChannelDefinition[] = [];
   let channelData: NumericChannelDataSource | undefined;
@@ -42,6 +63,7 @@ export function createGraphViewport(): GraphViewportController {
     <div class="graph-readout" hidden>
       <strong class="graph-readout-name"></strong>
       <span class="graph-readout-value"></span>
+      <small class="graph-readout-meta"></small>
     </div>
   `;
 
@@ -52,7 +74,17 @@ export function createGraphViewport(): GraphViewportController {
   const readout = root.querySelector<HTMLElement>('.graph-readout');
   const readoutName = root.querySelector<HTMLElement>('.graph-readout-name');
   const readoutValue = root.querySelector<HTMLElement>('.graph-readout-value');
-  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !readout || !readoutName || !readoutValue) {
+  const readoutMeta = root.querySelector<HTMLElement>('.graph-readout-meta');
+  if (
+    !canvas
+    || !overlay
+    || !overlayTitle
+    || !overlayDetail
+    || !readout
+    || !readoutName
+    || !readoutValue
+    || !readoutMeta
+  ) {
     throw new Error('Graph viewport structure is incomplete.');
   }
 
@@ -92,46 +124,123 @@ export function createGraphViewport(): GraphViewportController {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    context.strokeStyle = 'rgba(89, 129, 151, 0.18)';
+    const left = Math.min(64, Math.max(44, width * 0.06));
+    const right = 12;
+    const top = 18;
+    const bottom = 30;
+    const plotWidth = Math.max(1, width - left - right);
+    const plotHeight = Math.max(1, height - top - bottom);
+
+    context.font = '11px system-ui, sans-serif';
+    context.textBaseline = 'middle';
     context.lineWidth = 1;
-    for (let i = 1; i < 5; i += 1) {
-      const y = (height * i) / 5;
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(width, y);
-      context.stroke();
+
+    if (!selectedRange || !timeRange || !selectedChannel) {
+      context.strokeStyle = 'rgba(89, 129, 151, 0.18)';
+      for (let i = 0; i <= 4; i += 1) {
+        const y = top + (plotHeight * i) / 4;
+        context.beginPath();
+        context.moveTo(left, y + 0.5);
+        context.lineTo(width - right, y + 0.5);
+        context.stroke();
+      }
+      return;
     }
 
-    if (!selectedRange || !timeRange || !selectedChannel) return;
-    const envelope = buildViewportEnvelope(selectedRange, timeRange.startMs, timeRange.endMs, width);
-    const span = envelope.valueMax - envelope.valueMin || 1;
+    const envelope = buildViewportEnvelope(selectedRange, timeRange.startMs, timeRange.endMs, Math.max(1, Math.floor(plotWidth)));
+    const rawSpan = envelope.valueMax - envelope.valueMin;
+    const padding = rawSpan > 0 ? rawSpan * 0.04 : Math.max(1, Math.abs(envelope.valueMax) * 0.04);
+    const axisMin = envelope.valueMin - padding;
+    const axisMax = envelope.valueMax + padding;
+    const axisSpan = Math.max(1e-9, axisMax - axisMin);
     const yForValue = (value: number): number => {
-      const normalized = (value - envelope.valueMin) / span;
-      return height - 12 - normalized * Math.max(1, height - 24);
+      const normalized = (value - axisMin) / axisSpan;
+      return top + plotHeight - normalized * plotHeight;
     };
 
-    context.strokeStyle = '#42a5f5';
+    context.strokeStyle = 'rgba(89, 129, 151, 0.22)';
+    context.fillStyle = 'rgba(180, 204, 218, 0.78)';
+    context.textAlign = 'right';
+    for (let i = 0; i <= 4; i += 1) {
+      const ratio = i / 4;
+      const y = top + plotHeight * ratio;
+      const value = axisMax - axisSpan * ratio;
+      context.beginPath();
+      context.moveTo(left, y + 0.5);
+      context.lineTo(width - right, y + 0.5);
+      context.stroke();
+      context.fillText(
+        formatAxisValue(value, axisSpan, selectedChannel.precision ?? 2),
+        left - 7,
+        y,
+      );
+    }
+
+    context.textAlign = 'center';
+    context.textBaseline = 'top';
+    for (let i = 0; i <= 4; i += 1) {
+      const ratio = i / 4;
+      const x = left + plotWidth * ratio;
+      const timeMs = timeRange.startMs + timeRange.durationMs * ratio;
+      context.strokeStyle = 'rgba(89, 129, 151, 0.12)';
+      context.beginPath();
+      context.moveTo(x + 0.5, top);
+      context.lineTo(x + 0.5, top + plotHeight);
+      context.stroke();
+      context.fillStyle = 'rgba(180, 204, 218, 0.72)';
+      context.fillText(formatTimeLabel(timeMs), x, top + plotHeight + 7);
+    }
+
+    if (selectedChannel.unit) {
+      context.textAlign = 'left';
+      context.textBaseline = 'top';
+      context.fillStyle = 'rgba(180, 204, 218, 0.72)';
+      context.fillText(selectedChannel.unit, 6, 4);
+    }
+
+    context.strokeStyle = 'rgba(66, 165, 245, 0.20)';
     context.lineWidth = 1;
     for (const column of envelope.columns) {
-      const x = column.x + 0.5;
+      const x = left + column.x + 0.5;
       context.beginPath();
       context.moveTo(x, yForValue(column.min));
       context.lineTo(x, yForValue(column.max));
       context.stroke();
     }
 
+    context.strokeStyle = '#42a5f5';
+    context.lineWidth = 1.35;
+    context.lineJoin = 'round';
+    context.lineCap = 'round';
+    context.beginPath();
+    let previousX: number | undefined;
+    let hasTrace = false;
+    for (const column of envelope.columns) {
+      const x = left + column.x + 0.5;
+      const y = yForValue(column.mean);
+      if (previousX === undefined || x - previousX > 2.5) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+      previousX = x;
+      hasTrace = true;
+    }
+    if (hasTrace) context.stroke();
+
     const duration = Math.max(1e-9, timeRange.durationMs);
-    const cursorX = ((cursorTimeMs - timeRange.startMs) / duration) * width;
-    context.strokeStyle = '#d8edf8';
+    const cursorX = left + ((cursorTimeMs - timeRange.startMs) / duration) * plotWidth;
+    context.strokeStyle = 'rgba(216, 237, 248, 0.92)';
     context.lineWidth = 1;
     context.beginPath();
-    context.moveTo(cursorX + 0.5, 0);
-    context.lineTo(cursorX + 0.5, height);
+    context.moveTo(cursorX + 0.5, top);
+    context.lineTo(cursorX + 0.5, top + plotHeight);
     context.stroke();
 
     const value = nearestValue();
     readoutName.textContent = selectedChannel.sourceName;
     readoutValue.textContent = `${formatValue(value ?? Number.NaN, selectedChannel.precision ?? 2)}${selectedChannel.unit ? ` ${selectedChannel.unit}` : ''}`;
+    readoutMeta.textContent = `${formatValue(envelope.valueMin, selectedChannel.precision ?? 2)}–${formatValue(envelope.valueMax, selectedChannel.precision ?? 2)}${selectedChannel.unit ? ` ${selectedChannel.unit}` : ''} · ${envelope.validSampleCount.toLocaleString()} valid${envelope.invalidSampleCount > 0 ? ` · ${envelope.invalidSampleCount.toLocaleString()} invalid skipped` : ''}`;
   };
 
   const resizeObserver = new ResizeObserver(draw);
