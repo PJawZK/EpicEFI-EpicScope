@@ -31,6 +31,28 @@ interface BucketState {
   lastTimeMs: number;
 }
 
+function lowerBound(values: Float64Array, target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if ((values[mid] ?? Number.POSITIVE_INFINITY) < target) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function upperBound(values: Float64Array, target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if ((values[mid] ?? Number.POSITIVE_INFINITY) <= target) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
 export function buildViewportEnvelope(
   range: NumericChannelRange,
   startMs: number,
@@ -51,13 +73,14 @@ export function buildViewportEnvelope(
   let validSampleCount = 0;
   let invalidSampleCount = 0;
 
-  for (let index = 0; index < range.values.length; index += 1) {
+  const startIndex = lowerBound(range.timeMs, startMs);
+  const endIndex = upperBound(range.timeMs, endMs);
+
+  for (let index = startIndex; index < endIndex; index += 1) {
     const timeMs = range.timeMs[index];
     const value = range.values[index];
     const valid = range.validity[index] === 1;
-    if (timeMs === undefined || value === undefined || timeMs < startMs || timeMs > endMs) {
-      continue;
-    }
+    if (timeMs === undefined || value === undefined) continue;
     if (!valid || !Number.isFinite(value)) {
       invalidSampleCount += 1;
       continue;

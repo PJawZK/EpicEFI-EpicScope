@@ -60,4 +60,18 @@ describe('buildViewportEnvelope', () => {
       lastTimeMs: 3,
     });
   });
+
+  it('counts and bins only samples inside the visible time range', () => {
+    const envelope = buildViewportEnvelope({
+      startSampleIndex: 0,
+      timeMs: new Float64Array([0, 10, 20, 30, 40, 50]),
+      values: new Float64Array([99, 1, 2, 3, 4, 99]),
+      validity: new Uint8Array([0, 1, 1, 1, 1, 0]),
+    }, 10, 40, 4);
+
+    expect(envelope.validSampleCount).toBe(4);
+    expect(envelope.invalidSampleCount).toBe(0);
+    expect(envelope.valueMin).toBe(1);
+    expect(envelope.valueMax).toBe(4);
+  });
 });
