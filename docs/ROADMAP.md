@@ -16,7 +16,7 @@ Large features should be split into reviewable tasks before coding.
 
 ## Phase 0 — Foundation
 
-Status: **In progress**
+Status: **Complete**
 
 Goals:
 
@@ -35,10 +35,13 @@ Exit criteria:
 - approval authority and naming rules are explicit;
 - parser/tune/session/persistence ownership is unambiguous;
 - initial task/branch workflow is documented;
-- first Web implementation tasks have approved architectural homes;
-- the exact EpicHub Logger/Analyzer reference to be used for EpicScope Web has been identified/inspected before shell implementation begins.
+- first Web implementation tasks have approved architectural homes.
+
+Phase 0 does **not** require the EpicHub UI reference itself to be inspected. That inspection is the first controlled task of Phase 1.
 
 ## Phase 1 — Web log foundation
+
+Status: **Ready to begin**
 
 Purpose: create the smallest useful EpicScope Web application and prove the import/data/navigation path.
 
@@ -50,6 +53,8 @@ Planned task groups:
 - capture only the relevant Logger/Analyzer interaction rules for EpicScope;
 - confirm right-side details/settings and timeline behavior against the source/reference rather than reconstructing from memory;
 - document any deliberate EpicScope deviations before implementation.
+
+Completion of `WEB-REFERENCE` is required before `WEB-BOOT` implements the reference layout.
 
 ### WEB-BOOT
 
@@ -229,7 +234,7 @@ Each analyzer begins as **Experimental**, advances to **Beta**, then **Stable** 
 
 - establish `core/session/` orchestration as required;
 - establish `core/persistence/` schema/version/migration logic as required;
-- persist local session/workspace state;
+- persist local session/workspace state with domain session and UI workspace state kept conceptually separate;
 - annotations/bookmarks;
 - analysis snapshots/results;
 - optional publish/share flow inspired by EpicEFI Tune Viewer;
