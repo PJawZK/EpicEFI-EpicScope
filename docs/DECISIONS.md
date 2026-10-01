@@ -305,6 +305,26 @@ Prototype demo/localStorage/JSON machinery is not production architecture. The 0
 
 Future changes to this UI reference require explicit review and a superseding decision where they alter these approved semantics.
 
+## D-034 — WEB-BOOT Web toolchain
+
+**Status:** Approved
+
+The initial EpicScope Web bootstrap uses:
+
+- npm with a committed lockfile;
+- Vite 8.x;
+- vanilla TypeScript 7.x;
+- browser-native HTML/CSS/DOM APIs;
+- Chromium/Brave as the primary development/smoke-test target.
+
+No frontend framework, graph/chart library, state-management framework, CSS framework, or general UI component library is approved as part of WEB-BOOT.
+
+TypeScript checking and Vite production-build validation are required bootstrap checks. A dedicated automated test framework is intentionally deferred until parser/core logic requires it, at which point the relevant task must review and document the choice before implementation.
+
+The Web-development Node.js requirement imposed by Vite is a build-tool requirement only and does not redefine the eventual Linux end-user platform baseline.
+
+`docs/WEB_BOOT_PLAN.md` is the detailed authority for the initial bootstrap task split and exact files.
+
 ## Superseding decisions
 
 A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.
