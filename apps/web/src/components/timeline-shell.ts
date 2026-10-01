@@ -2,6 +2,15 @@ export interface TimelineShellController {
   readonly element: HTMLElement;
   setExpanded(expanded: boolean): void;
   isExpanded(): boolean;
+  setDuration(durationMs: number | undefined, recordCount: number): void;
+}
+
+function formatDuration(durationMs: number): string {
+  const safe = Math.max(0, durationMs);
+  const minutes = Math.floor(safe / 60_000);
+  const seconds = Math.floor((safe % 60_000) / 1_000);
+  const milliseconds = Math.floor(safe % 1_000);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
 }
 
 export function createTimelineShell(): TimelineShellController {
@@ -44,10 +53,28 @@ export function createTimelineShell(): TimelineShellController {
     </div>
   `;
 
+  const overviewText = timeline.querySelector<HTMLElement>('.timeline-overview-empty');
+  const timelineTime = timeline.querySelector<HTMLElement>('.timeline-time');
+  if (!overviewText || !timelineTime) {
+    throw new Error('Timeline shell structure is incomplete.');
+  }
+
   const setExpanded = (next: boolean): void => {
     expanded = next;
     timeline.classList.toggle('timeline-shell--compact', !expanded);
     timeline.dataset.expanded = String(expanded);
+  };
+
+  const setDuration = (durationMs: number | undefined, recordCount: number): void => {
+    if (durationMs === undefined) {
+      overviewText.textContent = recordCount > 0
+        ? `${recordCount.toLocaleString()} records indexed; duration unavailable.`
+        : 'No logger records found in this log.';
+      timelineTime.textContent = '00:00.000 / 00:00.000';
+      return;
+    }
+    overviewText.textContent = `${recordCount.toLocaleString()} records indexed · graph overview follows in TIMELINE.`;
+    timelineTime.textContent = `00:00.000 / ${formatDuration(durationMs)}`;
   };
 
   setExpanded(true);
@@ -56,5 +83,6 @@ export function createTimelineShell(): TimelineShellController {
     element: timeline,
     setExpanded,
     isExpanded: () => expanded,
+    setDuration,
   };
 }
