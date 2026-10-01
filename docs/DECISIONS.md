@@ -68,13 +68,15 @@ Obviously wasteful data architecture is still prohibited. Final performance opti
 
 MLG is the first-class initial log format. CSV follows as the secondary import format.
 
-Future formats must normalize through the same internal data model.
+Future formats must normalize through approved internal models rather than leaking source-format semantics into analyzers or UI.
 
 ## D-009 — Normalized data authority
 
 **Status:** Approved
 
-Parsers normalize source data into common log/channel/time/session contracts before generic analysis or presentation.
+Parsers normalize source data into the appropriate common contracts before generic analysis or presentation.
+
+Log sources such as MLG/CSV normalize into log/channel/time contracts. Tune/configuration sources such as INI/MSQ normalize into tune/firmware contracts.
 
 Analyzers and UI must not become source-format parsers.
 
@@ -269,6 +271,16 @@ It should support single-duty, dual-solenoid, upper/lower chamber, open-loop, an
 Linux, Android, sharing/backend, live-acquisition, or other new platform areas require explicit approval before their directories/layers are introduced.
 
 This does not permit deviation from the current map; it requires deliberate extension of the map first.
+
+## D-032 — Domain session and workspace state are separate
+
+**Status:** Approved
+
+`Session` is the top-level domain analysis context and must not become a general UI-state container.
+
+Presentation/application workspace state may be persisted alongside a session artifact, but it remains conceptually separate so Web, Linux, and Android can use different workspace representations without changing core session semantics.
+
+`core/persistence/` may serialize both through a versioned persisted artifact while preserving that separation.
 
 ## Superseding decisions
 
