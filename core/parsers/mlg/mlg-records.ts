@@ -23,6 +23,9 @@ export interface MlgRecordIndex {
 export interface MlgRecordScanPerformance {
   readonly sourceReadMs: number;
   readonly checksumBytes: number;
+  readonly checksumCpuMs: number;
+  readonly diagnosticCpuMs: number;
+  readonly indexCpuMs: number;
 }
 
 export interface MlgRecordScanResult {
@@ -150,7 +153,12 @@ export async function scanMlgRecords(
   let standardRecordIndex = 0;
   let sourceReadMs = 0;
   let checksumBytes = 0;
+  let checksumSampleBytes = 0;
+  let checksumSampleMs = 0;
+  let diagnosticCpuMs = 0;
+  const CHECKSUM_SAMPLE_INTERVAL = 64;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
+  const scanCpuStart = now();
 
   // Parse many complete blocks synchronously from each source chunk. The old
   // scanner awaited two async reads per record even when both reads hit its
@@ -210,8 +218,10 @@ export async function scanMlgRecords(
         break;
       }
 
+      const diagnosticStart = now();
       const discontinuity = counterDiagnostic(previousCounter, counter, absoluteOffset + 1);
       if (discontinuity) diagnostics.push(discontinuity);
+      diagnosticCpuMs += now() - diagnosticStart;
       previousCounter = counter;
 
       const block = chunk.subarray(cursor, cursor + blockLength);
@@ -222,11 +232,20 @@ export async function scanMlgRecords(
           BLOCK_HEADER_LENGTH + header.recordLength,
         );
         checksumBytes += recordBytes.byteLength;
-        const expectedCrc = calculateRecordCrc(recordBytes);
+        let expectedCrc: number;
+        if (standardRecordIndex % CHECKSUM_SAMPLE_INTERVAL === 0) {
+          const checksumStart = now();
+          expectedCrc = calculateRecordCrc(recordBytes);
+          checksumSampleMs += now() - checksumStart;
+          checksumSampleBytes += recordBytes.byteLength;
+        } else {
+          expectedCrc = calculateRecordCrc(recordBytes);
+        }
         const actualCrc = block[blockLength - 1] ?? 0;
         const isCrcValid = expectedCrc === actualCrc;
 
         if (!isCrcValid) {
+          const diagnosticStart = now();
           const blockHeaderSum = calculateRecordCrc(block.subarray(0, BLOCK_HEADER_LENGTH));
           const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
           const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
@@ -237,6 +256,7 @@ export async function scanMlgRecords(
             recoverable: true,
             offset: absoluteOffset + blockLength - 1,
           });
+          diagnosticCpuMs += now() - diagnosticStart;
         }
 
         if (
@@ -273,6 +293,12 @@ export async function scanMlgRecords(
 
   }
 
+  const scanCpuElapsedMs = Math.max(0, now() - scanCpuStart - sourceReadMs);
+  const checksumCpuMs = checksumSampleBytes > 0
+    ? checksumSampleMs * (checksumBytes / checksumSampleBytes)
+    : 0;
+  const indexCpuMs = Math.max(0, scanCpuElapsedMs - checksumCpuMs - diagnosticCpuMs);
+
   return {
     records: {
       offsets: offsets.finish(),
@@ -285,6 +311,9 @@ export async function scanMlgRecords(
     performance: {
       sourceReadMs,
       checksumBytes,
+      checksumCpuMs,
+      diagnosticCpuMs,
+      indexCpuMs,
     },
   };
 }
