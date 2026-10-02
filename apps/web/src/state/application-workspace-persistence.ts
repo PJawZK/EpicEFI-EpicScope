@@ -46,6 +46,52 @@ export function toApplicationWorkspaceState(
 }
 
 
+export function migrateReusableChannelAssignmentsFromLog(
+  applicationWorkspace: WebWorkspaceState,
+  logWorkspace: WebWorkspaceState,
+  sourceToLogicalChannelId: ReadonlyMap<string, string>,
+): WebWorkspaceState {
+  const logWorkspacesById = new Map(
+    logWorkspace.logger.workspaces.map((workspace) => [workspace.id, workspace] as const),
+  );
+
+  return {
+    ...applicationWorkspace,
+    logger: {
+      ...applicationWorkspace.logger,
+      workspaces: applicationWorkspace.logger.workspaces.map((workspace) => {
+        const logSpecific = logWorkspacesById.get(workspace.id);
+        if (!logSpecific || !workspace.panes) return workspace;
+
+        const migratedPanes = workspace.panes.map((pane) => {
+          if (pane.channelIds.length > 0) return pane;
+          const sourcePane = logSpecific.panes?.find((candidate) => candidate.id === pane.id);
+          const sourceIds = sourcePane?.channelIds
+            ?? (pane.id === logSpecific.activePaneId ? logSpecific.channelIds : []);
+          const migrated = sourceIds
+            .map((channelId) => sourceToLogicalChannelId.get(channelId) ?? channelId)
+            .filter((channelId) => channelId.startsWith('ini:'))
+            .filter((channelId, index, values) => values.indexOf(channelId) === index)
+            .slice(0, 8);
+          return migrated.length > 0
+            ? { ...pane, channelIds: migrated }
+            : pane;
+        });
+
+        const activePane = migratedPanes.find(
+          (pane) => pane.id === workspace.activePaneId,
+        ) ?? migratedPanes[0];
+
+        return {
+          ...workspace,
+          panes: migratedPanes,
+          channelIds: [...(activePane?.channelIds ?? workspace.channelIds)],
+        };
+      }),
+    },
+  };
+}
+
 export function mergeLogSpecificWorkspaceState(
   applicationWorkspace: WebWorkspaceState,
   logWorkspace: WebWorkspaceState,
