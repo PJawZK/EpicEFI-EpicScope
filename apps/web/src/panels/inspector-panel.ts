@@ -101,7 +101,7 @@ export function createInspectorPanel(): InspectorPanelController {
       ? `${filteredChannels.length} / ${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`
       : `${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`;
     loadSelectedButton.disabled = queued === 0;
-    loadSelectedButton.textContent = queued > 0 ? `Load selected (${queued})` : 'Load selected';
+    loadSelectedButton.textContent = queued > 0 ? `Load now (${queued})` : 'Load now';
     clearGraphButton.disabled = activeChannelIds.size === 0;
   };
 
@@ -339,6 +339,15 @@ export function createInspectorPanel(): InspectorPanelController {
 
   loadSelectedButton.addEventListener('click', () => {
     if (!loadSelectedButton.disabled) loadSelectedListener?.();
+  });
+
+  // Large-log selections are intentionally staged so several row-oriented
+  // channels can share one sequential source pass. For normal pointer use,
+  // leaving the inspector is the natural commit gesture: the user selects the
+  // channels they want and simply moves back to the graph. The footer button
+  // remains as an explicit keyboard/touch/fallback action.
+  panel.addEventListener('pointerleave', () => {
+    if (queuedChannelIds.size > 0) loadSelectedListener?.();
   });
 
   clearGraphButton.addEventListener('click', () => {
