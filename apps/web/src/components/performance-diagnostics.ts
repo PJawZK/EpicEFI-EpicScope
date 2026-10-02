@@ -34,6 +34,30 @@ export interface LoadPerformanceRun {
   readonly validationChecksumBytes?: number;
 }
 
+export interface IniLoadPerformanceRun {
+  readonly fileName: string;
+  readonly fileSizeBytes: number;
+  readonly totalMs: number;
+  readonly textReadMs: number;
+  readonly parseMs: number;
+  readonly catalogBuildMs: number;
+  readonly lineCount: number;
+  readonly outputChannelCount: number;
+  readonly datalogEntryCount: number;
+  readonly catalogEntryCount: number;
+  readonly scalarCount: number;
+  readonly bitCount: number;
+  readonly expressionCount: number;
+  readonly datalogOnlyCount: number;
+  readonly outputOnlyCount: number;
+  readonly diagnosticCount: number;
+  readonly diagnosticGroups: readonly {
+    readonly code: string;
+    readonly severity: 'info' | 'warning' | 'error';
+    readonly count: number;
+  }[];
+}
+
 export interface ChannelPerformanceRun {
   readonly channelName: string;
   readonly totalMs: number;
@@ -61,6 +85,7 @@ export interface ValidationPerformanceRun {
 export interface PerformanceDiagnosticsController {
   readonly element: HTMLElement;
   recordLoad(run: LoadPerformanceRun): void;
+  recordIniLoad(run: IniLoadPerformanceRun): void;
   recordValidation(run: ValidationPerformanceRun): void;
   recordChannel(run: ChannelPerformanceRun): void;
   clear(): void;
@@ -79,6 +104,7 @@ function bytes(value: number): string {
 
 export function createPerformanceDiagnostics(): PerformanceDiagnosticsController {
   const loadRuns: LoadPerformanceRun[] = [];
+  const iniLoadRuns: IniLoadPerformanceRun[] = [];
   const channelRuns: ChannelPerformanceRun[] = [];
 
   const root = document.createElement('div');
@@ -100,11 +126,15 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           <button type="button" class="performance-close" aria-label="Close performance diagnostics">×</button>
         </div>
       </div>
-      <div class="performance-empty">Open a log or select a channel to capture timings.</div>
+      <div class="performance-empty">Open a log, load an INI, or select a channel to capture timings.</div>
       <div class="performance-content" hidden>
         <section>
           <strong>Latest log load</strong>
           <div class="performance-load"></div>
+        </section>
+        <section>
+          <strong>Latest INI load</strong>
+          <div class="performance-ini-load"></div>
         </section>
         <section>
           <strong>Recent channel selections</strong>
@@ -122,9 +152,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const empty = root.querySelector<HTMLElement>('.performance-empty');
   const content = root.querySelector<HTMLElement>('.performance-content');
   const loadHost = root.querySelector<HTMLElement>('.performance-load');
+  const iniLoadHost = root.querySelector<HTMLElement>('.performance-ini-load');
   const channelsHost = root.querySelector<HTMLElement>('.performance-channels');
 
-  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !channelsHost) {
+  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !channelsHost) {
     throw new Error('Performance diagnostics structure is incomplete.');
   }
 
@@ -189,6 +220,36 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         );
       }
     }
+    const latestIniLoad = iniLoadRuns[iniLoadRuns.length - 1];
+    if (latestIniLoad) {
+      lines.push(
+        '',
+        '[INI load]',
+        `file=${latestIniLoad.fileName}`,
+        `size=${latestIniLoad.fileSizeBytes} bytes`,
+        `total=${latestIniLoad.totalMs.toFixed(2)} ms`,
+        `textRead=${latestIniLoad.textReadMs.toFixed(2)} ms`,
+        `parse=${latestIniLoad.parseMs.toFixed(2)} ms`,
+        `catalogBuild=${latestIniLoad.catalogBuildMs.toFixed(2)} ms`,
+        `lines=${latestIniLoad.lineCount}`,
+        `outputChannels=${latestIniLoad.outputChannelCount}`,
+        `datalogEntries=${latestIniLoad.datalogEntryCount}`,
+        `catalogEntries=${latestIniLoad.catalogEntryCount}`,
+        `scalar=${latestIniLoad.scalarCount}`,
+        `bits=${latestIniLoad.bitCount}`,
+        `expressions=${latestIniLoad.expressionCount}`,
+        `datalogOnly=${latestIniLoad.datalogOnlyCount}`,
+        `outputOnly=${latestIniLoad.outputOnlyCount}`,
+        `diagnostics=${latestIniLoad.diagnosticCount}`,
+      );
+      if (latestIniLoad.diagnosticGroups.length > 0) {
+        lines.push('[INI diagnostic groups]');
+        for (const group of latestIniLoad.diagnosticGroups) {
+          lines.push(`${group.severity.toUpperCase()} | ${group.code} | ${group.count}`);
+        }
+      }
+    }
+
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
       channelRuns.slice(-10).forEach((run, index) => {
@@ -201,7 +262,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   };
 
   const render = (): void => {
-    const hasData = loadRuns.length > 0 || channelRuns.length > 0;
+    const hasData = loadRuns.length > 0 || iniLoadRuns.length > 0 || channelRuns.length > 0;
     empty.hidden = hasData;
     content.hidden = !hasData;
     copyButton.disabled = !hasData;
@@ -262,6 +323,54 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       loadHost.textContent = 'No load run captured.';
     }
 
+    iniLoadHost.replaceChildren();
+    const latestIniLoad = iniLoadRuns[iniLoadRuns.length - 1];
+    if (latestIniLoad) {
+      const rows: [string, string][] = [
+        ['File', latestIniLoad.fileName],
+        ['Size', bytes(latestIniLoad.fileSizeBytes)],
+        ['Total import', ms(latestIniLoad.totalMs)],
+        ['File read + text decode', ms(latestIniLoad.textReadMs)],
+        ['Channel-section parse', ms(latestIniLoad.parseMs)],
+        ['Catalog build', ms(latestIniLoad.catalogBuildMs)],
+        ['Lines', latestIniLoad.lineCount.toLocaleString()],
+        ['Output channels', latestIniLoad.outputChannelCount.toLocaleString()],
+        ['Datalog entries', latestIniLoad.datalogEntryCount.toLocaleString()],
+        ['Catalog entries', latestIniLoad.catalogEntryCount.toLocaleString()],
+        ['Scalar outputs', latestIniLoad.scalarCount.toLocaleString()],
+        ['Bit outputs', latestIniLoad.bitCount.toLocaleString()],
+        ['Expression outputs', latestIniLoad.expressionCount.toLocaleString()],
+        ['Datalog-only keys', latestIniLoad.datalogOnlyCount.toLocaleString()],
+        ['Output-only keys', latestIniLoad.outputOnlyCount.toLocaleString()],
+        ['Diagnostics', latestIniLoad.diagnosticCount.toLocaleString()],
+      ];
+      for (const [label, value] of rows) {
+        const row = document.createElement('div');
+        row.className = 'performance-row';
+        const left = document.createElement('span');
+        left.textContent = label;
+        const right = document.createElement('strong');
+        right.textContent = value;
+        row.append(left, right);
+        iniLoadHost.append(row);
+      }
+
+      if (latestIniLoad.diagnosticGroups.length > 0) {
+        const groups = document.createElement('div');
+        groups.className = 'performance-channel-card';
+        const title = document.createElement('strong');
+        title.textContent = 'INI diagnostics';
+        const detail = document.createElement('span');
+        detail.textContent = latestIniLoad.diagnosticGroups
+          .map((group) => `${group.severity}:${group.code}=${group.count}`)
+          .join(' · ');
+        groups.append(title, detail);
+        iniLoadHost.append(groups);
+      }
+    } else {
+      iniLoadHost.textContent = 'No INI load captured.';
+    }
+
     channelsHost.replaceChildren();
     if (channelRuns.length === 0) {
       channelsHost.textContent = 'No channel selections captured.';
@@ -292,6 +401,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
 
   clearButton.addEventListener('click', () => {
     loadRuns.length = 0;
+    iniLoadRuns.length = 0;
     channelRuns.length = 0;
     render();
   });
@@ -303,6 +413,11 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     recordLoad: (run) => {
       loadRuns.push(run);
       if (loadRuns.length > 20) loadRuns.shift();
+      render();
+    },
+    recordIniLoad: (run) => {
+      iniLoadRuns.push(run);
+      if (iniLoadRuns.length > 20) iniLoadRuns.shift();
       render();
     },
     recordValidation: (run) => {
@@ -329,6 +444,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     },
     clear: () => {
       loadRuns.length = 0;
+      iniLoadRuns.length = 0;
       channelRuns.length = 0;
       render();
     },
