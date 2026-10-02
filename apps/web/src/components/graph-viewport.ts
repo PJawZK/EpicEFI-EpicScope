@@ -26,6 +26,11 @@ export interface GraphChannelPerformance {
   readonly scaleMs: number;
   readonly renderMs: number;
   readonly sampleCount: number;
+  readonly batchSize: number;
+  readonly cacheHit: boolean;
+  readonly physicalReadCount: number;
+  readonly physicalBytesRead: number;
+  readonly physicalReadMs: number;
 }
 
 export interface GraphViewportController {
@@ -57,6 +62,12 @@ interface ActiveTrace {
   readonly range: NumericChannelRange;
   readonly scale: StableValueScale;
   readonly color: string;
+}
+
+interface PendingTrace {
+  readonly channel: ChannelDefinition;
+  readonly startedMs: number;
+  readonly resolve: (active: boolean) => void;
 }
 
 function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRepresentativePoint[] {
@@ -117,6 +128,8 @@ export function createGraphViewport(): GraphViewportController {
   let panListener: ((deltaMs: number) => void) | undefined;
   let cursorValuesListener: ((values: readonly GraphCursorValue[]) => void) | undefined;
   let channelPerformanceListener: ((performance: GraphChannelPerformance) => void) | undefined;
+  const pendingTraces = new Map<string, PendingTrace>();
+  let pendingBatchTimer: number | undefined;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -345,6 +358,108 @@ export function createGraphViewport(): GraphViewportController {
     canvas.addEventListener('pointercancel', end);
   });
 
+  const cancelPending = (): void => {
+    if (pendingBatchTimer !== undefined) {
+      window.clearTimeout(pendingBatchTimer);
+      pendingBatchTimer = undefined;
+    }
+    for (const pending of pendingTraces.values()) pending.resolve(false);
+    pendingTraces.clear();
+  };
+
+  const flushPending = async (): Promise<void> => {
+    pendingBatchTimer = undefined;
+    if (!channelData || pendingTraces.size === 0) return;
+
+    const batch = [...pendingTraces.entries()];
+    pendingTraces.clear();
+    const channelIds = batch.map(([channelId]) => channelId);
+    overlay.hidden = false;
+    overlayTitle.textContent = batch.length > 1
+      ? `Loading ${batch.length} channels…`
+      : `Loading ${batch[0]?.[1].channel.sourceName ?? 'channel'}…`;
+    overlayDetail.textContent = batch.length > 1
+      ? 'Reading selected channels in one sequential log pass.'
+      : 'Reading bounded channel data from the local log.';
+
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const readStart = now();
+
+    try {
+      const result = channelData.readChannelsRange
+        ? await channelData.readChannelsRange(channelIds, 0, channelData.sampleCount)
+        : {
+            ranges: new Map(await Promise.all(channelIds.map(async (channelId) => [
+              channelId,
+              await channelData!.readChannelRange(channelId, 0, channelData!.sampleCount),
+            ] as const))),
+            performance: {
+              channelCount: channelIds.length,
+              cacheHitChannelIds: [] as readonly string[],
+              physicalReadCount: 0,
+              physicalBytesRead: 0,
+              physicalReadMs: 0,
+            },
+          };
+      const readDecodeMs = now() - readStart;
+      const cacheHits = new Set(result.performance.cacheHitChannelIds);
+      const scaleTimes = new Map<string, number>();
+      const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
+
+      for (const [channelId, pending] of batch) {
+        const range = result.ranges.get(channelId);
+        if (!range) continue;
+        const scaleStart = now();
+        const scale = buildStableValueScale(range);
+        scaleTimes.set(channelId, now() - scaleStart);
+        const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
+        usedColors.add(color);
+        activeTraces.set(channelId, {
+          channel: pending.channel,
+          range,
+          scale,
+          color,
+        });
+      }
+
+      overlay.hidden = activeTraces.size > 0;
+      renderReadout();
+      emitCursorValues();
+      const renderStart = now();
+      draw();
+      const renderMs = now() - renderStart;
+      const completedMs = now();
+
+      for (const [channelId, pending] of batch) {
+        const range = result.ranges.get(channelId);
+        if (!range) {
+          pending.resolve(false);
+          continue;
+        }
+        channelPerformanceListener?.({
+          channelId,
+          totalMs: completedMs - pending.startedMs,
+          readDecodeMs,
+          scaleMs: scaleTimes.get(channelId) ?? 0,
+          renderMs,
+          sampleCount: range.values.length,
+          batchSize: batch.length,
+          cacheHit: cacheHits.has(channelId),
+          physicalReadCount: result.performance.physicalReadCount,
+          physicalBytesRead: result.performance.physicalBytesRead,
+          physicalReadMs: result.performance.physicalReadMs,
+        });
+        pending.resolve(true);
+      }
+    } catch (error) {
+      overlay.hidden = false;
+      overlayTitle.textContent = 'Could not graph channel';
+      overlayDetail.textContent = error instanceof Error ? error.message : 'Unknown channel-read error.';
+      for (const [, pending] of batch) pending.resolve(false);
+      draw();
+    }
+  };
+
   const setLog = (
     nextChannels: readonly ChannelDefinition[],
     nextChannelData: NumericChannelDataSource,
@@ -361,6 +476,7 @@ export function createGraphViewport(): GraphViewportController {
           visibleEndMs: nextTimeRange.endMs,
         }
       : undefined;
+    cancelPending();
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
@@ -379,6 +495,17 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const toggleChannel = async (channelId: string): Promise<boolean> => {
+    const queued = pendingTraces.get(channelId);
+    if (queued) {
+      pendingTraces.delete(channelId);
+      queued.resolve(false);
+      if (pendingTraces.size === 0 && pendingBatchTimer !== undefined) {
+        window.clearTimeout(pendingBatchTimer);
+        pendingBatchTimer = undefined;
+      }
+      return false;
+    }
+
     const existing = activeTraces.get(channelId);
     if (existing) {
       activeTraces.delete(channelId);
@@ -396,7 +523,7 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     if (!channelData) return false;
-    if (activeTraces.size >= MAX_ACTIVE_TRACES) {
+    if (activeTraces.size + pendingTraces.size >= MAX_ACTIVE_TRACES) {
       overlay.hidden = activeTraces.size > 0;
       showToast(`Trace limit reached — EpicScope currently allows up to ${MAX_ACTIVE_TRACES} simultaneous Web traces.`);
       return false;
@@ -404,52 +531,34 @@ export function createGraphViewport(): GraphViewportController {
 
     const channel = channels.find((candidate) => candidate.id === channelId);
     if (!channel) return false;
-    overlay.hidden = false;
-    overlayTitle.textContent = `Loading ${channel.sourceName}…`;
-    overlayDetail.textContent = 'Reading bounded channel data from the local log.';
 
-    try {
-      const now = (): number => globalThis.performance?.now() ?? Date.now();
-      const totalStart = now();
-
-      const readStart = now();
-      const range = await channelData.readChannelRange(channel.id, 0, channelData.sampleCount);
-      const readDecodeMs = now() - readStart;
-
-      const scaleStart = now();
-      const scale = buildStableValueScale(range);
-      const scaleMs = now() - scaleStart;
-
-      const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
-      const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
-      activeTraces.set(channel.id, { channel, range, scale, color });
-      overlay.hidden = true;
-      renderReadout();
-      emitCursorValues();
-
-      const renderStart = now();
-      draw();
-      const renderMs = now() - renderStart;
-
-      channelPerformanceListener?.({
-        channelId: channel.id,
-        totalMs: now() - totalStart,
-        readDecodeMs,
-        scaleMs,
-        renderMs,
-        sampleCount: range.values.length,
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const result = new Promise<boolean>((resolve) => {
+      pendingTraces.set(channelId, {
+        channel,
+        startedMs: now(),
+        resolve,
       });
-      return true;
-    } catch (error) {
-      overlay.hidden = false;
-      overlayTitle.textContent = 'Could not graph channel';
-      overlayDetail.textContent = error instanceof Error ? error.message : 'Unknown channel-read error.';
-      draw();
-      return false;
+    });
+
+    overlay.hidden = false;
+    overlayTitle.textContent = 'Queued channel selection…';
+    overlayDetail.textContent = channelData.preferredBatchWindowMs
+      ? 'Briefly collecting rapid selections for one shared log pass.'
+      : 'Preparing channel data.';
+
+    if (pendingBatchTimer === undefined) {
+      pendingBatchTimer = window.setTimeout(
+        () => { void flushPending(); },
+        channelData.preferredBatchWindowMs ?? 0,
+      );
     }
+
+    return result;
   };
 
   const clearChannels = (): void => {
+    cancelPending();
     activeTraces.clear();
     envelopeCache.clear();
     renderReadout();
@@ -479,6 +588,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const clear = (): void => {
+    cancelPending();
     channels = [];
     channelData = undefined;
     timeRange = undefined;
