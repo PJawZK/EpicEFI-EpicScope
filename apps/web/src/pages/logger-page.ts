@@ -109,6 +109,35 @@ export interface LoggerChannelPerformance extends GraphChannelPerformance {
   readonly channelName: string;
 }
 
+export interface LoggerUiPopulationPerformance {
+  readonly totalMs: number;
+  readonly workspaceMs: number;
+  readonly channelModelMs: number;
+  readonly inspectorMs: number;
+  readonly timelineMs: number;
+  readonly graphSetupMs: number;
+  readonly layoutMs: number;
+  readonly valueSearchMs: number;
+  readonly viewportMs: number;
+  readonly diagnosticsMs: number;
+}
+
+export interface LoggerWorkspaceRestorePerformance {
+  readonly totalMs: number;
+  readonly prepareMs: number;
+  readonly sharedBatchMs: number;
+  readonly activationMs: number;
+  readonly finalSyncMs: number;
+  readonly visiblePaneCount: number;
+  readonly assignedChannelCount: number;
+  readonly requestedChannelCount: number;
+  readonly uniqueRequestedChannelCount: number;
+  readonly cacheHit: boolean;
+  readonly physicalReadCount: number;
+  readonly physicalBytesRead: number;
+  readonly physicalReadMs: number;
+}
+
 export interface LoggerPageController {
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
@@ -123,7 +152,7 @@ export interface LoggerPageController {
       readonly unavailableChannelIds?: readonly string[];
       readonly channelIdAliases?: ReadonlyMap<string, string>;
     },
-  ): void;
+  ): LoggerUiPopulationPerformance;
   setChannelCatalog(channels: readonly ChannelDefinition[], sourceName: string): void;
   clearChannelCatalog(): void;
   setImportError(message: string): void;
@@ -133,6 +162,9 @@ export interface LoggerPageController {
   setHighZoomSamplePointsVisible(visible: boolean): void;
   setTimelineOverviewTracesVisible(visible: boolean): void;
   onChannelPerformance(listener: (performance: LoggerChannelPerformance) => void): void;
+  onWorkspaceRestorePerformance(
+    listener: (performance: LoggerWorkspaceRestorePerformance) => void,
+  ): void;
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): LoggerWorkspaceState;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
@@ -546,6 +578,8 @@ export function createLoggerPage(): LoggerPageController {
   let channelDataSource: NumericChannelDataSource | undefined;
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
+  let workspaceRestorePerformanceListener:
+    ((performance: LoggerWorkspaceRestorePerformance) => void) | undefined;
   let workspaceMutationListener: (() => void) | undefined;
   let restoringWorkspaceState = false;
 
@@ -1259,6 +1293,8 @@ export function createLoggerPage(): LoggerPageController {
   });
 
   const restoreWorkspace = async (workspaceId: string, force = false): Promise<void> => {
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const restoreStarted = now();
     const target = workspaces.find((workspace) => workspace.id === workspaceId);
     if (!target || (target.id === activeWorkspaceId && !force)) {
       renderGraphLayout();
@@ -1267,6 +1303,7 @@ export function createLoggerPage(): LoggerPageController {
     }
 
     if (!force) saveCurrentWorkspace();
+    const prepareStarted = now();
     const generation = ++workspaceGeneration;
     activeWorkspaceId = target.id;
     refreshWorkspaceSelector();
@@ -1310,6 +1347,12 @@ export function createLoggerPage(): LoggerPageController {
     });
 
     const uniqueRequestedIds = [...new Set(paneRequests.flatMap((request) => request.requestedIds))];
+    const prepareMs = now() - prepareStarted;
+    let sharedBatchMs = 0;
+    let sharedBatchCacheHit = true;
+    let sharedPhysicalReadCount = 0;
+    let sharedPhysicalBytesRead = 0;
+    let sharedPhysicalReadMs = 0;
     if (
       visibleCount > 1
       && uniqueRequestedIds.length > 0
@@ -1322,6 +1365,12 @@ export function createLoggerPage(): LoggerPageController {
         channelDataSource.sampleCount,
       );
       const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;
+      sharedBatchMs = batchElapsed;
+      sharedBatchCacheHit =
+        batch.performance.cacheHitChannelIds.length === uniqueRequestedIds.length;
+      sharedPhysicalReadCount = batch.performance.physicalReadCount;
+      sharedPhysicalBytesRead = batch.performance.physicalBytesRead;
+      sharedPhysicalReadMs = batch.performance.physicalReadMs;
       if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
 
       channelPerformanceListener?.({
@@ -1340,6 +1389,7 @@ export function createLoggerPage(): LoggerPageController {
       });
     }
 
+    const activationStarted = now();
     const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {
       if (!pane || requestedIds.length === 0) return;
 
@@ -1356,8 +1406,32 @@ export function createLoggerPage(): LoggerPageController {
     });
 
     await Promise.all(loads);
+    const activationMs = now() - activationStarted;
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+    const finalSyncStarted = now();
     syncActivePaneContext();
+    const finalSyncMs = now() - finalSyncStarted;
+    workspaceRestorePerformanceListener?.({
+      totalMs: now() - restoreStarted,
+      prepareMs,
+      sharedBatchMs,
+      activationMs,
+      finalSyncMs,
+      visiblePaneCount: visibleCount,
+      assignedChannelCount: paneRequests.reduce(
+        (sum, request) => sum + request.assignedIds.length,
+        0,
+      ),
+      requestedChannelCount: paneRequests.reduce(
+        (sum, request) => sum + request.requestedIds.length,
+        0,
+      ),
+      uniqueRequestedChannelCount: uniqueRequestedIds.length,
+      cacheHit: sharedBatchCacheHit,
+      physicalReadCount: sharedPhysicalReadCount,
+      physicalBytesRead: sharedPhysicalBytesRead,
+      physicalReadMs: sharedPhysicalReadMs,
+    });
   };
 
   inspector.onChannelToggled((channelId) => {
@@ -1704,7 +1778,10 @@ export function createLoggerPage(): LoggerPageController {
       readonly unavailableChannelIds?: readonly string[];
       readonly channelIdAliases?: ReadonlyMap<string, string>;
     } = {},
-  ): void => {
+  ): LoggerUiPopulationPerformance => {
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const totalStarted = now();
+    const workspaceStarted = now();
     workspaceGeneration += 1;
     const fullViewport = summary.timeRange
       ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
@@ -1724,26 +1801,47 @@ export function createLoggerPage(): LoggerPageController {
     refreshWorkspaceSelector();
     graphSelector.setEnabled(Boolean(summary.timeRange));
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
+    const workspaceMs = now() - workspaceStarted;
+
+    const channelModelStarted = now();
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
     channelIdAliases = new Map(options.channelIdAliases ?? []);
     unavailableChannelIds.clear();
     for (const channelId of options.unavailableChannelIds ?? []) unavailableChannelIds.add(channelId);
     channelDataSource = channelData;
     logMarkers = summary.markers;
+    const channelModelMs = now() - channelModelStarted;
+
+    const inspectorStarted = now();
     inspector.setChannels(
       summary.channels,
       summary.source.displayName,
       options.unavailableChannelIds ?? [],
     );
+    const inspectorMs = now() - inspectorStarted;
+
+    const timelineStarted = now();
     timeline.setTimeRange(summary.timeRange, recordCount);
     timeline.setOverviewContent([], logMarkers);
+    const timelineMs = now() - timelineStarted;
+
+    const graphSetupStarted = now();
     paneRuntimes.forEach((runtime, index) => {
       runtime.graph.setLog(summary.channels, channelData, summary.timeRange);
       syncPaneAssignedChannels(runtime, activeWorkspace()?.panes[index]);
     });
+    const graphSetupMs = now() - graphSetupStarted;
+
+    const layoutStarted = now();
     renderGraphLayout();
+    const layoutMs = now() - layoutStarted;
+
+    const valueSearchStarted = now();
     valueSearch.setLog(channelData);
     valueSearch.setActiveChannels([]);
+    const valueSearchMs = now() - valueSearchStarted;
+
+    const viewportStarted = now();
     if (summary.timeRange) {
       previousCursorTimeMs = summary.timeRange.startMs;
       syncViewport(createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs));
@@ -1751,10 +1849,28 @@ export function createLoggerPage(): LoggerPageController {
       previousCursorTimeMs = 0;
       syncViewport(undefined);
     }
+    const viewportMs = now() - viewportStarted;
+
+    const diagnosticsStarted = now();
     diagnostics.setDiagnostics(summary.diagnostics);
+    const diagnosticsMs = now() - diagnosticsStarted;
+
+    const performance: LoggerUiPopulationPerformance = {
+      totalMs: now() - totalStarted,
+      workspaceMs,
+      channelModelMs,
+      inspectorMs,
+      timelineMs,
+      graphSetupMs,
+      layoutMs,
+      valueSearchMs,
+      viewportMs,
+      diagnosticsMs,
+    };
 
     const workspaceId = activeWorkspaceId;
     if (workspaceId) void restoreWorkspace(workspaceId, true);
+    return performance;
   };
 
   const setImportError = (message: string): void => {
@@ -1933,6 +2049,9 @@ export function createLoggerPage(): LoggerPageController {
     },
     setTimelineOverviewTracesVisible: (visible) => { timeline.setOverviewTracesVisible(visible); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
+    onWorkspaceRestorePerformance: (listener) => {
+      workspaceRestorePerformanceListener = listener;
+    },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
     restoreWorkspaceState,
