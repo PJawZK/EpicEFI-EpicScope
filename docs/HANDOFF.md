@@ -105,8 +105,8 @@ The current Canvas 2D renderer is **Experimental**.
 
 - it uses bounded raw-preserving downsampling rather than plotting every source record;
 - CRC-invalid samples are excluded from trusted graph data;
-- visual output is not yet accepted as final, especially for sparse/conditional channels;
-- UI/renderer polish is intentionally paused until the navigation and multi-channel feature set is further established;
+- sparse/conditional-channel rendering has been improved and hosted-validated, but Canvas 2D remains Experimental;
+- renderer/UI refinements are now driven by real workflow evidence rather than a blanket polish freeze;
 - do not replace source behavior with smoothing/averaging simply to make the trace look nicer.
 
 Canvas 2D is an initial Web renderer choice, not a Linux/Android architecture commitment.
