@@ -41,7 +41,7 @@ Phase 0 does **not** require the EpicHub UI reference itself to be inspected. Th
 
 ## Phase 1 — Web log foundation
 
-Status: **In progress**
+Status: **Closeout pending hosted validation of the final graph-density refinement**
 
 Purpose: create the smallest useful EpicScope Web application and prove the import/data/navigation path.
 
@@ -88,7 +88,7 @@ Hosted Web application:
 
 Hosted Brave validation exposed and then verified fixes for the sensor-panel hide behavior and narrow-width object preservation. WEB-BOOT has no remaining quality gate.
 
-### LOG-MLG — Core path implemented; performance validation in progress
+### LOG-MLG — Core path complete; ongoing regression benchmarking only
 
 Detailed format/parser authority: `docs/LOG_MLG_PLAN.md`.
 
@@ -110,11 +110,12 @@ Implemented and validated outcomes:
 
 Large-log hosted evidence currently includes a 318,023,627-byte MLG with 72,158 records and 1,652 channels. A four-channel uncached selection has been validated as one `batch=4` traversal of the source rather than four independent decode passes.
 
-Remaining LOG-MLG/Web-performance work:
+LOG-MLG completion/maintenance state:
 
-1. continue benchmark capture as additional real workflows are established;
-2. improve retry/recovery diagnostic classification without changing checksum semantics or silently repairing source data;
-3. keep MLVLG v3 deferred until authoritative format evidence exists.
+- retry/recovery diagnostic classification is hosted-validated without altering checksum semantics or repairing source data;
+- the 318 MB benchmark log separates recovered CRC retries and CRC-valid jump/repeat patterns from genuinely unresolved warnings;
+- benchmark capture continues as a regression discipline rather than an unfinished LOG-MLG feature;
+- MLVLG v3 remains deferred until authoritative format evidence exists.
 
 Hosted decoded-channel cache reuse is validated: removing and re-adding previously decoded channels returns from the bounded decoded cache with zero physical source reads.
 
@@ -148,11 +149,19 @@ Implemented/validated foundation:
 - per-workspace previous/next view history;
 - graph workspaces with independent channel/viewport/cursor state;
 - Web WorkspaceState consolidation and global Undo/Redo;
-- versioned browser-local per-log workspace persistence with explicit restore/forget behavior.
+- versioned browser-local per-log workspace persistence with explicit restore/forget behavior;
+- fixed multi-pane layouts (Single, 4, 5 and 6 graph panes) with an explicit active-pane context;
+- independent channel assignments per pane with shared cursor/viewport/A-B/timeline navigation;
+- freeform five-pane layout with Mosaic/Columns/Rows/Cascade arrangements, drag/resize/snap and minimize/maximize;
+- one shared multi-pane restore decode before pane activation;
+- compact fixed-pane labels and compact draggable freeform title chips instead of full-width pane bars;
+- Single layout stacked-channel rendering with one trace row per channel and compact per-row Now/Min/Max;
+- Logger keyboard shortcuts with the shortcut reference moved under Settings;
+- compact Compare header label.
 
-Remaining timeline/workspace work should be driven by real-log workflows rather than placeholder completion.
+Final Phase 1 workspace validation is limited to hosted regression checks of the latest graph-density UI and persistence/performance behavior.
 
-### WORKSPACE / PERSISTENCE — Implemented; hosted validation pending
+### WORKSPACE / PERSISTENCE v1 — Implemented and hosted-validated
 
 Implemented:
 
@@ -166,7 +175,7 @@ Implemented:
 - explicit **Forget saved workspace** control;
 - no raw MLG bytes or decoded channel arrays persisted.
 
-Hosted validation should confirm exact-log restore across page reload/open and explicit Forget behavior.
+Hosted validation confirmed exact-log restore across page reload/open and explicit Forget behavior. This v1 model remains valid current behavior until the approved INI-backed application-workspace migration lands.
 
 Exit criteria:
 
@@ -176,16 +185,38 @@ Exit criteria:
 - parser/UI boundaries conform to architecture;
 - invalid input does not cause unbounded allocation or whole-app failure where graceful handling is possible.
 
-## Phase 2 — Generic analysis toolkit
+## Phase 2 — Channel catalog and generic analysis foundation
 
-Purpose: establish reusable analysis primitives before specialized analyzers multiply.
+Purpose: decouple the persistent analysis workspace from any one opened log, establish stable source/channel identity, then build reusable analysis primitives before specialized analyzers multiply.
+
+Implementation order begins with source context because persistent graph/channel layouts should exist before a log supplies samples.
 
 Task groups:
+
+### TUNE-INI / CHANNEL-CATALOG
+
+- decode EpicEFI/TunerStudio INI source syntax under `core/parsers/ini/`;
+- normalize firmware identity and known runtime/output-channel metadata without requiring an MLG to be open;
+- establish stable logical channel keys suitable for persistence;
+- merge INI-known channels with channels discovered from an opened MLG;
+- bind each logical channel to the matching MLG channel/data source when present;
+- represent at least: **known + data**, **known but unavailable in this log**, and **log-only channel**;
+- never hide or discard a usable MLG-only channel simply because the loaded INI does not know it;
+- keep the MLG authoritative for recorded samples and sample validity.
+
+### WORKSPACE-PERSISTENCE v2
+
+- split persistent application workspace state from log-specific analysis state;
+- persist named workspaces, pane layouts/geometry, channel assignments, favorites and display preferences independently of a specific log identity;
+- allow EpicScope to reopen with its workspace/channel structure present before any log is loaded;
+- keep viewport/cursor/A-B/log annotations and other recording-specific state associated with the relevant log/session;
+- migrate/extend the current versioned Web persistence format without silently reinterpreting existing v1 artifacts.
 
 ### CHANNELS
 
 - aliases/groups/favorites;
 - units;
+- stable logical/source bindings;
 - derived/math channels;
 - channel statistics.
 
@@ -219,23 +250,19 @@ Exit criteria:
 - generic tools can reproduce and improve common MLV-style analysis workflows;
 - analyzers can depend on stable generic services rather than implementing their own copies.
 
-## Phase 3 — Tune awareness
+## Phase 3 — MSQ tune enrichment and table correlation
 
-Purpose: connect log behaviour to the actual tune/firmware configuration.
+Purpose: add actual tune/calibration values after the INI-backed channel/catalog foundation exists, then connect logged behaviour to tune tables and curves.
 
 Task groups:
 
-### TUNE-INI
-
-- EpicEFI/TunerStudio INI source decoding under `core/parsers/ini/` as required;
-- normalization into `core/tune/` firmware/tune context;
-- firmware identity and channel/table metadata.
-
 ### TUNE-MSQ
 
-- MSQ source decoding under `core/parsers/msq/`;
-- normalized tune/table model under `core/tune/`;
-- compatibility/validation reporting.
+- decode MSQ source syntax under `core/parsers/msq/`;
+- normalize tune values, tables, curves and scalar settings under `core/tune/`;
+- treat MSQ as optional tune-value enrichment rather than the primary runtime-channel catalog;
+- combine MSQ tune values with INI metadata/definitions through normalized tune context;
+- provide compatibility/validation reporting when INI/MSQ/log identities do not align.
 
 ### TABLE-MAP
 
@@ -245,6 +272,8 @@ Task groups:
 
 Exit criteria:
 
+- supported INI definitions can keep channel/workspace structure available without a log;
+- supported MSQ tune values can enrich the same source context;
 - supported logs can be correlated with supported tune tables without UI-specific or source-format-specific interpretation leaking into analyzers.
 
 ## Phase 4 — Specialized analyzers
