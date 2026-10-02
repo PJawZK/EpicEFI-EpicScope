@@ -159,10 +159,18 @@ export function mountAppShell(root: HTMLElement): void {
           importTotalMs: parsed.importTotalMs,
           headerMs: parsed.performance.headerMs,
           recordScanMs: parsed.performance.recordScanMs,
+          recordReadMs: parsed.performance.recordReadMs,
+          recordCpuMs: parsed.performance.recordCpuMs,
+          checksumBytes: parsed.performance.checksumBytes,
           finalizeMs: parsed.performance.finalizeMs,
           uiPopulateMs,
           sourceReadCount: parsed.sourceStats.readCount,
           sourceBytesRead: parsed.sourceStats.bytesRead,
+          physicalReadCount: parsed.sourceStats.physicalReadCount,
+          physicalBytesRead: parsed.sourceStats.physicalBytesRead,
+          cacheHitBytes: parsed.sourceStats.cacheHitBytes,
+          cacheBytes: parsed.sourceStats.cacheBytes,
+          cachePageCount: parsed.sourceStats.cachePageCount,
         });
 
         loadedLog.textContent = parsed.summary.source.displayName;

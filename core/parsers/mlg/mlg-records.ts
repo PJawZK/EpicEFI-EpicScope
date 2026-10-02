@@ -20,10 +20,16 @@ export interface MlgRecordIndex {
   readonly crcValid: Uint8Array;
 }
 
+export interface MlgRecordScanPerformance {
+  readonly sourceReadMs: number;
+  readonly checksumBytes: number;
+}
+
 export interface MlgRecordScanResult {
   readonly records: MlgRecordIndex;
   readonly markers: readonly LogMarker[];
   readonly diagnostics: readonly ParserDiagnostic[];
+  readonly performance: MlgRecordScanPerformance;
 }
 
 class GrowingFloat64Buffer {
@@ -142,6 +148,9 @@ export async function scanMlgRecords(
   let timestampEpoch = 0;
   let firstUnwrappedTimestamp: number | undefined;
   let standardRecordIndex = 0;
+  let sourceReadMs = 0;
+  let checksumBytes = 0;
+  const now = (): number => globalThis.performance?.now() ?? Date.now();
 
   // Parse many complete blocks synchronously from each source chunk. The old
   // scanner awaited two async reads per record even when both reads hit its
@@ -150,7 +159,9 @@ export async function scanMlgRecords(
   // source reads/awaits to roughly fileSize / SCAN_CHUNK_SIZE.
   while (offset < source.size) {
     const chunkStart = offset;
+    const readStart = now();
     const chunk = await readChunk(source, chunkStart, BLOCK_HEADER_LENGTH);
+    sourceReadMs += now() - readStart;
     let cursor = 0;
 
     while (cursor < chunk.byteLength) {
@@ -210,6 +221,7 @@ export async function scanMlgRecords(
           BLOCK_HEADER_LENGTH,
           BLOCK_HEADER_LENGTH + header.recordLength,
         );
+        checksumBytes += recordBytes.byteLength;
         const expectedCrc = calculateRecordCrc(recordBytes);
         const actualCrc = block[blockLength - 1] ?? 0;
         const isCrcValid = expectedCrc === actualCrc;
@@ -270,5 +282,9 @@ export async function scanMlgRecords(
     },
     markers,
     diagnostics,
+    performance: {
+      sourceReadMs,
+      checksumBytes,
+    },
   };
 }

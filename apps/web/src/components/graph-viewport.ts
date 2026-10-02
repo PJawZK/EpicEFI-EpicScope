@@ -105,6 +105,12 @@ export function createGraphViewport(): GraphViewportController {
   let timeRange: LogTimeRange | undefined;
   let viewport: TimelineViewport | undefined;
   const activeTraces = new Map<string, ActiveTrace>();
+  const envelopeCache = new Map<string, {
+    readonly visibleStartMs: number;
+    readonly visibleEndMs: number;
+    readonly pixelWidth: number;
+    readonly envelope: ReturnType<typeof buildViewportEnvelope>;
+  }>();
   let cursorTimeMs = 0;
   let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
   let panListener: ((deltaMs: number) => void) | undefined;
@@ -227,13 +233,28 @@ export function createGraphViewport(): GraphViewportController {
     const duration = Math.max(1e-9, visibleEndMs - visibleStartMs);
     const xForTime = (timeMs: number): number => inset + ((timeMs - visibleStartMs) / duration) * plotWidth;
 
-    for (const trace of activeTraces.values()) {
-      const envelope = buildViewportEnvelope(
-        trace.range,
-        visibleStartMs,
-        visibleEndMs,
-        Math.max(1, Math.floor(plotWidth)),
-      );
+    const pixelWidth = Math.max(1, Math.floor(plotWidth));
+    for (const [channelId, trace] of activeTraces) {
+      const cachedEnvelope = envelopeCache.get(channelId);
+      const envelope = cachedEnvelope
+        && cachedEnvelope.visibleStartMs === visibleStartMs
+        && cachedEnvelope.visibleEndMs === visibleEndMs
+        && cachedEnvelope.pixelWidth === pixelWidth
+        ? cachedEnvelope.envelope
+        : buildViewportEnvelope(
+            trace.range,
+            visibleStartMs,
+            visibleEndMs,
+            pixelWidth,
+          );
+      if (cachedEnvelope?.envelope !== envelope) {
+        envelopeCache.set(channelId, {
+          visibleStartMs,
+          visibleEndMs,
+          pixelWidth,
+          envelope,
+        });
+      }
       const axisSpan = Math.max(1e-9, trace.scale.max - trace.scale.min);
       const yForValue = (value: number): number => {
         const normalized = (value - trace.scale.min) / axisSpan;
@@ -340,6 +361,7 @@ export function createGraphViewport(): GraphViewportController {
         }
       : undefined;
     activeTraces.clear();
+    envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
     overlay.hidden = false;
     overlayTitle.textContent = 'Select channels';
@@ -359,6 +381,7 @@ export function createGraphViewport(): GraphViewportController {
     const existing = activeTraces.get(channelId);
     if (existing) {
       activeTraces.delete(channelId);
+      envelopeCache.delete(channelId);
       overlay.hidden = activeTraces.size > 0;
       if (activeTraces.size === 0) {
         overlay.hidden = false;
@@ -427,6 +450,7 @@ export function createGraphViewport(): GraphViewportController {
 
   const clearChannels = (): void => {
     activeTraces.clear();
+    envelopeCache.clear();
     renderReadout();
     emitCursorValues();
     overlay.hidden = false;
@@ -453,6 +477,7 @@ export function createGraphViewport(): GraphViewportController {
     timeRange = undefined;
     viewport = undefined;
     activeTraces.clear();
+    envelopeCache.clear();
     cursorTimeMs = 0;
     overlay.hidden = false;
     overlayTitle.textContent = 'Open a log to start scoping';

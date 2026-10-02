@@ -6,10 +6,18 @@ export interface LoadPerformanceRun {
   readonly importTotalMs: number;
   readonly headerMs: number;
   readonly recordScanMs: number;
+  readonly recordReadMs: number;
+  readonly recordCpuMs: number;
+  readonly checksumBytes: number;
   readonly finalizeMs: number;
   readonly uiPopulateMs: number;
   readonly sourceReadCount: number;
   readonly sourceBytesRead: number;
+  readonly physicalReadCount: number;
+  readonly physicalBytesRead: number;
+  readonly cacheHitBytes: number;
+  readonly cacheBytes: number;
+  readonly cachePageCount: number;
 }
 
 export interface ChannelPerformanceRun {
@@ -119,10 +127,18 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `total=${latestLoad.importTotalMs.toFixed(2)} ms`,
         `header=${latestLoad.headerMs.toFixed(2)} ms`,
         `recordScan=${latestLoad.recordScanMs.toFixed(2)} ms`,
+        `recordRead=${latestLoad.recordReadMs.toFixed(2)} ms`,
+        `recordCpu=${latestLoad.recordCpuMs.toFixed(2)} ms`,
+        `checksumBytes=${latestLoad.checksumBytes}`,
         `finalize=${latestLoad.finalizeMs.toFixed(2)} ms`,
         `uiPopulate=${latestLoad.uiPopulateMs.toFixed(2)} ms`,
         `sourceReads=${latestLoad.sourceReadCount}`,
         `sourceBytes=${latestLoad.sourceBytesRead}`,
+        `physicalReads=${latestLoad.physicalReadCount}`,
+        `physicalBytes=${latestLoad.physicalBytesRead}`,
+        `cacheHitBytes=${latestLoad.cacheHitBytes}`,
+        `cacheBytes=${latestLoad.cacheBytes}`,
+        `cachePages=${latestLoad.cachePageCount}`,
       );
     }
     if (channelRuns.length > 0) {
@@ -152,10 +168,17 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Total import', ms(latestLoad.importTotalMs)],
         ['Header + descriptors', ms(latestLoad.headerMs)],
         ['Record scan / CRC / index', ms(latestLoad.recordScanMs)],
+        ['Record source read', ms(latestLoad.recordReadMs)],
+        ['Record CPU remainder', ms(latestLoad.recordCpuMs)],
+        ['Checksum bytes', bytes(latestLoad.checksumBytes)],
         ['Parser finalize', ms(latestLoad.finalizeMs)],
         ['UI population', ms(latestLoad.uiPopulateMs)],
-        ['Source reads', latestLoad.sourceReadCount.toLocaleString()],
-        ['Source bytes read', bytes(latestLoad.sourceBytesRead)],
+        ['Logical source reads', latestLoad.sourceReadCount.toLocaleString()],
+        ['Logical source bytes', bytes(latestLoad.sourceBytesRead)],
+        ['Physical Blob reads', latestLoad.physicalReadCount.toLocaleString()],
+        ['Physical Blob bytes', bytes(latestLoad.physicalBytesRead)],
+        ['Cache-hit bytes', bytes(latestLoad.cacheHitBytes)],
+        ['Raw cache resident', `${bytes(latestLoad.cacheBytes)} · ${latestLoad.cachePageCount} pages`],
         ['Records', latestLoad.recordCount.toLocaleString()],
         ['Channels', latestLoad.channelCount.toLocaleString()],
       ];
