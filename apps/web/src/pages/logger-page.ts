@@ -909,10 +909,8 @@ export function createLoggerPage(): LoggerPageController {
   const saveCurrentWorkspace = (): void => {
     const workspace = activeWorkspace();
     if (!workspace) return;
-    for (const runtime of paneRuntimes) {
-      const pane = workspace.panes.find((candidate) => candidate.id === runtime.id);
-      if (pane) pane.channelIds = [...runtime.activeChannelIds];
-    }
+    // Pane channelIds are persistent assignments, not a mirror of currently
+    // decoded traces. Keep them intact when no log data is bound.
     workspace.viewport = viewport ? { ...viewport } : undefined;
     workspace.cursorTimeMs = timeline.getCursorTime();
   };
@@ -1259,15 +1257,15 @@ export function createLoggerPage(): LoggerPageController {
     runtime.resizeHandle.addEventListener('pointercancel', endResize);
   });
 
-  const restoreWorkspace = async (workspaceId: string): Promise<void> => {
+  const restoreWorkspace = async (workspaceId: string, force = false): Promise<void> => {
     const target = workspaces.find((workspace) => workspace.id === workspaceId);
-    if (!target || target.id === activeWorkspaceId) {
+    if (!target || (target.id === activeWorkspaceId && !force)) {
       renderGraphLayout();
       syncActivePaneContext();
       return;
     }
 
-    saveCurrentWorkspace();
+    if (!force) saveCurrentWorkspace();
     const generation = ++workspaceGeneration;
     activeWorkspaceId = target.id;
     refreshWorkspaceSelector();
@@ -1338,7 +1336,7 @@ export function createLoggerPage(): LoggerPageController {
       });
     }
 
-    const loads = paneRequests.map(async ({ runtime, pane, requestedIds }) => {
+    const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {
       if (!pane || requestedIds.length === 0) return;
 
       const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
@@ -1735,6 +1733,9 @@ export function createLoggerPage(): LoggerPageController {
       syncViewport(undefined);
     }
     diagnostics.setDiagnostics(summary.diagnostics);
+
+    const workspaceId = activeWorkspaceId;
+    if (workspaceId) void restoreWorkspace(workspaceId, true);
   };
 
   const setImportError = (message: string): void => {
