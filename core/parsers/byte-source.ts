@@ -1,6 +1,11 @@
+export interface ByteSourcePerformanceSnapshot {
+  readonly physicalReadMs: number;
+}
+
 export interface RandomAccessByteSource {
   readonly size: number;
   read(offset: number, length: number): Promise<Uint8Array>;
+  performanceSnapshot?(): ByteSourcePerformanceSnapshot;
 }
 
 export class ByteSourceRangeError extends RangeError {
