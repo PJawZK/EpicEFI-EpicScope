@@ -147,10 +147,12 @@ Expected categories include:
 - analyzer regression cases;
 - integration tests across normalized data boundaries;
 - performance benchmarks;
-- compatibility/schema tests for persisted sessions when introduced;
+- compatibility/schema tests for persisted artifacts and migrations;
 - malformed/untrusted-input tests for importers.
 
 Large real logs should not be committed casually into normal Git history.
+
+The current Web CI gate runs TypeScript checking, Vitest, and the production Vite build. New parser, persistence, channel-binding, and analysis work should extend that existing automated test gate rather than treating the repository as build-only.
 
 ## Validation and feature maturity
 

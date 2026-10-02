@@ -1,5 +1,11 @@
 # EpicScope LOG-MLG Plan
 
+## Status
+
+**Completed historical implementation authority.**
+
+The initial LOG-MLG batch is complete. This document remains authoritative for the implemented MLVLG v1/v2 format, corruption, bounded-read, fixture, and parser-maintenance requirements. Its "explicitly deferred" section describes the scope boundary of that historical batch and does not override newer roadmap decisions such as the approved INI channel-catalog work.
+
 ## Purpose
 
 `LOG-MLG` establishes EpicScope's first real log-import path.

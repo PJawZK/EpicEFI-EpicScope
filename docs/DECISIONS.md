@@ -358,6 +358,67 @@ Rules:
 - the user must have an explicit local **Forget saved workspace** action;
 - persistence remains local-first and does not authorize network transmission or cloud storage.
 
+
+## D-037 — INI-backed channel catalog and log binding
+
+**Status:** Approved
+
+EpicScope will use normalized INI information as the preferred source of stable known runtime/output-channel definitions independently of any one opened log.
+
+Rules:
+
+- raw INI syntax decoding belongs under `core/parsers/ini/`;
+- stable logical channel identity/catalog responsibilities belong under approved channel/source-context services, not the Web UI;
+- an opened MLG remains authoritative for recorded sample values and source validity;
+- EpicScope binds logical catalog channels to matching MLG channels when data exists;
+- a catalog channel may remain visible as **known, no data** when absent from the current log;
+- usable **log-only** channels remain available even when the loaded INI does not define them;
+- MLG field position/index may remain a source-local identifier but must not be the sole long-term persisted workspace identity once catalog binding is available;
+- INI remains optional for ordinary log analysis.
+
+This decision intentionally allows TUNE-INI/channel-catalog work to proceed before the deferred CSV importer. D-008 still defines CSV as the secondary log format; it no longer implies that CSV must be the next implementation task after MLG.
+
+## D-038 — Persistent application workspace is independent of exact log identity
+
+**Status:** Approved
+
+The long-term workspace model separates reusable application configuration from recording-specific analysis state.
+
+Reusable application workspace state may persist:
+
+- named workspaces;
+- fixed/freeform pane layout and geometry;
+- stable logical channel assignments;
+- favorites and presentation preferences;
+- other configuration that should exist before a log is opened.
+
+Recording-specific state remains associated with the relevant log/session, including viewport/cursor position, A/B state, source-specific markers/ranges, and similar navigation context.
+
+The current `epicscope.web-workspace` v1 exact-log persistence from D-036 remains valid implemented behavior until a versioned migration/replacement lands. Future persistence must not silently reinterpret incompatible v1 artifacts.
+
+## D-039 — MSQ is optional tune-value enrichment, not the runtime-channel catalog
+
+**Status:** Approved
+
+MSQ support follows the INI-backed channel/source-context foundation.
+
+Rules:
+
+- raw MSQ syntax decoding belongs under `core/parsers/msq/`;
+- MSQ supplies actual tune/calibration values, tables, curves, and scalar settings through normalized tune context;
+- MSQ does not replace INI as the preferred stable runtime/output-channel definition source;
+- MSQ does not replace MLG as the authority for recorded runtime samples;
+- compatibility between loaded INI, MSQ, and logs must be surfaced explicitly rather than guessed or silently coerced.
+
+
+## D-040 — Vitest is the active Web/core automated test gate
+
+**Status:** Approved
+
+The bootstrap-era deferral of a dedicated automated test framework has been resolved. Vitest 5.x is now part of the normal Web CI validation path for parser/core/persistence logic.
+
+New parser, channel-binding, persistence, and analysis tasks should extend the existing Vitest gate where automated regression coverage is appropriate. This does not require browser/DOM tests for pure core logic.
+
 ## Superseding decisions
 
 A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.

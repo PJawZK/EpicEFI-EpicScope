@@ -113,11 +113,20 @@ Reference behavior includes:
 - optional freeform windows;
 - channel assignments per graph/workspace;
 - maximize/minimize behavior where useful;
+- compact pane identity that does not consume unnecessary graph height;
 - comparison controls;
 - selectable view panels;
 - snapshots and workspace configuration.
 
-EpicScope does not need to reproduce every layout mode in the first implementation. The reference defines intended capability, while ROADMAP tasks decide implementation order.
+The current Web implementation now includes Single, 4-, 5- and 6-pane fixed layouts plus a five-pane freeform mode. EpicScope deliberately adapts the reference presentation for higher graph density:
+
+- fixed panes use a compact static title label rather than a full-width pane bar;
+- freeform panes use a compact floating draggable title chip with an integrated dotted drag grip;
+- freeform panes may be moved/resized/snapped and minimized/maximized without reserving a permanent header row;
+- Single layout uses one stacked trace row per active channel rather than overlaying all selected channels into one value scale;
+- each Single-layout row shares the same time/cursor/A-B navigation and presents compact channel/color + Now/Min/Max context.
+
+These are semantic adaptations of the reference UX, not copies of the prototype implementation.
 
 ## Right-side inspector/channel rule
 
@@ -176,9 +185,9 @@ Reference capabilities include:
 - saved ranges;
 - markers and marker navigation;
 - A/B cursors;
-- extremes toggle;
+- extremes toggle in the reference prototype;
 - previous/next view history;
-- Zoom Event;
+- Zoom Event in the reference prototype;
 - Fit / Zoom In / Zoom Out;
 - configurable overview channel;
 - configurable playback speed;
@@ -193,6 +202,8 @@ The approved behavior is:
 If the cursor jumps behind the current window, the viewport should recover to include it rather than becoming detached.
 
 This behavior is part of EpicScope's interaction contract, not merely prototype animation.
+
+**Current EpicScope deviation:** the project owner deliberately chose not to implement the prototype's hard-coded **Extremes** function or **Zoom Event** control during the Phase 1 closeout. They are not current completion requirements. A future generic extreme/event navigation feature must be justified by real analysis workflows rather than copied as prototype behavior.
 
 ## Scatter Plot
 
@@ -318,6 +329,11 @@ The following deviations are approved for EpicScope:
 4. **Trigger Logger deferred** — digital trigger capture is not part of the initial EpicScope analysis foundation unless deliberately added later.
 5. **Performance over exact visual reproduction** — density, animation, panel effects, or other appearance details may be simplified whenever necessary for speed, RAM use, or maintainability.
 6. **No prototype implementation inheritance** — localStorage/JSON/demo-state implementation is not copied as architecture.
+7. **Dense graph chrome** — fixed graph layouts use compact static labels; freeform layouts use draggable floating title chips rather than full-width graph header bars.
+8. **Single-view stacked traces** — Single View separates active channels into synchronized horizontal rows with compact Now/Min/Max context rather than forcing all channels onto one overlaid plot.
+9. **Extremes / Zoom Event omitted for now** — those prototype controls are not Phase 1 requirements.
+10. **Shortcut discoverability lives under Settings** — keyboard actions remain available globally where safe, but the shortcut reference does not consume persistent top-bar space.
+11. **Compact comparison label** — the top-level comparison entry may be labeled simply **Compare**; future comparison semantics remain governed by the comparison service rather than prototype demo behavior.
 
 ## WEB-REFERENCE completion criteria
 
