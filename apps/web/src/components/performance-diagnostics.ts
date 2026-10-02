@@ -205,7 +205,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     loadHost.replaceChildren();
     const latestLoad = loadRuns[loadRuns.length - 1];
     if (latestLoad) {
-      const rows: readonly [string, string][] = [
+      const rows: [string, string][] = [
         ['File', latestLoad.fileName],
         ['Size', bytes(latestLoad.fileSizeBytes)],
         ['Import mode', latestLoad.importMode],
