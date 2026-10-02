@@ -182,7 +182,7 @@ function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
 
 interface GraphWorkspaceSummary {
   readonly id: string;
-  readonly name: string;
+  name: string;
 }
 
 interface GraphWorkspaceState extends GraphWorkspaceSummary {
