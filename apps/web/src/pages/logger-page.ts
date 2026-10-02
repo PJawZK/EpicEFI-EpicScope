@@ -24,6 +24,7 @@ import {
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
+import { normalizeWorkspaceChannelIds } from '../state/workspace-channel-identity';
 import type {
   GraphPaneGeometry,
   GraphPaneSnapshot,
@@ -812,32 +813,12 @@ export function createLoggerPage(): LoggerPageController {
 
   const normalizePersistentChannelIds = (
     channelIds: readonly string[],
-  ): string[] => {
-    const normalized: string[] = [];
-    for (const channelId of channelIds) {
-      let candidate = channelId;
-      if (!channelDefinitions.has(candidate)) {
-        const alias = channelIdAliases.get(candidate);
-        if (alias) candidate = alias;
-      }
-
-      // Source-local MLG field IDs are never valid long-term application
-      // workspace identity. When an INI catalog is active, drop unresolved
-      // legacy mlg:* assignments rather than allowing invisible entries to
-      // consume the pane's trace limit. Unknown stable IDs are preserved.
-      if (
-        catalogChannelDefinitions.size > 0
-        && candidate.startsWith('mlg:')
-        && !channelDefinitions.has(candidate)
-      ) {
-        continue;
-      }
-
-      if (!normalized.includes(candidate)) normalized.push(candidate);
-      if (normalized.length >= MAX_ACTIVE_WEB_TRACES) break;
-    }
-    return normalized;
-  };
+  ): string[] => normalizeWorkspaceChannelIds(channelIds, {
+    knownChannelIds: new Set(channelDefinitions.keys()),
+    aliases: channelIdAliases,
+    iniCatalogActive: catalogChannelDefinitions.size > 0,
+    limit: MAX_ACTIVE_WEB_TRACES,
+  });
 
   const syncPaneAssignedChannels = (
     runtime: (typeof paneRuntimes)[number],
