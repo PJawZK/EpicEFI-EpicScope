@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  mergeLogSpecificWorkspaceState,
   parseWebApplicationWorkspace,
   serializeWebApplicationWorkspace,
   toApplicationWorkspaceState,
@@ -93,6 +94,94 @@ describe('application workspace persistence v2 foundation', () => {
     expect(reusable.logger.timeline.savedRanges).toEqual([]);
     expect(reusable.logger.inspector.favoriteChannelIds).toEqual(['ini:RPMValue']);
     expect(reusable.logger.inspector.recentChannelIds).toEqual([]);
+  });
+
+  it('merges only recording-specific state from an old per-log artifact', () => {
+    const reusable: WebWorkspaceState = {
+      ...workspace,
+      logger: {
+        ...workspace.logger,
+        workspaces: [{
+          ...workspace.logger.workspaces[0]!,
+          layout: 'grid4',
+          panes: [
+            { id: 'pane-1', channelIds: ['ini:RPMValue'] },
+            { id: 'pane-2', channelIds: ['ini:MAPValue'] },
+            { id: 'pane-3', channelIds: ['ini:TPSValue'] },
+            { id: 'pane-4', channelIds: ['ini:lwgDutyPct'] },
+            { id: 'pane-5', channelIds: [] },
+            { id: 'pane-6', channelIds: [] },
+          ],
+          activePaneId: 'pane-2',
+        }],
+      },
+    };
+
+    const oldPerLog: WebWorkspaceState = {
+      ...workspace,
+      logger: {
+        ...workspace.logger,
+        activeWorkspaceId: 'general',
+        workspaces: [{
+          ...workspace.logger.workspaces[0]!,
+          id: 'boost',
+          name: 'Old log layout',
+          layout: 'single',
+          activePaneId: 'pane-1',
+          panes: [
+            { id: 'pane-1', channelIds: ['mlg:0', 'mlg:1'] },
+            { id: 'pane-2', channelIds: [] },
+            { id: 'pane-3', channelIds: [] },
+            { id: 'pane-4', channelIds: [] },
+            { id: 'pane-5', channelIds: [] },
+            { id: 'pane-6', channelIds: [] },
+          ],
+          viewport: {
+            fullStartMs: 0,
+            fullEndMs: 12_000,
+            visibleStartMs: 4_000,
+            visibleEndMs: 7_000,
+          },
+          cursorTimeMs: 5_500,
+          viewHistory: [{
+            fullStartMs: 0,
+            fullEndMs: 12_000,
+            visibleStartMs: 4_000,
+            visibleEndMs: 7_000,
+          }],
+          viewHistoryIndex: 0,
+        }],
+        timeline: {
+          expanded: false,
+          userMarkers: [{ timeMs: 5_000, label: 'Saved log marker' }],
+          aTimeMs: 4_500,
+          bTimeMs: 6_500,
+          savedRanges: [{ label: 'Saved range', startMs: 4_500, endMs: 6_500 }],
+        },
+      },
+    };
+
+    const merged = mergeLogSpecificWorkspaceState(reusable, oldPerLog);
+    const mergedWorkspace = merged.logger.workspaces[0]!;
+
+    expect(merged.logger.activeWorkspaceId).toBe('boost');
+    expect(mergedWorkspace.layout).toBe('grid4');
+    expect(mergedWorkspace.activePaneId).toBe('pane-2');
+    expect(mergedWorkspace.panes?.[0]?.channelIds).toEqual(['ini:RPMValue']);
+    expect(mergedWorkspace.panes?.[3]?.channelIds).toEqual(['ini:lwgDutyPct']);
+
+    expect(mergedWorkspace.viewport).toEqual(oldPerLog.logger.workspaces[0]?.viewport);
+    expect(mergedWorkspace.cursorTimeMs).toBe(5_500);
+    expect(mergedWorkspace.viewHistory).toEqual(oldPerLog.logger.workspaces[0]?.viewHistory);
+    expect(merged.logger.timeline.expanded).toBe(true);
+    expect(merged.logger.timeline.userMarkers).toEqual([
+      { timeMs: 5_000, label: 'Saved log marker' },
+    ]);
+    expect(merged.logger.timeline.aTimeMs).toBe(4_500);
+    expect(merged.logger.timeline.bTimeMs).toBe(6_500);
+    expect(merged.logger.timeline.savedRanges).toEqual([
+      { label: 'Saved range', startMs: 4_500, endMs: 6_500 },
+    ]);
   });
 
   it('round-trips the reusable application artifact', () => {

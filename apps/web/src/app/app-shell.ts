@@ -24,6 +24,9 @@ import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/appli
 import { createIniCatalogLocalStorageAdapter } from '../adapters/ini-catalog-local-storage';
 import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
 import {
+  mergeLogSpecificWorkspaceState,
+} from '../state/application-workspace-persistence';
+import {
   createWorkspaceHistory,
   type WebWorkspaceState,
 } from '../state/workspace-state';
@@ -367,8 +370,14 @@ export function mountAppShell(root: HTMLElement): void {
         setPersistenceStatus(`Using reusable workspace structure · no saved log view yet for ${source.displayName}.`);
         return false;
       }
-      await restoreWorkspaceSnapshot(persisted.workspace);
-      setPersistenceStatus(`Restored locally saved workspace for ${source.displayName}.`);
+      const merged = mergeLogSpecificWorkspaceState(
+        captureWorkspaceState(),
+        persisted.workspace,
+      );
+      await restoreWorkspaceSnapshot(merged);
+      setPersistenceStatus(
+        `Restored log-specific navigation for ${source.displayName} · reusable layout/channels preserved.`,
+      );
       forgetWorkspaceButton.disabled = false;
       return true;
     } catch (error) {

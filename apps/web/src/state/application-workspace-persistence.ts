@@ -45,6 +45,51 @@ export function toApplicationWorkspaceState(
   };
 }
 
+
+export function mergeLogSpecificWorkspaceState(
+  applicationWorkspace: WebWorkspaceState,
+  logWorkspace: WebWorkspaceState,
+): WebWorkspaceState {
+  const logWorkspacesById = new Map(
+    logWorkspace.logger.workspaces.map((workspace) => [workspace.id, workspace] as const),
+  );
+
+  return {
+    logger: {
+      activeWorkspaceId: applicationWorkspace.logger.activeWorkspaceId,
+      workspaces: applicationWorkspace.logger.workspaces.map((workspace) => {
+        const logSpecific = logWorkspacesById.get(workspace.id);
+        return {
+          ...workspace,
+          viewport: logSpecific?.viewport
+            ? { ...logSpecific.viewport }
+            : workspace.viewport
+              ? { ...workspace.viewport }
+              : undefined,
+          cursorTimeMs: logSpecific?.cursorTimeMs ?? workspace.cursorTimeMs,
+          viewHistory: logSpecific
+            ? logSpecific.viewHistory.map((item) => ({ ...item }))
+            : workspace.viewHistory.map((item) => ({ ...item })),
+          viewHistoryIndex: logSpecific?.viewHistoryIndex ?? workspace.viewHistoryIndex,
+        };
+      }),
+      timeline: {
+        expanded: applicationWorkspace.logger.timeline.expanded,
+        userMarkers: logWorkspace.logger.timeline.userMarkers.map((marker) => ({ ...marker })),
+        aTimeMs: logWorkspace.logger.timeline.aTimeMs,
+        bTimeMs: logWorkspace.logger.timeline.bTimeMs,
+        savedRanges: logWorkspace.logger.timeline.savedRanges.map((range) => ({ ...range })),
+      },
+      inspector: {
+        ...applicationWorkspace.logger.inspector,
+        favoriteChannelIds: [...applicationWorkspace.logger.inspector.favoriteChannelIds],
+        recentChannelIds: [...applicationWorkspace.logger.inspector.recentChannelIds],
+      },
+    },
+    settings: { ...applicationWorkspace.settings },
+  };
+}
+
 export function serializeWebApplicationWorkspace(
   workspace: WebWorkspaceState,
 ): string {
