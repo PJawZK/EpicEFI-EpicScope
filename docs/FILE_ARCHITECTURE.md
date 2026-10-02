@@ -151,7 +151,7 @@ It is not blanket approval to add arbitrary dependencies or files in later Web t
 
 ### `docs/LOG_MLG_PLAN.md`
 
-Active task/file authority for the first MLG import/parser batch while LOG-MLG is in progress.
+Historical implementation authority for the completed first MLG import/parser batch. It remains the format/safety reference for v1/v2 parser behavior and future maintenance, but current implementation order is governed by `ROADMAP.md` and `HANDOFF.md`.
 
 It defines:
 
@@ -221,7 +221,7 @@ Normalized session/log/channel/sample contracts that form the neutral boundary b
 
 Parsers depend on these contracts to produce normalized data. Analysis and higher-level services depend on these contracts to consume normalized data.
 
-LOG-MLG may create the first physical contracts here, but only those required for source identity/provenance, channel definitions, time/sample validity, markers/diagnostics, and bounded data access needed by the Phase 1 import path.
+LOG-MLG created the first physical contracts here for source identity/provenance, channel definitions, time/sample validity, markers/diagnostics, and bounded data access. Future INI-backed catalog work may extend normalized channel/source-context contracts only through the approved architecture and decisions.
 
 ### `core/parsers/`
 
@@ -240,7 +240,14 @@ A format-neutral bounded byte-source contract may live directly under `core/pars
 
 ### `core/channels/`
 
-Channel discovery, units, aliases, grouping, derived/math channel infrastructure, and channel-level transformations that are not domain-specific analysis.
+Channel discovery, units, aliases, grouping, stable logical channel identity/catalog services, source-to-log channel bindings, derived/math channel infrastructure, and channel-level transformations that are not domain-specific analysis.
+
+For the approved INI-backed catalog workflow:
+
+- `core/parsers/ini/` owns raw INI syntax;
+- normalized known-channel definitions feed `core/channels/`;
+- `core/channels/` owns matching/binding between logical channels and source-local MLG channels;
+- sample arrays remain owned by the log data source rather than copied into the catalog.
 
 ### `core/timeline/`
 
@@ -257,6 +264,8 @@ Reusable event definitions and detection services.
 ### `core/tune/`
 
 Normalized firmware/tune context, table representations, axis/cell mapping, relationships between source settings and normalized tune structures, and tune-aware correlations.
+
+INI may contribute firmware/table metadata to tune context, but stable runtime-channel catalog/binding concerns belong in `core/channels/`. MSQ later contributes actual tune/calibration values through `core/tune/`.
 
 `core/tune/` must not become the raw INI/MSQ syntax parser. Raw source decoding stays in `core/parsers/ini/` and `core/parsers/msq/`.
 
