@@ -129,6 +129,7 @@ export interface PerformanceDiagnosticsController {
   recordValidation(run: ValidationPerformanceRun): void;
   recordWorkspaceRestore(run: WorkspaceRestorePerformanceRun): void;
   recordChannel(run: ChannelPerformanceRun): void;
+  reportText(): string;
   clear(): void;
 }
 
@@ -642,6 +643,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       if (channelRuns.length > 50) channelRuns.shift();
       render();
     },
+    reportText,
     clear: () => {
       loadRuns.length = 0;
       iniLoadRuns.length = 0;

@@ -51,6 +51,44 @@ export function mountAppShell(root: HTMLElement): void {
   const loggerPage = createLoggerPage();
   const performanceDiagnostics = createPerformanceDiagnostics();
 
+  interface RuntimeErrorEntry {
+    readonly time: number;
+    readonly kind: 'error' | 'unhandledrejection';
+    readonly message: string;
+    readonly source?: string;
+    readonly line?: number;
+    readonly column?: number;
+    readonly stack?: string;
+  }
+
+  const runtimeErrors: RuntimeErrorEntry[] = [];
+  const rememberRuntimeError = (entry: RuntimeErrorEntry): void => {
+    runtimeErrors.push(entry);
+    if (runtimeErrors.length > 50) runtimeErrors.shift();
+  };
+
+  window.addEventListener('error', (event) => {
+    rememberRuntimeError({
+      time: Date.now(),
+      kind: 'error',
+      message: event.message || 'Unknown runtime error',
+      ...(event.filename ? { source: event.filename } : {}),
+      ...(event.lineno ? { line: event.lineno } : {}),
+      ...(event.colno ? { column: event.colno } : {}),
+      ...(event.error instanceof Error && event.error.stack ? { stack: event.error.stack } : {}),
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    rememberRuntimeError({
+      time: Date.now(),
+      kind: 'unhandledrejection',
+      message: reason instanceof Error ? reason.message : String(reason ?? 'Unknown rejection'),
+      ...(reason instanceof Error && reason.stack ? { stack: reason.stack } : {}),
+    });
+  });
+
   const header = document.createElement('header');
   header.className = 'app-header';
   header.innerHTML = `
@@ -157,6 +195,7 @@ export function mountAppShell(root: HTMLElement): void {
   footer.innerHTML = `
     <div class="diagnostics-slot"></div>
     <div class="performance-diagnostics-slot"></div>
+    <div class="bug-report-slot"></div>
     <span class="app-status">Ready</span>
     <span>Local analysis</span>
     <span class="grow"></span>
@@ -168,7 +207,8 @@ export function mountAppShell(root: HTMLElement): void {
   const settingsShortcutsSlot = header.querySelector<HTMLElement>('.settings-shortcuts-slot');
   const diagnosticsSlot = footer.querySelector<HTMLElement>('.diagnostics-slot');
   const performanceDiagnosticsSlot = footer.querySelector<HTMLElement>('.performance-diagnostics-slot');
-  if (!graphSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot) {
+  const bugReportSlot = footer.querySelector<HTMLElement>('.bug-report-slot');
+  if (!graphSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {
     throw new Error('EpicScope application shell control slots are incomplete.');
   }
   graphSelectorSlot.append(loggerPage.graphSelector);
@@ -176,6 +216,34 @@ export function mountAppShell(root: HTMLElement): void {
   settingsShortcutsSlot.append(loggerPage.keyboardShortcutsControl);
   diagnosticsSlot.append(loggerPage.diagnosticsControl);
   performanceDiagnosticsSlot.append(performanceDiagnostics.element);
+
+  const bugReportButton = document.createElement('button');
+  bugReportButton.type = 'button';
+  bugReportButton.className = 'bug-report-button';
+  bugReportButton.textContent = 'Bug report';
+  bugReportButton.title = 'Capture EpicScope runtime diagnostics';
+
+  const bugReportDialog = document.createElement('dialog');
+  bugReportDialog.className = 'bug-report-dialog';
+  bugReportDialog.innerHTML = `
+    <form method="dialog" class="bug-report-panel">
+      <header>
+        <div>
+          <strong>EpicScope bug report</strong>
+          <small>Runtime state, channel health, errors and performance evidence</small>
+        </div>
+        <button type="submit" class="bug-report-close" aria-label="Close bug report">×</button>
+      </header>
+      <div class="bug-report-health"></div>
+      <textarea class="bug-report-text" readonly spellcheck="false" aria-label="EpicScope bug report text"></textarea>
+      <footer>
+        <button type="button" class="bug-report-copy">Copy report</button>
+        <button type="button" class="bug-report-export">Export .txt</button>
+        <button type="submit">Close</button>
+      </footer>
+    </form>
+  `;
+  bugReportSlot.append(bugReportButton);
 
   loggerPage.onChannelPerformance((run) => {
     performanceDiagnostics.recordChannel({
@@ -235,6 +303,36 @@ export function mountAppShell(root: HTMLElement): void {
 
   type SourceLoadState = 'idle' | 'loading' | 'success' | 'restored' | 'issue';
 
+  bugReportButton.addEventListener('click', () => {
+    refreshBugReport();
+    bugReportDialog.showModal();
+  });
+
+  bugReportDialog.querySelector<HTMLButtonElement>('.bug-report-copy')?.addEventListener('click', () => {
+    const report = buildBugReport().text;
+    void navigator.clipboard.writeText(report).then(() => {
+      appStatus.textContent = 'Bug report copied';
+    }).catch(() => {
+      const textArea = bugReportDialog.querySelector<HTMLTextAreaElement>('.bug-report-text');
+      if (textArea) {
+        textArea.value = report;
+        textArea.focus();
+        textArea.select();
+      }
+    });
+  });
+
+  bugReportDialog.querySelector<HTMLButtonElement>('.bug-report-export')?.addEventListener('click', () => {
+    const report = buildBugReport().text;
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `EpicScope-bug-report-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+
   const setSourceLoadState = (
     button: HTMLButtonElement,
     state: SourceLoadState,
@@ -268,6 +366,118 @@ export function mountAppShell(root: HTMLElement): void {
   let workspacePersistenceBlocked = false;
   let applicationWorkspacePersistenceBlocked = false;
   let reusableWorkspacePersistenceSuspended = false;
+
+  const buildBugReport = (): { readonly text: string; readonly issueCount: number } => {
+    const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();
+    const workspaceState = loggerPage.getWorkspaceState();
+    const issues: string[] = [];
+    const warnings: string[] = [];
+
+    if (currentRawLog && !snapshot.hasChannelDataSource) {
+      issues.push('Log is loaded but Logger has no channel data source.');
+    }
+    if (currentRawLog && snapshot.channelDefinitionCount === 0) {
+      issues.push('Log is loaded but Logger has zero channel definitions.');
+    }
+    if (snapshot.assignedChannelCount > 0 && snapshot.activeTraceCount === 0) {
+      issues.push(`${snapshot.assignedChannelCount} channels are assigned to visible panes but zero traces are active.`);
+    }
+    if (snapshot.activeTraceCount > snapshot.assignedChannelCount) {
+      warnings.push('Active trace count exceeds assigned visible-channel count.');
+    }
+    if (runtimeErrors.length > 0) {
+      issues.push(`${runtimeErrors.length} runtime error/unhandled rejection event(s) captured.`);
+    }
+    if (currentRawLog && activeIniCatalog && !activeIniBinding) {
+      warnings.push('INI catalog and log are loaded but no current INI/MLG binding is recorded.');
+    }
+
+    const source = currentRawLog?.summary.source;
+    const bindingMetrics = activeIniBinding?.metrics;
+    const lines = [
+      'EpicScope runtime bug report',
+      `Generated: ${new Date().toISOString()}`,
+      `URL: ${location.href}`,
+      `User agent: ${navigator.userAgent}`,
+      `Viewport: ${window.innerWidth}x${window.innerHeight} @ DPR ${window.devicePixelRatio}`,
+      `Document visibility: ${document.visibilityState}`,
+      `Online: ${navigator.onLine ? 'yes' : 'no'}`,
+      `CPU threads: ${navigator.hardwareConcurrency || 'unknown'}`,
+      '',
+      `[Health] ${issues.length} ISSUE / ${warnings.length} WARN`,
+      ...issues.map((item) => `ISSUE | ${item}`),
+      ...warnings.map((item) => `WARN | ${item}`),
+      ...(issues.length === 0 && warnings.length === 0 ? ['PASS | No obvious runtime-state inconsistency detected.'] : []),
+      '',
+      '[Source]',
+      `logLoaded=${currentRawLog ? 'yes' : 'no'}`,
+      `logName=${source?.displayName ?? '—'}`,
+      `logSize=${source?.sizeBytes ?? '—'}`,
+      `records=${currentRawLog?.recordCount ?? 0}`,
+      `logChannels=${currentRawLog?.summary.channels.length ?? 0}`,
+      `dataSourceSamples=${currentRawLog?.channelData.sampleCount ?? 0}`,
+      `iniLoaded=${activeIniCatalog ? 'yes' : 'no'}`,
+      `iniSource=${activeIniSourceName ?? '—'}`,
+      `iniCatalogEntries=${activeIniCatalog?.entries.length ?? 0}`,
+      `bindingActive=${activeIniBinding ? 'yes' : 'no'}`,
+      ...(bindingMetrics ? [
+        `bindingBound=${bindingMetrics.boundChannelCount}`,
+        `bindingKnownNoData=${bindingMetrics.knownNoDataCount}`,
+        `bindingLogOnly=${bindingMetrics.logOnlyCount}`,
+        `bindingAmbiguous=${bindingMetrics.ambiguousLogChannelCount}`,
+      ] : []),
+      '',
+      '[Logger runtime]',
+      `hasChannelDataSource=${snapshot.hasChannelDataSource}`,
+      `channelDefinitions=${snapshot.channelDefinitionCount}`,
+      `catalogChannels=${snapshot.catalogChannelCount}`,
+      `unavailableChannels=${snapshot.unavailableChannelCount}`,
+      `channelAliases=${snapshot.aliasCount}`,
+      `workspaceCount=${snapshot.workspaceCount}`,
+      `activeWorkspace=${snapshot.activeWorkspaceId}`,
+      `restoringWorkspace=${snapshot.restoringWorkspaceState}`,
+      `visiblePanes=${snapshot.visiblePaneCount}`,
+      `assignedVisibleChannels=${snapshot.assignedChannelCount}`,
+      `activeVisibleTraces=${snapshot.activeTraceCount}`,
+      ...snapshot.panes.map((pane) =>
+        `pane=${pane.id}; visible=${pane.visible}; assigned=[${pane.assignedChannelIds.join(',')}]; active=[${pane.activeChannelIds.join(',')}]`
+      ),
+      '',
+      '[Workspace state]',
+      JSON.stringify(workspaceState, null, 2),
+      '',
+      `[Runtime errors] ${runtimeErrors.length}`,
+      ...runtimeErrors.flatMap((item) => [
+        `${new Date(item.time).toISOString()} ${item.kind.toUpperCase()} ${item.message}${item.source ? ` · ${item.source}:${item.line ?? 0}:${item.column ?? 0}` : ''}`,
+        ...(item.stack ? [item.stack] : []),
+      ]),
+      '',
+      '[Application status]',
+      `appStatus=${appStatus.textContent ?? ''}`,
+      `parserStatus=${parserStatus.textContent ?? ''}`,
+      `openLogState=${openButton.dataset.loadState ?? '—'}`,
+      `openLogTitle=${openButton.title}`,
+      `loadIniState=${loadIniButton.dataset.loadState ?? '—'}`,
+      `loadIniTitle=${loadIniButton.title}`,
+      '',
+      performanceDiagnostics.reportText(),
+    ];
+
+    return { text: lines.join('\n'), issueCount: issues.length };
+  };
+
+  const refreshBugReport = (): void => {
+    const report = buildBugReport();
+    const textArea = bugReportDialog.querySelector<HTMLTextAreaElement>('.bug-report-text');
+    const health = bugReportDialog.querySelector<HTMLElement>('.bug-report-health');
+    if (textArea) textArea.value = report.text;
+    if (health) {
+      health.textContent = report.issueCount > 0
+        ? `${report.issueCount} runtime issue${report.issueCount === 1 ? '' : 's'} detected`
+        : 'No obvious runtime-state inconsistency detected';
+      health.dataset.state = report.issueCount > 0 ? 'issue' : 'ok';
+    }
+  };
 
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
@@ -1160,6 +1370,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, footer, fileInput, iniInput);
+  app.append(header, loggerPage.element, footer, fileInput, iniInput, bugReportDialog);
   root.append(app);
 }

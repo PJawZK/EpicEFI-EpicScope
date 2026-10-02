@@ -143,6 +143,26 @@ export interface LoggerWorkspaceRestorePerformance {
   readonly physicalReadMs: number;
 }
 
+export interface LoggerRuntimeDiagnosticSnapshot {
+  readonly hasChannelDataSource: boolean;
+  readonly channelDefinitionCount: number;
+  readonly catalogChannelCount: number;
+  readonly unavailableChannelCount: number;
+  readonly aliasCount: number;
+  readonly activeWorkspaceId: string;
+  readonly workspaceCount: number;
+  readonly restoringWorkspaceState: boolean;
+  readonly visiblePaneCount: number;
+  readonly assignedChannelCount: number;
+  readonly activeTraceCount: number;
+  readonly panes: readonly {
+    readonly id: string;
+    readonly visible: boolean;
+    readonly assignedChannelIds: readonly string[];
+    readonly activeChannelIds: readonly string[];
+  }[];
+}
+
 export interface LoggerPageController {
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
@@ -172,6 +192,7 @@ export interface LoggerPageController {
   ): void;
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): LoggerWorkspaceState;
+  getRuntimeDiagnosticSnapshot(): LoggerRuntimeDiagnosticSnapshot;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
 }
@@ -2068,6 +2089,42 @@ export function createLoggerPage(): LoggerPageController {
     }
   };
 
+  const getRuntimeDiagnosticSnapshot = (): LoggerRuntimeDiagnosticSnapshot => {
+    const workspace = activeWorkspace();
+    const visiblePaneCount = workspace ? paneCountForLayout(workspace.layout) : 0;
+    const visiblePaneIds = new Set(
+      workspace?.panes.slice(0, visiblePaneCount).map((pane) => pane.id) ?? [],
+    );
+    const panes = paneRuntimes.map((runtime) => {
+      const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
+      return {
+        id: runtime.id,
+        visible: visiblePaneIds.has(runtime.id),
+        assignedChannelIds: [...(pane?.channelIds ?? [])],
+        activeChannelIds: [...runtime.activeChannelIds],
+      };
+    });
+
+    return {
+      hasChannelDataSource: channelDataSource !== undefined,
+      channelDefinitionCount: channelDefinitions.size,
+      catalogChannelCount: catalogChannelDefinitions.size,
+      unavailableChannelCount: unavailableChannelIds.size,
+      aliasCount: channelIdAliases.size,
+      activeWorkspaceId,
+      workspaceCount: workspaces.length,
+      restoringWorkspaceState,
+      visiblePaneCount,
+      assignedChannelCount: panes
+        .filter((pane) => pane.visible)
+        .reduce((sum, pane) => sum + pane.assignedChannelIds.length, 0),
+      activeTraceCount: panes
+        .filter((pane) => pane.visible)
+        .reduce((sum, pane) => sum + pane.activeChannelIds.length, 0),
+      panes,
+    };
+  };
+
   refreshWorkspaceSelector();
   graphSelector.setEnabled(false);
   renderGraphLayout();
@@ -2099,6 +2156,7 @@ export function createLoggerPage(): LoggerPageController {
     },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
+    getRuntimeDiagnosticSnapshot,
     restoreWorkspaceState,
     restoreActiveWorkspace: async () => {
       const workspaceId = activeWorkspaceId;
