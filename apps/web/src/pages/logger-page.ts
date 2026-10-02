@@ -42,6 +42,9 @@ export interface LoggerPageController {
   setImportError(message: string): void;
   setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
   refreshValidity(): void;
+  setPlaybackSpeed(speed: number): void;
+  setHighZoomSamplePointsVisible(visible: boolean): void;
+  setTimelineOverviewTracesVisible(visible: boolean): void;
   onChannelPerformance(listener: (performance: LoggerChannelPerformance) => void): void;
 }
 
@@ -721,6 +724,9 @@ export function createLoggerPage(): LoggerPageController {
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
     refreshValidity: () => { graph.refreshValidity(); timeline.refreshOverview(); },
+    setPlaybackSpeed: (speed) => { timeline.setPlaybackSpeed(speed); },
+    setHighZoomSamplePointsVisible: (visible) => { graph.setHighZoomSamplePointsVisible(visible); },
+    setTimelineOverviewTracesVisible: (visible) => { timeline.setOverviewTracesVisible(visible); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
   };
 }
