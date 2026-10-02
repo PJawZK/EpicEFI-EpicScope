@@ -210,7 +210,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       let batch: DecodeBatch | undefined = createBatch(startSampleIndex);
       while (batch) {
         const bytes = await batch.bytesPromise;
-        const nextBatch = batch.lastIndex + 1 < endSampleIndex
+        const nextBatch: DecodeBatch | undefined = batch.lastIndex + 1 < endSampleIndex
           ? createBatch(batch.lastIndex + 1)
           : undefined;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
