@@ -113,6 +113,7 @@ export interface LoggerPageController {
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
   readonly headerTools: HTMLElement;
+  readonly keyboardShortcutsControl: HTMLElement;
   readonly diagnosticsControl: HTMLElement;
   setLog(
     summary: ImportedLogSummary,
@@ -618,14 +619,13 @@ export function createLoggerPage(): LoggerPageController {
   const compareButton = document.createElement('button');
   compareButton.type = 'button';
   compareButton.disabled = true;
-  compareButton.textContent = 'Compare Run B';
+  compareButton.textContent = 'Compare';
   headerTools.append(
     valueSearch.element,
     layoutSelect,
     arrangeSelect,
     clearPaneButton,
     resetLayoutButton,
-    shortcutWrap,
     compareButton,
   );
 
@@ -665,6 +665,10 @@ export function createLoggerPage(): LoggerPageController {
     state.className = 'graph-pane-state';
     state.textContent = index === 0 ? 'ACTIVE' : '';
 
+    const dragGrip = document.createElement('span');
+    dragGrip.className = 'graph-pane-drag-grip';
+    dragGrip.setAttribute('aria-hidden', 'true');
+
     const controls = document.createElement('span');
     controls.className = 'graph-pane-window-controls';
 
@@ -681,7 +685,7 @@ export function createLoggerPage(): LoggerPageController {
     maximizeButton.title = 'Maximize graph window';
 
     controls.append(minimizeButton, maximizeButton);
-    header.append(title, state, controls);
+    header.append(title, state, dragGrip, controls);
 
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'graph-pane-resize-handle';
@@ -695,6 +699,7 @@ export function createLoggerPage(): LoggerPageController {
       graph,
       windowElement,
       stateElement: state,
+      dragGrip,
       headerElement: header,
       minimizeButton,
       maximizeButton,
@@ -790,6 +795,10 @@ export function createLoggerPage(): LoggerPageController {
     arrangeSelect.value = workspace.freeformArrange;
     graphHost.className = `graph-workspace graph-workspace--${workspace.layout}`;
 
+    paneRuntimes.forEach((runtime) => {
+      runtime.graph.setDisplayMode(workspace.layout === 'single' ? 'stacked' : 'overlay');
+    });
+
     paneRuntimes.forEach((runtime, index) => {
       const inLayout = index < visibleCount;
       const maximized = workspace.maximizedPaneId === runtime.id;
@@ -805,6 +814,7 @@ export function createLoggerPage(): LoggerPageController {
       runtime.windowElement.classList.toggle('graph-window--minimized', minimized);
       runtime.windowElement.classList.toggle('graph-window--maximized', maximized);
       runtime.stateElement.textContent = active ? 'ACTIVE' : '';
+      runtime.dragGrip.hidden = workspace.layout !== 'freeform';
       runtime.minimizeButton.hidden = workspace.layout !== 'freeform';
       runtime.maximizeButton.hidden = workspace.layout !== 'freeform';
       runtime.resizeHandle.hidden = workspace.layout !== 'freeform' || minimized || maximized;
@@ -1797,6 +1807,7 @@ export function createLoggerPage(): LoggerPageController {
     element: page,
     graphSelector: graphSelector.element,
     headerTools,
+    keyboardShortcutsControl: shortcutWrap,
     diagnosticsControl: diagnostics.element,
     setLog,
     setImportError,
