@@ -41,3 +41,30 @@ describe('BlobByteSource bounded raw cache', () => {
     expect(range.buffer).toBe(again.buffer);
   });
 });
+
+
+it('reuses the rolling boundary page on large sequential reads without exceeding the cache budget', async () => {
+  const page = 8 * 1024 * 1024;
+  const total = 13 * page;
+  const source = new BlobByteSource(new Blob([new Uint8Array(total)]));
+
+  // Fill the pinned 88 MiB prefix (pages 0-10).
+  for (let index = 0; index < 11; index += 1) {
+    await source.read(index * page, page);
+  }
+
+  const before = source.stats();
+  expect(before.physicalReadCount).toBe(11);
+
+  // First boundary read loads page 11 as the rolling page.
+  await source.read(11 * page - 1024, 2048);
+  const afterFirstBoundary = source.stats();
+  expect(afterFirstBoundary.physicalReadCount).toBe(12);
+
+  // The next boundary read must reuse page 11 and only load page 12.
+  await source.read(12 * page - 1024, 2048);
+  const afterSecondBoundary = source.stats();
+  expect(afterSecondBoundary.physicalReadCount).toBe(13);
+  expect(afterSecondBoundary.cacheHitBytes).toBeGreaterThanOrEqual(1024);
+  expect(afterSecondBoundary.cacheBytes).toBeLessThanOrEqual(96 * 1024 * 1024);
+});
