@@ -1425,6 +1425,84 @@ export function createLoggerPage(): LoggerPageController {
     setCursorWithoutFollow(timeMs);
   });
 
+  const showActivePaneStatistics = (): void => {
+    const runtime = activePaneRuntime();
+    const channelId = runtime?.activeChannelIds.values().next().value as string | undefined;
+    if (!runtime || !channelId) return;
+    const channel = channelDefinitions.get(channelId);
+    const statistics = runtime.graph.getChannelStatistics(channelId);
+    if (!channel || !statistics) return;
+    inspector.setChannelStatistics({
+      channelId,
+      title: channel.displayName || channel.sourceName,
+      unit: channel.unit,
+      category: channel.category,
+      current: statistics.current,
+      full: statistics.full,
+      visible: statistics.visible,
+    });
+  };
+
+  const shortcutTargetIsInteractive = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(
+      target.closest('input, textarea, select, button, [contenteditable="true"], [role="dialog"]'),
+    );
+  };
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !shortcutPopover.hidden) {
+      setShortcutPopoverOpen(false);
+      return;
+    }
+    if (shortcutTargetIsInteractive(event.target)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const key = event.key.toLowerCase();
+    if (event.repeat && key !== 'arrowleft' && key !== 'arrowright') return;
+
+    let handled = true;
+    switch (key) {
+      case ' ':
+      case 'spacebar':
+        timeline.togglePlayback();
+        break;
+      case 'arrowleft':
+        timeline.stepCursor(-1);
+        break;
+      case 'arrowright':
+        timeline.stepCursor(1);
+        break;
+      case 'a':
+        if (event.shiftKey) { handled = false; break; }
+        timeline.setAnalysisBoundary('a');
+        break;
+      case 'b':
+        if (event.shiftKey) { handled = false; break; }
+        timeline.setAnalysisBoundary('b');
+        break;
+      case 'f':
+        if (event.shiftKey) { handled = false; break; }
+        applyViewportIntent({ type: 'fit' });
+        break;
+      case 'm':
+        if (event.shiftKey) { handled = false; break; }
+        timeline.addUserMarker();
+        break;
+      case 's':
+        if (event.shiftKey) { handled = false; break; }
+        showActivePaneStatistics();
+        break;
+      case '?':
+        setShortcutPopoverOpen(shortcutPopover.hidden);
+        break;
+      default:
+        handled = false;
+    }
+
+    if (handled) event.preventDefault();
+  });
+
   timeline.onWorkspaceMutation(emitWorkspaceMutation);
   inspector.onWorkspaceMutation(emitWorkspaceMutation);
 
