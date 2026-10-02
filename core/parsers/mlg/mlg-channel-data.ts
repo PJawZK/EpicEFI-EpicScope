@@ -7,7 +7,11 @@ import type { MlgFieldDescriptor } from './mlg-format';
 import type { MlgRecordIndex } from './mlg-records';
 
 const BLOCK_HEADER_LENGTH = 4;
-const MAX_BATCH_SPAN = 256 * 1024;
+// Channel values are strided through complete MLG records. A 256 KiB batch
+// caused hundreds of Blob.arrayBuffer() calls for a single channel in a
+// 100+ MiB log. Keep the operation bounded, but amortize browser I/O and async
+// overhead across multi-megabyte spans.
+const MAX_BATCH_SPAN = 8 * 1024 * 1024;
 
 function decodeRawValue(view: DataView, offset: number, field: MlgFieldDescriptor): number {
   switch (field.type) {
