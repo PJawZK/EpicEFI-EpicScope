@@ -1,4 +1,14 @@
-import type { ChannelDefinition, LogSourceIdentity } from '../../../../core/log-model/log-types';
+import type {
+  ChannelDefinition,
+  ImportedLogSummary,
+  LogSourceIdentity,
+  NumericChannelDataSource,
+} from '../../../../core/log-model/log-types';
+import {
+  bindChannelCatalogToLog,
+  type BoundChannelCatalog,
+} from '../../../../core/channels/channel-binding';
+import type { ChannelCatalog } from '../../../../core/channels/channel-catalog';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
@@ -224,11 +234,49 @@ export function mountAppShell(root: HTMLElement): void {
   let restoringWorkspaceHistory = false;
   const workspaceStorage = createWorkspaceLocalStorageAdapter();
   let activeWorkspaceSource: LogSourceIdentity | undefined;
+  let activeIniCatalog: ChannelCatalog | undefined;
+  let currentRawLog: {
+    summary: ImportedLogSummary;
+    recordCount: number;
+    channelData: NumericChannelDataSource;
+  } | undefined;
   let workspaceSaveTimer: number | undefined;
   let workspacePersistenceBlocked = false;
 
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
+  };
+
+
+  const bindLogToActiveIni = (
+    summary: ImportedLogSummary,
+    channelData: NumericChannelDataSource,
+  ): {
+    readonly summary: ImportedLogSummary;
+    readonly channelData: NumericChannelDataSource;
+    readonly binding: BoundChannelCatalog | undefined;
+  } => {
+    if (!activeIniCatalog) {
+      return { summary, channelData, binding: undefined };
+    }
+
+    const started = globalThis.performance?.now() ?? Date.now();
+    const binding = bindChannelCatalogToLog(activeIniCatalog, summary.channels, channelData);
+    const totalMs = (globalThis.performance?.now() ?? Date.now()) - started;
+
+    performanceDiagnostics.recordBinding({
+      totalMs,
+      ...binding.metrics,
+    });
+
+    return {
+      summary: {
+        ...summary,
+        channels: binding.channels,
+      },
+      channelData: binding.dataSource,
+      binding,
+    };
   };
 
   const captureWorkspaceState = (): WebWorkspaceState => ({
@@ -469,14 +517,37 @@ export function mountAppShell(root: HTMLElement): void {
         });
 
         const catalogDefinitions: ChannelDefinition[] = imported.catalog.entries.map((entry) => ({
-          id: entry.logicalKey,
+          id: `ini:${entry.logicalKey}`,
           sourceName: entry.sourceName,
           displayName: entry.displayName,
           valueType: entry.valueType,
           ...(entry.unit ? { unit: entry.unit } : {}),
           ...(entry.precision !== undefined ? { precision: entry.precision } : {}),
         }));
+        activeIniCatalog = imported.catalog;
         loggerPage.setChannelCatalog(catalogDefinitions, imported.fileName);
+
+        if (currentRawLog) {
+          const workspaceBeforeBinding = captureWorkspaceState();
+          const prepared = bindLogToActiveIni(
+            currentRawLog.summary,
+            currentRawLog.channelData,
+          );
+          loggerPage.setLog(
+            prepared.summary,
+            currentRawLog.recordCount,
+            prepared.channelData,
+            prepared.binding
+              ? {
+                  unavailableChannelIds: [...prepared.binding.unavailableChannelIds],
+                  channelIdAliases: prepared.binding.sourceToLogicalChannelId,
+                }
+              : undefined,
+          );
+          void restoreWorkspaceSnapshot(workspaceBeforeBinding).then(() => {
+            resetWorkspaceHistory();
+          });
+        }
 
         const warnings = imported.diagnostics.filter(
           (diagnostic) => diagnostic.severity === 'warning',
@@ -532,11 +603,23 @@ export function mountAppShell(root: HTMLElement): void {
     parsed: Awaited<ReturnType<typeof importMlgFile>>,
   ): void => {
     const now = (): number => globalThis.performance?.now() ?? Date.now();
+    currentRawLog = {
+      summary: parsed.summary,
+      recordCount: parsed.recordIndex.offsets.length,
+      channelData: parsed.channelData,
+    };
+    const prepared = bindLogToActiveIni(parsed.summary, parsed.channelData);
     const uiStart = now();
     loggerPage.setLog(
-      parsed.summary,
+      prepared.summary,
       parsed.recordIndex.offsets.length,
-      parsed.channelData,
+      prepared.channelData,
+      prepared.binding
+        ? {
+            unavailableChannelIds: [...prepared.binding.unavailableChannelIds],
+            channelIdAliases: prepared.binding.sourceToLogicalChannelId,
+          }
+        : undefined,
     );
     void loadPersistedWorkspace(parsed.summary.source).then(() => resetWorkspaceHistory());
     const uiPopulateMs = now() - uiStart;
@@ -603,6 +686,7 @@ export function mountAppShell(root: HTMLElement): void {
       void importOnMainThread(file)
         .catch((error: unknown) => {
           const message = importErrorMessage(error);
+          currentRawLog = undefined;
           loggerPage.setImportError(message);
           activeWorkspaceSource = undefined;
           workspacePersistenceBlocked = false;
@@ -630,14 +714,27 @@ export function mountAppShell(root: HTMLElement): void {
           message: 'Record CRC validation is running in the background.',
           recoverable: true,
         };
+        const rawSummary: ImportedLogSummary = {
+          ...indexed.summary,
+          diagnostics: [...indexed.summary.diagnostics, pendingDiagnostic],
+        };
+        currentRawLog = {
+          summary: rawSummary,
+          recordCount: indexed.recordIndex.offsets.length,
+          channelData: indexed.channelData,
+        };
+        const prepared = bindLogToActiveIni(rawSummary, indexed.channelData);
         const uiStart = now();
         loggerPage.setLog(
-          {
-            ...indexed.summary,
-            diagnostics: [...indexed.summary.diagnostics, pendingDiagnostic],
-          },
+          prepared.summary,
           indexed.recordIndex.offsets.length,
-          indexed.channelData,
+          prepared.channelData,
+          prepared.binding
+            ? {
+                unavailableChannelIds: [...prepared.binding.unavailableChannelIds],
+                channelIdAliases: prepared.binding.sourceToLogicalChannelId,
+              }
+            : undefined,
         );
         void loadPersistedWorkspace(indexed.summary.source).then(() => resetWorkspaceHistory());
         const uiPopulateMs = now() - uiStart;
@@ -727,6 +824,7 @@ export function mountAppShell(root: HTMLElement): void {
         void importOnMainThread(file)
           .catch((error: unknown) => {
             const message = importErrorMessage(error ?? workerError);
+            currentRawLog = undefined;
             loggerPage.setImportError(message);
             setSourceLoadState(openButton, 'issue', `Log import failed: ${message}`);
             appStatus.textContent = 'Import failed';
