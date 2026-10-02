@@ -52,6 +52,7 @@ export interface NumericChannelBatchResult {
 
 export interface NumericChannelDataSource {
   readonly sampleCount: number;
+  readonly preferredBatchWindowMs?: number;
   readChannelRange(
     channelId: string,
     startSampleIndex: number,
