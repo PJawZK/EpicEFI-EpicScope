@@ -2,9 +2,9 @@
 
 ## Status
 
-**Implementation in progress.**
+**Complete — historical bootstrap authority.**
 
-This document defines the first Web implementation batch for EpicScope. `docs/UI_REFERENCE.md` remains the UI/interaction authority.
+This document records the completed first Web implementation batch for EpicScope. It is not the current feature roadmap. `docs/UI_REFERENCE.md` remains the UI/interaction authority and `docs/ROADMAP.md` governs current implementation order.
 
 ## Goal
 
