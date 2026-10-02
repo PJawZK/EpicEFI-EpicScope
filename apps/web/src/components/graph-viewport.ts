@@ -60,6 +60,7 @@ export interface GraphViewportController {
   onPendingChannelsChanged(listener: (channelIds: readonly string[]) => void): void;
   loadPendingChannels(): void;
   refreshValidity(): void;
+  setHighZoomSamplePointsVisible(visible: boolean): void;
   clear(): void;
 }
 
@@ -144,6 +145,7 @@ export function createGraphViewport(): GraphViewportController {
   const loadingTraceIds = new Set<string>();
   let decodeInFlight = false;
   let decodeGeneration = 0;
+  let highZoomSamplePointsVisible = true;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -312,7 +314,7 @@ export function createGraphViewport(): GraphViewportController {
         if (hasTrace) context.stroke();
 
         // Make individual recorded samples visible only at very high zoom.
-        if (points.length > 0 && points.length <= 128) {
+        if (highZoomSamplePointsVisible && points.length > 0 && points.length <= 128) {
           context.fillStyle = trace.color;
           for (const point of points) {
             const x = xForTime(point.timeMs);
@@ -807,6 +809,10 @@ export function createGraphViewport(): GraphViewportController {
     onPendingChannelsChanged: (listener) => { pendingChannelsListener = listener; },
     loadPendingChannels: () => { if (!decodeInFlight) void flushPending(); },
     refreshValidity,
+    setHighZoomSamplePointsVisible: (visible) => {
+      highZoomSamplePointsVisible = visible;
+      draw();
+    },
     clear,
   };
 }
