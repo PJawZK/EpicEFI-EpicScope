@@ -172,6 +172,7 @@ export interface LoggerPageController {
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): LoggerWorkspaceState;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
+  restoreActiveWorkspace(): Promise<void>;
 }
 
 interface DiagnosticsIndicatorController {
@@ -1892,8 +1893,6 @@ export function createLoggerPage(): LoggerPageController {
       diagnosticsMs,
     };
 
-    const workspaceId = activeWorkspaceId;
-    if (workspaceId) void restoreWorkspace(workspaceId, true);
     return performance;
   };
 
@@ -2082,5 +2081,9 @@ export function createLoggerPage(): LoggerPageController {
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
     restoreWorkspaceState,
+    restoreActiveWorkspace: async () => {
+      const workspaceId = activeWorkspaceId;
+      if (workspaceId) await restoreWorkspace(workspaceId, true);
+    },
   };
 }
