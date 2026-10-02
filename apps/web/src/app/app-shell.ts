@@ -325,10 +325,14 @@ export function mountAppShell(root: HTMLElement): void {
           return {
             ...workspace,
             channelIds: workspace.channelIds.map(remap),
-            panes: workspace.panes?.map((pane) => ({
-              ...pane,
-              channelIds: pane.channelIds.map(remap),
-            })),
+            ...(workspace.panes
+              ? {
+                  panes: workspace.panes.map((pane) => ({
+                    ...pane,
+                    channelIds: pane.channelIds.map(remap),
+                  })),
+                }
+              : {}),
           };
         }),
         inspector: {
