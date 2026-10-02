@@ -6,7 +6,7 @@ EpicScope uses normalized internal models so import formats, analyzers, UI, and 
 
 Log sources such as MLG, CSV, future MDF4 support, and later log formats normalize into common log/channel/time concepts before general analysis.
 
-Tune/configuration sources such as INI and MSQ normalize into tune/firmware concepts rather than being forced into the log model.
+Tune/configuration sources such as INI and MSQ normalize into source-context/tune concepts rather than being forced into the log model. INI may also contribute the stable runtime/output-channel catalog used to bind logs into persistent workspaces.
 
 This document defines the initial authority. Exact TypeScript/native structures may evolve through approved decisions while preserving these responsibilities.
 
@@ -34,18 +34,30 @@ The domain Session does not own presentation layout or become a general UI-state
 
 ### Workspace state
 
-**WorkspaceState** represents presentation/application state associated with how a user is viewing a session.
+**WorkspaceState** represents presentation/application state and is conceptually separate from the domain Session.
 
-Examples may include:
+EpicScope distinguishes two persistence scopes inside presentation state:
 
-- open graph panes;
-- selected channels;
+**Application workspace state** may exist with no log loaded and may include:
+
+- named graph workspaces;
+- pane layout/geometry and active-pane identity;
+- stable logical channel assignments;
+- favorites and display preferences;
 - panel visibility/sizing;
-- active tabs/workspaces;
-- viewport/cursor state;
-- UI-specific filter selections where they are not themselves part of the analytical result.
+- reusable UI configuration that should survive opening/closing different logs.
 
-Workspace state may be persisted alongside a session artifact for convenience, but it remains conceptually separate from the domain Session so `core/session/` does not become coupled to a particular UI implementation.
+**Log-specific view state** is associated with a recording/session and may include:
+
+- viewport/cursor position;
+- A/B boundaries;
+- user markers and saved ranges;
+- source-specific navigation state;
+- UI filters that only make sense for that recording.
+
+The current Web `epicscope.web-workspace` v1 artifact is keyed to an exact log source. The approved next persistence increment must migrate toward the split above without silently reinterpreting incompatible v1 state.
+
+Workspace state may also be persisted alongside a session artifact for convenience, but it remains conceptually separate from the domain Session so `core/session/` does not become coupled to a particular UI implementation.
 
 Web, Linux, and Android may have different workspace-state representations while sharing the same underlying Session semantics.
 
@@ -99,6 +111,39 @@ Conceptual fields include:
 - optional precision/display hints.
 
 Source names should be preserved so EpicScope can show exact TunerStudio/MegaLogViewer naming where useful.
+
+Once an INI-backed catalog is available, a channel may additionally have a **stable logical key** intended to survive changes in MLG field ordering. A source-local identifier such as `mlg:<field-index>` remains useful for a specific recording but should not become the sole long-term persisted identity of a workspace channel assignment.
+
+### Channel catalog
+
+A **ChannelCatalog** represents the set of logical channels known to the current ECU/firmware context independently of one recording.
+
+It may be built from:
+
+- normalized INI runtime/output-channel definitions;
+- channels discovered from an opened log;
+- approved user aliases/derived-channel metadata later.
+
+Catalog entries must expose availability state without fabricating data. At minimum the model must distinguish:
+
+- **known + data** — catalog channel successfully bound to the current log;
+- **known, no data** — channel exists in the catalog but is absent from the current log;
+- **log-only** — current log contains a usable channel not known by the loaded INI.
+
+### Channel binding
+
+A **ChannelBinding** relates a logical/catalog channel to a source-local channel for a particular log.
+
+Conceptually it may contain:
+
+- logical channel key;
+- source log identifier;
+- source-local channel identifier;
+- exact source/original name;
+- binding method/quality where ambiguity is possible;
+- availability/compatibility state.
+
+The binding does not copy channel samples. It points consumers to the log's existing bounded `ChannelData` source.
 
 ### Channel data
 
@@ -182,6 +227,8 @@ It may include:
 - compatibility/validation metadata.
 
 Tune context is optional. Generic log analysis must still work without it.
+
+INI and MSQ have different responsibilities: INI may define firmware/channel/table metadata and stable logical channel identity; MSQ later supplies actual tune/calibration values. Neither source replaces MLG as the authority for recorded sample values.
 
 ### Tune table
 
