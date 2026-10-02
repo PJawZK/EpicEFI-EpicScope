@@ -254,6 +254,16 @@ export function mountAppShell(root: HTMLElement): void {
   };
 
 
+  const catalogDefinitions = (catalog: ChannelCatalog): ChannelDefinition[] =>
+    catalog.entries.map((entry) => ({
+      id: `ini:${entry.logicalKey}`,
+      sourceName: entry.sourceName,
+      displayName: entry.displayName,
+      valueType: entry.valueType,
+      ...(entry.unit ? { unit: entry.unit } : {}),
+      ...(entry.precision !== undefined ? { precision: entry.precision } : {}),
+    }));
+
   const bindLogToActiveIni = (
     summary: ImportedLogSummary,
     channelData: NumericChannelDataSource,
@@ -354,7 +364,7 @@ export function mountAppShell(root: HTMLElement): void {
     try {
       const persisted = workspaceStorage.load(source);
       if (!persisted) {
-        setPersistenceStatus(`No saved workspace yet for ${source.displayName}.`);
+        setPersistenceStatus(`Using reusable workspace structure · no saved log view yet for ${source.displayName}.`);
         return false;
       }
       await restoreWorkspaceSnapshot(persisted.workspace);
@@ -551,16 +561,10 @@ export function mountAppShell(root: HTMLElement): void {
           diagnosticGroups: [...grouped.values()],
         });
 
-        const catalogDefinitions: ChannelDefinition[] = imported.catalog.entries.map((entry) => ({
-          id: `ini:${entry.logicalKey}`,
-          sourceName: entry.sourceName,
-          displayName: entry.displayName,
-          valueType: entry.valueType,
-          ...(entry.unit ? { unit: entry.unit } : {}),
-          ...(entry.precision !== undefined ? { precision: entry.precision } : {}),
-        }));
+        const definitions = catalogDefinitions(imported.catalog);
         activeIniCatalog = imported.catalog;
-        loggerPage.setChannelCatalog(catalogDefinitions, imported.fileName);
+        iniCatalogStorage.save(imported.fileName, imported.catalog);
+        loggerPage.setChannelCatalog(definitions, imported.fileName);
 
         if (currentRawLog) {
           const workspaceBeforeBinding = captureWorkspaceState();
@@ -608,6 +612,7 @@ export function mountAppShell(root: HTMLElement): void {
         parserStatus.textContent =
           `INI · ${imported.catalog.entries.length.toLocaleString()} catalog channels · `
           + `${imported.parsed.outputChannels.length.toLocaleString()} outputs · local only`;
+        scheduleWorkspaceSave();
       })
       .catch((error: unknown) => {
         setSourceLoadState(
@@ -625,11 +630,59 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
+  const restoreReusableApplicationState = async (): Promise<void> => {
+    try {
+      const persistedCatalog = iniCatalogStorage.load();
+      if (persistedCatalog) {
+        activeIniCatalog = persistedCatalog.catalog;
+        loggerPage.setChannelCatalog(
+          catalogDefinitions(persistedCatalog.catalog),
+          persistedCatalog.sourceName,
+        );
+        setSourceLoadState(
+          loadIniButton,
+          'success',
+          `${persistedCatalog.sourceName} · restored local channel catalog · `
+            + `${persistedCatalog.catalog.entries.length.toLocaleString()} channels`,
+        );
+        parserStatus.textContent =
+          `INI · ${persistedCatalog.catalog.entries.length.toLocaleString()} catalog channels · restored locally`;
+      }
+    } catch (error) {
+      setSourceLoadState(
+        loadIniButton,
+        'issue',
+        error instanceof Error
+          ? `Saved INI catalog not restored: ${error.message}`
+          : 'Saved INI catalog not restored',
+      );
+    }
+
+    try {
+      const persisted = applicationWorkspaceStorage.load();
+      if (persisted) {
+        await restoreWorkspaceSnapshot(persisted.workspace);
+        setPersistenceStatus('Reusable workspace structure restored locally.');
+      } else {
+        setPersistenceStatus('Workspace structure will be saved locally after the first change.');
+      }
+    } catch (error) {
+      applicationWorkspacePersistenceBlocked = true;
+      setPersistenceStatus(
+        error instanceof Error
+          ? `Reusable workspace not restored: ${error.message}`
+          : 'Reusable workspace could not be restored.',
+      );
+    }
+
+    resetWorkspaceHistory();
+  };
+
   loggerPage.setPlaybackSpeed(Number(playbackSpeed.value));
   loggerPage.setHighZoomSamplePointsVisible(samplePoints.checked);
   loggerPage.setTimelineOverviewTracesVisible(overviewTraces.checked);
   performanceDiagnostics.element.hidden = !performanceVisible.checked;
-  resetWorkspaceHistory();
+  void restoreReusableApplicationState();
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
