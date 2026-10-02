@@ -636,7 +636,7 @@ export function createLoggerPage(): LoggerPageController {
 
   shortcutButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    setShortcutPopoverOpen(shortcutPopover.hidden);
+    setShortcutPopoverOpen(Boolean(shortcutPopover.hidden));
   });
   shortcutPopover.addEventListener('click', (event) => event.stopPropagation());
   document.addEventListener('click', () => setShortcutPopoverOpen(false));
@@ -1494,7 +1494,7 @@ export function createLoggerPage(): LoggerPageController {
         showActivePaneStatistics();
         break;
       case '?':
-        setShortcutPopoverOpen(shortcutPopover.hidden);
+        setShortcutPopoverOpen(Boolean(shortcutPopover.hidden));
         break;
       default:
         handled = false;
