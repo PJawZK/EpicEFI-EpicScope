@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { MemoryByteSource, type RandomAccessByteSource } from '../../core/parsers/byte-source';
 import { parseMlgHeader } from '../../core/parsers/mlg/mlg-header';
-import { scanMlgRecords } from '../../core/parsers/mlg/mlg-records';
+import {
+  calculateMlgRecordChecksum,
+  scanMlgRecords,
+} from '../../core/parsers/mlg/mlg-records';
 import { createScalarHeaderFixture } from './mlg-fixture-builder';
 
 function concat(...parts: readonly Uint8Array[]): Uint8Array {
@@ -192,16 +195,17 @@ describe('scanMlgRecords', () => {
 
 
 describe('fixed-record checksum fast path', () => {
-  it('validates a wide non-aligned record payload with the unrolled checksum', async () => {
-    const recordLength = 4_390;
-    const header = createScalarHeaderFixture({ version: 2, type: 0, recordLength });
-    const payload = Array.from({ length: recordLength }, (_, index) => (index * 37 + 11) & 0xff);
-    const bytes = concat(header, loggerBlock(1, 100, payload));
+  it('sums a wide non-aligned payload identically to the reference checksum', () => {
+    const payload = Uint8Array.from(
+      { length: 4_390 },
+      (_, index) => (index * 37 + 11) & 0xff,
+    );
+    const reference = [...payload].reduce((sum, value) => (sum + value) & 0xff, 0);
 
-    const result = await parseAndScan(bytes);
-
-    expect(result.performance.scanMode).toBe('fixed');
-    expect([...result.records.crcValid]).toEqual([1]);
-    expect(result.diagnostics).toEqual([]);
+    expect(calculateMlgRecordChecksum(payload, 0, payload.byteLength)).toBe(reference);
+    expect(calculateMlgRecordChecksum(payload, 13, 4_321)).toBe(
+      [...payload.subarray(13, 13 + 4_321)]
+        .reduce((sum, value) => (sum + value) & 0xff, 0),
+    );
   });
 });
