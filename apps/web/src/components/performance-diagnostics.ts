@@ -1,3 +1,8 @@
+import {
+  clearChannelDecodePerformance,
+  latestChannelDecodePerformance,
+} from '../../../../core/diagnostics/channel-decode-performance';
+
 export interface LoadPerformanceRun {
   readonly fileName: string;
   readonly importMode: 'worker-staged' | 'main-thread-full';
@@ -142,6 +147,16 @@ function bytes(value: number): string {
   if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MiB`;
   if (value >= 1024) return `${(value / 1024).toFixed(2)} KiB`;
   return `${value} B`;
+}
+
+function decodeMeasuredMs(snapshot: ReturnType<typeof latestChannelDecodePerformance>): number {
+  if (!snapshot) return 0;
+  return snapshot.cacheResolveMs
+    + snapshot.batchPlanMs
+    + snapshot.sourceReadAwaitMs
+    + snapshot.decodeTransformMs
+    + snapshot.resultAssemblyMs
+    + snapshot.cacheStoreMs;
 }
 
 export function createPerformanceDiagnostics(): PerformanceDiagnosticsController {
@@ -353,6 +368,35 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `physicalBytes=${latestRestore.physicalBytesRead}`,
         `physicalReadMs=${latestRestore.physicalReadMs.toFixed(2)} ms`,
       );
+
+      if (latestRestore.assignedChannelCount === 0 && (latestLoad?.channelCount ?? 0) > 0) {
+        lines.push(
+          '',
+          '[Workspace warning]',
+          'activeWorkspaceAssignedChannels=0',
+          'message=Active workspace restored with zero assigned channels. This may be intentional; check the workspace selector for another populated workspace.',
+        );
+      }
+
+      const decode = latestChannelDecodePerformance(latestRestore.uniqueRequestedChannelCount);
+      if (decode) {
+        const measured = decodeMeasuredMs(decode);
+        lines.push(
+          '',
+          '[Channel decode detail]',
+          `channels=${decode.channelCount}`,
+          `samples=${decode.sampleCount}`,
+          `batches=${decode.batchCount}`,
+          `total=${decode.totalMs.toFixed(2)} ms`,
+          `cacheResolve=${decode.cacheResolveMs.toFixed(2)} ms`,
+          `batchPlan=${decode.batchPlanMs.toFixed(2)} ms`,
+          `sourceReadAwait=${decode.sourceReadAwaitMs.toFixed(2)} ms`,
+          `decodeTransform=${decode.decodeTransformMs.toFixed(2)} ms`,
+          `resultAssembly=${decode.resultAssemblyMs.toFixed(2)} ms`,
+          `cacheStore=${decode.cacheStoreMs.toFixed(2)} ms`,
+          `instrumentedRemainder=${Math.max(0, decode.totalMs - measured).toFixed(2)} ms`,
+        );
+      }
     }
 
     if (channelRuns.length > 0) {
@@ -539,6 +583,19 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Physical bytes', bytes(latestRestore.physicalBytesRead)],
         ['Physical read', ms(latestRestore.physicalReadMs)],
       ];
+      const decode = latestChannelDecodePerformance(latestRestore.uniqueRequestedChannelCount);
+      if (decode) {
+        rows.push(
+          ['Decode · batches', decode.batchCount.toLocaleString()],
+          ['Decode · cache/resolve', ms(decode.cacheResolveMs)],
+          ['Decode · batch planning', ms(decode.batchPlanMs)],
+          ['Decode · source await', ms(decode.sourceReadAwaitMs)],
+          ['Decode · raw transform', ms(decode.decodeTransformMs)],
+          ['Decode · result assembly', ms(decode.resultAssemblyMs)],
+          ['Decode · cache store', ms(decode.cacheStoreMs)],
+          ['Decode · instrumented remainder', ms(Math.max(0, decode.totalMs - decodeMeasuredMs(decode)))],
+        );
+      }
       for (const [label, value] of rows) {
         const row = document.createElement('div');
         row.className = 'performance-row';
@@ -587,6 +644,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     bindingRuns.length = 0;
     workspaceRestoreRuns.length = 0;
     channelRuns.length = 0;
+    clearChannelDecodePerformance();
     render();
   });
 
@@ -604,6 +662,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       // look like those reads belong to the current load.
       workspaceRestoreRuns.length = 0;
       channelRuns.length = 0;
+      clearChannelDecodePerformance();
       render();
     },
     recordIniLoad: (run) => {
@@ -650,6 +709,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       bindingRuns.length = 0;
       workspaceRestoreRuns.length = 0;
       channelRuns.length = 0;
+      clearChannelDecodePerformance();
       render();
     },
   };
