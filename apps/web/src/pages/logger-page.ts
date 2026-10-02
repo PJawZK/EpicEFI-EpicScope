@@ -933,6 +933,244 @@ export function createLoggerPage(): LoggerPageController {
     emitWorkspaceMutation();
   });
 
+  arrangeSelect.addEventListener('change', () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.layout = 'freeform';
+    workspace.freeformArrange = arrangeSelect.value as FreeformArrange;
+    workspace.paneGeometry = freeformArrangement(workspace.freeformArrange);
+    workspace.minimizedPaneIds = [];
+    workspace.maximizedPaneId = undefined;
+    renderGraphLayout();
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
+  clearPaneButton.addEventListener('click', () => {
+    const workspace = activeWorkspace();
+    const pane = activePaneState();
+    const runtime = activePaneRuntime();
+    if (!workspace || !pane || !runtime) return;
+    runtime.graph.clearChannels();
+    runtime.activeChannelIds.clear();
+    pane.channelIds = [];
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
+  resetLayoutButton.addEventListener('click', () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.layout = 'single';
+    workspace.activePaneId = 'pane-1';
+    workspace.paneGeometry = freeformArrangement('mosaic');
+    workspace.minimizedPaneIds = [];
+    workspace.maximizedPaneId = undefined;
+    workspace.freeformArrange = 'mosaic';
+    renderGraphLayout();
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
+  const snapWithin = (
+    value: number,
+    candidates: readonly number[],
+    threshold = 10,
+  ): number => {
+    let best = value;
+    let bestDistance = threshold + 1;
+    for (const candidate of candidates) {
+      const distance = Math.abs(value - candidate);
+      if (distance <= threshold && distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  };
+
+  paneRuntimes.forEach((runtime) => {
+    runtime.minimizeButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const workspace = activeWorkspace();
+      if (!workspace || workspace.layout !== 'freeform') return;
+      setActivePane(runtime.id, false);
+      if (workspace.minimizedPaneIds.includes(runtime.id)) {
+        workspace.minimizedPaneIds = workspace.minimizedPaneIds.filter((id) => id !== runtime.id);
+      } else {
+        workspace.minimizedPaneIds = [...workspace.minimizedPaneIds, runtime.id];
+        if (workspace.maximizedPaneId === runtime.id) workspace.maximizedPaneId = undefined;
+      }
+      renderGraphLayout();
+      emitWorkspaceMutation();
+    });
+
+    runtime.maximizeButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const workspace = activeWorkspace();
+      if (!workspace || workspace.layout !== 'freeform') return;
+      setActivePane(runtime.id, false);
+      workspace.minimizedPaneIds = workspace.minimizedPaneIds.filter((id) => id !== runtime.id);
+      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
+      renderGraphLayout();
+      emitWorkspaceMutation();
+    });
+
+    let drag:
+      | {
+          pointerId: number;
+          startX: number;
+          startY: number;
+          startLeft: number;
+          startTop: number;
+          width: number;
+          height: number;
+        }
+      | undefined;
+
+    runtime.headerElement.addEventListener('pointerdown', (event) => {
+      const workspace = activeWorkspace();
+      if (
+        workspace?.layout !== 'freeform'
+        || workspace.maximizedPaneId
+        || workspace.minimizedPaneIds.includes(runtime.id)
+        || (event.target instanceof Element && event.target.closest('.graph-pane-window-button'))
+      ) return;
+
+      const hostRect = graphHost.getBoundingClientRect();
+      const rect = runtime.windowElement.getBoundingClientRect();
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: rect.left - hostRect.left,
+        startTop: rect.top - hostRect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+      runtime.headerElement.setPointerCapture(event.pointerId);
+      setActivePane(runtime.id, false);
+      workspace.freeformArrange = workspace.freeformArrange;
+      event.preventDefault();
+    });
+
+    runtime.headerElement.addEventListener('pointermove', (event) => {
+      const workspace = activeWorkspace();
+      if (!drag || event.pointerId !== drag.pointerId || workspace?.layout !== 'freeform') return;
+
+      const hostRect = graphHost.getBoundingClientRect();
+      const hostWidth = Math.max(1, hostRect.width);
+      const hostHeight = Math.max(1, hostRect.height);
+      let left = Math.max(0, Math.min(hostWidth - drag.width, drag.startLeft + event.clientX - drag.startX));
+      let top = Math.max(0, Math.min(hostHeight - drag.height, drag.startTop + event.clientY - drag.startY));
+
+      const xCandidates = [0, hostWidth - drag.width];
+      const yCandidates = [0, hostHeight - drag.height];
+      for (const other of paneRuntimes) {
+        if (other.id === runtime.id || other.windowElement.hidden) continue;
+        const otherRect = other.windowElement.getBoundingClientRect();
+        const otherLeft = otherRect.left - hostRect.left;
+        const otherTop = otherRect.top - hostRect.top;
+        xCandidates.push(otherLeft, otherLeft + otherRect.width, otherLeft - drag.width, otherLeft + otherRect.width - drag.width);
+        yCandidates.push(otherTop, otherTop + otherRect.height, otherTop - drag.height, otherTop + otherRect.height - drag.height);
+      }
+      left = snapWithin(left, xCandidates);
+      top = snapWithin(top, yCandidates);
+
+      workspace.paneGeometry[runtime.id] = {
+        x: left / hostWidth,
+        y: top / hostHeight,
+        width: drag.width / hostWidth,
+        height: drag.height / hostHeight,
+      };
+      runtime.windowElement.style.left = `${left}px`;
+      runtime.windowElement.style.top = `${top}px`;
+      runtime.windowElement.style.width = `${drag.width}px`;
+      runtime.windowElement.style.height = `${drag.height}px`;
+    });
+
+    const endDrag = (event: PointerEvent): void => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      drag = undefined;
+      emitWorkspaceMutation();
+    };
+    runtime.headerElement.addEventListener('pointerup', endDrag);
+    runtime.headerElement.addEventListener('pointercancel', endDrag);
+
+    let resizeDrag:
+      | {
+          pointerId: number;
+          startX: number;
+          startY: number;
+          startWidth: number;
+          startHeight: number;
+          left: number;
+          top: number;
+        }
+      | undefined;
+
+    runtime.resizeHandle.addEventListener('pointerdown', (event) => {
+      const workspace = activeWorkspace();
+      if (workspace?.layout !== 'freeform' || workspace.maximizedPaneId) return;
+      const hostRect = graphHost.getBoundingClientRect();
+      const rect = runtime.windowElement.getBoundingClientRect();
+      resizeDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: rect.width,
+        startHeight: rect.height,
+        left: rect.left - hostRect.left,
+        top: rect.top - hostRect.top,
+      };
+      runtime.resizeHandle.setPointerCapture(event.pointerId);
+      setActivePane(runtime.id, false);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    runtime.resizeHandle.addEventListener('pointermove', (event) => {
+      const workspace = activeWorkspace();
+      if (!resizeDrag || event.pointerId !== resizeDrag.pointerId || workspace?.layout !== 'freeform') return;
+
+      const hostRect = graphHost.getBoundingClientRect();
+      const hostWidth = Math.max(1, hostRect.width);
+      const hostHeight = Math.max(1, hostRect.height);
+      let width = Math.max(190, Math.min(hostWidth - resizeDrag.left, resizeDrag.startWidth + event.clientX - resizeDrag.startX));
+      let height = Math.max(120, Math.min(hostHeight - resizeDrag.top, resizeDrag.startHeight + event.clientY - resizeDrag.startY));
+
+      const rightCandidates = [hostWidth];
+      const bottomCandidates = [hostHeight];
+      for (const other of paneRuntimes) {
+        if (other.id === runtime.id || other.windowElement.hidden) continue;
+        const otherRect = other.windowElement.getBoundingClientRect();
+        rightCandidates.push(otherRect.left - hostRect.left, otherRect.right - hostRect.left);
+        bottomCandidates.push(otherRect.top - hostRect.top, otherRect.bottom - hostRect.top);
+      }
+      width = snapWithin(resizeDrag.left + width, rightCandidates) - resizeDrag.left;
+      height = snapWithin(resizeDrag.top + height, bottomCandidates) - resizeDrag.top;
+      width = Math.max(190, Math.min(hostWidth - resizeDrag.left, width));
+      height = Math.max(120, Math.min(hostHeight - resizeDrag.top, height));
+
+      workspace.paneGeometry[runtime.id] = {
+        x: resizeDrag.left / hostWidth,
+        y: resizeDrag.top / hostHeight,
+        width: width / hostWidth,
+        height: height / hostHeight,
+      };
+      runtime.windowElement.style.width = `${width}px`;
+      runtime.windowElement.style.height = `${height}px`;
+    });
+
+    const endResize = (event: PointerEvent): void => {
+      if (!resizeDrag || event.pointerId !== resizeDrag.pointerId) return;
+      resizeDrag = undefined;
+      emitWorkspaceMutation();
+    };
+    runtime.resizeHandle.addEventListener('pointerup', endResize);
+    runtime.resizeHandle.addEventListener('pointercancel', endResize);
+  });
+
   const restoreWorkspace = async (workspaceId: string): Promise<void> => {
     const target = workspaces.find((workspace) => workspace.id === workspaceId);
     if (!target || target.id === activeWorkspaceId) {
