@@ -11,6 +11,7 @@ const MARKER_MESSAGE_LENGTH = 50;
 const TIMESTAMP_MODULUS = 65_536;
 const TIMESTAMP_TICK_MS = 0.01;
 const COUNTER_MODULUS = 256;
+const SCAN_CHUNK_SIZE = 8 * 1024 * 1024;
 
 export interface MlgRecordIndex {
   readonly offsets: Float64Array;
@@ -63,65 +64,6 @@ class GrowingUint8Buffer {
   }
 }
 
-class ChunkedSourceReader {
-  private readonly source: RandomAccessByteSource;
-  private readonly chunkSize: number;
-  private cachedOffset = -1;
-  private cachedBytes: Uint8Array = new Uint8Array(0);
-
-  public constructor(source: RandomAccessByteSource, chunkSize = 256 * 1024) {
-    this.source = source;
-    this.chunkSize = chunkSize;
-  }
-
-  public async read(offset: number, length: number): Promise<Uint8Array> {
-    if (length === 0) {
-      return new Uint8Array(0);
-    }
-    if (offset < 0 || length < 0 || offset > this.source.size || length > this.source.size - offset) {
-      throw new MlgFormatError(
-        'short-read',
-        `Read range [${offset}, ${offset + length}) exceeds MLG source size ${this.source.size}.`,
-        offset,
-      );
-    }
-
-    if (
-      this.cachedOffset >= 0
-      && offset >= this.cachedOffset
-      && offset + length <= this.cachedOffset + this.cachedBytes.byteLength
-    ) {
-      const start = offset - this.cachedOffset;
-      return this.cachedBytes.subarray(start, start + length);
-    }
-
-    if (length > this.chunkSize) {
-      const bytes = await this.source.read(offset, length);
-      if (bytes.byteLength !== length) {
-        throw new MlgFormatError(
-          'short-read',
-          `Expected ${length} bytes at offset ${offset}, received ${bytes.byteLength}.`,
-          offset,
-        );
-      }
-      return bytes;
-    }
-
-    const available = this.source.size - offset;
-    const readLength = Math.min(this.chunkSize, available);
-    this.cachedOffset = offset;
-    this.cachedBytes = await this.source.read(offset, readLength);
-    if (this.cachedBytes.byteLength !== readLength) {
-      throw new MlgFormatError(
-        'short-read',
-        `Expected ${readLength} bytes at offset ${offset}, received ${this.cachedBytes.byteLength}.`,
-        offset,
-      );
-    }
-    return this.cachedBytes.subarray(0, length);
-  }
-}
-
 function decodeMarker(bytes: Uint8Array): string {
   const message = bytes.subarray(BLOCK_HEADER_LENGTH, BLOCK_HEADER_LENGTH + MARKER_MESSAGE_LENGTH);
   const zeroIndex = message.indexOf(0);
@@ -135,8 +77,8 @@ function decodeMarker(bytes: Uint8Array): string {
 
 function calculateRecordCrc(recordBytes: Uint8Array): number {
   let crc = 0;
-  for (const value of recordBytes) {
-    crc = (crc + value) & 0xff;
+  for (let index = 0; index < recordBytes.length; index += 1) {
+    crc = (crc + (recordBytes[index] ?? 0)) & 0xff;
   }
   return crc;
 }
@@ -146,13 +88,9 @@ function counterDiagnostic(
   counter: number,
   offset: number,
 ): ParserDiagnostic | undefined {
-  if (previousCounter === undefined) {
-    return undefined;
-  }
+  if (previousCounter === undefined) return undefined;
   const expected = (previousCounter + 1) % COUNTER_MODULUS;
-  if (counter === expected) {
-    return undefined;
-  }
+  if (counter === expected) return undefined;
   return {
     code: 'mlg-counter-discontinuity',
     severity: 'warning',
@@ -162,11 +100,35 @@ function counterDiagnostic(
   };
 }
 
+async function readChunk(
+  source: RandomAccessByteSource,
+  offset: number,
+  minimumLength: number,
+): Promise<Uint8Array> {
+  const remaining = source.size - offset;
+  if (remaining < minimumLength) {
+    throw new MlgFormatError(
+      'short-read',
+      `Expected at least ${minimumLength} bytes at offset ${offset}, only ${remaining} remain.`,
+      offset,
+    );
+  }
+  const length = Math.min(remaining, Math.max(SCAN_CHUNK_SIZE, minimumLength));
+  const bytes = await source.read(offset, length);
+  if (bytes.byteLength !== length) {
+    throw new MlgFormatError(
+      'short-read',
+      `Expected ${length} bytes at offset ${offset}, received ${bytes.byteLength}.`,
+      offset,
+    );
+  }
+  return bytes;
+}
+
 export async function scanMlgRecords(
   source: RandomAccessByteSource,
   header: MlgHeader,
 ): Promise<MlgRecordScanResult> {
-  const reader = new ChunkedSourceReader(source);
   const offsets = new GrowingFloat64Buffer();
   const times = new GrowingFloat64Buffer();
   const counters = new GrowingUint8Buffer();
@@ -181,103 +143,143 @@ export async function scanMlgRecords(
   let firstUnwrappedTimestamp: number | undefined;
   let standardRecordIndex = 0;
 
+  // Parse many complete blocks synchronously from each source chunk. The old
+  // scanner awaited two async reads per record even when both reads hit its
+  // in-memory chunk cache. On a ~36k-record log that meant ~72k Promise/await
+  // boundaries. This loop keeps the same bounded-memory model while reducing
+  // source reads/awaits to roughly fileSize / SCAN_CHUNK_SIZE.
   while (offset < source.size) {
-    if (source.size - offset < BLOCK_HEADER_LENGTH) {
-      throw new MlgFormatError(
-        'short-read',
-        `Truncated MLG block header at offset ${offset}.`,
-        offset,
-      );
-    }
+    const chunkStart = offset;
+    let chunk = await readChunk(source, chunkStart, BLOCK_HEADER_LENGTH);
+    let cursor = 0;
 
-    const blockHeader = await reader.read(offset, BLOCK_HEADER_LENGTH);
-    const blockType = blockHeader[0] ?? -1;
-    const counter = blockHeader[1] ?? 0;
-    const rawTimestamp = ((blockHeader[2] ?? 0) << 8) | (blockHeader[3] ?? 0);
-
-    const discontinuity = counterDiagnostic(previousCounter, counter, offset + 1);
-    if (discontinuity) {
-      diagnostics.push(discontinuity);
-    }
-    previousCounter = counter;
-
-    if (blockType === STANDARD_BLOCK_TYPE) {
-      const blockLength = BLOCK_HEADER_LENGTH + header.recordLength + 1;
-      if (blockLength > source.size - offset) {
+    while (cursor < chunk.byteLength) {
+      const absoluteOffset = chunkStart + cursor;
+      const bytesRemainingInFile = source.size - absoluteOffset;
+      if (bytesRemainingInFile < BLOCK_HEADER_LENGTH) {
         throw new MlgFormatError(
           'short-read',
-          `Truncated MLG logger record at offset ${offset}.`,
-          offset,
+          `Truncated MLG block header at offset ${absoluteOffset}.`,
+          absoluteOffset,
         );
       }
 
-      const block = await reader.read(offset, blockLength);
-      const recordBytes = block.subarray(BLOCK_HEADER_LENGTH, BLOCK_HEADER_LENGTH + header.recordLength);
-      const expectedCrc = calculateRecordCrc(recordBytes);
-      const actualCrc = block[blockLength - 1] ?? 0;
-      const isCrcValid = expectedCrc === actualCrc;
+      if (chunk.byteLength - cursor < BLOCK_HEADER_LENGTH) break;
 
-      if (!isCrcValid) {
-        const blockHeaderSum = calculateRecordCrc(blockHeader);
-        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
-        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
-        diagnostics.push({
-          code: 'mlg-crc-mismatch',
-          severity: 'warning',
-          message: `MLG record ${standardRecordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
-          recoverable: true,
-          offset: offset + blockLength - 1,
+      const blockType = chunk[cursor] ?? -1;
+      const counter = chunk[cursor + 1] ?? 0;
+      const rawTimestamp = ((chunk[cursor + 2] ?? 0) << 8) | (chunk[cursor + 3] ?? 0);
+      const blockLength = blockType === STANDARD_BLOCK_TYPE
+        ? BLOCK_HEADER_LENGTH + header.recordLength + 1
+        : blockType === MARKER_BLOCK_TYPE
+          ? MARKER_BLOCK_LENGTH
+          : 0;
+
+      if (blockLength === 0) {
+        throw new MlgFormatError(
+          'unsupported-block-type',
+          `Unsupported MLG block type ${blockType} at offset ${absoluteOffset}.`,
+          absoluteOffset,
+        );
+      }
+
+      if (blockLength > bytesRemainingInFile) {
+        throw new MlgFormatError(
+          'short-read',
+          blockType === STANDARD_BLOCK_TYPE
+            ? `Truncated MLG logger record at offset ${absoluteOffset}.`
+            : `Truncated MLG marker block at offset ${absoluteOffset}.`,
+          absoluteOffset,
+        );
+      }
+
+      if (chunk.byteLength - cursor < blockLength) {
+        // Refill from the first incomplete block. This re-reads at most one
+        // partial block at a chunk boundary and avoids per-record source calls.
+        break;
+      }
+
+      const discontinuity = counterDiagnostic(previousCounter, counter, absoluteOffset + 1);
+      if (discontinuity) diagnostics.push(discontinuity);
+      previousCounter = counter;
+
+      const block = chunk.subarray(cursor, cursor + blockLength);
+
+      if (blockType === STANDARD_BLOCK_TYPE) {
+        const recordBytes = block.subarray(
+          BLOCK_HEADER_LENGTH,
+          BLOCK_HEADER_LENGTH + header.recordLength,
+        );
+        const expectedCrc = calculateRecordCrc(recordBytes);
+        const actualCrc = block[blockLength - 1] ?? 0;
+        const isCrcValid = expectedCrc === actualCrc;
+
+        if (!isCrcValid) {
+          const blockHeaderSum = calculateRecordCrc(block.subarray(0, BLOCK_HEADER_LENGTH));
+          const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+          const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+          diagnostics.push({
+            code: 'mlg-crc-mismatch',
+            severity: 'warning',
+            message: `MLG record ${standardRecordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+            recoverable: true,
+            offset: absoluteOffset + blockLength - 1,
+          });
+        }
+
+        if (
+          previousRawTimestamp !== undefined
+          && rawTimestamp < previousRawTimestamp
+          && previousRawTimestamp - rawTimestamp > TIMESTAMP_MODULUS / 2
+        ) {
+          timestampEpoch += TIMESTAMP_MODULUS;
+        }
+        previousRawTimestamp = rawTimestamp;
+
+        const unwrappedTimestamp = timestampEpoch + rawTimestamp;
+        firstUnwrappedTimestamp ??= unwrappedTimestamp;
+
+        offsets.push(absoluteOffset);
+        times.push((unwrappedTimestamp - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS);
+        counters.push(counter);
+        crcValid.push(isCrcValid ? 1 : 0);
+        standardRecordIndex += 1;
+      } else {
+        const epochAdjusted = timestampEpoch + rawTimestamp;
+        const relativeTimeMs = firstUnwrappedTimestamp === undefined
+          ? 0
+          : Math.max(0, (epochAdjusted - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS);
+        markers.push({
+          timeMs: relativeTimeMs,
+          label: decodeMarker(block),
         });
       }
 
-      if (
-        previousRawTimestamp !== undefined
-        && rawTimestamp < previousRawTimestamp
-        && previousRawTimestamp - rawTimestamp > TIMESTAMP_MODULUS / 2
-      ) {
-        timestampEpoch += TIMESTAMP_MODULUS;
-      }
-      previousRawTimestamp = rawTimestamp;
-
-      const unwrappedTimestamp = timestampEpoch + rawTimestamp;
-      firstUnwrappedTimestamp ??= unwrappedTimestamp;
-
-      offsets.push(offset);
-      times.push((unwrappedTimestamp - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS);
-      counters.push(counter);
-      crcValid.push(isCrcValid ? 1 : 0);
-
-      standardRecordIndex += 1;
-      offset += blockLength;
-      continue;
+      cursor += blockLength;
+      offset = chunkStart + cursor;
     }
 
-    if (blockType === MARKER_BLOCK_TYPE) {
-      if (MARKER_BLOCK_LENGTH > source.size - offset) {
+    if (cursor === 0) {
+      // A single block larger than the normal chunk size is still supported.
+      const blockHeader = chunk.subarray(0, BLOCK_HEADER_LENGTH);
+      const blockType = blockHeader[0] ?? -1;
+      const requiredLength = blockType === STANDARD_BLOCK_TYPE
+        ? BLOCK_HEADER_LENGTH + header.recordLength + 1
+        : blockType === MARKER_BLOCK_TYPE
+          ? MARKER_BLOCK_LENGTH
+          : 0;
+      if (requiredLength === 0) {
         throw new MlgFormatError(
-          'short-read',
-          `Truncated MLG marker block at offset ${offset}.`,
+          'unsupported-block-type',
+          `Unsupported MLG block type ${blockType} at offset ${offset}.`,
           offset,
         );
       }
-      const markerBytes = await reader.read(offset, MARKER_BLOCK_LENGTH);
-      const epochAdjusted = timestampEpoch + rawTimestamp;
-      const relativeTimeMs = firstUnwrappedTimestamp === undefined
-        ? 0
-        : Math.max(0, (epochAdjusted - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS);
-      markers.push({
-        timeMs: relativeTimeMs,
-        label: decodeMarker(markerBytes),
-      });
-      offset += MARKER_BLOCK_LENGTH;
-      continue;
+      if (requiredLength > chunk.byteLength) {
+        chunk = await readChunk(source, offset, requiredLength);
+        continue;
+      }
     }
-
-    throw new MlgFormatError(
-      'unsupported-block-type',
-      `Unsupported MLG block type ${blockType} at offset ${offset}.`,
-      offset,
-    );
   }
 
   return {
