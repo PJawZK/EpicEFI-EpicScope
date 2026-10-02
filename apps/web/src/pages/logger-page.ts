@@ -25,6 +25,8 @@ import { createTimelineShell, type TimelineViewportIntent } from '../components/
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 import type {
+  GraphPaneSnapshot,
+  GraphWorkspaceLayout,
   GraphWorkspaceSnapshot,
   LoggerWorkspaceState,
 } from '../state/workspace-state';
@@ -279,8 +281,15 @@ interface GraphWorkspaceSummary {
   name: string;
 }
 
-interface GraphWorkspaceState extends GraphWorkspaceSummary {
+interface GraphPaneState {
+  id: string;
   channelIds: string[];
+}
+
+interface GraphWorkspaceState extends GraphWorkspaceSummary {
+  layout: GraphWorkspaceLayout;
+  activePaneId: string;
+  panes: GraphPaneState[];
   viewport: TimelineViewport | undefined;
   cursorTimeMs: number;
   viewHistory: TimelineViewport[];
