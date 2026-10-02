@@ -377,3 +377,221 @@
     width: min(560px, 88vw);
   }
 }
+
+
+/* Layout consolidation: keep analysis controls in the persistent app bars so
+   the graph workspace receives the maximum available vertical area. */
+.header-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.graph-selector-slot,
+.logger-tools-slot,
+.logger-header-tools,
+.diagnostics-slot {
+  display: flex;
+  align-items: center;
+}
+
+.logger-header-tools {
+  gap: 5px;
+}
+
+.brand-button {
+  gap: 6px;
+  padding-inline: 7px;
+}
+
+.brand-chevron {
+  width: 8px;
+  height: 8px;
+  margin: 0 1px 3px 3px;
+  border-right: 2px solid #8fc9ee;
+  border-bottom: 2px solid #8fc9ee;
+  transform: rotate(45deg);
+  transition: transform .12s ease, border-color .12s ease;
+}
+
+.brand-button:hover .brand-chevron,
+.brand-button--open .brand-chevron {
+  border-color: #d9f0ff;
+}
+
+.brand-button--open .brand-chevron {
+  margin-bottom: -2px;
+  transform: rotate(225deg);
+}
+
+.global-module-choice {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.graph-selector-wrap {
+  position: relative;
+}
+
+.graph-selector-button {
+  height: 30px;
+  min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  border-color: #253f52;
+  background: #0b1923;
+  color: #b9ccd8;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.graph-selector-button:hover,
+.graph-selector-button[aria-expanded="true"] {
+  border-color: #35627e;
+  background: #102433;
+  color: #e3f1f8;
+}
+
+.graph-selector-chevron {
+  width: 7px;
+  height: 7px;
+  margin-bottom: 3px;
+  border-right: 1.5px solid #79b7dd;
+  border-bottom: 1.5px solid #79b7dd;
+  transform: rotate(45deg);
+}
+
+.graph-selector-menu {
+  position: absolute;
+  left: 0;
+  top: 35px;
+  z-index: 250;
+  width: 220px;
+  padding: 5px;
+  border: 1px solid #385064;
+  border-radius: 5px;
+  background: #0d1822;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .48);
+}
+
+.graph-selector-choice {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.graph-selector-choice--active {
+  background: #153b59;
+  color: #fff;
+}
+
+.graph-selector-choice span {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.graph-selector-choice small {
+  color: #718796;
+  font-size: 8px;
+}
+
+.logger-page {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.graph-window {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.graph-viewport {
+  height: 100%;
+}
+
+.graph-workspace {
+  padding-top: 4px;
+}
+
+/* Collapsed timeline retains only the interactive overview/focus strip. */
+.timeline-shell--compact {
+  height: 30px;
+  grid-template-rows: 30px 0 0;
+}
+
+.timeline-shell--compact .timeline-overview {
+  display: block;
+  visibility: visible;
+  margin: 4px 9px;
+}
+
+.timeline-shell--compact .timeline-overview-empty,
+.timeline-shell--compact .timeline-controls,
+.timeline-shell--compact .timeline-meta {
+  display: none;
+}
+
+.timeline-wrap--compact .edge-toggle--timeline {
+  top: 0;
+}
+
+/* Diagnostics now occupies the former bottom-left warning-text position. */
+.status-bar .parser-indicator-wrap {
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.status-bar .parser-indicator {
+  height: 20px;
+  min-width: 23px;
+  gap: 4px;
+  padding: 0 5px 0 3px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.status-bar .parser-indicator:hover,
+.status-bar .parser-indicator[aria-expanded="true"] {
+  border-color: #2a4152;
+  background: #0b1821;
+}
+
+.status-bar .parser-indicator-light {
+  width: 15px;
+  height: 15px;
+  flex-basis: 15px;
+  font-size: 10px;
+}
+
+.status-bar .parser-indicator-count {
+  font-size: 8px;
+}
+
+.status-bar .parser-diagnostic-popover {
+  top: auto;
+  right: auto;
+  bottom: calc(100% + 4px);
+  left: 0;
+  width: min(680px, 82vw);
+}
+
+@media (max-width: 1100px) {
+  .header-left {
+    gap: 2px;
+  }
+
+  .graph-selector-button {
+    min-width: 82px;
+    padding-inline: 6px;
+  }
+
+  .logger-header-tools {
+    gap: 3px;
+  }
+}
