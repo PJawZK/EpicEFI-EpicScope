@@ -553,13 +553,45 @@ export function createLoggerPage(): LoggerPageController {
     <option value="grid4">2 × 2 · 4 graphs</option>
     <option value="grid5">2 × 3 · 5 graphs</option>
     <option value="grid6">3 × 2 · 6 graphs</option>
+    <option value="freeform">Freeform · 5 graphs</option>
   `;
+
+  const arrangeSelect = document.createElement('select');
+  arrangeSelect.className = 'graph-arrange-select';
+  arrangeSelect.title = 'Arrange freeform graph windows';
+  arrangeSelect.setAttribute('aria-label', 'Arrange freeform graph windows');
+  arrangeSelect.innerHTML = `
+    <option value="mosaic">Mosaic</option>
+    <option value="columns">Columns</option>
+    <option value="rows">Rows</option>
+    <option value="cascade">Cascade</option>
+  `;
+  arrangeSelect.hidden = true;
+
+  const clearPaneButton = document.createElement('button');
+  clearPaneButton.type = 'button';
+  clearPaneButton.className = 'graph-pane-action';
+  clearPaneButton.textContent = 'Clear pane';
+  clearPaneButton.title = 'Remove all channels from the active graph pane';
+
+  const resetLayoutButton = document.createElement('button');
+  resetLayoutButton.type = 'button';
+  resetLayoutButton.className = 'graph-pane-action';
+  resetLayoutButton.textContent = 'Reset layout';
+  resetLayoutButton.title = 'Reset this workspace layout and freeform window positions';
 
   const compareButton = document.createElement('button');
   compareButton.type = 'button';
   compareButton.disabled = true;
   compareButton.textContent = 'Compare Run B';
-  headerTools.append(valueSearch.element, layoutSelect, compareButton);
+  headerTools.append(
+    valueSearch.element,
+    layoutSelect,
+    arrangeSelect,
+    clearPaneButton,
+    resetLayoutButton,
+    compareButton,
+  );
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -584,9 +616,30 @@ export function createLoggerPage(): LoggerPageController {
     const state = document.createElement('span');
     state.className = 'graph-pane-state';
     state.textContent = index === 0 ? 'ACTIVE' : '';
-    header.append(title, state);
 
-    windowElement.append(header, graph.element);
+    const controls = document.createElement('span');
+    controls.className = 'graph-pane-window-controls';
+
+    const minimizeButton = document.createElement('button');
+    minimizeButton.type = 'button';
+    minimizeButton.className = 'graph-pane-window-button graph-pane-minimize';
+    minimizeButton.textContent = '–';
+    minimizeButton.title = 'Minimize graph window';
+
+    const maximizeButton = document.createElement('button');
+    maximizeButton.type = 'button';
+    maximizeButton.className = 'graph-pane-window-button graph-pane-maximize';
+    maximizeButton.textContent = '□';
+    maximizeButton.title = 'Maximize graph window';
+
+    controls.append(minimizeButton, maximizeButton);
+    header.append(title, state, controls);
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'graph-pane-resize-handle';
+    resizeHandle.title = 'Resize graph window';
+
+    windowElement.append(header, graph.element, resizeHandle);
     graphHost.append(windowElement);
 
     return {
@@ -594,6 +647,10 @@ export function createLoggerPage(): LoggerPageController {
       graph,
       windowElement,
       stateElement: state,
+      headerElement: header,
+      minimizeButton,
+      maximizeButton,
+      resizeHandle,
       activeChannelIds: new Set<string>(),
     };
   });
