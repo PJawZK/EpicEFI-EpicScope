@@ -12,6 +12,7 @@ export interface LoadPerformanceRun {
   readonly recordCpuMs: number;
   readonly checksumBytes: number;
   readonly checksumCpuMs: number;
+  readonly checksumBenchmarkMs: number;
   readonly diagnosticCpuMs: number;
   readonly indexCpuMs: number;
   readonly finalizeMs: number;
@@ -138,6 +139,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `recordCpu=${latestLoad.recordCpuMs.toFixed(2)} ms`,
         `checksumBytes=${latestLoad.checksumBytes}`,
         `checksumCpu=${latestLoad.checksumCpuMs.toFixed(2)} ms`,
+        `checksumBenchmark=${latestLoad.checksumBenchmarkMs.toFixed(2)} ms`,
         `diagnosticCpu=${latestLoad.diagnosticCpuMs.toFixed(2)} ms`,
         `indexCpu=${latestLoad.indexCpuMs.toFixed(2)} ms`,
         `finalize=${latestLoad.finalizeMs.toFixed(2)} ms`,
@@ -183,7 +185,8 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Record source read', ms(latestLoad.recordReadMs)],
         ['Record CPU remainder', ms(latestLoad.recordCpuMs)],
         ['Checksum bytes', bytes(latestLoad.checksumBytes)],
-        ['Checksum CPU (sampled)', ms(latestLoad.checksumCpuMs)],
+        ['Checksum CPU (batch est.)', ms(latestLoad.checksumCpuMs)],
+        ['Checksum benchmark overhead', ms(latestLoad.checksumBenchmarkMs)],
         ['Diagnostic CPU', ms(latestLoad.diagnosticCpuMs)],
         ['Index/timestamp CPU', ms(latestLoad.indexCpuMs)],
         ['Parser finalize', ms(latestLoad.finalizeMs)],
