@@ -533,7 +533,8 @@
 }
 
 
-.graph-layout-select {
+.graph-layout-select,
+.graph-arrange-select {
   height: 28px;
   min-width: 116px;
   padding: 0 6px;
@@ -566,6 +567,98 @@
 .graph-workspace--grid6 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+
+.graph-workspace--freeform {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+.graph-workspace--freeform .graph-window {
+  position: absolute;
+  z-index: 1;
+  min-width: 190px;
+  min-height: 120px;
+}
+
+.graph-workspace--freeform .graph-window--active {
+  z-index: 5;
+}
+
+.graph-workspace--freeform .graph-window--maximized {
+  z-index: 20;
+}
+
+.graph-workspace--freeform .graph-window--minimized {
+  min-height: 24px;
+  height: 24px !important;
+}
+
+.graph-workspace--freeform .graph-window--minimized > .graph-viewport,
+.graph-workspace--freeform .graph-window--minimized > .graph-pane-resize-handle {
+  display: none;
+}
+
+.graph-workspace--freeform .graph-pane-header {
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-workspace--freeform .graph-pane-header:active {
+  cursor: grabbing;
+}
+
+.graph-pane-window-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.graph-pane-window-button {
+  width: 20px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0;
+  border-color: #263e4f;
+  background: #0a151d;
+  color: #8fa9b9;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.graph-pane-window-button:hover {
+  color: #e4f2fa;
+  border-color: #3a6b88;
+  background: #102532;
+}
+
+.graph-pane-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 0 48%,
+      #4f7186 49% 54%,
+      transparent 55% 66%,
+      #4f7186 67% 72%,
+      transparent 73%
+    );
+}
+
+.graph-pane-action {
+  height: 28px;
+  padding: 0 7px;
+  font-size: 8px;
 }
 
 .graph-window {

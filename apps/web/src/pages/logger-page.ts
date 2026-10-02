@@ -25,6 +25,7 @@ import { createTimelineShell, type TimelineViewportIntent } from '../components/
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 import type {
+  GraphPaneGeometry,
   GraphPaneSnapshot,
   GraphWorkspaceLayout,
   GraphWorkspaceSnapshot,
@@ -36,9 +37,51 @@ const GRAPH_PANE_IDS = ['pane-1', 'pane-2', 'pane-3', 'pane-4', 'pane-5', 'pane-
 
 function paneCountForLayout(layout: GraphWorkspaceLayout): number {
   if (layout === 'grid4') return 4;
-  if (layout === 'grid5') return 5;
+  if (layout === 'grid5' || layout === 'freeform') return 5;
   if (layout === 'grid6') return 6;
   return 1;
+}
+
+type FreeformArrange = 'mosaic' | 'columns' | 'rows' | 'cascade' | 'custom';
+
+function freeformArrangement(name: FreeformArrange): Record<string, GraphPaneGeometry> {
+  const rect = (x: number, y: number, width: number, height: number): GraphPaneGeometry =>
+    ({ x, y, width, height });
+
+  if (name === 'columns') {
+    return {
+      'pane-1': rect(0, 0, .57, .32),
+      'pane-2': rect(0, .34, .57, .32),
+      'pane-3': rect(0, .68, .57, .32),
+      'pane-4': rect(.59, 0, .41, .49),
+      'pane-5': rect(.59, .51, .41, .49),
+    };
+  }
+  if (name === 'rows') {
+    return {
+      'pane-1': rect(0, 0, 1, .19),
+      'pane-2': rect(0, .2025, 1, .19),
+      'pane-3': rect(0, .405, 1, .19),
+      'pane-4': rect(0, .6075, 1, .19),
+      'pane-5': rect(0, .81, 1, .19),
+    };
+  }
+  if (name === 'cascade') {
+    return {
+      'pane-1': rect(0, 0, .68, .58),
+      'pane-2': rect(.08, .08, .68, .58),
+      'pane-3': rect(.16, .16, .68, .58),
+      'pane-4': rect(.24, .24, .68, .58),
+      'pane-5': rect(.32, .32, .68, .58),
+    };
+  }
+  return {
+    'pane-1': rect(0, 0, .58, .56),
+    'pane-2': rect(.59, 0, .41, .275),
+    'pane-3': rect(.59, .285, .41, .275),
+    'pane-4': rect(0, .57, .49, .43),
+    'pane-5': rect(.50, .57, .50, .43),
+  };
 }
 
 function createEmptyPaneStates(): GraphPaneState[] {
@@ -319,6 +362,10 @@ interface GraphWorkspaceState extends GraphWorkspaceSummary {
   layout: GraphWorkspaceLayout;
   activePaneId: string;
   panes: GraphPaneState[];
+  paneGeometry: Record<string, GraphPaneGeometry>;
+  minimizedPaneIds: string[];
+  maximizedPaneId: string | undefined;
+  freeformArrange: FreeformArrange;
   viewport: TimelineViewport | undefined;
   cursorTimeMs: number;
   viewHistory: TimelineViewport[];
@@ -474,6 +521,10 @@ export function createLoggerPage(): LoggerPageController {
     layout: 'single',
     activePaneId: 'pane-1',
     panes: createEmptyPaneStates(),
+    paneGeometry: freeformArrangement('mosaic'),
+    minimizedPaneIds: [],
+    maximizedPaneId: undefined,
+    freeformArrange: 'mosaic',
     viewport: undefined,
     cursorTimeMs: 0,
     viewHistory: [],
@@ -502,13 +553,46 @@ export function createLoggerPage(): LoggerPageController {
     <option value="grid4">2 × 2 · 4 graphs</option>
     <option value="grid5">2 × 3 · 5 graphs</option>
     <option value="grid6">3 × 2 · 6 graphs</option>
+    <option value="freeform">Freeform · 5 graphs</option>
   `;
+
+  const arrangeSelect = document.createElement('select');
+  arrangeSelect.className = 'graph-arrange-select';
+  arrangeSelect.title = 'Arrange freeform graph windows';
+  arrangeSelect.setAttribute('aria-label', 'Arrange freeform graph windows');
+  arrangeSelect.innerHTML = `
+    <option value="mosaic">Mosaic</option>
+    <option value="columns">Columns</option>
+    <option value="rows">Rows</option>
+    <option value="cascade">Cascade</option>
+    <option value="custom" disabled>Custom</option>
+  `;
+  arrangeSelect.hidden = true;
+
+  const clearPaneButton = document.createElement('button');
+  clearPaneButton.type = 'button';
+  clearPaneButton.className = 'graph-pane-action';
+  clearPaneButton.textContent = 'Clear pane';
+  clearPaneButton.title = 'Remove all channels from the active graph pane';
+
+  const resetLayoutButton = document.createElement('button');
+  resetLayoutButton.type = 'button';
+  resetLayoutButton.className = 'graph-pane-action';
+  resetLayoutButton.textContent = 'Reset layout';
+  resetLayoutButton.title = 'Reset this workspace layout and freeform window positions';
 
   const compareButton = document.createElement('button');
   compareButton.type = 'button';
   compareButton.disabled = true;
   compareButton.textContent = 'Compare Run B';
-  headerTools.append(valueSearch.element, layoutSelect, compareButton);
+  headerTools.append(
+    valueSearch.element,
+    layoutSelect,
+    arrangeSelect,
+    clearPaneButton,
+    resetLayoutButton,
+    compareButton,
+  );
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -533,9 +617,30 @@ export function createLoggerPage(): LoggerPageController {
     const state = document.createElement('span');
     state.className = 'graph-pane-state';
     state.textContent = index === 0 ? 'ACTIVE' : '';
-    header.append(title, state);
 
-    windowElement.append(header, graph.element);
+    const controls = document.createElement('span');
+    controls.className = 'graph-pane-window-controls';
+
+    const minimizeButton = document.createElement('button');
+    minimizeButton.type = 'button';
+    minimizeButton.className = 'graph-pane-window-button graph-pane-minimize';
+    minimizeButton.textContent = '–';
+    minimizeButton.title = 'Minimize graph window';
+
+    const maximizeButton = document.createElement('button');
+    maximizeButton.type = 'button';
+    maximizeButton.className = 'graph-pane-window-button graph-pane-maximize';
+    maximizeButton.textContent = '□';
+    maximizeButton.title = 'Maximize graph window';
+
+    controls.append(minimizeButton, maximizeButton);
+    header.append(title, state, controls);
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'graph-pane-resize-handle';
+    resizeHandle.title = 'Resize graph window';
+
+    windowElement.append(header, graph.element, resizeHandle);
     graphHost.append(windowElement);
 
     return {
@@ -543,6 +648,10 @@ export function createLoggerPage(): LoggerPageController {
       graph,
       windowElement,
       stateElement: state,
+      headerElement: header,
+      minimizeButton,
+      maximizeButton,
+      resizeHandle,
       activeChannelIds: new Set<string>(),
     };
   });
@@ -630,14 +739,52 @@ export function createLoggerPage(): LoggerPageController {
     }
 
     layoutSelect.value = workspace.layout;
+    arrangeSelect.hidden = workspace.layout !== 'freeform';
+    arrangeSelect.value = workspace.freeformArrange;
     graphHost.className = `graph-workspace graph-workspace--${workspace.layout}`;
 
     paneRuntimes.forEach((runtime, index) => {
-      const visible = index < visibleCount;
+      const inLayout = index < visibleCount;
+      const maximized = workspace.maximizedPaneId === runtime.id;
+      const hiddenByMaximize = workspace.maximizedPaneId !== undefined && !maximized;
+      const visible = inLayout && !hiddenByMaximize;
       const active = runtime.id === workspace.activePaneId;
+      const minimized = workspace.layout === 'freeform'
+        && workspace.minimizedPaneIds.includes(runtime.id)
+        && !maximized;
+
       runtime.windowElement.hidden = !visible;
       runtime.windowElement.classList.toggle('graph-window--active', active);
+      runtime.windowElement.classList.toggle('graph-window--minimized', minimized);
+      runtime.windowElement.classList.toggle('graph-window--maximized', maximized);
       runtime.stateElement.textContent = active ? 'ACTIVE' : '';
+      runtime.minimizeButton.hidden = workspace.layout !== 'freeform';
+      runtime.maximizeButton.hidden = workspace.layout !== 'freeform';
+      runtime.resizeHandle.hidden = workspace.layout !== 'freeform' || minimized || maximized;
+      runtime.minimizeButton.textContent = minimized ? '↥' : '–';
+      runtime.minimizeButton.title = minimized ? 'Restore graph window' : 'Minimize graph window';
+      runtime.maximizeButton.textContent = maximized ? '↙' : '□';
+      runtime.maximizeButton.title = maximized ? 'Restore graph window' : 'Maximize graph window';
+
+      if (workspace.layout === 'freeform') {
+        const geometry = workspace.paneGeometry[runtime.id] ?? freeformArrangement('mosaic')[runtime.id]!;
+        if (maximized) {
+          runtime.windowElement.style.left = '0';
+          runtime.windowElement.style.top = '0';
+          runtime.windowElement.style.width = '100%';
+          runtime.windowElement.style.height = '100%';
+        } else {
+          runtime.windowElement.style.left = `${geometry.x * 100}%`;
+          runtime.windowElement.style.top = `${geometry.y * 100}%`;
+          runtime.windowElement.style.width = `${geometry.width * 100}%`;
+          runtime.windowElement.style.height = `${geometry.height * 100}%`;
+        }
+      } else {
+        runtime.windowElement.style.removeProperty('left');
+        runtime.windowElement.style.removeProperty('top');
+        runtime.windowElement.style.removeProperty('width');
+        runtime.windowElement.style.removeProperty('height');
+      }
     });
   };
 
@@ -785,6 +932,247 @@ export function createLoggerPage(): LoggerPageController {
     renderGraphLayout();
     syncActivePaneContext();
     emitWorkspaceMutation();
+  });
+
+  arrangeSelect.addEventListener('change', () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.layout = 'freeform';
+    workspace.freeformArrange = arrangeSelect.value as FreeformArrange;
+    workspace.paneGeometry = freeformArrangement(workspace.freeformArrange);
+    workspace.minimizedPaneIds = [];
+    workspace.maximizedPaneId = undefined;
+    renderGraphLayout();
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
+  clearPaneButton.addEventListener('click', () => {
+    const workspace = activeWorkspace();
+    const pane = activePaneState();
+    const runtime = activePaneRuntime();
+    if (!workspace || !pane || !runtime) return;
+    runtime.graph.clearChannels();
+    runtime.activeChannelIds.clear();
+    pane.channelIds = [];
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
+  resetLayoutButton.addEventListener('click', () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.layout = 'single';
+    workspace.activePaneId = 'pane-1';
+    workspace.paneGeometry = freeformArrangement('mosaic');
+    workspace.minimizedPaneIds = [];
+    workspace.maximizedPaneId = undefined;
+    workspace.freeformArrange = 'mosaic';
+    renderGraphLayout();
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
+  const snapWithin = (
+    value: number,
+    candidates: readonly number[],
+    threshold = 10,
+  ): number => {
+    let best = value;
+    let bestDistance = threshold + 1;
+    for (const candidate of candidates) {
+      const distance = Math.abs(value - candidate);
+      if (distance <= threshold && distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  };
+
+  paneRuntimes.forEach((runtime) => {
+    runtime.minimizeButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const workspace = activeWorkspace();
+      if (!workspace || workspace.layout !== 'freeform') return;
+      setActivePane(runtime.id, false);
+      if (workspace.minimizedPaneIds.includes(runtime.id)) {
+        workspace.minimizedPaneIds = workspace.minimizedPaneIds.filter((id) => id !== runtime.id);
+      } else {
+        workspace.minimizedPaneIds = [...workspace.minimizedPaneIds, runtime.id];
+        if (workspace.maximizedPaneId === runtime.id) workspace.maximizedPaneId = undefined;
+      }
+      renderGraphLayout();
+      emitWorkspaceMutation();
+    });
+
+    runtime.maximizeButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const workspace = activeWorkspace();
+      if (!workspace || workspace.layout !== 'freeform') return;
+      setActivePane(runtime.id, false);
+      workspace.minimizedPaneIds = workspace.minimizedPaneIds.filter((id) => id !== runtime.id);
+      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
+      renderGraphLayout();
+      emitWorkspaceMutation();
+    });
+
+    let drag:
+      | {
+          pointerId: number;
+          startX: number;
+          startY: number;
+          startLeft: number;
+          startTop: number;
+          width: number;
+          height: number;
+        }
+      | undefined;
+
+    runtime.headerElement.addEventListener('pointerdown', (event) => {
+      const workspace = activeWorkspace();
+      if (
+        workspace?.layout !== 'freeform'
+        || workspace.maximizedPaneId
+        || workspace.minimizedPaneIds.includes(runtime.id)
+        || (event.target instanceof Element && event.target.closest('.graph-pane-window-button'))
+      ) return;
+
+      const hostRect = graphHost.getBoundingClientRect();
+      const rect = runtime.windowElement.getBoundingClientRect();
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: rect.left - hostRect.left,
+        startTop: rect.top - hostRect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+      runtime.headerElement.setPointerCapture(event.pointerId);
+      setActivePane(runtime.id, false);
+      workspace.freeformArrange = 'custom';
+      arrangeSelect.value = 'custom';
+      event.preventDefault();
+    });
+
+    runtime.headerElement.addEventListener('pointermove', (event) => {
+      const workspace = activeWorkspace();
+      if (!drag || event.pointerId !== drag.pointerId || workspace?.layout !== 'freeform') return;
+
+      const hostRect = graphHost.getBoundingClientRect();
+      const hostWidth = Math.max(1, hostRect.width);
+      const hostHeight = Math.max(1, hostRect.height);
+      let left = Math.max(0, Math.min(hostWidth - drag.width, drag.startLeft + event.clientX - drag.startX));
+      let top = Math.max(0, Math.min(hostHeight - drag.height, drag.startTop + event.clientY - drag.startY));
+
+      const xCandidates = [0, hostWidth - drag.width];
+      const yCandidates = [0, hostHeight - drag.height];
+      for (const other of paneRuntimes) {
+        if (other.id === runtime.id || other.windowElement.hidden) continue;
+        const otherRect = other.windowElement.getBoundingClientRect();
+        const otherLeft = otherRect.left - hostRect.left;
+        const otherTop = otherRect.top - hostRect.top;
+        xCandidates.push(otherLeft, otherLeft + otherRect.width, otherLeft - drag.width, otherLeft + otherRect.width - drag.width);
+        yCandidates.push(otherTop, otherTop + otherRect.height, otherTop - drag.height, otherTop + otherRect.height - drag.height);
+      }
+      left = snapWithin(left, xCandidates);
+      top = snapWithin(top, yCandidates);
+
+      workspace.paneGeometry[runtime.id] = {
+        x: left / hostWidth,
+        y: top / hostHeight,
+        width: drag.width / hostWidth,
+        height: drag.height / hostHeight,
+      };
+      runtime.windowElement.style.left = `${left}px`;
+      runtime.windowElement.style.top = `${top}px`;
+      runtime.windowElement.style.width = `${drag.width}px`;
+      runtime.windowElement.style.height = `${drag.height}px`;
+    });
+
+    const endDrag = (event: PointerEvent): void => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      drag = undefined;
+      emitWorkspaceMutation();
+    };
+    runtime.headerElement.addEventListener('pointerup', endDrag);
+    runtime.headerElement.addEventListener('pointercancel', endDrag);
+
+    let resizeDrag:
+      | {
+          pointerId: number;
+          startX: number;
+          startY: number;
+          startWidth: number;
+          startHeight: number;
+          left: number;
+          top: number;
+        }
+      | undefined;
+
+    runtime.resizeHandle.addEventListener('pointerdown', (event) => {
+      const workspace = activeWorkspace();
+      if (workspace?.layout !== 'freeform' || workspace.maximizedPaneId) return;
+      const hostRect = graphHost.getBoundingClientRect();
+      const rect = runtime.windowElement.getBoundingClientRect();
+      workspace.freeformArrange = 'custom';
+      arrangeSelect.value = 'custom';
+      resizeDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: rect.width,
+        startHeight: rect.height,
+        left: rect.left - hostRect.left,
+        top: rect.top - hostRect.top,
+      };
+      runtime.resizeHandle.setPointerCapture(event.pointerId);
+      setActivePane(runtime.id, false);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    runtime.resizeHandle.addEventListener('pointermove', (event) => {
+      const workspace = activeWorkspace();
+      if (!resizeDrag || event.pointerId !== resizeDrag.pointerId || workspace?.layout !== 'freeform') return;
+
+      const hostRect = graphHost.getBoundingClientRect();
+      const hostWidth = Math.max(1, hostRect.width);
+      const hostHeight = Math.max(1, hostRect.height);
+      let width = Math.max(190, Math.min(hostWidth - resizeDrag.left, resizeDrag.startWidth + event.clientX - resizeDrag.startX));
+      let height = Math.max(120, Math.min(hostHeight - resizeDrag.top, resizeDrag.startHeight + event.clientY - resizeDrag.startY));
+
+      const rightCandidates = [hostWidth];
+      const bottomCandidates = [hostHeight];
+      for (const other of paneRuntimes) {
+        if (other.id === runtime.id || other.windowElement.hidden) continue;
+        const otherRect = other.windowElement.getBoundingClientRect();
+        rightCandidates.push(otherRect.left - hostRect.left, otherRect.right - hostRect.left);
+        bottomCandidates.push(otherRect.top - hostRect.top, otherRect.bottom - hostRect.top);
+      }
+      width = snapWithin(resizeDrag.left + width, rightCandidates) - resizeDrag.left;
+      height = snapWithin(resizeDrag.top + height, bottomCandidates) - resizeDrag.top;
+      width = Math.max(190, Math.min(hostWidth - resizeDrag.left, width));
+      height = Math.max(120, Math.min(hostHeight - resizeDrag.top, height));
+
+      workspace.paneGeometry[runtime.id] = {
+        x: resizeDrag.left / hostWidth,
+        y: resizeDrag.top / hostHeight,
+        width: width / hostWidth,
+        height: height / hostHeight,
+      };
+      runtime.windowElement.style.width = `${width}px`;
+      runtime.windowElement.style.height = `${height}px`;
+    });
+
+    const endResize = (event: PointerEvent): void => {
+      if (!resizeDrag || event.pointerId !== resizeDrag.pointerId) return;
+      resizeDrag = undefined;
+      emitWorkspaceMutation();
+    };
+    runtime.resizeHandle.addEventListener('pointerup', endResize);
+    runtime.resizeHandle.addEventListener('pointercancel', endResize);
   });
 
   const restoreWorkspace = async (workspaceId: string): Promise<void> => {
@@ -970,6 +1358,10 @@ export function createLoggerPage(): LoggerPageController {
       layout: 'single',
       activePaneId: 'pane-1',
       panes: createEmptyPaneStates(),
+      paneGeometry: freeformArrangement('mosaic'),
+      minimizedPaneIds: [],
+      maximizedPaneId: undefined,
+      freeformArrange: 'mosaic',
       viewport: viewport ? { ...viewport } : undefined,
       cursorTimeMs: timeline.getCursorTime(),
       viewHistory: viewport ? [{ ...viewport }] : [],
@@ -1003,6 +1395,10 @@ export function createLoggerPage(): LoggerPageController {
       layout: source.layout,
       activePaneId: source.activePaneId,
       panes: source.panes.map((pane) => ({ id: pane.id, channelIds: [...pane.channelIds] })),
+      paneGeometry: structuredClone(source.paneGeometry),
+      minimizedPaneIds: [...source.minimizedPaneIds],
+      maximizedPaneId: source.maximizedPaneId,
+      freeformArrange: source.freeformArrange,
       viewport: source.viewport ? { ...source.viewport } : undefined,
       cursorTimeMs: source.cursorTimeMs,
       viewHistory: source.viewHistory.map((item) => ({ ...item })),
@@ -1042,6 +1438,10 @@ export function createLoggerPage(): LoggerPageController {
       layout: 'single',
       activePaneId: 'pane-1',
       panes: createEmptyPaneStates(),
+      paneGeometry: freeformArrangement('mosaic'),
+      minimizedPaneIds: [],
+      maximizedPaneId: undefined,
+      freeformArrange: 'mosaic',
       viewport: summary.timeRange
         ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
         : undefined,
@@ -1084,6 +1484,10 @@ export function createLoggerPage(): LoggerPageController {
       layout: 'single',
       activePaneId: 'pane-1',
       panes: createEmptyPaneStates(),
+      paneGeometry: freeformArrangement('mosaic'),
+      minimizedPaneIds: [],
+      maximizedPaneId: undefined,
+      freeformArrange: 'mosaic',
       viewport: undefined,
       cursorTimeMs: 0,
       viewHistory: [],
@@ -1123,6 +1527,10 @@ export function createLoggerPage(): LoggerPageController {
         id: pane.id,
         channelIds: [...pane.channelIds],
       })),
+      paneGeometry: structuredClone(workspace.paneGeometry),
+      minimizedPaneIds: [...workspace.minimizedPaneIds],
+      maximizedPaneId: workspace.maximizedPaneId,
+      freeformArrange: workspace.freeformArrange,
       viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
       cursorTimeMs: workspace.cursorTimeMs,
       viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
@@ -1150,6 +1558,12 @@ export function createLoggerPage(): LoggerPageController {
         layout,
         activePaneId,
         panes,
+        paneGeometry: workspace.paneGeometry
+          ? structuredClone(workspace.paneGeometry)
+          : freeformArrangement('mosaic'),
+        minimizedPaneIds: [...(workspace.minimizedPaneIds ?? [])].filter((id) => GRAPH_PANE_IDS.includes(id as typeof GRAPH_PANE_IDS[number])),
+        maximizedPaneId: workspace.maximizedPaneId,
+        freeformArrange: workspace.freeformArrange ?? 'mosaic',
         viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
         cursorTimeMs: workspace.cursorTimeMs,
         viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
@@ -1167,6 +1581,10 @@ export function createLoggerPage(): LoggerPageController {
           layout: 'single',
           activePaneId: 'pane-1',
           panes: createEmptyPaneStates(),
+          paneGeometry: freeformArrangement('mosaic'),
+          minimizedPaneIds: [],
+          maximizedPaneId: undefined,
+          freeformArrange: 'mosaic',
           viewport: viewport ? { ...viewport } : undefined,
           cursorTimeMs: timeline.getCursorTime(),
           viewHistory: viewport ? [{ ...viewport }] : [],

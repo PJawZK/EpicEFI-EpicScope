@@ -49,7 +49,8 @@ const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
     || workspace.layout === 'single'
     || workspace.layout === 'grid4'
     || workspace.layout === 'grid5'
-    || workspace.layout === 'grid6';
+    || workspace.layout === 'grid6'
+    || workspace.layout === 'freeform';
   const validPanes = workspace.panes === undefined
     || (
       Array.isArray(workspace.panes)
@@ -65,6 +66,36 @@ const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
         );
       })
     );
+  const validGeometry = workspace.paneGeometry === undefined
+    || (
+      !!workspace.paneGeometry
+      && typeof workspace.paneGeometry === 'object'
+      && !Array.isArray(workspace.paneGeometry)
+      && Object.keys(workspace.paneGeometry as Record<string, unknown>).length <= 6
+      && Object.entries(workspace.paneGeometry as Record<string, unknown>).every(([key, geometry]) => {
+        if (key.length > 128 || !geometry || typeof geometry !== 'object' || Array.isArray(geometry)) return false;
+        const candidate = geometry as Record<string, unknown>;
+        return [candidate.x, candidate.y, candidate.width, candidate.height].every(isFiniteNumber)
+          && (candidate.x as number) >= 0
+          && (candidate.y as number) >= 0
+          && (candidate.width as number) > 0
+          && (candidate.height as number) > 0
+          && (candidate.x as number) <= 1
+          && (candidate.y as number) <= 1
+          && (candidate.width as number) <= 1
+          && (candidate.height as number) <= 1;
+      })
+    );
+  const validMinimized = workspace.minimizedPaneIds === undefined
+    || isStringArray(workspace.minimizedPaneIds, 6);
+  const validMaximized = workspace.maximizedPaneId === undefined
+    || (typeof workspace.maximizedPaneId === 'string' && workspace.maximizedPaneId.length <= 128);
+  const validArrange = workspace.freeformArrange === undefined
+    || workspace.freeformArrange === 'mosaic'
+    || workspace.freeformArrange === 'columns'
+    || workspace.freeformArrange === 'rows'
+    || workspace.freeformArrange === 'cascade'
+    || workspace.freeformArrange === 'custom';
 
   return (
     typeof workspace.id === 'string'
@@ -78,6 +109,10 @@ const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
       || (typeof workspace.activePaneId === 'string' && workspace.activePaneId.length <= 128)
     )
     && validPanes
+    && validGeometry
+    && validMinimized
+    && validMaximized
+    && validArrange
     && (workspace.viewport === undefined || isViewport(workspace.viewport))
     && isFiniteNumber(workspace.cursorTimeMs)
     && Array.isArray(workspace.viewHistory)
