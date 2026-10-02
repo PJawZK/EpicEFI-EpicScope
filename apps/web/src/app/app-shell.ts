@@ -910,11 +910,6 @@ export function mountAppShell(root: HTMLElement): void {
           }
         : undefined,
     );
-    void loadPersistedWorkspace(parsed.summary.source).then(async (restored) => {
-      if (!restored) await loggerPage.restoreActiveWorkspace();
-      resetWorkspaceHistory();
-      scheduleWorkspaceSave();
-    });
     const uiPopulateMs = now() - uiStart;
 
     performanceDiagnostics.recordLoad({
@@ -954,6 +949,12 @@ export function mountAppShell(root: HTMLElement): void {
       cacheHitBytes: parsed.sourceStats.cacheHitBytes,
       cacheBytes: parsed.sourceStats.cacheBytes,
       cachePageCount: parsed.sourceStats.cachePageCount,
+    });
+
+    void loadPersistedWorkspace(parsed.summary.source).then(async (restored) => {
+      if (!restored) await loggerPage.restoreActiveWorkspace();
+      resetWorkspaceHistory();
+      scheduleWorkspaceSave();
     });
 
     loadedLog.textContent = parsed.summary.source.displayName;
@@ -1038,11 +1039,6 @@ export function mountAppShell(root: HTMLElement): void {
               }
             : undefined,
         );
-        void loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
-          if (!restored) await loggerPage.restoreActiveWorkspace();
-          resetWorkspaceHistory();
-          scheduleWorkspaceSave();
-        });
         const uiPopulateMs = now() - uiStart;
 
         performanceDiagnostics.recordLoad({
@@ -1082,6 +1078,12 @@ export function mountAppShell(root: HTMLElement): void {
           cacheHitBytes: indexed.sourceStats.cacheHitBytes,
           cacheBytes: indexed.sourceStats.cacheBytes,
           cachePageCount: indexed.sourceStats.cachePageCount,
+        });
+
+        void loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
+          if (!restored) await loggerPage.restoreActiveWorkspace();
+          resetWorkspaceHistory();
+          scheduleWorkspaceSave();
         });
 
         loadedLog.textContent = indexed.summary.source.displayName;
