@@ -1,6 +1,7 @@
 import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
 import { buildViewportEnvelope } from '../../../../core/timeline/viewport-series';
+import type { TimelineWorkspaceState } from '../state/workspace-state';
 
 export type TimelineViewportIntent =
   | { readonly type: 'fit' }
@@ -39,6 +40,9 @@ export interface TimelineShellController {
   onCursorChange(listener: (timeMs: number) => void): void;
   onViewportIntent(listener: (intent: TimelineViewportIntent) => void): void;
   onAnnotationChange(listener: (state: TimelineAnnotationState) => void): void;
+  onWorkspaceMutation(listener: () => void): void;
+  getWorkspaceState(): TimelineWorkspaceState;
+  restoreWorkspaceState(state: TimelineWorkspaceState): void;
 }
 
 function formatDuration(durationMs: number): string {
@@ -68,6 +72,8 @@ export function createTimelineShell(): TimelineShellController {
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
   let annotationListener: ((state: TimelineAnnotationState) => void) | undefined;
+  let workspaceMutationListener: (() => void) | undefined;
+  let restoringWorkspace = false;
 
   const timeline = document.createElement('section');
   timeline.className = 'timeline-shell';
@@ -162,6 +168,10 @@ export function createTimelineShell(): TimelineShellController {
 
   const emitAnnotationState = (): void => {
     annotationListener?.({ aTimeMs, bTimeMs });
+  };
+
+  const emitWorkspaceMutation = (): void => {
+    if (!restoringWorkspace) workspaceMutationListener?.();
   };
 
   const currentUserMarkerIndex = (): number => userMarkers.findIndex(
@@ -422,6 +432,7 @@ export function createTimelineShell(): TimelineShellController {
   };
 
   const setExpanded = (next: boolean): void => {
+    if (expanded === next) return;
     expanded = next;
     timeline.classList.toggle('timeline-shell--compact', !expanded);
     timeline.dataset.expanded = String(expanded);
@@ -666,6 +677,7 @@ export function createTimelineShell(): TimelineShellController {
     userMarkers.sort((left, right) => left.timeMs - right.timeMs);
     renderOverview();
     renderCursor();
+    emitWorkspaceMutation();
   });
 
   editMarkerButton.addEventListener('click', () => {
@@ -679,6 +691,7 @@ export function createTimelineShell(): TimelineShellController {
     userMarkers[index] = { ...marker, label };
     renderOverview();
     renderCursor();
+    emitWorkspaceMutation();
   });
 
   deleteMarkerButton.addEventListener('click', () => {
@@ -687,6 +700,7 @@ export function createTimelineShell(): TimelineShellController {
     userMarkers.splice(index, 1);
     renderOverview();
     renderCursor();
+    emitWorkspaceMutation();
   });
 
   setAButton.addEventListener('click', () => {
@@ -695,6 +709,7 @@ export function createTimelineShell(): TimelineShellController {
     renderRangeState();
     renderOverview();
     emitAnnotationState();
+    emitWorkspaceMutation();
   });
 
   setBButton.addEventListener('click', () => {
@@ -703,6 +718,7 @@ export function createTimelineShell(): TimelineShellController {
     renderRangeState();
     renderOverview();
     emitAnnotationState();
+    emitWorkspaceMutation();
   });
 
   saveRangeButton.addEventListener('click', () => {
@@ -714,6 +730,7 @@ export function createTimelineShell(): TimelineShellController {
     if (entered === null) return;
     savedRanges.push({ label: entered.trim() || defaultLabel, startMs, endMs });
     refreshSavedRangeSelect();
+    emitWorkspaceMutation();
   });
 
   renameRangeButton.addEventListener('click', () => {
@@ -729,6 +746,7 @@ export function createTimelineShell(): TimelineShellController {
     savedRangeSelect.value = String(index);
     renameRangeButton.disabled = false;
     deleteRangeButton.disabled = false;
+    emitWorkspaceMutation();
   });
 
   deleteRangeButton.addEventListener('click', () => {
@@ -736,6 +754,7 @@ export function createTimelineShell(): TimelineShellController {
     if (!Number.isSafeInteger(index) || index < 0 || index >= savedRanges.length) return;
     savedRanges.splice(index, 1);
     refreshSavedRangeSelect();
+    emitWorkspaceMutation();
   });
 
   clearAbButton.addEventListener('click', () => {
@@ -744,6 +763,7 @@ export function createTimelineShell(): TimelineShellController {
     renderRangeState();
     renderOverview();
     emitAnnotationState();
+    emitWorkspaceMutation();
   });
 
   savedRangeSelect.addEventListener('change', () => {
@@ -789,6 +809,33 @@ export function createTimelineShell(): TimelineShellController {
   renderViewport();
   renderCursor();
 
+  const getWorkspaceState = (): TimelineWorkspaceState => ({
+    expanded,
+    userMarkers: userMarkers.map((marker) => ({ ...marker })),
+    aTimeMs,
+    bTimeMs,
+    savedRanges: savedRanges.map((range) => ({ ...range })),
+  });
+
+  const restoreWorkspaceState = (state: TimelineWorkspaceState): void => {
+    restoringWorkspace = true;
+    try {
+      expanded = state.expanded;
+      timeline.classList.toggle('timeline-shell--compact', !expanded);
+      userMarkers = state.userMarkers.map((marker) => ({ ...marker }));
+      aTimeMs = state.aTimeMs;
+      bTimeMs = state.bTimeMs;
+      savedRanges = state.savedRanges.map((range) => ({ ...range }));
+      refreshSavedRangeSelect();
+      renderRangeState();
+      renderCursor();
+      renderOverview();
+      emitAnnotationState();
+    } finally {
+      restoringWorkspace = false;
+    }
+  };
+
   return {
     element: timeline,
     setExpanded,
@@ -815,5 +862,8 @@ export function createTimelineShell(): TimelineShellController {
     onCursorChange: (listener) => { cursorListener = listener; },
     onViewportIntent: (listener) => { viewportListener = listener; },
     onAnnotationChange: (listener) => { annotationListener = listener; },
+    onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
+    getWorkspaceState,
+    restoreWorkspaceState,
   };
 }
