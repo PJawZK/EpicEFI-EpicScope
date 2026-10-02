@@ -8,7 +8,7 @@ export interface InspectorPanelController {
   setError(message: string): void;
   onChannelToggled(listener: (channelId: string) => void): void;
   setActiveChannels(channelIds: readonly string[]): void;
-  setChannelValue(channelId: string, value: string): void;
+  setChannelValues(values: readonly { channelId: string; value: string }[]): void;
   clearChannelValues(): void;
 }
 
@@ -188,9 +188,9 @@ export function createInspectorPanel(): InspectorPanelController {
     renderChannels();
   };
 
-  const setChannelValue = (channelId: string, value: string): void => {
-    currentValues.set(channelId, value);
-    if (activeChannelIds.has(channelId) || visibilitySelect.value === 'active') renderChannels();
+  const setChannelValues = (values: readonly { channelId: string; value: string }[]): void => {
+    for (const item of values) currentValues.set(item.channelId, item.value);
+    renderChannels();
   };
 
   const clearChannelValues = (): void => {
@@ -212,7 +212,7 @@ export function createInspectorPanel(): InspectorPanelController {
     setError,
     onChannelToggled: (listener) => { toggleListener = listener; },
     setActiveChannels,
-    setChannelValue,
+    setChannelValues,
     clearChannelValues,
   };
 }
