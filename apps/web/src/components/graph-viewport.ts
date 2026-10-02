@@ -457,7 +457,7 @@ export function createGraphViewport(): GraphViewportController {
         }
         channelPerformanceListener?.({
           channelId,
-          totalMs: completedMs - pending.startedMs,
+          totalMs: completedMs - readStart,
           readDecodeMs,
           scaleMs: scaleTimes.get(channelId) ?? 0,
           renderMs,
@@ -656,7 +656,7 @@ export function createGraphViewport(): GraphViewportController {
 
     if (channelData.requiresExplicitBatchSelection) {
       overlayTitle.textContent = `${pendingTraces.size} channel${pendingTraces.size === 1 ? '' : 's'} selected`;
-      overlayDetail.textContent = 'Choose the remaining channels, then press Load selected in Full Sensor List.';
+      overlayDetail.textContent = 'Choose the remaining channels, then move back to the graph to load them together.';
       return result;
     }
 
