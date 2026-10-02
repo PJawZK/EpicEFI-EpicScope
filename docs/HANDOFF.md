@@ -11,7 +11,7 @@
 ## Active development branch / PR
 
 - branch: `main`
-- current task: hosted validation of multi-channel traces and Channel Value Search
+- current task: close out the first large-log Web performance increment, then continue Phase 1 functional work
 
 ## Current phase
 
@@ -35,7 +35,11 @@ Completed and validated:
 - transient auto-dismiss trace-limit warning instead of a persistent graph overlay;
 - Channel Value Search with ranked Max / Min / Closest-to-value results, Previous/Next navigation, and one optional secondary-channel constraint;
 - diagnostics moved out of the graph viewport into a compact status/popover control;
-- EpicScope-logo module menu and EpicHub-style edge-panel controls.
+- EpicScope-logo module menu and EpicHub-style edge-panel controls;
+- staged Worker import for large MLG files, with time-to-usable before full CRC validation completes;
+- bounded large-log source caching with a ~96 MiB Web cache ceiling;
+- batched multi-channel MLG decoding with a bounded 32 MiB decoded-channel cache;
+- automatic large-log channel batch commit when leaving the Full Sensor List, preserving one shared row-oriented decode pass without an extra confirmation click.
 
 ## Hosted application
 
@@ -59,6 +63,22 @@ Observed/verified:
 
 The remaining noisy counter diagnostics are a classification/presentation issue, not evidence of parser offset drift. Do not change the documented MLG checksum formula to suppress them.
 
+### Large-log performance validation
+
+Validated file: `2026-09-30_12.09.28.mlg`.
+
+Observed/verified on the hosted Web build:
+
+- source size: 318,023,627 bytes;
+- 72,158 records and 1,652 channels;
+- staged Worker import becomes usable in roughly 1.7-2.5 s across observed runs, with full CRC validation completing separately afterward;
+- four uncached channels (RPM, MAP, TPS and `lowerWgSolenoidTestActive`) load together as `batch=4`;
+- the four-channel batch uses one shared 318,023,627-byte physical traversal rather than four independent source passes;
+- validated batch decode/read time is about 1.94 s, with all four performance entries reporting the same ~2.03 s operation total;
+- the earlier four independent selections required about 995 MB of cumulative physical channel reads, so shared batching cuts that workflow to roughly one-third of the physical I/O;
+- timing-based debounce/coordinator experiments were superseded by staged selection plus automatic commit when the pointer leaves Full Sensor List;
+- decoded-cache re-add behavior is covered by automated tests but still needs one final hosted real-log spot check before that specific user-facing path is considered manually validated.
+
 ## Graph renderer status
 
 The current Canvas 2D renderer is **Experimental**.
@@ -71,31 +91,22 @@ The current Canvas 2D renderer is **Experimental**.
 
 Canvas 2D is an initial Web renderer choice, not a Linux/Android architecture commitment.
 
-## Active viewport/navigation increment
+## Current Phase 1 continuation
 
-`phase1/viewport-navigation` adds a reusable viewport model under `core/timeline/` and connects it to the Web graph/timeline.
+Viewport/navigation, multi-channel graphing and Channel Value Search are implemented and hosted. The first large-log performance increment is also implemented and substantially validated.
 
-Target behavior:
+Immediate remaining validation:
 
-- Fit restores full-log view;
-- +/− controls zoom around the current cursor;
-- mouse wheel over the graph zooms around the pointer location;
-- graph drag pans the visible time range;
-- timeline overview contains a real focus-window rectangle;
-- focus window can be dragged to pan;
-- cursor remains independent until it passes the visible-range midpoint, then the viewport follows it in the direction of travel;
-- graph rendering operates on the visible time range rather than always compressing the entire log.
+1. perform one hosted remove/re-add check on an already decoded large-log channel and confirm `cacheHit=true`, `physicalReads=0`, and `physicalBytes=0`.
 
-The viewport math belongs to `core/timeline/`; Web components only emit interaction intent and render the resulting state.
-
-## Next after hosted multi-channel / value-search validation
+Then continue Phase 1 functional work in this order unless new evidence changes priority:
 
 1. improve the whole-log timeline overview with actual trace/event content;
-2. expand Value Search if needed after real-log use (for example multiple constraints, ranges, event-aware ranking, or distinct-value handling);
+2. expand Value Search only where real-log use shows a concrete need;
 3. add session/workspace persistence for selected channels, viewport state and search state;
-4. revisit graph rendering only with real multi-channel/zoom workflows available;
+4. revisit graph rendering with established multi-channel/zoom workflows;
 5. improve retry/recovery diagnostic classification without silently repairing source data;
-6. complete the first Web performance baseline.
+6. keep extending the Web performance baseline as real workflows are exercised.
 
 ## Key constraints still in force
 
