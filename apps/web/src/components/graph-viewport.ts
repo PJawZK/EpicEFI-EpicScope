@@ -224,7 +224,10 @@ export function createGraphViewport(): GraphViewportController {
       <strong>Select channels</strong>
       <span>Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.</span>
     </div>
-    <div class="graph-readout graph-readout--multi" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--names" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--now" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--min" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--max" hidden></div>
     <div class="graph-toast graph-toast--warning" role="status" aria-live="polite" hidden>
       <span class="graph-toast-icon" aria-hidden="true">!</span>
       <span class="graph-toast-message"></span>
@@ -235,10 +238,13 @@ export function createGraphViewport(): GraphViewportController {
   const overlay = root.querySelector<HTMLElement>('.graph-overlay');
   const overlayTitle = root.querySelector<HTMLElement>('.graph-overlay strong');
   const overlayDetail = root.querySelector<HTMLElement>('.graph-overlay span');
-  const readout = root.querySelector<HTMLElement>('.graph-readout');
+  const nameReadout = root.querySelector<HTMLElement>('.graph-corner-readout--names');
+  const nowReadout = root.querySelector<HTMLElement>('.graph-corner-readout--now');
+  const minReadout = root.querySelector<HTMLElement>('.graph-corner-readout--min');
+  const maxReadout = root.querySelector<HTMLElement>('.graph-corner-readout--max');
   const toast = root.querySelector<HTMLElement>('.graph-toast');
   const toastMessage = root.querySelector<HTMLElement>('.graph-toast-message');
-  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !readout || !toast || !toastMessage) {
+  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !nameReadout || !nowReadout || !minReadout || !maxReadout || !toast || !toastMessage) {
     throw new Error('Graph viewport structure is incomplete.');
   }
 
@@ -272,40 +278,59 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const renderReadout = (): void => {
-    readout.replaceChildren();
-    for (const trace of activeTraces.values()) {
-      const item = document.createElement('div');
-      item.className = 'graph-readout-trace';
+    nameReadout.replaceChildren();
+    nowReadout.replaceChildren();
+    minReadout.replaceChildren();
+    maxReadout.replaceChildren();
 
-      const identity = document.createElement('div');
-      identity.className = 'graph-readout-identity';
+    const appendMetric = (
+      host: HTMLElement,
+      trace: ActiveTrace,
+      value: number | undefined,
+      label?: string,
+    ): void => {
+      const item = document.createElement('span');
+      item.className = 'graph-corner-item';
+
+      const swatch = document.createElement('span');
+      swatch.className = 'graph-trace-swatch';
+      swatch.style.background = trace.color;
+
+      const text = document.createElement('span');
+      const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
+      text.textContent = label
+        ? `${label} ${formatReadoutValue(trace, value)}${unit}`
+        : `${formatReadoutValue(trace, value)}${unit}`;
+
+      item.append(swatch, text);
+      host.append(item);
+    };
+
+    for (const trace of activeTraces.values()) {
+      const nameItem = document.createElement('span');
+      nameItem.className = 'graph-corner-item graph-corner-item--name';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
       swatch.style.background = trace.color;
 
       const name = document.createElement('span');
-      name.className = 'graph-readout-name';
       name.textContent = trace.channel.displayName || trace.channel.sourceName;
       name.title = trace.channel.sourceName;
 
-      identity.append(swatch, name);
+      nameItem.append(swatch, name);
+      nameReadout.append(nameItem);
 
-      const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
-      const current = nearestValue(trace.range, cursorTimeMs);
-
-      const values = document.createElement('div');
-      values.className = 'graph-readout-values';
-      values.innerHTML = `
-        <span><small>Now</small><strong>${formatReadoutValue(trace, current)}${unit}</strong></span>
-        <span><small>Min</small><strong>${formatReadoutValue(trace, trace.fullStatistics.min)}${unit}</strong></span>
-        <span><small>Max</small><strong>${formatReadoutValue(trace, trace.fullStatistics.max)}${unit}</strong></span>
-      `;
-
-      item.append(identity, values);
-      readout.append(item);
+      appendMetric(nowReadout, trace, nearestValue(trace.range, cursorTimeMs));
+      appendMetric(minReadout, trace, trace.fullStatistics.min);
+      appendMetric(maxReadout, trace, trace.fullStatistics.max);
     }
-    readout.hidden = activeTraces.size === 0;
+
+    const hidden = activeTraces.size === 0;
+    nameReadout.hidden = hidden;
+    nowReadout.hidden = hidden;
+    minReadout.hidden = hidden;
+    maxReadout.hidden = hidden;
   };
 
   const draw = (): void => {
@@ -775,7 +800,6 @@ export function createGraphViewport(): GraphViewportController {
     overlay.hidden = false;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
-    readout.hidden = true;
     renderReadout();
     emitCursorValues();
     toast.hidden = true;
@@ -919,7 +943,6 @@ export function createGraphViewport(): GraphViewportController {
     overlay.hidden = false;
     overlayTitle.textContent = 'Open a log to start scoping';
     overlayDetail.textContent = 'The graph will use normalized local channel data.';
-    readout.hidden = true;
     renderReadout();
     emitCursorValues();
     draw();
