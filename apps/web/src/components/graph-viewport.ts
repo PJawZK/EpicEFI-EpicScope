@@ -543,16 +543,29 @@ export function createGraphViewport(): GraphViewportController {
 
     overlay.hidden = false;
     overlayTitle.textContent = 'Queued channel selection…';
-    overlayDetail.textContent = channelData.preferredBatchWindowMs
-      ? 'Briefly collecting rapid selections for one shared log pass.'
-      : 'Preparing channel data.';
+    const cacheReady = channelData.hasCachedChannelRange?.(
+      channelId,
+      0,
+      channelData.sampleCount,
+    ) ?? false;
+    overlayDetail.textContent = cacheReady
+      ? 'Using decoded channel cache.'
+      : channelData.preferredBatchWindowMs
+        ? 'Collecting rapid selections for one shared log pass.'
+        : 'Preparing channel data.';
 
-    if (pendingBatchTimer === undefined) {
-      pendingBatchTimer = window.setTimeout(
-        () => { void flushPending(); },
-        channelData.preferredBatchWindowMs ?? 0,
-      );
-    }
+    const cached = channelData.hasCachedChannelRange?.(
+      channelId,
+      0,
+      channelData.sampleCount,
+    ) ?? false;
+    const windowMs = cached ? 0 : (channelData.preferredBatchWindowMs ?? 0);
+
+    if (pendingBatchTimer !== undefined) window.clearTimeout(pendingBatchTimer);
+    pendingBatchTimer = window.setTimeout(
+      () => { void flushPending(); },
+      windowMs,
+    );
 
     return result;
   };
