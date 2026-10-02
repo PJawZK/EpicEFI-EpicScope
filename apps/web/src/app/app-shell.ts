@@ -25,6 +25,7 @@ import { createIniCatalogLocalStorageAdapter } from '../adapters/ini-catalog-loc
 import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
 import {
   mergeLogSpecificWorkspaceState,
+  migrateReusableChannelAssignmentsFromLog,
 } from '../state/application-workspace-persistence';
 import {
   createWorkspaceHistory,
@@ -425,11 +426,36 @@ export function mountAppShell(root: HTMLElement): void {
         setPersistenceStatus(`Using reusable workspace structure · no saved log view yet for ${source.displayName}.`);
         return false;
       }
+      const currentApplication = captureWorkspaceState();
+      const migratedApplication = activeIniBinding
+        ? migrateReusableChannelAssignmentsFromLog(
+            currentApplication,
+            persisted.workspace,
+            activeIniBinding.sourceToLogicalChannelId,
+          )
+        : currentApplication;
       const merged = mergeLogSpecificWorkspaceState(
-        captureWorkspaceState(),
+        migratedApplication,
         persisted.workspace,
       );
       await restoreWorkspaceSnapshot(merged);
+
+      // If old exact-log state supplied source-local channel assignments, the
+      // migration above may have converted them to stable INI identities.
+      // Persist that application structure immediately so the next INI-only
+      // startup no longer depends on loading this MLG again.
+      if (activeIniBinding && !reusableWorkspacePersistenceSuspended) {
+        try {
+          applicationWorkspaceStorage.save(captureWorkspaceState());
+        } catch (error) {
+          setPersistenceStatus(
+            error instanceof Error
+              ? `Workspace restored, but stable channel migration could not be saved: ${error.message}`
+              : 'Workspace restored, but stable channel migration could not be saved.',
+          );
+        }
+      }
+
       setPersistenceStatus(
         `Restored log-specific navigation for ${source.displayName} · reusable layout/channels preserved.`,
       );
@@ -884,7 +910,10 @@ export function mountAppShell(root: HTMLElement): void {
           }
         : undefined,
     );
-    void loadPersistedWorkspace(parsed.summary.source).then(() => resetWorkspaceHistory());
+    void loadPersistedWorkspace(parsed.summary.source).then(() => {
+      resetWorkspaceHistory();
+      scheduleWorkspaceSave();
+    });
     const uiPopulateMs = now() - uiStart;
 
     performanceDiagnostics.recordLoad({
@@ -1008,7 +1037,10 @@ export function mountAppShell(root: HTMLElement): void {
               }
             : undefined,
         );
-        void loadPersistedWorkspace(indexed.summary.source).then(() => resetWorkspaceHistory());
+        void loadPersistedWorkspace(indexed.summary.source).then(() => {
+          resetWorkspaceHistory();
+          scheduleWorkspaceSave();
+        });
         const uiPopulateMs = now() - uiStart;
 
         performanceDiagnostics.recordLoad({

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   mergeLogSpecificWorkspaceState,
+  migrateReusableChannelAssignmentsFromLog,
   parseWebApplicationWorkspace,
   serializeWebApplicationWorkspace,
   toApplicationWorkspaceState,
@@ -181,6 +182,68 @@ describe('application workspace persistence v2 foundation', () => {
     expect(merged.logger.timeline.bTimeMs).toBe(6_500);
     expect(merged.logger.timeline.savedRanges).toEqual([
       { label: 'Saved range', startMs: 4_500, endMs: 6_500 },
+    ]);
+  });
+
+  it('migrates empty reusable panes from historical exact-log MLG assignments', () => {
+    const reusable: WebWorkspaceState = {
+      ...workspace,
+      logger: {
+        ...workspace.logger,
+        workspaces: [{
+          ...workspace.logger.workspaces[0]!,
+          layout: 'grid4',
+          panes: [
+            { id: 'pane-1', channelIds: [] },
+            { id: 'pane-2', channelIds: [] },
+            { id: 'pane-3', channelIds: ['ini:TPSValue'] },
+            { id: 'pane-4', channelIds: [] },
+            { id: 'pane-5', channelIds: [] },
+            { id: 'pane-6', channelIds: [] },
+          ],
+        }],
+      },
+    };
+
+    const historicalLog: WebWorkspaceState = {
+      ...workspace,
+      logger: {
+        ...workspace.logger,
+        workspaces: [{
+          ...workspace.logger.workspaces[0]!,
+          panes: [
+            { id: 'pane-1', channelIds: ['mlg:0', 'mlg:1'] },
+            { id: 'pane-2', channelIds: ['mlg:2'] },
+            { id: 'pane-3', channelIds: ['mlg:3'] },
+            { id: 'pane-4', channelIds: [] },
+            { id: 'pane-5', channelIds: [] },
+            { id: 'pane-6', channelIds: [] },
+          ],
+          channelIds: ['mlg:0', 'mlg:1'],
+        }],
+      },
+    };
+
+    const migrated = migrateReusableChannelAssignmentsFromLog(
+      reusable,
+      historicalLog,
+      new Map([
+        ['mlg:0', 'ini:RPMValue'],
+        ['mlg:1', 'ini:MAPValue'],
+        ['mlg:2', 'ini:lwgDutyPct'],
+        ['mlg:3', 'ini:ShouldNotOverwrite'],
+      ]),
+    );
+
+    expect(migrated.logger.workspaces[0]?.panes?.[0]?.channelIds).toEqual([
+      'ini:RPMValue',
+      'ini:MAPValue',
+    ]);
+    expect(migrated.logger.workspaces[0]?.panes?.[1]?.channelIds).toEqual([
+      'ini:lwgDutyPct',
+    ]);
+    expect(migrated.logger.workspaces[0]?.panes?.[2]?.channelIds).toEqual([
+      'ini:TPSValue',
     ]);
   });
 

@@ -24,7 +24,10 @@ import {
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
-import { normalizeWorkspaceChannelIds } from '../state/workspace-channel-identity';
+import {
+  normalizeWorkspaceChannelIds,
+  renderableWorkspaceChannelIds,
+} from '../state/workspace-channel-identity';
 import type {
   GraphPaneGeometry,
   GraphPaneSnapshot,
@@ -811,20 +814,26 @@ export function createLoggerPage(): LoggerPageController {
     );
   };
 
-  const normalizePersistentChannelIds = (
-    channelIds: readonly string[],
-  ): string[] => normalizeWorkspaceChannelIds(channelIds, {
+  const channelIdentityOptions = () => ({
     knownChannelIds: new Set(channelDefinitions.keys()),
     aliases: channelIdAliases,
     iniCatalogActive: catalogChannelDefinitions.size > 0,
     limit: MAX_ACTIVE_WEB_TRACES,
   });
 
+  const normalizePersistentChannelIds = (
+    channelIds: readonly string[],
+  ): string[] => normalizeWorkspaceChannelIds(channelIds, channelIdentityOptions());
+
+  const renderablePersistentChannelIds = (
+    channelIds: readonly string[],
+  ): string[] => renderableWorkspaceChannelIds(channelIds, channelIdentityOptions());
+
   const syncPaneAssignedChannels = (
     runtime: (typeof paneRuntimes)[number],
     pane: GraphPaneState | undefined,
   ): void => {
-    const assigned = (pane?.channelIds ?? [])
+    const assigned = renderablePersistentChannelIds(pane?.channelIds ?? [])
       .flatMap((id) => {
         const channel = channelDefinitions.get(id);
         return channel ? [channel] : [];
@@ -836,7 +845,7 @@ export function createLoggerPage(): LoggerPageController {
   const syncActivePaneContext = (): void => {
     const runtime = activePaneRuntime();
     const pane = activePaneState();
-    const assignedIds = pane?.channelIds ?? [];
+    const assignedIds = renderablePersistentChannelIds(pane?.channelIds ?? []);
     inspector.setActiveChannels(assignedIds);
     inspector.setQueuedChannels([]);
     valueSearch.setActiveChannels(
@@ -1335,10 +1344,11 @@ export function createLoggerPage(): LoggerPageController {
     const visibleCount = paneCountForLayout(target.layout);
     const paneRequests = paneRuntimes.slice(0, visibleCount).map((runtime, index) => {
       const pane = target.panes[index];
-      const assignedIds = pane
+      const normalizedIds = pane
         ? normalizePersistentChannelIds(pane.channelIds)
         : [];
-      if (pane) pane.channelIds = [...assignedIds];
+      const assignedIds = renderablePersistentChannelIds(normalizedIds);
+      if (pane && channelIdAliases.size > 0) pane.channelIds = [...assignedIds];
       syncPaneAssignedChannels(runtime, pane);
       const requestedIds = channelDataSource
         ? assignedIds.filter(
@@ -1443,6 +1453,11 @@ export function createLoggerPage(): LoggerPageController {
     const pane = activePaneState();
     if (!runtime || !pane || !channelDefinitions.has(channelId)) return;
 
+    const currentAssignedIds = renderablePersistentChannelIds(pane.channelIds);
+    if (currentAssignedIds.length !== pane.channelIds.length) {
+      pane.channelIds = [...currentAssignedIds];
+    }
+
     if (pane.channelIds.includes(channelId)) {
       pane.channelIds = pane.channelIds.filter((id) => id !== channelId);
       syncPaneAssignedChannels(runtime, pane);
@@ -1479,6 +1494,11 @@ export function createLoggerPage(): LoggerPageController {
     const runtime = activePaneRuntime();
     const pane = activePaneState();
     if (!runtime || !pane) return;
+
+    const currentAssignedIds = renderablePersistentChannelIds(pane.channelIds);
+    if (currentAssignedIds.length !== pane.channelIds.length) {
+      pane.channelIds = [...currentAssignedIds];
+    }
 
     const remaining = Math.max(0, MAX_ACTIVE_WEB_TRACES - pane.channelIds.length);
     const assignedIds = channelIds
@@ -1745,12 +1765,6 @@ export function createLoggerPage(): LoggerPageController {
   ): void => {
     catalogChannelDefinitions = new Map(channels.map((channel) => [channel.id, channel]));
     catalogSourceName = sourceName;
-
-    for (const workspace of workspaces) {
-      for (const pane of workspace.panes) {
-        pane.channelIds = normalizePersistentChannelIds(pane.channelIds);
-      }
-    }
 
     if (!channelDataSource) {
       channelDefinitions = new Map(catalogChannelDefinitions);

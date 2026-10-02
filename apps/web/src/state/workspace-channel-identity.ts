@@ -17,16 +17,23 @@ export function normalizeWorkspaceChannelIds(
       if (alias) candidate = alias;
     }
 
-    if (
-      options.iniCatalogActive
-      && candidate.startsWith('mlg:')
-      && !options.knownChannelIds.has(candidate)
-    ) {
-      continue;
-    }
-
     if (!normalized.includes(candidate)) normalized.push(candidate);
     if (normalized.length >= options.limit) break;
   }
   return normalized;
+}
+
+export function renderableWorkspaceChannelIds(
+  channelIds: readonly string[],
+  options: NormalizeWorkspaceChannelIdsOptions,
+): string[] {
+  return normalizeWorkspaceChannelIds(channelIds, options)
+    .filter((channelId) =>
+      !(
+        options.iniCatalogActive
+        && channelId.startsWith('mlg:')
+        && !options.knownChannelIds.has(channelId)
+      )
+    )
+    .slice(0, options.limit);
 }
