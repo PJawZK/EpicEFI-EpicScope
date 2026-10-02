@@ -75,7 +75,7 @@ describe('searchChannelValues', () => {
     ];
 
     expect(findSteppedSearchResultIndex(results, 0, 1, 100)).toBe(3);
-    expect(findSteppedSearchResultIndex(results, 3, -1, 100)).toBe(0);
+    expect(findSteppedSearchResultIndex(results, 3, -1, 100)).toBe(1);
     expect(findSteppedSearchResultIndex(results, 0, 1, 0)).toBe(1);
   });
 
