@@ -54,6 +54,7 @@ function displayValue(rawValue: number, field: MlgFieldDescriptor): number {
 
 export class MlgNumericChannelDataSource implements NumericChannelDataSource {
   readonly sampleCount: number;
+  readonly preferredBatchWindowMs: number;
 
   private readonly source: RandomAccessByteSource;
   private readonly fields: readonly MlgFieldDescriptor[];
@@ -72,6 +73,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     this.fields = fields;
     this.recordIndex = recordIndex;
     this.sampleCount = recordIndex.offsets.length;
+    this.preferredBatchWindowMs = source.size > 128 * 1024 * 1024 ? 180 : 0;
     this.fieldOffsets = new Uint32Array(fields.length);
 
     let fieldOffset = 0;
