@@ -24,6 +24,10 @@ import {
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
+import type {
+  GraphWorkspaceSnapshot,
+  LoggerWorkspaceState,
+} from '../state/workspace-state';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
 
@@ -48,6 +52,9 @@ export interface LoggerPageController {
   setHighZoomSamplePointsVisible(visible: boolean): void;
   setTimelineOverviewTracesVisible(visible: boolean): void;
   onChannelPerformance(listener: (performance: LoggerChannelPerformance) => void): void;
+  onWorkspaceMutation(listener: () => void): void;
+  getWorkspaceState(): LoggerWorkspaceState;
+  restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
 }
 
 interface DiagnosticsIndicatorController {
@@ -356,6 +363,12 @@ export function createLoggerPage(): LoggerPageController {
   let channelDefinitions = new Map<string, ChannelDefinition>();
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
+  let workspaceMutationListener: (() => void) | undefined;
+  let restoringWorkspaceState = false;
+
+  const emitWorkspaceMutation = (): void => {
+    if (!restoringWorkspaceState) workspaceMutationListener?.();
+  };
 
   const headerTools = document.createElement('div');
   headerTools.className = 'logger-header-tools';
@@ -600,6 +613,7 @@ export function createLoggerPage(): LoggerPageController {
         }),
       );
       timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+      emitWorkspaceMutation();
     });
   });
 
@@ -629,6 +643,7 @@ export function createLoggerPage(): LoggerPageController {
         }),
       );
       timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+      emitWorkspaceMutation();
     });
   });
 
@@ -701,6 +716,9 @@ export function createLoggerPage(): LoggerPageController {
     setCursorWithoutFollow(timeMs);
   });
 
+  timeline.onWorkspaceMutation(emitWorkspaceMutation);
+  inspector.onWorkspaceMutation(emitWorkspaceMutation);
+
   graphSelector.onSelect((workspaceId) => {
     void restoreWorkspace(workspaceId);
   });
@@ -719,7 +737,7 @@ export function createLoggerPage(): LoggerPageController {
       lastHistoryMutationMs: 0,
     };
     workspaces.push(workspace);
-    void restoreWorkspace(workspace.id);
+    void restoreWorkspace(workspace.id).then(emitWorkspaceMutation);
   });
 
   graphSelector.onRename(() => {
@@ -731,6 +749,7 @@ export function createLoggerPage(): LoggerPageController {
     if (!name) return;
     workspace.name = name;
     refreshWorkspaceSelector();
+    emitWorkspaceMutation();
   });
 
   graphSelector.onDuplicate(() => {
@@ -749,7 +768,7 @@ export function createLoggerPage(): LoggerPageController {
       lastHistoryMutationMs: 0,
     };
     workspaces.push(duplicate);
-    void restoreWorkspace(duplicate.id);
+    void restoreWorkspace(duplicate.id).then(emitWorkspaceMutation);
   });
 
   graphSelector.onDelete(() => {
@@ -761,7 +780,7 @@ export function createLoggerPage(): LoggerPageController {
     const next = workspaces[Math.min(nextIndex, workspaces.length - 1)];
     if (!next) return;
     activeWorkspaceId = '';
-    void restoreWorkspace(next.id);
+    void restoreWorkspace(next.id).then(emitWorkspaceMutation);
   });
 
   timelineWrap.append(timeline.element, timelineToggle);
@@ -842,6 +861,84 @@ export function createLoggerPage(): LoggerPageController {
     }]);
   };
 
+  const getWorkspaceState = (): LoggerWorkspaceState => ({
+    activeWorkspaceId,
+    workspaces: workspaces.map((workspace): GraphWorkspaceSnapshot => ({
+      id: workspace.id,
+      name: workspace.name,
+      channelIds: [...workspace.channelIds],
+      viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
+      cursorTimeMs: workspace.cursorTimeMs,
+      viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
+      viewHistoryIndex: workspace.viewHistoryIndex,
+    })),
+    timeline: timeline.getWorkspaceState(),
+    inspector: inspector.getWorkspaceState(),
+  });
+
+  const restoreWorkspaceState = async (state: LoggerWorkspaceState): Promise<void> => {
+    restoringWorkspaceState = true;
+    workspaceGeneration += 1;
+    try {
+      workspaces = state.workspaces.map((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        channelIds: [...workspace.channelIds],
+        viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
+        cursorTimeMs: workspace.cursorTimeMs,
+        viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
+        viewHistoryIndex: Math.min(
+          Math.max(-1, workspace.viewHistoryIndex),
+          workspace.viewHistory.length - 1,
+        ),
+        lastHistoryMutationMs: 0,
+      }));
+      if (workspaces.length === 0) {
+        workspaces = [{
+          id: 'general',
+          name: 'General',
+          channelIds: [],
+          viewport: viewport ? { ...viewport } : undefined,
+          cursorTimeMs: timeline.getCursorTime(),
+          viewHistory: viewport ? [{ ...viewport }] : [],
+          viewHistoryIndex: viewport ? 0 : -1,
+          lastHistoryMutationMs: 0,
+        }];
+      }
+
+      workspaceCounter = Math.max(
+        1,
+        ...workspaces.map((workspace) => {
+          const match = workspace.id.match(/^graph-(\d+)$/);
+          return match ? Number(match[1]) : 1;
+        }),
+      );
+
+      inspector.restoreWorkspaceState(state.inspector);
+      workspaceRow.classList.toggle('workspace-row--inspector-hidden', !state.inspector.visible);
+      sensorToggle.textContent = state.inspector.visible ? 'Hide sensors' : 'Show sensors';
+      sensorToggle.title = state.inspector.visible ? 'Hide Full Sensor List' : 'Show Full Sensor List';
+      sensorToggle.setAttribute('aria-expanded', String(state.inspector.visible));
+
+      timeline.restoreWorkspaceState(state.timeline);
+      timelineWrap.classList.toggle('timeline-wrap--compact', !state.timeline.expanded);
+      timelineToggle.textContent = state.timeline.expanded ? 'Hide controls' : 'Show controls';
+      timelineToggle.title = state.timeline.expanded ? 'Collapse Timeline controls' : 'Expand Timeline controls';
+      timelineToggle.setAttribute('aria-expanded', String(state.timeline.expanded));
+
+      const targetId = workspaces.some((workspace) => workspace.id === state.activeWorkspaceId)
+        ? state.activeWorkspaceId
+        : workspaces[0]!.id;
+      activeWorkspaceId = '';
+      refreshWorkspaceSelector();
+      await restoreWorkspace(targetId);
+      refreshWorkspaceSelector();
+      refreshViewHistoryState();
+    } finally {
+      restoringWorkspaceState = false;
+    }
+  };
+
   refreshWorkspaceSelector();
   graphSelector.setEnabled(false);
   refreshViewHistoryState();
@@ -859,5 +956,8 @@ export function createLoggerPage(): LoggerPageController {
     setHighZoomSamplePointsVisible: (visible) => { graph.setHighZoomSamplePointsVisible(visible); },
     setTimelineOverviewTracesVisible: (visible) => { timeline.setOverviewTracesVisible(visible); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
+    onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
+    getWorkspaceState,
+    restoreWorkspaceState,
   };
 }
