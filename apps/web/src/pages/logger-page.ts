@@ -2,6 +2,7 @@ import type {
   ChannelDefinition,
   ImportedLogSummary,
   NumericChannelDataSource,
+  LogMarker,
   ParserDiagnostic,
   ParserDiagnosticSeverity,
 } from '../../../../core/log-model/log-types';
@@ -230,6 +231,7 @@ export function createLoggerPage(): LoggerPageController {
   let previousCursorTimeMs = 0;
   const activeChannelIds = new Set<string>();
   let channelDefinitions = new Map<string, ChannelDefinition>();
+  let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
 
   const headerTools = document.createElement('div');
@@ -334,6 +336,7 @@ export function createLoggerPage(): LoggerPageController {
           return channel ? [channel] : [];
         }),
       );
+      timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
     });
   });
 
@@ -397,8 +400,10 @@ export function createLoggerPage(): LoggerPageController {
   ): void => {
     activeChannelIds.clear();
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
+    logMarkers = summary.markers;
     inspector.setChannels(summary.channels, summary.source.displayName);
     timeline.setTimeRange(summary.timeRange, recordCount);
+    timeline.setOverviewContent([], logMarkers);
     graph.setLog(summary.channels, channelData, summary.timeRange);
     valueSearch.setLog(channelData);
     valueSearch.setActiveChannels([]);
@@ -415,6 +420,7 @@ export function createLoggerPage(): LoggerPageController {
   const setImportError = (message: string): void => {
     activeChannelIds.clear();
     channelDefinitions.clear();
+    logMarkers = [];
     inspector.setError(message);
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);
@@ -436,7 +442,7 @@ export function createLoggerPage(): LoggerPageController {
     setLog,
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
-    refreshValidity: () => { graph.refreshValidity(); },
+    refreshValidity: () => { graph.refreshValidity(); timeline.refreshOverview(); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
   };
 }

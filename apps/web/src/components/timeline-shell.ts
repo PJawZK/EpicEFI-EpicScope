@@ -1,5 +1,6 @@
-import type { LogTimeRange } from '../../../../core/log-model/log-types';
+import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
+import { buildViewportEnvelope } from '../../../../core/timeline/viewport-series';
 
 export type TimelineViewportIntent =
   | { readonly type: 'fit' }
@@ -7,11 +8,20 @@ export type TimelineViewportIntent =
   | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean };
 
+export interface TimelineOverviewTrace {
+  readonly channelId: string;
+  readonly channelName: string;
+  readonly range: NumericChannelRange;
+  readonly color: string;
+}
+
 export interface TimelineShellController {
   readonly element: HTMLElement;
   setExpanded(expanded: boolean): void;
   isExpanded(): boolean;
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
+  setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
+  refreshOverview(): void;
   setViewport(viewport: TimelineViewport | undefined): void;
   setCursorTime(timeMs: number): void;
   getCursorTime(): number;
@@ -33,6 +43,8 @@ export function createTimelineShell(): TimelineShellController {
   let fullEndMs = 0;
   let cursorTimeMs = 0;
   let viewport: TimelineViewport | undefined;
+  let overviewTraces: readonly TimelineOverviewTrace[] = [];
+  let overviewMarkers: readonly LogMarker[] = [];
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
 
@@ -42,6 +54,7 @@ export function createTimelineShell(): TimelineShellController {
 
   timeline.innerHTML = `
     <div class="timeline-overview">
+      <canvas class="timeline-overview-canvas" aria-hidden="true"></canvas>
       <div class="timeline-overview-empty">Timeline overview becomes available after a log is loaded.</div>
       <div class="timeline-focus-placeholder" title="Drag visible window to pan">
         <span class="timeline-focus-handle timeline-focus-handle--start" data-focus-edge="start" title="Drag to resize visible range"></span>
@@ -78,6 +91,7 @@ export function createTimelineShell(): TimelineShellController {
   `;
 
   const overview = timeline.querySelector<HTMLElement>('.timeline-overview');
+  const overviewCanvas = timeline.querySelector<HTMLCanvasElement>('.timeline-overview-canvas');
   const overviewText = timeline.querySelector<HTMLElement>('.timeline-overview-empty');
   const focusWindow = timeline.querySelector<HTMLElement>('.timeline-focus-placeholder');
   const focusStartHandle = timeline.querySelector<HTMLElement>('.timeline-focus-handle--start');
@@ -90,9 +104,108 @@ export function createTimelineShell(): TimelineShellController {
   const progressFill = progress?.querySelector<HTMLElement>('span');
   const transportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('.transport button')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !progress || !progressFill) {
+  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
+
+  const renderOverview = (): void => {
+    const rect = overview.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width));
+    const height = Math.max(1, Math.floor(rect.height));
+    const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    const pixelWidth = Math.max(1, Math.round(width * dpr));
+    const pixelHeight = Math.max(1, Math.round(height * dpr));
+    if (overviewCanvas.width !== pixelWidth || overviewCanvas.height !== pixelHeight) {
+      overviewCanvas.width = pixelWidth;
+      overviewCanvas.height = pixelHeight;
+    }
+
+    const context = overviewCanvas.getContext('2d');
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+
+    const duration = Math.max(0, fullEndMs - fullStartMs);
+    if (duration <= 0) return;
+
+    context.save();
+    context.lineWidth = 1;
+    context.strokeStyle = 'rgba(240, 180, 77, 0.58)';
+    for (const marker of overviewMarkers) {
+      if (marker.timeMs < fullStartMs || marker.timeMs > fullEndMs) continue;
+      const x = ((marker.timeMs - fullStartMs) / duration) * width;
+      context.beginPath();
+      context.moveTo(x + 0.5, 0);
+      context.lineTo(x + 0.5, height);
+      context.stroke();
+    }
+    context.restore();
+
+    const envelopeWidth = Math.max(1, width);
+    for (const trace of overviewTraces) {
+      const envelope = buildViewportEnvelope(trace.range, fullStartMs, fullEndMs, envelopeWidth);
+      if (envelope.validSampleCount === 0 || envelope.columns.length === 0) continue;
+
+      const valueSpan = Math.max(1e-12, envelope.valueMax - envelope.valueMin);
+      const yFor = (value: number): number => {
+        const normalized = (value - envelope.valueMin) / valueSpan;
+        return height - 2 - normalized * Math.max(1, height - 4);
+      };
+
+      context.save();
+      context.strokeStyle = trace.color;
+      context.globalAlpha = overviewTraces.length > 4 ? 0.48 : 0.68;
+      context.lineWidth = 1;
+      for (const column of envelope.columns) {
+        const x = column.x + 0.5;
+        context.beginPath();
+        context.moveTo(x, yFor(column.min));
+        context.lineTo(x, yFor(column.max));
+        context.stroke();
+      }
+
+      context.globalAlpha = overviewTraces.length > 4 ? 0.68 : 0.88;
+      context.beginPath();
+      let started = false;
+      for (const column of envelope.columns) {
+        const x = column.x + 0.5;
+        const y = yFor(column.last);
+        if (!started) {
+          context.moveTo(x, y);
+          started = true;
+        } else {
+          context.lineTo(x, y);
+        }
+      }
+      if (started) context.stroke();
+      context.restore();
+    }
+  };
+
+  const updateOverviewMessage = (): void => {
+    if (fullEndMs <= fullStartMs) {
+      overviewText.hidden = false;
+      return;
+    }
+    if (overviewTraces.length > 0) {
+      overviewText.hidden = true;
+      return;
+    }
+    overviewText.hidden = false;
+    overviewText.textContent = overviewMarkers.length > 0
+      ? `Select a channel to add trace context · ${overviewMarkers.length.toLocaleString()} source marker${overviewMarkers.length === 1 ? '' : 's'} shown.`
+      : 'Select a channel to add a whole-log overview trace.';
+  };
+
+  const setOverviewContent = (
+    traces: readonly TimelineOverviewTrace[],
+    markers: readonly LogMarker[],
+  ): void => {
+    overviewTraces = traces;
+    overviewMarkers = markers;
+    updateOverviewMessage();
+    renderOverview();
+  };
 
   const fullDuration = (): number => Math.max(0, fullEndMs - fullStartMs);
   const visibleSpan = (): number => viewport ? Math.max(0, viewport.visibleEndMs - viewport.visibleStartMs) : fullDuration();
@@ -149,6 +262,8 @@ export function createTimelineShell(): TimelineShellController {
   const setTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number): void => {
     fullStartMs = nextRange?.startMs ?? 0;
     fullEndMs = nextRange?.endMs ?? 0;
+    overviewTraces = [];
+    overviewMarkers = [];
     cursorTimeMs = fullStartMs;
     viewport = nextRange
       ? { fullStartMs, fullEndMs, visibleStartMs: fullStartMs, visibleEndMs: fullEndMs }
@@ -169,6 +284,8 @@ export function createTimelineShell(): TimelineShellController {
     }
     for (const button of viewportButtons) button.disabled = !enabled;
     progress.tabIndex = enabled ? 0 : -1;
+    updateOverviewMessage();
+    renderOverview();
     renderViewport();
     renderCursor();
   };
@@ -305,7 +422,11 @@ export function createTimelineShell(): TimelineShellController {
     });
   }
 
+  const overviewResizeObserver = new ResizeObserver(renderOverview);
+  overviewResizeObserver.observe(overview);
+
   setExpanded(true);
+  renderOverview();
   renderViewport();
   renderCursor();
 
@@ -314,6 +435,8 @@ export function createTimelineShell(): TimelineShellController {
     setExpanded,
     isExpanded: () => expanded,
     setTimeRange,
+    setOverviewContent,
+    refreshOverview: renderOverview,
     setViewport,
     setCursorTime: (timeMs) => updateCursor(timeMs, false),
     getCursorTime: () => cursorTimeMs,
