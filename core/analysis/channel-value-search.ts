@@ -131,3 +131,29 @@ export async function searchChannelValues(
 
   return results.map((result, index) => ({ ...result, rank: index + 1 }));
 }
+
+
+export function findSteppedSearchResultIndex(
+  results: readonly ChannelValueSearchResult[],
+  currentIndex: number,
+  direction: -1 | 1,
+  minimumValueStep: number,
+): number | undefined {
+  if (results.length === 0 || currentIndex < 0 || currentIndex >= results.length) return undefined;
+
+  const current = results[currentIndex];
+  if (!current) return undefined;
+  const step = Number.isFinite(minimumValueStep) ? Math.max(0, Math.abs(minimumValueStep)) : 0;
+
+  for (
+    let index = currentIndex + direction;
+    index >= 0 && index < results.length;
+    index += direction
+  ) {
+    const candidate = results[index];
+    if (!candidate) continue;
+    if (step === 0 || Math.abs(candidate.value - current.value) >= step) return index;
+  }
+
+  return undefined;
+}
