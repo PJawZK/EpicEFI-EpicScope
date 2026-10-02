@@ -83,6 +83,22 @@
   margin-top: 8px;
 }
 
+.value-search-step {
+  display: grid;
+  grid-template-columns: auto 110px;
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
+  margin-top: 8px;
+  color: #7f9dac;
+  font-size: 10px;
+}
+
+.value-search-step-input {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .value-search-status {
   min-width: 0;
   overflow: hidden;
