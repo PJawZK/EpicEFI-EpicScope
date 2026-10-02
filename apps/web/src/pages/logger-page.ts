@@ -185,6 +185,12 @@ interface GraphWorkspaceSummary {
   readonly name: string;
 }
 
+interface GraphWorkspaceState extends GraphWorkspaceSummary {
+  channelIds: string[];
+  viewport: TimelineViewport | undefined;
+  cursorTimeMs: number;
+}
+
 interface GraphSelectorController {
   readonly element: HTMLElement;
   setWorkspaces(workspaces: readonly GraphWorkspaceSummary[], activeId: string): void;
@@ -326,6 +332,16 @@ export function createLoggerPage(): LoggerPageController {
   let viewport: TimelineViewport | undefined;
   let previousCursorTimeMs = 0;
   const activeChannelIds = new Set<string>();
+  let workspaceCounter = 1;
+  let workspaceGeneration = 0;
+  let activeWorkspaceId = 'general';
+  let workspaces: GraphWorkspaceState[] = [{
+    id: 'general',
+    name: 'General',
+    channelIds: [],
+    viewport: undefined,
+    cursorTimeMs: 0,
+  }];
   let channelDefinitions = new Map<string, ChannelDefinition>();
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
@@ -389,16 +405,38 @@ export function createLoggerPage(): LoggerPageController {
     timelineToggle.setAttribute('aria-expanded', String(next));
   });
 
+  const activeWorkspace = (): GraphWorkspaceState | undefined =>
+    workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+
+  const refreshWorkspaceSelector = (): void => {
+    graphSelector.setWorkspaces(
+      workspaces.map(({ id, name }) => ({ id, name })),
+      activeWorkspaceId,
+    );
+  };
+
+  const saveCurrentWorkspace = (): void => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.channelIds = [...activeChannelIds];
+    workspace.viewport = viewport ? { ...viewport } : undefined;
+    workspace.cursorTimeMs = timeline.getCursorTime();
+  };
+
   const syncViewport = (nextViewport: TimelineViewport | undefined): void => {
     viewport = nextViewport;
     timeline.setViewport(nextViewport);
     graph.setViewport(nextViewport);
+    const workspace = activeWorkspace();
+    if (workspace) workspace.viewport = nextViewport ? { ...nextViewport } : undefined;
   };
 
   const setCursorWithoutFollow = (timeMs: number): void => {
     previousCursorTimeMs = timeMs;
     timeline.setCursorTime(timeMs);
     graph.setCursorTime(timeMs);
+    const workspace = activeWorkspace();
+    if (workspace) workspace.cursorTimeMs = timeMs;
   };
 
   const centerCursorInViewport = (targetViewport: TimelineViewport): void => {
@@ -431,10 +469,55 @@ export function createLoggerPage(): LoggerPageController {
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
 
+  const restoreWorkspace = async (workspaceId: string): Promise<void> => {
+    const target = workspaces.find((workspace) => workspace.id === workspaceId);
+    if (!target || target.id === activeWorkspaceId) return;
+
+    saveCurrentWorkspace();
+    const generation = ++workspaceGeneration;
+    activeWorkspaceId = target.id;
+    refreshWorkspaceSelector();
+
+    graph.clearChannels();
+    activeChannelIds.clear();
+    inspector.setActiveChannels([]);
+    inspector.setQueuedChannels([]);
+    valueSearch.setActiveChannels([]);
+    timeline.setOverviewContent([], logMarkers);
+
+    if (target.viewport) syncViewport({ ...target.viewport });
+    setCursorWithoutFollow(target.cursorTimeMs);
+
+    const requestedIds = target.channelIds.filter((channelId) => channelDefinitions.has(channelId));
+    if (requestedIds.length === 0) return;
+
+    const activations = requestedIds.map((channelId) => graph.toggleChannel(channelId));
+    graph.loadPendingChannels();
+    const results = await Promise.all(activations);
+    if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+
+    activeChannelIds.clear();
+    requestedIds.forEach((channelId, index) => {
+      if (results[index]) activeChannelIds.add(channelId);
+    });
+    target.channelIds = [...activeChannelIds];
+    const activeIds = [...activeChannelIds];
+    inspector.setActiveChannels(activeIds);
+    valueSearch.setActiveChannels(
+      activeIds.flatMap((id) => {
+        const channel = channelDefinitions.get(id);
+        return channel ? [channel] : [];
+      }),
+    );
+    timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+  };
+
   inspector.onChannelToggled((channelId) => {
     void graph.toggleChannel(channelId).then((active) => {
       if (active) activeChannelIds.add(channelId);
       else activeChannelIds.delete(channelId);
+      const workspace = activeWorkspace();
+      if (workspace) workspace.channelIds = [...activeChannelIds];
       const activeIds = [...activeChannelIds];
       inspector.setActiveChannels(activeIds);
       valueSearch.setActiveChannels(
@@ -484,6 +567,8 @@ export function createLoggerPage(): LoggerPageController {
     }
     previousCursorTimeMs = timeMs;
     graph.setCursorTime(timeMs);
+    const workspace = activeWorkspace();
+    if (workspace) workspace.cursorTimeMs = timeMs;
   });
   timeline.onViewportIntent(applyViewportIntent);
   graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
@@ -497,6 +582,63 @@ export function createLoggerPage(): LoggerPageController {
     setCursorWithoutFollow(timeMs);
   });
 
+  graphSelector.onSelect((workspaceId) => {
+    void restoreWorkspace(workspaceId);
+  });
+
+  graphSelector.onCreate(() => {
+    saveCurrentWorkspace();
+    workspaceCounter += 1;
+    const workspace: GraphWorkspaceState = {
+      id: `graph-${workspaceCounter}`,
+      name: `Graph ${workspaceCounter}`,
+      channelIds: [],
+      viewport: viewport ? { ...viewport } : undefined,
+      cursorTimeMs: timeline.getCursorTime(),
+    };
+    workspaces.push(workspace);
+    void restoreWorkspace(workspace.id);
+  });
+
+  graphSelector.onRename(() => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    const entered = window.prompt('Graph workspace name', workspace.name);
+    if (entered === null) return;
+    const name = entered.trim();
+    if (!name) return;
+    workspace.name = name;
+    refreshWorkspaceSelector();
+  });
+
+  graphSelector.onDuplicate(() => {
+    const source = activeWorkspace();
+    if (!source) return;
+    saveCurrentWorkspace();
+    workspaceCounter += 1;
+    const duplicate: GraphWorkspaceState = {
+      id: `graph-${workspaceCounter}`,
+      name: `${source.name} copy`,
+      channelIds: [...source.channelIds],
+      viewport: source.viewport ? { ...source.viewport } : undefined,
+      cursorTimeMs: source.cursorTimeMs,
+    };
+    workspaces.push(duplicate);
+    void restoreWorkspace(duplicate.id);
+  });
+
+  graphSelector.onDelete(() => {
+    if (workspaces.length <= 1) return;
+    const deletedIndex = workspaces.findIndex((workspace) => workspace.id === activeWorkspaceId);
+    if (deletedIndex < 0) return;
+    const nextIndex = Math.max(0, deletedIndex - 1);
+    workspaces.splice(deletedIndex, 1);
+    const next = workspaces[Math.min(nextIndex, workspaces.length - 1)];
+    if (!next) return;
+    activeWorkspaceId = '';
+    void restoreWorkspace(next.id);
+  });
+
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceRow, timelineWrap);
 
@@ -505,6 +647,20 @@ export function createLoggerPage(): LoggerPageController {
     recordCount: number,
     channelData: NumericChannelDataSource,
   ): void => {
+    workspaceGeneration += 1;
+    workspaceCounter = 1;
+    activeWorkspaceId = 'general';
+    workspaces = [{
+      id: 'general',
+      name: 'General',
+      channelIds: [],
+      viewport: summary.timeRange
+        ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
+        : undefined,
+      cursorTimeMs: summary.timeRange?.startMs ?? 0,
+    }];
+    refreshWorkspaceSelector();
+    graphSelector.setEnabled(Boolean(summary.timeRange));
     activeChannelIds.clear();
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
     logMarkers = summary.markers;
@@ -525,6 +681,18 @@ export function createLoggerPage(): LoggerPageController {
   };
 
   const setImportError = (message: string): void => {
+    workspaceGeneration += 1;
+    workspaceCounter = 1;
+    activeWorkspaceId = 'general';
+    workspaces = [{
+      id: 'general',
+      name: 'General',
+      channelIds: [],
+      viewport: undefined,
+      cursorTimeMs: 0,
+    }];
+    refreshWorkspaceSelector();
+    graphSelector.setEnabled(false);
     activeChannelIds.clear();
     channelDefinitions.clear();
     logMarkers = [];
@@ -540,6 +708,9 @@ export function createLoggerPage(): LoggerPageController {
       recoverable: false,
     }]);
   };
+
+  refreshWorkspaceSelector();
+  graphSelector.setEnabled(false);
 
   return {
     element: page,
