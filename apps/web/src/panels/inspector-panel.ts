@@ -1,5 +1,8 @@
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 
+const VIRTUAL_ROW_HEIGHT = 36;
+const VIRTUAL_OVERSCAN_ROWS = 6;
+
 export interface InspectorPanelController {
   readonly element: HTMLElement;
   setVisible(visible: boolean): void;
@@ -15,12 +18,14 @@ export interface InspectorPanelController {
 export function createInspectorPanel(): InspectorPanelController {
   let visible = true;
   let channels: readonly ChannelDefinition[] = [];
+  let filteredChannels: readonly ChannelDefinition[] = [];
   const activeChannelIds = new Set<string>();
   let toggleListener: ((channelId: string) => void) | undefined;
   const currentValues = new Map<string, string>();
   const renderedValueNodes = new Map<string, HTMLElement>();
   const renderedRows = new Map<string, HTMLButtonElement>();
   const renderedStateNodes = new Map<string, HTMLElement>();
+  let scrollFrame: number | undefined;
 
   const panel = document.createElement('aside');
   panel.className = 'inspector-panel';
@@ -50,7 +55,10 @@ export function createInspectorPanel(): InspectorPanelController {
         <button type="button" disabled>Value</button>
       </div>
     </div>
-    <div class="channel-list" role="list"></div>
+    <div class="channel-list channel-list--virtual" role="list">
+      <div class="channel-list-spacer" aria-hidden="true"></div>
+      <div class="channel-list-viewport"></div>
+    </div>
     <div class="panel-empty">
       <strong>No channels yet</strong>
       <p>Open a supported log to populate the normalized channel list.</p>
@@ -69,19 +77,100 @@ export function createInspectorPanel(): InspectorPanelController {
   const groupSelect = panel.querySelector<HTMLSelectElement>('select[aria-label="Channel group"]');
   const visibilitySelect = panel.querySelector<HTMLSelectElement>('select[aria-label="Channel visibility"]');
   const channelList = panel.querySelector<HTMLElement>('.channel-list');
+  const spacer = panel.querySelector<HTMLElement>('.channel-list-spacer');
+  const viewportHost = panel.querySelector<HTMLElement>('.channel-list-viewport');
   const emptyState = panel.querySelector<HTMLElement>('.panel-empty');
   const channelCount = panel.querySelector<HTMLElement>('.channel-count');
   const clearGraphButton = panel.querySelector<HTMLButtonElement>('.clear-graph');
 
-  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !emptyState || !channelCount || !clearGraphButton) {
+  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !channelCount || !clearGraphButton) {
     throw new Error('Inspector panel structure is incomplete.');
   }
 
-  const renderChannels = (): void => {
+  const updateCount = (): void => {
+    const query = search.value.trim();
+    const selectedGroup = groupSelect.value;
+    const filtering = query.length > 0 || selectedGroup !== '' || visibilitySelect.value === 'active';
+    channelCount.textContent = filtering
+      ? `${filteredChannels.length} / ${channels.length} channels · ${activeChannelIds.size} active`
+      : `${channels.length} channels · ${activeChannelIds.size} active`;
+    clearGraphButton.disabled = activeChannelIds.size === 0;
+  };
+
+  const createRow = (channel: ChannelDefinition, index: number): HTMLButtonElement => {
+    const active = activeChannelIds.has(channel.id);
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'channel-row channel-row--virtual';
+    row.classList.toggle('channel-row--active', active);
+    row.setAttribute('role', 'listitem');
+    row.setAttribute('aria-pressed', String(active));
+    row.dataset.channelId = channel.id;
+    row.style.transform = `translateY(${index * VIRTUAL_ROW_HEIGHT}px)`;
+
+    const state = document.createElement('span');
+    state.className = 'channel-trace-state';
+    state.textContent = active ? '●' : '＋';
+    state.setAttribute('aria-hidden', 'true');
+
+    const identity = document.createElement('div');
+    identity.className = 'channel-identity';
+    const name = document.createElement('strong');
+    name.textContent = channel.sourceName;
+    identity.append(name);
+    if (channel.category) {
+      const category = document.createElement('span');
+      category.textContent = channel.category;
+      identity.append(category);
+    }
+
+    const value = document.createElement('span');
+    value.className = 'channel-unit';
+    value.textContent = currentValues.get(channel.id) ?? channel.unit ?? '—';
+
+    row.append(state, identity, value);
+    renderedValueNodes.set(channel.id, value);
+    renderedRows.set(channel.id, row);
+    renderedStateNodes.set(channel.id, state);
+    return row;
+  };
+
+  const renderVisibleRows = (): void => {
+    renderedValueNodes.clear();
+    renderedRows.clear();
+    renderedStateNodes.clear();
+
+    const height = Math.max(channelList.clientHeight, VIRTUAL_ROW_HEIGHT * 12);
+    const firstVisible = Math.floor(channelList.scrollTop / VIRTUAL_ROW_HEIGHT);
+    const visibleCount = Math.ceil(height / VIRTUAL_ROW_HEIGHT);
+    const start = Math.max(0, firstVisible - VIRTUAL_OVERSCAN_ROWS);
+    const end = Math.min(
+      filteredChannels.length,
+      firstVisible + visibleCount + VIRTUAL_OVERSCAN_ROWS,
+    );
+
+    const fragment = document.createDocumentFragment();
+    for (let index = start; index < end; index += 1) {
+      const channel = filteredChannels[index];
+      if (channel) fragment.append(createRow(channel, index));
+    }
+    viewportHost.replaceChildren(fragment);
+  };
+
+  const scheduleVisibleRender = (): void => {
+    if (scrollFrame !== undefined) return;
+    scrollFrame = window.requestAnimationFrame(() => {
+      scrollFrame = undefined;
+      renderVisibleRows();
+    });
+  };
+
+  const applyFilters = (resetScroll = true): void => {
     const query = search.value.trim().toLocaleLowerCase();
     const selectedGroup = groupSelect.value;
     const visibility = visibilitySelect.value;
-    const filtered = channels.filter((channel) => {
+
+    filteredChannels = channels.filter((channel) => {
       const matchesText = query.length === 0
         || channel.sourceName.toLocaleLowerCase().includes(query)
         || (channel.unit?.toLocaleLowerCase().includes(query) ?? false);
@@ -90,58 +179,17 @@ export function createInspectorPanel(): InspectorPanelController {
       return matchesText && matchesGroup && matchesVisibility;
     });
 
-    const fragment = document.createDocumentFragment();
-    renderedValueNodes.clear();
-    renderedRows.clear();
-    renderedStateNodes.clear();
-    for (const channel of filtered) {
-      const active = activeChannelIds.has(channel.id);
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'channel-row';
-      row.classList.toggle('channel-row--active', active);
-      row.setAttribute('role', 'listitem');
-      row.setAttribute('aria-pressed', String(active));
-      row.dataset.channelId = channel.id;
-
-      const state = document.createElement('span');
-      state.className = 'channel-trace-state';
-      state.textContent = active ? '●' : '＋';
-      state.setAttribute('aria-hidden', 'true');
-
-      const identity = document.createElement('div');
-      identity.className = 'channel-identity';
-      const name = document.createElement('strong');
-      name.textContent = channel.sourceName;
-      identity.append(name);
-      if (channel.category) {
-        const category = document.createElement('span');
-        category.textContent = channel.category;
-        identity.append(category);
-      }
-
-      const value = document.createElement('span');
-      value.className = 'channel-unit';
-      value.textContent = currentValues.get(channel.id) ?? channel.unit ?? '—';
-
-      row.append(state, identity, value);
-      renderedValueNodes.set(channel.id, value);
-      renderedRows.set(channel.id, row);
-      renderedStateNodes.set(channel.id, state);
-      fragment.append(row);
-    }
-    channelList.replaceChildren(fragment);
+    spacer.style.height = `${filteredChannels.length * VIRTUAL_ROW_HEIGHT}px`;
+    if (resetScroll) channelList.scrollTop = 0;
+    renderVisibleRows();
 
     const hasChannels = channels.length > 0;
     channelList.hidden = !hasChannels;
     emptyState.hidden = hasChannels;
-    const filtering = query.length > 0 || selectedGroup !== '' || visibility === 'active';
-    channelCount.textContent = filtering
-      ? `${filtered.length} / ${channels.length} channels · ${activeChannelIds.size} active`
-      : `${channels.length} channels · ${activeChannelIds.size} active`;
-    clearGraphButton.disabled = activeChannelIds.size === 0;
+    updateCount();
   };
 
+  channelList.addEventListener('scroll', scheduleVisibleRender, { passive: true });
   channelList.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -150,13 +198,17 @@ export function createInspectorPanel(): InspectorPanelController {
     if (channelId) toggleListener?.(channelId);
   });
 
-  search.addEventListener('input', renderChannels);
-  groupSelect.addEventListener('change', renderChannels);
-  visibilitySelect.addEventListener('change', renderChannels);
+  const resizeObserver = new ResizeObserver(scheduleVisibleRender);
+  resizeObserver.observe(channelList);
+
+  search.addEventListener('input', () => applyFilters());
+  groupSelect.addEventListener('change', () => applyFilters());
+  visibilitySelect.addEventListener('change', () => applyFilters());
 
   const setVisible = (next: boolean): void => {
     visible = next;
     panel.hidden = !visible;
+    if (visible) scheduleVisibleRender();
   };
 
   const setChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void => {
@@ -178,17 +230,20 @@ export function createInspectorPanel(): InspectorPanelController {
     for (const group of groups) groupSelect.add(new Option(group, group));
     search.value = '';
     visibilitySelect.value = 'all';
-    renderChannels();
+    applyFilters();
   };
 
   const setError = (message: string): void => {
     channels = [];
+    filteredChannels = [];
     activeChannelIds.clear();
     currentValues.clear();
     panelState.textContent = 'Import failed';
     search.disabled = true;
     groupSelect.disabled = true;
     visibilitySelect.disabled = true;
+    spacer.style.height = '0px';
+    viewportHost.replaceChildren();
     channelList.hidden = true;
     emptyState.hidden = false;
     const title = emptyState.querySelector('strong');
@@ -212,11 +267,8 @@ export function createInspectorPanel(): InspectorPanelController {
     activeChannelIds.clear();
     for (const channelId of next) activeChannelIds.add(channelId);
 
-    // Active-only filtering changes row membership, so it still needs a full
-    // render. In the normal All Channels view, update only the rows whose
-    // active state changed instead of rebuilding ~1,652 channel buttons.
     if (visibilitySelect.value === 'active') {
-      renderChannels();
+      applyFilters(false);
       return;
     }
 
@@ -230,15 +282,7 @@ export function createInspectorPanel(): InspectorPanelController {
       }
       if (state) state.textContent = active ? '●' : '＋';
     }
-
-    const query = search.value.trim();
-    const selectedGroup = groupSelect.value;
-    const filtering = query.length > 0 || selectedGroup !== '';
-    const renderedCount = renderedRows.size;
-    channelCount.textContent = filtering
-      ? `${renderedCount} / ${channels.length} channels · ${activeChannelIds.size} active`
-      : `${channels.length} channels · ${activeChannelIds.size} active`;
-    clearGraphButton.disabled = activeChannelIds.size === 0;
+    updateCount();
   };
 
   const setChannelValues = (values: readonly { channelId: string; value: string }[]): void => {
@@ -254,14 +298,14 @@ export function createInspectorPanel(): InspectorPanelController {
   const clearChannelValues = (): void => {
     if (currentValues.size === 0) return;
     currentValues.clear();
-    renderChannels();
+    renderVisibleRows();
   };
 
   clearGraphButton.addEventListener('click', () => {
     for (const channelId of [...activeChannelIds]) toggleListener?.(channelId);
   });
 
-  renderChannels();
+  applyFilters();
 
   return {
     element: panel,
