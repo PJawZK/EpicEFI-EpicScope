@@ -230,6 +230,27 @@
   font-size: 9px;
 }
 
+.parser-popover-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.parser-copy-report {
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid #345264;
+  border-radius: 3px;
+  background: #122431;
+  color: #d9e8f0;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.parser-copy-report:hover:not(:disabled) {
+  background: #173044;
+}
+
 .parser-popover-groups {
   display: grid;
   gap: 4px;
