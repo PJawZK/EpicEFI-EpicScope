@@ -294,17 +294,17 @@ export function createLoggerPage(): LoggerPageController {
   });
 
   graph.onCursorValues((values) => {
-    for (const item of values) {
+    const displayValues = values.flatMap((item) => {
       const channel = channelDefinitions.get(item.channelId);
-      if (!channel) continue;
+      if (!channel) return [];
       if (item.value === undefined || !Number.isFinite(item.value)) {
-        inspector.setChannelValue(item.channelId, '—');
-        continue;
+        return [{ channelId: item.channelId, value: '—' }];
       }
       const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
       const unit = channel.unit ? ` ${channel.unit}` : '';
-      inspector.setChannelValue(item.channelId, `${item.value.toFixed(precision)}${unit}`);
-    }
+      return [{ channelId: item.channelId, value: `${item.value.toFixed(precision)}${unit}` }];
+    });
+    inspector.setChannelValues(displayValues);
   });
 
   timeline.onCursorChange((timeMs) => {
