@@ -5,6 +5,7 @@ import { parseMlgHeader } from '../../core/parsers/mlg/mlg-header';
 import {
   calculateMlgRecordChecksum,
   scanMlgRecords,
+  validateMlgRecordCrc,
 } from '../../core/parsers/mlg/mlg-records';
 import { createScalarHeaderFixture } from './mlg-fixture-builder';
 
@@ -207,5 +208,26 @@ describe('fixed-record checksum fast path', () => {
       [...payload.subarray(13, 13 + 4_321)]
         .reduce((sum, value) => (sum + value) & 0xff, 0),
     );
+  });
+});
+
+
+describe('staged CRC validation', () => {
+  it('indexes a bad-CRC record as provisionally usable, then validates it separately', async () => {
+    const headerBytes = createScalarHeaderFixture({ version: 2, type: 0 });
+    const bytes = concat(headerBytes, loggerBlock(1, 10, [4], 99));
+    const source = new MemoryByteSource(bytes);
+    const parsed = await parseMlgHeader(source);
+
+    const indexed = await scanMlgRecords(source, parsed.header, { validateCrc: false });
+    expect([...indexed.records.crcValid]).toEqual([1]);
+    expect(indexed.diagnostics.some((item) => item.code === 'mlg-crc-mismatch')).toBe(false);
+
+    const validated = await validateMlgRecordCrc(source, parsed.header, indexed.records);
+    expect([...validated.crcValid]).toEqual([0]);
+    expect(validated.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'mlg-crc-mismatch',
+      severity: 'warning',
+    }));
   });
 });
