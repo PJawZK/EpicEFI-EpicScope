@@ -9,19 +9,22 @@ The architecture therefore separates **what the application does** from **how ea
 ## Primary layers
 
 ```text
-Source file / platform data source
-            ↓
-         Parser
-            ↓
-   Normalized Log Model
-            ↓
- Generic Analysis Primitives
-            ↓
- Event / Tune / Compare Services
-            ↓
- Specialized Analyzers
-            ↓
-      Presentation / UI
+Source files / platform data sources
+              ↓
+           Parsers
+              ↓
+      Normalized source models
+      ├─ Log model / samples
+      ├─ Channel catalog/bindings
+      └─ Tune / firmware context
+              ↓
+    Generic Analysis Primitives
+              ↓
+   Event / Tune / Compare Services
+              ↓
+      Specialized Analyzers
+              ↓
+        Presentation / UI
 ```
 
 This diagram describes product flow, not a rule that every code dependency must point linearly downward.
@@ -40,7 +43,7 @@ Responsibilities:
 - report recoverable and fatal parse errors;
 - produce normalized data through approved contracts.
 
-Initial source-format ownership includes MLG, CSV, and—when tune-awareness is implemented—INI/MSQ decoding.
+Initial source-format ownership includes MLG and deferred CSV log decoding, plus INI/MSQ source-context decoding as their roadmap tasks land. Current roadmap priority intentionally places INI channel-catalog work before deferred CSV; this changes implementation order, not parser ownership.
 
 Parsers must not:
 
@@ -62,6 +65,21 @@ Responsibilities:
 All supported log formats must normalize into this model before general analysis.
 
 Parsers produce these contracts; consumers query them. The model itself should not contain source-specific parsing behavior.
+
+### Channel catalog and source binding
+
+Responsibilities:
+
+- represent stable logical channel identity independently of one opened MLG file;
+- accept known runtime/output-channel definitions from normalized INI information;
+- bind those logical channels to matching MLG channel/data sources when a log is opened;
+- preserve channels that are known from INI but unavailable in the current log;
+- preserve usable log-only channels that have no matching INI definition;
+- keep MLG sample values and validity authoritative for recorded data.
+
+The catalog/binding layer belongs under approved channel/source-context services rather than presentation code. Workspace persistence may reference stable logical channel keys once available; source-format record ordinals such as an MLG field index are not sufficient long-term workspace identity by themselves.
+
+INI is not required for ordinary MLG analysis. It enriches identity, organization, and persistence. MSQ is not the primary runtime-channel catalog; it later enriches tune/calibration values and tables.
 
 ### Generic analysis primitives
 
@@ -126,6 +144,8 @@ Responsibilities:
 - explicit compatibility errors for unsupported versions.
 
 Browser storage, Linux filesystem storage, cloud/share services, and future Android storage are platform adapters around these contracts rather than assumptions embedded into the session model.
+
+Persistence must distinguish long-lived application/workspace configuration from recording-specific analysis state. Named workspaces, pane layouts and stable channel assignments may exist before a log is loaded; viewport/cursor/A-B positions and log annotations remain associated with the relevant recording/session.
 
 ### Specialized analyzers
 
