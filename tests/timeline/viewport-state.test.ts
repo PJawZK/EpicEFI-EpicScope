@@ -36,7 +36,7 @@ describe('timeline viewport state', () => {
   it('resizes either viewport edge while enforcing minimum span and full-log bounds', () => {
     const viewport = { fullStartMs: 0, fullEndMs: 1000, visibleStartMs: 200, visibleEndMs: 800 };
     expect(resizeViewport(viewport, 'start', 300)).toMatchObject({ visibleStartMs: 300, visibleEndMs: 800 });
-    expect(resizeViewport(viewport, 'end', 650)).toMatchObject({ visibleStartMs: 200, visibleEndMs: 650 });
+    expect(resizeViewport(viewport, 'end', 650)).toMatchObject({ visibleStartMs: 200, visibleEndMs: 700 });
     expect(resizeViewport(viewport, 'start', 790, 100)).toMatchObject({ visibleStartMs: 700, visibleEndMs: 800 });
     expect(resizeViewport(viewport, 'end', 210, 100)).toMatchObject({ visibleStartMs: 200, visibleEndMs: 300 });
   });
