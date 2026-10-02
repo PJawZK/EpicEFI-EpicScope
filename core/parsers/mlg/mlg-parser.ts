@@ -12,10 +12,15 @@ import { scanMlgRecords, type MlgRecordIndex } from './mlg-records';
 
 export interface MlgParsePerformance {
   readonly headerMs: number;
+  readonly headerReadMs: number;
+  readonly headerCpuMs: number;
   readonly recordScanMs: number;
   readonly recordReadMs: number;
   readonly recordCpuMs: number;
   readonly checksumBytes: number;
+  readonly checksumCpuMs: number;
+  readonly diagnosticCpuMs: number;
+  readonly indexCpuMs: number;
   readonly finalizeMs: number;
   readonly totalMs: number;
 }
@@ -48,9 +53,13 @@ export async function parseMlg(
 ): Promise<ParsedMlgLog> {
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const totalStart = now();
+  const headerPhysicalReadStart = source.performanceSnapshot?.().physicalReadMs ?? 0;
   const headerStart = now();
   const headerResult = await parseMlgHeader(source);
   const headerMs = now() - headerStart;
+  const headerPhysicalReadEnd = source.performanceSnapshot?.().physicalReadMs ?? headerPhysicalReadStart;
+  const headerReadMs = Math.max(0, headerPhysicalReadEnd - headerPhysicalReadStart);
+  const headerCpuMs = Math.max(0, headerMs - headerReadMs);
 
   const scanStart = now();
   const scanResult = await scanMlgRecords(source, headerResult.header);
@@ -79,10 +88,15 @@ export async function parseMlg(
     channelData,
     performance: {
       headerMs,
+      headerReadMs,
+      headerCpuMs,
       recordScanMs,
       recordReadMs: scanResult.performance.sourceReadMs,
       recordCpuMs: Math.max(0, recordScanMs - scanResult.performance.sourceReadMs),
       checksumBytes: scanResult.performance.checksumBytes,
+      checksumCpuMs: scanResult.performance.checksumCpuMs,
+      diagnosticCpuMs: scanResult.performance.diagnosticCpuMs,
+      indexCpuMs: scanResult.performance.indexCpuMs,
       finalizeMs,
       totalMs: now() - totalStart,
     },
