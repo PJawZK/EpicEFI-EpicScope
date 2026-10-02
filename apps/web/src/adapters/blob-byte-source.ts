@@ -152,8 +152,16 @@ export class BlobByteSource implements RandomAccessByteSource {
     }
   }
 
-  public performanceSnapshot(): { physicalReadMs: number } {
-    return { physicalReadMs: this.physicalReadMsValue };
+  public performanceSnapshot(): {
+    physicalReadMs: number;
+    physicalReadCount: number;
+    physicalBytesRead: number;
+  } {
+    return {
+      physicalReadMs: this.physicalReadMsValue,
+      physicalReadCount: this.physicalReadCountValue,
+      physicalBytesRead: this.physicalBytesReadValue,
+    };
   }
 
   public stats(): BlobByteSourceStats {
