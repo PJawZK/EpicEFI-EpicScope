@@ -42,7 +42,7 @@ function paneCountForLayout(layout: GraphWorkspaceLayout): number {
   return 1;
 }
 
-type FreeformArrange = 'mosaic' | 'columns' | 'rows' | 'cascade';
+type FreeformArrange = 'mosaic' | 'columns' | 'rows' | 'cascade' | 'custom';
 
 function freeformArrangement(name: FreeformArrange): Record<string, GraphPaneGeometry> {
   const rect = (x: number, y: number, width: number, height: number): GraphPaneGeometry =>
@@ -565,6 +565,7 @@ export function createLoggerPage(): LoggerPageController {
     <option value="columns">Columns</option>
     <option value="rows">Rows</option>
     <option value="cascade">Cascade</option>
+    <option value="custom" disabled>Custom</option>
   `;
   arrangeSelect.hidden = true;
 
@@ -1050,7 +1051,8 @@ export function createLoggerPage(): LoggerPageController {
       };
       runtime.headerElement.setPointerCapture(event.pointerId);
       setActivePane(runtime.id, false);
-      workspace.freeformArrange = workspace.freeformArrange;
+      workspace.freeformArrange = 'custom';
+      arrangeSelect.value = 'custom';
       event.preventDefault();
     });
 
@@ -1114,6 +1116,8 @@ export function createLoggerPage(): LoggerPageController {
       if (workspace?.layout !== 'freeform' || workspace.maximizedPaneId) return;
       const hostRect = graphHost.getBoundingClientRect();
       const rect = runtime.windowElement.getBoundingClientRect();
+      workspace.freeformArrange = 'custom';
+      arrangeSelect.value = 'custom';
       resizeDrag = {
         pointerId: event.pointerId,
         startX: event.clientX,
