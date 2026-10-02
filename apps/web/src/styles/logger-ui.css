@@ -360,62 +360,6 @@
   height: calc(100% - 34px);
 }
 
-.graph-readout {
-  top: 7px;
-  left: 8px;
-  display: grid;
-  gap: 2px;
-  min-width: 250px;
-  max-width: min(560px, calc(100% - 20px));
-  padding: 4px 6px;
-  background: rgba(5, 13, 19, .70);
-  border: 1px solid rgba(52, 86, 104, .52);
-  border-radius: 3px;
-  backdrop-filter: blur(2px);
-}
-.graph-readout-trace {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(105px, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-}
-.graph-readout-identity {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.graph-readout-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 8px;
-  font-weight: 750;
-}
-.graph-readout-values {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
-  gap: 7px;
-  font-variant-numeric: tabular-nums;
-}
-.graph-readout-values span {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 3px;
-  align-items: baseline;
-}
-.graph-readout-values small {
-  color: #6f8795;
-  font-size: 6px;
-  text-transform: uppercase;
-}
-.graph-readout-values strong {
-  color: #dbe8ef;
-  font-size: 8px;
-  font-weight: 700;
-  white-space: nowrap;
-}
 
 @media (max-width: 860px) {
   .global-switch-menu {
