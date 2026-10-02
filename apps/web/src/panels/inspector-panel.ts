@@ -413,7 +413,7 @@ export function createInspectorPanel(): InspectorPanelController {
     groupSelect.disabled = false;
     visibilitySelect.disabled = false;
     for (const button of sortButtons) button.disabled = false;
-    groupSelect.replaceChildren(new Option('All TS Groups', ''));
+    groupSelect.replaceChildren(new Option(`All (${channels.length.toLocaleString()})`, ''));
 
     const groupCounts = new Map<string, number>();
     let ungroupedCount = 0;
