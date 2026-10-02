@@ -3,6 +3,28 @@ import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 const VIRTUAL_ROW_HEIGHT = 36;
 const VIRTUAL_OVERSCAN_ROWS = 6;
 
+export interface InspectorChannelStatistics {
+  readonly channelId: string;
+  readonly title: string;
+  readonly unit?: string;
+  readonly category?: string;
+  readonly current?: number;
+  readonly full: {
+    readonly validCount: number;
+    readonly invalidCount: number;
+    readonly min?: number;
+    readonly max?: number;
+    readonly mean?: number;
+    readonly standardDeviation?: number;
+  };
+  readonly visible: {
+    readonly validCount: number;
+    readonly min?: number;
+    readonly max?: number;
+    readonly mean?: number;
+  };
+}
+
 export interface InspectorPanelController {
   readonly element: HTMLElement;
   setVisible(visible: boolean): void;
@@ -11,10 +33,13 @@ export interface InspectorPanelController {
   setError(message: string): void;
   onChannelToggled(listener: (channelId: string) => void): void;
   onLoadSelected(listener: () => void): void;
+  onAddFiltered(listener: (channelIds: readonly string[]) => void): void;
+  onChannelDetailsRequested(listener: (channelId: string) => void): void;
   setActiveChannels(channelIds: readonly string[]): void;
   setQueuedChannels(channelIds: readonly string[]): void;
   setChannelValues(values: readonly { channelId: string; value: string }[]): void;
   clearChannelValues(): void;
+  setChannelStatistics(statistics: InspectorChannelStatistics | undefined): void;
 }
 
 export function createInspectorPanel(): InspectorPanelController {
@@ -23,13 +48,18 @@ export function createInspectorPanel(): InspectorPanelController {
   let filteredChannels: readonly ChannelDefinition[] = [];
   const activeChannelIds = new Set<string>();
   const queuedChannelIds = new Set<string>();
+  const favoriteChannelIds = new Set<string>();
+  const recentChannelIds: string[] = [];
   let toggleListener: ((channelId: string) => void) | undefined;
   let loadSelectedListener: (() => void) | undefined;
+  let addFilteredListener: ((channelIds: readonly string[]) => void) | undefined;
+  let detailsListener: ((channelId: string) => void) | undefined;
+  let selectedDetailsChannelId: string | undefined;
   let sortKey: 'name' | 'group' | 'value' = 'name';
   let sortAscending = true;
   const currentValues = new Map<string, string>();
   const renderedValueNodes = new Map<string, HTMLElement>();
-  const renderedRows = new Map<string, HTMLButtonElement>();
+  const renderedRows = new Map<string, HTMLElement>();
   const renderedStateNodes = new Map<string, HTMLElement>();
   let scrollFrame: number | undefined;
 
@@ -52,6 +82,8 @@ export function createInspectorPanel(): InspectorPanelController {
         <select disabled aria-label="Channel visibility">
           <option value="all">All Channels</option>
           <option value="active">Active traces</option>
+          <option value="favorites">Favorites</option>
+          <option value="recent">Recently used</option>
         </select>
       </div>
       <div class="sort-row" aria-label="Channel sorting">
@@ -65,6 +97,16 @@ export function createInspectorPanel(): InspectorPanelController {
       <div class="channel-list-spacer" aria-hidden="true"></div>
       <div class="channel-list-viewport"></div>
     </div>
+    <section class="channel-statistics" hidden>
+      <header>
+        <div>
+          <span class="eyebrow">Channel details</span>
+          <strong class="channel-statistics-title">—</strong>
+        </div>
+        <button type="button" class="channel-statistics-close" aria-label="Close channel details">×</button>
+      </header>
+      <div class="channel-statistics-body"></div>
+    </section>
     <div class="panel-empty">
       <strong>No channels yet</strong>
       <p>Open a supported log to populate the normalized channel list.</p>
@@ -72,6 +114,7 @@ export function createInspectorPanel(): InspectorPanelController {
     <footer class="panel-footer">
       <span class="channel-count">0 channels</span>
       <div class="panel-footer-actions">
+        <button type="button" class="add-filtered" disabled>Add filtered</button>
         <button type="button" class="load-selected" disabled>Load selected</button>
         <button type="button" class="clear-graph" disabled>Clear graph</button>
       </div>
@@ -86,19 +129,24 @@ export function createInspectorPanel(): InspectorPanelController {
   const spacer = panel.querySelector<HTMLElement>('.channel-list-spacer');
   const viewportHost = panel.querySelector<HTMLElement>('.channel-list-viewport');
   const emptyState = panel.querySelector<HTMLElement>('.panel-empty');
+  const statisticsPanel = panel.querySelector<HTMLElement>('.channel-statistics');
+  const statisticsTitle = panel.querySelector<HTMLElement>('.channel-statistics-title');
+  const statisticsBody = panel.querySelector<HTMLElement>('.channel-statistics-body');
+  const statisticsClose = panel.querySelector<HTMLButtonElement>('.channel-statistics-close');
   const channelCount = panel.querySelector<HTMLElement>('.channel-count');
   const sortButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-sort-key]')];
+  const addFilteredButton = panel.querySelector<HTMLButtonElement>('.add-filtered');
   const loadSelectedButton = panel.querySelector<HTMLButtonElement>('.load-selected');
   const clearGraphButton = panel.querySelector<HTMLButtonElement>('.clear-graph');
 
-  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !channelCount || !loadSelectedButton || !clearGraphButton) {
+  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !statisticsPanel || !statisticsTitle || !statisticsBody || !statisticsClose || !channelCount || !addFilteredButton || !loadSelectedButton || !clearGraphButton) {
     throw new Error('Inspector panel structure is incomplete.');
   }
 
   const updateCount = (): void => {
     const query = search.value.trim();
     const selectedGroup = groupSelect.value;
-    const filtering = query.length > 0 || selectedGroup !== '' || visibilitySelect.value === 'active';
+    const filtering = query.length > 0 || selectedGroup !== '' || visibilitySelect.value !== 'all';
     const queued = queuedChannelIds.size;
     channelCount.textContent = filtering
       ? `${filteredChannels.length} / ${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`
@@ -106,20 +154,27 @@ export function createInspectorPanel(): InspectorPanelController {
     loadSelectedButton.disabled = queued === 0;
     loadSelectedButton.textContent = queued > 0 ? `Load now (${queued})` : 'Load now';
     clearGraphButton.disabled = activeChannelIds.size === 0;
+    addFilteredButton.disabled = filteredChannels.length === 0
+      || filteredChannels.every((channel) => activeChannelIds.has(channel.id) || queuedChannelIds.has(channel.id));
   };
 
-  const createRow = (channel: ChannelDefinition, index: number): HTMLButtonElement => {
+  const createRow = (channel: ChannelDefinition, index: number): HTMLElement => {
     const active = activeChannelIds.has(channel.id);
     const queued = queuedChannelIds.has(channel.id);
-    const row = document.createElement('button');
-    row.type = 'button';
+    const favorite = favoriteChannelIds.has(channel.id);
+    const row = document.createElement('div');
     row.className = 'channel-row channel-row--virtual';
     row.classList.toggle('channel-row--active', active);
     row.classList.toggle('channel-row--queued', queued);
     row.setAttribute('role', 'listitem');
-    row.setAttribute('aria-pressed', String(active));
     row.dataset.channelId = channel.id;
     row.style.transform = `translateY(${index * VIRTUAL_ROW_HEIGHT}px)`;
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'channel-row-toggle';
+    toggle.dataset.channelToggle = channel.id;
+    toggle.setAttribute('aria-pressed', String(active));
 
     const state = document.createElement('span');
     state.className = 'channel-trace-state';
@@ -129,19 +184,41 @@ export function createInspectorPanel(): InspectorPanelController {
     const identity = document.createElement('div');
     identity.className = 'channel-identity';
     const name = document.createElement('strong');
-    name.textContent = channel.sourceName;
+    name.textContent = channel.displayName || channel.sourceName;
+    name.title = channel.sourceName;
     identity.append(name);
-    if (channel.category) {
-      const category = document.createElement('span');
-      category.textContent = channel.category;
-      identity.append(category);
+    if (channel.category || channel.unit) {
+      const detail = document.createElement('span');
+      detail.textContent = [channel.category, channel.unit].filter(Boolean).join(' · ');
+      identity.append(detail);
     }
 
     const value = document.createElement('span');
     value.className = 'channel-unit';
     value.textContent = currentValues.get(channel.id) ?? channel.unit ?? '—';
 
-    row.append(state, identity, value);
+    toggle.append(state, identity, value);
+
+    const actions = document.createElement('div');
+    actions.className = 'channel-row-actions';
+
+    const favoriteButton = document.createElement('button');
+    favoriteButton.type = 'button';
+    favoriteButton.className = 'channel-favorite';
+    favoriteButton.dataset.channelFavorite = channel.id;
+    favoriteButton.textContent = favorite ? '★' : '☆';
+    favoriteButton.title = favorite ? 'Remove favorite' : 'Add favorite';
+    favoriteButton.setAttribute('aria-pressed', String(favorite));
+
+    const detailsButton = document.createElement('button');
+    detailsButton.type = 'button';
+    detailsButton.className = 'channel-details';
+    detailsButton.dataset.channelDetails = channel.id;
+    detailsButton.textContent = 'ⓘ';
+    detailsButton.title = active ? 'Channel statistics' : 'Activate channel to view statistics';
+
+    actions.append(favoriteButton, detailsButton);
+    row.append(toggle, actions);
     renderedValueNodes.set(channel.id, value);
     renderedRows.set(channel.id, row);
     renderedStateNodes.set(channel.id, state);
@@ -230,7 +307,10 @@ export function createInspectorPanel(): InspectorPanelController {
         || channel.sourceName.toLocaleLowerCase().includes(query)
         || (channel.unit?.toLocaleLowerCase().includes(query) ?? false);
       const matchesGroup = selectedGroup === '' || channel.category === selectedGroup;
-      const matchesVisibility = visibility !== 'active' || activeChannelIds.has(channel.id);
+      const matchesVisibility = visibility === 'all'
+        || (visibility === 'active' && activeChannelIds.has(channel.id))
+        || (visibility === 'favorites' && favoriteChannelIds.has(channel.id))
+        || (visibility === 'recent' && recentChannelIds.includes(channel.id));
       return matchesText && matchesGroup && matchesVisibility;
     }).sort(compareChannels);
 
@@ -249,8 +329,27 @@ export function createInspectorPanel(): InspectorPanelController {
   channelList.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const row = target.closest<HTMLButtonElement>('.channel-row');
-    const channelId = row?.dataset.channelId;
+
+    const favoriteButton = target.closest<HTMLElement>('[data-channel-favorite]');
+    const favoriteId = favoriteButton?.dataset.channelFavorite;
+    if (favoriteId) {
+      if (favoriteChannelIds.has(favoriteId)) favoriteChannelIds.delete(favoriteId);
+      else favoriteChannelIds.add(favoriteId);
+      if (visibilitySelect.value === 'favorites') applyFilters(false);
+      else renderVisibleRows();
+      return;
+    }
+
+    const detailsButton = target.closest<HTMLElement>('[data-channel-details]');
+    const detailsId = detailsButton?.dataset.channelDetails;
+    if (detailsId) {
+      selectedDetailsChannelId = detailsId;
+      detailsListener?.(detailsId);
+      return;
+    }
+
+    const toggleButton = target.closest<HTMLElement>('[data-channel-toggle]');
+    const channelId = toggleButton?.dataset.channelToggle;
     if (channelId) toggleListener?.(channelId);
   });
 
@@ -284,7 +383,10 @@ export function createInspectorPanel(): InspectorPanelController {
     channels = nextChannels;
     activeChannelIds.clear();
     queuedChannelIds.clear();
+    recentChannelIds.splice(0);
     currentValues.clear();
+    selectedDetailsChannelId = undefined;
+    statisticsPanel.hidden = true;
     panelState.textContent = sourceName;
     search.disabled = false;
     groupSelect.disabled = false;
@@ -312,6 +414,9 @@ export function createInspectorPanel(): InspectorPanelController {
     activeChannelIds.clear();
     queuedChannelIds.clear();
     currentValues.clear();
+    recentChannelIds.splice(0);
+    selectedDetailsChannelId = undefined;
+    statisticsPanel.hidden = true;
     panelState.textContent = 'Import failed';
     search.disabled = true;
     groupSelect.disabled = true;
@@ -340,9 +445,15 @@ export function createInspectorPanel(): InspectorPanelController {
     }
 
     activeChannelIds.clear();
-    for (const channelId of next) activeChannelIds.add(channelId);
+    for (const channelId of next) {
+      activeChannelIds.add(channelId);
+      const recentIndex = recentChannelIds.indexOf(channelId);
+      if (recentIndex >= 0) recentChannelIds.splice(recentIndex, 1);
+      recentChannelIds.unshift(channelId);
+    }
+    if (recentChannelIds.length > 32) recentChannelIds.length = 32;
 
-    if (visibilitySelect.value === 'active') {
+    if (visibilitySelect.value === 'active' || visibilitySelect.value === 'recent') {
       applyFilters(false);
       return;
     }
@@ -353,7 +464,7 @@ export function createInspectorPanel(): InspectorPanelController {
       const state = renderedStateNodes.get(channelId);
       if (row) {
         row.classList.toggle('channel-row--active', active);
-        row.setAttribute('aria-pressed', String(active));
+        row.querySelector<HTMLElement>('[data-channel-toggle]')?.setAttribute('aria-pressed', String(active));
       }
       if (state) state.textContent = active ? '●' : '＋';
     }
@@ -403,6 +514,56 @@ export function createInspectorPanel(): InspectorPanelController {
     renderVisibleRows();
   };
 
+  const formatStatistic = (value: number | undefined, precision = 3): string =>
+    value === undefined || !Number.isFinite(value) ? '—' : value.toFixed(precision);
+
+  const setChannelStatistics = (statistics: InspectorChannelStatistics | undefined): void => {
+    if (!statistics) {
+      statisticsPanel.hidden = false;
+      statisticsTitle.textContent = selectedDetailsChannelId
+        ? channels.find((channel) => channel.id === selectedDetailsChannelId)?.sourceName ?? 'Channel'
+        : 'Channel';
+      statisticsBody.innerHTML = '<p class="channel-statistics-message">Activate this channel to view decoded statistics without another file read.</p>';
+      return;
+    }
+
+    const precision = Math.min(6, Math.max(0,
+      channels.find((channel) => channel.id === statistics.channelId)?.precision ?? 3,
+    ));
+    const unit = statistics.unit ? ` ${statistics.unit}` : '';
+    const cell = (label: string, value: string): string =>
+      `<div><span>${label}</span><strong>${value}</strong></div>`;
+
+    statisticsPanel.hidden = false;
+    statisticsTitle.textContent = statistics.title;
+    statisticsBody.innerHTML = [
+      cell('Current', statistics.current === undefined ? '—' : `${formatStatistic(statistics.current, precision)}${unit}`),
+      cell('Full min', statistics.full.min === undefined ? '—' : `${formatStatistic(statistics.full.min, precision)}${unit}`),
+      cell('Full max', statistics.full.max === undefined ? '—' : `${formatStatistic(statistics.full.max, precision)}${unit}`),
+      cell('Full mean', statistics.full.mean === undefined ? '—' : `${formatStatistic(statistics.full.mean, precision)}${unit}`),
+      cell('Std dev', statistics.full.standardDeviation === undefined ? '—' : `${formatStatistic(statistics.full.standardDeviation, precision)}${unit}`),
+      cell('Valid samples', statistics.full.validCount.toLocaleString()),
+      cell('Invalid samples', statistics.full.invalidCount.toLocaleString()),
+      cell('Visible min', statistics.visible.min === undefined ? '—' : `${formatStatistic(statistics.visible.min, precision)}${unit}`),
+      cell('Visible max', statistics.visible.max === undefined ? '—' : `${formatStatistic(statistics.visible.max, precision)}${unit}`),
+      cell('Visible mean', statistics.visible.mean === undefined ? '—' : `${formatStatistic(statistics.visible.mean, precision)}${unit}`),
+      cell('Visible samples', statistics.visible.validCount.toLocaleString()),
+    ].join('');
+  };
+
+  statisticsClose.addEventListener('click', () => {
+    selectedDetailsChannelId = undefined;
+    statisticsPanel.hidden = true;
+  });
+
+  addFilteredButton.addEventListener('click', () => {
+    if (addFilteredButton.disabled) return;
+    const candidates = filteredChannels
+      .map((channel) => channel.id)
+      .filter((channelId) => !activeChannelIds.has(channelId) && !queuedChannelIds.has(channelId));
+    if (candidates.length > 0) addFilteredListener?.(candidates);
+  });
+
   loadSelectedButton.addEventListener('click', () => {
     if (!loadSelectedButton.disabled) loadSelectedListener?.();
   });
@@ -430,9 +591,12 @@ export function createInspectorPanel(): InspectorPanelController {
     setError,
     onChannelToggled: (listener) => { toggleListener = listener; },
     onLoadSelected: (listener) => { loadSelectedListener = listener; },
+    onAddFiltered: (listener) => { addFilteredListener = listener; },
+    onChannelDetailsRequested: (listener) => { detailsListener = listener; },
     setActiveChannels,
     setQueuedChannels,
     setChannelValues,
     clearChannelValues,
+    setChannelStatistics,
   };
 }
