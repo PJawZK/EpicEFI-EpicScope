@@ -583,6 +583,7 @@ export function mountAppShell(root: HTMLElement): void {
   unloadIniButton.addEventListener('click', () => {
     if (!activeIniCatalog) return;
 
+    const unloadedSourceName = activeIniSourceName ?? 'INI';
     const workspaceBeforeUnload = remapWorkspaceToRawLogIds(
       captureWorkspaceState(),
       activeIniBinding,
@@ -623,14 +624,14 @@ export function mountAppShell(root: HTMLElement): void {
       });
       parserStatus.textContent =
         `LOG-MLG · ${currentRawLog.summary.channels.length.toLocaleString()} raw log channels · INI unloaded`;
-      appStatus.textContent = 'INI unloaded · raw log channels active';
+      appStatus.textContent = `${unloadedSourceName} unloaded · raw log channels active`;
     } else {
       void restoreWorkspaceSnapshot(workspaceBeforeUnload).then(() => {
         resetWorkspaceHistory();
         scheduleWorkspaceSave();
       });
       parserStatus.textContent = 'TUNE-INI · no catalog loaded';
-      appStatus.textContent = 'INI unloaded';
+      appStatus.textContent = `${unloadedSourceName} unloaded`;
     }
   });
 
