@@ -192,6 +192,9 @@ interface GraphWorkspaceState extends GraphWorkspaceSummary {
   channelIds: string[];
   viewport: TimelineViewport | undefined;
   cursorTimeMs: number;
+  viewHistory: TimelineViewport[];
+  viewHistoryIndex: number;
+  lastHistoryMutationMs: number;
 }
 
 interface GraphSelectorController {
@@ -344,6 +347,9 @@ export function createLoggerPage(): LoggerPageController {
     channelIds: [],
     viewport: undefined,
     cursorTimeMs: 0,
+    viewHistory: [],
+    viewHistoryIndex: -1,
+    lastHistoryMutationMs: 0,
   }];
   let channelDefinitions = new Map<string, ChannelDefinition>();
   let logMarkers: readonly LogMarker[] = [];
@@ -418,6 +424,40 @@ export function createLoggerPage(): LoggerPageController {
     );
   };
 
+  const refreshViewHistoryState = (): void => {
+    const workspace = activeWorkspace();
+    timeline.setViewHistoryState(
+      Boolean(workspace && workspace.viewHistoryIndex > 0),
+      Boolean(workspace && workspace.viewHistoryIndex >= 0 && workspace.viewHistoryIndex < workspace.viewHistory.length - 1),
+    );
+  };
+
+  const recordViewportHistory = (nextViewport: TimelineViewport, coalesce = false): void => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    const now = globalThis.performance?.now() ?? Date.now();
+    const current = workspace.viewHistory[workspace.viewHistoryIndex];
+    if (current && viewportEquals(current, nextViewport)) {
+      refreshViewHistoryState();
+      return;
+    }
+
+    if (
+      coalesce
+      && workspace.viewHistoryIndex > 0
+      && now - workspace.lastHistoryMutationMs < 300
+    ) {
+      workspace.viewHistory[workspace.viewHistoryIndex] = { ...nextViewport };
+    } else {
+      workspace.viewHistory = workspace.viewHistory.slice(0, workspace.viewHistoryIndex + 1);
+      workspace.viewHistory.push({ ...nextViewport });
+      if (workspace.viewHistory.length > 40) workspace.viewHistory.shift();
+      workspace.viewHistoryIndex = workspace.viewHistory.length - 1;
+    }
+    workspace.lastHistoryMutationMs = now;
+    refreshViewHistoryState();
+  };
+
   const saveCurrentWorkspace = (): void => {
     const workspace = activeWorkspace();
     if (!workspace) return;
@@ -426,12 +466,20 @@ export function createLoggerPage(): LoggerPageController {
     workspace.cursorTimeMs = timeline.getCursorTime();
   };
 
-  const syncViewport = (nextViewport: TimelineViewport | undefined): void => {
+  const syncViewport = (
+    nextViewport: TimelineViewport | undefined,
+    historyMode: 'none' | 'record' | 'coalesce' = 'none',
+  ): void => {
     viewport = nextViewport;
     timeline.setViewport(nextViewport);
     graph.setViewport(nextViewport);
     const workspace = activeWorkspace();
     if (workspace) workspace.viewport = nextViewport ? { ...nextViewport } : undefined;
+    if (nextViewport && historyMode !== 'none') {
+      recordViewportHistory(nextViewport, historyMode === 'coalesce');
+    } else {
+      refreshViewHistoryState();
+    }
   };
 
   const setCursorWithoutFollow = (timeMs: number): void => {
@@ -448,6 +496,22 @@ export function createLoggerPage(): LoggerPageController {
 
   const applyViewportIntent = (intent: TimelineViewportIntent): void => {
     if (!viewport) return;
+    const workspace = activeWorkspace();
+
+    if (intent.type === 'history-back' || intent.type === 'history-forward') {
+      if (!workspace) return;
+      const delta = intent.type === 'history-back' ? -1 : 1;
+      const nextIndex = workspace.viewHistoryIndex + delta;
+      const historical = workspace.viewHistory[nextIndex];
+      if (!historical) return;
+      workspace.viewHistoryIndex = nextIndex;
+      workspace.lastHistoryMutationMs = 0;
+      syncViewport({ ...historical }, 'none');
+      centerCursorInViewport(historical);
+      refreshViewHistoryState();
+      return;
+    }
+
     let next = viewport;
     if (intent.type === 'fit') next = fitViewport(viewport);
     if (intent.type === 'zoom') {
@@ -468,7 +532,10 @@ export function createLoggerPage(): LoggerPageController {
       );
     }
 
-    if (!viewportEquals(viewport, next)) syncViewport(next);
+    if (!viewportEquals(viewport, next)) {
+      const historyMode = intent.type === 'pan' || intent.type === 'resize' ? 'coalesce' : 'record';
+      syncViewport(next, historyMode);
+    }
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
 
@@ -480,6 +547,7 @@ export function createLoggerPage(): LoggerPageController {
     const generation = ++workspaceGeneration;
     activeWorkspaceId = target.id;
     refreshWorkspaceSelector();
+    refreshViewHistoryState();
 
     graph.clearChannels();
     activeChannelIds.clear();
@@ -574,6 +642,9 @@ export function createLoggerPage(): LoggerPageController {
     if (workspace) workspace.cursorTimeMs = timeMs;
   });
   timeline.onViewportIntent(applyViewportIntent);
+  timeline.onAnnotationChange(({ aTimeMs, bTimeMs }) => {
+    graph.setAnalysisRange(aTimeMs, bTimeMs);
+  });
   graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
   graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
@@ -598,6 +669,9 @@ export function createLoggerPage(): LoggerPageController {
       channelIds: [],
       viewport: viewport ? { ...viewport } : undefined,
       cursorTimeMs: timeline.getCursorTime(),
+      viewHistory: viewport ? [{ ...viewport }] : [],
+      viewHistoryIndex: viewport ? 0 : -1,
+      lastHistoryMutationMs: 0,
     };
     workspaces.push(workspace);
     void restoreWorkspace(workspace.id);
@@ -625,6 +699,9 @@ export function createLoggerPage(): LoggerPageController {
       channelIds: [...source.channelIds],
       viewport: source.viewport ? { ...source.viewport } : undefined,
       cursorTimeMs: source.cursorTimeMs,
+      viewHistory: source.viewHistory.map((item) => ({ ...item })),
+      viewHistoryIndex: source.viewHistoryIndex,
+      lastHistoryMutationMs: 0,
     };
     workspaces.push(duplicate);
     void restoreWorkspace(duplicate.id);
@@ -661,6 +738,11 @@ export function createLoggerPage(): LoggerPageController {
         ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
         : undefined,
       cursorTimeMs: summary.timeRange?.startMs ?? 0,
+      viewHistory: summary.timeRange
+        ? [createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)]
+        : [],
+      viewHistoryIndex: summary.timeRange ? 0 : -1,
+      lastHistoryMutationMs: 0,
     }];
     refreshWorkspaceSelector();
     graphSelector.setEnabled(Boolean(summary.timeRange));
@@ -693,6 +775,9 @@ export function createLoggerPage(): LoggerPageController {
       channelIds: [],
       viewport: undefined,
       cursorTimeMs: 0,
+      viewHistory: [],
+      viewHistoryIndex: -1,
+      lastHistoryMutationMs: 0,
     }];
     refreshWorkspaceSelector();
     graphSelector.setEnabled(false);
@@ -714,6 +799,7 @@ export function createLoggerPage(): LoggerPageController {
 
   refreshWorkspaceSelector();
   graphSelector.setEnabled(false);
+  refreshViewHistoryState();
 
   return {
     element: page,
