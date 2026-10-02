@@ -6,7 +6,8 @@ export type TimelineViewportIntent =
   | { readonly type: 'fit' }
   | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
-  | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean };
+  | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'range'; readonly startMs: number; readonly endMs: number; readonly centerCursor?: boolean };
 
 export interface TimelineOverviewTrace {
   readonly channelId: string;
@@ -44,7 +45,13 @@ export function createTimelineShell(): TimelineShellController {
   let cursorTimeMs = 0;
   let viewport: TimelineViewport | undefined;
   let overviewTraces: readonly TimelineOverviewTrace[] = [];
-  let overviewMarkers: readonly LogMarker[] = [];
+  let sourceMarkers: readonly LogMarker[] = [];
+  let userMarkers: LogMarker[] = [];
+  let aTimeMs: number | undefined;
+  let bTimeMs: number | undefined;
+  let savedRanges: { readonly label: string; readonly startMs: number; readonly endMs: number }[] = [];
+  let playbackFrame: number | undefined;
+  let playbackLastNow: number | undefined;
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
 
@@ -86,12 +93,15 @@ export function createTimelineShell(): TimelineShellController {
       <span>Cursor <strong class="timeline-cursor-value">00:00.000</strong></span>
       <span>Visible range <strong class="timeline-visible-range">—</strong></span>
       <span>Marker <strong class="timeline-marker-value">—</strong></span>
-      <span>A/B <strong>—</strong></span>
+      <span>A/B <strong class="timeline-ab-value">—</strong></span>
+      <select class="timeline-saved-ranges" aria-label="Saved ranges" hidden>
+        <option value="">Saved ranges</option>
+      </select>
       <span class="grow"></span>
-      <button type="button" disabled>Save Range</button>
-      <button type="button" disabled>＋ Marker</button>
-      <button type="button" disabled>Set A</button>
-      <button type="button" disabled>Set B</button>
+      <button type="button" class="timeline-save-range" disabled>Save Range</button>
+      <button type="button" class="timeline-add-marker" disabled>＋ Marker</button>
+      <button type="button" class="timeline-set-a" disabled>Set A</button>
+      <button type="button" class="timeline-set-b" disabled>Set B</button>
     </div>
   `;
 
@@ -106,14 +116,46 @@ export function createTimelineShell(): TimelineShellController {
   const cursorText = timeline.querySelector<HTMLElement>('.timeline-cursor-value');
   const visibleRangeText = timeline.querySelector<HTMLElement>('.timeline-visible-range');
   const markerText = timeline.querySelector<HTMLElement>('.timeline-marker-value');
+  const abText = timeline.querySelector<HTMLElement>('.timeline-ab-value');
+  const savedRangeSelect = timeline.querySelector<HTMLSelectElement>('.timeline-saved-ranges');
+  const saveRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-save-range');
+  const addMarkerButton = timeline.querySelector<HTMLButtonElement>('.timeline-add-marker');
+  const setAButton = timeline.querySelector<HTMLButtonElement>('.timeline-set-a');
+  const setBButton = timeline.querySelector<HTMLButtonElement>('.timeline-set-b');
   const progress = timeline.querySelector<HTMLElement>('.timeline-progress');
   const progressFill = progress?.querySelector<HTMLElement>('span');
   const transportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('.transport button')];
   const markerButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-marker-action]')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !progress || !progressFill) {
+  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !savedRangeSelect || !saveRangeButton || !addMarkerButton || !setAButton || !setBButton || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
+
+  const allMarkers = (): readonly LogMarker[] => [...sourceMarkers, ...userMarkers]
+    .filter((marker) => Number.isFinite(marker.timeMs))
+    .sort((left, right) => left.timeMs - right.timeMs);
+
+  const renderRangeState = (): void => {
+    const a = aTimeMs === undefined ? '—' : formatDuration(aTimeMs - fullStartMs);
+    const b = bTimeMs === undefined ? '—' : formatDuration(bTimeMs - fullStartMs);
+    const delta = aTimeMs === undefined || bTimeMs === undefined
+      ? ''
+      : ` · Δ ${formatDuration(Math.abs(bTimeMs - aTimeMs))}`;
+    abText.textContent = `A ${a} · B ${b}${delta}`;
+    saveRangeButton.disabled = fullDuration() <= 0 || aTimeMs === undefined || bTimeMs === undefined || aTimeMs === bTimeMs;
+    addMarkerButton.disabled = fullDuration() <= 0;
+    setAButton.disabled = fullDuration() <= 0;
+    setBButton.disabled = fullDuration() <= 0;
+  };
+
+  const refreshSavedRangeSelect = (): void => {
+    savedRangeSelect.replaceChildren(new Option('Saved ranges', ''));
+    savedRanges.forEach((range, index) => {
+      savedRangeSelect.add(new Option(range.label, String(index)));
+    });
+    savedRangeSelect.hidden = savedRanges.length === 0;
+    savedRangeSelect.value = '';
+  };
 
   const renderOverview = (): void => {
     const rect = overview.getBoundingClientRect();
@@ -138,7 +180,17 @@ export function createTimelineShell(): TimelineShellController {
     context.save();
     context.lineWidth = 1;
     context.strokeStyle = 'rgba(240, 180, 77, 0.58)';
-    for (const marker of overviewMarkers) {
+    for (const marker of sourceMarkers) {
+      if (marker.timeMs < fullStartMs || marker.timeMs > fullEndMs) continue;
+      const x = ((marker.timeMs - fullStartMs) / duration) * width;
+      context.beginPath();
+      context.moveTo(x + 0.5, 0);
+      context.lineTo(x + 0.5, height);
+      context.stroke();
+    }
+    context.strokeStyle = 'rgba(66, 165, 245, 0.92)';
+    context.lineWidth = 1.5;
+    for (const marker of userMarkers) {
       if (marker.timeMs < fullStartMs || marker.timeMs > fullEndMs) continue;
       const x = ((marker.timeMs - fullStartMs) / duration) * width;
       context.beginPath();
@@ -199,8 +251,8 @@ export function createTimelineShell(): TimelineShellController {
       return;
     }
     overviewText.hidden = false;
-    overviewText.textContent = overviewMarkers.length > 0
-      ? `Select a channel to add trace context · ${overviewMarkers.length.toLocaleString()} source marker${overviewMarkers.length === 1 ? '' : 's'} shown.`
+    overviewText.textContent = allMarkers().length > 0
+      ? `Select a channel to add trace context · ${allMarkers().length.toLocaleString()} source marker${allMarkers().length === 1 ? '' : 's'} shown.`
       : 'Select a channel to add a whole-log overview trace.';
   };
 
@@ -209,7 +261,7 @@ export function createTimelineShell(): TimelineShellController {
     markers: readonly LogMarker[],
   ): void => {
     overviewTraces = traces;
-    overviewMarkers = [...markers]
+    sourceMarkers = [...markers]
       .filter((marker) => Number.isFinite(marker.timeMs))
       .sort((left, right) => left.timeMs - right.timeMs);
     updateOverviewMessage();
@@ -257,7 +309,8 @@ export function createTimelineShell(): TimelineShellController {
     progress.setAttribute('aria-valuenow', String(Math.round(elapsed)));
 
     const markerToleranceMs = 0.5;
-    const exactMarker = overviewMarkers.find(
+    const markers = allMarkers();
+    const exactMarker = markers.find(
       (marker) => Math.abs(marker.timeMs - cursorTimeMs) <= markerToleranceMs,
     );
     markerText.textContent = exactMarker?.label?.trim() || (exactMarker ? 'Source marker' : '—');
@@ -265,15 +318,16 @@ export function createTimelineShell(): TimelineShellController {
       ? `${markerText.textContent} · ${formatDuration(exactMarker.timeMs - fullStartMs)}`
       : '';
 
-    const hasPrevious = overviewMarkers.some(
+    const hasPrevious = markers.some(
       (marker) => marker.timeMs < cursorTimeMs - markerToleranceMs,
     );
-    const hasNext = overviewMarkers.some(
+    const hasNext = markers.some(
       (marker) => marker.timeMs > cursorTimeMs + markerToleranceMs,
     );
     for (const button of markerButtons) {
       button.disabled = button.dataset.markerAction === 'previous' ? !hasPrevious : !hasNext;
     }
+    renderRangeState();
   };
 
   const updateCursor = (next: number, notify = true): void => {
@@ -292,7 +346,14 @@ export function createTimelineShell(): TimelineShellController {
     fullStartMs = nextRange?.startMs ?? 0;
     fullEndMs = nextRange?.endMs ?? 0;
     overviewTraces = [];
-    overviewMarkers = [];
+    sourceMarkers = [];
+    userMarkers = [];
+    aTimeMs = undefined;
+    bTimeMs = undefined;
+    savedRanges = [];
+    if (playbackFrame !== undefined) cancelAnimationFrame(playbackFrame);
+    playbackFrame = undefined;
+    playbackLastNow = undefined;
     cursorTimeMs = fullStartMs;
     viewport = nextRange
       ? { fullStartMs, fullEndMs, visibleStartMs: fullStartMs, visibleEndMs: fullEndMs }
@@ -307,12 +368,11 @@ export function createTimelineShell(): TimelineShellController {
     }
 
     const enabled = fullDuration() > 0;
-    for (const button of transportButtons) {
-      const action = button.dataset.action;
-      button.disabled = !enabled || action === 'play';
-    }
+    for (const button of transportButtons) button.disabled = !enabled;
     for (const button of viewportButtons) button.disabled = !enabled;
     progress.tabIndex = enabled ? 0 : -1;
+    refreshSavedRangeSelect();
+    renderRangeState();
     updateOverviewMessage();
     renderOverview();
     renderViewport();
@@ -329,6 +389,47 @@ export function createTimelineShell(): TimelineShellController {
     if (rect.width <= 0) return fullStartMs;
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     return fullStartMs + ratio * fullDuration();
+  };
+
+  const playButton = transportButtons.find((button) => button.dataset.action === 'play');
+
+  const stopPlayback = (): void => {
+    if (playbackFrame !== undefined) cancelAnimationFrame(playbackFrame);
+    playbackFrame = undefined;
+    playbackLastNow = undefined;
+    if (playButton) {
+      playButton.textContent = '▶';
+      playButton.title = 'Play';
+    }
+  };
+
+  const playbackTick = (now: number): void => {
+    if (playbackFrame === undefined) return;
+    const previous = playbackLastNow ?? now;
+    playbackLastNow = now;
+    const next = cursorTimeMs + Math.max(0, now - previous);
+    if (next >= fullEndMs) {
+      updateCursor(fullEndMs);
+      stopPlayback();
+      return;
+    }
+    updateCursor(next);
+    playbackFrame = requestAnimationFrame(playbackTick);
+  };
+
+  const togglePlayback = (): void => {
+    if (fullDuration() <= 0) return;
+    if (playbackFrame !== undefined) {
+      stopPlayback();
+      return;
+    }
+    if (cursorTimeMs >= fullEndMs) updateCursor(fullStartMs);
+    playbackLastNow = undefined;
+    playbackFrame = requestAnimationFrame(playbackTick);
+    if (playButton) {
+      playButton.textContent = '❚❚';
+      playButton.title = 'Pause';
+    }
   };
 
   const beginCursorDrag = (event: PointerEvent, captureElement: HTMLElement, coordinateElement: HTMLElement): void => {
@@ -433,10 +534,11 @@ export function createTimelineShell(): TimelineShellController {
     button.addEventListener('click', () => {
       const step = Math.max(1, visibleSpan() / 100);
       switch (button.dataset.action) {
-        case 'start': updateCursor(fullStartMs); break;
+        case 'start': stopPlayback(); updateCursor(fullStartMs); break;
         case 'back': updateCursor(cursorTimeMs - step); break;
+        case 'play': togglePlayback(); break;
         case 'forward': updateCursor(cursorTimeMs + step); break;
-        case 'end': updateCursor(fullEndMs); break;
+        case 'end': stopPlayback(); updateCursor(fullEndMs); break;
       }
     });
   }
@@ -451,15 +553,63 @@ export function createTimelineShell(): TimelineShellController {
 
   const navigateMarker = (direction: 'previous' | 'next'): void => {
     const toleranceMs = 0.5;
+    const markers = allMarkers();
     const marker = direction === 'previous'
-      ? [...overviewMarkers].reverse().find(
+      ? [...markers].reverse().find(
           (candidate) => candidate.timeMs < cursorTimeMs - toleranceMs,
         )
-      : overviewMarkers.find(
+      : markers.find(
           (candidate) => candidate.timeMs > cursorTimeMs + toleranceMs,
         );
     if (marker) updateCursor(marker.timeMs);
   };
+
+  addMarkerButton.addEventListener('click', () => {
+    if (fullDuration() <= 0) return;
+    const defaultLabel = `Marker ${userMarkers.length + 1}`;
+    const entered = window.prompt('Marker label', defaultLabel);
+    if (entered === null) return;
+    const label = entered.trim() || defaultLabel;
+    userMarkers.push({ timeMs: cursorTimeMs, label });
+    userMarkers.sort((left, right) => left.timeMs - right.timeMs);
+    renderOverview();
+    renderCursor();
+  });
+
+  setAButton.addEventListener('click', () => {
+    if (fullDuration() <= 0) return;
+    aTimeMs = cursorTimeMs;
+    renderRangeState();
+  });
+
+  setBButton.addEventListener('click', () => {
+    if (fullDuration() <= 0) return;
+    bTimeMs = cursorTimeMs;
+    renderRangeState();
+  });
+
+  saveRangeButton.addEventListener('click', () => {
+    if (aTimeMs === undefined || bTimeMs === undefined || aTimeMs === bTimeMs) return;
+    const startMs = Math.min(aTimeMs, bTimeMs);
+    const endMs = Math.max(aTimeMs, bTimeMs);
+    const defaultLabel = `Range ${savedRanges.length + 1}`;
+    const entered = window.prompt('Saved range label', defaultLabel);
+    if (entered === null) return;
+    savedRanges.push({ label: entered.trim() || defaultLabel, startMs, endMs });
+    refreshSavedRangeSelect();
+  });
+
+  savedRangeSelect.addEventListener('change', () => {
+    const index = Number(savedRangeSelect.value);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= savedRanges.length) return;
+    const range = savedRanges[index];
+    if (!range) return;
+    aTimeMs = range.startMs;
+    bTimeMs = range.endMs;
+    renderRangeState();
+    viewportListener?.({ type: 'range', startMs: range.startMs, endMs: range.endMs, centerCursor: true });
+    updateCursor((range.startMs + range.endMs) / 2);
+  });
 
   for (const button of viewportButtons) {
     button.addEventListener('click', () => {
