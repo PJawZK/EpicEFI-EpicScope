@@ -337,6 +337,14 @@ export function createLoggerPage(): LoggerPageController {
     });
   });
 
+  inspector.onLoadSelected(() => {
+    graph.loadPendingChannels();
+  });
+
+  graph.onPendingChannelsChanged((channelIds) => {
+    inspector.setQueuedChannels(channelIds);
+  });
+
   graph.onChannelPerformance((performance) => {
     const channel = channelDefinitions.get(performance.channelId);
     channelPerformanceListener?.({
