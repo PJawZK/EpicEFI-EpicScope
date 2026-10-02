@@ -125,7 +125,7 @@ The final Phase 1 gate is hosted validation of the latest graph-density refineme
 
 After that validation, Phase 1 can close.
 
-The INI-backed channel catalog, conservative INI↔MLG binding, and reusable application-workspace persistence foundation are now implemented. Stable `ini:<logicalKey>` channel assignments can exist without a log, known/no-data channels remain visible, log-only channels remain usable, and normalized INI catalog metadata plus reusable workspace structure are stored locally without persisting sample arrays or raw INI text.
+The INI-backed channel catalog, conservative INI↔MLG binding, and reusable application-workspace persistence foundation are now implemented. Stable `ini:<logicalKey>` channel assignments can exist without a log, known/no-data channels remain visible, log-only channels remain usable, and normalized INI catalog metadata plus reusable workspace structure are stored locally without persisting sample arrays or raw INI text. Restored catalog state is visually distinct from a freshly loaded INI, and Settings provides an explicit **Unload INI** action that removes the persisted catalog so fresh-load performance can be benchmarked repeatedly.
 
 The exact-log v1 workspace artifact remains in parallel for recording-specific cursor/viewport/A-B/marker/range state. Hosted validation should now confirm that INI-only pane assignments survive reload, app restart and previously unseen log loads, and that matching channels activate automatically when data becomes available.
 
