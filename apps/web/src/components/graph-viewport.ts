@@ -360,7 +360,8 @@ export function createGraphViewport(): GraphViewportController {
     try {
       const range = await channelData.readChannelRange(channel.id, 0, channelData.sampleCount);
       const scale = buildStableValueScale(range);
-      const color = TRACE_COLORS[activeTraces.size % TRACE_COLORS.length] ?? TRACE_COLORS[0];
+      const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
+      const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       activeTraces.set(channel.id, { channel, range, scale, color });
       overlay.hidden = true;
       draw();
