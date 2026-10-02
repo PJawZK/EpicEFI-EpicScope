@@ -215,6 +215,8 @@ Task groups:
 Current implemented v2 behavior:
 
 - browser-local normalized INI channel catalog is restored across app restarts;
+- freshly loaded vs locally restored INI state is explicit in the UI;
+- Settings can unload the INI catalog and remove its persisted copy without clearing performance diagnostics, enabling repeatable fresh-load performance comparisons;
 - INI-only channels can be assigned to panes before any log is loaded;
 - pane assignments are separate from currently decoded traces;
 - reusable named workspaces/layouts/channel assignments persist independently of log identity;
