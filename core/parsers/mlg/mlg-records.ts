@@ -21,6 +21,7 @@ export interface MlgRecordIndex {
 }
 
 export interface MlgRecordScanPerformance {
+  readonly scanMode: 'fixed' | 'general';
   readonly sourceReadMs: number;
   readonly checksumBytes: number;
   readonly checksumCpuMs: number;
@@ -85,28 +86,34 @@ function decodeMarker(bytes: Uint8Array): string {
   return value;
 }
 
-function calculateRecordCrcRange(
+export function calculateMlgRecordChecksum(
   bytes: Uint8Array,
   start: number,
   length: number,
 ): number {
   const end = start + length;
   let index = start;
-  let sum = 0;
+  let sum0 = 0;
+  let sum1 = 0;
+  let sum2 = 0;
+  let sum3 = 0;
 
-  // MLG's checksum is the low 8 bits of the payload-byte sum. Keep a wider
-  // accumulator and unroll the hot loop so we avoid a mask, bounds/nullish
-  // fallback and loop branch for every individual byte.
-  const unrolledEnd = end - ((end - start) % 16);
+  // Four independent accumulators shorten the dependency chain in the hottest
+  // parser loop. MLG only needs the low 8 bits of the complete payload sum.
+  const unrolledEnd = end - ((end - start) % 32);
   while (index < unrolledEnd) {
-    sum +=
-      bytes[index]! + bytes[index + 1]! + bytes[index + 2]! + bytes[index + 3]!
-      + bytes[index + 4]! + bytes[index + 5]! + bytes[index + 6]! + bytes[index + 7]!
-      + bytes[index + 8]! + bytes[index + 9]! + bytes[index + 10]! + bytes[index + 11]!
-      + bytes[index + 12]! + bytes[index + 13]! + bytes[index + 14]! + bytes[index + 15]!;
-    index += 16;
+    sum0 += bytes[index]! + bytes[index + 4]! + bytes[index + 8]! + bytes[index + 12]!
+      + bytes[index + 16]! + bytes[index + 20]! + bytes[index + 24]! + bytes[index + 28]!;
+    sum1 += bytes[index + 1]! + bytes[index + 5]! + bytes[index + 9]! + bytes[index + 13]!
+      + bytes[index + 17]! + bytes[index + 21]! + bytes[index + 25]! + bytes[index + 29]!;
+    sum2 += bytes[index + 2]! + bytes[index + 6]! + bytes[index + 10]! + bytes[index + 14]!
+      + bytes[index + 18]! + bytes[index + 22]! + bytes[index + 26]! + bytes[index + 30]!;
+    sum3 += bytes[index + 3]! + bytes[index + 7]! + bytes[index + 11]! + bytes[index + 15]!
+      + bytes[index + 19]! + bytes[index + 23]! + bytes[index + 27]! + bytes[index + 31]!;
+    index += 32;
   }
 
+  let sum = sum0 + sum1 + sum2 + sum3;
   while (index < end) {
     sum += bytes[index]!;
     index += 1;
@@ -140,7 +147,189 @@ async function readChunk(
   return bytes;
 }
 
-export async function scanMlgRecords(
+
+function benchmarkChecksumCpu(
+  chunk: Uint8Array | undefined,
+  recordStarts: readonly number[],
+  recordLength: number,
+  checksumBytes: number,
+  now: () => number,
+): { checksumCpuMs: number; checksumBenchmarkMs: number } {
+  const targetBytes = 2 * 1024 * 1024;
+  if (!chunk || recordStarts.length === 0 || recordLength <= 0) {
+    return { checksumCpuMs: 0, checksumBenchmarkMs: 0 };
+  }
+
+  const repeats = Math.max(
+    1,
+    Math.ceil(targetBytes / (recordStarts.length * recordLength)),
+  );
+  let benchmarkBytes = 0;
+  let sink = 0;
+  const started = now();
+  for (let repeat = 0; repeat < repeats; repeat += 1) {
+    for (const recordStart of recordStarts) {
+      sink ^= calculateMlgRecordChecksum(chunk, recordStart, recordLength);
+      benchmarkBytes += recordLength;
+    }
+  }
+  const checksumBenchmarkMs = now() - started;
+  if (sink === -1) throw new Error('Unreachable checksum benchmark sink.');
+  return {
+    checksumCpuMs: benchmarkBytes > 0
+      ? checksumBenchmarkMs * (checksumBytes / benchmarkBytes)
+      : 0,
+    checksumBenchmarkMs,
+  };
+}
+
+async function tryScanFixedRecords(
+  source: RandomAccessByteSource,
+  header: MlgHeader,
+): Promise<MlgRecordScanResult | undefined> {
+  const now = (): number => globalThis.performance?.now() ?? Date.now();
+  const recordLength = header.recordLength;
+  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  const dataLength = source.size - header.dataBeginIndex;
+
+  if (recordLength <= 0 || dataLength < 0 || dataLength % blockLength !== 0) {
+    return undefined;
+  }
+
+  const recordCount = dataLength / blockLength;
+  const offsets = new Float64Array(recordCount);
+  const times = new Float64Array(recordCount);
+  const counters = new Uint8Array(recordCount);
+  const crcValid = new Uint8Array(recordCount);
+  const diagnostics: ParserDiagnostic[] = [];
+
+  let previousCounter: number | undefined;
+  let previousRawTimestamp: number | undefined;
+  let timestampEpoch = 0;
+  let firstUnwrappedTimestamp: number | undefined;
+  let sourceReadMs = 0;
+  let diagnosticCpuMs = 0;
+  const checksumBytes = recordCount * recordLength;
+  const benchmarkStarts: number[] = [];
+  let benchmarkChunk: Uint8Array | undefined;
+  const benchmarkRecordLimit = 128;
+  const recordsPerChunk = Math.max(1, Math.floor(SCAN_CHUNK_SIZE / blockLength));
+  const scanCpuStart = now();
+
+  for (let batchFirst = 0; batchFirst < recordCount; batchFirst += recordsPerChunk) {
+    const batchCount = Math.min(recordsPerChunk, recordCount - batchFirst);
+    const chunkOffset = header.dataBeginIndex + batchFirst * blockLength;
+    const chunkLength = batchCount * blockLength;
+    const readStart = now();
+    const chunk = await source.read(chunkOffset, chunkLength);
+    sourceReadMs += now() - readStart;
+    if (chunk.byteLength !== chunkLength) {
+      throw new MlgFormatError(
+        'short-read',
+        `Expected ${chunkLength} bytes at offset ${chunkOffset}, received ${chunk.byteLength}.`,
+        chunkOffset,
+      );
+    }
+
+    benchmarkChunk ??= chunk;
+
+    for (let localIndex = 0; localIndex < batchCount; localIndex += 1) {
+      const recordIndex = batchFirst + localIndex;
+      const cursor = localIndex * blockLength;
+      const absoluteOffset = chunkOffset + cursor;
+
+      // A single non-standard block means this is not a fixed-record log.
+      // Fall back to the mixed-block scanner so marker/error behavior remains
+      // authoritative and unchanged.
+      if ((chunk[cursor] ?? -1) !== STANDARD_BLOCK_TYPE) return undefined;
+
+      const counter = chunk[cursor + 1] ?? 0;
+      const rawTimestamp = ((chunk[cursor + 2] ?? 0) << 8) | (chunk[cursor + 3] ?? 0);
+
+      if (previousCounter !== undefined) {
+        const expectedCounter = (previousCounter + 1) % COUNTER_MODULUS;
+        if (counter !== expectedCounter) {
+          const diagnosticStart = now();
+          diagnostics.push({
+            code: 'mlg-counter-discontinuity',
+            severity: 'warning',
+            message: `MLG block counter expected ${expectedCounter}, found ${counter}.`,
+            recoverable: true,
+            offset: absoluteOffset + 1,
+          });
+          diagnosticCpuMs += now() - diagnosticStart;
+        }
+      }
+      previousCounter = counter;
+
+      const recordStart = cursor + BLOCK_HEADER_LENGTH;
+      if (chunk === benchmarkChunk && benchmarkStarts.length < benchmarkRecordLimit) {
+        benchmarkStarts.push(recordStart);
+      }
+      const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
+      const actualCrc = chunk[cursor + blockLength - 1] ?? 0;
+      const isCrcValid = expectedCrc === actualCrc;
+
+      if (!isCrcValid) {
+        const diagnosticStart = now();
+        const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
+        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+        diagnostics.push({
+          code: 'mlg-crc-mismatch',
+          severity: 'warning',
+          message: `MLG record ${recordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+          recoverable: true,
+          offset: absoluteOffset + blockLength - 1,
+        });
+        diagnosticCpuMs += now() - diagnosticStart;
+      }
+
+      if (
+        previousRawTimestamp !== undefined
+        && rawTimestamp < previousRawTimestamp
+        && previousRawTimestamp - rawTimestamp > TIMESTAMP_MODULUS / 2
+      ) {
+        timestampEpoch += TIMESTAMP_MODULUS;
+      }
+      previousRawTimestamp = rawTimestamp;
+
+      const unwrappedTimestamp = timestampEpoch + rawTimestamp;
+      firstUnwrappedTimestamp ??= unwrappedTimestamp;
+
+      offsets[recordIndex] = absoluteOffset;
+      times[recordIndex] = (unwrappedTimestamp - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS;
+      counters[recordIndex] = counter;
+      crcValid[recordIndex] = isCrcValid ? 1 : 0;
+    }
+  }
+
+  const scanCpuElapsedMs = Math.max(0, now() - scanCpuStart - sourceReadMs);
+  const benchmark = benchmarkChecksumCpu(
+    benchmarkChunk,
+    benchmarkStarts,
+    recordLength,
+    checksumBytes,
+    now,
+  );
+
+  return {
+    records: { offsets, timeMs: times, counters, crcValid },
+    markers: [],
+    diagnostics,
+    performance: {
+      scanMode: 'fixed',
+      sourceReadMs,
+      checksumBytes,
+      checksumCpuMs: benchmark.checksumCpuMs,
+      checksumBenchmarkMs: benchmark.checksumBenchmarkMs,
+      diagnosticCpuMs,
+      indexCpuMs: Math.max(0, scanCpuElapsedMs - benchmark.checksumCpuMs - diagnosticCpuMs),
+    },
+  };
+}
+
+async function scanMlgRecordsGeneral(
   source: RandomAccessByteSource,
   header: MlgHeader,
 ): Promise<MlgRecordScanResult> {
@@ -253,13 +442,13 @@ export async function scanMlgRecords(
         ) {
           checksumBenchmarkStarts.push(recordStart);
         }
-        const expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
+        const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
         const actualCrc = chunk[cursor + standardBlockLength - 1] ?? 0;
         const isCrcValid = expectedCrc === actualCrc;
 
         if (!isCrcValid) {
           const diagnosticStart = now();
-          const blockHeaderSum = calculateRecordCrcRange(chunk, cursor, BLOCK_HEADER_LENGTH);
+          const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
           const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
           const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
           diagnostics.push({
@@ -325,7 +514,7 @@ export async function scanMlgRecords(
     const checksumBenchmarkStart = now();
     for (let repeat = 0; repeat < repeats; repeat += 1) {
       for (const recordStart of checksumBenchmarkStarts) {
-        checksumBenchmarkSink ^= calculateRecordCrcRange(
+        checksumBenchmarkSink ^= calculateMlgRecordChecksum(
           checksumBenchmarkChunk,
           recordStart,
           recordLength,
@@ -353,6 +542,7 @@ export async function scanMlgRecords(
     markers,
     diagnostics,
     performance: {
+      scanMode: 'general',
       sourceReadMs,
       checksumBytes,
       checksumCpuMs,
@@ -361,4 +551,13 @@ export async function scanMlgRecords(
       indexCpuMs,
     },
   };
+}
+
+
+export async function scanMlgRecords(
+  source: RandomAccessByteSource,
+  header: MlgHeader,
+): Promise<MlgRecordScanResult> {
+  const fixed = await tryScanFixedRecords(source, header);
+  return fixed ?? scanMlgRecordsGeneral(source, header);
 }

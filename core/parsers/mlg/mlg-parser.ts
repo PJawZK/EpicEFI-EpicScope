@@ -11,6 +11,7 @@ import { parseMlgHeader } from './mlg-header';
 import { scanMlgRecords, type MlgRecordIndex } from './mlg-records';
 
 export interface MlgParsePerformance {
+  readonly scanMode: 'fixed' | 'general';
   readonly headerMs: number;
   readonly headerReadMs: number;
   readonly headerCpuMs: number;
@@ -88,6 +89,7 @@ export async function parseMlg(
     recordIndex: scanResult.records,
     channelData,
     performance: {
+      scanMode: scanResult.performance.scanMode,
       headerMs,
       headerReadMs,
       headerCpuMs,

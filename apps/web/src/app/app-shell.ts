@@ -153,6 +153,7 @@ export function mountAppShell(root: HTMLElement): void {
 
         performanceDiagnostics.recordLoad({
           fileName: parsed.summary.source.displayName,
+          scanMode: parsed.performance.scanMode,
           fileSizeBytes: parsed.summary.source.sizeBytes ?? file.size,
           recordCount: parsed.recordIndex.offsets.length,
           channelCount: parsed.summary.channels.length,

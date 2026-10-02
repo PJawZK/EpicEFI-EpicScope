@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { MemoryByteSource, type RandomAccessByteSource } from '../../core/parsers/byte-source';
 import { parseMlgHeader } from '../../core/parsers/mlg/mlg-header';
-import { scanMlgRecords } from '../../core/parsers/mlg/mlg-records';
+import {
+  calculateMlgRecordChecksum,
+  scanMlgRecords,
+} from '../../core/parsers/mlg/mlg-records';
 import { createScalarHeaderFixture } from './mlg-fixture-builder';
 
 function concat(...parts: readonly Uint8Array[]): Uint8Array {
@@ -82,6 +85,7 @@ describe('scanMlgRecords', () => {
     expect([...result.records.crcValid]).toEqual([1, 1, 1]);
     expect([...result.records.timeMs]).toEqual([0, 0.1, 0.2]);
     expect(result.records.offsets).toHaveLength(3);
+    expect(result.performance.scanMode).toBe('fixed');
     expect(result.diagnostics).toEqual([]);
   });
 
@@ -96,6 +100,7 @@ describe('scanMlgRecords', () => {
 
     const result = await parseAndScan(bytes);
 
+    expect(result.performance.scanMode).toBe('general');
     expect(result.markers).toEqual([{ timeMs: 0.1, label: 'boost starts' }]);
     expect([...result.records.timeMs]).toEqual([0, 0.2]);
   });
@@ -185,5 +190,22 @@ describe('scanMlgRecords', () => {
 
     expect(result.records.offsets).toHaveLength(recordCount);
     expect(source.readCount).toBe(1);
+  });
+});
+
+
+describe('fixed-record checksum fast path', () => {
+  it('sums a wide non-aligned payload identically to the reference checksum', () => {
+    const payload = Uint8Array.from(
+      { length: 4_390 },
+      (_, index) => (index * 37 + 11) & 0xff,
+    );
+    const reference = [...payload].reduce((sum, value) => (sum + value) & 0xff, 0);
+
+    expect(calculateMlgRecordChecksum(payload, 0, payload.byteLength)).toBe(reference);
+    expect(calculateMlgRecordChecksum(payload, 13, 4_321)).toBe(
+      [...payload.subarray(13, 13 + 4_321)]
+        .reduce((sum, value) => (sum + value) & 0xff, 0),
+    );
   });
 });
