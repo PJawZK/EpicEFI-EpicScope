@@ -97,8 +97,8 @@ export function createInspectorPanel(): InspectorPanelController {
       <div class="channel-list-spacer" aria-hidden="true"></div>
       <div class="channel-list-viewport"></div>
     </div>
-    <section class="channel-statistics" hidden>
-      <header>
+    <section class="channel-statistics channel-statistics--floating" hidden>
+      <header class="channel-statistics-drag-handle" title="Drag channel details window">
         <div>
           <span class="eyebrow">Channel details</span>
           <strong class="channel-statistics-title">—</strong>
@@ -133,13 +133,14 @@ export function createInspectorPanel(): InspectorPanelController {
   const statisticsTitle = panel.querySelector<HTMLElement>('.channel-statistics-title');
   const statisticsBody = panel.querySelector<HTMLElement>('.channel-statistics-body');
   const statisticsClose = panel.querySelector<HTMLButtonElement>('.channel-statistics-close');
+  const statisticsDragHandle = panel.querySelector<HTMLElement>('.channel-statistics-drag-handle');
   const channelCount = panel.querySelector<HTMLElement>('.channel-count');
   const sortButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-sort-key]')];
   const addFilteredButton = panel.querySelector<HTMLButtonElement>('.add-filtered');
   const loadSelectedButton = panel.querySelector<HTMLButtonElement>('.load-selected');
   const clearGraphButton = panel.querySelector<HTMLButtonElement>('.clear-graph');
 
-  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !statisticsPanel || !statisticsTitle || !statisticsBody || !statisticsClose || !channelCount || !addFilteredButton || !loadSelectedButton || !clearGraphButton) {
+  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !statisticsPanel || !statisticsTitle || !statisticsBody || !statisticsClose || !statisticsDragHandle || !channelCount || !addFilteredButton || !loadSelectedButton || !clearGraphButton) {
     throw new Error('Inspector panel structure is incomplete.');
   }
 
@@ -306,7 +307,8 @@ export function createInspectorPanel(): InspectorPanelController {
       const matchesText = query.length === 0
         || channel.sourceName.toLocaleLowerCase().includes(query)
         || (channel.unit?.toLocaleLowerCase().includes(query) ?? false);
-      const matchesGroup = selectedGroup === '' || channel.category === selectedGroup;
+      const matchesGroup = selectedGroup === ''
+        || (selectedGroup === '__ungrouped__' ? !channel.category?.trim() : channel.category === selectedGroup);
       const matchesVisibility = visibility === 'all'
         || (visibility === 'active' && activeChannelIds.has(channel.id))
         || (visibility === 'favorites' && favoriteChannelIds.has(channel.id))
@@ -392,15 +394,20 @@ export function createInspectorPanel(): InspectorPanelController {
     groupSelect.disabled = false;
     visibilitySelect.disabled = false;
     for (const button of sortButtons) button.disabled = false;
-    groupSelect.replaceChildren(new Option('All Groups', ''));
+    groupSelect.replaceChildren(new Option('All TS Groups', ''));
 
-    const groups = [...new Set(
-      channels
-        .map((channel) => channel.category)
-        .filter((category): category is string => Boolean(category)),
-    )].sort((left, right) => left.localeCompare(right));
-
-    for (const group of groups) groupSelect.add(new Option(group, group));
+    const groupCounts = new Map<string, number>();
+    let ungroupedCount = 0;
+    for (const channel of channels) {
+      const category = channel.category?.trim();
+      if (category) groupCounts.set(category, (groupCounts.get(category) ?? 0) + 1);
+      else ungroupedCount += 1;
+    }
+    const groups = [...groupCounts.keys()].sort((left, right) => left.localeCompare(right));
+    for (const group of groups) {
+      groupSelect.add(new Option(`${group} (${groupCounts.get(group)})`, group));
+    }
+    if (ungroupedCount > 0) groupSelect.add(new Option(`Ungrouped (${ungroupedCount})`, '__ungrouped__'));
     search.value = '';
     visibilitySelect.value = 'all';
     sortKey = 'name';
@@ -554,6 +561,34 @@ export function createInspectorPanel(): InspectorPanelController {
   statisticsClose.addEventListener('click', () => {
     selectedDetailsChannelId = undefined;
     statisticsPanel.hidden = true;
+  });
+
+  statisticsDragHandle.addEventListener('pointerdown', (event) => {
+    if (event.target instanceof Element && event.target.closest('button')) return;
+    event.preventDefault();
+    const rect = statisticsPanel.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    statisticsDragHandle.setPointerCapture(event.pointerId);
+
+    const move = (moveEvent: PointerEvent): void => {
+      const maxLeft = Math.max(0, window.innerWidth - statisticsPanel.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - statisticsPanel.offsetHeight);
+      statisticsPanel.style.left = `${Math.min(maxLeft, Math.max(0, moveEvent.clientX - offsetX))}px`;
+      statisticsPanel.style.top = `${Math.min(maxTop, Math.max(0, moveEvent.clientY - offsetY))}px`;
+      statisticsPanel.style.right = 'auto';
+    };
+    const end = (endEvent: PointerEvent): void => {
+      if (statisticsDragHandle.hasPointerCapture(endEvent.pointerId)) {
+        statisticsDragHandle.releasePointerCapture(endEvent.pointerId);
+      }
+      statisticsDragHandle.removeEventListener('pointermove', move);
+      statisticsDragHandle.removeEventListener('pointerup', end);
+      statisticsDragHandle.removeEventListener('pointercancel', end);
+    };
+    statisticsDragHandle.addEventListener('pointermove', move);
+    statisticsDragHandle.addEventListener('pointerup', end);
+    statisticsDragHandle.addEventListener('pointercancel', end);
   });
 
   addFilteredButton.addEventListener('click', () => {

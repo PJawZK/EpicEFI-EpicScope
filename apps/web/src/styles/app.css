@@ -367,6 +367,24 @@ button:disabled { opacity: .48; cursor: default; }
   border-bottom: 1px solid var(--line-soft);
   background: #0c1720;
 }
+.channel-statistics--floating {
+  position: fixed;
+  z-index: 320;
+  top: 112px;
+  right: 18px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 140px));
+  border: 1px solid #385064;
+  border-radius: 5px;
+  box-shadow: 0 18px 42px rgba(0,0,0,.48);
+}
+.channel-statistics--floating > header {
+  cursor: grab;
+  user-select: none;
+}
+.channel-statistics--floating > header:active {
+  cursor: grabbing;
+}
 .channel-statistics > header {
   position: sticky;
   top: 0;
