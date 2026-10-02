@@ -83,6 +83,41 @@ button:disabled { opacity: .48; cursor: default; }
 .header-context { min-width: 0; gap: 8px; }
 .header-actions { gap: 7px; }
 .header-actions button { height: 34px; min-width: 36px; padding: 0 9px; }
+.source-load-button {
+  min-width: 76px !important;
+  border-color: #2b789c;
+  background: #123247;
+  color: #e9f6fb;
+  font-weight: 750;
+}
+
+.source-load-button:hover:not(:disabled) {
+  border-color: #4397c3;
+  background: #17435f;
+}
+
+.source-load-button[data-load-state="loading"] {
+  border-color: #3d87b0;
+  background: #174b6a;
+  color: #f2fbff;
+}
+
+.source-load-button[data-load-state="success"] {
+  border-color: #2f9a68;
+  background: #123f2d;
+  color: #e8fff4;
+}
+
+.source-load-button[data-load-state="issue"] {
+  border-color: #c28a2f;
+  background: #4b3412;
+  color: #fff4d8;
+}
+
+.source-load-button:disabled {
+  opacity: 1;
+}
+
 .settings-wrap { position: relative; }
 .settings-popover {
   position: absolute;

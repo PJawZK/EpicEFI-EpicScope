@@ -931,3 +931,19 @@
     gap: 3px;
   }
 }
+
+.channel-row--unavailable {
+  opacity: .78;
+}
+
+.channel-row--unavailable .channel-row-toggle {
+  cursor: default;
+}
+
+.channel-row--unavailable .channel-trace-state {
+  color: #6f8796;
+}
+
+.channel-row--unavailable .channel-unit {
+  color: #708695;
+}

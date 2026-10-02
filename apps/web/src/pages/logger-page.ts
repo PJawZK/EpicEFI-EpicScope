@@ -120,6 +120,7 @@ export interface LoggerPageController {
     recordCount: number,
     channelData: NumericChannelDataSource,
   ): void;
+  setChannelCatalog(channels: readonly ChannelDefinition[], sourceName: string): void;
   setImportError(message: string): void;
   setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
   refreshValidity(): void;
@@ -533,6 +534,8 @@ export function createLoggerPage(): LoggerPageController {
     lastHistoryMutationMs: 0,
   }];
   let channelDefinitions = new Map<string, ChannelDefinition>();
+  let catalogChannelDefinitions = new Map<string, ChannelDefinition>();
+  let catalogSourceName = '';
   let channelDataSource: NumericChannelDataSource | undefined;
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
@@ -1595,6 +1598,22 @@ export function createLoggerPage(): LoggerPageController {
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceRow, timelineWrap);
 
+  const setChannelCatalog = (
+    channels: readonly ChannelDefinition[],
+    sourceName: string,
+  ): void => {
+    catalogChannelDefinitions = new Map(channels.map((channel) => [channel.id, channel]));
+    catalogSourceName = sourceName;
+
+    // Until MLG binding lands, the catalog is directly browsable whenever no
+    // recorded data source is active. Known channels stay visible with no
+    // fabricated samples and cannot be activated into a graph yet.
+    if (!channelDataSource) {
+      channelDefinitions = new Map(catalogChannelDefinitions);
+      inspector.setCatalogChannels(channels, sourceName);
+    }
+  };
+
   const setLog = (
     summary: ImportedLogSummary,
     recordCount: number,
@@ -1672,7 +1691,12 @@ export function createLoggerPage(): LoggerPageController {
     channelDefinitions.clear();
     channelDataSource = undefined;
     logMarkers = [];
-    inspector.setError(message);
+    if (catalogChannelDefinitions.size > 0) {
+      channelDefinitions = new Map(catalogChannelDefinitions);
+      inspector.setCatalogChannels([...catalogChannelDefinitions.values()], catalogSourceName || 'INI');
+    } else {
+      inspector.setError(message);
+    }
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);
     paneRuntimes.forEach((runtime) => runtime.graph.clear());
@@ -1801,6 +1825,7 @@ export function createLoggerPage(): LoggerPageController {
 
   refreshWorkspaceSelector();
   graphSelector.setEnabled(false);
+  renderGraphLayout();
   refreshViewHistoryState();
 
   return {
@@ -1810,6 +1835,7 @@ export function createLoggerPage(): LoggerPageController {
     keyboardShortcutsControl: shortcutWrap,
     diagnosticsControl: diagnostics.element,
     setLog,
+    setChannelCatalog,
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
     refreshValidity: () => {

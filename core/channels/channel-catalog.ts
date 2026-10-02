@@ -94,11 +94,9 @@ export function buildIniChannelCatalog(parsed: IniChannelParseResult): ChannelCa
     });
   }
 
-  entries.sort((left, right) =>
-    left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' })
-      || left.logicalKey.localeCompare(right.logicalKey)
-  );
-
+  // Preserve deterministic source order here. Presentation layers already
+  // perform their own sorting/filtering, so locale-aware sorting in core is
+  // redundant and unnecessarily expensive for large INI catalogs.
   return {
     entries,
     byLogicalKey: new Map(entries.map((entry) => [entry.logicalKey, entry] as const)),
