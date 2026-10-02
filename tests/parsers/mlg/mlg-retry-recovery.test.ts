@@ -84,3 +84,53 @@ describe('MLG retry/recovery diagnostics', () => {
     expect(summary?.message).toContain('1 invalid record not recovered');
   });
 });
+
+
+describe('MLG CRC-valid counter retry patterns', () => {
+  it('classifies jump then immediate repeat as informational without changing validity', async () => {
+    const bytes = new Uint8Array(24 + 24);
+    bytes.set(makeRecord(1, 300, 1), 24);
+    bytes.set(makeRecord(3, 301, 2), 30);
+    bytes.set(makeRecord(3, 302, 3), 36);
+    bytes.set(makeRecord(4, 303, 4), 42);
+
+    const result = await scanMlgRecords(new MemoryByteSource(bytes), header);
+
+    expect(result.records.crcValid).toEqual(new Uint8Array([1, 1, 1, 1]));
+    expect(
+      result.diagnostics.filter((diagnostic) => diagnostic.code === 'mlg-counter-discontinuity'),
+    ).toHaveLength(0);
+
+    const patterns = result.diagnostics.filter(
+      (diagnostic) => diagnostic.code === 'mlg-counter-retry-pattern',
+    );
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0]?.severity).toBe('info');
+    expect(patterns[0]?.message).toContain('skipped 2');
+    expect(patterns[0]?.message).toContain('repeated 3');
+
+    const summary = result.diagnostics.find(
+      (diagnostic) => diagnostic.code === 'mlg-counter-pattern-summary',
+    );
+    expect(summary?.severity).toBe('info');
+    expect(summary?.message).toContain('1 CRC-valid jump-and-repeat pattern');
+  });
+
+  it('keeps an unpaired counter jump as a warning', async () => {
+    const bytes = new Uint8Array(24 + 18);
+    bytes.set(makeRecord(10, 400, 1), 24);
+    bytes.set(makeRecord(12, 401, 2), 30);
+    bytes.set(makeRecord(13, 402, 3), 36);
+
+    const result = await scanMlgRecords(new MemoryByteSource(bytes), header);
+
+    const warnings = result.diagnostics.filter(
+      (diagnostic) => diagnostic.code === 'mlg-counter-discontinuity',
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.severity).toBe('warning');
+    expect(
+      result.diagnostics.filter((diagnostic) => diagnostic.code === 'mlg-counter-retry-pattern'),
+    ).toHaveLength(0);
+  });
+});
