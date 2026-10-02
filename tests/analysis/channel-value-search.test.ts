@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { NumericChannelDataSource } from '../../core/log-model/log-types';
-import { searchChannelValues } from '../../core/analysis/channel-value-search';
+import {
+  findSteppedSearchResultIndex,
+  searchChannelValues,
+} from '../../core/analysis/channel-value-search';
 
 function source(values: Record<string, readonly number[]>, invalid: readonly number[] = []): NumericChannelDataSource {
   const sampleCount = Object.values(values)[0]?.length ?? 0;
@@ -62,5 +65,26 @@ describe('searchChannelValues', () => {
 
     expect(results.map((result) => result.value)).toEqual([4000, 3000]);
     expect(results.map((result) => result.constraintValue)).toEqual([95, 85]);
+  });
+  it('jumps to the next ranked result that differs by the configured value step', () => {
+    const results = [
+      { rank: 1, sampleIndex: 0, timeMs: 0, value: 5000 },
+      { rank: 2, sampleIndex: 1, timeMs: 10, value: 4998 },
+      { rank: 3, sampleIndex: 2, timeMs: 20, value: 4975 },
+      { rank: 4, sampleIndex: 3, timeMs: 30, value: 4890 },
+    ];
+
+    expect(findSteppedSearchResultIndex(results, 0, 1, 100)).toBe(3);
+    expect(findSteppedSearchResultIndex(results, 3, -1, 100)).toBe(0);
+    expect(findSteppedSearchResultIndex(results, 0, 1, 0)).toBe(1);
+  });
+
+  it('returns undefined when no later result meets the configured value step', () => {
+    const results = [
+      { rank: 1, sampleIndex: 0, timeMs: 0, value: 100 },
+      { rank: 2, sampleIndex: 1, timeMs: 10, value: 99.5 },
+    ];
+
+    expect(findSteppedSearchResultIndex(results, 0, 1, 10)).toBeUndefined();
   });
 });
