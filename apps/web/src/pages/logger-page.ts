@@ -23,6 +23,9 @@ import { createChannelValueSearchPanel } from '../panels/channel-value-search-pa
 
 export interface LoggerPageController {
   readonly element: HTMLElement;
+  readonly graphSelector: HTMLElement;
+  readonly headerTools: HTMLElement;
+  readonly diagnosticsControl: HTMLElement;
   setLog(
     summary: ImportedLogSummary,
     recordCount: number,
@@ -167,37 +170,69 @@ function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
   return { element: root, setDiagnostics, clear };
 }
 
+function createGraphSelector(): HTMLElement {
+  const root = document.createElement('div');
+  root.className = 'graph-selector-wrap';
+  root.innerHTML = `
+    <button type="button" class="graph-selector-button" aria-haspopup="menu" aria-expanded="false">
+      <span>General</span>
+      <span class="graph-selector-chevron" aria-hidden="true"></span>
+    </button>
+    <div class="graph-selector-menu" role="menu" hidden>
+      <button type="button" class="graph-selector-choice graph-selector-choice--active" role="menuitem" aria-current="page">
+        <span>General</span>
+        <small>Current graph workspace</small>
+      </button>
+      <button type="button" class="graph-selector-choice" role="menuitem" disabled>
+        <span>＋ New graph</span>
+        <small>Available after workspace/session state</small>
+      </button>
+    </div>
+  `;
+
+  const button = root.querySelector<HTMLButtonElement>('.graph-selector-button');
+  const menu = root.querySelector<HTMLElement>('.graph-selector-menu');
+  if (!button || !menu) throw new Error('Graph selector structure is incomplete.');
+
+  const close = (): void => {
+    menu.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  };
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = menu.hidden;
+    menu.hidden = !nextOpen;
+    button.setAttribute('aria-expanded', String(nextOpen));
+  });
+  menu.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', close);
+  return root;
+}
+
 export function createLoggerPage(): LoggerPageController {
   const inspector = createInspectorPanel();
   const timeline = createTimelineShell();
   const graph = createGraphViewport();
   const diagnostics = createDiagnosticsIndicator();
   const valueSearch = createChannelValueSearchPanel();
+  const graphSelector = createGraphSelector();
   let viewport: TimelineViewport | undefined;
   let previousCursorTimeMs = 0;
   const activeChannelIds = new Set<string>();
   let channelDefinitions = new Map<string, ChannelDefinition>();
 
+  const headerTools = document.createElement('div');
+  headerTools.className = 'logger-header-tools';
+  const compareButton = document.createElement('button');
+  compareButton.type = 'button';
+  compareButton.disabled = true;
+  compareButton.textContent = 'Compare Run B';
+  headerTools.append(valueSearch.element, compareButton);
+
   const page = document.createElement('section');
   page.className = 'logger-page';
   page.setAttribute('aria-label', 'Logger and analyzer workspace');
-
-  const workspaceBar = document.createElement('div');
-  workspaceBar.className = 'workspace-bar';
-  workspaceBar.innerHTML = `
-    <div class="workspace-tabs" role="tablist" aria-label="Graph workspaces">
-      <button type="button" class="workspace-tab workspace-tab--active" role="tab" aria-selected="true">General</button>
-      <button type="button" class="workspace-add" disabled title="Workspace creation follows after session/state contracts">＋</button>
-    </div>
-    <div class="workspace-context">
-      <span class="status-chip">Recorded analysis</span>
-      <button type="button" disabled>Compare Run B</button>
-    </div>
-  `;
-  const workspaceContext = workspaceBar.querySelector<HTMLElement>('.workspace-context');
-  if (!workspaceContext) throw new Error('Logger workspace bar structure is incomplete.');
-  workspaceContext.prepend(valueSearch.element);
-  workspaceContext.prepend(diagnostics.element);
 
   const workspaceRow = document.createElement('div');
   workspaceRow.className = 'workspace-row';
@@ -206,17 +241,6 @@ export function createLoggerPage(): LoggerPageController {
   graphHost.className = 'graph-workspace';
   const graphWindow = document.createElement('article');
   graphWindow.className = 'graph-window graph-window--active';
-  graphWindow.innerHTML = `
-    <header class="graph-window-header">
-      <div>
-        <span class="eyebrow">Graph workspace</span>
-        <strong>General</strong>
-      </div>
-      <span class="graph-window-state">No source</span>
-    </header>
-  `;
-  const graphState = graphWindow.querySelector<HTMLElement>('.graph-window-state');
-  if (!graphState) throw new Error('Logger graph shell structure is incomplete.');
   graphWindow.append(graph.element);
   graphHost.append(graphWindow);
 
@@ -329,21 +353,16 @@ export function createLoggerPage(): LoggerPageController {
   graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
   graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
-  const jumpToSearchTime = (timeMs: number): void => {
-    // Search navigation is a coordinated timeline jump: the graph viewport,
-    // overview focus window, overview cursor and lower progress marker must all
-    // refer to the same target time.
+  valueSearch.onJump((timeMs) => {
     if (viewport) {
       const centered = centerViewportOn(viewport, timeMs);
       if (!viewportEquals(viewport, centered)) syncViewport(centered);
     }
     setCursorWithoutFollow(timeMs);
-  };
-
-  valueSearch.onJump(jumpToSearchTime);
+  });
 
   timelineWrap.append(timeline.element, timelineToggle);
-  page.append(workspaceBar, workspaceRow, timelineWrap);
+  page.append(workspaceRow, timelineWrap);
 
   const setLog = (
     summary: ImportedLogSummary,
@@ -365,7 +384,6 @@ export function createLoggerPage(): LoggerPageController {
       previousCursorTimeMs = 0;
       syncViewport(undefined);
     }
-    graphState.textContent = `MLG v${formatVersion} · ${recordCount.toLocaleString()} records`;
     diagnostics.setDiagnostics(summary.diagnostics);
   };
 
@@ -377,7 +395,6 @@ export function createLoggerPage(): LoggerPageController {
     syncViewport(undefined);
     graph.clear();
     valueSearch.clear();
-    graphState.textContent = 'Import failed';
     diagnostics.setDiagnostics([{
       code: 'import-failed',
       severity: 'error',
@@ -386,5 +403,12 @@ export function createLoggerPage(): LoggerPageController {
     }]);
   };
 
-  return { element: page, setLog, setImportError };
+  return {
+    element: page,
+    graphSelector,
+    headerTools,
+    diagnosticsControl: diagnostics.element,
+    setLog,
+    setImportError,
+  };
 }
