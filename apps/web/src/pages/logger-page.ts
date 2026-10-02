@@ -460,20 +460,20 @@ function createGraphSelector(): GraphSelectorController {
 export function createLoggerPage(): LoggerPageController {
   const inspector = createInspectorPanel();
   const timeline = createTimelineShell();
-  const graph = createGraphViewport();
   const diagnostics = createDiagnosticsIndicator();
   const valueSearch = createChannelValueSearchPanel();
   const graphSelector = createGraphSelector();
   let viewport: TimelineViewport | undefined;
   let previousCursorTimeMs = 0;
-  const activeChannelIds = new Set<string>();
   let workspaceCounter = 1;
   let workspaceGeneration = 0;
   let activeWorkspaceId = 'general';
   let workspaces: GraphWorkspaceState[] = [{
     id: 'general',
     name: 'General',
-    channelIds: [],
+    layout: 'single',
+    activePaneId: 'pane-1',
+    panes: createEmptyPaneStates(),
     viewport: undefined,
     cursorTimeMs: 0,
     viewHistory: [],
@@ -492,11 +492,23 @@ export function createLoggerPage(): LoggerPageController {
 
   const headerTools = document.createElement('div');
   headerTools.className = 'logger-header-tools';
+
+  const layoutSelect = document.createElement('select');
+  layoutSelect.className = 'graph-layout-select';
+  layoutSelect.title = 'Graph workspace layout';
+  layoutSelect.setAttribute('aria-label', 'Graph workspace layout');
+  layoutSelect.innerHTML = `
+    <option value="single">Single graph</option>
+    <option value="grid4">2 × 2 · 4 graphs</option>
+    <option value="grid5">2 × 3 · 5 graphs</option>
+    <option value="grid6">3 × 2 · 6 graphs</option>
+  `;
+
   const compareButton = document.createElement('button');
   compareButton.type = 'button';
   compareButton.disabled = true;
   compareButton.textContent = 'Compare Run B';
-  headerTools.append(valueSearch.element, compareButton);
+  headerTools.append(valueSearch.element, layoutSelect, compareButton);
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -506,11 +518,34 @@ export function createLoggerPage(): LoggerPageController {
   workspaceRow.className = 'workspace-row';
 
   const graphHost = document.createElement('main');
-  graphHost.className = 'graph-workspace';
-  const graphWindow = document.createElement('article');
-  graphWindow.className = 'graph-window graph-window--active';
-  graphWindow.append(graph.element);
-  graphHost.append(graphWindow);
+  graphHost.className = 'graph-workspace graph-workspace--single';
+
+  const paneRuntimes = GRAPH_PANE_IDS.map((id, index) => {
+    const graph = createGraphViewport();
+    const windowElement = document.createElement('article');
+    windowElement.className = 'graph-window';
+    windowElement.dataset.paneId = id;
+
+    const header = document.createElement('header');
+    header.className = 'graph-pane-header';
+    const title = document.createElement('strong');
+    title.textContent = `Graph ${index + 1}`;
+    const state = document.createElement('span');
+    state.className = 'graph-pane-state';
+    state.textContent = index === 0 ? 'ACTIVE' : '';
+    header.append(title, state);
+
+    windowElement.append(header, graph.element);
+    graphHost.append(windowElement);
+
+    return {
+      id,
+      graph,
+      windowElement,
+      stateElement: state,
+      activeChannelIds: new Set<string>(),
+    };
+  });
 
   const sensorToggle = document.createElement('button');
   sensorToggle.type = 'button';
