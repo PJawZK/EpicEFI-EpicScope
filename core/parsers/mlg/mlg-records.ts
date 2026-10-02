@@ -59,6 +59,7 @@ export interface MlgDiagnosticClassification {
   readonly diagnostics: readonly ParserDiagnostic[];
   readonly recoveredRetryCount: number;
   readonly unrecoveredInvalidCount: number;
+  readonly counterRetryPatternCount: number;
 }
 
 export function classifyMlgRetryDiagnostics(
@@ -71,6 +72,8 @@ export function classifyMlgRetryDiagnostics(
   const recoveredInvalidIndices = new Set<number>();
   const retryCounterOffsets = new Set<number>();
   const recoveredCrcOffsets = new Set<number>();
+  const counterPatternOffsets = new Set<number>();
+  const counterPatternDiagnostics: ParserDiagnostic[] = [];
   let invalidCount = 0;
 
   for (let index = 0; index < crcValid.length; index += 1) {
@@ -89,8 +92,45 @@ export function classifyMlgRetryDiagnostics(
     if (invalidOffset === undefined || retryOffset === undefined) continue;
 
     recoveredInvalidIndices.add(index);
+    // Both the invalid attempt and its valid same-counter retry can generate
+    // counter discontinuities. The CRC retry diagnostic is the more precise
+    // evidence, so suppress both redundant counter warnings.
+    retryCounterOffsets.add(invalidOffset + 1);
     retryCounterOffsets.add(retryOffset + 1);
     recoveredCrcOffsets.add(invalidOffset + blockLength - 1);
+  }
+
+  for (let index = 1; index + 1 < recordIndex.counters.length; index += 1) {
+    if (crcValid[index] !== 1 || crcValid[index + 1] !== 1) continue;
+
+    const previousCounter = recordIndex.counters[index - 1];
+    const counter = recordIndex.counters[index];
+    const repeatedCounter = recordIndex.counters[index + 1];
+    const offset = recordIndex.offsets[index];
+    const repeatedOffset = recordIndex.offsets[index + 1];
+    if (
+      previousCounter === undefined
+      || counter === undefined
+      || repeatedCounter === undefined
+      || offset === undefined
+      || repeatedOffset === undefined
+    ) continue;
+
+    const expected = (previousCounter + 1) % COUNTER_MODULUS;
+    const jumped = (previousCounter + 2) % COUNTER_MODULUS;
+    if (counter !== jumped || repeatedCounter !== counter) continue;
+
+    const firstCounterOffset = offset + 1;
+    const repeatedCounterOffset = repeatedOffset + 1;
+    counterPatternOffsets.add(firstCounterOffset);
+    counterPatternOffsets.add(repeatedCounterOffset);
+    counterPatternDiagnostics.push({
+      code: 'mlg-counter-retry-pattern',
+      severity: 'info',
+      message: `MLG counter skipped ${expected} and then repeated ${counter} on the next CRC-valid record. Classified as a retry-like counter pattern; both source records remain valid and unchanged.`,
+      recoverable: true,
+      offset: firstCounterOffset,
+    });
   }
 
   const classified: ParserDiagnostic[] = [];
@@ -98,7 +138,10 @@ export function classifyMlgRetryDiagnostics(
     if (
       diagnostic.code === 'mlg-counter-discontinuity'
       && diagnostic.offset !== undefined
-      && retryCounterOffsets.has(diagnostic.offset)
+      && (
+        retryCounterOffsets.has(diagnostic.offset)
+        || counterPatternOffsets.has(diagnostic.offset)
+      )
     ) {
       continue;
     }
@@ -120,8 +163,20 @@ export function classifyMlgRetryDiagnostics(
     classified.push(diagnostic);
   }
 
+  classified.push(...counterPatternDiagnostics);
+
   const recoveredRetryCount = recoveredInvalidIndices.size;
   const unrecoveredInvalidCount = Math.max(0, invalidCount - recoveredRetryCount);
+  const counterRetryPatternCount = counterPatternDiagnostics.length;
+  if (counterRetryPatternCount > 0) {
+    classified.unshift({
+      code: 'mlg-counter-pattern-summary',
+      severity: 'info',
+      message: `MLG counter classification: ${counterRetryPatternCount.toLocaleString()} CRC-valid jump-and-repeat pattern${counterRetryPatternCount === 1 ? '' : 's'} classified as retry-like counter behavior. Source records remain valid and unchanged.`,
+      recoverable: true,
+    });
+  }
+
   if (invalidCount > 0) {
     classified.unshift({
       code: 'mlg-retry-recovery-summary',
@@ -135,6 +190,7 @@ export function classifyMlgRetryDiagnostics(
     diagnostics: classified,
     recoveredRetryCount,
     unrecoveredInvalidCount,
+    counterRetryPatternCount,
   };
 }
 
