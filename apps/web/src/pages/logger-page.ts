@@ -102,6 +102,55 @@ function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
   popover.addEventListener('click', (event) => event.stopPropagation());
   document.addEventListener('click', close);
 
+  const buildDiagnosticsReport = (
+    diagnostics: readonly ParserDiagnostic[],
+    grouped: ReadonlyMap<string, { count: number; severity: ParserDiagnosticSeverity; message: string }>,
+  ): string => {
+    const lines = [
+      'EpicScope parser diagnostics',
+      '',
+      `Total: ${diagnostics.length.toLocaleString()}`,
+      '',
+      '[Groups]',
+    ];
+
+    for (const [code, item] of grouped) {
+      lines.push(
+        `${item.severity.toUpperCase()} | ${code} | ${item.count.toLocaleString()}`,
+      );
+    }
+
+    lines.push('', '[Diagnostics]');
+    diagnostics.forEach((diagnostic, index) => {
+      const offset = diagnostic.offset === undefined
+        ? 'byte —'
+        : `byte ${diagnostic.offset.toLocaleString()}`;
+      lines.push(
+        `${index + 1}. ${diagnostic.severity.toUpperCase()} | ${diagnostic.code} | ${offset} | ${diagnostic.message}`,
+      );
+    });
+
+    return lines.join('\n');
+  };
+
+  const copyText = async (value: string): Promise<void> => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = value;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.append(textArea);
+    textArea.focus();
+    textArea.select();
+    const copied = document.execCommand('copy');
+    textArea.remove();
+    if (!copied) throw new Error('Clipboard copy was not available.');
+  };
+
   const setDiagnostics = (diagnostics: readonly ParserDiagnostic[]): void => {
     const grouped = new Map<string, { count: number; severity: ParserDiagnosticSeverity; message: string }>();
     let worst: ParserDiagnosticSeverity | 'good' = 'good';
@@ -148,10 +197,24 @@ function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
 
     const heading = document.createElement('div');
     heading.className = 'parser-popover-heading';
-    heading.innerHTML = `
-      <strong>Parser diagnostics</strong>
-      <span>${diagnostics.length.toLocaleString()} total</span>
-    `;
+
+    const headingTitle = document.createElement('strong');
+    headingTitle.textContent = 'Parser diagnostics';
+
+    const headingActions = document.createElement('div');
+    headingActions.className = 'parser-popover-heading-actions';
+
+    const headingCount = document.createElement('span');
+    headingCount.textContent = `${diagnostics.length.toLocaleString()} total`;
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'parser-copy-report';
+    copyButton.textContent = 'Copy report';
+    copyButton.title = 'Copy complete parser diagnostics report';
+
+    headingActions.append(headingCount, copyButton);
+    heading.append(headingTitle, headingActions);
 
     const groups = document.createElement('div');
     groups.className = 'parser-popover-groups';
@@ -183,6 +246,25 @@ function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
       list.append(item);
     }
     occurrences.append(list);
+
+    copyButton.addEventListener('click', () => {
+      const report = buildDiagnosticsReport(diagnostics, grouped);
+      const previousLabel = copyButton.textContent ?? 'Copy report';
+      copyButton.disabled = true;
+      void copyText(report)
+        .then(() => {
+          copyButton.textContent = 'Copied';
+        })
+        .catch(() => {
+          copyButton.textContent = 'Copy failed';
+        })
+        .finally(() => {
+          window.setTimeout(() => {
+            copyButton.textContent = previousLabel;
+            copyButton.disabled = false;
+          }, 1200);
+        });
+    });
 
     popover.replaceChildren(heading, groups, occurrences);
   };
