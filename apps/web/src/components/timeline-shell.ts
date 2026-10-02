@@ -766,8 +766,8 @@ export function createTimelineShell(): TimelineShellController {
   for (const button of historyButtons) {
     button.addEventListener('click', () => {
       const action = button.dataset.viewHistory;
-      if (action === 'back') viewportListener?.({ type: 'history-back' } as TimelineViewportIntent);
-      if (action === 'forward') viewportListener?.({ type: 'history-forward' } as TimelineViewportIntent);
+      if (action === 'back') viewportListener?.({ type: 'history-back' });
+      if (action === 'forward') viewportListener?.({ type: 'history-forward' });
     });
   }
 
