@@ -98,14 +98,13 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       throw new RangeError(`Missing field definition for channel id: ${channelId}`);
     }
     const fieldOffset = this.fieldOffsets[fieldIndex] ?? 0;
-    const timeMs = this.recordIndex.timeMs.slice(
-      startSampleIndex,
-      startSampleIndex + sampleCount,
-    );
-    const validity = this.recordIndex.crcValid.slice(
-      startSampleIndex,
-      startSampleIndex + sampleCount,
-    );
+    const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
+    const timeMs = isFullRange
+      ? this.recordIndex.timeMs
+      : this.recordIndex.timeMs.slice(startSampleIndex, startSampleIndex + sampleCount);
+    const validity = isFullRange
+      ? this.recordIndex.crcValid
+      : this.recordIndex.crcValid.slice(startSampleIndex, startSampleIndex + sampleCount);
     const values = new Float64Array(sampleCount);
 
     let outputIndex = 0;
