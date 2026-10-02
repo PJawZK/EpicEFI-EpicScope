@@ -55,6 +55,89 @@ export interface MlgCrcValidationResult {
   readonly performance: MlgCrcValidationPerformance;
 }
 
+export interface MlgDiagnosticClassification {
+  readonly diagnostics: readonly ParserDiagnostic[];
+  readonly recoveredRetryCount: number;
+  readonly unrecoveredInvalidCount: number;
+}
+
+export function classifyMlgRetryDiagnostics(
+  recordIndex: MlgRecordIndex,
+  crcValid: Uint8Array,
+  diagnostics: readonly ParserDiagnostic[],
+  recordLength: number,
+): MlgDiagnosticClassification {
+  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  const recoveredInvalidIndices = new Set<number>();
+  const retryCounterOffsets = new Set<number>();
+  const recoveredCrcOffsets = new Set<number>();
+  let invalidCount = 0;
+
+  for (let index = 0; index < crcValid.length; index += 1) {
+    if (crcValid[index] !== 0) continue;
+    invalidCount += 1;
+
+    const nextIndex = index + 1;
+    if (nextIndex >= crcValid.length || crcValid[nextIndex] !== 1) continue;
+
+    const counter = recordIndex.counters[index];
+    const nextCounter = recordIndex.counters[nextIndex];
+    if (counter === undefined || nextCounter === undefined || counter !== nextCounter) continue;
+
+    const invalidOffset = recordIndex.offsets[index];
+    const retryOffset = recordIndex.offsets[nextIndex];
+    if (invalidOffset === undefined || retryOffset === undefined) continue;
+
+    recoveredInvalidIndices.add(index);
+    retryCounterOffsets.add(retryOffset + 1);
+    recoveredCrcOffsets.add(invalidOffset + blockLength - 1);
+  }
+
+  const classified: ParserDiagnostic[] = [];
+  for (const diagnostic of diagnostics) {
+    if (
+      diagnostic.code === 'mlg-counter-discontinuity'
+      && diagnostic.offset !== undefined
+      && retryCounterOffsets.has(diagnostic.offset)
+    ) {
+      continue;
+    }
+
+    if (
+      diagnostic.code === 'mlg-crc-mismatch'
+      && diagnostic.offset !== undefined
+      && recoveredCrcOffsets.has(diagnostic.offset)
+    ) {
+      classified.push({
+        ...diagnostic,
+        code: 'mlg-crc-retry-recovered',
+        severity: 'info',
+        message: `${diagnostic.message} A following valid record repeats the same block counter, indicating a recovered retry; the invalid attempt remains excluded from trusted data.`,
+      });
+      continue;
+    }
+
+    classified.push(diagnostic);
+  }
+
+  const recoveredRetryCount = recoveredInvalidIndices.size;
+  const unrecoveredInvalidCount = Math.max(0, invalidCount - recoveredRetryCount);
+  if (invalidCount > 0) {
+    classified.unshift({
+      code: 'mlg-retry-recovery-summary',
+      severity: unrecoveredInvalidCount > 0 ? 'warning' : 'info',
+      message: `MLG CRC classification: ${recoveredRetryCount.toLocaleString()} invalid record${recoveredRetryCount === 1 ? '' : 's'} followed by a valid same-counter retry; ${unrecoveredInvalidCount.toLocaleString()} invalid record${unrecoveredInvalidCount === 1 ? '' : 's'} not recovered by an immediate same-counter retry. Invalid attempts remain retained as source evidence and excluded from trusted samples.`,
+      recoverable: true,
+    });
+  }
+
+  return {
+    diagnostics: classified,
+    recoveredRetryCount,
+    unrecoveredInvalidCount,
+  };
+}
+
 class GrowingFloat64Buffer {
   private values = new Float64Array(4096);
   private lengthValue = 0;
@@ -587,7 +670,20 @@ export async function scanMlgRecords(
 ): Promise<MlgRecordScanResult> {
   const validateCrc = options.validateCrc ?? true;
   const fixed = await tryScanFixedRecords(source, header, validateCrc);
-  return fixed ?? scanMlgRecordsGeneral(source, header, validateCrc);
+  const result = fixed ?? await scanMlgRecordsGeneral(source, header, validateCrc);
+
+  if (!validateCrc) return result;
+
+  const classified = classifyMlgRetryDiagnostics(
+    result.records,
+    result.records.crcValid,
+    result.diagnostics,
+    header.recordLength,
+  );
+  return {
+    ...result,
+    diagnostics: classified.diagnostics,
+  };
 }
 
 
