@@ -1,5 +1,6 @@
 export interface LoadPerformanceRun {
   readonly fileName: string;
+  readonly importMode: 'worker-staged' | 'main-thread-full';
   readonly scanMode: 'fixed' | 'general';
   readonly fileSizeBytes: number;
   readonly recordCount: number;
@@ -25,6 +26,12 @@ export interface LoadPerformanceRun {
   readonly cacheHitBytes: number;
   readonly cacheBytes: number;
   readonly cachePageCount: number;
+  readonly fullyValidatedMs?: number;
+  readonly validationMs?: number;
+  readonly validationReadMs?: number;
+  readonly validationChecksumCpuMs?: number;
+  readonly validationDiagnosticCpuMs?: number;
+  readonly validationChecksumBytes?: number;
 }
 
 export interface ChannelPerformanceRun {
@@ -36,9 +43,20 @@ export interface ChannelPerformanceRun {
   readonly sampleCount: number;
 }
 
+export interface ValidationPerformanceRun {
+  readonly fileName: string;
+  readonly fullyValidatedMs: number;
+  readonly validationMs: number;
+  readonly validationReadMs: number;
+  readonly validationChecksumCpuMs: number;
+  readonly validationDiagnosticCpuMs: number;
+  readonly validationChecksumBytes: number;
+}
+
 export interface PerformanceDiagnosticsController {
   readonly element: HTMLElement;
   recordLoad(run: LoadPerformanceRun): void;
+  recordValidation(run: ValidationPerformanceRun): void;
   recordChannel(run: ChannelPerformanceRun): void;
   clear(): void;
 }
@@ -131,6 +149,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `size=${latestLoad.fileSizeBytes} bytes`,
         `records=${latestLoad.recordCount}`,
         `channels=${latestLoad.channelCount}`,
+        `importMode=${latestLoad.importMode}`,
         `scanMode=${latestLoad.scanMode}`,
         `total=${latestLoad.importTotalMs.toFixed(2)} ms`,
         `header=${latestLoad.headerMs.toFixed(2)} ms`,
@@ -154,6 +173,16 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `cacheBytes=${latestLoad.cacheBytes}`,
         `cachePages=${latestLoad.cachePageCount}`,
       );
+      if (latestLoad.fullyValidatedMs !== undefined) {
+        lines.push(
+          `fullyValidated=${latestLoad.fullyValidatedMs.toFixed(2)} ms`,
+          `validation=${latestLoad.validationMs?.toFixed(2) ?? '0.00'} ms`,
+          `validationRead=${latestLoad.validationReadMs?.toFixed(2) ?? '0.00'} ms`,
+          `validationChecksumCpu=${latestLoad.validationChecksumCpuMs?.toFixed(2) ?? '0.00'} ms`,
+          `validationDiagnosticCpu=${latestLoad.validationDiagnosticCpuMs?.toFixed(2) ?? '0.00'} ms`,
+          `validationChecksumBytes=${latestLoad.validationChecksumBytes ?? 0}`,
+        );
+      }
     }
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
@@ -176,9 +205,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     loadHost.replaceChildren();
     const latestLoad = loadRuns[loadRuns.length - 1];
     if (latestLoad) {
-      const rows: readonly [string, string][] = [
+      const rows: [string, string][] = [
         ['File', latestLoad.fileName],
         ['Size', bytes(latestLoad.fileSizeBytes)],
+        ['Import mode', latestLoad.importMode],
         ['Record scan mode', latestLoad.scanMode],
         ['Total import', ms(latestLoad.importTotalMs)],
         ['Header total', ms(latestLoad.headerMs)],
@@ -203,6 +233,16 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Records', latestLoad.recordCount.toLocaleString()],
         ['Channels', latestLoad.channelCount.toLocaleString()],
       ];
+      if (latestLoad.fullyValidatedMs !== undefined) {
+        rows.push(
+          ['Fully validated', ms(latestLoad.fullyValidatedMs)],
+          ['CRC validation', ms(latestLoad.validationMs ?? 0)],
+          ['Validation source read', ms(latestLoad.validationReadMs ?? 0)],
+          ['Validation checksum CPU', ms(latestLoad.validationChecksumCpuMs ?? 0)],
+          ['Validation diagnostic CPU', ms(latestLoad.validationDiagnosticCpuMs ?? 0)],
+          ['Validation checksum bytes', bytes(latestLoad.validationChecksumBytes ?? 0)],
+        );
+      }
       for (const [label, value] of rows) {
         const row = document.createElement('div');
         row.className = 'performance-row';
@@ -255,6 +295,23 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     recordLoad: (run) => {
       loadRuns.push(run);
       if (loadRuns.length > 20) loadRuns.shift();
+      render();
+    },
+    recordValidation: (run) => {
+      for (let index = loadRuns.length - 1; index >= 0; index -= 1) {
+        const current = loadRuns[index];
+        if (!current || current.fileName !== run.fileName) continue;
+        loadRuns[index] = {
+          ...current,
+          fullyValidatedMs: run.fullyValidatedMs,
+          validationMs: run.validationMs,
+          validationReadMs: run.validationReadMs,
+          validationChecksumCpuMs: run.validationChecksumCpuMs,
+          validationDiagnosticCpuMs: run.validationDiagnosticCpuMs,
+          validationChecksumBytes: run.validationChecksumBytes,
+        };
+        break;
+      }
       render();
     },
     recordChannel: (run) => {

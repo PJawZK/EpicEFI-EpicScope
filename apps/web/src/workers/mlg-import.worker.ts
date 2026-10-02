@@ -1,0 +1,124 @@
+import type { LogTimeRange } from '../../../../core/log-model/log-types';
+import { parseMlgHeader } from '../../../../core/parsers/mlg/mlg-header';
+import {
+  scanMlgRecords,
+  validateMlgRecordCrc,
+} from '../../../../core/parsers/mlg/mlg-records';
+import { BlobByteSource } from '../adapters/blob-byte-source';
+import type {
+  MlgWorkerImportRequest,
+  MlgWorkerResponse,
+} from './mlg-worker-protocol';
+
+interface WorkerScope {
+  onmessage: ((event: MessageEvent<MlgWorkerImportRequest>) => void) | null;
+  postMessage(message: MlgWorkerResponse): void;
+}
+
+const scope = globalThis as unknown as WorkerScope;
+const now = (): number => globalThis.performance?.now() ?? Date.now();
+
+function timeRange(timeMs: Float64Array): LogTimeRange | undefined {
+  if (timeMs.length === 0) return undefined;
+  const startMs = timeMs[0] ?? 0;
+  const endMs = timeMs[timeMs.length - 1] ?? startMs;
+  return {
+    startMs,
+    endMs,
+    durationMs: Math.max(0, endMs - startMs),
+  };
+}
+
+scope.onmessage = (event): void => {
+  if (event.data.type !== 'import') return;
+
+  void (async () => {
+    const started = now();
+    const source = new BlobByteSource(event.data.file);
+
+    try {
+      const headerPhysicalStart = source.performanceSnapshot().physicalReadMs;
+      const headerStart = now();
+      const headerResult = await parseMlgHeader(source);
+      const headerMs = now() - headerStart;
+      const headerReadMs = Math.max(
+        0,
+        source.performanceSnapshot().physicalReadMs - headerPhysicalStart,
+      );
+      const headerCpuMs = Math.max(0, headerMs - headerReadMs);
+
+      const scanStart = now();
+      const scanResult = await scanMlgRecords(
+        source,
+        headerResult.header,
+        { validateCrc: false },
+      );
+      const recordScanMs = now() - scanStart;
+
+      const finalizeStart = now();
+      const range = timeRange(scanResult.records.timeMs);
+      const finalizeMs = now() - finalizeStart;
+
+      scope.postMessage({
+        type: 'indexed',
+        payload: {
+          summary: {
+            source: event.data.sourceIdentity,
+            channels: headerResult.channels,
+            diagnostics: scanResult.diagnostics,
+            markers: scanResult.markers,
+            ...(range ? { timeRange: range } : {}),
+          },
+          header: headerResult.header,
+          fields: headerResult.fields,
+          recordIndex: scanResult.records,
+          sourceStats: source.stats(),
+          importTotalMs: now() - started,
+          performance: {
+            scanMode: scanResult.performance.scanMode,
+            headerMs,
+            headerReadMs,
+            headerCpuMs,
+            recordScanMs,
+            recordReadMs: scanResult.performance.sourceReadMs,
+            recordCpuMs: Math.max(0, recordScanMs - scanResult.performance.sourceReadMs),
+            checksumBytes: 0,
+            checksumCpuMs: 0,
+            checksumBenchmarkMs: 0,
+            diagnosticCpuMs: scanResult.performance.diagnosticCpuMs,
+            indexCpuMs: scanResult.performance.indexCpuMs,
+            finalizeMs,
+            totalMs: now() - started,
+          },
+        },
+      });
+
+      const validation = await validateMlgRecordCrc(
+        source,
+        headerResult.header,
+        scanResult.records,
+      );
+
+      scope.postMessage({
+        type: 'validated',
+        payload: {
+          crcValid: validation.crcValid,
+          diagnostics: validation.diagnostics,
+          performance: validation.performance,
+          sourceStats: source.stats(),
+          completedMs: now() - started,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown worker import error.';
+      const code = error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : undefined;
+      scope.postMessage({
+        type: 'error',
+        message,
+        ...(code ? { code } : {}),
+      });
+    }
+  })();
+};

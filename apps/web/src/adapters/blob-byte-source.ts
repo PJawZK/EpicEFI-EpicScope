@@ -137,6 +137,12 @@ export class BlobByteSource implements RandomAccessByteSource {
     return output;
   }
 
+  public async warmCache(): Promise<void> {
+    if (this.size <= CACHE_LIMIT_BYTES && this.size > 0) {
+      await this.loadWholeBuffer();
+    }
+  }
+
   public performanceSnapshot(): { physicalReadMs: number } {
     return { physicalReadMs: this.physicalReadMsValue };
   }
