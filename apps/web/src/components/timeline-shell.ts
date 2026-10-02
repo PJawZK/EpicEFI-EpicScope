@@ -37,6 +37,11 @@ export interface TimelineShellController {
   setViewport(viewport: TimelineViewport | undefined): void;
   setCursorTime(timeMs: number): void;
   getCursorTime(): number;
+  togglePlayback(): void;
+  stepCursor(direction: -1 | 1): void;
+  addUserMarker(): void;
+  setAnalysisBoundary(boundary: 'a' | 'b'): void;
+  navigateMarker(direction: 'previous' | 'next'): void;
   onCursorChange(listener: (timeMs: number) => void): void;
   onViewportIntent(listener: (intent: TimelineViewportIntent) => void): void;
   onAnnotationChange(listener: (state: TimelineAnnotationState) => void): void;
@@ -633,14 +638,19 @@ export function createTimelineShell(): TimelineShellController {
     }
   });
 
+  const stepCursor = (direction: -1 | 1): void => {
+    if (fullDuration() <= 0) return;
+    const step = Math.max(1, visibleSpan() / 100);
+    updateCursor(cursorTimeMs + direction * step);
+  };
+
   for (const button of transportButtons) {
     button.addEventListener('click', () => {
-      const step = Math.max(1, visibleSpan() / 100);
       switch (button.dataset.action) {
         case 'start': stopPlayback(); updateCursor(fullStartMs); break;
-        case 'back': updateCursor(cursorTimeMs - step); break;
+        case 'back': stepCursor(-1); break;
         case 'play': togglePlayback(); break;
-        case 'forward': updateCursor(cursorTimeMs + step); break;
+        case 'forward': stepCursor(1); break;
         case 'end': stopPlayback(); updateCursor(fullEndMs); break;
       }
     });
@@ -667,7 +677,7 @@ export function createTimelineShell(): TimelineShellController {
     if (marker) updateCursor(marker.timeMs);
   };
 
-  addMarkerButton.addEventListener('click', () => {
+  const addUserMarker = (): void => {
     if (fullDuration() <= 0) return;
     const defaultLabel = `Marker ${userMarkers.length + 1}`;
     const entered = window.prompt('Marker label', defaultLabel);
@@ -678,7 +688,9 @@ export function createTimelineShell(): TimelineShellController {
     renderOverview();
     renderCursor();
     emitWorkspaceMutation();
-  });
+  };
+
+  addMarkerButton.addEventListener('click', addUserMarker);
 
   editMarkerButton.addEventListener('click', () => {
     const index = currentUserMarkerIndex();
@@ -703,23 +715,18 @@ export function createTimelineShell(): TimelineShellController {
     emitWorkspaceMutation();
   });
 
-  setAButton.addEventListener('click', () => {
+  const setAnalysisBoundary = (boundary: 'a' | 'b'): void => {
     if (fullDuration() <= 0) return;
-    aTimeMs = cursorTimeMs;
+    if (boundary === 'a') aTimeMs = cursorTimeMs;
+    else bTimeMs = cursorTimeMs;
     renderRangeState();
     renderOverview();
     emitAnnotationState();
     emitWorkspaceMutation();
-  });
+  };
 
-  setBButton.addEventListener('click', () => {
-    if (fullDuration() <= 0) return;
-    bTimeMs = cursorTimeMs;
-    renderRangeState();
-    renderOverview();
-    emitAnnotationState();
-    emitWorkspaceMutation();
-  });
+  setAButton.addEventListener('click', () => setAnalysisBoundary('a'));
+  setBButton.addEventListener('click', () => setAnalysisBoundary('b'));
 
   saveRangeButton.addEventListener('click', () => {
     if (aTimeMs === undefined || bTimeMs === undefined || aTimeMs === bTimeMs) return;
@@ -859,6 +866,11 @@ export function createTimelineShell(): TimelineShellController {
     setViewport,
     setCursorTime: (timeMs) => updateCursor(timeMs, false),
     getCursorTime: () => cursorTimeMs,
+    togglePlayback,
+    stepCursor,
+    addUserMarker,
+    setAnalysisBoundary,
+    navigateMarker,
     onCursorChange: (listener) => { cursorListener = listener; },
     onViewportIntent: (listener) => { viewportListener = listener; },
     onAnnotationChange: (listener) => { annotationListener = listener; },
