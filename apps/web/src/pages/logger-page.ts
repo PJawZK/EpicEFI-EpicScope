@@ -32,6 +32,35 @@ import type {
 } from '../state/workspace-state';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
+const GRAPH_PANE_IDS = ['pane-1', 'pane-2', 'pane-3', 'pane-4', 'pane-5', 'pane-6'] as const;
+
+function paneCountForLayout(layout: GraphWorkspaceLayout): number {
+  if (layout === 'grid4') return 4;
+  if (layout === 'grid5') return 5;
+  if (layout === 'grid6') return 6;
+  return 1;
+}
+
+function createEmptyPaneStates(): GraphPaneState[] {
+  return GRAPH_PANE_IDS.map((id) => ({ id, channelIds: [] }));
+}
+
+function normalizePaneStates(
+  panes: readonly GraphPaneSnapshot[] | undefined,
+  legacyChannelIds: readonly string[],
+): GraphPaneState[] {
+  const normalized = createEmptyPaneStates();
+  if (panes && panes.length > 0) {
+    for (const pane of panes.slice(0, GRAPH_PANE_IDS.length)) {
+      const target = normalized.find((candidate) => candidate.id === pane.id);
+      if (target) target.channelIds = [...pane.channelIds];
+    }
+  } else {
+    normalized[0]!.channelIds = [...legacyChannelIds];
+  }
+  return normalized;
+}
+
 
 export interface LoggerChannelPerformance extends GraphChannelPerformance {
   readonly channelName: string;
