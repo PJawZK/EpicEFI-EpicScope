@@ -18,29 +18,32 @@ export function mountAppShell(root: HTMLElement): void {
   const app = document.createElement('div');
   app.className = 'epicscope-app';
 
+  const loggerPage = createLoggerPage();
+
   const header = document.createElement('header');
   header.className = 'app-header';
   header.innerHTML = `
-    <div class="brand-switch">
-      <button type="button" class="brand brand-button" aria-label="EpicScope workspace menu" aria-haspopup="menu" aria-expanded="false">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span class="brand-product">EpicScope</span>
-        <span class="brand-chevron" aria-hidden="true">⌄</span>
-      </button>
-      <div class="global-switch-menu" role="menu" hidden>
-        <div class="global-switch-head">
-          <strong>EpicScope</strong>
-          <small>Analysis workspace</small>
-        </div>
-        <button type="button" class="global-module-choice global-module-choice--active" role="menuitem" aria-current="page">
-          <span class="module-icon" aria-hidden="true">⌁</span>
-          <span>
-            <strong>Logger / Analyzer</strong>
-            <small>Recorded log analysis</small>
-          </span>
-          <span class="module-state">Active</span>
+    <div class="header-left">
+      <div class="brand-switch">
+        <button type="button" class="brand brand-button" aria-label="EpicScope workspace menu" aria-haspopup="menu" aria-expanded="false">
+          <span class="brand-product">EpicScope</span>
+          <span class="brand-chevron" aria-hidden="true"></span>
         </button>
+        <div class="global-switch-menu" role="menu" hidden>
+          <div class="global-switch-head">
+            <strong>EpicScope</strong>
+            <small>Analysis workspace</small>
+          </div>
+          <button type="button" class="global-module-choice global-module-choice--active" role="menuitem" aria-current="page">
+            <span>
+              <strong>Logger / Analyzer</strong>
+              <small>Recorded log analysis</small>
+            </span>
+            <span class="module-state">Active</span>
+          </button>
+        </div>
       </div>
+      <div class="graph-selector-slot"></div>
     </div>
     <div class="header-context">
       <span class="mode-chip">RECORDED</span>
@@ -48,6 +51,7 @@ export function mountAppShell(root: HTMLElement): void {
     </div>
     <div class="header-actions">
       <button type="button" class="open-log">Open Log</button>
+      <div class="logger-tools-slot"></div>
       <button type="button" disabled title="Undo">↶</button>
       <button type="button" disabled title="Redo">↷</button>
       <button type="button" disabled>Tools ▾</button>
@@ -55,16 +59,25 @@ export function mountAppShell(root: HTMLElement): void {
     </div>
   `;
 
-  const loggerPage = createLoggerPage();
-
   const footer = document.createElement('footer');
   footer.className = 'status-bar';
   footer.innerHTML = `
+    <div class="diagnostics-slot"></div>
     <span class="app-status">Ready</span>
     <span>Local analysis</span>
     <span class="grow"></span>
     <span class="parser-status">LOG-MLG · local file parsing</span>
   `;
+
+  const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');
+  const loggerToolsSlot = header.querySelector<HTMLElement>('.logger-tools-slot');
+  const diagnosticsSlot = footer.querySelector<HTMLElement>('.diagnostics-slot');
+  if (!graphSelectorSlot || !loggerToolsSlot || !diagnosticsSlot) {
+    throw new Error('EpicScope application shell control slots are incomplete.');
+  }
+  graphSelectorSlot.append(loggerPage.graphSelector);
+  loggerToolsSlot.append(loggerPage.headerTools);
+  diagnosticsSlot.append(loggerPage.diagnosticsControl);
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -91,7 +104,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   brandButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    const nextOpen = brandMenu.hidden === true;
+    const nextOpen = brandMenu.hidden;
     brandMenu.hidden = !nextOpen;
     brandButton.classList.toggle('brand-button--open', nextOpen);
     brandButton.setAttribute('aria-expanded', String(nextOpen));
@@ -104,9 +117,7 @@ export function mountAppShell(root: HTMLElement): void {
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.item(0);
     fileInput.value = '';
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
     openButton.disabled = true;
     loadedLog.textContent = file.name;
@@ -122,9 +133,7 @@ export function mountAppShell(root: HTMLElement): void {
           parsed.channelData,
         );
         loadedLog.textContent = parsed.summary.source.displayName;
-        appStatus.textContent = parsed.summary.diagnostics.length > 0
-          ? `Loaded with ${parsed.summary.diagnostics.length} warning${parsed.summary.diagnostics.length === 1 ? '' : 's'}`
-          : 'Ready';
+        appStatus.textContent = 'Ready';
         parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only`;
       })
       .catch((error: unknown) => {
