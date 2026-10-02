@@ -11,7 +11,7 @@
 ## Active development branch / PR
 
 - branch: `main`
-- current task: continue Phase 1 timeline/navigation work after validated large-log performance, overview rendering and high-zoom fixes
+- current task: continue Phase 1 cleanup after validated WorkspaceState, Undo/Redo, channel-browser refinements and per-log workspace persistence
 
 ## Current phase
 
@@ -42,7 +42,13 @@ Completed and validated:
 - automatic large-log channel batch commit when leaving the Full Sensor List, preserving one shared row-oriented decode pass without an extra confirmation click;
 - whole-log timeline overview with active trace context and source-marker rendering;
 - source-marker Previous/Next navigation tied to the existing cursor/focus-window behavior;
-- high-zoom raw-sample rendering with real source-gap detection and a 500 ms minimum viewport span.
+- high-zoom raw-sample rendering with real source-gap detection and a 500 ms minimum viewport span;
+- graph workspaces with independent channel/viewport/cursor state;
+- timeline annotations: user markers, editable saved ranges, A/B boundaries/range shading and per-workspace view history;
+- Full Sensor List favorites/recent filters, Add filtered, MLG-derived groups and active-channel statistics;
+- compact graph-corner Now/Min/Max readouts plus floating Channel Details;
+- consolidated Web WorkspaceState with bounded Undo/Redo history;
+- versioned per-log Web workspace persistence using browser-local storage, explicit compatibility validation and a Forget saved workspace escape hatch.
 
 ## Hosted application
 
@@ -96,16 +102,17 @@ Canvas 2D is an initial Web renderer choice, not a Linux/Android architecture co
 
 ## Current Phase 1 continuation
 
-Viewport/navigation, multi-channel graphing, Channel Value Search, the first large-log performance increment, whole-log overview rendering, decoded-channel cache reuse, and the high-zoom renderer path are implemented and hosted-validated.
+The core Web log-viewing workflow is now substantially complete and hosted-validated: large-log import/batching/cache behavior, multi-workspace graphing, timeline annotations, channel browser/statistics, Undo/Redo and per-log workspace persistence are implemented.
 
-The current timeline increment adds Previous/Next navigation for parsed source markers. After hosted validation of that control, continue Phase 1 functional work in this order unless real-log use changes priority:
+Immediate Phase 1 continuation should now be narrow and evidence-driven:
 
-1. expand Value Search only where real-log use shows a concrete need;
-2. add session/workspace persistence for selected channels, viewport state and search state;
-3. continue timeline usability work where marker/range workflows expose concrete gaps;
-4. revisit broader graph rendering only when real workflows expose additional renderer issues;
-5. improve retry/recovery diagnostic classification without silently repairing source data;
-6. keep extending the Web performance baseline as real workflows are exercised.
+1. validate per-log workspace restore/forget behavior on the hosted build;
+2. improve retry/recovery diagnostic classification without changing checksum semantics or silently repairing source data;
+3. continue Web performance regression checks as new workflows are exercised;
+4. expand Value Search or timeline behavior only where real-log use exposes a concrete gap;
+5. keep CSV import deferred by project-owner choice until higher-priority functionality is implemented.
+
+The next major capability jump after this cleanup is Phase 2 generic analysis tooling rather than adding more viewer-only UI for its own sake.
 
 ## Key constraints still in force
 

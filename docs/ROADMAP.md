@@ -118,11 +118,15 @@ Remaining LOG-MLG/Web-performance work:
 
 Hosted decoded-channel cache reuse is validated: removing and re-adding previously decoded channels returns from the bounded decoded cache with zero physical source reads.
 
-### LOG-CSV
+### LOG-CSV — Deferred by project owner
 
-- CSV import after MLG path is established;
-- normalization through the same log model;
-- malformed/untrusted-input handling equivalent in principle to MLG.
+CSV remains a supported future import path but is not on the immediate Phase 1 critical path.
+
+When resumed:
+
+- normalize through the same log model;
+- apply malformed/untrusted-input handling equivalent in principle to MLG;
+- do not let CSV work delay higher-priority analysis, persistence or tuning workflows.
 
 ### TIMELINE
 
@@ -137,9 +141,32 @@ Implemented/validated foundation:
 - parsed source markers rendered in the overview;
 - Previous/Next source-marker navigation;
 - channel selection/search;
-- high-zoom raw-sample rendering with bounded zoomed-out envelope rendering.
+- high-zoom raw-sample rendering with bounded zoomed-out envelope rendering;
+- user markers with edit/delete and shared marker navigation;
+- A/B boundaries with range shading in graph and overview;
+- saved ranges with rename/delete/restore;
+- per-workspace previous/next view history;
+- graph workspaces with independent channel/viewport/cursor state;
+- Web WorkspaceState consolidation and global Undo/Redo;
+- versioned browser-local per-log workspace persistence with explicit restore/forget behavior.
 
-Remaining timeline work should be driven by real-log workflows, including bookmarks/saved ranges, marker usability refinements, and later session persistence.
+Remaining timeline/workspace work should be driven by real-log workflows rather than placeholder completion.
+
+### WORKSPACE / PERSISTENCE — Implemented; hosted validation pending
+
+Implemented:
+
+- Web-specific WorkspaceState under `apps/web/src/state/`, separate from domain Session;
+- bounded 80-state Undo/Redo history;
+- versioned `epicscope.web-workspace` v1 persisted artifact;
+- storage-independent versioned envelope and compatibility handling under `core/persistence/`;
+- browser-local storage adapter keyed by the existing source-log identity;
+- automatic save/restore for matching logs;
+- malformed/unsupported artifacts rejected rather than silently partially restored;
+- explicit **Forget saved workspace** control;
+- no raw MLG bytes or decoded channel arrays persisted.
+
+Hosted validation should confirm exact-log restore across page reload/open and explicit Forget behavior.
 
 Exit criteria:
 

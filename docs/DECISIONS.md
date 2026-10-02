@@ -339,6 +339,25 @@ The initial repository Pages path is `/EpicEFI-EpicScope/`, and Vite build confi
 
 `web-ci.yml` owns branch/PR validation. `pages.yml` owns `main` build/deployment. Pages source may require the one-time repository setting **Settings → Pages → Source: GitHub Actions**.
 
+
+## D-036 — Web workspace persistence v1
+
+**Status:** Approved
+
+The Phase 1 Web application persists presentation/workspace state locally per matching source log using a versioned `epicscope.web-workspace` v1 artifact.
+
+Rules:
+
+- Web WorkspaceState remains presentation/application state and is not promoted into the domain `Session`;
+- storage-independent versioning/compatibility handling belongs under `core/persistence/`;
+- browser storage is a Web adapter and must not leak browser APIs into core persistence;
+- the Web persistence key uses the existing source identity, which includes filename, file size and last-modified identity for local MLG files;
+- persisted workspaces may include graph-workspace state, selected channels, viewport/cursor state, annotations/ranges, inspector state and Web settings;
+- raw log bytes and decoded channel arrays are not persisted;
+- unknown/malformed artifact versions are rejected explicitly and must not be silently overwritten during automatic restore/save;
+- the user must have an explicit local **Forget saved workspace** action;
+- persistence remains local-first and does not authorize network transmission or cloud storage.
+
 ## Superseding decisions
 
 A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.
