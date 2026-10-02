@@ -7,7 +7,9 @@ export type TimelineViewportIntent =
   | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean }
-  | { readonly type: 'range'; readonly startMs: number; readonly endMs: number; readonly centerCursor?: boolean };
+  | { readonly type: 'range'; readonly startMs: number; readonly endMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'history-back' }
+  | { readonly type: 'history-forward' };
 
 export interface TimelineOverviewTrace {
   readonly channelId: string;
@@ -16,12 +18,18 @@ export interface TimelineOverviewTrace {
   readonly color: string;
 }
 
+export interface TimelineAnnotationState {
+  readonly aTimeMs: number | undefined;
+  readonly bTimeMs: number | undefined;
+}
+
 export interface TimelineShellController {
   readonly element: HTMLElement;
   setExpanded(expanded: boolean): void;
   isExpanded(): boolean;
   setPlaybackSpeed(speed: number): void;
   setOverviewTracesVisible(visible: boolean): void;
+  setViewHistoryState(canBack: boolean, canForward: boolean): void;
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
   refreshOverview(): void;
@@ -30,6 +38,7 @@ export interface TimelineShellController {
   getCursorTime(): number;
   onCursorChange(listener: (timeMs: number) => void): void;
   onViewportIntent(listener: (intent: TimelineViewportIntent) => void): void;
+  onAnnotationChange(listener: (state: TimelineAnnotationState) => void): void;
 }
 
 function formatDuration(durationMs: number): string {
@@ -58,6 +67,7 @@ export function createTimelineShell(): TimelineShellController {
   let overviewTracesVisible = true;
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
+  let annotationListener: ((state: TimelineAnnotationState) => void) | undefined;
 
   const timeline = document.createElement('section');
   timeline.className = 'timeline-shell';
@@ -83,9 +93,13 @@ export function createTimelineShell(): TimelineShellController {
       </div>
       <span class="timeline-time">00:00.000 / 00:00.000</span>
       <div class="timeline-progress" role="slider" aria-label="Timeline cursor" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0"><span></span></div>
-      <div class="timeline-marker-actions" aria-label="Source marker navigation">
-        <button type="button" data-marker-action="previous" disabled title="Previous source marker">◀ M</button>
-        <button type="button" data-marker-action="next" disabled title="Next source marker">M ▶</button>
+      <div class="timeline-marker-actions" aria-label="Marker navigation">
+        <button type="button" data-marker-action="previous" disabled title="Previous marker">◀ M</button>
+        <button type="button" data-marker-action="next" disabled title="Next marker">M ▶</button>
+      </div>
+      <div class="timeline-history-actions" aria-label="View history">
+        <button type="button" data-view-history="back" disabled title="Previous view">↶ View</button>
+        <button type="button" data-view-history="forward" disabled title="Next view">View ↷</button>
       </div>
       <div class="timeline-zoom-actions">
         <button type="button" data-viewport-action="fit" disabled>Fit</button>
@@ -101,11 +115,16 @@ export function createTimelineShell(): TimelineShellController {
       <select class="timeline-saved-ranges" aria-label="Saved ranges" hidden>
         <option value="">Saved ranges</option>
       </select>
+      <button type="button" class="timeline-rename-range" disabled title="Rename selected saved range">Rename Range</button>
+      <button type="button" class="timeline-delete-range" disabled title="Delete selected saved range">Delete Range</button>
       <span class="grow"></span>
       <button type="button" class="timeline-save-range" disabled>Save Range</button>
       <button type="button" class="timeline-add-marker" disabled>＋ Marker</button>
+      <button type="button" class="timeline-edit-marker" disabled>Edit Marker</button>
+      <button type="button" class="timeline-delete-marker" disabled>Delete Marker</button>
       <button type="button" class="timeline-set-a" disabled>Set A</button>
       <button type="button" class="timeline-set-b" disabled>Set B</button>
+      <button type="button" class="timeline-clear-ab" disabled>Clear A/B</button>
     </div>
   `;
 
@@ -123,17 +142,31 @@ export function createTimelineShell(): TimelineShellController {
   const abText = timeline.querySelector<HTMLElement>('.timeline-ab-value');
   const savedRangeSelect = timeline.querySelector<HTMLSelectElement>('.timeline-saved-ranges');
   const saveRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-save-range');
+  const renameRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-rename-range');
+  const deleteRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-delete-range');
   const addMarkerButton = timeline.querySelector<HTMLButtonElement>('.timeline-add-marker');
+  const editMarkerButton = timeline.querySelector<HTMLButtonElement>('.timeline-edit-marker');
+  const deleteMarkerButton = timeline.querySelector<HTMLButtonElement>('.timeline-delete-marker');
   const setAButton = timeline.querySelector<HTMLButtonElement>('.timeline-set-a');
   const setBButton = timeline.querySelector<HTMLButtonElement>('.timeline-set-b');
+  const clearAbButton = timeline.querySelector<HTMLButtonElement>('.timeline-clear-ab');
   const progress = timeline.querySelector<HTMLElement>('.timeline-progress');
   const progressFill = progress?.querySelector<HTMLElement>('span');
   const transportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('.transport button')];
   const markerButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-marker-action]')];
+  const historyButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-view-history]')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !savedRangeSelect || !saveRangeButton || !addMarkerButton || !setAButton || !setBButton || !progress || !progressFill) {
+  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !savedRangeSelect || !saveRangeButton || !renameRangeButton || !deleteRangeButton || !addMarkerButton || !editMarkerButton || !deleteMarkerButton || !setAButton || !setBButton || !clearAbButton || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
+
+  const emitAnnotationState = (): void => {
+    annotationListener?.({ aTimeMs, bTimeMs });
+  };
+
+  const currentUserMarkerIndex = (): number => userMarkers.findIndex(
+    (marker) => Math.abs(marker.timeMs - cursorTimeMs) <= 0.5,
+  );
 
   const allMarkers = (): readonly LogMarker[] => [...sourceMarkers, ...userMarkers]
     .filter((marker) => Number.isFinite(marker.timeMs))
@@ -150,6 +183,7 @@ export function createTimelineShell(): TimelineShellController {
     addMarkerButton.disabled = fullDuration() <= 0;
     setAButton.disabled = fullDuration() <= 0;
     setBButton.disabled = fullDuration() <= 0;
+    clearAbButton.disabled = aTimeMs === undefined && bTimeMs === undefined;
   };
 
   const refreshSavedRangeSelect = (): void => {
@@ -159,6 +193,8 @@ export function createTimelineShell(): TimelineShellController {
     });
     savedRangeSelect.hidden = savedRanges.length === 0;
     savedRangeSelect.value = '';
+    renameRangeButton.disabled = true;
+    deleteRangeButton.disabled = true;
   };
 
   const renderOverview = (): void => {
@@ -180,6 +216,30 @@ export function createTimelineShell(): TimelineShellController {
 
     const duration = Math.max(0, fullEndMs - fullStartMs);
     if (duration <= 0) return;
+
+    if (aTimeMs !== undefined || bTimeMs !== undefined) {
+      const xForTime = (timeMs: number): number => ((timeMs - fullStartMs) / duration) * width;
+      if (aTimeMs !== undefined && bTimeMs !== undefined) {
+        const start = Math.max(fullStartMs, Math.min(aTimeMs, bTimeMs));
+        const end = Math.min(fullEndMs, Math.max(aTimeMs, bTimeMs));
+        if (end >= start) {
+          context.fillStyle = 'rgba(84, 148, 205, 0.12)';
+          context.fillRect(xForTime(start), 0, Math.max(1, xForTime(end) - xForTime(start)), height);
+        }
+      }
+      const drawBoundary = (timeMs: number, stroke: string): void => {
+        if (timeMs < fullStartMs || timeMs > fullEndMs) return;
+        const x = xForTime(timeMs);
+        context.strokeStyle = stroke;
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(x + 0.5, 0);
+        context.lineTo(x + 0.5, height);
+        context.stroke();
+      };
+      if (aTimeMs !== undefined) drawBoundary(aTimeMs, 'rgba(83, 181, 255, 0.95)');
+      if (bTimeMs !== undefined) drawBoundary(bTimeMs, 'rgba(255, 184, 77, 0.95)');
+    }
 
     context.save();
     context.lineWidth = 1;
@@ -339,6 +399,10 @@ export function createTimelineShell(): TimelineShellController {
       ? `${markerText.textContent} · ${formatDuration(exactMarker.timeMs - fullStartMs)}`
       : '';
 
+    const userMarkerIndex = currentUserMarkerIndex();
+    editMarkerButton.disabled = userMarkerIndex < 0;
+    deleteMarkerButton.disabled = userMarkerIndex < 0;
+
     const hasPrevious = markers.some(
       (marker) => marker.timeMs < cursorTimeMs - markerToleranceMs,
     );
@@ -372,6 +436,7 @@ export function createTimelineShell(): TimelineShellController {
     aTimeMs = undefined;
     bTimeMs = undefined;
     savedRanges = [];
+    emitAnnotationState();
     if (playbackFrame !== undefined) cancelAnimationFrame(playbackFrame);
     playbackFrame = undefined;
     playbackLastNow = undefined;
@@ -603,16 +668,41 @@ export function createTimelineShell(): TimelineShellController {
     renderCursor();
   });
 
+  editMarkerButton.addEventListener('click', () => {
+    const index = currentUserMarkerIndex();
+    if (index < 0) return;
+    const marker = userMarkers[index];
+    if (!marker) return;
+    const entered = window.prompt('Marker label', marker.label ?? '');
+    if (entered === null) return;
+    const label = entered.trim() || `Marker ${index + 1}`;
+    userMarkers[index] = { ...marker, label };
+    renderOverview();
+    renderCursor();
+  });
+
+  deleteMarkerButton.addEventListener('click', () => {
+    const index = currentUserMarkerIndex();
+    if (index < 0) return;
+    userMarkers.splice(index, 1);
+    renderOverview();
+    renderCursor();
+  });
+
   setAButton.addEventListener('click', () => {
     if (fullDuration() <= 0) return;
     aTimeMs = cursorTimeMs;
     renderRangeState();
+    renderOverview();
+    emitAnnotationState();
   });
 
   setBButton.addEventListener('click', () => {
     if (fullDuration() <= 0) return;
     bTimeMs = cursorTimeMs;
     renderRangeState();
+    renderOverview();
+    emitAnnotationState();
   });
 
   saveRangeButton.addEventListener('click', () => {
@@ -626,6 +716,36 @@ export function createTimelineShell(): TimelineShellController {
     refreshSavedRangeSelect();
   });
 
+  renameRangeButton.addEventListener('click', () => {
+    const index = Number(savedRangeSelect.value);
+    const range = savedRanges[index];
+    if (!range) return;
+    const entered = window.prompt('Saved range label', range.label);
+    if (entered === null) return;
+    const label = entered.trim();
+    if (!label) return;
+    savedRanges[index] = { ...range, label };
+    refreshSavedRangeSelect();
+    savedRangeSelect.value = String(index);
+    renameRangeButton.disabled = false;
+    deleteRangeButton.disabled = false;
+  });
+
+  deleteRangeButton.addEventListener('click', () => {
+    const index = Number(savedRangeSelect.value);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= savedRanges.length) return;
+    savedRanges.splice(index, 1);
+    refreshSavedRangeSelect();
+  });
+
+  clearAbButton.addEventListener('click', () => {
+    aTimeMs = undefined;
+    bTimeMs = undefined;
+    renderRangeState();
+    renderOverview();
+    emitAnnotationState();
+  });
+
   savedRangeSelect.addEventListener('change', () => {
     if (savedRangeSelect.value === '') return;
     const index = Number(savedRangeSelect.value);
@@ -634,10 +754,22 @@ export function createTimelineShell(): TimelineShellController {
     if (!range) return;
     aTimeMs = range.startMs;
     bTimeMs = range.endMs;
+    renameRangeButton.disabled = false;
+    deleteRangeButton.disabled = false;
     renderRangeState();
+    renderOverview();
+    emitAnnotationState();
     viewportListener?.({ type: 'range', startMs: range.startMs, endMs: range.endMs, centerCursor: true });
     updateCursor((range.startMs + range.endMs) / 2);
   });
+
+  for (const button of historyButtons) {
+    button.addEventListener('click', () => {
+      const action = button.dataset.viewHistory;
+      if (action === 'back') viewportListener?.({ type: 'history-back' } as TimelineViewportIntent);
+      if (action === 'forward') viewportListener?.({ type: 'history-forward' } as TimelineViewportIntent);
+    });
+  }
 
   for (const button of viewportButtons) {
     button.addEventListener('click', () => {
@@ -668,6 +800,11 @@ export function createTimelineShell(): TimelineShellController {
       overviewTracesVisible = visible;
       renderOverview();
     },
+    setViewHistoryState: (canBack, canForward) => {
+      for (const button of historyButtons) {
+        button.disabled = button.dataset.viewHistory === 'back' ? !canBack : !canForward;
+      }
+    },
     isExpanded: () => expanded,
     setTimeRange,
     setOverviewContent,
@@ -677,5 +814,6 @@ export function createTimelineShell(): TimelineShellController {
     getCursorTime: () => cursorTimeMs,
     onCursorChange: (listener) => { cursorListener = listener; },
     onViewportIntent: (listener) => { viewportListener = listener; },
+    onAnnotationChange: (listener) => { annotationListener = listener; },
   };
 }
