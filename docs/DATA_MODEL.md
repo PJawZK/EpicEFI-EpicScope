@@ -55,7 +55,7 @@ EpicScope distinguishes two persistence scopes inside presentation state:
 - source-specific navigation state;
 - UI filters that only make sense for that recording.
 
-The current Web `epicscope.web-workspace` v1 artifact is keyed to an exact log source. The approved next persistence increment must migrate toward the split above without silently reinterpreting incompatible v1 state.
+The Web implementation now uses the split above: `epicscope.web-application-workspace` v1 stores reusable presentation structure independently of log identity, while `epicscope.web-workspace` v1 remains keyed to an exact log for recording-specific navigation/annotation state. A separate normalized INI channel-catalog artifact allows stable channel definitions to be restored without storing raw INI text.
 
 Workspace state may also be persisted alongside a session artifact for convenience, but it remains conceptually separate from the domain Session so `core/session/` does not become coupled to a particular UI implementation.
 
