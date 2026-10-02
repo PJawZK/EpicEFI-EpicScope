@@ -192,6 +192,10 @@ export function mountAppShell(root: HTMLElement): void {
     });
   });
 
+  loggerPage.onWorkspaceRestorePerformance((run) => {
+    performanceDiagnostics.recordWorkspaceRestore(run);
+  });
+
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = '.mlg,application/octet-stream';
@@ -836,7 +840,7 @@ export function mountAppShell(root: HTMLElement): void {
     };
     const prepared = bindLogToActiveIni(parsed.summary, parsed.channelData);
     const uiStart = now();
-    loggerPage.setLog(
+    const uiPerformance = loggerPage.setLog(
       prepared.summary,
       parsed.recordIndex.offsets.length,
       prepared.channelData,
@@ -871,6 +875,15 @@ export function mountAppShell(root: HTMLElement): void {
       indexCpuMs: parsed.performance.indexCpuMs,
       finalizeMs: parsed.performance.finalizeMs,
       uiPopulateMs,
+      uiWorkspaceMs: uiPerformance.workspaceMs,
+      uiChannelModelMs: uiPerformance.channelModelMs,
+      uiInspectorMs: uiPerformance.inspectorMs,
+      uiTimelineMs: uiPerformance.timelineMs,
+      uiGraphSetupMs: uiPerformance.graphSetupMs,
+      uiLayoutMs: uiPerformance.layoutMs,
+      uiValueSearchMs: uiPerformance.valueSearchMs,
+      uiViewportMs: uiPerformance.viewportMs,
+      uiDiagnosticsMs: uiPerformance.diagnosticsMs,
       sourceReadCount: parsed.sourceStats.readCount,
       sourceBytesRead: parsed.sourceStats.bytesRead,
       physicalReadCount: parsed.sourceStats.physicalReadCount,
@@ -951,7 +964,7 @@ export function mountAppShell(root: HTMLElement): void {
         };
         const prepared = bindLogToActiveIni(rawSummary, indexed.channelData);
         const uiStart = now();
-        loggerPage.setLog(
+        const uiPerformance = loggerPage.setLog(
           prepared.summary,
           indexed.recordIndex.offsets.length,
           prepared.channelData,
@@ -986,6 +999,15 @@ export function mountAppShell(root: HTMLElement): void {
           indexCpuMs: indexed.performance.indexCpuMs,
           finalizeMs: indexed.performance.finalizeMs,
           uiPopulateMs,
+          uiWorkspaceMs: uiPerformance.workspaceMs,
+          uiChannelModelMs: uiPerformance.channelModelMs,
+          uiInspectorMs: uiPerformance.inspectorMs,
+          uiTimelineMs: uiPerformance.timelineMs,
+          uiGraphSetupMs: uiPerformance.graphSetupMs,
+          uiLayoutMs: uiPerformance.layoutMs,
+          uiValueSearchMs: uiPerformance.valueSearchMs,
+          uiViewportMs: uiPerformance.viewportMs,
+          uiDiagnosticsMs: uiPerformance.diagnosticsMs,
           sourceReadCount: indexed.sourceStats.readCount,
           sourceBytesRead: indexed.sourceStats.bytesRead,
           physicalReadCount: indexed.sourceStats.physicalReadCount,
