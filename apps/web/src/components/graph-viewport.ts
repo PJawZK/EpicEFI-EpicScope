@@ -289,50 +289,70 @@ export function createGraphViewport(): GraphViewportController {
     minReadout.replaceChildren();
     maxReadout.replaceChildren();
 
+    const displayChannels = assignedChannels.length > 0
+      ? assignedChannels
+      : [...activeTraces.values()].map((trace) => trace.channel);
+
     const appendMetric = (
       host: HTMLElement,
-      trace: ActiveTrace,
-      value: number | undefined,
-      label?: string,
+      channel: ChannelDefinition,
+      color: string,
+      value: string,
     ): void => {
       const item = document.createElement('span');
       item.className = 'graph-corner-item';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
-      swatch.style.background = trace.color;
+      swatch.style.background = color;
 
       const text = document.createElement('span');
-      const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
-      text.textContent = label
-        ? `${label} ${formatReadoutValue(trace, value)}${unit}`
-        : `${formatReadoutValue(trace, value)}${unit}`;
+      const unit = channel.unit ? ` ${channel.unit}` : '';
+      text.textContent = `${value}${unit}`;
 
       item.append(swatch, text);
       host.append(item);
     };
 
-    for (const trace of activeTraces.values()) {
+    displayChannels.forEach((channel, index) => {
+      const trace = activeTraces.get(channel.id);
+      const color = trace?.color ?? TRACE_COLORS[index % TRACE_COLORS.length] ?? '#587487';
+
       const nameItem = document.createElement('span');
       nameItem.className = 'graph-corner-item graph-corner-item--name';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
-      swatch.style.background = trace.color;
+      swatch.style.background = color;
 
       const name = document.createElement('span');
-      name.textContent = trace.channel.displayName || trace.channel.sourceName;
-      name.title = trace.channel.sourceName;
+      name.textContent = channel.displayName || channel.sourceName;
+      name.title = channel.sourceName;
 
       nameItem.append(swatch, name);
       nameReadout.append(nameItem);
 
-      appendMetric(nowReadout, trace, nearestValue(trace.range, cursorTimeMs));
-      appendMetric(minReadout, trace, trace.fullStatistics.min);
-      appendMetric(maxReadout, trace, trace.fullStatistics.max);
-    }
+      appendMetric(
+        nowReadout,
+        channel,
+        color,
+        trace ? formatReadoutValue(trace, nearestValue(trace.range, cursorTimeMs)) : '—',
+      );
+      appendMetric(
+        minReadout,
+        channel,
+        color,
+        trace ? formatReadoutValue(trace, trace.fullStatistics.min) : '—',
+      );
+      appendMetric(
+        maxReadout,
+        channel,
+        color,
+        trace ? formatReadoutValue(trace, trace.fullStatistics.max) : '—',
+      );
+    });
 
-    const hidden = activeTraces.size === 0 || displayMode === 'stacked';
+    const hidden = displayChannels.length === 0 || displayMode === 'stacked';
     nameReadout.hidden = hidden;
     nowReadout.hidden = hidden;
     minReadout.hidden = hidden;
@@ -870,7 +890,7 @@ export function createGraphViewport(): GraphViewportController {
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
     aTimeMs = undefined;
     bTimeMs = undefined;
-    overlay.hidden = false;
+    overlay.hidden = assignedChannels.length > 0;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
     renderReadout();
@@ -898,8 +918,8 @@ export function createGraphViewport(): GraphViewportController {
     if (existing) {
       activeTraces.delete(channelId);
       envelopeCache.delete(channelId);
-      overlay.hidden = activeTraces.size > 0;
-      if (activeTraces.size === 0) {
+      overlay.hidden = activeTraces.size > 0 || assignedChannels.length > 0;
+      if (activeTraces.size === 0 && assignedChannels.length === 0) {
         overlay.hidden = false;
         overlayTitle.textContent = 'Select channels';
         overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
