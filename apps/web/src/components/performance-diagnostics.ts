@@ -58,6 +58,20 @@ export interface IniLoadPerformanceRun {
   }[];
 }
 
+export interface ChannelBindingPerformanceRun {
+  readonly totalMs: number;
+  readonly catalogChannelCount: number;
+  readonly logChannelCount: number;
+  readonly mergedChannelCount: number;
+  readonly boundChannelCount: number;
+  readonly knownNoDataCount: number;
+  readonly logOnlyCount: number;
+  readonly matchedByLogicalKey: number;
+  readonly matchedByDisplayName: number;
+  readonly matchedByDisplayNameUnit: number;
+  readonly ambiguousLogChannelCount: number;
+}
+
 export interface ChannelPerformanceRun {
   readonly channelName: string;
   readonly totalMs: number;
@@ -86,6 +100,7 @@ export interface PerformanceDiagnosticsController {
   readonly element: HTMLElement;
   recordLoad(run: LoadPerformanceRun): void;
   recordIniLoad(run: IniLoadPerformanceRun): void;
+  recordBinding(run: ChannelBindingPerformanceRun): void;
   recordValidation(run: ValidationPerformanceRun): void;
   recordChannel(run: ChannelPerformanceRun): void;
   clear(): void;
@@ -105,6 +120,7 @@ function bytes(value: number): string {
 export function createPerformanceDiagnostics(): PerformanceDiagnosticsController {
   const loadRuns: LoadPerformanceRun[] = [];
   const iniLoadRuns: IniLoadPerformanceRun[] = [];
+  const bindingRuns: ChannelBindingPerformanceRun[] = [];
   const channelRuns: ChannelPerformanceRun[] = [];
 
   const root = document.createElement('div');
@@ -137,6 +153,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           <div class="performance-ini-load"></div>
         </section>
         <section>
+          <strong>Latest INI/MLG binding</strong>
+          <div class="performance-binding"></div>
+        </section>
+        <section>
           <strong>Recent channel selections</strong>
           <div class="performance-channels"></div>
         </section>
@@ -153,9 +173,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const content = root.querySelector<HTMLElement>('.performance-content');
   const loadHost = root.querySelector<HTMLElement>('.performance-load');
   const iniLoadHost = root.querySelector<HTMLElement>('.performance-ini-load');
+  const bindingHost = root.querySelector<HTMLElement>('.performance-binding');
   const channelsHost = root.querySelector<HTMLElement>('.performance-channels');
 
-  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !channelsHost) {
+  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !bindingHost || !channelsHost) {
     throw new Error('Performance diagnostics structure is incomplete.');
   }
 
@@ -250,6 +271,25 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       }
     }
 
+    const latestBinding = bindingRuns[bindingRuns.length - 1];
+    if (latestBinding) {
+      lines.push(
+        '',
+        '[INI/MLG binding]',
+        `total=${latestBinding.totalMs.toFixed(2)} ms`,
+        `catalogChannels=${latestBinding.catalogChannelCount}`,
+        `logChannels=${latestBinding.logChannelCount}`,
+        `mergedChannels=${latestBinding.mergedChannelCount}`,
+        `bound=${latestBinding.boundChannelCount}`,
+        `knownNoData=${latestBinding.knownNoDataCount}`,
+        `logOnly=${latestBinding.logOnlyCount}`,
+        `logicalKeyMatches=${latestBinding.matchedByLogicalKey}`,
+        `displayNameMatches=${latestBinding.matchedByDisplayName}`,
+        `displayNameUnitMatches=${latestBinding.matchedByDisplayNameUnit}`,
+        `ambiguousLogChannels=${latestBinding.ambiguousLogChannelCount}`,
+      );
+    }
+
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
       channelRuns.slice(-10).forEach((run, index) => {
@@ -262,7 +302,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   };
 
   const render = (): void => {
-    const hasData = loadRuns.length > 0 || iniLoadRuns.length > 0 || channelRuns.length > 0;
+    const hasData = loadRuns.length > 0
+      || iniLoadRuns.length > 0
+      || bindingRuns.length > 0
+      || channelRuns.length > 0;
     empty.hidden = hasData;
     content.hidden = !hasData;
     copyButton.disabled = !hasData;
@@ -371,6 +414,36 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       iniLoadHost.textContent = 'No INI load captured.';
     }
 
+    bindingHost.replaceChildren();
+    const latestBinding = bindingRuns[bindingRuns.length - 1];
+    if (latestBinding) {
+      const rows: [string, string][] = [
+        ['Binding total', ms(latestBinding.totalMs)],
+        ['INI catalog channels', latestBinding.catalogChannelCount.toLocaleString()],
+        ['MLG channels', latestBinding.logChannelCount.toLocaleString()],
+        ['Merged channels', latestBinding.mergedChannelCount.toLocaleString()],
+        ['Bound channels', latestBinding.boundChannelCount.toLocaleString()],
+        ['Known / no data', latestBinding.knownNoDataCount.toLocaleString()],
+        ['Log-only channels', latestBinding.logOnlyCount.toLocaleString()],
+        ['Logical-key matches', latestBinding.matchedByLogicalKey.toLocaleString()],
+        ['Display-name matches', latestBinding.matchedByDisplayName.toLocaleString()],
+        ['Display+unit matches', latestBinding.matchedByDisplayNameUnit.toLocaleString()],
+        ['Ambiguous log channels', latestBinding.ambiguousLogChannelCount.toLocaleString()],
+      ];
+      for (const [label, value] of rows) {
+        const row = document.createElement('div');
+        row.className = 'performance-row';
+        const left = document.createElement('span');
+        left.textContent = label;
+        const right = document.createElement('strong');
+        right.textContent = value;
+        row.append(left, right);
+        bindingHost.append(row);
+      }
+    } else {
+      bindingHost.textContent = 'No INI/MLG binding captured.';
+    }
+
     channelsHost.replaceChildren();
     if (channelRuns.length === 0) {
       channelsHost.textContent = 'No channel selections captured.';
@@ -402,6 +475,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   clearButton.addEventListener('click', () => {
     loadRuns.length = 0;
     iniLoadRuns.length = 0;
+    bindingRuns.length = 0;
     channelRuns.length = 0;
     render();
   });
@@ -418,6 +492,11 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     recordIniLoad: (run) => {
       iniLoadRuns.push(run);
       if (iniLoadRuns.length > 20) iniLoadRuns.shift();
+      render();
+    },
+    recordBinding: (run) => {
+      bindingRuns.push(run);
+      if (bindingRuns.length > 20) bindingRuns.shift();
       render();
     },
     recordValidation: (run) => {
@@ -445,6 +524,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     clear: () => {
       loadRuns.length = 0;
       iniLoadRuns.length = 0;
+      bindingRuns.length = 0;
       channelRuns.length = 0;
       render();
     },

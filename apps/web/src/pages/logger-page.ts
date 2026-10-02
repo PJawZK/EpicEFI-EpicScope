@@ -119,6 +119,10 @@ export interface LoggerPageController {
     summary: ImportedLogSummary,
     recordCount: number,
     channelData: NumericChannelDataSource,
+    options?: {
+      readonly unavailableChannelIds?: readonly string[];
+      readonly channelIdAliases?: ReadonlyMap<string, string>;
+    },
   ): void;
   setChannelCatalog(channels: readonly ChannelDefinition[], sourceName: string): void;
   setImportError(message: string): void;
@@ -536,6 +540,7 @@ export function createLoggerPage(): LoggerPageController {
   let channelDefinitions = new Map<string, ChannelDefinition>();
   let catalogChannelDefinitions = new Map<string, ChannelDefinition>();
   let catalogSourceName = '';
+  let channelIdAliases = new Map<string, string>();
   let channelDataSource: NumericChannelDataSource | undefined;
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
@@ -1267,6 +1272,11 @@ export function createLoggerPage(): LoggerPageController {
       const pane = target.panes[index];
       const requestedIds = pane
         ? pane.channelIds
+            .map((channelId) =>
+              channelDefinitions.has(channelId)
+                ? channelId
+                : channelIdAliases.get(channelId) ?? channelId
+            )
             .filter((channelId) => channelDefinitions.has(channelId))
             .slice(0, MAX_ACTIVE_WEB_TRACES)
         : [];
@@ -1618,6 +1628,10 @@ export function createLoggerPage(): LoggerPageController {
     summary: ImportedLogSummary,
     recordCount: number,
     channelData: NumericChannelDataSource,
+    options: {
+      readonly unavailableChannelIds?: readonly string[];
+      readonly channelIdAliases?: ReadonlyMap<string, string>;
+    } = {},
   ): void => {
     workspaceGeneration += 1;
     workspaceCounter = 1;
@@ -1646,9 +1660,14 @@ export function createLoggerPage(): LoggerPageController {
     graphSelector.setEnabled(Boolean(summary.timeRange));
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
+    channelIdAliases = new Map(options.channelIdAliases ?? []);
     channelDataSource = channelData;
     logMarkers = summary.markers;
-    inspector.setChannels(summary.channels, summary.source.displayName);
+    inspector.setChannels(
+      summary.channels,
+      summary.source.displayName,
+      options.unavailableChannelIds ?? [],
+    );
     timeline.setTimeRange(summary.timeRange, recordCount);
     timeline.setOverviewContent([], logMarkers);
     paneRuntimes.forEach((runtime) => runtime.graph.setLog(summary.channels, channelData, summary.timeRange));
@@ -1689,6 +1708,7 @@ export function createLoggerPage(): LoggerPageController {
     graphSelector.setEnabled(false);
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions.clear();
+    channelIdAliases.clear();
     channelDataSource = undefined;
     logMarkers = [];
     if (catalogChannelDefinitions.size > 0) {

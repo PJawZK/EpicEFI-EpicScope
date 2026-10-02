@@ -30,7 +30,11 @@ export interface InspectorPanelController {
   readonly element: HTMLElement;
   setVisible(visible: boolean): void;
   isVisible(): boolean;
-  setChannels(channels: readonly ChannelDefinition[], sourceName: string): void;
+  setChannels(
+    channels: readonly ChannelDefinition[],
+    sourceName: string,
+    unavailableChannelIds?: readonly string[],
+  ): void;
   setCatalogChannels(channels: readonly ChannelDefinition[], sourceName: string): void;
   setError(message: string): void;
   onChannelToggled(listener: (channelId: string) => void): void;
@@ -51,7 +55,7 @@ export function createInspectorPanel(): InspectorPanelController {
   let visible = true;
   let channels: readonly ChannelDefinition[] = [];
   let filteredChannels: readonly ChannelDefinition[] = [];
-  let channelActivationEnabled = false;
+  const unavailableChannelIds = new Set<string>();
   const activeChannelIds = new Set<string>();
   const queuedChannelIds = new Set<string>();
   const favoriteChannelIds = new Set<string>();
@@ -160,23 +164,25 @@ export function createInspectorPanel(): InspectorPanelController {
     channelCount.textContent = filtering
       ? `${filteredChannels.length} / ${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`
       : `${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`;
-    loadSelectedButton.disabled = !channelActivationEnabled || queued === 0;
+    loadSelectedButton.disabled = queued === 0;
     loadSelectedButton.textContent = queued > 0 ? `Load now (${queued})` : 'Load now';
-    clearGraphButton.disabled = !channelActivationEnabled || activeChannelIds.size === 0;
-    addFilteredButton.disabled = !channelActivationEnabled
-      || filteredChannels.length === 0
-      || filteredChannels.every((channel) => activeChannelIds.has(channel.id) || queuedChannelIds.has(channel.id));
+    clearGraphButton.disabled = activeChannelIds.size === 0;
+    addFilteredButton.disabled = filteredChannels.length === 0
+      || filteredChannels
+        .filter((channel) => !unavailableChannelIds.has(channel.id))
+        .every((channel) => activeChannelIds.has(channel.id) || queuedChannelIds.has(channel.id));
   };
 
   const createRow = (channel: ChannelDefinition, index: number): HTMLElement => {
     const active = activeChannelIds.has(channel.id);
     const queued = queuedChannelIds.has(channel.id);
     const favorite = favoriteChannelIds.has(channel.id);
+    const unavailable = unavailableChannelIds.has(channel.id);
     const row = document.createElement('div');
     row.className = 'channel-row channel-row--virtual';
     row.classList.toggle('channel-row--active', active);
     row.classList.toggle('channel-row--queued', queued);
-    row.classList.toggle('channel-row--unavailable', !channelActivationEnabled);
+    row.classList.toggle('channel-row--unavailable', unavailable);
     row.setAttribute('role', 'listitem');
     row.dataset.channelId = channel.id;
     row.style.transform = `translateY(${index * VIRTUAL_ROW_HEIGHT}px)`;
@@ -186,14 +192,14 @@ export function createInspectorPanel(): InspectorPanelController {
     toggle.className = 'channel-row-toggle';
     toggle.dataset.channelToggle = channel.id;
     toggle.setAttribute('aria-pressed', String(active));
-    toggle.disabled = !channelActivationEnabled;
-    toggle.title = channelActivationEnabled
-      ? 'Toggle channel in active graph pane'
-      : 'Known from INI; no log data is currently bound';
+    toggle.disabled = unavailable;
+    toggle.title = unavailable
+      ? 'Known from INI; this log does not contain data for the channel'
+      : 'Toggle channel in active graph pane';
 
     const state = document.createElement('span');
     state.className = 'channel-trace-state';
-    state.textContent = channelActivationEnabled ? (active ? '●' : queued ? '✓' : '＋') : '—';
+    state.textContent = unavailable ? '—' : active ? '●' : queued ? '✓' : '＋';
     state.setAttribute('aria-hidden', 'true');
 
     const identity = document.createElement('div');
@@ -230,9 +236,9 @@ export function createInspectorPanel(): InspectorPanelController {
     detailsButton.className = 'channel-details';
     detailsButton.dataset.channelDetails = channel.id;
     detailsButton.textContent = 'ⓘ';
-    detailsButton.disabled = !channelActivationEnabled;
-    detailsButton.title = !channelActivationEnabled
-      ? 'Known from INI; statistics require log data'
+    detailsButton.disabled = unavailable;
+    detailsButton.title = unavailable
+      ? 'Known from INI; this log has no data for statistics'
       : active ? 'Channel statistics' : 'Activate channel to view statistics';
 
     actions.append(favoriteButton, detailsButton);
@@ -371,7 +377,7 @@ export function createInspectorPanel(): InspectorPanelController {
 
     const toggleButton = target.closest<HTMLElement>('[data-channel-toggle]');
     const channelId = toggleButton?.dataset.channelToggle;
-    if (channelId) toggleListener?.(channelId);
+    if (channelId && !unavailableChannelIds.has(channelId)) toggleListener?.(channelId);
   });
 
   const resizeObserver = new ResizeObserver(scheduleVisibleRender);
@@ -415,10 +421,11 @@ export function createInspectorPanel(): InspectorPanelController {
   const setChannelSource = (
     nextChannels: readonly ChannelDefinition[],
     sourceName: string,
-    activationEnabled: boolean,
+    nextUnavailableChannelIds: readonly string[],
   ): void => {
     channels = nextChannels;
-    channelActivationEnabled = activationEnabled;
+    unavailableChannelIds.clear();
+    for (const channelId of nextUnavailableChannelIds) unavailableChannelIds.add(channelId);
     activeChannelIds.clear();
     queuedChannelIds.clear();
     recentChannelIds.splice(0);
@@ -451,16 +458,24 @@ export function createInspectorPanel(): InspectorPanelController {
     applyFilters();
   };
 
-  const setChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void =>
-    setChannelSource(nextChannels, sourceName, true);
+  const setChannels = (
+    nextChannels: readonly ChannelDefinition[],
+    sourceName: string,
+    nextUnavailableChannelIds: readonly string[] = [],
+  ): void =>
+    setChannelSource(nextChannels, sourceName, nextUnavailableChannelIds);
 
   const setCatalogChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void =>
-    setChannelSource(nextChannels, `${sourceName} · INI catalog`, false);
+    setChannelSource(
+      nextChannels,
+      `${sourceName} · INI catalog`,
+      nextChannels.map((channel) => channel.id),
+    );
 
   const setError = (message: string): void => {
     channels = [];
     filteredChannels = [];
-    channelActivationEnabled = false;
+    unavailableChannelIds.clear();
     activeChannelIds.clear();
     queuedChannelIds.clear();
     currentValues.clear();
@@ -638,7 +653,11 @@ export function createInspectorPanel(): InspectorPanelController {
     if (addFilteredButton.disabled) return;
     const candidates = filteredChannels
       .map((channel) => channel.id)
-      .filter((channelId) => !activeChannelIds.has(channelId) && !queuedChannelIds.has(channelId));
+      .filter((channelId) =>
+        !unavailableChannelIds.has(channelId)
+        && !activeChannelIds.has(channelId)
+        && !queuedChannelIds.has(channelId)
+      );
     if (candidates.length > 0) addFilteredListener?.(candidates);
   });
 
