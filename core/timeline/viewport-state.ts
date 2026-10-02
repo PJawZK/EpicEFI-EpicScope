@@ -7,7 +7,7 @@ export interface TimelineViewport {
 
 export type TimelineViewportEdge = 'start' | 'end';
 
-const DEFAULT_MIN_SPAN_MS = 100;
+const DEFAULT_MIN_SPAN_MS = 500;
 
 function finite(value: number, name: string): number {
   if (!Number.isFinite(value)) throw new RangeError(`${name} must be finite.`);
