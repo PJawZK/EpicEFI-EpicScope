@@ -237,6 +237,22 @@ export function createTimelineShell(): TimelineShellController {
         }
       }
       if (started) context.stroke();
+
+      // A sparse/conditional channel may contribute only one identical value
+      // to an isolated horizontal bucket. A zero-length min/max stroke is
+      // invisible, so show that real recorded bucket as a tiny point instead
+      // of fabricating continuity across missing data.
+      context.fillStyle = trace.color;
+      for (let index = 0; index < envelope.columns.length; index += 1) {
+        const column = envelope.columns[index];
+        if (!column) continue;
+        const previous = envelope.columns[index - 1];
+        const next = envelope.columns[index + 1];
+        const isolated = (previous ? column.x - previous.x : Number.POSITIVE_INFINITY) > 2
+          && (next ? next.x - column.x : Number.POSITIVE_INFINITY) > 2;
+        if (!isolated || column.first !== column.last || column.min !== column.max) continue;
+        context.fillRect(column.x - 0.5, yFor(column.first) - 0.5, 1.5, 1.5);
+      }
       context.restore();
     }
   };
