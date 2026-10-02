@@ -1,6 +1,7 @@
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import { importMlgFile } from '../adapters/mlg-file-import';
 import { createLoggerPage } from '../pages/logger-page';
+import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
 
 function importErrorMessage(error: unknown): string {
   if (error instanceof MlgFormatError) {
@@ -19,6 +20,7 @@ export function mountAppShell(root: HTMLElement): void {
   app.className = 'epicscope-app';
 
   const loggerPage = createLoggerPage();
+  const performanceDiagnostics = createPerformanceDiagnostics();
 
   const header = document.createElement('header');
   header.className = 'app-header';
@@ -63,6 +65,7 @@ export function mountAppShell(root: HTMLElement): void {
   footer.className = 'status-bar';
   footer.innerHTML = `
     <div class="diagnostics-slot"></div>
+    <div class="performance-diagnostics-slot"></div>
     <span class="app-status">Ready</span>
     <span>Local analysis</span>
     <span class="grow"></span>
@@ -72,12 +75,25 @@ export function mountAppShell(root: HTMLElement): void {
   const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');
   const loggerToolsSlot = header.querySelector<HTMLElement>('.logger-tools-slot');
   const diagnosticsSlot = footer.querySelector<HTMLElement>('.diagnostics-slot');
-  if (!graphSelectorSlot || !loggerToolsSlot || !diagnosticsSlot) {
+  const performanceDiagnosticsSlot = footer.querySelector<HTMLElement>('.performance-diagnostics-slot');
+  if (!graphSelectorSlot || !loggerToolsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot) {
     throw new Error('EpicScope application shell control slots are incomplete.');
   }
   graphSelectorSlot.append(loggerPage.graphSelector);
   loggerToolsSlot.append(loggerPage.headerTools);
   diagnosticsSlot.append(loggerPage.diagnosticsControl);
+  performanceDiagnosticsSlot.append(performanceDiagnostics.element);
+
+  loggerPage.onChannelPerformance((run) => {
+    performanceDiagnostics.recordChannel({
+      channelName: run.channelName,
+      totalMs: run.totalMs,
+      readDecodeMs: run.readDecodeMs,
+      scaleMs: run.scaleMs,
+      renderMs: run.renderMs,
+      sampleCount: run.sampleCount,
+    });
+  });
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -126,11 +142,29 @@ export function mountAppShell(root: HTMLElement): void {
 
     void importMlgFile(file)
       .then((parsed) => {
+        const now = (): number => globalThis.performance?.now() ?? Date.now();
+        const uiStart = now();
         loggerPage.setLog(
           parsed.summary,
           parsed.recordIndex.offsets.length,
           parsed.channelData,
         );
+        const uiPopulateMs = now() - uiStart;
+
+        performanceDiagnostics.recordLoad({
+          fileName: parsed.summary.source.displayName,
+          fileSizeBytes: parsed.summary.source.sizeBytes ?? file.size,
+          recordCount: parsed.recordIndex.offsets.length,
+          channelCount: parsed.summary.channels.length,
+          importTotalMs: parsed.importTotalMs,
+          headerMs: parsed.performance.headerMs,
+          recordScanMs: parsed.performance.recordScanMs,
+          finalizeMs: parsed.performance.finalizeMs,
+          uiPopulateMs,
+          sourceReadCount: parsed.sourceStats.readCount,
+          sourceBytesRead: parsed.sourceStats.bytesRead,
+        });
+
         loadedLog.textContent = parsed.summary.source.displayName;
         appStatus.textContent = 'Ready';
         parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only`;

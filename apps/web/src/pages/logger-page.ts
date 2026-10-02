@@ -16,10 +16,17 @@ import {
   zoomViewport,
   type TimelineViewport,
 } from '../../../../core/timeline/viewport-state';
-import { createGraphViewport } from '../components/graph-viewport';
+import {
+  createGraphViewport,
+  type GraphChannelPerformance,
+} from '../components/graph-viewport';
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
+
+export interface LoggerChannelPerformance extends GraphChannelPerformance {
+  readonly channelName: string;
+}
 
 export interface LoggerPageController {
   readonly element: HTMLElement;
@@ -32,6 +39,7 @@ export interface LoggerPageController {
     channelData: NumericChannelDataSource,
   ): void;
   setImportError(message: string): void;
+  onChannelPerformance(listener: (performance: LoggerChannelPerformance) => void): void;
 }
 
 interface DiagnosticsIndicatorController {
@@ -220,6 +228,7 @@ export function createLoggerPage(): LoggerPageController {
   let previousCursorTimeMs = 0;
   const activeChannelIds = new Set<string>();
   let channelDefinitions = new Map<string, ChannelDefinition>();
+  let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
 
   const headerTools = document.createElement('div');
   headerTools.className = 'logger-header-tools';
@@ -326,6 +335,14 @@ export function createLoggerPage(): LoggerPageController {
     });
   });
 
+  graph.onChannelPerformance((performance) => {
+    const channel = channelDefinitions.get(performance.channelId);
+    channelPerformanceListener?.({
+      ...performance,
+      channelName: channel?.sourceName ?? performance.channelId,
+    });
+  });
+
   graph.onCursorValues((values) => {
     const displayValues = values.flatMap((item) => {
       const channel = channelDefinitions.get(item.channelId);
@@ -408,5 +425,6 @@ export function createLoggerPage(): LoggerPageController {
     diagnosticsControl: diagnostics.element,
     setLog,
     setImportError,
+    onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
   };
 }

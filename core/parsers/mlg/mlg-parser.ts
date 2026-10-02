@@ -10,12 +10,20 @@ import type { MlgFieldDescriptor, MlgHeader } from './mlg-format';
 import { parseMlgHeader } from './mlg-header';
 import { scanMlgRecords, type MlgRecordIndex } from './mlg-records';
 
+export interface MlgParsePerformance {
+  readonly headerMs: number;
+  readonly recordScanMs: number;
+  readonly finalizeMs: number;
+  readonly totalMs: number;
+}
+
 export interface ParsedMlgLog {
   readonly summary: ImportedLogSummary;
   readonly header: MlgHeader;
   readonly fields: readonly MlgFieldDescriptor[];
   readonly recordIndex: MlgRecordIndex;
   readonly channelData: NumericChannelDataSource;
+  readonly performance: MlgParsePerformance;
 }
 
 function buildTimeRange(timeMs: Float64Array): LogTimeRange | undefined {
@@ -35,14 +43,24 @@ export async function parseMlg(
   source: RandomAccessByteSource,
   sourceIdentity: LogSourceIdentity,
 ): Promise<ParsedMlgLog> {
+  const now = (): number => globalThis.performance?.now() ?? Date.now();
+  const totalStart = now();
+  const headerStart = now();
   const headerResult = await parseMlgHeader(source);
+  const headerMs = now() - headerStart;
+
+  const scanStart = now();
   const scanResult = await scanMlgRecords(source, headerResult.header);
+  const recordScanMs = now() - scanStart;
+
+  const finalizeStart = now();
   const timeRange = buildTimeRange(scanResult.records.timeMs);
   const channelData = new MlgNumericChannelDataSource(
     source,
     headerResult.fields,
     scanResult.records,
   );
+  const finalizeMs = now() - finalizeStart;
 
   return {
     summary: {
@@ -56,5 +74,11 @@ export async function parseMlg(
     fields: headerResult.fields,
     recordIndex: scanResult.records,
     channelData,
+    performance: {
+      headerMs,
+      recordScanMs,
+      finalizeMs,
+      totalMs: now() - totalStart,
+    },
   };
 }
