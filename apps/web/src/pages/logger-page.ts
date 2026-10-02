@@ -25,11 +25,42 @@ import { createTimelineShell, type TimelineViewportIntent } from '../components/
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 import type {
+  GraphPaneSnapshot,
+  GraphWorkspaceLayout,
   GraphWorkspaceSnapshot,
   LoggerWorkspaceState,
 } from '../state/workspace-state';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
+const GRAPH_PANE_IDS = ['pane-1', 'pane-2', 'pane-3', 'pane-4', 'pane-5', 'pane-6'] as const;
+
+function paneCountForLayout(layout: GraphWorkspaceLayout): number {
+  if (layout === 'grid4') return 4;
+  if (layout === 'grid5') return 5;
+  if (layout === 'grid6') return 6;
+  return 1;
+}
+
+function createEmptyPaneStates(): GraphPaneState[] {
+  return GRAPH_PANE_IDS.map((id) => ({ id, channelIds: [] }));
+}
+
+function normalizePaneStates(
+  panes: readonly GraphPaneSnapshot[] | undefined,
+  legacyChannelIds: readonly string[],
+): GraphPaneState[] {
+  const normalized = createEmptyPaneStates();
+  if (panes && panes.length > 0) {
+    for (const pane of panes.slice(0, GRAPH_PANE_IDS.length)) {
+      const target = normalized.find((candidate) => candidate.id === pane.id);
+      if (target) target.channelIds = [...pane.channelIds];
+    }
+  } else {
+    normalized[0]!.channelIds = [...legacyChannelIds];
+  }
+  return normalized;
+}
+
 
 export interface LoggerChannelPerformance extends GraphChannelPerformance {
   readonly channelName: string;
@@ -279,8 +310,15 @@ interface GraphWorkspaceSummary {
   name: string;
 }
 
-interface GraphWorkspaceState extends GraphWorkspaceSummary {
+interface GraphPaneState {
+  id: string;
   channelIds: string[];
+}
+
+interface GraphWorkspaceState extends GraphWorkspaceSummary {
+  layout: GraphWorkspaceLayout;
+  activePaneId: string;
+  panes: GraphPaneState[];
   viewport: TimelineViewport | undefined;
   cursorTimeMs: number;
   viewHistory: TimelineViewport[];
@@ -422,20 +460,20 @@ function createGraphSelector(): GraphSelectorController {
 export function createLoggerPage(): LoggerPageController {
   const inspector = createInspectorPanel();
   const timeline = createTimelineShell();
-  const graph = createGraphViewport();
   const diagnostics = createDiagnosticsIndicator();
   const valueSearch = createChannelValueSearchPanel();
   const graphSelector = createGraphSelector();
   let viewport: TimelineViewport | undefined;
   let previousCursorTimeMs = 0;
-  const activeChannelIds = new Set<string>();
   let workspaceCounter = 1;
   let workspaceGeneration = 0;
   let activeWorkspaceId = 'general';
   let workspaces: GraphWorkspaceState[] = [{
     id: 'general',
     name: 'General',
-    channelIds: [],
+    layout: 'single',
+    activePaneId: 'pane-1',
+    panes: createEmptyPaneStates(),
     viewport: undefined,
     cursorTimeMs: 0,
     viewHistory: [],
@@ -454,11 +492,23 @@ export function createLoggerPage(): LoggerPageController {
 
   const headerTools = document.createElement('div');
   headerTools.className = 'logger-header-tools';
+
+  const layoutSelect = document.createElement('select');
+  layoutSelect.className = 'graph-layout-select';
+  layoutSelect.title = 'Graph workspace layout';
+  layoutSelect.setAttribute('aria-label', 'Graph workspace layout');
+  layoutSelect.innerHTML = `
+    <option value="single">Single graph</option>
+    <option value="grid4">2 × 2 · 4 graphs</option>
+    <option value="grid5">2 × 3 · 5 graphs</option>
+    <option value="grid6">3 × 2 · 6 graphs</option>
+  `;
+
   const compareButton = document.createElement('button');
   compareButton.type = 'button';
   compareButton.disabled = true;
   compareButton.textContent = 'Compare Run B';
-  headerTools.append(valueSearch.element, compareButton);
+  headerTools.append(valueSearch.element, layoutSelect, compareButton);
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -468,11 +518,34 @@ export function createLoggerPage(): LoggerPageController {
   workspaceRow.className = 'workspace-row';
 
   const graphHost = document.createElement('main');
-  graphHost.className = 'graph-workspace';
-  const graphWindow = document.createElement('article');
-  graphWindow.className = 'graph-window graph-window--active';
-  graphWindow.append(graph.element);
-  graphHost.append(graphWindow);
+  graphHost.className = 'graph-workspace graph-workspace--single';
+
+  const paneRuntimes = GRAPH_PANE_IDS.map((id, index) => {
+    const graph = createGraphViewport();
+    const windowElement = document.createElement('article');
+    windowElement.className = 'graph-window';
+    windowElement.dataset.paneId = id;
+
+    const header = document.createElement('header');
+    header.className = 'graph-pane-header';
+    const title = document.createElement('strong');
+    title.textContent = `Graph ${index + 1}`;
+    const state = document.createElement('span');
+    state.className = 'graph-pane-state';
+    state.textContent = index === 0 ? 'ACTIVE' : '';
+    header.append(title, state);
+
+    windowElement.append(header, graph.element);
+    graphHost.append(windowElement);
+
+    return {
+      id,
+      graph,
+      windowElement,
+      stateElement: state,
+      activeChannelIds: new Set<string>(),
+    };
+  });
 
   const sensorToggle = document.createElement('button');
   sensorToggle.type = 'button';
@@ -514,11 +587,58 @@ export function createLoggerPage(): LoggerPageController {
   const activeWorkspace = (): GraphWorkspaceState | undefined =>
     workspaces.find((workspace) => workspace.id === activeWorkspaceId);
 
+  const activePaneState = (): GraphPaneState | undefined => {
+    const workspace = activeWorkspace();
+    if (!workspace) return undefined;
+    return workspace.panes.find((pane) => pane.id === workspace.activePaneId) ?? workspace.panes[0];
+  };
+
+  const activePaneRuntime = () => {
+    const pane = activePaneState();
+    return paneRuntimes.find((runtime) => runtime.id === pane?.id) ?? paneRuntimes[0];
+  };
+
   const refreshWorkspaceSelector = (): void => {
     graphSelector.setWorkspaces(
       workspaces.map(({ id, name }) => ({ id, name })),
       activeWorkspaceId,
     );
+  };
+
+  const syncActivePaneContext = (): void => {
+    const runtime = activePaneRuntime();
+    const activeIds = runtime ? [...runtime.activeChannelIds] : [];
+    inspector.setActiveChannels(activeIds);
+    inspector.setQueuedChannels([]);
+    valueSearch.setActiveChannels(
+      activeIds.flatMap((id) => {
+        const channel = channelDefinitions.get(id);
+        return channel ? [channel] : [];
+      }),
+    );
+    timeline.setOverviewContent(runtime?.graph.getOverviewTraces() ?? [], logMarkers);
+  };
+
+  const renderGraphLayout = (): void => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+
+    const visibleCount = paneCountForLayout(workspace.layout);
+    const activeIndex = workspace.panes.findIndex((pane) => pane.id === workspace.activePaneId);
+    if (activeIndex < 0 || activeIndex >= visibleCount) {
+      workspace.activePaneId = workspace.panes[0]?.id ?? 'pane-1';
+    }
+
+    layoutSelect.value = workspace.layout;
+    graphHost.className = `graph-workspace graph-workspace--${workspace.layout}`;
+
+    paneRuntimes.forEach((runtime, index) => {
+      const visible = index < visibleCount;
+      const active = runtime.id === workspace.activePaneId;
+      runtime.windowElement.hidden = !visible;
+      runtime.windowElement.classList.toggle('graph-window--active', active);
+      runtime.stateElement.textContent = active ? 'ACTIVE' : '';
+    });
   };
 
   const refreshViewHistoryState = (): void => {
@@ -558,7 +678,10 @@ export function createLoggerPage(): LoggerPageController {
   const saveCurrentWorkspace = (): void => {
     const workspace = activeWorkspace();
     if (!workspace) return;
-    workspace.channelIds = [...activeChannelIds];
+    for (const runtime of paneRuntimes) {
+      const pane = workspace.panes.find((candidate) => candidate.id === runtime.id);
+      if (pane) pane.channelIds = [...runtime.activeChannelIds];
+    }
     workspace.viewport = viewport ? { ...viewport } : undefined;
     workspace.cursorTimeMs = timeline.getCursorTime();
   };
@@ -569,7 +692,7 @@ export function createLoggerPage(): LoggerPageController {
   ): void => {
     viewport = nextViewport;
     timeline.setViewport(nextViewport);
-    graph.setViewport(nextViewport);
+    paneRuntimes.forEach((runtime) => runtime.graph.setViewport(nextViewport));
     const workspace = activeWorkspace();
     if (workspace) workspace.viewport = nextViewport ? { ...nextViewport } : undefined;
     if (nextViewport && historyMode !== 'none') {
@@ -582,7 +705,7 @@ export function createLoggerPage(): LoggerPageController {
   const setCursorWithoutFollow = (timeMs: number): void => {
     previousCursorTimeMs = timeMs;
     timeline.setCursorTime(timeMs);
-    graph.setCursorTime(timeMs);
+    paneRuntimes.forEach((runtime) => runtime.graph.setCursorTime(timeMs));
     const workspace = activeWorkspace();
     if (workspace) workspace.cursorTimeMs = timeMs;
   };
@@ -636,9 +759,41 @@ export function createLoggerPage(): LoggerPageController {
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
 
+  const setActivePane = (paneId: string, emit = true): void => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    const paneIndex = workspace.panes.findIndex((pane) => pane.id === paneId);
+    if (paneIndex < 0 || paneIndex >= visibleCount || workspace.activePaneId === paneId) return;
+    workspace.activePaneId = paneId;
+    renderGraphLayout();
+    syncActivePaneContext();
+    if (emit) emitWorkspaceMutation();
+  };
+
+  paneRuntimes.forEach((runtime) => {
+    runtime.windowElement.addEventListener('pointerdown', () => setActivePane(runtime.id));
+  });
+
+  layoutSelect.addEventListener('change', () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.layout = layoutSelect.value as GraphWorkspaceLayout;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    const activeIndex = workspace.panes.findIndex((pane) => pane.id === workspace.activePaneId);
+    if (activeIndex < 0 || activeIndex >= visibleCount) workspace.activePaneId = 'pane-1';
+    renderGraphLayout();
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
   const restoreWorkspace = async (workspaceId: string): Promise<void> => {
     const target = workspaces.find((workspace) => workspace.id === workspaceId);
-    if (!target || target.id === activeWorkspaceId) return;
+    if (!target || target.id === activeWorkspaceId) {
+      renderGraphLayout();
+      syncActivePaneContext();
+      return;
+    }
 
     saveCurrentWorkspace();
     const generation = ++workspaceGeneration;
@@ -646,92 +801,87 @@ export function createLoggerPage(): LoggerPageController {
     refreshWorkspaceSelector();
     refreshViewHistoryState();
 
-    graph.clearChannels();
-    activeChannelIds.clear();
+    paneRuntimes.forEach((runtime) => {
+      runtime.graph.clearChannels();
+      runtime.activeChannelIds.clear();
+    });
     inspector.setActiveChannels([]);
     inspector.setQueuedChannels([]);
     valueSearch.setActiveChannels([]);
     timeline.setOverviewContent([], logMarkers);
 
+    renderGraphLayout();
     if (target.viewport) syncViewport({ ...target.viewport });
     setCursorWithoutFollow(target.cursorTimeMs);
 
-    const requestedIds = target.channelIds.filter((channelId) => channelDefinitions.has(channelId));
-    if (requestedIds.length === 0) return;
+    const visibleCount = paneCountForLayout(target.layout);
+    const loads = paneRuntimes.slice(0, visibleCount).map(async (runtime, index) => {
+      const pane = target.panes[index];
+      if (!pane) return;
+      const requestedIds = pane.channelIds
+        .filter((channelId) => channelDefinitions.has(channelId))
+        .slice(0, MAX_ACTIVE_WEB_TRACES);
+      if (requestedIds.length === 0) return;
 
-    const activations = requestedIds.map((channelId) => graph.toggleChannel(channelId));
-    graph.loadPendingChannels();
-    const results = await Promise.all(activations);
-    if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+      const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+      runtime.graph.loadPendingChannels();
+      const results = await Promise.all(activations);
+      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
 
-    activeChannelIds.clear();
-    requestedIds.forEach((channelId, index) => {
-      if (results[index]) activeChannelIds.add(channelId);
+      runtime.activeChannelIds.clear();
+      requestedIds.forEach((channelId, resultIndex) => {
+        if (results[resultIndex]) runtime.activeChannelIds.add(channelId);
+      });
+      pane.channelIds = [...runtime.activeChannelIds];
     });
-    target.channelIds = [...activeChannelIds];
-    const activeIds = [...activeChannelIds];
-    inspector.setActiveChannels(activeIds);
-    valueSearch.setActiveChannels(
-      activeIds.flatMap((id) => {
-        const channel = channelDefinitions.get(id);
-        return channel ? [channel] : [];
-      }),
-    );
-    timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+
+    await Promise.all(loads);
+    if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+    syncActivePaneContext();
   };
 
   inspector.onChannelToggled((channelId) => {
-    void graph.toggleChannel(channelId).then((active) => {
-      if (active) activeChannelIds.add(channelId);
-      else activeChannelIds.delete(channelId);
-      const workspace = activeWorkspace();
-      if (workspace) workspace.channelIds = [...activeChannelIds];
-      const activeIds = [...activeChannelIds];
-      inspector.setActiveChannels(activeIds);
-      valueSearch.setActiveChannels(
-        activeIds.flatMap((id) => {
-          const channel = channelDefinitions.get(id);
-          return channel ? [channel] : [];
-        }),
-      );
-      timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+    const runtime = activePaneRuntime();
+    const pane = activePaneState();
+    if (!runtime || !pane) return;
+
+    void runtime.graph.toggleChannel(channelId).then((active) => {
+      if (active) runtime.activeChannelIds.add(channelId);
+      else runtime.activeChannelIds.delete(channelId);
+      pane.channelIds = [...runtime.activeChannelIds];
+      syncActivePaneContext();
       emitWorkspaceMutation();
     });
   });
 
   inspector.onLoadSelected(() => {
-    graph.loadPendingChannels();
+    activePaneRuntime()?.graph.loadPendingChannels();
   });
 
   inspector.onAddFiltered((channelIds) => {
-    const available = Math.max(0, MAX_ACTIVE_WEB_TRACES - activeChannelIds.size);
+    const runtime = activePaneRuntime();
+    const pane = activePaneState();
+    if (!runtime || !pane) return;
+
+    const available = Math.max(0, MAX_ACTIVE_WEB_TRACES - runtime.activeChannelIds.size);
     const requestedIds = channelIds.slice(0, available);
     if (requestedIds.length === 0) return;
 
-    const activations = requestedIds.map((channelId) => graph.toggleChannel(channelId));
-    graph.loadPendingChannels();
+    const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+    runtime.graph.loadPendingChannels();
     void Promise.all(activations).then((results) => {
       requestedIds.forEach((channelId, index) => {
-        if (results[index]) activeChannelIds.add(channelId);
+        if (results[index]) runtime.activeChannelIds.add(channelId);
       });
-      const workspace = activeWorkspace();
-      if (workspace) workspace.channelIds = [...activeChannelIds];
-      const activeIds = [...activeChannelIds];
-      inspector.setActiveChannels(activeIds);
-      valueSearch.setActiveChannels(
-        activeIds.flatMap((id) => {
-          const channel = channelDefinitions.get(id);
-          return channel ? [channel] : [];
-        }),
-      );
-      timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+      pane.channelIds = [...runtime.activeChannelIds];
+      syncActivePaneContext();
       emitWorkspaceMutation();
     });
   });
 
   inspector.onChannelDetailsRequested((channelId) => {
     const channel = channelDefinitions.get(channelId);
-    const statistics = graph.getChannelStatistics(channelId);
+    const statistics = activePaneRuntime()?.graph.getChannelStatistics(channelId);
     if (!channel || !statistics) {
       inspector.setChannelStatistics(undefined);
       return;
@@ -747,30 +897,38 @@ export function createLoggerPage(): LoggerPageController {
     });
   });
 
-  graph.onPendingChannelsChanged((channelIds) => {
-    inspector.setQueuedChannels(channelIds);
-  });
-
-  graph.onChannelPerformance((performance) => {
-    const channel = channelDefinitions.get(performance.channelId);
-    channelPerformanceListener?.({
-      ...performance,
-      channelName: channel?.sourceName ?? performance.channelId,
-    });
-  });
-
-  graph.onCursorValues((values) => {
-    const displayValues = values.flatMap((item) => {
-      const channel = channelDefinitions.get(item.channelId);
-      if (!channel) return [];
-      if (item.value === undefined || !Number.isFinite(item.value)) {
-        return [{ channelId: item.channelId, value: '—' }];
+  paneRuntimes.forEach((runtime) => {
+    runtime.graph.onPendingChannelsChanged((channelIds) => {
+      if (runtime.id === activeWorkspace()?.activePaneId) {
+        inspector.setQueuedChannels(channelIds);
       }
-      const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
-      const unit = channel.unit ? ` ${channel.unit}` : '';
-      return [{ channelId: item.channelId, value: `${item.value.toFixed(precision)}${unit}` }];
     });
-    inspector.setChannelValues(displayValues);
+
+    runtime.graph.onChannelPerformance((performance) => {
+      const channel = channelDefinitions.get(performance.channelId);
+      channelPerformanceListener?.({
+        ...performance,
+        channelName: channel?.sourceName ?? performance.channelId,
+      });
+    });
+
+    runtime.graph.onCursorValues((values) => {
+      if (runtime.id !== activeWorkspace()?.activePaneId) return;
+      const displayValues = values.flatMap((item) => {
+        const channel = channelDefinitions.get(item.channelId);
+        if (!channel) return [];
+        if (item.value === undefined || !Number.isFinite(item.value)) {
+          return [{ channelId: item.channelId, value: '—' }];
+        }
+        const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
+        const unit = channel.unit ? ` ${channel.unit}` : '';
+        return [{ channelId: item.channelId, value: `${item.value.toFixed(precision)}${unit}` }];
+      });
+      inspector.setChannelValues(displayValues);
+    });
+
+    runtime.graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
+    runtime.graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
   });
 
   timeline.onCursorChange((timeMs) => {
@@ -779,16 +937,14 @@ export function createLoggerPage(): LoggerPageController {
       if (!viewportEquals(viewport, nextViewport)) syncViewport(nextViewport);
     }
     previousCursorTimeMs = timeMs;
-    graph.setCursorTime(timeMs);
+    paneRuntimes.forEach((runtime) => runtime.graph.setCursorTime(timeMs));
     const workspace = activeWorkspace();
     if (workspace) workspace.cursorTimeMs = timeMs;
   });
   timeline.onViewportIntent(applyViewportIntent);
   timeline.onAnnotationChange(({ aTimeMs, bTimeMs }) => {
-    graph.setAnalysisRange(aTimeMs, bTimeMs);
+    paneRuntimes.forEach((runtime) => runtime.graph.setAnalysisRange(aTimeMs, bTimeMs));
   });
-  graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
-  graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
   valueSearch.onJump((timeMs) => {
     if (viewport) {
@@ -811,7 +967,9 @@ export function createLoggerPage(): LoggerPageController {
     const workspace: GraphWorkspaceState = {
       id: `graph-${workspaceCounter}`,
       name: `Graph ${workspaceCounter}`,
-      channelIds: [],
+      layout: 'single',
+      activePaneId: 'pane-1',
+      panes: createEmptyPaneStates(),
       viewport: viewport ? { ...viewport } : undefined,
       cursorTimeMs: timeline.getCursorTime(),
       viewHistory: viewport ? [{ ...viewport }] : [],
@@ -842,7 +1000,9 @@ export function createLoggerPage(): LoggerPageController {
     const duplicate: GraphWorkspaceState = {
       id: `graph-${workspaceCounter}`,
       name: `${source.name} copy`,
-      channelIds: [...source.channelIds],
+      layout: source.layout,
+      activePaneId: source.activePaneId,
+      panes: source.panes.map((pane) => ({ id: pane.id, channelIds: [...pane.channelIds] })),
       viewport: source.viewport ? { ...source.viewport } : undefined,
       cursorTimeMs: source.cursorTimeMs,
       viewHistory: source.viewHistory.map((item) => ({ ...item })),
@@ -879,7 +1039,9 @@ export function createLoggerPage(): LoggerPageController {
     workspaces = [{
       id: 'general',
       name: 'General',
-      channelIds: [],
+      layout: 'single',
+      activePaneId: 'pane-1',
+      panes: createEmptyPaneStates(),
       viewport: summary.timeRange
         ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
         : undefined,
@@ -892,13 +1054,14 @@ export function createLoggerPage(): LoggerPageController {
     }];
     refreshWorkspaceSelector();
     graphSelector.setEnabled(Boolean(summary.timeRange));
-    activeChannelIds.clear();
+    paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
     logMarkers = summary.markers;
     inspector.setChannels(summary.channels, summary.source.displayName);
     timeline.setTimeRange(summary.timeRange, recordCount);
     timeline.setOverviewContent([], logMarkers);
-    graph.setLog(summary.channels, channelData, summary.timeRange);
+    paneRuntimes.forEach((runtime) => runtime.graph.setLog(summary.channels, channelData, summary.timeRange));
+    renderGraphLayout();
     valueSearch.setLog(channelData);
     valueSearch.setActiveChannels([]);
     if (summary.timeRange) {
@@ -918,7 +1081,9 @@ export function createLoggerPage(): LoggerPageController {
     workspaces = [{
       id: 'general',
       name: 'General',
-      channelIds: [],
+      layout: 'single',
+      activePaneId: 'pane-1',
+      panes: createEmptyPaneStates(),
       viewport: undefined,
       cursorTimeMs: 0,
       viewHistory: [],
@@ -927,13 +1092,14 @@ export function createLoggerPage(): LoggerPageController {
     }];
     refreshWorkspaceSelector();
     graphSelector.setEnabled(false);
-    activeChannelIds.clear();
+    paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions.clear();
     logMarkers = [];
     inspector.setError(message);
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);
-    graph.clear();
+    paneRuntimes.forEach((runtime) => runtime.graph.clear());
+    renderGraphLayout();
     valueSearch.clear();
     diagnostics.setDiagnostics([{
       code: 'import-failed',
@@ -945,15 +1111,24 @@ export function createLoggerPage(): LoggerPageController {
 
   const getWorkspaceState = (): LoggerWorkspaceState => ({
     activeWorkspaceId,
-    workspaces: workspaces.map((workspace): GraphWorkspaceSnapshot => ({
+    workspaces: workspaces.map((workspace): GraphWorkspaceSnapshot => {
+      const activePane = workspace.panes.find((pane) => pane.id === workspace.activePaneId) ?? workspace.panes[0];
+      return {
       id: workspace.id,
       name: workspace.name,
-      channelIds: [...workspace.channelIds],
+      channelIds: [...(activePane?.channelIds ?? [])],
+      layout: workspace.layout,
+      activePaneId: workspace.activePaneId,
+      panes: workspace.panes.map((pane): GraphPaneSnapshot => ({
+        id: pane.id,
+        channelIds: [...pane.channelIds],
+      })),
       viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
       cursorTimeMs: workspace.cursorTimeMs,
       viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
       viewHistoryIndex: workspace.viewHistoryIndex,
-    })),
+      };
+    }),
     timeline: timeline.getWorkspaceState(),
     inspector: inspector.getWorkspaceState(),
   });
@@ -962,10 +1137,19 @@ export function createLoggerPage(): LoggerPageController {
     restoringWorkspaceState = true;
     workspaceGeneration += 1;
     try {
-      workspaces = state.workspaces.map((workspace) => ({
+      workspaces = state.workspaces.map((workspace) => {
+        const layout = workspace.layout ?? 'single';
+        const panes = normalizePaneStates(workspace.panes, workspace.channelIds);
+        const visibleIds = panes.slice(0, paneCountForLayout(layout)).map((pane) => pane.id);
+        const activePaneId = workspace.activePaneId && visibleIds.includes(workspace.activePaneId)
+          ? workspace.activePaneId
+          : panes[0]!.id;
+        return {
         id: workspace.id,
         name: workspace.name,
-        channelIds: [...workspace.channelIds],
+        layout,
+        activePaneId,
+        panes,
         viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
         cursorTimeMs: workspace.cursorTimeMs,
         viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
@@ -974,12 +1158,15 @@ export function createLoggerPage(): LoggerPageController {
           workspace.viewHistory.length - 1,
         ),
         lastHistoryMutationMs: 0,
-      }));
+        };
+      });
       if (workspaces.length === 0) {
         workspaces = [{
           id: 'general',
           name: 'General',
-          channelIds: [],
+          layout: 'single',
+          activePaneId: 'pane-1',
+          panes: createEmptyPaneStates(),
           viewport: viewport ? { ...viewport } : undefined,
           cursorTimeMs: timeline.getCursorTime(),
           viewHistory: viewport ? [{ ...viewport }] : [],
@@ -1033,9 +1220,14 @@ export function createLoggerPage(): LoggerPageController {
     setLog,
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
-    refreshValidity: () => { graph.refreshValidity(); timeline.refreshOverview(); },
+    refreshValidity: () => {
+      paneRuntimes.forEach((runtime) => runtime.graph.refreshValidity());
+      timeline.refreshOverview();
+    },
     setPlaybackSpeed: (speed) => { timeline.setPlaybackSpeed(speed); },
-    setHighZoomSamplePointsVisible: (visible) => { graph.setHighZoomSamplePointsVisible(visible); },
+    setHighZoomSamplePointsVisible: (visible) => {
+      paneRuntimes.forEach((runtime) => runtime.graph.setHighZoomSamplePointsVisible(visible));
+    },
     setTimelineOverviewTracesVisible: (visible) => { timeline.setOverviewTracesVisible(visible); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },

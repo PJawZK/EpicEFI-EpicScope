@@ -26,10 +26,21 @@ export interface InspectorWorkspaceState {
   readonly sortAscending: boolean;
 }
 
+export type GraphWorkspaceLayout = 'single' | 'grid4' | 'grid5' | 'grid6';
+
+export interface GraphPaneSnapshot {
+  readonly id: string;
+  readonly channelIds: readonly string[];
+}
+
 export interface GraphWorkspaceSnapshot {
   readonly id: string;
   readonly name: string;
+  /** Legacy/single-pane compatibility. Mirrors the active pane channel list. */
   readonly channelIds: readonly string[];
+  readonly layout?: GraphWorkspaceLayout;
+  readonly activePaneId?: string;
+  readonly panes?: readonly GraphPaneSnapshot[];
   readonly viewport: TimelineViewport | undefined;
   readonly cursorTimeMs: number;
   readonly viewHistory: readonly TimelineViewport[];

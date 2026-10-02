@@ -45,12 +45,39 @@ const isViewport = (value: unknown): boolean => {
 const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const workspace = value as Record<string, unknown>;
+  const validLayout = workspace.layout === undefined
+    || workspace.layout === 'single'
+    || workspace.layout === 'grid4'
+    || workspace.layout === 'grid5'
+    || workspace.layout === 'grid6';
+  const validPanes = workspace.panes === undefined
+    || (
+      Array.isArray(workspace.panes)
+      && workspace.panes.length >= 1
+      && workspace.panes.length <= 6
+      && workspace.panes.every((pane) => {
+        if (!pane || typeof pane !== 'object' || Array.isArray(pane)) return false;
+        const candidate = pane as Record<string, unknown>;
+        return (
+          typeof candidate.id === 'string'
+          && candidate.id.length <= 128
+          && isStringArray(candidate.channelIds, 8)
+        );
+      })
+    );
+
   return (
     typeof workspace.id === 'string'
     && workspace.id.length <= 128
     && typeof workspace.name === 'string'
     && workspace.name.length <= 256
     && isStringArray(workspace.channelIds, 8)
+    && validLayout
+    && (
+      workspace.activePaneId === undefined
+      || (typeof workspace.activePaneId === 'string' && workspace.activePaneId.length <= 128)
+    )
+    && validPanes
     && (workspace.viewport === undefined || isViewport(workspace.viewport))
     && isFiniteNumber(workspace.cursorTimeMs)
     && Array.isArray(workspace.viewHistory)

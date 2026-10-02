@@ -532,6 +532,97 @@
   padding-top: 4px;
 }
 
+
+.graph-layout-select {
+  height: 28px;
+  min-width: 116px;
+  padding: 0 6px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #c7d8e1;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.graph-workspace {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.graph-workspace--single {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.graph-workspace--grid4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.graph-workspace--grid5,
+.graph-workspace--grid6 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.graph-window {
+  grid-template-rows: 24px minmax(0, 1fr);
+}
+
+.graph-pane-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  border-bottom: 1px solid #223542;
+  background: #0b1720;
+  user-select: none;
+}
+
+.graph-pane-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #a9becb;
+  font-size: 8px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-pane-state {
+  margin-left: auto;
+  color: #6aa9d1;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.graph-window--active .graph-pane-header {
+  background: #0d1d29;
+}
+
+.graph-window--active .graph-pane-header strong {
+  color: #d9edf8;
+}
+
+.graph-window > .graph-viewport {
+  min-height: 0;
+  height: 100%;
+}
+
+.graph-workspace:not(.graph-workspace--single) .graph-corner-readout {
+  font-size: 7px;
+}
+
+.graph-workspace:not(.graph-workspace--single) .graph-corner-readout--now,
+.graph-workspace:not(.graph-workspace--single) .graph-corner-readout--max {
+  min-width: 70px;
+}
+
 /* Collapsed timeline retains only the interactive overview/focus strip. */
 .timeline-shell--compact {
   height: 30px;
