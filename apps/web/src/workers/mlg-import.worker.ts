@@ -1,6 +1,7 @@
 import type { LogTimeRange } from '../../../../core/log-model/log-types';
 import { parseMlgHeader } from '../../../../core/parsers/mlg/mlg-header';
 import {
+  classifyMlgRetryDiagnostics,
   scanMlgRecords,
   validateMlgRecordCrc,
 } from '../../../../core/parsers/mlg/mlg-records';
@@ -99,11 +100,18 @@ scope.onmessage = (event): void => {
         scanResult.records,
       );
 
+      const classified = classifyMlgRetryDiagnostics(
+        scanResult.records,
+        validation.crcValid,
+        [...scanResult.diagnostics, ...validation.diagnostics],
+        headerResult.header.recordLength,
+      );
+
       scope.postMessage({
         type: 'validated',
         payload: {
           crcValid: validation.crcValid,
-          diagnostics: validation.diagnostics,
+          diagnostics: classified.diagnostics,
           performance: validation.performance,
           sourceStats: source.stats(),
           completedMs: now() - started,
