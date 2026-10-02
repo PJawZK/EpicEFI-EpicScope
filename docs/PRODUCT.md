@@ -46,17 +46,20 @@ Android requirements must not distort the Web or Linux architecture prematurely.
 
 EpicScope should support these core workflows:
 
-1. Open a local log and inspect channels immediately.
-2. Search and organize channels.
-3. Navigate the timeline quickly using zoom, pan, cursor, markers, and synchronized graph panes.
-4. Create derived/math channels.
-5. Filter samples and build histograms, heatmaps, scatter plots, statistics, and aggregations.
-6. Detect relevant tuning events automatically.
-7. Load tune/firmware context and correlate logged behaviour with actual tune-table cells.
-8. Use specialized analyzers for tuning systems.
-9. Compare logs, events, and tune revisions.
-10. Save analysis/session state.
-11. Optionally share or publish a session without making upload mandatory for analysis.
+1. Reopen the application with named workspaces, pane layouts, and channel assignments still present even when no log is loaded.
+2. Load an EpicEFI/TunerStudio INI definition to establish stable known-channel/firmware context where available.
+3. Open a local log and bind recorded channels/data into that existing workspace immediately.
+4. Keep known-but-unlogged channels visible as unavailable and keep usable log-only channels accessible.
+5. Search and organize channels.
+6. Navigate the timeline quickly using zoom, pan, cursor, markers, and synchronized graph panes.
+7. Create derived/math channels.
+8. Filter samples and build histograms, heatmaps, scatter plots, statistics, and aggregations.
+9. Detect relevant tuning events automatically.
+10. Optionally load MSQ tune values/tables and correlate logged behaviour with actual tune-table cells.
+11. Use specialized analyzers for tuning systems.
+12. Compare logs, events, and tune revisions.
+13. Save analysis/session state.
+14. Optionally share or publish a session without making upload mandatory for analysis.
 
 ## Initial specialized analyzers
 
@@ -99,6 +102,14 @@ Recommendations must not be presented as unexplained conclusions.
 ### Tune awareness
 
 When firmware/tune information is available, EpicScope should understand the relationship between logged samples and tune structures rather than treating every channel as an isolated signal.
+
+INI and MSQ serve different product roles:
+
+- INI can establish firmware identity and a stable known runtime/output-channel catalog before any log is opened;
+- MLG remains authoritative for recorded samples and sample validity;
+- MSQ later supplies actual tune/calibration values, tables, curves, and scalar settings.
+
+A persistent workspace should therefore be able to show its configured channels while waiting for log data rather than requiring channel-layout recreation for every recording.
 
 Examples include:
 
