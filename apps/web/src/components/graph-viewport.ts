@@ -43,6 +43,7 @@ export interface GraphViewportController {
   onPan(listener: (deltaMs: number) => void): void;
   onCursorValues(listener: (values: readonly GraphCursorValue[]) => void): void;
   onChannelPerformance(listener: (performance: GraphChannelPerformance) => void): void;
+  refreshValidity(): void;
   clear(): void;
 }
 
@@ -471,6 +472,12 @@ export function createGraphViewport(): GraphViewportController {
     draw();
   };
 
+  const refreshValidity = (): void => {
+    envelopeCache.clear();
+    emitCursorValues();
+    draw();
+  };
+
   const clear = (): void => {
     channels = [];
     channelData = undefined;
@@ -500,6 +507,7 @@ export function createGraphViewport(): GraphViewportController {
     onPan: (listener) => { panListener = listener; },
     onCursorValues: (listener) => { cursorValuesListener = listener; },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
+    refreshValidity,
     clear,
   };
 }
