@@ -29,7 +29,6 @@ export interface LoggerPageController {
   setLog(
     summary: ImportedLogSummary,
     recordCount: number,
-    formatVersion: number,
     channelData: NumericChannelDataSource,
   ): void;
   setImportError(message: string): void;
@@ -367,7 +366,6 @@ export function createLoggerPage(): LoggerPageController {
   const setLog = (
     summary: ImportedLogSummary,
     recordCount: number,
-    formatVersion: number,
     channelData: NumericChannelDataSource,
   ): void => {
     activeChannelIds.clear();
