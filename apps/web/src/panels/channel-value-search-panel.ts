@@ -1,5 +1,6 @@
 import type { ChannelDefinition, NumericChannelDataSource } from '../../../../core/log-model/log-types';
 import {
+  findSteppedSearchResultIndex,
   searchChannelValues,
   type ChannelConstraintOperator,
   type ChannelValueSearchMode,
@@ -80,6 +81,10 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
         <button type="button" class="value-search-run">Search</button>
         <span class="value-search-status">Choose a channel and search mode.</span>
       </div>
+      <label class="value-search-step">
+        <span>Next target step</span>
+        <input class="value-search-step-input" type="number" min="0" step="any" inputmode="decimal" value="0.00" />
+      </label>
       <div class="value-search-result" hidden>
         <div class="value-search-result-main"></div>
         <div class="value-search-result-sub"></div>
@@ -106,6 +111,7 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
   const constraintValue = root.querySelector<HTMLInputElement>('.value-search-constraint-value');
   const runButton = root.querySelector<HTMLButtonElement>('.value-search-run');
   const status = root.querySelector<HTMLElement>('.value-search-status');
+  const stepInput = root.querySelector<HTMLInputElement>('.value-search-step-input');
   const result = root.querySelector<HTMLElement>('.value-search-result');
   const resultMain = root.querySelector<HTMLElement>('.value-search-result-main');
   const resultSub = root.querySelector<HTMLElement>('.value-search-result-sub');
@@ -115,7 +121,7 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
 
   if (!trigger || !popover || !closeButton || !channelSelect || !modeSelect || !targetField || !targetInput
     || !constraintEnabled || !constraintRow || !constraintChannel || !constraintOperator || !constraintValue
-    || !runButton || !status || !result || !resultMain || !resultSub || !position || !previousButton || !nextButton) {
+    || !runButton || !status || !stepInput || !result || !resultMain || !resultSub || !position || !previousButton || !nextButton) {
     throw new Error('Channel value search panel structure is incomplete.');
   }
 
@@ -124,7 +130,12 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
     trigger.setAttribute('aria-expanded', 'false');
   };
 
-  const renderResult = (): void => {
+  const minimumStep = (): number => {
+    const parsed = Number(stepInput.value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.abs(parsed)) : 0;
+  };
+
+  const renderResult = (jump = true): void => {
     if (resultIndex < 0 || resultIndex >= results.length) {
       result.hidden = true;
       return;
@@ -140,9 +151,9 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
       : ` · limit channel = ${formatValue(channelMap.get(constraintChannel.value), item.constraintValue)}`;
     resultSub.textContent = `Time ${formatTime(item.timeMs)} · sample ${item.sampleIndex.toLocaleString()}${constraintText}`;
     position.textContent = `${resultIndex + 1} / ${results.length}`;
-    previousButton.disabled = resultIndex <= 0;
-    nextButton.disabled = resultIndex >= results.length - 1;
-    jumpListener?.(item.timeMs);
+    previousButton.disabled = findSteppedSearchResultIndex(results, resultIndex, -1, minimumStep()) === undefined;
+    nextButton.disabled = findSteppedSearchResultIndex(results, resultIndex, 1, minimumStep()) === undefined;
+    if (jump) jumpListener?.(item.timeMs);
   };
 
   const resetResults = (): void => {
@@ -180,6 +191,9 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
   constraintOperator.addEventListener('change', resetResults);
   targetInput.addEventListener('input', resetResults);
   constraintValue.addEventListener('input', resetResults);
+  stepInput.addEventListener('input', () => {
+    if (resultIndex >= 0) renderResult(false);
+  });
 
   runButton.addEventListener('click', () => {
     if (!source || !channelSelect.value) return;
@@ -232,14 +246,16 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
   });
 
   previousButton.addEventListener('click', () => {
-    if (resultIndex > 0) {
-      resultIndex -= 1;
+    const nextIndex = findSteppedSearchResultIndex(results, resultIndex, -1, minimumStep());
+    if (nextIndex !== undefined) {
+      resultIndex = nextIndex;
       renderResult();
     }
   });
   nextButton.addEventListener('click', () => {
-    if (resultIndex + 1 < results.length) {
-      resultIndex += 1;
+    const nextIndex = findSteppedSearchResultIndex(results, resultIndex, 1, minimumStep());
+    if (nextIndex !== undefined) {
+      resultIndex = nextIndex;
       renderResult();
     }
   });
@@ -254,6 +270,7 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
     status.textContent = 'Choose a channel and search mode.';
     targetInput.value = '';
     constraintValue.value = '';
+    stepInput.value = '0.00';
     constraintEnabled.checked = false;
     constraintRow.hidden = true;
     modeSelect.value = 'max';
