@@ -9,7 +9,8 @@ import {
 
 export interface ChannelValueSearchPanelController {
   readonly element: HTMLElement;
-  setLog(channels: readonly ChannelDefinition[], source: NumericChannelDataSource): void;
+  setLog(source: NumericChannelDataSource): void;
+  setActiveChannels(channels: readonly ChannelDefinition[]): void;
   clear(): void;
   onJump(listener: (timeMs: number) => void): void;
 }
@@ -163,9 +164,11 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
     position.textContent = '0 / 0';
   };
 
-  const fillSelect = (select: HTMLSelectElement): void => {
+  const fillSelect = (select: HTMLSelectElement, nextChannels: readonly ChannelDefinition[]): void => {
+    const previousValue = select.value;
     select.replaceChildren();
-    for (const channel of channels) select.add(new Option(channel.sourceName, channel.id));
+    for (const channel of nextChannels) select.add(new Option(channel.sourceName, channel.id));
+    if (nextChannels.some((channel) => channel.id === previousValue)) select.value = previousValue;
   };
 
   trigger.addEventListener('click', (event) => {
@@ -260,14 +263,14 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
     }
   });
 
-  const setLog = (nextChannels: readonly ChannelDefinition[], nextSource: NumericChannelDataSource): void => {
-    channels = nextChannels;
-    channelMap = new Map(channels.map((channel) => [channel.id, channel]));
+  const setLog = (nextSource: NumericChannelDataSource): void => {
     source = nextSource;
-    fillSelect(channelSelect);
-    fillSelect(constraintChannel);
-    trigger.disabled = channels.length === 0;
-    status.textContent = 'Choose a channel and search mode.';
+    channels = [];
+    channelMap.clear();
+    fillSelect(channelSelect, channels);
+    fillSelect(constraintChannel, channels);
+    trigger.disabled = true;
+    status.textContent = 'Add a graph trace to search its values.';
     targetInput.value = '';
     constraintValue.value = '';
     stepInput.value = '0.00';
@@ -278,10 +281,25 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
     resetResults();
   };
 
+  const setActiveChannels = (nextChannels: readonly ChannelDefinition[]): void => {
+    channels = nextChannels;
+    channelMap = new Map(channels.map((channel) => [channel.id, channel]));
+    fillSelect(channelSelect, channels);
+    fillSelect(constraintChannel, channels);
+    trigger.disabled = channels.length === 0;
+    status.textContent = channels.length === 0
+      ? 'Add a graph trace to search its values.'
+      : 'Choose an active channel and search mode.';
+    resetResults();
+    if (channels.length === 0) close();
+  };
+
   const clear = (): void => {
     channels = [];
     channelMap.clear();
     source = undefined;
+    fillSelect(channelSelect, channels);
+    fillSelect(constraintChannel, channels);
     trigger.disabled = true;
     close();
     resetResults();
@@ -292,6 +310,7 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
   return {
     element: root,
     setLog,
+    setActiveChannels,
     clear,
     onJump: (listener) => { jumpListener = listener; },
   };
