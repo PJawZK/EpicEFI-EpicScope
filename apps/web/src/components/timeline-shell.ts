@@ -20,6 +20,8 @@ export interface TimelineShellController {
   readonly element: HTMLElement;
   setExpanded(expanded: boolean): void;
   isExpanded(): boolean;
+  setPlaybackSpeed(speed: number): void;
+  setOverviewTracesVisible(visible: boolean): void;
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
   refreshOverview(): void;
@@ -52,6 +54,8 @@ export function createTimelineShell(): TimelineShellController {
   let savedRanges: { readonly label: string; readonly startMs: number; readonly endMs: number }[] = [];
   let playbackFrame: number | undefined;
   let playbackLastNow: number | undefined;
+  let playbackSpeed = 1;
+  let overviewTracesVisible = true;
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
 
@@ -201,6 +205,7 @@ export function createTimelineShell(): TimelineShellController {
     context.restore();
 
     const envelopeWidth = Math.max(1, width);
+    if (!overviewTracesVisible) return;
     for (const trace of overviewTraces) {
       const envelope = buildViewportEnvelope(trace.range, fullStartMs, fullEndMs, envelopeWidth);
       if (envelope.validSampleCount === 0 || envelope.columns.length === 0) continue;
@@ -429,7 +434,7 @@ export function createTimelineShell(): TimelineShellController {
     if (playbackFrame === undefined) return;
     const previous = playbackLastNow ?? now;
     playbackLastNow = now;
-    const next = cursorTimeMs + Math.max(0, now - previous);
+    const next = cursorTimeMs + Math.max(0, now - previous) * playbackSpeed;
     if (next >= fullEndMs) {
       updateCursor(fullEndMs);
       stopPlayback();
@@ -655,6 +660,14 @@ export function createTimelineShell(): TimelineShellController {
   return {
     element: timeline,
     setExpanded,
+    setPlaybackSpeed: (speed) => {
+      if (!Number.isFinite(speed) || speed <= 0) return;
+      playbackSpeed = Math.min(8, Math.max(0.1, speed));
+    },
+    setOverviewTracesVisible: (visible) => {
+      overviewTracesVisible = visible;
+      renderOverview();
+    },
     isExpanded: () => expanded,
     setTimeRange,
     setOverviewContent,
