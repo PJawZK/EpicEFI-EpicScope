@@ -1,0 +1,135 @@
+.value-search-wrap {
+  position: relative;
+}
+
+.value-search-trigger {
+  white-space: nowrap;
+}
+
+.value-search-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: min(520px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid rgba(62, 147, 194, 0.5);
+  border-radius: 4px;
+  background: #071722;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.48);
+  color: #d9edf7;
+}
+
+.value-search-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.value-search-head strong {
+  font-size: 12px;
+}
+
+.value-search-close {
+  min-width: 24px;
+  padding: 2px 6px;
+}
+
+.value-search-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(110px, 0.8fr) minmax(90px, 0.6fr);
+  gap: 6px;
+}
+
+.value-search-field {
+  display: grid;
+  gap: 3px;
+}
+
+.value-search-field > span,
+.value-search-constraint-toggle,
+.value-search-status,
+.value-search-result-sub {
+  color: #7f9dac;
+  font-size: 10px;
+}
+
+.value-search-field select,
+.value-search-field input,
+.value-search-constraint select,
+.value-search-constraint input {
+  min-width: 0;
+}
+
+.value-search-constraint-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 0 5px;
+}
+
+.value-search-constraint {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 100px;
+  gap: 6px;
+}
+
+.value-search-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.value-search-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.value-search-result {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(65, 109, 132, 0.32);
+}
+
+.value-search-result-main {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.value-search-result-sub {
+  margin-top: 2px;
+}
+
+.value-search-result-nav {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-top: 7px;
+}
+
+.value-search-position {
+  text-align: center;
+  color: #b8d7e7;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .value-search-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .value-search-field--wide {
+    grid-column: 1 / -1;
+  }
+
+  .value-search-constraint {
+    grid-template-columns: 1fr 58px 90px;
+  }
+}
