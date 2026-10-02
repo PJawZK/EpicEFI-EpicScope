@@ -1,4 +1,4 @@
-import type { LogSourceIdentity } from '../../../../core/log-model/log-types';
+import type { ChannelDefinition, LogSourceIdentity } from '../../../../core/log-model/log-types';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
@@ -63,11 +63,10 @@ export function mountAppShell(root: HTMLElement): void {
     <div class="header-context">
       <span class="mode-chip">RECORDED</span>
       <span class="loaded-log" title="Loaded recorded log"><span>Log</span><strong>No log loaded</strong></span>
-      <span class="loaded-ini" title="Loaded ECU definition"><span>INI</span><strong>No INI loaded</strong></span>
     </div>
     <div class="header-actions">
-      <button type="button" class="open-log">Open Log</button>
-      <button type="button" class="load-ini">Load INI</button>
+      <button type="button" class="open-log source-load-button" data-load-state="idle">Open Log</button>
+      <button type="button" class="load-ini source-load-button" data-load-state="idle">Load INI</button>
       <div class="logger-tools-slot"></div>
       <button type="button" class="workspace-undo" disabled title="Undo workspace change">↶</button>
       <button type="button" class="workspace-redo" disabled title="Redo workspace change">↷</button>
@@ -188,7 +187,6 @@ export function mountAppShell(root: HTMLElement): void {
   const openButton = header.querySelector<HTMLButtonElement>('.open-log');
   const loadIniButton = header.querySelector<HTMLButtonElement>('.load-ini');
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
-  const loadedIni = header.querySelector<HTMLElement>('.loaded-ini strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
   const settingsButton = header.querySelector<HTMLButtonElement>('.settings-button');
@@ -202,9 +200,26 @@ export function mountAppShell(root: HTMLElement): void {
   const forgetWorkspaceButton = header.querySelector<HTMLButtonElement>('.setting-forget-workspace');
   const persistenceStatus = header.querySelector<HTMLElement>('.settings-persistence-status');
 
-  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !loadedIni || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !forgetWorkspaceButton || !persistenceStatus) {
+  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !forgetWorkspaceButton || !persistenceStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
+
+  type SourceLoadState = 'idle' | 'loading' | 'success' | 'issue';
+
+  const setSourceLoadState = (
+    button: HTMLButtonElement,
+    state: SourceLoadState,
+    title: string,
+  ): void => {
+    button.dataset.loadState = state;
+    button.title = title;
+  };
+
+  const hasWarningOrError = (
+    diagnostics: readonly { readonly severity: 'info' | 'warning' | 'error' }[],
+  ): boolean => diagnostics.some(
+    (diagnostic) => diagnostic.severity === 'warning' || diagnostic.severity === 'error',
+  );
 
   let restoringWorkspaceHistory = false;
   const workspaceStorage = createWorkspaceLocalStorageAdapter();
@@ -423,7 +438,7 @@ export function mountAppShell(root: HTMLElement): void {
     if (!file) return;
 
     loadIniButton.disabled = true;
-    loadedIni.textContent = file.name;
+    setSourceLoadState(loadIniButton, 'loading', `Loading ${file.name}`);
     appStatus.textContent = 'Loading INI…';
     parserStatus.textContent = 'TUNE-INI · reading local file';
 
@@ -453,12 +468,30 @@ export function mountAppShell(root: HTMLElement): void {
           diagnosticGroups: [...grouped.values()],
         });
 
+        const catalogDefinitions: ChannelDefinition[] = imported.catalog.entries.map((entry) => ({
+          id: entry.logicalKey,
+          sourceName: entry.sourceName,
+          displayName: entry.displayName,
+          valueType: entry.valueType,
+          ...(entry.unit ? { unit: entry.unit } : {}),
+          ...(entry.precision !== undefined ? { precision: entry.precision } : {}),
+        }));
+        loggerPage.setChannelCatalog(catalogDefinitions, imported.fileName);
+
         const warnings = imported.diagnostics.filter(
           (diagnostic) => diagnostic.severity === 'warning',
         ).length;
         const errors = imported.diagnostics.filter(
           (diagnostic) => diagnostic.severity === 'error',
         ).length;
+
+        const iniHasIssues = errors > 0 || warnings > 0;
+        setSourceLoadState(
+          loadIniButton,
+          iniHasIssues ? 'issue' : 'success',
+          `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} catalog channels`
+            + (iniHasIssues ? ` · ${errors + warnings} diagnostic issue${errors + warnings === 1 ? '' : 's'}` : ''),
+        );
 
         appStatus.textContent = errors > 0
           ? `INI loaded · ${errors.toLocaleString()} error diagnostic${errors === 1 ? '' : 's'}`
@@ -471,7 +504,11 @@ export function mountAppShell(root: HTMLElement): void {
           + `${imported.parsed.outputChannels.length.toLocaleString()} outputs · local only`;
       })
       .catch((error: unknown) => {
-        loadedIni.textContent = 'INI load failed';
+        setSourceLoadState(
+          loadIniButton,
+          'issue',
+          error instanceof Error ? `INI load failed: ${error.message}` : 'INI load failed',
+        );
         appStatus.textContent = 'INI load failed';
         parserStatus.textContent = error instanceof Error
           ? `TUNE-INI · ${error.message}`
@@ -535,6 +572,11 @@ export function mountAppShell(root: HTMLElement): void {
     });
 
     loadedLog.textContent = parsed.summary.source.displayName;
+    setSourceLoadState(
+      openButton,
+      hasWarningOrError(parsed.summary.diagnostics) ? 'issue' : 'success',
+      `${parsed.summary.source.displayName} · ${parsed.recordIndex.offsets.length.toLocaleString()} records`,
+    );
     appStatus.textContent = 'Ready';
     parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only`;
   };
@@ -552,6 +594,7 @@ export function mountAppShell(root: HTMLElement): void {
     activeStagedImport?.cancel();
     activeStagedImport = undefined;
     openButton.disabled = true;
+    setSourceLoadState(openButton, 'loading', `Loading ${file.name}`);
     loadedLog.textContent = file.name;
     appStatus.textContent = 'Indexing log…';
     parserStatus.textContent = 'LOG-MLG · reading local file';
@@ -565,6 +608,7 @@ export function mountAppShell(root: HTMLElement): void {
           workspacePersistenceBlocked = false;
           forgetWorkspaceButton.disabled = true;
           setPersistenceStatus('Open a log to enable per-log local restore.');
+          setSourceLoadState(openButton, 'issue', `Log import failed: ${message}`);
           appStatus.textContent = 'Import failed';
           parserStatus.textContent = 'LOG-MLG · parser error';
         })
@@ -629,6 +673,7 @@ export function mountAppShell(root: HTMLElement): void {
         });
 
         loadedLog.textContent = indexed.summary.source.displayName;
+        setSourceLoadState(openButton, 'loading', `${indexed.summary.source.displayName} · CRC validating`);
         appStatus.textContent = 'Ready · validating CRC…';
         parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validating`;
         openButton.disabled = false;
@@ -647,6 +692,11 @@ export function mountAppShell(root: HTMLElement): void {
               validationDiagnosticCpuMs: validated.performance.diagnosticCpuMs,
               validationChecksumBytes: validated.performance.checksumBytes,
             });
+            setSourceLoadState(
+              openButton,
+              hasWarningOrError(validated.diagnostics) ? 'issue' : 'success',
+              `${indexed.summary.source.displayName} · CRC validated · ${indexed.recordIndex.offsets.length.toLocaleString()} records`,
+            );
             appStatus.textContent = 'Ready';
             parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validated · local only`;
             activeStagedImport = undefined;
@@ -662,6 +712,7 @@ export function mountAppShell(root: HTMLElement): void {
                 recoverable: true,
               },
             ]);
+            setSourceLoadState(openButton, 'issue', 'Log loaded, but CRC validation failed');
             appStatus.textContent = 'Ready · CRC validation failed';
             parserStatus.textContent = 'LOG-MLG · background CRC validation failed';
             activeStagedImport = undefined;
@@ -670,12 +721,14 @@ export function mountAppShell(root: HTMLElement): void {
       .catch((workerError: unknown) => {
         if (activeStagedImport !== staged) return;
         activeStagedImport = undefined;
+        setSourceLoadState(openButton, 'loading', `${file.name} · worker unavailable, using main thread`);
         appStatus.textContent = 'Worker unavailable · using main thread…';
         parserStatus.textContent = 'LOG-MLG · worker fallback';
         void importOnMainThread(file)
           .catch((error: unknown) => {
             const message = importErrorMessage(error ?? workerError);
             loggerPage.setImportError(message);
+            setSourceLoadState(openButton, 'issue', `Log import failed: ${message}`);
             appStatus.textContent = 'Import failed';
             parserStatus.textContent = 'LOG-MLG · parser error';
           })
