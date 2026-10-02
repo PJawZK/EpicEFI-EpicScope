@@ -180,7 +180,32 @@ function createDiagnosticsIndicator(): DiagnosticsIndicatorController {
   return { element: root, setDiagnostics, clear };
 }
 
-function createGraphSelector(): HTMLElement {
+interface GraphWorkspaceSummary {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface GraphSelectorController {
+  readonly element: HTMLElement;
+  setWorkspaces(workspaces: readonly GraphWorkspaceSummary[], activeId: string): void;
+  setEnabled(enabled: boolean): void;
+  onSelect(listener: (workspaceId: string) => void): void;
+  onCreate(listener: () => void): void;
+  onRename(listener: () => void): void;
+  onDuplicate(listener: () => void): void;
+  onDelete(listener: () => void): void;
+}
+
+function createGraphSelector(): GraphSelectorController {
+  let workspaces: readonly GraphWorkspaceSummary[] = [{ id: 'general', name: 'General' }];
+  let activeId = 'general';
+  let enabled = false;
+  let selectListener: ((workspaceId: string) => void) | undefined;
+  let createListener: (() => void) | undefined;
+  let renameListener: (() => void) | undefined;
+  let duplicateListener: (() => void) | undefined;
+  let deleteListener: (() => void) | undefined;
+
   const root = document.createElement('div');
   root.className = 'graph-selector-wrap';
   root.innerHTML = `
@@ -189,35 +214,106 @@ function createGraphSelector(): HTMLElement {
       <span class="graph-selector-chevron" aria-hidden="true"></span>
     </button>
     <div class="graph-selector-menu" role="menu" hidden>
-      <button type="button" class="graph-selector-choice graph-selector-choice--active" role="menuitem" aria-current="page">
-        <span>General</span>
-        <small>Current graph workspace</small>
-      </button>
-      <button type="button" class="graph-selector-choice" role="menuitem" disabled>
-        <span>＋ New graph</span>
-        <small>Available after workspace/session state</small>
-      </button>
+      <div class="graph-selector-list"></div>
+      <div class="graph-selector-actions">
+        <button type="button" data-workspace-action="new">＋ New graph</button>
+        <button type="button" data-workspace-action="rename">Rename</button>
+        <button type="button" data-workspace-action="duplicate">Duplicate</button>
+        <button type="button" data-workspace-action="delete">Delete</button>
+      </div>
     </div>
   `;
 
   const button = root.querySelector<HTMLButtonElement>('.graph-selector-button');
+  const buttonLabel = button?.querySelector<HTMLElement>('span');
   const menu = root.querySelector<HTMLElement>('.graph-selector-menu');
-  if (!button || !menu) throw new Error('Graph selector structure is incomplete.');
+  const list = root.querySelector<HTMLElement>('.graph-selector-list');
+  const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];
+  if (!button || !buttonLabel || !menu || !list) throw new Error('Graph selector structure is incomplete.');
 
   const close = (): void => {
     menu.hidden = true;
     button.setAttribute('aria-expanded', 'false');
   };
 
+  const render = (): void => {
+    const active = workspaces.find((workspace) => workspace.id === activeId) ?? workspaces[0];
+    buttonLabel.textContent = active?.name ?? 'General';
+    button.disabled = !enabled;
+
+    const fragment = document.createDocumentFragment();
+    for (const workspace of workspaces) {
+      const choice = document.createElement('button');
+      choice.type = 'button';
+      choice.className = 'graph-selector-choice';
+      choice.classList.toggle('graph-selector-choice--active', workspace.id === activeId);
+      choice.setAttribute('role', 'menuitem');
+      choice.setAttribute('aria-current', workspace.id === activeId ? 'page' : 'false');
+      choice.dataset.workspaceId = workspace.id;
+
+      const label = document.createElement('span');
+      label.textContent = workspace.name;
+      const detail = document.createElement('small');
+      detail.textContent = workspace.id === activeId ? 'Current graph workspace' : 'Switch workspace';
+      choice.append(label, detail);
+      fragment.append(choice);
+    }
+    list.replaceChildren(fragment);
+
+    for (const actionButton of actionButtons) {
+      const action = actionButton.dataset.workspaceAction;
+      actionButton.disabled = !enabled || (action === 'delete' && workspaces.length <= 1);
+    }
+  };
+
   button.addEventListener('click', (event) => {
     event.stopPropagation();
+    if (button.disabled) return;
     const nextOpen = menu.hidden;
     menu.hidden = !nextOpen;
     button.setAttribute('aria-expanded', String(nextOpen));
   });
-  menu.addEventListener('click', (event) => event.stopPropagation());
+  menu.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const choice = target.closest<HTMLButtonElement>('[data-workspace-id]');
+    if (choice?.dataset.workspaceId) {
+      close();
+      selectListener?.(choice.dataset.workspaceId);
+      return;
+    }
+    const actionButton = target.closest<HTMLButtonElement>('[data-workspace-action]');
+    if (!actionButton || actionButton.disabled) return;
+    close();
+    switch (actionButton.dataset.workspaceAction) {
+      case 'new': createListener?.(); break;
+      case 'rename': renameListener?.(); break;
+      case 'duplicate': duplicateListener?.(); break;
+      case 'delete': deleteListener?.(); break;
+    }
+  });
   document.addEventListener('click', close);
-  return root;
+
+  render();
+  return {
+    element: root,
+    setWorkspaces: (nextWorkspaces, nextActiveId) => {
+      workspaces = nextWorkspaces;
+      activeId = nextActiveId;
+      render();
+    },
+    setEnabled: (nextEnabled) => {
+      enabled = nextEnabled;
+      if (!enabled) close();
+      render();
+    },
+    onSelect: (listener) => { selectListener = listener; },
+    onCreate: (listener) => { createListener = listener; },
+    onRename: (listener) => { renameListener = listener; },
+    onDuplicate: (listener) => { duplicateListener = listener; },
+    onDelete: (listener) => { deleteListener = listener; },
+  };
 }
 
 export function createLoggerPage(): LoggerPageController {
@@ -447,7 +543,7 @@ export function createLoggerPage(): LoggerPageController {
 
   return {
     element: page,
-    graphSelector,
+    graphSelector: graphSelector.element,
     headerTools,
     diagnosticsControl: diagnostics.element,
     setLog,
