@@ -111,7 +111,7 @@ This tree is a controlled guideline with approval requirements, not permission t
 
 Authoritative Web branch/PR validation. It installs from the committed lockfile, type-checks, and performs the production Vite build. It must not deploy production Pages or become a source-code mutation mechanism.
 
-When parser/core automated tests are introduced by an approved task, this workflow is also the required CI gate for those tests unless a separate workflow is deliberately approved.
+Parser/core/persistence automated tests are now implemented with Vitest and this workflow is the required CI gate for them unless a separate workflow is deliberately approved.
 
 ### `.github/workflows/pages.yml`
 
