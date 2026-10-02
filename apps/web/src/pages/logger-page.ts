@@ -292,7 +292,14 @@ export function createLoggerPage(): LoggerPageController {
     void graph.toggleChannel(channelId).then((active) => {
       if (active) activeChannelIds.add(channelId);
       else activeChannelIds.delete(channelId);
-      inspector.setActiveChannels([...activeChannelIds]);
+      const activeIds = [...activeChannelIds];
+      inspector.setActiveChannels(activeIds);
+      valueSearch.setActiveChannels(
+        activeIds.flatMap((id) => {
+          const channel = channelDefinitions.get(id);
+          return channel ? [channel] : [];
+        }),
+      );
     });
   });
 
@@ -349,7 +356,8 @@ export function createLoggerPage(): LoggerPageController {
     inspector.setChannels(summary.channels, summary.source.displayName);
     timeline.setTimeRange(summary.timeRange, recordCount);
     graph.setLog(summary.channels, channelData, summary.timeRange);
-    valueSearch.setLog(summary.channels, channelData);
+    valueSearch.setLog(channelData);
+    valueSearch.setActiveChannels([]);
     if (summary.timeRange) {
       previousCursorTimeMs = summary.timeRange.startMs;
       syncViewport(createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs));
