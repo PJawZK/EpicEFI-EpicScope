@@ -82,6 +82,7 @@ describe('scanMlgRecords', () => {
     expect([...result.records.crcValid]).toEqual([1, 1, 1]);
     expect([...result.records.timeMs]).toEqual([0, 0.1, 0.2]);
     expect(result.records.offsets).toHaveLength(3);
+    expect(result.performance.scanMode).toBe('fixed');
     expect(result.diagnostics).toEqual([]);
   });
 
@@ -96,6 +97,7 @@ describe('scanMlgRecords', () => {
 
     const result = await parseAndScan(bytes);
 
+    expect(result.performance.scanMode).toBe('general');
     expect(result.markers).toEqual([{ timeMs: 0.1, label: 'boost starts' }]);
     expect([...result.records.timeMs]).toEqual([0, 0.2]);
   });
@@ -185,5 +187,21 @@ describe('scanMlgRecords', () => {
 
     expect(result.records.offsets).toHaveLength(recordCount);
     expect(source.readCount).toBe(1);
+  });
+});
+
+
+describe('fixed-record checksum fast path', () => {
+  it('validates a wide non-aligned record payload with the unrolled checksum', async () => {
+    const recordLength = 4_390;
+    const header = createScalarHeaderFixture({ version: 2, type: 0, recordLength });
+    const payload = Array.from({ length: recordLength }, (_, index) => (index * 37 + 11) & 0xff);
+    const bytes = concat(header, loggerBlock(1, 100, payload));
+
+    const result = await parseAndScan(bytes);
+
+    expect(result.performance.scanMode).toBe('fixed');
+    expect([...result.records.crcValid]).toEqual([1]);
+    expect(result.diagnostics).toEqual([]);
   });
 });
