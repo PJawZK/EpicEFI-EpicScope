@@ -368,7 +368,13 @@ export function createTimelineShell(): TimelineShellController {
     }
 
     const enabled = fullDuration() > 0;
-    for (const button of transportButtons) button.disabled = !enabled;
+    for (const button of transportButtons) {
+      button.disabled = !enabled;
+      if (button.dataset.action === 'play') {
+        button.textContent = '▶';
+        button.title = 'Play';
+      }
+    }
     for (const button of viewportButtons) button.disabled = !enabled;
     progress.tabIndex = enabled ? 0 : -1;
     refreshSavedRangeSelect();
@@ -600,6 +606,7 @@ export function createTimelineShell(): TimelineShellController {
   });
 
   savedRangeSelect.addEventListener('change', () => {
+    if (savedRangeSelect.value === '') return;
     const index = Number(savedRangeSelect.value);
     if (!Number.isSafeInteger(index) || index < 0 || index >= savedRanges.length) return;
     const range = savedRanges[index];
