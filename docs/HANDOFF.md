@@ -11,7 +11,7 @@
 ## Active development branch / PR
 
 - branch: `main`
-- current task: close out the first large-log Web performance increment, then continue Phase 1 functional work
+- current task: continue Phase 1 timeline/navigation work after validated large-log performance, overview rendering and high-zoom fixes
 
 ## Current phase
 
@@ -39,7 +39,10 @@ Completed and validated:
 - staged Worker import for large MLG files, with time-to-usable before full CRC validation completes;
 - bounded large-log source caching with a ~96 MiB Web cache ceiling;
 - batched multi-channel MLG decoding with a bounded 32 MiB decoded-channel cache;
-- automatic large-log channel batch commit when leaving the Full Sensor List, preserving one shared row-oriented decode pass without an extra confirmation click.
+- automatic large-log channel batch commit when leaving the Full Sensor List, preserving one shared row-oriented decode pass without an extra confirmation click;
+- whole-log timeline overview with active trace context and source-marker rendering;
+- source-marker Previous/Next navigation tied to the existing cursor/focus-window behavior;
+- high-zoom raw-sample rendering with real source-gap detection and a 500 ms minimum viewport span.
 
 ## Hosted application
 
@@ -77,7 +80,7 @@ Observed/verified on the hosted Web build:
 - validated batch decode/read time is about 1.94 s, with all four performance entries reporting the same ~2.03 s operation total;
 - the earlier four independent selections required about 995 MB of cumulative physical channel reads, so shared batching cuts that workflow to roughly one-third of the physical I/O;
 - timing-based debounce/coordinator experiments were superseded by staged selection plus automatic commit when the pointer leaves Full Sensor List;
-- decoded-cache re-add behavior is covered by automated tests but still needs one final hosted real-log spot check before that specific user-facing path is considered manually validated.
+- decoded-cache remove/re-add behavior is hosted-validated: re-adding RPM, MAP, TPS and `lowerWgSolenoidTestActive` produced `cacheHit=true`, `physicalReads=0`, and `physicalBytes=0`.
 
 ## Graph renderer status
 
@@ -93,18 +96,14 @@ Canvas 2D is an initial Web renderer choice, not a Linux/Android architecture co
 
 ## Current Phase 1 continuation
 
-Viewport/navigation, multi-channel graphing and Channel Value Search are implemented and hosted. The first large-log performance increment is also implemented and substantially validated.
+Viewport/navigation, multi-channel graphing, Channel Value Search, the first large-log performance increment, whole-log overview rendering, decoded-channel cache reuse, and the high-zoom renderer path are implemented and hosted-validated.
 
-Immediate remaining validation:
+The current timeline increment adds Previous/Next navigation for parsed source markers. After hosted validation of that control, continue Phase 1 functional work in this order unless real-log use changes priority:
 
-1. perform one hosted remove/re-add check on an already decoded large-log channel and confirm `cacheHit=true`, `physicalReads=0`, and `physicalBytes=0`.
-
-Then continue Phase 1 functional work in this order unless new evidence changes priority:
-
-1. improve the whole-log timeline overview with actual trace/event content;
-2. expand Value Search only where real-log use shows a concrete need;
-3. add session/workspace persistence for selected channels, viewport state and search state;
-4. revisit graph rendering with established multi-channel/zoom workflows;
+1. expand Value Search only where real-log use shows a concrete need;
+2. add session/workspace persistence for selected channels, viewport state and search state;
+3. continue timeline usability work where marker/range workflows expose concrete gaps;
+4. revisit broader graph rendering only when real workflows expose additional renderer issues;
 5. improve retry/recovery diagnostic classification without silently repairing source data;
 6. keep extending the Web performance baseline as real workflows are exercised.
 
