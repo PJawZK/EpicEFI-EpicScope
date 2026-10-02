@@ -967,7 +967,9 @@ export function createLoggerPage(): LoggerPageController {
     const workspace: GraphWorkspaceState = {
       id: `graph-${workspaceCounter}`,
       name: `Graph ${workspaceCounter}`,
-      channelIds: [],
+      layout: 'single',
+      activePaneId: 'pane-1',
+      panes: createEmptyPaneStates(),
       viewport: viewport ? { ...viewport } : undefined,
       cursorTimeMs: timeline.getCursorTime(),
       viewHistory: viewport ? [{ ...viewport }] : [],
@@ -998,7 +1000,9 @@ export function createLoggerPage(): LoggerPageController {
     const duplicate: GraphWorkspaceState = {
       id: `graph-${workspaceCounter}`,
       name: `${source.name} copy`,
-      channelIds: [...source.channelIds],
+      layout: source.layout,
+      activePaneId: source.activePaneId,
+      panes: source.panes.map((pane) => ({ id: pane.id, channelIds: [...pane.channelIds] })),
       viewport: source.viewport ? { ...source.viewport } : undefined,
       cursorTimeMs: source.cursorTimeMs,
       viewHistory: source.viewHistory.map((item) => ({ ...item })),
@@ -1035,7 +1039,9 @@ export function createLoggerPage(): LoggerPageController {
     workspaces = [{
       id: 'general',
       name: 'General',
-      channelIds: [],
+      layout: 'single',
+      activePaneId: 'pane-1',
+      panes: createEmptyPaneStates(),
       viewport: summary.timeRange
         ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
         : undefined,
@@ -1048,13 +1054,14 @@ export function createLoggerPage(): LoggerPageController {
     }];
     refreshWorkspaceSelector();
     graphSelector.setEnabled(Boolean(summary.timeRange));
-    activeChannelIds.clear();
+    paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
     logMarkers = summary.markers;
     inspector.setChannels(summary.channels, summary.source.displayName);
     timeline.setTimeRange(summary.timeRange, recordCount);
     timeline.setOverviewContent([], logMarkers);
-    graph.setLog(summary.channels, channelData, summary.timeRange);
+    paneRuntimes.forEach((runtime) => runtime.graph.setLog(summary.channels, channelData, summary.timeRange));
+    renderGraphLayout();
     valueSearch.setLog(channelData);
     valueSearch.setActiveChannels([]);
     if (summary.timeRange) {
@@ -1074,7 +1081,9 @@ export function createLoggerPage(): LoggerPageController {
     workspaces = [{
       id: 'general',
       name: 'General',
-      channelIds: [],
+      layout: 'single',
+      activePaneId: 'pane-1',
+      panes: createEmptyPaneStates(),
       viewport: undefined,
       cursorTimeMs: 0,
       viewHistory: [],
@@ -1083,13 +1092,14 @@ export function createLoggerPage(): LoggerPageController {
     }];
     refreshWorkspaceSelector();
     graphSelector.setEnabled(false);
-    activeChannelIds.clear();
+    paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions.clear();
     logMarkers = [];
     inspector.setError(message);
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);
-    graph.clear();
+    paneRuntimes.forEach((runtime) => runtime.graph.clear());
+    renderGraphLayout();
     valueSearch.clear();
     diagnostics.setDiagnostics([{
       code: 'import-failed',
@@ -1101,15 +1111,24 @@ export function createLoggerPage(): LoggerPageController {
 
   const getWorkspaceState = (): LoggerWorkspaceState => ({
     activeWorkspaceId,
-    workspaces: workspaces.map((workspace): GraphWorkspaceSnapshot => ({
+    workspaces: workspaces.map((workspace): GraphWorkspaceSnapshot => {
+      const activePane = workspace.panes.find((pane) => pane.id === workspace.activePaneId) ?? workspace.panes[0];
+      return {
       id: workspace.id,
       name: workspace.name,
-      channelIds: [...workspace.channelIds],
+      channelIds: [...(activePane?.channelIds ?? [])],
+      layout: workspace.layout,
+      activePaneId: workspace.activePaneId,
+      panes: workspace.panes.map((pane): GraphPaneSnapshot => ({
+        id: pane.id,
+        channelIds: [...pane.channelIds],
+      })),
       viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
       cursorTimeMs: workspace.cursorTimeMs,
       viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
       viewHistoryIndex: workspace.viewHistoryIndex,
-    })),
+      };
+    }),
     timeline: timeline.getWorkspaceState(),
     inspector: inspector.getWorkspaceState(),
   });
@@ -1118,10 +1137,19 @@ export function createLoggerPage(): LoggerPageController {
     restoringWorkspaceState = true;
     workspaceGeneration += 1;
     try {
-      workspaces = state.workspaces.map((workspace) => ({
+      workspaces = state.workspaces.map((workspace) => {
+        const layout = workspace.layout ?? 'single';
+        const panes = normalizePaneStates(workspace.panes, workspace.channelIds);
+        const visibleIds = panes.slice(0, paneCountForLayout(layout)).map((pane) => pane.id);
+        const activePaneId = workspace.activePaneId && visibleIds.includes(workspace.activePaneId)
+          ? workspace.activePaneId
+          : panes[0]!.id;
+        return {
         id: workspace.id,
         name: workspace.name,
-        channelIds: [...workspace.channelIds],
+        layout,
+        activePaneId,
+        panes,
         viewport: workspace.viewport ? { ...workspace.viewport } : undefined,
         cursorTimeMs: workspace.cursorTimeMs,
         viewHistory: workspace.viewHistory.map((item) => ({ ...item })),
@@ -1130,12 +1158,15 @@ export function createLoggerPage(): LoggerPageController {
           workspace.viewHistory.length - 1,
         ),
         lastHistoryMutationMs: 0,
-      }));
+        };
+      });
       if (workspaces.length === 0) {
         workspaces = [{
           id: 'general',
           name: 'General',
-          channelIds: [],
+          layout: 'single',
+          activePaneId: 'pane-1',
+          panes: createEmptyPaneStates(),
           viewport: viewport ? { ...viewport } : undefined,
           cursorTimeMs: timeline.getCursorTime(),
           viewHistory: viewport ? [{ ...viewport }] : [],
@@ -1189,9 +1220,14 @@ export function createLoggerPage(): LoggerPageController {
     setLog,
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
-    refreshValidity: () => { graph.refreshValidity(); timeline.refreshOverview(); },
+    refreshValidity: () => {
+      paneRuntimes.forEach((runtime) => runtime.graph.refreshValidity());
+      timeline.refreshOverview();
+    },
     setPlaybackSpeed: (speed) => { timeline.setPlaybackSpeed(speed); },
-    setHighZoomSamplePointsVisible: (visible) => { graph.setHighZoomSamplePointsVisible(visible); },
+    setHighZoomSamplePointsVisible: (visible) => {
+      paneRuntimes.forEach((runtime) => runtime.graph.setHighZoomSamplePointsVisible(visible));
+    },
     setTimelineOverviewTracesVisible: (visible) => { timeline.setOverviewTracesVisible(visible); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
