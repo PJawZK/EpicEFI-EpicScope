@@ -60,6 +60,8 @@ export interface GraphChannelPerformance {
   readonly physicalReadMs: number;
 }
 
+export type GraphViewportDisplayMode = 'overlay' | 'stacked';
+
 export interface GraphViewportController {
   readonly element: HTMLElement;
   setLog(
@@ -82,6 +84,7 @@ export interface GraphViewportController {
   loadPendingChannels(): void;
   refreshValidity(): void;
   setHighZoomSamplePointsVisible(visible: boolean): void;
+  setDisplayMode(mode: GraphViewportDisplayMode): void;
   clear(): void;
 }
 
@@ -215,6 +218,7 @@ export function createGraphViewport(): GraphViewportController {
   let decodeInFlight = false;
   let decodeGeneration = 0;
   let highZoomSamplePointsVisible = true;
+  let displayMode: GraphViewportDisplayMode = 'overlay';
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -326,7 +330,7 @@ export function createGraphViewport(): GraphViewportController {
       appendMetric(maxReadout, trace, trace.fullStatistics.max);
     }
 
-    const hidden = activeTraces.size === 0;
+    const hidden = activeTraces.size === 0 || displayMode === 'stacked';
     nameReadout.hidden = hidden;
     nowReadout.hidden = hidden;
     minReadout.hidden = hidden;
@@ -355,13 +359,17 @@ export function createGraphViewport(): GraphViewportController {
     const plotHeight = Math.max(1, height - inset * 2);
     context.lineWidth = 1;
 
+    const stacked = displayMode === 'stacked' && activeTraces.size > 0;
+
     context.strokeStyle = 'rgba(89, 129, 151, 0.14)';
-    for (let i = 1; i < 5; i += 1) {
-      const y = inset + (plotHeight * i) / 5;
-      context.beginPath();
-      context.moveTo(inset, y + 0.5);
-      context.lineTo(width - inset, y + 0.5);
-      context.stroke();
+    if (!stacked) {
+      for (let i = 1; i < 5; i += 1) {
+        const y = inset + (plotHeight * i) / 5;
+        context.beginPath();
+        context.moveTo(inset, y + 0.5);
+        context.lineTo(width - inset, y + 0.5);
+        context.stroke();
+      }
     }
     for (let i = 1; i < 5; i += 1) {
       const x = inset + (plotWidth * i) / 5;
@@ -375,13 +383,29 @@ export function createGraphViewport(): GraphViewportController {
       return;
     }
 
+    const traceEntries = [...activeTraces.entries()];
+    if (stacked) {
+      const rowHeight = plotHeight / Math.max(1, traceEntries.length);
+      context.strokeStyle = 'rgba(89, 129, 151, 0.20)';
+      for (let index = 1; index < traceEntries.length; index += 1) {
+        const y = inset + rowHeight * index;
+        context.beginPath();
+        context.moveTo(inset, y + 0.5);
+        context.lineTo(width - inset, y + 0.5);
+        context.stroke();
+      }
+    }
+
     const visibleStartMs = viewport.visibleStartMs;
     const visibleEndMs = viewport.visibleEndMs;
     const duration = Math.max(1e-9, visibleEndMs - visibleStartMs);
     const xForTime = (timeMs: number): number => inset + ((timeMs - visibleStartMs) / duration) * plotWidth;
 
     const pixelWidth = Math.max(1, Math.floor(plotWidth));
-    for (const [channelId, trace] of activeTraces) {
+    for (let traceIndex = 0; traceIndex < traceEntries.length; traceIndex += 1) {
+      const entry = traceEntries[traceIndex];
+      if (!entry) continue;
+      const [channelId, trace] = entry;
       const cachedEnvelope = envelopeCache.get(channelId);
       const envelope = cachedEnvelope
         && cachedEnvelope.visibleStartMs === visibleStartMs
@@ -403,10 +427,40 @@ export function createGraphViewport(): GraphViewportController {
         });
       }
       const axisSpan = Math.max(1e-9, trace.scale.max - trace.scale.min);
+      const rowHeight = stacked ? plotHeight / Math.max(1, traceEntries.length) : plotHeight;
+      const rowTop = stacked ? inset + rowHeight * traceIndex : inset;
+      const labelHeight = stacked ? Math.min(15, Math.max(10, rowHeight * 0.24)) : 0;
+      const traceTop = rowTop + labelHeight + (stacked ? 2 : 0);
+      const traceHeight = Math.max(4, rowHeight - labelHeight - (stacked ? 5 : 0));
       const yForValue = (value: number): number => {
         const normalized = (value - trace.scale.min) / axisSpan;
-        return inset + plotHeight - normalized * plotHeight;
+        return traceTop + traceHeight - normalized * traceHeight;
       };
+
+      if (stacked) {
+        const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
+        const current = nearestValue(trace.range, cursorTimeMs);
+        const name = trace.channel.displayName || trace.channel.sourceName;
+        const metric = `NOW ${formatReadoutValue(trace, current)}  ·  MIN ${formatReadoutValue(trace, trace.fullStatistics.min)}  ·  MAX ${formatReadoutValue(trace, trace.fullStatistics.max)}${unit}`;
+
+        const chipWidth = Math.max(120, Math.min(plotWidth - 4, 390));
+        context.fillStyle = 'rgba(0, 0, 0, 0.72)';
+        context.fillRect(inset + 2, rowTop + 2, chipWidth, Math.max(10, labelHeight - 1));
+        context.fillStyle = trace.color;
+        context.beginPath();
+        context.arc(inset + 8, rowTop + labelHeight / 2 + 1, 2.5, 0, Math.PI * 2);
+        context.fill();
+
+        context.font = '600 8px sans-serif';
+        context.textBaseline = 'middle';
+        context.fillStyle = '#d9edf7';
+        context.fillText(name, inset + 14, rowTop + labelHeight / 2 + 1);
+        const nameWidth = context.measureText(name).width;
+        context.fillStyle = '#88a0af';
+        context.font = '600 7px sans-serif';
+        context.fillText(metric, inset + 22 + nameWidth, rowTop + labelHeight / 2 + 1);
+        context.textBaseline = 'alphabetic';
+      }
 
       context.strokeStyle = trace.color;
       context.lineWidth = 1.1;
@@ -995,6 +1049,13 @@ export function createGraphViewport(): GraphViewportController {
     refreshValidity,
     setHighZoomSamplePointsVisible: (visible) => {
       highZoomSamplePointsVisible = visible;
+      draw();
+    },
+    setDisplayMode: (mode) => {
+      if (displayMode === mode) return;
+      displayMode = mode;
+      root.classList.toggle('graph-viewport--stacked', mode === 'stacked');
+      renderReadout();
       draw();
     },
     clear,
