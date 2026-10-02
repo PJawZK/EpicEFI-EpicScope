@@ -37,6 +37,24 @@ export interface MlgRecordScanResult {
   readonly performance: MlgRecordScanPerformance;
 }
 
+export interface MlgRecordScanOptions {
+  readonly validateCrc?: boolean;
+}
+
+export interface MlgCrcValidationPerformance {
+  readonly totalMs: number;
+  readonly sourceReadMs: number;
+  readonly checksumCpuMs: number;
+  readonly diagnosticCpuMs: number;
+  readonly checksumBytes: number;
+}
+
+export interface MlgCrcValidationResult {
+  readonly crcValid: Uint8Array;
+  readonly diagnostics: readonly ParserDiagnostic[];
+  readonly performance: MlgCrcValidationPerformance;
+}
+
 class GrowingFloat64Buffer {
   private values = new Float64Array(4096);
   private lengthValue = 0;
@@ -186,6 +204,7 @@ function benchmarkChecksumCpu(
 async function tryScanFixedRecords(
   source: RandomAccessByteSource,
   header: MlgHeader,
+  validateCrc: boolean,
 ): Promise<MlgRecordScanResult | undefined> {
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const recordLength = header.recordLength;
@@ -209,7 +228,7 @@ async function tryScanFixedRecords(
   let firstUnwrappedTimestamp: number | undefined;
   let sourceReadMs = 0;
   let diagnosticCpuMs = 0;
-  const checksumBytes = recordCount * recordLength;
+  const checksumBytes = validateCrc ? recordCount * recordLength : 0;
   const benchmarkStarts: number[] = [];
   let benchmarkChunk: Uint8Array | undefined;
   const benchmarkRecordLimit = 128;
@@ -262,27 +281,30 @@ async function tryScanFixedRecords(
       }
       previousCounter = counter;
 
-      const recordStart = cursor + BLOCK_HEADER_LENGTH;
-      if (chunk === benchmarkChunk && benchmarkStarts.length < benchmarkRecordLimit) {
-        benchmarkStarts.push(recordStart);
-      }
-      const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
-      const actualCrc = chunk[cursor + blockLength - 1] ?? 0;
-      const isCrcValid = expectedCrc === actualCrc;
+      let isCrcValid = true;
+      if (validateCrc) {
+        const recordStart = cursor + BLOCK_HEADER_LENGTH;
+        if (chunk === benchmarkChunk && benchmarkStarts.length < benchmarkRecordLimit) {
+          benchmarkStarts.push(recordStart);
+        }
+        const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
+        const actualCrc = chunk[cursor + blockLength - 1] ?? 0;
+        isCrcValid = expectedCrc === actualCrc;
 
-      if (!isCrcValid) {
-        const diagnosticStart = now();
-        const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
-        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
-        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
-        diagnostics.push({
-          code: 'mlg-crc-mismatch',
-          severity: 'warning',
-          message: `MLG record ${recordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
-          recoverable: true,
-          offset: absoluteOffset + blockLength - 1,
-        });
-        diagnosticCpuMs += now() - diagnosticStart;
+        if (!isCrcValid) {
+          const diagnosticStart = now();
+          const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
+          const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+          const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+          diagnostics.push({
+            code: 'mlg-crc-mismatch',
+            severity: 'warning',
+            message: `MLG record ${recordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+            recoverable: true,
+            offset: absoluteOffset + blockLength - 1,
+          });
+          diagnosticCpuMs += now() - diagnosticStart;
+        }
       }
 
       if (
@@ -332,6 +354,7 @@ async function tryScanFixedRecords(
 async function scanMlgRecordsGeneral(
   source: RandomAccessByteSource,
   header: MlgHeader,
+  validateCrc: boolean,
 ): Promise<MlgRecordScanResult> {
   const offsets = new GrowingFloat64Buffer();
   const times = new GrowingFloat64Buffer();
@@ -434,31 +457,34 @@ async function scanMlgRecordsGeneral(
       previousCounter = counter;
 
       if (blockType === STANDARD_BLOCK_TYPE) {
-        const recordStart = cursor + BLOCK_HEADER_LENGTH;
-        checksumBytes += recordLength;
-        if (
-          chunk === checksumBenchmarkChunk
-          && checksumBenchmarkStarts.length < CHECKSUM_BENCHMARK_RECORDS
-        ) {
-          checksumBenchmarkStarts.push(recordStart);
-        }
-        const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
-        const actualCrc = chunk[cursor + standardBlockLength - 1] ?? 0;
-        const isCrcValid = expectedCrc === actualCrc;
+        let isCrcValid = true;
+        if (validateCrc) {
+          const recordStart = cursor + BLOCK_HEADER_LENGTH;
+          checksumBytes += recordLength;
+          if (
+            chunk === checksumBenchmarkChunk
+            && checksumBenchmarkStarts.length < CHECKSUM_BENCHMARK_RECORDS
+          ) {
+            checksumBenchmarkStarts.push(recordStart);
+          }
+          const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
+          const actualCrc = chunk[cursor + standardBlockLength - 1] ?? 0;
+          isCrcValid = expectedCrc === actualCrc;
 
-        if (!isCrcValid) {
-          const diagnosticStart = now();
-          const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
-          const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
-          const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
-          diagnostics.push({
-            code: 'mlg-crc-mismatch',
-            severity: 'warning',
-            message: `MLG record ${standardRecordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
-            recoverable: true,
-            offset: absoluteOffset + blockLength - 1,
-          });
-          diagnosticCpuMs += now() - diagnosticStart;
+          if (!isCrcValid) {
+            const diagnosticStart = now();
+            const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
+            const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+            const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+            diagnostics.push({
+              code: 'mlg-crc-mismatch',
+              severity: 'warning',
+              message: `MLG record ${standardRecordIndex.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+              recoverable: true,
+              offset: absoluteOffset + blockLength - 1,
+            });
+            diagnosticCpuMs += now() - diagnosticStart;
+          }
         }
 
         if (
@@ -557,7 +583,98 @@ async function scanMlgRecordsGeneral(
 export async function scanMlgRecords(
   source: RandomAccessByteSource,
   header: MlgHeader,
+  options: MlgRecordScanOptions = {},
 ): Promise<MlgRecordScanResult> {
-  const fixed = await tryScanFixedRecords(source, header);
-  return fixed ?? scanMlgRecordsGeneral(source, header);
+  const validateCrc = options.validateCrc ?? true;
+  const fixed = await tryScanFixedRecords(source, header, validateCrc);
+  return fixed ?? scanMlgRecordsGeneral(source, header, validateCrc);
+}
+
+
+export async function validateMlgRecordCrc(
+  source: RandomAccessByteSource,
+  header: MlgHeader,
+  recordIndex: MlgRecordIndex,
+): Promise<MlgCrcValidationResult> {
+  const now = (): number => globalThis.performance?.now() ?? Date.now();
+  const totalStart = now();
+  const crcValid = new Uint8Array(recordIndex.offsets.length);
+  const diagnostics: ParserDiagnostic[] = [];
+  const recordLength = header.recordLength;
+  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  let sourceReadMs = 0;
+  let diagnosticCpuMs = 0;
+  let checksumBytes = 0;
+
+  let sampleIndex = 0;
+  while (sampleIndex < recordIndex.offsets.length) {
+    const firstOffset = recordIndex.offsets[sampleIndex];
+    if (firstOffset === undefined) {
+      throw new RangeError(`Missing record offset for sample ${sampleIndex}.`);
+    }
+
+    let lastIndex = sampleIndex;
+    let batchEnd = firstOffset + blockLength;
+    while (lastIndex + 1 < recordIndex.offsets.length) {
+      const nextOffset = recordIndex.offsets[lastIndex + 1];
+      if (nextOffset === undefined) break;
+      const nextEnd = nextOffset + blockLength;
+      if (nextEnd - firstOffset > SCAN_CHUNK_SIZE) break;
+      lastIndex += 1;
+      batchEnd = nextEnd;
+    }
+
+    const readStart = now();
+    const bytes = await source.read(firstOffset, batchEnd - firstOffset);
+    sourceReadMs += now() - readStart;
+
+    for (let index = sampleIndex; index <= lastIndex; index += 1) {
+      const absoluteOffset = recordIndex.offsets[index];
+      if (absoluteOffset === undefined) continue;
+      const relativeOffset = absoluteOffset - firstOffset;
+      const recordStart = relativeOffset + BLOCK_HEADER_LENGTH;
+      checksumBytes += recordLength;
+      const expectedCrc = calculateMlgRecordChecksum(bytes, recordStart, recordLength);
+      const actualCrc = bytes[relativeOffset + blockLength - 1] ?? 0;
+      const valid = expectedCrc === actualCrc;
+      crcValid[index] = valid ? 1 : 0;
+
+      if (!valid) {
+        const diagnosticStart = now();
+        const counter = bytes[relativeOffset + 1] ?? 0;
+        const rawTimestamp = ((bytes[relativeOffset + 2] ?? 0) << 8)
+          | (bytes[relativeOffset + 3] ?? 0);
+        const blockHeaderSum = calculateMlgRecordChecksum(
+          bytes,
+          relativeOffset,
+          BLOCK_HEADER_LENGTH,
+        );
+        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+        diagnostics.push({
+          code: 'mlg-crc-mismatch',
+          severity: 'warning',
+          message: `MLG record ${index.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+          recoverable: true,
+          offset: absoluteOffset + blockLength - 1,
+        });
+        diagnosticCpuMs += now() - diagnosticStart;
+      }
+    }
+
+    sampleIndex = lastIndex + 1;
+  }
+
+  const totalMs = now() - totalStart;
+  return {
+    crcValid,
+    diagnostics,
+    performance: {
+      totalMs,
+      sourceReadMs,
+      checksumCpuMs: Math.max(0, totalMs - sourceReadMs - diagnosticCpuMs),
+      diagnosticCpuMs,
+      checksumBytes,
+    },
+  };
 }
