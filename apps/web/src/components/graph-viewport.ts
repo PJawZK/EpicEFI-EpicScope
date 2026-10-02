@@ -7,6 +7,7 @@ import type {
 import type { TimelineViewport } from '../../../../core/timeline/viewport-state';
 import { buildStableValueScale, type StableValueScale } from '../../../../core/timeline/value-scale';
 import {
+  buildRawViewportSeries,
   buildViewportEnvelope,
   type ViewportEnvelopeColumn,
 } from '../../../../core/timeline/viewport-series';
@@ -288,33 +289,63 @@ export function createGraphViewport(): GraphViewportController {
         return inset + plotHeight - normalized * plotHeight;
       };
 
-      // Experimental renderer: each trace keeps first/min/max/last raw values per
-      // horizontal bucket. Every trace has its own stable full-log Y scale; only
-      // the shared time viewport changes during horizontal zoom/pan.
       context.strokeStyle = trace.color;
       context.lineWidth = 1.1;
       context.lineJoin = 'miter';
       context.lineCap = 'butt';
-      context.beginPath();
-      let previousBucketX: number | undefined;
-      let hasTrace = false;
 
-      for (const column of envelope.columns) {
-        const points = rawRepresentativePoints(column);
-        if (points.length === 0) continue;
-        const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
-        for (let index = 0; index < points.length; index += 1) {
-          const point = points[index];
-          if (!point) continue;
+      // At high zoom there may be only a few real samples spread across hundreds
+      // of pixels. Pixel-bucket gaps are not missing data, so switch to direct
+      // source-order rendering once the visible sample count is modest.
+      const useRawSeries = envelope.validSampleCount <= pixelWidth * 2;
+      if (useRawSeries) {
+        const points = buildRawViewportSeries(trace.range, visibleStartMs, visibleEndMs);
+        context.beginPath();
+        let hasTrace = false;
+        for (const point of points) {
           const x = xForTime(point.timeMs);
           const y = yForValue(point.value);
-          if (breakBeforeBucket && index === 0) context.moveTo(x, y);
+          if (point.breakBefore) context.moveTo(x, y);
           else context.lineTo(x, y);
           hasTrace = true;
         }
-        previousBucketX = column.x;
+        if (hasTrace) context.stroke();
+
+        // Make individual recorded samples visible only at very high zoom.
+        if (points.length > 0 && points.length <= 128) {
+          context.fillStyle = trace.color;
+          for (const point of points) {
+            const x = xForTime(point.timeMs);
+            const y = yForValue(point.value);
+            context.beginPath();
+            context.arc(x, y, 1.6, 0, Math.PI * 2);
+            context.fill();
+          }
+        }
+      } else {
+        // Zoomed-out rendering keeps first/min/max/last raw values per horizontal
+        // bucket. The envelope preserves extrema without plotting every record.
+        context.beginPath();
+        let previousBucketX: number | undefined;
+        let hasTrace = false;
+
+        for (const column of envelope.columns) {
+          const points = rawRepresentativePoints(column);
+          if (points.length === 0) continue;
+          const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
+          for (let index = 0; index < points.length; index += 1) {
+            const point = points[index];
+            if (!point) continue;
+            const x = xForTime(point.timeMs);
+            const y = yForValue(point.value);
+            if (breakBeforeBucket && index === 0) context.moveTo(x, y);
+            else context.lineTo(x, y);
+            hasTrace = true;
+          }
+          previousBucketX = column.x;
+        }
+        if (hasTrace) context.stroke();
       }
-      if (hasTrace) context.stroke();
     }
 
     if (cursorTimeMs >= visibleStartMs && cursorTimeMs <= visibleEndMs) {

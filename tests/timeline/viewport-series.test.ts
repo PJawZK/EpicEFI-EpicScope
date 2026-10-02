@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildViewportEnvelope } from '../../core/timeline/viewport-series';
+import { buildRawViewportSeries, buildViewportEnvelope } from '../../core/timeline/viewport-series';
 
 describe('buildViewportEnvelope', () => {
   it('excludes invalid samples while preserving first/min/max/last raw samples', () => {
@@ -73,5 +73,42 @@ describe('buildViewportEnvelope', () => {
     expect(envelope.invalidSampleCount).toBe(0);
     expect(envelope.valueMin).toBe(1);
     expect(envelope.valueMax).toBe(4);
+  });
+
+  it('connects real high-zoom samples even when their pixel spacing would be large', () => {
+    const points = buildRawViewportSeries({
+      startSampleIndex: 0,
+      timeMs: new Float64Array([0, 11, 22, 33, 44]),
+      values: new Float64Array([10, 11, 12, 13, 14]),
+      validity: new Uint8Array([1, 1, 1, 1, 1]),
+    }, 0, 44);
+
+    expect(points.map((point) => point.breakBefore)).toEqual([true, false, false, false, false]);
+  });
+
+  it('breaks a raw high-zoom trace across invalid source records', () => {
+    const points = buildRawViewportSeries({
+      startSampleIndex: 0,
+      timeMs: new Float64Array([0, 10, 20, 30]),
+      values: new Float64Array([1, 2, 3, 4]),
+      validity: new Uint8Array([1, 1, 0, 1]),
+    }, 0, 30);
+
+    expect(points).toEqual([
+      { timeMs: 0, value: 1, breakBefore: true },
+      { timeMs: 10, value: 2, breakBefore: false },
+      { timeMs: 30, value: 4, breakBefore: true },
+    ]);
+  });
+
+  it('breaks a raw high-zoom trace across an abnormal timestamp gap', () => {
+    const points = buildRawViewportSeries({
+      startSampleIndex: 0,
+      timeMs: new Float64Array([0, 10, 20, 200, 210]),
+      values: new Float64Array([1, 2, 3, 4, 5]),
+      validity: new Uint8Array([1, 1, 1, 1, 1]),
+    }, 0, 210);
+
+    expect(points.map((point) => point.breakBefore)).toEqual([true, false, false, true, false]);
   });
 });
