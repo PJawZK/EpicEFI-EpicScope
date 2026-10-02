@@ -42,7 +42,24 @@ Examples of unacceptable Web habits include:
 - representing every sample as a large independent object without need;
 - making repeated full copies of every channel for each view;
 - recalculating the entire log on every cursor/viewport movement;
-- coupling analyzer semantics to a browser-only storage representation.
+- coupling analyzer semantics to a browser-only storage representation;
+- re-reading the full log independently for every visible graph pane;
+- persisting decoded sample arrays merely to keep workspace/channel structure available without a log.
+
+## Current Web benchmark evidence
+
+The current Phase 1 benchmark log is `2026-09-30_12.09.28.mlg`:
+
+- 318,023,627 bytes;
+- 72,158 records;
+- 1,652 channels;
+- staged Worker indexing has repeatedly reached a usable state in roughly the low-single-digit-second range;
+- a representative persisted-workspace run reached usable load in about 1.95 s and full CRC validation in about 4.85 s;
+- four-channel selection/restore uses one shared physical traversal rather than one traversal per channel;
+- decoded-cache re-adds have been validated at zero physical source reads;
+- multi-pane restore now pre-batches the unique visible channel set before pane activation and must be regression-checked on hosted builds.
+
+These numbers are regression evidence for the current Web implementation, not final Linux acceptance targets.
 
 ## Benchmark categories
 
