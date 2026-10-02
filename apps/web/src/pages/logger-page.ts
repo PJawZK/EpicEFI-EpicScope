@@ -319,6 +319,17 @@ export function createLoggerPage(): LoggerPageController {
     }
     if (intent.type === 'pan') next = panViewport(viewport, intent.deltaMs);
     if (intent.type === 'resize') next = resizeViewport(viewport, intent.edge, intent.edgeTimeMs);
+    if (intent.type === 'range') {
+      const startMs = Math.max(viewport.fullStartMs, Math.min(intent.startMs, intent.endMs));
+      const endMs = Math.min(viewport.fullEndMs, Math.max(intent.startMs, intent.endMs));
+      const fullSpan = Math.max(1, viewport.fullEndMs - viewport.fullStartMs);
+      const requestedSpan = Math.max(1, endMs - startMs);
+      const midpoint = (startMs + endMs) / 2;
+      next = centerViewportOn(
+        zoomViewport(fitViewport(viewport), requestedSpan / fullSpan, midpoint),
+        midpoint,
+      );
+    }
 
     if (!viewportEquals(viewport, next)) syncViewport(next);
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);

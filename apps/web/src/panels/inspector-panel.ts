@@ -25,6 +25,8 @@ export function createInspectorPanel(): InspectorPanelController {
   const queuedChannelIds = new Set<string>();
   let toggleListener: ((channelId: string) => void) | undefined;
   let loadSelectedListener: (() => void) | undefined;
+  let sortKey: 'name' | 'group' | 'value' = 'name';
+  let sortAscending = true;
   const currentValues = new Map<string, string>();
   const renderedValueNodes = new Map<string, HTMLElement>();
   const renderedRows = new Map<string, HTMLButtonElement>();
@@ -54,9 +56,9 @@ export function createInspectorPanel(): InspectorPanelController {
       </div>
       <div class="sort-row" aria-label="Channel sorting">
         <span>Sort</span>
-        <button type="button" disabled>Name</button>
-        <button type="button" disabled>Group</button>
-        <button type="button" disabled>Value</button>
+        <button type="button" data-sort-key="name" disabled>Name ↑</button>
+        <button type="button" data-sort-key="group" disabled>Group</button>
+        <button type="button" data-sort-key="value" disabled>Value</button>
       </div>
     </div>
     <div class="channel-list channel-list--virtual" role="list">
@@ -85,6 +87,7 @@ export function createInspectorPanel(): InspectorPanelController {
   const viewportHost = panel.querySelector<HTMLElement>('.channel-list-viewport');
   const emptyState = panel.querySelector<HTMLElement>('.panel-empty');
   const channelCount = panel.querySelector<HTMLElement>('.channel-count');
+  const sortButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-sort-key]')];
   const loadSelectedButton = panel.querySelector<HTMLButtonElement>('.load-selected');
   const clearGraphButton = panel.querySelector<HTMLButtonElement>('.clear-graph');
 
@@ -175,6 +178,48 @@ export function createInspectorPanel(): InspectorPanelController {
     });
   };
 
+  const numericValue = (channelId: string): number | undefined => {
+    const text = currentValues.get(channelId);
+    if (!text) return undefined;
+    const match = text.trim().match(/^[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/);
+    if (!match) return undefined;
+    const value = Number(match[0]);
+    return Number.isFinite(value) ? value : undefined;
+  };
+
+  const compareChannels = (left: ChannelDefinition, right: ChannelDefinition): number => {
+    let result = 0;
+    if (sortKey === 'name') {
+      result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+    } else if (sortKey === 'group') {
+      result = (left.category ?? '').localeCompare(right.category ?? '', undefined, { numeric: true, sensitivity: 'base' });
+      if (result === 0) result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+    } else {
+      const leftValue = numericValue(left.id);
+      const rightValue = numericValue(right.id);
+      if (leftValue === undefined && rightValue === undefined) {
+        result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (leftValue === undefined) {
+        result = 1;
+      } else if (rightValue === undefined) {
+        result = -1;
+      } else {
+        result = leftValue - rightValue;
+        if (result === 0) result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+      }
+    }
+    return sortAscending ? result : -result;
+  };
+
+  const renderSortButtons = (): void => {
+    for (const button of sortButtons) {
+      const key = button.dataset.sortKey;
+      const label = key === 'name' ? 'Name' : key === 'group' ? 'Group' : 'Value';
+      button.textContent = key === sortKey ? `${label} ${sortAscending ? '↑' : '↓'}` : label;
+      button.setAttribute('aria-pressed', String(key === sortKey));
+    }
+  };
+
   const applyFilters = (resetScroll = true): void => {
     const query = search.value.trim().toLocaleLowerCase();
     const selectedGroup = groupSelect.value;
@@ -187,8 +232,9 @@ export function createInspectorPanel(): InspectorPanelController {
       const matchesGroup = selectedGroup === '' || channel.category === selectedGroup;
       const matchesVisibility = visibility !== 'active' || activeChannelIds.has(channel.id);
       return matchesText && matchesGroup && matchesVisibility;
-    });
+    }).sort(compareChannels);
 
+    renderSortButtons();
     spacer.style.height = `${filteredChannels.length * VIRTUAL_ROW_HEIGHT}px`;
     if (resetScroll) channelList.scrollTop = 0;
     renderVisibleRows();
@@ -215,6 +261,19 @@ export function createInspectorPanel(): InspectorPanelController {
   groupSelect.addEventListener('change', () => applyFilters());
   visibilitySelect.addEventListener('change', () => applyFilters());
 
+  for (const button of sortButtons) {
+    button.addEventListener('click', () => {
+      const key = button.dataset.sortKey;
+      if (key !== 'name' && key !== 'group' && key !== 'value') return;
+      if (sortKey === key) sortAscending = !sortAscending;
+      else {
+        sortKey = key;
+        sortAscending = true;
+      }
+      applyFilters();
+    });
+  }
+
   const setVisible = (next: boolean): void => {
     visible = next;
     panel.hidden = !visible;
@@ -230,6 +289,7 @@ export function createInspectorPanel(): InspectorPanelController {
     search.disabled = false;
     groupSelect.disabled = false;
     visibilitySelect.disabled = false;
+    for (const button of sortButtons) button.disabled = false;
     groupSelect.replaceChildren(new Option('All Groups', ''));
 
     const groups = [...new Set(
@@ -241,6 +301,8 @@ export function createInspectorPanel(): InspectorPanelController {
     for (const group of groups) groupSelect.add(new Option(group, group));
     search.value = '';
     visibilitySelect.value = 'all';
+    sortKey = 'name';
+    sortAscending = true;
     applyFilters();
   };
 
@@ -254,6 +316,7 @@ export function createInspectorPanel(): InspectorPanelController {
     search.disabled = true;
     groupSelect.disabled = true;
     visibilitySelect.disabled = true;
+    for (const button of sortButtons) button.disabled = true;
     spacer.style.height = '0px';
     viewportHost.replaceChildren();
     channelList.hidden = true;
@@ -323,12 +386,15 @@ export function createInspectorPanel(): InspectorPanelController {
 
   const setChannelValues = (values: readonly { channelId: string; value: string }[]): void => {
     if (values.length === 0) return;
+    let changed = false;
     for (const item of values) {
       if (currentValues.get(item.channelId) === item.value) continue;
       currentValues.set(item.channelId, item.value);
+      changed = true;
       const valueNode = renderedValueNodes.get(item.channelId);
       if (valueNode) valueNode.textContent = item.value;
     }
+    if (changed && sortKey === 'value') applyFilters(false);
   };
 
   const clearChannelValues = (): void => {
