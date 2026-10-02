@@ -70,6 +70,9 @@ export interface GraphViewportController {
     timeRange: LogTimeRange | undefined,
   ): void;
   toggleChannel(channelId: string): Promise<boolean>;
+  activatePreloadedChannels(
+    ranges: ReadonlyMap<string, NumericChannelRange>,
+  ): readonly string[];
   clearChannels(): void;
   getOverviewTraces(): readonly GraphOverviewTrace[];
   getChannelStatistics(channelId: string): GraphChannelStatistics | undefined;
@@ -903,6 +906,40 @@ export function createGraphViewport(): GraphViewportController {
     draw();
   };
 
+  const activatePreloadedChannels = (
+    ranges: ReadonlyMap<string, NumericChannelRange>,
+  ): readonly string[] => {
+    if (ranges.size === 0) return [];
+
+    cancelPending();
+    const activated: string[] = [];
+    const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
+
+    for (const [channelId, range] of ranges) {
+      if (activeTraces.has(channelId) || activeTraces.size >= MAX_ACTIVE_TRACES) continue;
+      const channel = channels.find((candidate) => candidate.id === channelId);
+      if (!channel) continue;
+
+      const scale = buildStableValueScale(range);
+      const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
+      usedColors.add(color);
+      activeTraces.set(channelId, {
+        channel,
+        range,
+        scale,
+        fullStatistics: summarizeRange(range),
+        color,
+      });
+      activated.push(channelId);
+    }
+
+    overlay.hidden = activeTraces.size > 0;
+    renderReadout();
+    emitCursorValues();
+    draw();
+    return activated;
+  };
+
   const toggleChannel = async (channelId: string): Promise<boolean> => {
     const queued = pendingTraces.get(channelId);
     if (queued) {
@@ -1047,6 +1084,7 @@ export function createGraphViewport(): GraphViewportController {
     element: root,
     setLog,
     toggleChannel,
+    activatePreloadedChannels,
     clearChannels,
     getOverviewTraces: () => [...activeTraces.entries()].map(([channelId, trace]) => ({
       channelId,
