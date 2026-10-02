@@ -94,6 +94,7 @@ interface ActiveTrace {
   readonly channel: ChannelDefinition;
   readonly range: NumericChannelRange;
   readonly scale: StableValueScale;
+  readonly fullStatistics: ReturnType<typeof summarizeRange>;
   readonly color: string;
 }
 
@@ -264,11 +265,20 @@ export function createGraphViewport(): GraphViewportController {
     cursorValuesListener?.(values);
   };
 
+  const formatReadoutValue = (trace: ActiveTrace, value: number | undefined): string => {
+    if (value === undefined || !Number.isFinite(value)) return '—';
+    const precision = Math.min(6, Math.max(0, trace.channel.precision ?? 2));
+    return value.toFixed(precision);
+  };
+
   const renderReadout = (): void => {
     readout.replaceChildren();
     for (const trace of activeTraces.values()) {
-      const item = document.createElement('span');
+      const item = document.createElement('div');
       item.className = 'graph-readout-trace';
+
+      const identity = document.createElement('div');
+      identity.className = 'graph-readout-identity';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
@@ -276,9 +286,23 @@ export function createGraphViewport(): GraphViewportController {
 
       const name = document.createElement('span');
       name.className = 'graph-readout-name';
-      name.textContent = trace.channel.sourceName;
+      name.textContent = trace.channel.displayName || trace.channel.sourceName;
+      name.title = trace.channel.sourceName;
 
-      item.append(swatch, name);
+      identity.append(swatch, name);
+
+      const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
+      const current = nearestValue(trace.range, cursorTimeMs);
+
+      const values = document.createElement('div');
+      values.className = 'graph-readout-values';
+      values.innerHTML = `
+        <span><small>Now</small><strong>${formatReadoutValue(trace, current)}${unit}</strong></span>
+        <span><small>Min</small><strong>${formatReadoutValue(trace, trace.fullStatistics.min)}${unit}</strong></span>
+        <span><small>Max</small><strong>${formatReadoutValue(trace, trace.fullStatistics.max)}${unit}</strong></span>
+      `;
+
+      item.append(identity, values);
       readout.append(item);
     }
     readout.hidden = activeTraces.size === 0;
@@ -607,6 +631,7 @@ export function createGraphViewport(): GraphViewportController {
           channel: pending.channel,
           range,
           scale,
+          fullStatistics: summarizeRange(range),
           color,
         });
       }
@@ -691,7 +716,13 @@ export function createGraphViewport(): GraphViewportController {
       const scaleMs = now() - scaleStart;
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
-      activeTraces.set(channelId, { channel: pending.channel, range, scale, color });
+      activeTraces.set(channelId, {
+        channel: pending.channel,
+        range,
+        scale,
+        fullStatistics: summarizeRange(range),
+        color,
+      });
       overlay.hidden = true;
       renderReadout();
       emitCursorValues();
@@ -859,6 +890,7 @@ export function createGraphViewport(): GraphViewportController {
     if (!timeRange) return;
     cursorTimeMs = Math.min(timeRange.endMs, Math.max(timeRange.startMs, timeMs));
     emitCursorValues();
+    renderReadout();
     draw();
   };
 
