@@ -72,6 +72,10 @@ export function createTimelineShell(): TimelineShellController {
       </div>
       <span class="timeline-time">00:00.000 / 00:00.000</span>
       <div class="timeline-progress" role="slider" aria-label="Timeline cursor" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0"><span></span></div>
+      <div class="timeline-marker-actions" aria-label="Source marker navigation">
+        <button type="button" data-marker-action="previous" disabled title="Previous source marker">◀ M</button>
+        <button type="button" data-marker-action="next" disabled title="Next source marker">M ▶</button>
+      </div>
       <div class="timeline-zoom-actions">
         <button type="button" data-viewport-action="fit" disabled>Fit</button>
         <button type="button" data-viewport-action="zoom-in" disabled title="Zoom in">＋</button>
@@ -81,6 +85,7 @@ export function createTimelineShell(): TimelineShellController {
     <div class="timeline-meta">
       <span>Cursor <strong class="timeline-cursor-value">00:00.000</strong></span>
       <span>Visible range <strong class="timeline-visible-range">—</strong></span>
+      <span>Marker <strong class="timeline-marker-value">—</strong></span>
       <span>A/B <strong>—</strong></span>
       <span class="grow"></span>
       <button type="button" disabled>Save Range</button>
@@ -100,11 +105,13 @@ export function createTimelineShell(): TimelineShellController {
   const timelineTime = timeline.querySelector<HTMLElement>('.timeline-time');
   const cursorText = timeline.querySelector<HTMLElement>('.timeline-cursor-value');
   const visibleRangeText = timeline.querySelector<HTMLElement>('.timeline-visible-range');
+  const markerText = timeline.querySelector<HTMLElement>('.timeline-marker-value');
   const progress = timeline.querySelector<HTMLElement>('.timeline-progress');
   const progressFill = progress?.querySelector<HTMLElement>('span');
   const transportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('.transport button')];
+  const markerButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-marker-action]')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !progress || !progressFill) {
+  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
 
@@ -202,9 +209,12 @@ export function createTimelineShell(): TimelineShellController {
     markers: readonly LogMarker[],
   ): void => {
     overviewTraces = traces;
-    overviewMarkers = markers;
+    overviewMarkers = [...markers]
+      .filter((marker) => Number.isFinite(marker.timeMs))
+      .sort((left, right) => left.timeMs - right.timeMs);
     updateOverviewMessage();
     renderOverview();
+    renderCursor();
   };
 
   const fullDuration = (): number => Math.max(0, fullEndMs - fullStartMs);
@@ -245,6 +255,25 @@ export function createTimelineShell(): TimelineShellController {
     cursorText.textContent = formatDuration(elapsed);
     progress.setAttribute('aria-valuemax', String(Math.round(duration)));
     progress.setAttribute('aria-valuenow', String(Math.round(elapsed)));
+
+    const markerToleranceMs = 0.5;
+    const exactMarker = overviewMarkers.find(
+      (marker) => Math.abs(marker.timeMs - cursorTimeMs) <= markerToleranceMs,
+    );
+    markerText.textContent = exactMarker?.label?.trim() || (exactMarker ? 'Source marker' : '—');
+    markerText.title = exactMarker
+      ? `${markerText.textContent} · ${formatDuration(exactMarker.timeMs - fullStartMs)}`
+      : '';
+
+    const hasPrevious = overviewMarkers.some(
+      (marker) => marker.timeMs < cursorTimeMs - markerToleranceMs,
+    );
+    const hasNext = overviewMarkers.some(
+      (marker) => marker.timeMs > cursorTimeMs + markerToleranceMs,
+    );
+    for (const button of markerButtons) {
+      button.disabled = button.dataset.markerAction === 'previous' ? !hasPrevious : !hasNext;
+    }
   };
 
   const updateCursor = (next: number, notify = true): void => {
@@ -411,6 +440,26 @@ export function createTimelineShell(): TimelineShellController {
       }
     });
   }
+
+  for (const button of markerButtons) {
+    button.addEventListener('click', () => {
+      const action = button.dataset.markerAction;
+      if (action === 'previous' || action === 'next') navigateMarker(action);
+    });
+  }
+
+
+  const navigateMarker = (direction: 'previous' | 'next'): void => {
+    const toleranceMs = 0.5;
+    const marker = direction === 'previous'
+      ? [...overviewMarkers].reverse().find(
+          (candidate) => candidate.timeMs < cursorTimeMs - toleranceMs,
+        )
+      : overviewMarkers.find(
+          (candidate) => candidate.timeMs > cursorTimeMs + toleranceMs,
+        );
+    if (marker) updateCursor(marker.timeMs);
+  };
 
   for (const button of viewportButtons) {
     button.addEventListener('click', () => {
