@@ -31,6 +31,7 @@ export interface InspectorPanelController {
   setVisible(visible: boolean): void;
   isVisible(): boolean;
   setChannels(channels: readonly ChannelDefinition[], sourceName: string): void;
+  setCatalogChannels(channels: readonly ChannelDefinition[], sourceName: string): void;
   setError(message: string): void;
   onChannelToggled(listener: (channelId: string) => void): void;
   onLoadSelected(listener: () => void): void;
@@ -50,6 +51,7 @@ export function createInspectorPanel(): InspectorPanelController {
   let visible = true;
   let channels: readonly ChannelDefinition[] = [];
   let filteredChannels: readonly ChannelDefinition[] = [];
+  let channelActivationEnabled = false;
   const activeChannelIds = new Set<string>();
   const queuedChannelIds = new Set<string>();
   const favoriteChannelIds = new Set<string>();
@@ -158,10 +160,11 @@ export function createInspectorPanel(): InspectorPanelController {
     channelCount.textContent = filtering
       ? `${filteredChannels.length} / ${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`
       : `${channels.length} channels · ${activeChannelIds.size} active${queued > 0 ? ` · ${queued} selected` : ''}`;
-    loadSelectedButton.disabled = queued === 0;
+    loadSelectedButton.disabled = !channelActivationEnabled || queued === 0;
     loadSelectedButton.textContent = queued > 0 ? `Load now (${queued})` : 'Load now';
-    clearGraphButton.disabled = activeChannelIds.size === 0;
-    addFilteredButton.disabled = filteredChannels.length === 0
+    clearGraphButton.disabled = !channelActivationEnabled || activeChannelIds.size === 0;
+    addFilteredButton.disabled = !channelActivationEnabled
+      || filteredChannels.length === 0
       || filteredChannels.every((channel) => activeChannelIds.has(channel.id) || queuedChannelIds.has(channel.id));
   };
 
@@ -173,6 +176,7 @@ export function createInspectorPanel(): InspectorPanelController {
     row.className = 'channel-row channel-row--virtual';
     row.classList.toggle('channel-row--active', active);
     row.classList.toggle('channel-row--queued', queued);
+    row.classList.toggle('channel-row--unavailable', !channelActivationEnabled);
     row.setAttribute('role', 'listitem');
     row.dataset.channelId = channel.id;
     row.style.transform = `translateY(${index * VIRTUAL_ROW_HEIGHT}px)`;
@@ -182,10 +186,14 @@ export function createInspectorPanel(): InspectorPanelController {
     toggle.className = 'channel-row-toggle';
     toggle.dataset.channelToggle = channel.id;
     toggle.setAttribute('aria-pressed', String(active));
+    toggle.disabled = !channelActivationEnabled;
+    toggle.title = channelActivationEnabled
+      ? 'Toggle channel in active graph pane'
+      : 'Known from INI; no log data is currently bound';
 
     const state = document.createElement('span');
     state.className = 'channel-trace-state';
-    state.textContent = active ? '●' : queued ? '✓' : '＋';
+    state.textContent = channelActivationEnabled ? (active ? '●' : queued ? '✓' : '＋') : '—';
     state.setAttribute('aria-hidden', 'true');
 
     const identity = document.createElement('div');
@@ -222,7 +230,10 @@ export function createInspectorPanel(): InspectorPanelController {
     detailsButton.className = 'channel-details';
     detailsButton.dataset.channelDetails = channel.id;
     detailsButton.textContent = 'ⓘ';
-    detailsButton.title = active ? 'Channel statistics' : 'Activate channel to view statistics';
+    detailsButton.disabled = !channelActivationEnabled;
+    detailsButton.title = !channelActivationEnabled
+      ? 'Known from INI; statistics require log data'
+      : active ? 'Channel statistics' : 'Activate channel to view statistics';
 
     actions.append(favoriteButton, detailsButton);
     row.append(toggle, actions);
@@ -312,6 +323,7 @@ export function createInspectorPanel(): InspectorPanelController {
     filteredChannels = channels.filter((channel) => {
       const matchesText = query.length === 0
         || channel.sourceName.toLocaleLowerCase().includes(query)
+        || channel.displayName.toLocaleLowerCase().includes(query)
         || (channel.unit?.toLocaleLowerCase().includes(query) ?? false);
       const matchesGroup = selectedGroup === ''
         || (selectedGroup === '__ungrouped__' ? !channel.category?.trim() : channel.category === selectedGroup);
@@ -400,8 +412,13 @@ export function createInspectorPanel(): InspectorPanelController {
     if (!restoringWorkspace) workspaceMutationListener?.();
   };
 
-  const setChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void => {
+  const setChannelSource = (
+    nextChannels: readonly ChannelDefinition[],
+    sourceName: string,
+    activationEnabled: boolean,
+  ): void => {
     channels = nextChannels;
+    channelActivationEnabled = activationEnabled;
     activeChannelIds.clear();
     queuedChannelIds.clear();
     recentChannelIds.splice(0);
@@ -434,9 +451,16 @@ export function createInspectorPanel(): InspectorPanelController {
     applyFilters();
   };
 
+  const setChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void =>
+    setChannelSource(nextChannels, sourceName, true);
+
+  const setCatalogChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void =>
+    setChannelSource(nextChannels, `${sourceName} · INI catalog`, false);
+
   const setError = (message: string): void => {
     channels = [];
     filteredChannels = [];
+    channelActivationEnabled = false;
     activeChannelIds.clear();
     queuedChannelIds.clear();
     currentValues.clear();
@@ -677,6 +701,7 @@ export function createInspectorPanel(): InspectorPanelController {
     setVisible,
     isVisible: () => visible,
     setChannels,
+    setCatalogChannels,
     setError,
     onChannelToggled: (listener) => { toggleListener = listener; },
     onLoadSelected: (listener) => { loadSelectedListener = listener; },
