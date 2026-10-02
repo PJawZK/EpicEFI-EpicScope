@@ -3,6 +3,7 @@ import type {
   NumericChannelDataSource,
   NumericChannelRange,
 } from '../../log-model/log-types';
+import { recordChannelDecodePerformance } from '../../diagnostics/channel-decode-performance';
 import type { RandomAccessByteSource } from '../byte-source';
 import type { MlgFieldDescriptor } from './mlg-format';
 import type { MlgRecordIndex } from './mlg-records';
@@ -21,6 +22,23 @@ interface ResolvedChannel {
 interface CachedChannel {
   readonly range: NumericChannelRange;
   readonly bytes: number;
+}
+
+interface DecodeChannelsPerformance {
+  readonly batchCount: number;
+  readonly batchPlanMs: number;
+  readonly sourceReadAwaitMs: number;
+  readonly decodeTransformMs: number;
+  readonly resultAssemblyMs: number;
+}
+
+interface DecodeChannelsResult {
+  readonly ranges: ReadonlyMap<string, NumericChannelRange>;
+  readonly performance: DecodeChannelsPerformance;
+}
+
+function nowMs(): number {
+  return globalThis.performance?.now() ?? Date.now();
 }
 
 function decodeRawValue(view: DataView, offset: number, field: MlgFieldDescriptor): number {
@@ -154,9 +172,25 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     channels: readonly ResolvedChannel[],
     startSampleIndex: number,
     sampleCount: number,
-  ): Promise<ReadonlyMap<string, NumericChannelRange>> {
+  ): Promise<DecodeChannelsResult> {
     const ranges = new Map<string, NumericChannelRange>();
-    if (channels.length === 0) return ranges;
+    let batchCount = 0;
+    let batchPlanMs = 0;
+    let sourceReadAwaitMs = 0;
+    let decodeTransformMs = 0;
+    let resultAssemblyMs = 0;
+    if (channels.length === 0) {
+      return {
+        ranges,
+        performance: {
+          batchCount,
+          batchPlanMs,
+          sourceReadAwaitMs,
+          decodeTransformMs,
+          resultAssemblyMs,
+        },
+      };
+    }
 
     const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
     const timeMs = isFullRange
@@ -175,6 +209,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       let outputIndex = 0;
       const endSampleIndex = startSampleIndex + sampleCount;
       while (startSampleIndex + outputIndex < endSampleIndex) {
+        const planStarted = nowMs();
         const batchFirstIndex = startSampleIndex + outputIndex;
         const firstRecordOffset = this.recordIndex.offsets[batchFirstIndex];
         if (firstRecordOffset === undefined) {
@@ -193,8 +228,14 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
           batchLastIndex = nextIndex;
           batchEndByte = nextEndByte;
         }
+        batchPlanMs += nowMs() - planStarted;
+        batchCount += 1;
 
+        const readStarted = nowMs();
         const bytes = await this.source.read(batchStartByte, batchEndByte - batchStartByte);
+        sourceReadAwaitMs += nowMs() - readStarted;
+
+        const decodeStarted = nowMs();
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
         for (let sampleIndex = batchFirstIndex; sampleIndex <= batchLastIndex; sampleIndex += 1) {
@@ -213,11 +254,13 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
             );
           }
         }
+        decodeTransformMs += nowMs() - decodeStarted;
 
         outputIndex += batchLastIndex - batchFirstIndex + 1;
       }
     }
 
+    const assemblyStarted = nowMs();
     for (const channel of channels) {
       ranges.set(channel.channelId, {
         startSampleIndex,
@@ -226,7 +269,18 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
         validity,
       });
     }
-    return ranges;
+    resultAssemblyMs += nowMs() - assemblyStarted;
+
+    return {
+      ranges,
+      performance: {
+        batchCount,
+        batchPlanMs,
+        sourceReadAwaitMs,
+        decodeTransformMs,
+        resultAssemblyMs,
+      },
+    };
   }
 
   public hasCachedChannelRange(
@@ -244,6 +298,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelBatchResult> {
+    const totalStarted = nowMs();
     this.validateRange(startSampleIndex, sampleCount);
     const uniqueIds = [...new Set(channelIds)];
     const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
@@ -252,6 +307,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     const cacheHitChannelIds: string[] = [];
     const misses: ResolvedChannel[] = [];
 
+    const cacheResolveStarted = nowMs();
     for (const channelId of uniqueIds) {
       if (isFullRange) {
         const cached = this.cached(channelId);
@@ -263,14 +319,32 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       }
       misses.push(this.resolveChannel(channelId, sampleCount));
     }
+    const cacheResolveMs = nowMs() - cacheResolveStarted;
 
     const decoded = await this.decodeChannels(misses, startSampleIndex, sampleCount);
-    for (const [channelId, range] of decoded) {
+    const cacheStoreStarted = nowMs();
+    for (const [channelId, range] of decoded.ranges) {
       ranges.set(channelId, range);
       if (isFullRange) this.cache(channelId, range);
     }
+    const cacheStoreMs = nowMs() - cacheStoreStarted;
 
     const after = this.source.performanceSnapshot?.();
+    const totalMs = nowMs() - totalStarted;
+    recordChannelDecodePerformance({
+      recordedAt: Date.now(),
+      channelCount: uniqueIds.length,
+      sampleCount,
+      batchCount: decoded.performance.batchCount,
+      totalMs,
+      cacheResolveMs,
+      batchPlanMs: decoded.performance.batchPlanMs,
+      sourceReadAwaitMs: decoded.performance.sourceReadAwaitMs,
+      decodeTransformMs: decoded.performance.decodeTransformMs,
+      resultAssemblyMs: decoded.performance.resultAssemblyMs,
+      cacheStoreMs,
+    });
+
     return {
       ranges,
       performance: {
