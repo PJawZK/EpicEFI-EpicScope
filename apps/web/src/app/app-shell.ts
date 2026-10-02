@@ -62,7 +62,47 @@ export function mountAppShell(root: HTMLElement): void {
       <button type="button" disabled title="Undo">↶</button>
       <button type="button" disabled title="Redo">↷</button>
       <button type="button" disabled>Tools ▾</button>
-      <button type="button" aria-label="Settings" title="Settings" disabled>⚙</button>
+      <div class="settings-wrap">
+        <button type="button" class="settings-button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false">⚙</button>
+        <div class="settings-popover" role="dialog" aria-label="EpicScope settings" hidden>
+          <div class="settings-popover-head">
+            <strong>Settings</strong>
+            <small>Current Web session</small>
+          </div>
+          <label class="settings-field">
+            <span>Playback speed</span>
+            <select class="setting-playback-speed">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+            </select>
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" class="setting-sample-points" checked />
+            <span>
+              <strong>High-zoom sample points</strong>
+              <small>Show individual recorded points at extreme zoom.</small>
+            </span>
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" class="setting-overview-traces" checked />
+            <span>
+              <strong>Timeline overview traces</strong>
+              <small>Show active-channel traces in the whole-log overview.</small>
+            </span>
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" class="setting-performance" checked />
+            <span>
+              <strong>Performance diagnostics</strong>
+              <small>Show the Perf control in the status bar.</small>
+            </span>
+          </label>
+          <p class="settings-note">Settings are temporary and reset when EpicScope is reloaded.</p>
+        </div>
+      </div>
     </div>
   `;
 
@@ -117,10 +157,46 @@ export function mountAppShell(root: HTMLElement): void {
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
+  const settingsButton = header.querySelector<HTMLButtonElement>('.settings-button');
+  const settingsPopover = header.querySelector<HTMLElement>('.settings-popover');
+  const playbackSpeed = header.querySelector<HTMLSelectElement>('.setting-playback-speed');
+  const samplePoints = header.querySelector<HTMLInputElement>('.setting-sample-points');
+  const overviewTraces = header.querySelector<HTMLInputElement>('.setting-overview-traces');
+  const performanceVisible = header.querySelector<HTMLInputElement>('.setting-performance');
 
-  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus) {
+  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
+
+  const closeSettings = (): void => {
+    settingsPopover.hidden = true;
+    settingsButton.setAttribute('aria-expanded', 'false');
+  };
+
+  settingsButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = settingsPopover.hidden;
+    settingsPopover.hidden = !nextOpen;
+    settingsButton.setAttribute('aria-expanded', String(nextOpen));
+  });
+  settingsPopover.addEventListener('click', (event) => event.stopPropagation());
+
+  playbackSpeed.addEventListener('change', () => {
+    const speed = Number(playbackSpeed.value);
+    if (Number.isFinite(speed) && speed > 0) loggerPage.setPlaybackSpeed(speed);
+  });
+
+  samplePoints.addEventListener('change', () => {
+    loggerPage.setHighZoomSamplePointsVisible(samplePoints.checked);
+  });
+
+  overviewTraces.addEventListener('change', () => {
+    loggerPage.setTimelineOverviewTracesVisible(overviewTraces.checked);
+  });
+
+  performanceVisible.addEventListener('change', () => {
+    performanceDiagnostics.element.hidden = !performanceVisible.checked;
+  });
 
   const closeBrandMenu = (): void => {
     brandMenu.hidden = true;
@@ -136,9 +212,17 @@ export function mountAppShell(root: HTMLElement): void {
     brandButton.setAttribute('aria-expanded', String(nextOpen));
   });
   brandMenu.addEventListener('click', (event) => event.stopPropagation());
-  document.addEventListener('click', closeBrandMenu);
+  document.addEventListener('click', () => {
+    closeBrandMenu();
+    closeSettings();
+  });
 
   openButton.addEventListener('click', () => fileInput.click());
+
+  loggerPage.setPlaybackSpeed(Number(playbackSpeed.value));
+  loggerPage.setHighZoomSamplePointsVisible(samplePoints.checked);
+  loggerPage.setTimelineOverviewTracesVisible(overviewTraces.checked);
+  performanceDiagnostics.element.hidden = !performanceVisible.checked;
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
