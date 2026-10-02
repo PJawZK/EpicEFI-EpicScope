@@ -37,6 +37,19 @@ export interface NumericChannelRange {
   readonly validity: Uint8Array;
 }
 
+export interface NumericChannelBatchPerformance {
+  readonly channelCount: number;
+  readonly cacheHitChannelIds: readonly string[];
+  readonly physicalReadCount: number;
+  readonly physicalBytesRead: number;
+  readonly physicalReadMs: number;
+}
+
+export interface NumericChannelBatchResult {
+  readonly ranges: ReadonlyMap<string, NumericChannelRange>;
+  readonly performance: NumericChannelBatchPerformance;
+}
+
 export interface NumericChannelDataSource {
   readonly sampleCount: number;
   readChannelRange(
@@ -44,6 +57,11 @@ export interface NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelRange>;
+  readChannelsRange?(
+    channelIds: readonly string[],
+    startSampleIndex: number,
+    sampleCount: number,
+  ): Promise<NumericChannelBatchResult>;
 }
 
 export interface LogMarker {
