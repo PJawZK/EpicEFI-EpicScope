@@ -167,7 +167,6 @@ export function createGraphViewport(): GraphViewportController {
       readout.append(item);
     }
     readout.hidden = activeTraces.size === 0;
-    emitCursorValues();
   };
 
   const draw = (): void => {
@@ -209,7 +208,6 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     if (!viewport || activeTraces.size === 0) {
-      renderReadout();
       return;
     }
 
@@ -270,7 +268,6 @@ export function createGraphViewport(): GraphViewportController {
       context.stroke();
     }
 
-    renderReadout();
   };
 
   const resizeObserver = new ResizeObserver(draw);
@@ -337,6 +334,8 @@ export function createGraphViewport(): GraphViewportController {
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
     readout.hidden = true;
+    renderReadout();
+    emitCursorValues();
     toast.hidden = true;
     if (toastTimer !== undefined) {
       window.clearTimeout(toastTimer);
@@ -355,6 +354,8 @@ export function createGraphViewport(): GraphViewportController {
         overlayTitle.textContent = 'Select channels';
         overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
       }
+      renderReadout();
+      emitCursorValues();
       draw();
       return false;
     }
@@ -379,6 +380,8 @@ export function createGraphViewport(): GraphViewportController {
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       activeTraces.set(channel.id, { channel, range, scale, color });
       overlay.hidden = true;
+      renderReadout();
+      emitCursorValues();
       draw();
       return true;
     } catch (error) {
@@ -392,6 +395,8 @@ export function createGraphViewport(): GraphViewportController {
 
   const clearChannels = (): void => {
     activeTraces.clear();
+    renderReadout();
+    emitCursorValues();
     overlay.hidden = false;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
@@ -401,6 +406,7 @@ export function createGraphViewport(): GraphViewportController {
   const setCursorTime = (timeMs: number): void => {
     if (!timeRange) return;
     cursorTimeMs = Math.min(timeRange.endMs, Math.max(timeRange.startMs, timeMs));
+    emitCursorValues();
     draw();
   };
 
@@ -420,6 +426,8 @@ export function createGraphViewport(): GraphViewportController {
     overlayTitle.textContent = 'Open a log to start scoping';
     overlayDetail.textContent = 'The graph will use normalized local channel data.';
     readout.hidden = true;
+    renderReadout();
+    emitCursorValues();
     draw();
   };
 
