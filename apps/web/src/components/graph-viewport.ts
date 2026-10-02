@@ -328,11 +328,21 @@ export function createGraphViewport(): GraphViewportController {
         context.beginPath();
         let previousBucketX: number | undefined;
         let hasTrace = false;
+        const isolatedPoints: { readonly x: number; readonly y: number }[] = [];
 
-        for (const column of envelope.columns) {
+        for (let columnIndex = 0; columnIndex < envelope.columns.length; columnIndex += 1) {
+          const column = envelope.columns[columnIndex];
+          if (!column) continue;
           const points = rawRepresentativePoints(column);
           if (points.length === 0) continue;
+
+          const previousColumn = envelope.columns[columnIndex - 1];
+          const nextColumn = envelope.columns[columnIndex + 1];
+          const gapFromPrevious = previousColumn ? column.x - previousColumn.x : Number.POSITIVE_INFINITY;
+          const gapToNext = nextColumn ? nextColumn.x - column.x : Number.POSITIVE_INFINITY;
+          const isolatedBucket = gapFromPrevious > 2 && gapToNext > 2;
           const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
+
           for (let index = 0; index < points.length; index += 1) {
             const point = points[index];
             if (!point) continue;
@@ -342,9 +352,27 @@ export function createGraphViewport(): GraphViewportController {
             else context.lineTo(x, y);
             hasTrace = true;
           }
+
+          if (
+            isolatedBucket
+            && column.first === column.last
+            && column.min === column.max
+          ) {
+            isolatedPoints.push({
+              x: xForTime(column.firstTimeMs),
+              y: yForValue(column.first),
+            });
+          }
           previousBucketX = column.x;
         }
         if (hasTrace) context.stroke();
+
+        if (isolatedPoints.length > 0) {
+          context.fillStyle = trace.color;
+          for (const point of isolatedPoints) {
+            context.fillRect(point.x - 1, point.y - 1, 2, 2);
+          }
+        }
       }
     }
 
