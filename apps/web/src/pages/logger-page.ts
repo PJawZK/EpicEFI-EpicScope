@@ -810,6 +810,35 @@ export function createLoggerPage(): LoggerPageController {
     );
   };
 
+  const normalizePersistentChannelIds = (
+    channelIds: readonly string[],
+  ): string[] => {
+    const normalized: string[] = [];
+    for (const channelId of channelIds) {
+      let candidate = channelId;
+      if (!channelDefinitions.has(candidate)) {
+        const alias = channelIdAliases.get(candidate);
+        if (alias) candidate = alias;
+      }
+
+      // Source-local MLG field IDs are never valid long-term application
+      // workspace identity. When an INI catalog is active, drop unresolved
+      // legacy mlg:* assignments rather than allowing invisible entries to
+      // consume the pane's trace limit. Unknown stable IDs are preserved.
+      if (
+        catalogChannelDefinitions.size > 0
+        && candidate.startsWith('mlg:')
+        && !channelDefinitions.has(candidate)
+      ) {
+        continue;
+      }
+
+      if (!normalized.includes(candidate)) normalized.push(candidate);
+      if (normalized.length >= MAX_ACTIVE_WEB_TRACES) break;
+    }
+    return normalized;
+  };
+
   const syncPaneAssignedChannels = (
     runtime: (typeof paneRuntimes)[number],
     pane: GraphPaneState | undefined,
@@ -1326,13 +1355,7 @@ export function createLoggerPage(): LoggerPageController {
     const paneRequests = paneRuntimes.slice(0, visibleCount).map((runtime, index) => {
       const pane = target.panes[index];
       const assignedIds = pane
-        ? pane.channelIds
-            .map((channelId) =>
-              channelDefinitions.has(channelId)
-                ? channelId
-                : channelIdAliases.get(channelId) ?? channelId
-            )
-            .slice(0, MAX_ACTIVE_WEB_TRACES)
+        ? normalizePersistentChannelIds(pane.channelIds)
         : [];
       if (pane) pane.channelIds = [...assignedIds];
       syncPaneAssignedChannels(runtime, pane);
@@ -1742,6 +1765,12 @@ export function createLoggerPage(): LoggerPageController {
     catalogChannelDefinitions = new Map(channels.map((channel) => [channel.id, channel]));
     catalogSourceName = sourceName;
 
+    for (const workspace of workspaces) {
+      for (const pane of workspace.panes) {
+        pane.channelIds = normalizePersistentChannelIds(pane.channelIds);
+      }
+    }
+
     if (!channelDataSource) {
       channelDefinitions = new Map(catalogChannelDefinitions);
       unavailableChannelIds.clear();
@@ -1944,7 +1973,10 @@ export function createLoggerPage(): LoggerPageController {
     try {
       workspaces = state.workspaces.map((workspace) => {
         const layout = workspace.layout ?? 'single';
-        const panes = normalizePaneStates(workspace.panes, workspace.channelIds);
+        const panes = normalizePaneStates(workspace.panes, workspace.channelIds).map((pane) => ({
+          ...pane,
+          channelIds: normalizePersistentChannelIds(pane.channelIds),
+        }));
         const visibleIds = panes.slice(0, paneCountForLayout(layout)).map((pane) => pane.id);
         const activePaneId = workspace.activePaneId && visibleIds.includes(workspace.activePaneId)
           ? workspace.activePaneId
