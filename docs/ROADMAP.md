@@ -88,42 +88,34 @@ Hosted Web application:
 
 Hosted Brave validation exposed and then verified fixes for the sensor-panel hide behavior and narrow-width object preservation. WEB-BOOT has no remaining quality gate.
 
-### LOG-MLG — Planning/investigation in progress
+### LOG-MLG — Core path implemented; performance validation in progress
 
-Detailed active authority: `docs/LOG_MLG_PLAN.md`.
+Detailed format/parser authority: `docs/LOG_MLG_PLAN.md`.
 
-Approved direction being established:
+Implemented and validated outcomes:
 
-- EFI Analytics MLVLG v1/v2 specifications as primary format authority;
-- version-dispatched parser architecture;
-- initial guaranteed support for MLVLG v1 + v2;
-- explicit unsupported-version handling for unverified newer versions;
-- bounded/random-access source reads rather than requiring full-file `ArrayBuffer` materialization;
-- parser implementation under `core/parsers/mlg/`;
-- minimal normalized log/channel/time contracts under `core/log-model/`;
-- metadata/channel discovery;
-- standard records and markers;
-- timestamp rollover handling;
-- error handling for malformed/unsupported/untrusted content;
-- bounded validation of file-provided sizes/counts/offsets;
-- curated small MLG fixtures;
-- at least one representative real EpicEFI/TunerStudio MLG before completion;
-- first Web parser/index performance baseline.
+- EFI Analytics MLVLG v1/v2 parsing with explicit unsupported-version handling for unverified newer formats;
+- bounded/random-access source reads rather than mandatory full-file `ArrayBuffer` materialization;
+- normalized log/channel/time contracts under `core/log-model/`;
+- metadata/channel discovery, standard records, markers and timestamp rollover handling;
+- bounded validation of file-provided sizes/counts/offsets and malformed/untrusted input handling;
+- Vitest 5.x parser/core automated test gate;
+- browser-local hosted MLG import;
+- real EpicEFI/TunerStudio MLG v2 validation;
+- CRC-invalid source samples retained as evidence and excluded from trusted graph/analysis use;
+- staged Worker import so large logs can become usable after indexing while CRC validation continues;
+- bounded Web source caching with a ~96 MiB ceiling;
+- batched MLG channel decoding with a bounded 32 MiB decoded-channel cache;
+- automatic large-log staged channel commit so several selected channels share one sequential row-oriented source pass.
 
-Planned task split:
+Large-log hosted evidence currently includes a 318,023,627-byte MLG with 72,158 records and 1,652 channels. A four-channel uncached selection has been validated as one `batch=4` traversal of the source rather than four independent decode passes.
 
-1. `LOG-MLG-001` — format/support contract;
-2. `TEST-CORE-001` — parser/core automated test gate;
-3. `LOG-MODEL-001` — minimal normalized log contracts;
-4. `LOG-SOURCE-001` — bounded random-access byte source;
-5. `LOG-MLG-002` — v1/v2 header and field-descriptor parsing;
-6. `LOG-MLG-003` — record/marker scan and monotonic timebase;
-7. `LOG-MLG-004` — hosted Web local-file integration;
-8. `LOG-MLG-005` — real-log validation and first performance baseline.
+Remaining LOG-MLG/Web-performance work:
 
-Vitest 5.x is the current recommended TypeScript parser/core test runner, but adding that dependency remains pending explicit project-owner approval under D-015/D-025.
-
-TunerStudio has newer MLVLG v3 support with additional data types/endianness options. EpicScope must detect unverified versions cleanly; speculative v3 decoding is not authorized by this task.
+1. hosted real-log spot check of decoded-channel remove/re-add cache reuse;
+2. continue benchmark capture as additional real workflows are established;
+3. improve retry/recovery diagnostic classification without changing checksum semantics or silently repairing source data;
+4. keep MLVLG v3 deferred until authoritative format evidence exists.
 
 ### LOG-CSV
 
