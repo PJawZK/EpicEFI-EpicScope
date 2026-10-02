@@ -1,4 +1,5 @@
 import type {
+  ChannelDefinition,
   ImportedLogSummary,
   NumericChannelDataSource,
   ParserDiagnostic,
@@ -172,6 +173,8 @@ export function createLoggerPage(): LoggerPageController {
   const diagnostics = createDiagnosticsIndicator();
   let viewport: TimelineViewport | undefined;
   let previousCursorTimeMs = 0;
+  const activeChannelIds = new Set<string>();
+  let channelDefinitions = new Map<string, ChannelDefinition>();
 
   const page = document.createElement('section');
   page.className = 'logger-page';
@@ -282,9 +285,26 @@ export function createLoggerPage(): LoggerPageController {
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
 
-  inspector.onChannelSelected((channelId) => {
-    inspector.setSelectedChannel(channelId);
-    void graph.selectChannel(channelId);
+  inspector.onChannelToggled((channelId) => {
+    void graph.toggleChannel(channelId).then((active) => {
+      if (active) activeChannelIds.add(channelId);
+      else activeChannelIds.delete(channelId);
+      inspector.setActiveChannels([...activeChannelIds]);
+    });
+  });
+
+  graph.onCursorValues((values) => {
+    for (const item of values) {
+      const channel = channelDefinitions.get(item.channelId);
+      if (!channel) continue;
+      if (item.value === undefined || !Number.isFinite(item.value)) {
+        inspector.setChannelValue(item.channelId, '—');
+        continue;
+      }
+      const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
+      const unit = channel.unit ? ` ${channel.unit}` : '';
+      inspector.setChannelValue(item.channelId, `${item.value.toFixed(precision)}${unit}`);
+    }
   });
 
   timeline.onCursorChange((timeMs) => {
@@ -308,7 +328,10 @@ export function createLoggerPage(): LoggerPageController {
     formatVersion: number,
     channelData: NumericChannelDataSource,
   ): void => {
+    activeChannelIds.clear();
+    channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
     inspector.setChannels(summary.channels, summary.source.displayName);
+    inspector.setActiveChannels([]);
     timeline.setTimeRange(summary.timeRange, recordCount);
     graph.setLog(summary.channels, channelData, summary.timeRange);
     if (summary.timeRange) {
@@ -323,6 +346,8 @@ export function createLoggerPage(): LoggerPageController {
   };
 
   const setImportError = (message: string): void => {
+    activeChannelIds.clear();
+    channelDefinitions.clear();
     inspector.setError(message);
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);

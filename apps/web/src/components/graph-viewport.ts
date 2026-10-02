@@ -11,6 +11,14 @@ import {
   type ViewportEnvelopeColumn,
 } from '../../../../core/timeline/viewport-series';
 
+const MAX_ACTIVE_TRACES = 8;
+const TRACE_COLORS = ['#42a5f5', '#26c6a3', '#f0b44d', '#c98cff', '#ef6c75', '#70d6ff', '#b8d95a', '#ff8c42'] as const;
+
+export interface GraphCursorValue {
+  readonly channelId: string;
+  readonly value: number | undefined;
+}
+
 export interface GraphViewportController {
   readonly element: HTMLElement;
   setLog(
@@ -18,17 +26,26 @@ export interface GraphViewportController {
     channelData: NumericChannelDataSource,
     timeRange: LogTimeRange | undefined,
   ): void;
-  selectChannel(channelId: string): Promise<void>;
+  toggleChannel(channelId: string): Promise<boolean>;
+  clearChannels(): void;
   setCursorTime(timeMs: number): void;
   setViewport(viewport: TimelineViewport | undefined): void;
   onZoom(listener: (factor: number, anchorMs: number) => void): void;
   onPan(listener: (deltaMs: number) => void): void;
+  onCursorValues(listener: (values: readonly GraphCursorValue[]) => void): void;
   clear(): void;
 }
 
 interface RawRepresentativePoint {
   readonly timeMs: number;
   readonly value: number;
+}
+
+interface ActiveTrace {
+  readonly channel: ChannelDefinition;
+  readonly range: NumericChannelRange;
+  readonly scale: StableValueScale;
+  readonly color: string;
 }
 
 function formatValue(value: number, precision = 2): string {
@@ -54,30 +71,49 @@ function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRe
   return result;
 }
 
+function nearestValue(range: NumericChannelRange, cursorTimeMs: number): number | undefined {
+  if (range.timeMs.length === 0) return undefined;
+  let low = 0;
+  let high = range.timeMs.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const value = range.timeMs[mid] ?? 0;
+    if (value < cursorTimeMs) low = mid + 1;
+    else high = mid;
+  }
+
+  let index = low;
+  if (index > 0) {
+    const current = range.timeMs[index] ?? Number.POSITIVE_INFINITY;
+    const previous = range.timeMs[index - 1] ?? Number.NEGATIVE_INFINITY;
+    if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
+  }
+
+  if (range.validity[index] !== 1) return undefined;
+  const value = range.values[index];
+  return value !== undefined && Number.isFinite(value) ? value : undefined;
+}
+
 export function createGraphViewport(): GraphViewportController {
   let channels: readonly ChannelDefinition[] = [];
   let channelData: NumericChannelDataSource | undefined;
   let timeRange: LogTimeRange | undefined;
   let viewport: TimelineViewport | undefined;
-  let selectedChannel: ChannelDefinition | undefined;
-  let selectedRange: NumericChannelRange | undefined;
-  let selectedScale: StableValueScale | undefined;
+  const activeTraces = new Map<string, ActiveTrace>();
   let cursorTimeMs = 0;
   let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
   let panListener: ((deltaMs: number) => void) | undefined;
+  let cursorValuesListener: ((values: readonly GraphCursorValue[]) => void) | undefined;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
   root.innerHTML = `
     <canvas class="graph-canvas" aria-label="Channel graph"></canvas>
     <div class="graph-overlay graph-overlay--empty">
-      <strong>Select a channel</strong>
-      <span>Choose a channel from Full Sensor List to graph it.</span>
+      <strong>Select channels</strong>
+      <span>Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.</span>
     </div>
-    <div class="graph-readout" hidden>
-      <strong class="graph-readout-name"></strong>
-      <span class="graph-readout-value"></span>
-    </div>
+    <div class="graph-readout graph-readout--multi" hidden></div>
   `;
 
   const canvas = root.querySelector<HTMLCanvasElement>('.graph-canvas');
@@ -85,30 +121,42 @@ export function createGraphViewport(): GraphViewportController {
   const overlayTitle = root.querySelector<HTMLElement>('.graph-overlay strong');
   const overlayDetail = root.querySelector<HTMLElement>('.graph-overlay span');
   const readout = root.querySelector<HTMLElement>('.graph-readout');
-  const readoutName = root.querySelector<HTMLElement>('.graph-readout-name');
-  const readoutValue = root.querySelector<HTMLElement>('.graph-readout-value');
-  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !readout || !readoutName || !readoutValue) {
+  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !readout) {
     throw new Error('Graph viewport structure is incomplete.');
   }
 
-  const nearestValue = (): number | undefined => {
-    if (!selectedRange || selectedRange.timeMs.length === 0) return undefined;
-    let low = 0;
-    let high = selectedRange.timeMs.length - 1;
-    while (low < high) {
-      const mid = Math.floor((low + high) / 2);
-      const value = selectedRange.timeMs[mid] ?? 0;
-      if (value < cursorTimeMs) low = mid + 1;
-      else high = mid;
+  const emitCursorValues = (): void => {
+    const values = [...activeTraces.entries()].map(([channelId, trace]) => ({
+      channelId,
+      value: nearestValue(trace.range, cursorTimeMs),
+    }));
+    cursorValuesListener?.(values);
+  };
+
+  const renderReadout = (): void => {
+    readout.replaceChildren();
+    for (const trace of activeTraces.values()) {
+      const row = document.createElement('div');
+      row.className = 'graph-readout-trace';
+
+      const swatch = document.createElement('span');
+      swatch.className = 'graph-trace-swatch';
+      swatch.style.background = trace.color;
+
+      const name = document.createElement('strong');
+      name.className = 'graph-readout-name';
+      name.textContent = trace.channel.sourceName;
+
+      const value = document.createElement('span');
+      value.className = 'graph-readout-value';
+      const current = nearestValue(trace.range, cursorTimeMs);
+      value.textContent = `${formatValue(current ?? Number.NaN, trace.channel.precision ?? 2)}${trace.channel.unit ? ` ${trace.channel.unit}` : ''}`;
+
+      row.append(swatch, name, value);
+      readout.append(row);
     }
-    let index = low;
-    if (index > 0) {
-      const current = selectedRange.timeMs[index] ?? Number.POSITIVE_INFINITY;
-      const previous = selectedRange.timeMs[index - 1] ?? Number.NEGATIVE_INFINITY;
-      if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
-    }
-    if (selectedRange.validity[index] !== 1) return undefined;
-    return selectedRange.values[index];
+    readout.hidden = activeTraces.size === 0;
+    emitCursorValues();
   };
 
   const draw = (): void => {
@@ -122,6 +170,7 @@ export function createGraphViewport(): GraphViewportController {
       canvas.width = targetWidth;
       canvas.height = targetHeight;
     }
+
     const context = canvas.getContext('2d');
     if (!context) return;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -148,58 +197,57 @@ export function createGraphViewport(): GraphViewportController {
       context.stroke();
     }
 
-    if (!selectedRange || !selectedChannel || !selectedScale || !viewport) return;
+    if (!viewport || activeTraces.size === 0) {
+      renderReadout();
+      return;
+    }
+
     const visibleStartMs = viewport.visibleStartMs;
     const visibleEndMs = viewport.visibleEndMs;
-
-    const envelope = buildViewportEnvelope(
-      selectedRange,
-      visibleStartMs,
-      visibleEndMs,
-      Math.max(1, Math.floor(plotWidth)),
-    );
-
-    // Vertical scale is intentionally computed once from the complete selected
-    // channel and stays fixed while the horizontal time viewport zooms/pans.
-    // This preserves apparent graph resolution like MegaLogViewer instead of
-    // stretching the trace vertically to fit whichever extrema happen to be visible.
-    const axisMin = selectedScale.min;
-    const axisMax = selectedScale.max;
-    const axisSpan = Math.max(1e-9, axisMax - axisMin);
-    const yForValue = (value: number): number => {
-      const normalized = (value - axisMin) / axisSpan;
-      return inset + plotHeight - normalized * plotHeight;
-    };
     const duration = Math.max(1e-9, visibleEndMs - visibleStartMs);
     const xForTime = (timeMs: number): number => inset + ((timeMs - visibleStartMs) / duration) * plotWidth;
 
-    // Experimental renderer: preserve first/min/max/last raw values per horizontal
-    // bucket while bounding work. Visual tuning is deliberately deferred until the
-    // viewport and multi-channel feature set is established.
-    context.strokeStyle = '#42a5f5';
-    context.lineWidth = 1.15;
-    context.lineJoin = 'miter';
-    context.lineCap = 'butt';
-    context.beginPath();
-    let previousBucketX: number | undefined;
-    let hasTrace = false;
+    for (const trace of activeTraces.values()) {
+      const envelope = buildViewportEnvelope(
+        trace.range,
+        visibleStartMs,
+        visibleEndMs,
+        Math.max(1, Math.floor(plotWidth)),
+      );
+      const axisSpan = Math.max(1e-9, trace.scale.max - trace.scale.min);
+      const yForValue = (value: number): number => {
+        const normalized = (value - trace.scale.min) / axisSpan;
+        return inset + plotHeight - normalized * plotHeight;
+      };
 
-    for (const column of envelope.columns) {
-      const points = rawRepresentativePoints(column);
-      if (points.length === 0) continue;
-      const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
-      for (let index = 0; index < points.length; index += 1) {
-        const point = points[index];
-        if (!point) continue;
-        const x = xForTime(point.timeMs);
-        const y = yForValue(point.value);
-        if (breakBeforeBucket && index === 0) context.moveTo(x, y);
-        else context.lineTo(x, y);
-        hasTrace = true;
+      // Experimental renderer: each trace keeps first/min/max/last raw values per
+      // horizontal bucket. Every trace has its own stable full-log Y scale; only
+      // the shared time viewport changes during horizontal zoom/pan.
+      context.strokeStyle = trace.color;
+      context.lineWidth = 1.1;
+      context.lineJoin = 'miter';
+      context.lineCap = 'butt';
+      context.beginPath();
+      let previousBucketX: number | undefined;
+      let hasTrace = false;
+
+      for (const column of envelope.columns) {
+        const points = rawRepresentativePoints(column);
+        if (points.length === 0) continue;
+        const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
+        for (let index = 0; index < points.length; index += 1) {
+          const point = points[index];
+          if (!point) continue;
+          const x = xForTime(point.timeMs);
+          const y = yForValue(point.value);
+          if (breakBeforeBucket && index === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+          hasTrace = true;
+        }
+        previousBucketX = column.x;
       }
-      previousBucketX = column.x;
+      if (hasTrace) context.stroke();
     }
-    if (hasTrace) context.stroke();
 
     if (cursorTimeMs >= visibleStartMs && cursorTimeMs <= visibleEndMs) {
       const cursorX = xForTime(cursorTimeMs);
@@ -211,9 +259,7 @@ export function createGraphViewport(): GraphViewportController {
       context.stroke();
     }
 
-    const value = nearestValue();
-    readoutName.textContent = selectedChannel.sourceName;
-    readoutValue.textContent = `${formatValue(value ?? Number.NaN, selectedChannel.precision ?? 2)}${selectedChannel.unit ? ` ${selectedChannel.unit}` : ''}`;
+    renderReadout();
   };
 
   const resizeObserver = new ResizeObserver(draw);
@@ -274,38 +320,66 @@ export function createGraphViewport(): GraphViewportController {
           visibleEndMs: nextTimeRange.endMs,
         }
       : undefined;
-    selectedChannel = undefined;
-    selectedRange = undefined;
-    selectedScale = undefined;
+    activeTraces.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
     overlay.hidden = false;
-    overlayTitle.textContent = 'Select a channel';
-    overlayDetail.textContent = 'Choose a channel from Full Sensor List to graph it.';
+    overlayTitle.textContent = 'Select channels';
+    overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
     readout.hidden = true;
     draw();
   };
 
-  const selectChannel = async (channelId: string): Promise<void> => {
-    if (!channelData) return;
+  const toggleChannel = async (channelId: string): Promise<boolean> => {
+    const existing = activeTraces.get(channelId);
+    if (existing) {
+      activeTraces.delete(channelId);
+      overlay.hidden = activeTraces.size > 0;
+      if (activeTraces.size === 0) {
+        overlay.hidden = false;
+        overlayTitle.textContent = 'Select channels';
+        overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
+      }
+      draw();
+      return false;
+    }
+
+    if (!channelData) return false;
+    if (activeTraces.size >= MAX_ACTIVE_TRACES) {
+      overlay.hidden = false;
+      overlayTitle.textContent = 'Trace limit reached';
+      overlayDetail.textContent = `EpicScope currently allows up to ${MAX_ACTIVE_TRACES} simultaneous Web traces.`;
+      return false;
+    }
+
     const channel = channels.find((candidate) => candidate.id === channelId);
-    if (!channel) return;
+    if (!channel) return false;
     overlay.hidden = false;
     overlayTitle.textContent = `Loading ${channel.sourceName}…`;
     overlayDetail.textContent = 'Reading bounded channel data from the local log.';
+
     try {
       const range = await channelData.readChannelRange(channel.id, 0, channelData.sampleCount);
-      selectedChannel = channel;
-      selectedRange = range;
-      selectedScale = buildStableValueScale(range);
+      const scale = buildStableValueScale(range);
+      const color = TRACE_COLORS[activeTraces.size % TRACE_COLORS.length] ?? TRACE_COLORS[0];
+      activeTraces.set(channel.id, { channel, range, scale, color });
       overlay.hidden = true;
-      readout.hidden = false;
       draw();
+      return true;
     } catch (error) {
       overlay.hidden = false;
       overlayTitle.textContent = 'Could not graph channel';
       overlayDetail.textContent = error instanceof Error ? error.message : 'Unknown channel-read error.';
-      readout.hidden = true;
+      draw();
+      return false;
     }
+  };
+
+  const clearChannels = (): void => {
+    activeTraces.clear();
+    overlay.hidden = false;
+    overlayTitle.textContent = 'Select channels';
+    overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
+    draw();
   };
 
   const setCursorTime = (timeMs: number): void => {
@@ -324,9 +398,7 @@ export function createGraphViewport(): GraphViewportController {
     channelData = undefined;
     timeRange = undefined;
     viewport = undefined;
-    selectedChannel = undefined;
-    selectedRange = undefined;
-    selectedScale = undefined;
+    activeTraces.clear();
     cursorTimeMs = 0;
     overlay.hidden = false;
     overlayTitle.textContent = 'Open a log to start scoping';
@@ -339,11 +411,13 @@ export function createGraphViewport(): GraphViewportController {
   return {
     element: root,
     setLog,
-    selectChannel,
+    toggleChannel,
+    clearChannels,
     setCursorTime,
     setViewport,
     onZoom: (listener) => { zoomListener = listener; },
     onPan: (listener) => { panListener = listener; },
+    onCursorValues: (listener) => { cursorValuesListener = listener; },
     clear,
   };
 }
