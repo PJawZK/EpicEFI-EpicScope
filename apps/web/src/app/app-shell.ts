@@ -104,7 +104,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   brandButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    const nextOpen = brandMenu.hidden;
+    const nextOpen = brandMenu.hidden === true;
     brandMenu.hidden = !nextOpen;
     brandButton.classList.toggle('brand-button--open', nextOpen);
     brandButton.setAttribute('aria-expanded', String(nextOpen));
@@ -129,7 +129,6 @@ export function mountAppShell(root: HTMLElement): void {
         loggerPage.setLog(
           parsed.summary,
           parsed.recordIndex.offsets.length,
-          parsed.header.version,
           parsed.channelData,
         );
         loadedLog.textContent = parsed.summary.source.displayName;
