@@ -86,7 +86,7 @@ function decodeMarker(bytes: Uint8Array): string {
   return value;
 }
 
-function calculateRecordCrcRange(
+export function calculateMlgRecordChecksum(
   bytes: Uint8Array,
   start: number,
   length: number,
@@ -169,7 +169,7 @@ function benchmarkChecksumCpu(
   const started = now();
   for (let repeat = 0; repeat < repeats; repeat += 1) {
     for (const recordStart of recordStarts) {
-      sink ^= calculateRecordCrcRange(chunk, recordStart, recordLength);
+      sink ^= calculateMlgRecordChecksum(chunk, recordStart, recordLength);
       benchmarkBytes += recordLength;
     }
   }
@@ -266,13 +266,13 @@ async function tryScanFixedRecords(
       if (chunk === benchmarkChunk && benchmarkStarts.length < benchmarkRecordLimit) {
         benchmarkStarts.push(recordStart);
       }
-      const expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
+      const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
       const actualCrc = chunk[cursor + blockLength - 1] ?? 0;
       const isCrcValid = expectedCrc === actualCrc;
 
       if (!isCrcValid) {
         const diagnosticStart = now();
-        const blockHeaderSum = calculateRecordCrcRange(chunk, cursor, BLOCK_HEADER_LENGTH);
+        const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
         const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
         const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
         diagnostics.push({
@@ -442,13 +442,13 @@ async function scanMlgRecordsGeneral(
         ) {
           checksumBenchmarkStarts.push(recordStart);
         }
-        const expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
+        const expectedCrc = calculateMlgRecordChecksum(chunk, recordStart, recordLength);
         const actualCrc = chunk[cursor + standardBlockLength - 1] ?? 0;
         const isCrcValid = expectedCrc === actualCrc;
 
         if (!isCrcValid) {
           const diagnosticStart = now();
-          const blockHeaderSum = calculateRecordCrcRange(chunk, cursor, BLOCK_HEADER_LENGTH);
+          const blockHeaderSum = calculateMlgRecordChecksum(chunk, cursor, BLOCK_HEADER_LENGTH);
           const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
           const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
           diagnostics.push({
@@ -514,7 +514,7 @@ async function scanMlgRecordsGeneral(
     const checksumBenchmarkStart = now();
     for (let repeat = 0; repeat < repeats; repeat += 1) {
       for (const recordStart of checksumBenchmarkStarts) {
-        checksumBenchmarkSink ^= calculateRecordCrcRange(
+        checksumBenchmarkSink ^= calculateMlgRecordChecksum(
           checksumBenchmarkChunk,
           recordStart,
           recordLength,
