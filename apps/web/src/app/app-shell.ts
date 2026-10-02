@@ -1,6 +1,7 @@
 import type { LogSourceIdentity } from '../../../../core/log-model/log-types';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
+import { importIniFile } from '../adapters/ini-file-import';
 import { importMlgFile } from '../adapters/mlg-file-import';
 import {
   importMlgFileStaged,
@@ -62,9 +63,11 @@ export function mountAppShell(root: HTMLElement): void {
     <div class="header-context">
       <span class="mode-chip">RECORDED</span>
       <span class="loaded-log" title="Loaded recorded log"><span>Log</span><strong>No log loaded</strong></span>
+      <span class="loaded-ini" title="Loaded ECU definition"><span>INI</span><strong>No INI loaded</strong></span>
     </div>
     <div class="header-actions">
       <button type="button" class="open-log">Open Log</button>
+      <button type="button" class="load-ini">Load INI</button>
       <div class="logger-tools-slot"></div>
       <button type="button" class="workspace-undo" disabled title="Undo workspace change">↶</button>
       <button type="button" class="workspace-redo" disabled title="Redo workspace change">↷</button>
@@ -174,10 +177,18 @@ export function mountAppShell(root: HTMLElement): void {
   fileInput.hidden = true;
   fileInput.setAttribute('aria-label', 'Open MLG log');
 
+  const iniInput = document.createElement('input');
+  iniInput.type = 'file';
+  iniInput.accept = '.ini,text/plain';
+  iniInput.hidden = true;
+  iniInput.setAttribute('aria-label', 'Load TunerStudio INI');
+
   const brandButton = header.querySelector<HTMLButtonElement>('.brand-button');
   const brandMenu = header.querySelector<HTMLElement>('.global-switch-menu');
   const openButton = header.querySelector<HTMLButtonElement>('.open-log');
+  const loadIniButton = header.querySelector<HTMLButtonElement>('.load-ini');
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
+  const loadedIni = header.querySelector<HTMLElement>('.loaded-ini strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
   const settingsButton = header.querySelector<HTMLButtonElement>('.settings-button');
@@ -191,7 +202,7 @@ export function mountAppShell(root: HTMLElement): void {
   const forgetWorkspaceButton = header.querySelector<HTMLButtonElement>('.setting-forget-workspace');
   const persistenceStatus = header.querySelector<HTMLElement>('.settings-persistence-status');
 
-  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !forgetWorkspaceButton || !persistenceStatus) {
+  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !loadedIni || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !forgetWorkspaceButton || !persistenceStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
 
@@ -404,6 +415,72 @@ export function mountAppShell(root: HTMLElement): void {
   });
 
   openButton.addEventListener('click', () => fileInput.click());
+  loadIniButton.addEventListener('click', () => iniInput.click());
+
+  iniInput.addEventListener('change', () => {
+    const file = iniInput.files?.item(0);
+    iniInput.value = '';
+    if (!file) return;
+
+    loadIniButton.disabled = true;
+    loadedIni.textContent = file.name;
+    appStatus.textContent = 'Loading INI…';
+    parserStatus.textContent = 'TUNE-INI · reading local file';
+
+    void importIniFile(file)
+      .then((imported) => {
+        const grouped = new Map<string, {
+          code: string;
+          severity: 'info' | 'warning' | 'error';
+          count: number;
+        }>();
+        for (const diagnostic of imported.diagnostics) {
+          const current = grouped.get(diagnostic.code);
+          if (current) {
+            current.count += 1;
+          } else {
+            grouped.set(diagnostic.code, {
+              code: diagnostic.code,
+              severity: diagnostic.severity,
+              count: 1,
+            });
+          }
+        }
+
+        performanceDiagnostics.recordIniLoad({
+          fileName: imported.fileName,
+          ...imported.performance,
+          diagnosticGroups: [...grouped.values()],
+        });
+
+        const warnings = imported.diagnostics.filter(
+          (diagnostic) => diagnostic.severity === 'warning',
+        ).length;
+        const errors = imported.diagnostics.filter(
+          (diagnostic) => diagnostic.severity === 'error',
+        ).length;
+
+        appStatus.textContent = errors > 0
+          ? `INI loaded · ${errors.toLocaleString()} error diagnostic${errors === 1 ? '' : 's'}`
+          : warnings > 0
+            ? `INI loaded · ${warnings.toLocaleString()} warning${warnings === 1 ? '' : 's'}`
+            : 'INI loaded';
+
+        parserStatus.textContent =
+          `INI · ${imported.catalog.entries.length.toLocaleString()} catalog channels · `
+          + `${imported.parsed.outputChannels.length.toLocaleString()} outputs · local only`;
+      })
+      .catch((error: unknown) => {
+        loadedIni.textContent = 'INI load failed';
+        appStatus.textContent = 'INI load failed';
+        parserStatus.textContent = error instanceof Error
+          ? `TUNE-INI · ${error.message}`
+          : 'TUNE-INI · parser error';
+      })
+      .finally(() => {
+        loadIniButton.disabled = false;
+      });
+  });
 
   loggerPage.setPlaybackSpeed(Number(playbackSpeed.value));
   loggerPage.setHighZoomSamplePointsVisible(samplePoints.checked);
@@ -606,6 +683,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, footer, fileInput);
+  app.append(header, loggerPage.element, footer, fileInput, iniInput);
   root.append(app);
 }
