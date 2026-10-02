@@ -11,9 +11,7 @@ export interface StagedIndexedMlgFile extends MlgWorkerIndexedPayload {
   readonly channelData: NumericChannelDataSource;
 }
 
-export interface StagedValidatedMlgFile extends MlgWorkerValidatedPayload {
-  readonly indexedDiagnostics: MlgWorkerIndexedPayload['summary']['diagnostics'];
-}
+export interface StagedValidatedMlgFile extends MlgWorkerValidatedPayload {}
 
 export interface StagedMlgImportHandle {
   readonly indexed: Promise<StagedIndexedMlgFile>;
@@ -86,10 +84,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
       }
       indexedPayload.recordIndex.crcValid.set(message.payload.crcValid);
       validationSettled = true;
-      resolveValidated({
-        ...message.payload,
-        indexedDiagnostics: indexedPayload.summary.diagnostics,
-      });
+      resolveValidated(message.payload);
       terminate();
       return;
     }
