@@ -281,11 +281,21 @@ export async function parseMlgHeader(
   const fields: MlgFieldDescriptor[] = [];
   let computedRecordLength = 0;
 
+  // Field descriptors are contiguous. Read the entire descriptor table once
+  // instead of issuing one Blob/byte-source read per channel. Current EpicEFI
+  // logs can contain more than 1,600 fields, so per-descriptor async reads add
+  // substantial browser overhead without improving memory bounds.
+  const descriptorRegionLength = loggerFieldCount * descriptorLength;
+  const descriptorBytes = descriptorRegionLength > 0
+    ? await readExact(source, loggerFieldsStart, descriptorRegionLength)
+    : new Uint8Array(0);
+
   for (let index = 0; index < loggerFieldCount; index += 1) {
-    const offset = loggerFieldsStart + index * descriptorLength;
-    const descriptorBytes = await readExact(source, offset, descriptorLength);
+    const relativeOffset = index * descriptorLength;
+    const offset = loggerFieldsStart + relativeOffset;
+    const descriptor = descriptorBytes.subarray(relativeOffset, relativeOffset + descriptorLength);
     const field = parseDescriptor(
-      descriptorBytes,
+      descriptor,
       version,
       index,
       offset,

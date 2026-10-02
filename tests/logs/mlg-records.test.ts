@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MemoryByteSource } from '../../core/parsers/byte-source';
+import { MemoryByteSource, type RandomAccessByteSource } from '../../core/parsers/byte-source';
 import { parseMlgHeader } from '../../core/parsers/mlg/mlg-header';
 import { scanMlgRecords } from '../../core/parsers/mlg/mlg-records';
 import { createScalarHeaderFixture } from './mlg-fixture-builder';
@@ -42,6 +42,22 @@ function markerBlock(counter: number, timestamp: number, message: string): Uint8
   const encoded = new TextEncoder().encode(message);
   result.set(encoded.subarray(0, 49), 4);
   return result;
+}
+
+class CountingByteSource implements RandomAccessByteSource {
+  readonly size: number;
+  readCount = 0;
+  private readonly source: MemoryByteSource;
+
+  constructor(bytes: Uint8Array) {
+    this.source = new MemoryByteSource(bytes);
+    this.size = this.source.size;
+  }
+
+  async read(offset: number, length: number): Promise<Uint8Array> {
+    this.readCount += 1;
+    return this.source.read(offset, length);
+  }
 }
 
 async function parseAndScan(bytes: Uint8Array) {
@@ -143,5 +159,31 @@ describe('scanMlgRecords', () => {
     await expect(parseAndScan(bytes)).rejects.toMatchObject({
       code: 'short-read',
     });
+  });
+  it('scans many records with one bounded source read when they fit one scan chunk', async () => {
+    const header = createScalarHeaderFixture({ version: 2, type: 0 });
+    const recordCount = 100_000;
+    const blockLength = 6;
+    const bytes = new Uint8Array(header.byteLength + recordCount * blockLength);
+    bytes.set(header, 0);
+
+    for (let index = 0; index < recordCount; index += 1) {
+      const offset = header.byteLength + index * blockLength;
+      bytes[offset] = 0;
+      bytes[offset + 1] = index & 0xff;
+      const timestamp = index & 0xffff;
+      bytes[offset + 2] = (timestamp >>> 8) & 0xff;
+      bytes[offset + 3] = timestamp & 0xff;
+      bytes[offset + 4] = index & 0xff;
+      bytes[offset + 5] = index & 0xff;
+    }
+
+    const source = new CountingByteSource(bytes);
+    const parsed = await parseMlgHeader(source);
+    source.readCount = 0;
+    const result = await scanMlgRecords(source, parsed.header);
+
+    expect(result.records.offsets).toHaveLength(recordCount);
+    expect(source.readCount).toBe(1);
   });
 });

@@ -19,6 +19,8 @@ export function createInspectorPanel(): InspectorPanelController {
   let toggleListener: ((channelId: string) => void) | undefined;
   const currentValues = new Map<string, string>();
   const renderedValueNodes = new Map<string, HTMLElement>();
+  const renderedRows = new Map<string, HTMLButtonElement>();
+  const renderedStateNodes = new Map<string, HTMLElement>();
 
   const panel = document.createElement('aside');
   panel.className = 'inspector-panel';
@@ -88,8 +90,10 @@ export function createInspectorPanel(): InspectorPanelController {
       return matchesText && matchesGroup && matchesVisibility;
     });
 
-    channelList.replaceChildren();
+    const fragment = document.createDocumentFragment();
     renderedValueNodes.clear();
+    renderedRows.clear();
+    renderedStateNodes.clear();
     for (const channel of filtered) {
       const active = activeChannelIds.has(channel.id);
       const row = document.createElement('button');
@@ -121,10 +125,12 @@ export function createInspectorPanel(): InspectorPanelController {
       value.textContent = currentValues.get(channel.id) ?? channel.unit ?? '—';
 
       row.append(state, identity, value);
-      row.addEventListener('click', () => toggleListener?.(channel.id));
       renderedValueNodes.set(channel.id, value);
-      channelList.append(row);
+      renderedRows.set(channel.id, row);
+      renderedStateNodes.set(channel.id, state);
+      fragment.append(row);
     }
+    channelList.replaceChildren(fragment);
 
     const hasChannels = channels.length > 0;
     channelList.hidden = !hasChannels;
@@ -135,6 +141,14 @@ export function createInspectorPanel(): InspectorPanelController {
       : `${channels.length} channels · ${activeChannelIds.size} active`;
     clearGraphButton.disabled = activeChannelIds.size === 0;
   };
+
+  channelList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const row = target.closest<HTMLButtonElement>('.channel-row');
+    const channelId = row?.dataset.channelId;
+    if (channelId) toggleListener?.(channelId);
+  });
 
   search.addEventListener('input', renderChannels);
   groupSelect.addEventListener('change', renderChannels);
@@ -186,9 +200,45 @@ export function createInspectorPanel(): InspectorPanelController {
   };
 
   const setActiveChannels = (channelIds: readonly string[]): void => {
+    const next = new Set(channelIds);
+    const changed = new Set<string>();
+    for (const channelId of activeChannelIds) {
+      if (!next.has(channelId)) changed.add(channelId);
+    }
+    for (const channelId of next) {
+      if (!activeChannelIds.has(channelId)) changed.add(channelId);
+    }
+
     activeChannelIds.clear();
-    for (const channelId of channelIds) activeChannelIds.add(channelId);
-    renderChannels();
+    for (const channelId of next) activeChannelIds.add(channelId);
+
+    // Active-only filtering changes row membership, so it still needs a full
+    // render. In the normal All Channels view, update only the rows whose
+    // active state changed instead of rebuilding ~1,652 channel buttons.
+    if (visibilitySelect.value === 'active') {
+      renderChannels();
+      return;
+    }
+
+    for (const channelId of changed) {
+      const active = activeChannelIds.has(channelId);
+      const row = renderedRows.get(channelId);
+      const state = renderedStateNodes.get(channelId);
+      if (row) {
+        row.classList.toggle('channel-row--active', active);
+        row.setAttribute('aria-pressed', String(active));
+      }
+      if (state) state.textContent = active ? '●' : '＋';
+    }
+
+    const query = search.value.trim();
+    const selectedGroup = groupSelect.value;
+    const filtering = query.length > 0 || selectedGroup !== '';
+    const renderedCount = renderedRows.size;
+    channelCount.textContent = filtering
+      ? `${renderedCount} / ${channels.length} channels · ${activeChannelIds.size} active`
+      : `${channels.length} channels · ${activeChannelIds.size} active`;
+    clearGraphButton.disabled = activeChannelIds.size === 0;
   };
 
   const setChannelValues = (values: readonly { channelId: string; value: string }[]): void => {
