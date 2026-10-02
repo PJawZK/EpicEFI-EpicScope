@@ -596,6 +596,13 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     recordLoad: (run) => {
       loadRuns.push(run);
       if (loadRuns.length > 20) loadRuns.shift();
+
+      // A log load starts a new performance context. Workspace restore and
+      // channel-selection runs are asynchronous and are recorded after this
+      // point; keeping entries from the previous log makes the copied report
+      // look like those reads belong to the current load.
+      workspaceRestoreRuns.length = 0;
+      channelRuns.length = 0;
       render();
     },
     recordIniLoad: (run) => {
