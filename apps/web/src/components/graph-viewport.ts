@@ -19,6 +19,13 @@ export interface GraphCursorValue {
   readonly value: number | undefined;
 }
 
+export interface GraphOverviewTrace {
+  readonly channelId: string;
+  readonly channelName: string;
+  readonly range: NumericChannelRange;
+  readonly color: string;
+}
+
 export interface GraphChannelPerformance {
   readonly channelId: string;
   readonly totalMs: number;
@@ -42,6 +49,7 @@ export interface GraphViewportController {
   ): void;
   toggleChannel(channelId: string): Promise<boolean>;
   clearChannels(): void;
+  getOverviewTraces(): readonly GraphOverviewTrace[];
   setCursorTime(timeMs: number): void;
   setViewport(viewport: TimelineViewport | undefined): void;
   onZoom(listener: (factor: number, anchorMs: number) => void): void;
@@ -725,6 +733,12 @@ export function createGraphViewport(): GraphViewportController {
     setLog,
     toggleChannel,
     clearChannels,
+    getOverviewTraces: () => [...activeTraces.entries()].map(([channelId, trace]) => ({
+      channelId,
+      channelName: trace.channel.sourceName,
+      range: trace.range,
+      color: trace.color,
+    })),
     setCursorTime,
     setViewport,
     onZoom: (listener) => { zoomListener = listener; },
