@@ -293,7 +293,8 @@ button:disabled { opacity: .48; cursor: default; }
 .timeline-shell--compact .timeline-overview,
 .timeline-shell--compact .timeline-controls { visibility: hidden; }
 .timeline-overview { position: relative; margin: 7px 9px 3px; overflow: hidden; border: 1px solid #2b3e4e; background: #071019; }
-.timeline-overview-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #607583; font-size: 9px; }
+.timeline-overview-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+.timeline-overview-empty { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; color: #607583; font-size: 9px; pointer-events: none; }
 .timeline-focus-placeholder { position: absolute; top: 0; bottom: 0; left: 30%; width: 34%; border: 1px solid #81bbef; background: rgba(62,143,214,.1); }
 .timeline-controls { gap: 8px; padding: 0 9px; border-top: 1px solid var(--line-soft); }
 .transport { display: flex; gap: 3px; }
