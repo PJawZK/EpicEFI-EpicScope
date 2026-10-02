@@ -27,6 +27,25 @@ export interface GraphOverviewTrace {
   readonly color: string;
 }
 
+export interface GraphChannelStatistics {
+  readonly channelId: string;
+  readonly current: number | undefined;
+  readonly full: {
+    readonly validCount: number;
+    readonly invalidCount: number;
+    readonly min: number | undefined;
+    readonly max: number | undefined;
+    readonly mean: number | undefined;
+    readonly standardDeviation: number | undefined;
+  };
+  readonly visible: {
+    readonly validCount: number;
+    readonly min: number | undefined;
+    readonly max: number | undefined;
+    readonly mean: number | undefined;
+  };
+}
+
 export interface GraphChannelPerformance {
   readonly channelId: string;
   readonly totalMs: number;
@@ -51,6 +70,7 @@ export interface GraphViewportController {
   toggleChannel(channelId: string): Promise<boolean>;
   clearChannels(): void;
   getOverviewTraces(): readonly GraphOverviewTrace[];
+  getChannelStatistics(channelId: string): GraphChannelStatistics | undefined;
   setCursorTime(timeMs: number): void;
   setViewport(viewport: TimelineViewport | undefined): void;
   setAnalysisRange(aTimeMs: number | undefined, bTimeMs: number | undefined): void;
@@ -122,6 +142,51 @@ function nearestValue(range: NumericChannelRange, cursorTimeMs: number): number 
   if (range.validity[index] !== 1) return undefined;
   const value = range.values[index];
   return value !== undefined && Number.isFinite(value) ? value : undefined;
+}
+
+function summarizeRange(
+  range: NumericChannelRange,
+  startMs = Number.NEGATIVE_INFINITY,
+  endMs = Number.POSITIVE_INFINITY,
+): {
+  validCount: number;
+  invalidCount: number;
+  min: number | undefined;
+  max: number | undefined;
+  mean: number | undefined;
+  standardDeviation: number | undefined;
+} {
+  let validCount = 0;
+  let invalidCount = 0;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let mean = 0;
+  let m2 = 0;
+
+  for (let index = 0; index < range.values.length; index += 1) {
+    const timeMs = range.timeMs[index];
+    if (timeMs === undefined || timeMs < startMs || timeMs > endMs) continue;
+    const value = range.values[index];
+    if (range.validity[index] !== 1 || value === undefined || !Number.isFinite(value)) {
+      invalidCount += 1;
+      continue;
+    }
+    validCount += 1;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+    const delta = value - mean;
+    mean += delta / validCount;
+    m2 += delta * (value - mean);
+  }
+
+  return {
+    validCount,
+    invalidCount,
+    min: validCount > 0 ? min : undefined,
+    max: validCount > 0 ? max : undefined,
+    mean: validCount > 0 ? mean : undefined,
+    standardDeviation: validCount > 1 ? Math.sqrt(m2 / (validCount - 1)) : validCount === 1 ? 0 : undefined,
+  };
 }
 
 export function createGraphViewport(): GraphViewportController {
@@ -840,6 +905,25 @@ export function createGraphViewport(): GraphViewportController {
       range: trace.range,
       color: trace.color,
     })),
+    getChannelStatistics: (channelId) => {
+      const trace = activeTraces.get(channelId);
+      if (!trace) return undefined;
+      const full = summarizeRange(trace.range);
+      const visible = viewport
+        ? summarizeRange(trace.range, viewport.visibleStartMs, viewport.visibleEndMs)
+        : full;
+      return {
+        channelId,
+        current: nearestValue(trace.range, cursorTimeMs),
+        full,
+        visible: {
+          validCount: visible.validCount,
+          min: visible.min,
+          max: visible.max,
+          mean: visible.mean,
+        },
+      };
+    },
     setCursorTime,
     setViewport,
     setAnalysisRange: (nextA, nextB) => {
