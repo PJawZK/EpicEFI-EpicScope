@@ -189,7 +189,7 @@ WEB-BOOT does not select a graph library. That decision waits until graph/timeli
 
 ## Test policy
 
-WEB-BOOT requires CI type-check/build validation and hosted browser smoke validation. A dedicated automated test framework remains deferred until parser/core logic requires it.
+WEB-BOOT originally required CI type-check/build validation and hosted browser smoke validation while deferring a dedicated automated test framework. That historical deferral was later resolved when parser/core work adopted Vitest; current testing authority is in `WORKFLOW.md` and D-040.
 
 ## Exit state
 
