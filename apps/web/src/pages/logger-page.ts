@@ -738,14 +738,52 @@ export function createLoggerPage(): LoggerPageController {
     }
 
     layoutSelect.value = workspace.layout;
+    arrangeSelect.hidden = workspace.layout !== 'freeform';
+    arrangeSelect.value = workspace.freeformArrange;
     graphHost.className = `graph-workspace graph-workspace--${workspace.layout}`;
 
     paneRuntimes.forEach((runtime, index) => {
-      const visible = index < visibleCount;
+      const inLayout = index < visibleCount;
+      const maximized = workspace.maximizedPaneId === runtime.id;
+      const hiddenByMaximize = workspace.maximizedPaneId !== undefined && !maximized;
+      const visible = inLayout && !hiddenByMaximize;
       const active = runtime.id === workspace.activePaneId;
+      const minimized = workspace.layout === 'freeform'
+        && workspace.minimizedPaneIds.includes(runtime.id)
+        && !maximized;
+
       runtime.windowElement.hidden = !visible;
       runtime.windowElement.classList.toggle('graph-window--active', active);
+      runtime.windowElement.classList.toggle('graph-window--minimized', minimized);
+      runtime.windowElement.classList.toggle('graph-window--maximized', maximized);
       runtime.stateElement.textContent = active ? 'ACTIVE' : '';
+      runtime.minimizeButton.hidden = workspace.layout !== 'freeform';
+      runtime.maximizeButton.hidden = workspace.layout !== 'freeform';
+      runtime.resizeHandle.hidden = workspace.layout !== 'freeform' || minimized || maximized;
+      runtime.minimizeButton.textContent = minimized ? '↥' : '–';
+      runtime.minimizeButton.title = minimized ? 'Restore graph window' : 'Minimize graph window';
+      runtime.maximizeButton.textContent = maximized ? '↙' : '□';
+      runtime.maximizeButton.title = maximized ? 'Restore graph window' : 'Maximize graph window';
+
+      if (workspace.layout === 'freeform') {
+        const geometry = workspace.paneGeometry[runtime.id] ?? freeformArrangement('mosaic')[runtime.id]!;
+        if (maximized) {
+          runtime.windowElement.style.left = '0';
+          runtime.windowElement.style.top = '0';
+          runtime.windowElement.style.width = '100%';
+          runtime.windowElement.style.height = '100%';
+        } else {
+          runtime.windowElement.style.left = `${geometry.x * 100}%`;
+          runtime.windowElement.style.top = `${geometry.y * 100}%`;
+          runtime.windowElement.style.width = `${geometry.width * 100}%`;
+          runtime.windowElement.style.height = `${geometry.height * 100}%`;
+        }
+      } else {
+        runtime.windowElement.style.removeProperty('left');
+        runtime.windowElement.style.removeProperty('top');
+        runtime.windowElement.style.removeProperty('width');
+        runtime.windowElement.style.removeProperty('height');
+      }
     });
   };
 
