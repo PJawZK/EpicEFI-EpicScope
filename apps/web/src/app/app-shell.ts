@@ -20,6 +20,8 @@ import {
 } from '../adapters/mlg-staged-import';
 import { createLoggerPage } from '../pages/logger-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
+import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/application-workspace-local-storage';
+import { createIniCatalogLocalStorageAdapter } from '../adapters/ini-catalog-local-storage';
 import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
 import {
   createWorkspaceHistory,
@@ -129,11 +131,11 @@ export function mountAppShell(root: HTMLElement): void {
           <div class="settings-persistence">
             <div>
               <strong>Saved workspace</strong>
-              <small class="settings-persistence-status">Open a log to enable per-log local restore.</small>
+              <small class="settings-persistence-status">Workspace structure is saved locally in this browser.</small>
             </div>
-            <button type="button" class="setting-forget-workspace" disabled>Forget saved workspace</button>
+            <button type="button" class="setting-forget-workspace" disabled>Forget saved log view</button>
           </div>
-          <p class="settings-note">Workspace state is stored only in this browser for the matching local log.</p>
+          <p class="settings-note">Layouts/channel assignments are reusable across logs. Cursor, A/B, markers and ranges remain log-specific.</p>
         </div>
       </div>
     </div>
@@ -233,6 +235,8 @@ export function mountAppShell(root: HTMLElement): void {
 
   let restoringWorkspaceHistory = false;
   const workspaceStorage = createWorkspaceLocalStorageAdapter();
+  const applicationWorkspaceStorage = createApplicationWorkspaceLocalStorageAdapter();
+  const iniCatalogStorage = createIniCatalogLocalStorageAdapter();
   let activeWorkspaceSource: LogSourceIdentity | undefined;
   let activeIniCatalog: ChannelCatalog | undefined;
   let currentRawLog: {
@@ -241,7 +245,9 @@ export function mountAppShell(root: HTMLElement): void {
     channelData: NumericChannelDataSource;
   } | undefined;
   let workspaceSaveTimer: number | undefined;
+  let applicationWorkspaceSaveTimer: number | undefined;
   let workspacePersistenceBlocked = false;
+  let applicationWorkspacePersistenceBlocked = false;
 
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
@@ -290,21 +296,50 @@ export function mountAppShell(root: HTMLElement): void {
   });
 
   const scheduleWorkspaceSave = (): void => {
-    if (restoringWorkspaceHistory || !activeWorkspaceSource || workspacePersistenceBlocked) return;
+    if (restoringWorkspaceHistory) return;
+
+    if (!applicationWorkspacePersistenceBlocked) {
+      if (applicationWorkspaceSaveTimer !== undefined) {
+        window.clearTimeout(applicationWorkspaceSaveTimer);
+      }
+      applicationWorkspaceSaveTimer = window.setTimeout(() => {
+        applicationWorkspaceSaveTimer = undefined;
+        if (applicationWorkspacePersistenceBlocked) return;
+        try {
+          applicationWorkspaceStorage.save(captureWorkspaceState());
+          setPersistenceStatus(
+            activeWorkspaceSource
+              ? `Workspace structure saved · log view saved for ${activeWorkspaceSource.displayName}.`
+              : 'Workspace structure saved locally.',
+          );
+        } catch (error) {
+          applicationWorkspacePersistenceBlocked = true;
+          setPersistenceStatus(
+            error instanceof Error
+              ? `Application workspace save unavailable: ${error.message}`
+              : 'Application workspace save unavailable.',
+          );
+        }
+      }, 250);
+    }
+
+    if (!activeWorkspaceSource || workspacePersistenceBlocked) return;
     if (workspaceSaveTimer !== undefined) window.clearTimeout(workspaceSaveTimer);
     workspaceSaveTimer = window.setTimeout(() => {
       workspaceSaveTimer = undefined;
       if (!activeWorkspaceSource || workspacePersistenceBlocked) return;
       try {
         workspaceStorage.save(activeWorkspaceSource, captureWorkspaceState());
-        setPersistenceStatus(`Saved locally for ${activeWorkspaceSource.displayName}.`);
+        setPersistenceStatus(
+          `Workspace structure saved · log view saved for ${activeWorkspaceSource.displayName}.`,
+        );
         forgetWorkspaceButton.disabled = false;
       } catch (error) {
         workspacePersistenceBlocked = true;
         setPersistenceStatus(
           error instanceof Error
-            ? `Local save unavailable: ${error.message}`
-            : 'Local save unavailable.',
+            ? `Log-specific save unavailable: ${error.message}`
+            : 'Log-specific save unavailable.',
         );
       }
     }, 250);
