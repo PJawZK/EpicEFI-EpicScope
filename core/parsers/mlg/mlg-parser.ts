@@ -13,6 +13,9 @@ import { scanMlgRecords, type MlgRecordIndex } from './mlg-records';
 export interface MlgParsePerformance {
   readonly headerMs: number;
   readonly recordScanMs: number;
+  readonly recordReadMs: number;
+  readonly recordCpuMs: number;
+  readonly checksumBytes: number;
   readonly finalizeMs: number;
   readonly totalMs: number;
 }
@@ -77,6 +80,9 @@ export async function parseMlg(
     performance: {
       headerMs,
       recordScanMs,
+      recordReadMs: scanResult.performance.sourceReadMs,
+      recordCpuMs: Math.max(0, recordScanMs - scanResult.performance.sourceReadMs),
+      checksumBytes: scanResult.performance.checksumBytes,
       finalizeMs,
       totalMs: now() - totalStart,
     },
