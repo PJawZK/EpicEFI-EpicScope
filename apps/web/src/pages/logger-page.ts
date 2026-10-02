@@ -2,6 +2,7 @@ import type {
   ChannelDefinition,
   ImportedLogSummary,
   NumericChannelDataSource,
+  NumericChannelRange,
   LogMarker,
   ParserDiagnostic,
   ParserDiagnosticSeverity,
@@ -1365,6 +1366,7 @@ export function createLoggerPage(): LoggerPageController {
     const prepareMs = now() - prepareStarted;
     let sharedBatchMs = 0;
     let sharedBatchCacheHit = true;
+    let sharedBatchRanges: ReadonlyMap<string, NumericChannelRange> | undefined;
     let sharedPhysicalReadCount = 0;
     let sharedPhysicalBytesRead = 0;
     let sharedPhysicalReadMs = 0;
@@ -1381,6 +1383,7 @@ export function createLoggerPage(): LoggerPageController {
       );
       const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;
       sharedBatchMs = batchElapsed;
+      sharedBatchRanges = batch.ranges;
       sharedBatchCacheHit =
         batch.performance.cacheHitChannelIds.length === uniqueRequestedIds.length;
       sharedPhysicalReadCount = batch.performance.physicalReadCount;
@@ -1407,6 +1410,22 @@ export function createLoggerPage(): LoggerPageController {
     const activationStarted = now();
     const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {
       if (!pane || requestedIds.length === 0) return;
+
+      if (sharedBatchRanges) {
+        const preloaded = new Map<string, NumericChannelRange>();
+        for (const channelId of requestedIds) {
+          const range = sharedBatchRanges.get(channelId);
+          if (range) preloaded.set(channelId, range);
+        }
+
+        if (preloaded.size === requestedIds.length) {
+          const activated = runtime.graph.activatePreloadedChannels(preloaded);
+          runtime.activeChannelIds.clear();
+          activated.forEach((channelId) => runtime.activeChannelIds.add(channelId));
+          pane.channelIds = [...assignedIds];
+          return;
+        }
+      }
 
       const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
       runtime.graph.loadPendingChannels();
