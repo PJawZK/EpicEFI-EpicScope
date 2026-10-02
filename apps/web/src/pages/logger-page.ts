@@ -582,6 +582,39 @@ export function createLoggerPage(): LoggerPageController {
   resetLayoutButton.textContent = 'Reset layout';
   resetLayoutButton.title = 'Reset this workspace layout and freeform window positions';
 
+  const shortcutWrap = document.createElement('div');
+  shortcutWrap.className = 'logger-shortcut-wrap';
+
+  const shortcutButton = document.createElement('button');
+  shortcutButton.type = 'button';
+  shortcutButton.className = 'logger-shortcut-button';
+  shortcutButton.textContent = '⌨';
+  shortcutButton.title = 'Keyboard shortcuts';
+  shortcutButton.setAttribute('aria-label', 'Keyboard shortcuts');
+  shortcutButton.setAttribute('aria-expanded', 'false');
+
+  const shortcutPopover = document.createElement('div');
+  shortcutPopover.className = 'logger-shortcut-popover';
+  shortcutPopover.hidden = true;
+  shortcutPopover.innerHTML = `
+    <div class="logger-shortcut-head">
+      <strong>Logger keyboard shortcuts</strong>
+      <small>Active when focus is not inside a control.</small>
+    </div>
+    <div class="logger-shortcut-list">
+      <span><kbd>Space</kbd><em>Play / pause</em></span>
+      <span><kbd>← / →</kbd><em>Step cursor</em></span>
+      <span><kbd>A</kbd><em>Set analysis point A</em></span>
+      <span><kbd>B</kbd><em>Set analysis point B</em></span>
+      <span><kbd>F</kbd><em>Fit full recording</em></span>
+      <span><kbd>M</kbd><em>Add marker at cursor</em></span>
+      <span><kbd>S</kbd><em>Active pane channel statistics</em></span>
+      <span><kbd>?</kbd><em>Show / hide this list</em></span>
+    </div>
+  `;
+
+  shortcutWrap.append(shortcutButton, shortcutPopover);
+
   const compareButton = document.createElement('button');
   compareButton.type = 'button';
   compareButton.disabled = true;
@@ -592,8 +625,21 @@ export function createLoggerPage(): LoggerPageController {
     arrangeSelect,
     clearPaneButton,
     resetLayoutButton,
+    shortcutWrap,
     compareButton,
   );
+
+  const setShortcutPopoverOpen = (open: boolean): void => {
+    shortcutPopover.hidden = !open;
+    shortcutButton.setAttribute('aria-expanded', String(open));
+  };
+
+  shortcutButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setShortcutPopoverOpen(shortcutPopover.hidden);
+  });
+  shortcutPopover.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', () => setShortcutPopoverOpen(false));
 
   const page = document.createElement('section');
   page.className = 'logger-page';
