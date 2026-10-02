@@ -6,22 +6,22 @@ const VIRTUAL_OVERSCAN_ROWS = 6;
 export interface InspectorChannelStatistics {
   readonly channelId: string;
   readonly title: string;
-  readonly unit?: string;
-  readonly category?: string;
-  readonly current?: number;
+  readonly unit: string | undefined;
+  readonly category: string | undefined;
+  readonly current: number | undefined;
   readonly full: {
     readonly validCount: number;
     readonly invalidCount: number;
-    readonly min?: number;
-    readonly max?: number;
-    readonly mean?: number;
-    readonly standardDeviation?: number;
+    readonly min: number | undefined;
+    readonly max: number | undefined;
+    readonly mean: number | undefined;
+    readonly standardDeviation: number | undefined;
   };
   readonly visible: {
     readonly validCount: number;
-    readonly min?: number;
-    readonly max?: number;
-    readonly mean?: number;
+    readonly min: number | undefined;
+    readonly max: number | undefined;
+    readonly mean: number | undefined;
   };
 }
 
