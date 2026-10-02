@@ -125,6 +125,7 @@ export interface LoggerPageController {
     },
   ): void;
   setChannelCatalog(channels: readonly ChannelDefinition[], sourceName: string): void;
+  clearChannelCatalog(): void;
   setImportError(message: string): void;
   setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
   refreshValidity(): void;
@@ -1680,6 +1681,21 @@ export function createLoggerPage(): LoggerPageController {
     }
   };
 
+  const clearChannelCatalog = (): void => {
+    catalogChannelDefinitions.clear();
+    catalogSourceName = '';
+    if (!channelDataSource) {
+      channelDefinitions.clear();
+      unavailableChannelIds.clear();
+      inspector.setChannels([], 'No source channels');
+      paneRuntimes.forEach((runtime, index) => {
+        syncPaneAssignedChannels(runtime, activeWorkspace()?.panes[index]);
+      });
+      renderGraphLayout();
+      syncActivePaneContext();
+    }
+  };
+
   const setLog = (
     summary: ImportedLogSummary,
     recordCount: number,
@@ -1904,6 +1920,7 @@ export function createLoggerPage(): LoggerPageController {
     diagnosticsControl: diagnostics.element,
     setLog,
     setChannelCatalog,
+    clearChannelCatalog,
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
     refreshValidity: () => {
