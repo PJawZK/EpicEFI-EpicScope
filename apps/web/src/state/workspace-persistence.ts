@@ -94,7 +94,8 @@ const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
     || workspace.freeformArrange === 'mosaic'
     || workspace.freeformArrange === 'columns'
     || workspace.freeformArrange === 'rows'
-    || workspace.freeformArrange === 'cascade';
+    || workspace.freeformArrange === 'cascade'
+    || workspace.freeformArrange === 'custom';
 
   return (
     typeof workspace.id === 'string'
