@@ -219,16 +219,20 @@ export function bindChannelCatalogToLog(
 
 export class BoundNumericChannelDataSource implements NumericChannelDataSource {
   readonly sampleCount: number;
-  readonly preferredBatchWindowMs: number | undefined;
-  readonly requiresExplicitBatchSelection: boolean | undefined;
+  readonly preferredBatchWindowMs?: number;
+  readonly requiresExplicitBatchSelection?: boolean;
 
   public constructor(
     private readonly source: NumericChannelDataSource,
     private readonly sourceChannelIdByBoundId: ReadonlyMap<string, string>,
   ) {
     this.sampleCount = source.sampleCount;
-    this.preferredBatchWindowMs = source.preferredBatchWindowMs;
-    this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection;
+    if (source.preferredBatchWindowMs !== undefined) {
+      this.preferredBatchWindowMs = source.preferredBatchWindowMs;
+    }
+    if (source.requiresExplicitBatchSelection !== undefined) {
+      this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection;
+    }
   }
 
   private sourceId(channelId: string): string {
@@ -306,7 +310,7 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
       performance: {
         ...sourceResult.performance,
         channelCount: channelIds.length,
-        cacheHitChannelIds: channelIds.filter((channelId, index) => {
+        cacheHitChannelIds: channelIds.filter((_channelId, index) => {
           const sourceId = sourceIds[index];
           return sourceId ? sourceCacheHits.has(sourceId) : false;
         }),
