@@ -19,6 +19,7 @@ import {
 import { createGraphViewport } from '../components/graph-viewport';
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
+import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 
 export interface LoggerPageController {
   readonly element: HTMLElement;
@@ -171,6 +172,7 @@ export function createLoggerPage(): LoggerPageController {
   const timeline = createTimelineShell();
   const graph = createGraphViewport();
   const diagnostics = createDiagnosticsIndicator();
+  const valueSearch = createChannelValueSearchPanel();
   let viewport: TimelineViewport | undefined;
   let previousCursorTimeMs = 0;
   const activeChannelIds = new Set<string>();
@@ -194,6 +196,7 @@ export function createLoggerPage(): LoggerPageController {
   `;
   const workspaceContext = workspaceBar.querySelector<HTMLElement>('.workspace-context');
   if (!workspaceContext) throw new Error('Logger workspace bar structure is incomplete.');
+  workspaceContext.prepend(valueSearch.element);
   workspaceContext.prepend(diagnostics.element);
 
   const workspaceRow = document.createElement('div');
@@ -319,6 +322,14 @@ export function createLoggerPage(): LoggerPageController {
   graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
   graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
+  valueSearch.onJump((timeMs) => {
+    if (viewport) {
+      const centered = centerViewportOn(viewport, timeMs);
+      if (!viewportEquals(viewport, centered)) syncViewport(centered);
+    }
+    setCursorWithoutFollow(timeMs);
+  });
+
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceBar, workspaceRow, timelineWrap);
 
@@ -334,6 +345,7 @@ export function createLoggerPage(): LoggerPageController {
     inspector.setActiveChannels([]);
     timeline.setTimeRange(summary.timeRange, recordCount);
     graph.setLog(summary.channels, channelData, summary.timeRange);
+    valueSearch.setLog(summary.channels, channelData);
     if (summary.timeRange) {
       previousCursorTimeMs = summary.timeRange.startMs;
       syncViewport(createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs));
@@ -352,6 +364,7 @@ export function createLoggerPage(): LoggerPageController {
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);
     graph.clear();
+    valueSearch.clear();
     graphState.textContent = 'Import failed';
     diagnostics.setDiagnostics([{
       code: 'import-failed',
