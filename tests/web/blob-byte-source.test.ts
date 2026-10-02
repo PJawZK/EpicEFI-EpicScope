@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BlobByteSource } from '../../apps/web/src/adapters/blob-byte-source';
 
-describe('BlobByteSource raw page cache', () => {
+describe('BlobByteSource bounded raw cache', () => {
   it('reuses cached bytes without another physical Blob read', async () => {
     const bytes = new Uint8Array(9 * 1024 * 1024);
     bytes[123] = 42;
@@ -21,7 +21,7 @@ describe('BlobByteSource raw page cache', () => {
     expect(afterSecond.cacheHitBytes).toBe(4 * 1024 * 1024);
   });
 
-  it('combines cached pages for reads spanning a page boundary', async () => {
+  it('uses one contiguous backing buffer for logs within the cache budget', async () => {
     const page = 8 * 1024 * 1024;
     const bytes = new Uint8Array(page + 16);
     bytes[page - 1] = 11;
@@ -35,8 +35,9 @@ describe('BlobByteSource raw page cache', () => {
 
     expect([...range]).toEqual([11, 22]);
     expect([...again]).toEqual([11, 22]);
-    expect(firstStats.physicalReadCount).toBe(2);
-    expect(secondStats.physicalReadCount).toBe(2);
+    expect(firstStats.physicalReadCount).toBe(1);
+    expect(secondStats.physicalReadCount).toBe(1);
     expect(secondStats.cacheHitBytes).toBe(2);
+    expect(range.buffer).toBe(again.buffer);
   });
 });
