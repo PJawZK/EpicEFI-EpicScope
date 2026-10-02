@@ -1,4 +1,6 @@
+import type { LogSourceIdentity } from '../../../../core/log-model/log-types';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
+import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importMlgFile } from '../adapters/mlg-file-import';
 import {
   importMlgFileStaged,
@@ -7,6 +9,7 @@ import {
 } from '../adapters/mlg-staged-import';
 import { createLoggerPage } from '../pages/logger-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
+import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
 import {
   createWorkspaceHistory,
   type WebWorkspaceState,
@@ -104,7 +107,14 @@ export function mountAppShell(root: HTMLElement): void {
               <small>Show the Perf control in the status bar.</small>
             </span>
           </label>
-          <p class="settings-note">Settings are temporary and reset when EpicScope is reloaded.</p>
+          <div class="settings-persistence">
+            <div>
+              <strong>Saved workspace</strong>
+              <small class="settings-persistence-status">Open a log to enable per-log local restore.</small>
+            </div>
+            <button type="button" class="setting-forget-workspace" disabled>Forget saved workspace</button>
+          </div>
+          <p class="settings-note">Workspace state is stored only in this browser for the matching local log.</p>
         </div>
       </div>
     </div>
@@ -169,12 +179,22 @@ export function mountAppShell(root: HTMLElement): void {
   const performanceVisible = header.querySelector<HTMLInputElement>('.setting-performance');
   const undoButton = header.querySelector<HTMLButtonElement>('.workspace-undo');
   const redoButton = header.querySelector<HTMLButtonElement>('.workspace-redo');
+  const forgetWorkspaceButton = header.querySelector<HTMLButtonElement>('.setting-forget-workspace');
+  const persistenceStatus = header.querySelector<HTMLElement>('.settings-persistence-status');
 
-  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton) {
+  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !forgetWorkspaceButton || !persistenceStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
 
   let restoringWorkspaceHistory = false;
+  const workspaceStorage = createWorkspaceLocalStorageAdapter();
+  let activeWorkspaceSource: LogSourceIdentity | undefined;
+  let workspaceSaveTimer: number | undefined;
+  let workspacePersistenceBlocked = false;
+
+  const setPersistenceStatus = (message: string): void => {
+    persistenceStatus.textContent = message;
+  };
 
   const captureWorkspaceState = (): WebWorkspaceState => ({
     logger: loggerPage.getWorkspaceState(),
@@ -185,6 +205,59 @@ export function mountAppShell(root: HTMLElement): void {
       performanceDiagnosticsVisible: performanceVisible.checked,
     },
   });
+
+  const scheduleWorkspaceSave = (): void => {
+    if (restoringWorkspaceHistory || !activeWorkspaceSource || workspacePersistenceBlocked) return;
+    if (workspaceSaveTimer !== undefined) window.clearTimeout(workspaceSaveTimer);
+    workspaceSaveTimer = window.setTimeout(() => {
+      workspaceSaveTimer = undefined;
+      if (!activeWorkspaceSource || workspacePersistenceBlocked) return;
+      try {
+        workspaceStorage.save(activeWorkspaceSource, captureWorkspaceState());
+        setPersistenceStatus(`Saved locally for ${activeWorkspaceSource.displayName}.`);
+        forgetWorkspaceButton.disabled = false;
+      } catch (error) {
+        workspacePersistenceBlocked = true;
+        setPersistenceStatus(
+          error instanceof Error
+            ? `Local save unavailable: ${error.message}`
+            : 'Local save unavailable.',
+        );
+      }
+    }, 250);
+  };
+
+  const loadPersistedWorkspace = async (source: LogSourceIdentity): Promise<boolean> => {
+    activeWorkspaceSource = source;
+    workspacePersistenceBlocked = false;
+    forgetWorkspaceButton.disabled = true;
+    setPersistenceStatus('Checking for a saved workspace…');
+
+    try {
+      const persisted = workspaceStorage.load(source);
+      if (!persisted) {
+        setPersistenceStatus(`No saved workspace yet for ${source.displayName}.`);
+        return false;
+      }
+      await restoreWorkspaceSnapshot(persisted.workspace);
+      setPersistenceStatus(`Restored locally saved workspace for ${source.displayName}.`);
+      forgetWorkspaceButton.disabled = false;
+      return true;
+    } catch (error) {
+      workspacePersistenceBlocked = true;
+      forgetWorkspaceButton.disabled = false;
+      if (error instanceof PersistenceFormatError) {
+        setPersistenceStatus(`Saved workspace not restored: ${error.message}`);
+      } else {
+        setPersistenceStatus(
+          error instanceof Error
+            ? `Saved workspace not restored: ${error.message}`
+            : 'Saved workspace could not be restored.',
+        );
+      }
+      return false;
+    }
+  };
 
   const cloneWorkspaceState = (state: WebWorkspaceState): WebWorkspaceState =>
     structuredClone(state);
@@ -207,6 +280,7 @@ export function mountAppShell(root: HTMLElement): void {
     if (restoringWorkspaceHistory) return;
     workspaceHistory.push(captureWorkspaceState());
     refreshUndoRedo();
+    scheduleWorkspaceSave();
   };
 
   const resetWorkspaceHistory = (): void => {
@@ -279,6 +353,26 @@ export function mountAppShell(root: HTMLElement): void {
     if (state) void restoreWorkspaceSnapshot(state);
   });
 
+  forgetWorkspaceButton.addEventListener('click', () => {
+    if (!activeWorkspaceSource) return;
+    if (workspaceSaveTimer !== undefined) {
+      window.clearTimeout(workspaceSaveTimer);
+      workspaceSaveTimer = undefined;
+    }
+    try {
+      workspaceStorage.remove(activeWorkspaceSource);
+      workspacePersistenceBlocked = false;
+      forgetWorkspaceButton.disabled = true;
+      setPersistenceStatus(`Saved workspace forgotten for ${activeWorkspaceSource.displayName}.`);
+    } catch (error) {
+      setPersistenceStatus(
+        error instanceof Error
+          ? `Could not forget saved workspace: ${error.message}`
+          : 'Could not forget saved workspace.',
+      );
+    }
+  });
+
   loggerPage.onWorkspaceMutation(pushWorkspaceHistory);
 
   const closeBrandMenu = (): void => {
@@ -321,7 +415,7 @@ export function mountAppShell(root: HTMLElement): void {
       parsed.recordIndex.offsets.length,
       parsed.channelData,
     );
-    resetWorkspaceHistory();
+    void loadPersistedWorkspace(parsed.summary.source).then(() => resetWorkspaceHistory());
     const uiPopulateMs = now() - uiStart;
 
     performanceDiagnostics.recordLoad({
@@ -381,6 +475,10 @@ export function mountAppShell(root: HTMLElement): void {
         .catch((error: unknown) => {
           const message = importErrorMessage(error);
           loggerPage.setImportError(message);
+          activeWorkspaceSource = undefined;
+          workspacePersistenceBlocked = false;
+          forgetWorkspaceButton.disabled = true;
+          setPersistenceStatus('Open a log to enable per-log local restore.');
           appStatus.textContent = 'Import failed';
           parserStatus.textContent = 'LOG-MLG · parser error';
         })
@@ -411,7 +509,7 @@ export function mountAppShell(root: HTMLElement): void {
           indexed.recordIndex.offsets.length,
           indexed.channelData,
         );
-        resetWorkspaceHistory();
+        void loadPersistedWorkspace(indexed.summary.source).then(() => resetWorkspaceHistory());
         const uiPopulateMs = now() - uiStart;
 
         performanceDiagnostics.recordLoad({
