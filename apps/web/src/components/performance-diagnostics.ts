@@ -41,6 +41,11 @@ export interface ChannelPerformanceRun {
   readonly scaleMs: number;
   readonly renderMs: number;
   readonly sampleCount: number;
+  readonly batchSize: number;
+  readonly cacheHit: boolean;
+  readonly physicalReadCount: number;
+  readonly physicalBytesRead: number;
+  readonly physicalReadMs: number;
 }
 
 export interface ValidationPerformanceRun {
@@ -188,7 +193,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       lines.push('', '[Channel selections]');
       channelRuns.slice(-10).forEach((run, index) => {
         lines.push(
-          `${index + 1}. ${run.channelName}: total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; samples=${run.sampleCount}`,
+          `${index + 1}. ${run.channelName}: total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; samples=${run.sampleCount}; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms`,
         );
       });
     }
@@ -267,7 +272,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         const title = document.createElement('strong');
         title.textContent = run.channelName;
         const detail = document.createElement('span');
-        detail.textContent = `${ms(run.totalMs)} total · ${ms(run.readDecodeMs)} read/decode · ${ms(run.scaleMs)} scale · ${ms(run.renderMs)} render`;
+        const source = run.cacheHit
+          ? 'decoded cache'
+          : `${run.batchSize} ch batch · ${bytes(run.physicalBytesRead)} physical`;
+        detail.textContent = `${ms(run.totalMs)} total · ${ms(run.readDecodeMs)} read/decode · ${ms(run.scaleMs)} scale · ${ms(run.renderMs)} render · ${source}`;
         card.append(title, detail);
         channelsHost.append(card);
       }

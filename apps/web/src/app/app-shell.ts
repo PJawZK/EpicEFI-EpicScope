@@ -97,6 +97,11 @@ export function mountAppShell(root: HTMLElement): void {
       scaleMs: run.scaleMs,
       renderMs: run.renderMs,
       sampleCount: run.sampleCount,
+      batchSize: run.batchSize,
+      cacheHit: run.cacheHit,
+      physicalReadCount: run.physicalReadCount,
+      physicalBytesRead: run.physicalBytesRead,
+      physicalReadMs: run.physicalReadMs,
     });
   });
 

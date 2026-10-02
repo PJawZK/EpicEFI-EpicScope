@@ -1,5 +1,7 @@
 export interface ByteSourcePerformanceSnapshot {
   readonly physicalReadMs: number;
+  readonly physicalReadCount?: number;
+  readonly physicalBytesRead?: number;
 }
 
 export interface RandomAccessByteSource {
