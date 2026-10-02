@@ -150,7 +150,35 @@ export async function scanMlgRecords(
   // source reads/awaits to roughly fileSize / SCAN_CHUNK_SIZE.
   while (offset < source.size) {
     const chunkStart = offset;
-    let chunk = await readChunk(source, chunkStart, BLOCK_HEADER_LENGTH);
+    if (source.size - chunkStart < BLOCK_HEADER_LENGTH) {
+      throw new MlgFormatError(
+        'short-read',
+        `Truncated MLG block header at offset ${chunkStart}.`,
+        chunkStart,
+      );
+    }
+
+    // Probe only the first block type in this refill, then fetch one large
+    // chunk that is guaranteed to contain at least that complete block.
+    const probe = await source.read(chunkStart, BLOCK_HEADER_LENGTH);
+    if (probe.byteLength !== BLOCK_HEADER_LENGTH) {
+      throw new MlgFormatError('short-read', `Truncated MLG block header at offset ${chunkStart}.`, chunkStart);
+    }
+    const probeType = probe[0] ?? -1;
+    const firstBlockLength = probeType === STANDARD_BLOCK_TYPE
+      ? BLOCK_HEADER_LENGTH + header.recordLength + 1
+      : probeType === MARKER_BLOCK_TYPE
+        ? MARKER_BLOCK_LENGTH
+        : 0;
+    if (firstBlockLength === 0) {
+      throw new MlgFormatError(
+        'unsupported-block-type',
+        `Unsupported MLG block type ${probeType} at offset ${chunkStart}.`,
+        chunkStart,
+      );
+    }
+
+    const chunk = await readChunk(source, chunkStart, firstBlockLength);
     let cursor = 0;
 
     while (cursor < chunk.byteLength) {
@@ -259,27 +287,6 @@ export async function scanMlgRecords(
       offset = chunkStart + cursor;
     }
 
-    if (cursor === 0) {
-      // A single block larger than the normal chunk size is still supported.
-      const blockHeader = chunk.subarray(0, BLOCK_HEADER_LENGTH);
-      const blockType = blockHeader[0] ?? -1;
-      const requiredLength = blockType === STANDARD_BLOCK_TYPE
-        ? BLOCK_HEADER_LENGTH + header.recordLength + 1
-        : blockType === MARKER_BLOCK_TYPE
-          ? MARKER_BLOCK_LENGTH
-          : 0;
-      if (requiredLength === 0) {
-        throw new MlgFormatError(
-          'unsupported-block-type',
-          `Unsupported MLG block type ${blockType} at offset ${offset}.`,
-          offset,
-        );
-      }
-      if (requiredLength > chunk.byteLength) {
-        chunk = await readChunk(source, offset, requiredLength);
-        continue;
-      }
-    }
   }
 
   return {
