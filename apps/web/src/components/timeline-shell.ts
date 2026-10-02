@@ -262,7 +262,7 @@ export function createTimelineShell(): TimelineShellController {
     );
     markerText.textContent = exactMarker?.label?.trim() || (exactMarker ? 'Source marker' : '—');
     markerText.title = exactMarker
-      ? `${markerText.textContent} · ${formatDuration(marker.timeMs - fullStartMs)}`
+      ? `${markerText.textContent} · ${formatDuration(exactMarker.timeMs - fullStartMs)}`
       : '';
 
     const hasPrevious = overviewMarkers.some(
