@@ -40,31 +40,71 @@
   font-size: 12px;
 }
 
-.graph-readout {
+.graph-corner-readout {
   position: absolute;
-  top: 3px;
-  left: 5px;
-  right: 5px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 9px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  z-index: 8;
+  display: grid;
+  gap: 2px;
+  max-width: 42%;
   pointer-events: none;
-  line-height: 1;
+  color: #d9edf7;
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1.05;
+  text-shadow: 0 1px 2px #04121b, 0 0 4px #04121b;
 }
 
-.graph-readout-trace {
+.graph-corner-readout--names {
+  top: 7px;
+  left: 9px;
+  justify-items: start;
+}
+
+.graph-corner-readout--now {
+  top: 7px;
+  right: 9px;
+  justify-items: end;
+  text-align: right;
+}
+
+.graph-corner-readout--min {
+  bottom: 8px;
+  left: 9px;
+  justify-items: start;
+}
+
+.graph-corner-readout--max {
+  right: 9px;
+  bottom: 8px;
+  justify-items: end;
+  text-align: right;
+}
+
+.graph-corner-readout[data-label]::before {
+  content: attr(data-label);
+  margin-bottom: 1px;
+  color: #6f8795;
+  font-size: 6px;
+  font-weight: 750;
+  letter-spacing: .08em;
+}
+
+.graph-corner-item {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
   white-space: nowrap;
-  font-size: 10px;
-  font-weight: 600;
-  text-shadow: 0 1px 2px #04121b, 0 0 4px #04121b;
+}
+
+.graph-corner-item--name {
+  max-width: 100%;
+}
+
+.graph-corner-item--name > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .graph-trace-swatch {
@@ -72,10 +112,6 @@
   height: 5px;
   flex: 0 0 5px;
   border-radius: 50%;
-}
-
-.graph-readout-name {
-  color: #d9edf7;
 }
 
 .graph-toast {
