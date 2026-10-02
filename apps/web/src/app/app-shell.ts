@@ -266,6 +266,7 @@ export function mountAppShell(root: HTMLElement): void {
   let applicationWorkspaceSaveTimer: number | undefined;
   let workspacePersistenceBlocked = false;
   let applicationWorkspacePersistenceBlocked = false;
+  let reusableWorkspacePersistenceSuspended = false;
 
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
@@ -365,7 +366,7 @@ export function mountAppShell(root: HTMLElement): void {
   const scheduleWorkspaceSave = (): void => {
     if (restoringWorkspaceHistory) return;
 
-    if (!applicationWorkspacePersistenceBlocked) {
+    if (!applicationWorkspacePersistenceBlocked && !reusableWorkspacePersistenceSuspended) {
       if (applicationWorkspaceSaveTimer !== undefined) {
         window.clearTimeout(applicationWorkspaceSaveTimer);
       }
@@ -592,8 +593,24 @@ export function mountAppShell(root: HTMLElement): void {
     if (!activeIniCatalog) return;
 
     const unloadedSourceName = activeIniSourceName ?? 'INI';
-    const workspaceBeforeUnload = remapWorkspaceToRawLogIds(
-      captureWorkspaceState(),
+    const stableWorkspaceBeforeUnload = captureWorkspaceState();
+
+    // Preserve the reusable INI-keyed workspace before entering temporary
+    // raw-MLG mode. Raw source-local IDs must never replace application
+    // workspace identity in persistence.
+    try {
+      applicationWorkspaceStorage.save(stableWorkspaceBeforeUnload);
+    } catch (error) {
+      setPersistenceStatus(
+        error instanceof Error
+          ? `INI unloaded, but reusable workspace could not be preserved: ${error.message}`
+          : 'INI unloaded, but reusable workspace could not be preserved.',
+      );
+    }
+
+    reusableWorkspacePersistenceSuspended = true;
+    const rawWorkspaceForOpenLog = remapWorkspaceToRawLogIds(
+      stableWorkspaceBeforeUnload,
       activeIniBinding,
     );
 
@@ -626,17 +643,15 @@ export function mountAppShell(root: HTMLElement): void {
         currentRawLog.recordCount,
         currentRawLog.channelData,
       );
-      void restoreWorkspaceSnapshot(workspaceBeforeUnload).then(() => {
+      void restoreWorkspaceSnapshot(rawWorkspaceForOpenLog).then(() => {
         resetWorkspaceHistory();
-        scheduleWorkspaceSave();
       });
       parserStatus.textContent =
         `LOG-MLG · ${currentRawLog.summary.channels.length.toLocaleString()} raw log channels · INI unloaded`;
       appStatus.textContent = `${unloadedSourceName} unloaded · raw log channels active`;
     } else {
-      void restoreWorkspaceSnapshot(workspaceBeforeUnload).then(() => {
+      void restoreWorkspaceSnapshot(stableWorkspaceBeforeUnload).then(() => {
         resetWorkspaceHistory();
-        scheduleWorkspaceSave();
       });
       parserStatus.textContent = 'TUNE-INI · no catalog loaded';
       appStatus.textContent = `${unloadedSourceName} unloaded`;
@@ -698,7 +713,10 @@ export function mountAppShell(root: HTMLElement): void {
           `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} channels · loaded this session`;
 
         if (currentRawLog) {
-          const workspaceBeforeBinding = captureWorkspaceState();
+          const persistedReusable = reusableWorkspacePersistenceSuspended
+            ? applicationWorkspaceStorage.load()?.workspace
+            : undefined;
+          const workspaceBeforeBinding = persistedReusable ?? captureWorkspaceState();
           const prepared = bindLogToActiveIni(
             currentRawLog.summary,
             currentRawLog.channelData,
@@ -715,8 +733,22 @@ export function mountAppShell(root: HTMLElement): void {
               : undefined,
           );
           void restoreWorkspaceSnapshot(workspaceBeforeBinding).then(() => {
+            reusableWorkspacePersistenceSuspended = false;
             resetWorkspaceHistory();
+            scheduleWorkspaceSave();
           });
+        } else if (reusableWorkspacePersistenceSuspended) {
+          const persistedReusable = applicationWorkspaceStorage.load();
+          if (persistedReusable) {
+            void restoreWorkspaceSnapshot(persistedReusable.workspace).then(() => {
+              reusableWorkspacePersistenceSuspended = false;
+              resetWorkspaceHistory();
+              scheduleWorkspaceSave();
+            });
+          } else {
+            reusableWorkspacePersistenceSuspended = false;
+            scheduleWorkspaceSave();
+          }
         }
 
         const warnings = imported.diagnostics.filter(
@@ -767,6 +799,7 @@ export function mountAppShell(root: HTMLElement): void {
       if (persistedCatalog) {
         activeIniCatalog = persistedCatalog.catalog;
         activeIniSourceName = persistedCatalog.sourceName;
+        reusableWorkspacePersistenceSuspended = false;
         activeIniBinding = undefined;
         loggerPage.setChannelCatalog(
           catalogDefinitions(persistedCatalog.catalog),
