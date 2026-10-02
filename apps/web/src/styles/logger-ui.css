@@ -492,6 +492,39 @@
   font-style: normal;
 }
 
+
+.settings-shortcuts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding-top: 6px;
+  border-top: 1px solid #253946;
+}
+
+.settings-shortcuts strong,
+.settings-shortcuts small {
+  display: block;
+}
+
+.settings-shortcuts strong {
+  color: #dce7ee;
+  font-size: 9px;
+}
+
+.settings-shortcuts small {
+  margin-top: 2px;
+  color: #748995;
+  font-size: 8px;
+}
+
+.settings-shortcuts-slot .logger-shortcut-button {
+  width: 28px;
+  min-width: 28px;
+  height: 26px;
+}
+
 .brand-button {
   gap: 6px;
   padding-inline: 7px;
@@ -696,9 +729,9 @@
 }
 
 .graph-pane-window-button {
-  width: 20px;
-  min-width: 20px;
-  height: 18px;
+  width: 17px;
+  min-width: 17px;
+  height: 15px;
   padding: 0;
   border-color: #263e4f;
   background: #0a151d;
@@ -740,18 +773,27 @@
 }
 
 .graph-window {
-  grid-template-rows: 24px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .graph-pane-header {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  z-index: 14;
   min-width: 0;
-  display: flex;
+  max-width: min(72%, 220px);
+  min-height: 19px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 7px;
-  border-bottom: 1px solid #223542;
-  background: #0b1720;
+  gap: 5px;
+  padding: 2px 6px;
+  border: 1px solid #294557;
+  border-radius: 4px;
+  background: rgba(8, 22, 31, 0.93);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .34);
   user-select: none;
+  transform: translateX(-50%);
 }
 
 .graph-pane-header strong {
@@ -765,15 +807,22 @@
 }
 
 .graph-pane-state {
-  margin-left: auto;
-  color: #6aa9d1;
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: .08em;
+  display: none;
+}
+
+.graph-pane-drag-grip {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: .78;
+  background-image: radial-gradient(circle, #7595a8 1px, transparent 1.25px);
+  background-size: 4px 4px;
+  background-position: 0 0;
 }
 
 .graph-window--active .graph-pane-header {
-  background: #0d1d29;
+  border-color: #3979a1;
+  background: rgba(10, 31, 44, 0.96);
 }
 
 .graph-window--active .graph-pane-header strong {
@@ -783,6 +832,17 @@
 .graph-window > .graph-viewport {
   min-height: 0;
   height: 100%;
+}
+
+.graph-workspace--freeform .graph-pane-header {
+  left: 5px;
+  transform: none;
+  max-width: calc(100% - 10px);
+}
+
+.graph-workspace--freeform .graph-corner-readout--names,
+.graph-workspace--freeform .graph-corner-readout--now {
+  top: 30px;
 }
 
 .graph-workspace:not(.graph-workspace--single) .graph-corner-readout {
