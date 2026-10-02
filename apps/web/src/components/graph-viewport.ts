@@ -53,6 +53,7 @@ export interface GraphViewportController {
   getOverviewTraces(): readonly GraphOverviewTrace[];
   setCursorTime(timeMs: number): void;
   setViewport(viewport: TimelineViewport | undefined): void;
+  setAnalysisRange(aTimeMs: number | undefined, bTimeMs: number | undefined): void;
   onZoom(listener: (factor: number, anchorMs: number) => void): void;
   onPan(listener: (deltaMs: number) => void): void;
   onCursorValues(listener: (values: readonly GraphCursorValue[]) => void): void;
@@ -136,6 +137,8 @@ export function createGraphViewport(): GraphViewportController {
     readonly envelope: ReturnType<typeof buildViewportEnvelope>;
   }>();
   let cursorTimeMs = 0;
+  let aTimeMs: number | undefined;
+  let bTimeMs: number | undefined;
   let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
   let panListener: ((deltaMs: number) => void) | undefined;
   let cursorValuesListener: ((values: readonly GraphCursorValue[]) => void) | undefined;
@@ -376,6 +379,39 @@ export function createGraphViewport(): GraphViewportController {
           }
         }
       }
+    }
+
+    if (aTimeMs !== undefined || bTimeMs !== undefined) {
+      const visibleA = aTimeMs !== undefined && aTimeMs >= visibleStartMs && aTimeMs <= visibleEndMs;
+      const visibleB = bTimeMs !== undefined && bTimeMs >= visibleStartMs && bTimeMs <= visibleEndMs;
+
+      if (aTimeMs !== undefined && bTimeMs !== undefined) {
+        const rangeStart = Math.max(visibleStartMs, Math.min(aTimeMs, bTimeMs));
+        const rangeEnd = Math.min(visibleEndMs, Math.max(aTimeMs, bTimeMs));
+        if (rangeEnd >= rangeStart) {
+          const x1 = xForTime(rangeStart);
+          const x2 = xForTime(rangeEnd);
+          context.fillStyle = 'rgba(84, 148, 205, 0.10)';
+          context.fillRect(x1, inset, Math.max(1, x2 - x1), plotHeight);
+        }
+      }
+
+      const drawBoundary = (timeMs: number, label: 'A' | 'B', stroke: string): void => {
+        if (timeMs < visibleStartMs || timeMs > visibleEndMs) return;
+        const x = xForTime(timeMs);
+        context.strokeStyle = stroke;
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(x + 0.5, inset);
+        context.lineTo(x + 0.5, height - inset);
+        context.stroke();
+        context.fillStyle = stroke;
+        context.font = '9px sans-serif';
+        context.fillText(label, x + 3, inset + 10);
+      };
+
+      if (visibleA && aTimeMs !== undefined) drawBoundary(aTimeMs, 'A', 'rgba(83, 181, 255, 0.95)');
+      if (visibleB && bTimeMs !== undefined) drawBoundary(bTimeMs, 'B', 'rgba(255, 184, 77, 0.95)');
     }
 
     if (cursorTimeMs >= visibleStartMs && cursorTimeMs <= visibleEndMs) {
@@ -638,6 +674,8 @@ export function createGraphViewport(): GraphViewportController {
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
+    aTimeMs = undefined;
+    bTimeMs = undefined;
     overlay.hidden = false;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
@@ -779,6 +817,8 @@ export function createGraphViewport(): GraphViewportController {
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = 0;
+    aTimeMs = undefined;
+    bTimeMs = undefined;
     overlay.hidden = false;
     overlayTitle.textContent = 'Open a log to start scoping';
     overlayDetail.textContent = 'The graph will use normalized local channel data.';
@@ -802,6 +842,11 @@ export function createGraphViewport(): GraphViewportController {
     })),
     setCursorTime,
     setViewport,
+    setAnalysisRange: (nextA, nextB) => {
+      aTimeMs = nextA;
+      bTimeMs = nextB;
+      draw();
+    },
     onZoom: (listener) => { zoomListener = listener; },
     onPan: (listener) => { panListener = listener; },
     onCursorValues: (listener) => { cursorValuesListener = listener; },
