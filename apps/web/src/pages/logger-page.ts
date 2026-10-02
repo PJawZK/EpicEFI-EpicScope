@@ -39,6 +39,8 @@ export interface LoggerPageController {
     channelData: NumericChannelDataSource,
   ): void;
   setImportError(message: string): void;
+  setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
+  refreshValidity(): void;
   onChannelPerformance(listener: (performance: LoggerChannelPerformance) => void): void;
 }
 
@@ -425,6 +427,8 @@ export function createLoggerPage(): LoggerPageController {
     diagnosticsControl: diagnostics.element,
     setLog,
     setImportError,
+    setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
+    refreshValidity: () => { graph.refreshValidity(); },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
   };
 }
