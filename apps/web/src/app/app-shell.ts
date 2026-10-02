@@ -550,10 +550,7 @@ export function mountAppShell(root: HTMLElement): void {
         void staged.validated
           .then((validated) => {
             if (activeStagedImport !== staged) return;
-            loggerPage.setDiagnostics([
-              ...validated.indexedDiagnostics,
-              ...validated.diagnostics,
-            ]);
+            loggerPage.setDiagnostics(validated.diagnostics);
             loggerPage.refreshValidity();
             performanceDiagnostics.recordValidation({
               fileName: indexed.summary.source.displayName,
