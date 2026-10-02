@@ -532,6 +532,7 @@ export function createLoggerPage(): LoggerPageController {
     lastHistoryMutationMs: 0,
   }];
   let channelDefinitions = new Map<string, ChannelDefinition>();
+  let channelDataSource: NumericChannelDataSource | undefined;
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
   let workspaceMutationListener: (() => void) | undefined;
@@ -1203,13 +1204,49 @@ export function createLoggerPage(): LoggerPageController {
     setCursorWithoutFollow(target.cursorTimeMs);
 
     const visibleCount = paneCountForLayout(target.layout);
-    const loads = paneRuntimes.slice(0, visibleCount).map(async (runtime, index) => {
+    const paneRequests = paneRuntimes.slice(0, visibleCount).map((runtime, index) => {
       const pane = target.panes[index];
-      if (!pane) return;
-      const requestedIds = pane.channelIds
-        .filter((channelId) => channelDefinitions.has(channelId))
-        .slice(0, MAX_ACTIVE_WEB_TRACES);
-      if (requestedIds.length === 0) return;
+      const requestedIds = pane
+        ? pane.channelIds
+            .filter((channelId) => channelDefinitions.has(channelId))
+            .slice(0, MAX_ACTIVE_WEB_TRACES)
+        : [];
+      return { runtime, pane, requestedIds };
+    });
+
+    const uniqueRequestedIds = [...new Set(paneRequests.flatMap((request) => request.requestedIds))];
+    if (
+      visibleCount > 1
+      && uniqueRequestedIds.length > 0
+      && channelDataSource?.readChannelsRange
+    ) {
+      const batchStarted = globalThis.performance?.now() ?? Date.now();
+      const batch = await channelDataSource.readChannelsRange(
+        uniqueRequestedIds,
+        0,
+        channelDataSource.sampleCount,
+      );
+      const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;
+      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+
+      channelPerformanceListener?.({
+        channelId: '__multi-pane-restore__',
+        channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
+        totalMs: batchElapsed,
+        readDecodeMs: batchElapsed,
+        scaleMs: 0,
+        renderMs: 0,
+        sampleCount: channelDataSource.sampleCount,
+        batchSize: uniqueRequestedIds.length,
+        cacheHit: batch.performance.cacheHitChannelIds.length === uniqueRequestedIds.length,
+        physicalReadCount: batch.performance.physicalReadCount,
+        physicalBytesRead: batch.performance.physicalBytesRead,
+        physicalReadMs: batch.performance.physicalReadMs,
+      });
+    }
+
+    const loads = paneRequests.map(async ({ runtime, pane, requestedIds }) => {
+      if (!pane || requestedIds.length === 0) return;
 
       const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
       runtime.graph.loadPendingChannels();
@@ -1456,6 +1493,7 @@ export function createLoggerPage(): LoggerPageController {
     graphSelector.setEnabled(Boolean(summary.timeRange));
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
+    channelDataSource = channelData;
     logMarkers = summary.markers;
     inspector.setChannels(summary.channels, summary.source.displayName);
     timeline.setTimeRange(summary.timeRange, recordCount);
@@ -1498,6 +1536,7 @@ export function createLoggerPage(): LoggerPageController {
     graphSelector.setEnabled(false);
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions.clear();
+    channelDataSource = undefined;
     logMarkers = [];
     inspector.setError(message);
     timeline.setTimeRange(undefined, 0);
