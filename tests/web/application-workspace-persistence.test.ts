@@ -97,58 +97,68 @@ describe('application workspace persistence v2 foundation', () => {
   });
 
   it('merges only recording-specific state from an old per-log artifact', () => {
-    const reusable = structuredClone(workspace);
-    reusable.logger.workspaces[0] = {
-      ...reusable.logger.workspaces[0]!,
-      layout: 'grid4',
-      panes: [
-        { id: 'pane-1', channelIds: ['ini:RPMValue'] },
-        { id: 'pane-2', channelIds: ['ini:MAPValue'] },
-        { id: 'pane-3', channelIds: ['ini:TPSValue'] },
-        { id: 'pane-4', channelIds: ['ini:lwgDutyPct'] },
-        { id: 'pane-5', channelIds: [] },
-        { id: 'pane-6', channelIds: [] },
-      ],
-      activePaneId: 'pane-2',
+    const reusable: WebWorkspaceState = {
+      ...workspace,
+      logger: {
+        ...workspace.logger,
+        workspaces: [{
+          ...workspace.logger.workspaces[0]!,
+          layout: 'grid4',
+          panes: [
+            { id: 'pane-1', channelIds: ['ini:RPMValue'] },
+            { id: 'pane-2', channelIds: ['ini:MAPValue'] },
+            { id: 'pane-3', channelIds: ['ini:TPSValue'] },
+            { id: 'pane-4', channelIds: ['ini:lwgDutyPct'] },
+            { id: 'pane-5', channelIds: [] },
+            { id: 'pane-6', channelIds: [] },
+          ],
+          activePaneId: 'pane-2',
+        }],
+      },
     };
 
-    const oldPerLog = structuredClone(workspace);
-    oldPerLog.logger.activeWorkspaceId = 'general';
-    oldPerLog.logger.workspaces[0] = {
-      ...oldPerLog.logger.workspaces[0]!,
-      id: 'boost',
-      name: 'Old log layout',
-      layout: 'single',
-      activePaneId: 'pane-1',
-      panes: [
-        { id: 'pane-1', channelIds: ['mlg:0', 'mlg:1'] },
-        { id: 'pane-2', channelIds: [] },
-        { id: 'pane-3', channelIds: [] },
-        { id: 'pane-4', channelIds: [] },
-        { id: 'pane-5', channelIds: [] },
-        { id: 'pane-6', channelIds: [] },
-      ],
-      viewport: {
-        fullStartMs: 0,
-        fullEndMs: 12_000,
-        visibleStartMs: 4_000,
-        visibleEndMs: 7_000,
+    const oldPerLog: WebWorkspaceState = {
+      ...workspace,
+      logger: {
+        ...workspace.logger,
+        activeWorkspaceId: 'general',
+        workspaces: [{
+          ...workspace.logger.workspaces[0]!,
+          id: 'boost',
+          name: 'Old log layout',
+          layout: 'single',
+          activePaneId: 'pane-1',
+          panes: [
+            { id: 'pane-1', channelIds: ['mlg:0', 'mlg:1'] },
+            { id: 'pane-2', channelIds: [] },
+            { id: 'pane-3', channelIds: [] },
+            { id: 'pane-4', channelIds: [] },
+            { id: 'pane-5', channelIds: [] },
+            { id: 'pane-6', channelIds: [] },
+          ],
+          viewport: {
+            fullStartMs: 0,
+            fullEndMs: 12_000,
+            visibleStartMs: 4_000,
+            visibleEndMs: 7_000,
+          },
+          cursorTimeMs: 5_500,
+          viewHistory: [{
+            fullStartMs: 0,
+            fullEndMs: 12_000,
+            visibleStartMs: 4_000,
+            visibleEndMs: 7_000,
+          }],
+          viewHistoryIndex: 0,
+        }],
+        timeline: {
+          expanded: false,
+          userMarkers: [{ timeMs: 5_000, label: 'Saved log marker' }],
+          aTimeMs: 4_500,
+          bTimeMs: 6_500,
+          savedRanges: [{ label: 'Saved range', startMs: 4_500, endMs: 6_500 }],
+        },
       },
-      cursorTimeMs: 5_500,
-      viewHistory: [{
-        fullStartMs: 0,
-        fullEndMs: 12_000,
-        visibleStartMs: 4_000,
-        visibleEndMs: 7_000,
-      }],
-      viewHistoryIndex: 0,
-    };
-    oldPerLog.logger.timeline = {
-      expanded: false,
-      userMarkers: [{ timeMs: 5_000, label: 'Saved log marker' }],
-      aTimeMs: 4_500,
-      bTimeMs: 6_500,
-      savedRanges: [{ label: 'Saved range', startMs: 4_500, endMs: 6_500 }],
     };
 
     const merged = mergeLogSpecificWorkspaceState(reusable, oldPerLog);
