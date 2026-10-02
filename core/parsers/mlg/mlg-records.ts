@@ -84,29 +84,34 @@ function decodeMarker(bytes: Uint8Array): string {
   return value;
 }
 
-function calculateRecordCrc(recordBytes: Uint8Array): number {
-  let crc = 0;
-  for (let index = 0; index < recordBytes.length; index += 1) {
-    crc = (crc + (recordBytes[index] ?? 0)) & 0xff;
-  }
-  return crc;
-}
+function calculateRecordCrcRange(
+  bytes: Uint8Array,
+  start: number,
+  length: number,
+): number {
+  const end = start + length;
+  let index = start;
+  let sum = 0;
 
-function counterDiagnostic(
-  previousCounter: number | undefined,
-  counter: number,
-  offset: number,
-): ParserDiagnostic | undefined {
-  if (previousCounter === undefined) return undefined;
-  const expected = (previousCounter + 1) % COUNTER_MODULUS;
-  if (counter === expected) return undefined;
-  return {
-    code: 'mlg-counter-discontinuity',
-    severity: 'warning',
-    message: `MLG block counter expected ${expected}, found ${counter}.`,
-    recoverable: true,
-    offset,
-  };
+  // MLG's checksum is the low 8 bits of the payload-byte sum. Keep a wider
+  // accumulator and unroll the hot loop so we avoid a mask, bounds/nullish
+  // fallback and loop branch for every individual byte.
+  const unrolledEnd = end - ((end - start) % 16);
+  while (index < unrolledEnd) {
+    sum +=
+      bytes[index]! + bytes[index + 1]! + bytes[index + 2]! + bytes[index + 3]!
+      + bytes[index + 4]! + bytes[index + 5]! + bytes[index + 6]! + bytes[index + 7]!
+      + bytes[index + 8]! + bytes[index + 9]! + bytes[index + 10]! + bytes[index + 11]!
+      + bytes[index + 12]! + bytes[index + 13]! + bytes[index + 14]! + bytes[index + 15]!;
+    index += 16;
+  }
+
+  while (index < end) {
+    sum += bytes[index]!;
+    index += 1;
+  }
+
+  return sum & 0xff;
 }
 
 async function readChunk(
@@ -156,9 +161,11 @@ export async function scanMlgRecords(
   let checksumSampleBytes = 0;
   let checksumSampleMs = 0;
   let diagnosticCpuMs = 0;
-  const CHECKSUM_SAMPLE_INTERVAL = 64;
+  const CHECKSUM_SAMPLE_INTERVAL = 256;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const scanCpuStart = now();
+  const recordLength = header.recordLength;
+  const standardBlockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
 
   // Parse many complete blocks synchronously from each source chunk. The old
   // scanner awaited two async reads per record even when both reads hit its
@@ -189,7 +196,7 @@ export async function scanMlgRecords(
       const counter = chunk[cursor + 1] ?? 0;
       const rawTimestamp = ((chunk[cursor + 2] ?? 0) << 8) | (chunk[cursor + 3] ?? 0);
       const blockLength = blockType === STANDARD_BLOCK_TYPE
-        ? BLOCK_HEADER_LENGTH + header.recordLength + 1
+        ? standardBlockLength
         : blockType === MARKER_BLOCK_TYPE
           ? MARKER_BLOCK_LENGTH
           : 0;
@@ -218,35 +225,40 @@ export async function scanMlgRecords(
         break;
       }
 
-      const diagnosticStart = now();
-      const discontinuity = counterDiagnostic(previousCounter, counter, absoluteOffset + 1);
-      if (discontinuity) diagnostics.push(discontinuity);
-      diagnosticCpuMs += now() - diagnosticStart;
+      if (previousCounter !== undefined) {
+        const expectedCounter = (previousCounter + 1) % COUNTER_MODULUS;
+        if (counter !== expectedCounter) {
+          const diagnosticStart = now();
+          diagnostics.push({
+            code: 'mlg-counter-discontinuity',
+            severity: 'warning',
+            message: `MLG block counter expected ${expectedCounter}, found ${counter}.`,
+            recoverable: true,
+            offset: absoluteOffset + 1,
+          });
+          diagnosticCpuMs += now() - diagnosticStart;
+        }
+      }
       previousCounter = counter;
 
-      const block = chunk.subarray(cursor, cursor + blockLength);
-
       if (blockType === STANDARD_BLOCK_TYPE) {
-        const recordBytes = block.subarray(
-          BLOCK_HEADER_LENGTH,
-          BLOCK_HEADER_LENGTH + header.recordLength,
-        );
-        checksumBytes += recordBytes.byteLength;
+        const recordStart = cursor + BLOCK_HEADER_LENGTH;
+        checksumBytes += recordLength;
         let expectedCrc: number;
         if (standardRecordIndex % CHECKSUM_SAMPLE_INTERVAL === 0) {
           const checksumStart = now();
-          expectedCrc = calculateRecordCrc(recordBytes);
+          expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
           checksumSampleMs += now() - checksumStart;
-          checksumSampleBytes += recordBytes.byteLength;
+          checksumSampleBytes += recordLength;
         } else {
-          expectedCrc = calculateRecordCrc(recordBytes);
+          expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
         }
-        const actualCrc = block[blockLength - 1] ?? 0;
+        const actualCrc = chunk[cursor + standardBlockLength - 1] ?? 0;
         const isCrcValid = expectedCrc === actualCrc;
 
         if (!isCrcValid) {
           const diagnosticStart = now();
-          const blockHeaderSum = calculateRecordCrc(block.subarray(0, BLOCK_HEADER_LENGTH));
+          const blockHeaderSum = calculateRecordCrcRange(chunk, cursor, BLOCK_HEADER_LENGTH);
           const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
           const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
           diagnostics.push({
@@ -283,7 +295,7 @@ export async function scanMlgRecords(
           : Math.max(0, (epochAdjusted - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS);
         markers.push({
           timeMs: relativeTimeMs,
-          label: decodeMarker(block),
+          label: decodeMarker(chunk.subarray(cursor, cursor + blockLength)),
         });
       }
 
