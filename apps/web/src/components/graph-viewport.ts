@@ -48,6 +48,8 @@ export interface GraphViewportController {
   onPan(listener: (deltaMs: number) => void): void;
   onCursorValues(listener: (values: readonly GraphCursorValue[]) => void): void;
   onChannelPerformance(listener: (performance: GraphChannelPerformance) => void): void;
+  onPendingChannelsChanged(listener: (channelIds: readonly string[]) => void): void;
+  loadPendingChannels(): void;
   refreshValidity(): void;
   clear(): void;
 }
@@ -128,6 +130,7 @@ export function createGraphViewport(): GraphViewportController {
   let panListener: ((deltaMs: number) => void) | undefined;
   let cursorValuesListener: ((values: readonly GraphCursorValue[]) => void) | undefined;
   let channelPerformanceListener: ((performance: GraphChannelPerformance) => void) | undefined;
+  let pendingChannelsListener: ((channelIds: readonly string[]) => void) | undefined;
   const pendingTraces = new Map<string, PendingTrace>();
   const loadingTraceIds = new Set<string>();
   let decodeInFlight = false;
@@ -360,12 +363,17 @@ export function createGraphViewport(): GraphViewportController {
     canvas.addEventListener('pointercancel', end);
   });
 
+  const emitPendingChannels = (): void => {
+    pendingChannelsListener?.([...pendingTraces.keys()]);
+  };
+
   const cancelPending = (): void => {
     decodeGeneration += 1;
     for (const pending of pendingTraces.values()) pending.resolve(false);
     pendingTraces.clear();
     loadingTraceIds.clear();
     decodeInFlight = false;
+    emitPendingChannels();
   };
 
   const flushPending = async (): Promise<void> => {
@@ -375,6 +383,7 @@ export function createGraphViewport(): GraphViewportController {
     const generation = decodeGeneration;
     const batch = [...pendingTraces.entries()];
     pendingTraces.clear();
+    emitPendingChannels();
     const channelIds = batch.map(([channelId]) => channelId);
     for (const channelId of channelIds) loadingTraceIds.add(channelId);
 
@@ -579,6 +588,7 @@ export function createGraphViewport(): GraphViewportController {
     if (queued) {
       pendingTraces.delete(channelId);
       queued.resolve(false);
+      emitPendingChannels();
       return false;
     }
 
@@ -641,7 +651,15 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     pendingTraces.set(channelId, pending);
+    emitPendingChannels();
     overlay.hidden = false;
+
+    if (channelData.requiresExplicitBatchSelection) {
+      overlayTitle.textContent = `${pendingTraces.size} channel${pendingTraces.size === 1 ? '' : 's'} selected`;
+      overlayDetail.textContent = 'Choose the remaining channels, then press Load selected in Full Sensor List.';
+      return result;
+    }
+
     overlayTitle.textContent = decodeInFlight
       ? 'Queued for next channel pass…'
       : `Loading ${channel.sourceName}…`;
@@ -713,6 +731,8 @@ export function createGraphViewport(): GraphViewportController {
     onPan: (listener) => { panListener = listener; },
     onCursorValues: (listener) => { cursorValuesListener = listener; },
     onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
+    onPendingChannelsChanged: (listener) => { pendingChannelsListener = listener; },
+    loadPendingChannels: () => { if (!decodeInFlight) void flushPending(); },
     refreshValidity,
     clear,
   };
