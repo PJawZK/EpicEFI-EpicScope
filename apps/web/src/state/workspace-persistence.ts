@@ -57,8 +57,12 @@ const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
     && workspace.viewHistory.length <= 40
     && workspace.viewHistory.every(isViewport)
     && Number.isInteger(workspace.viewHistoryIndex)
-    && (workspace.viewHistoryIndex as number) >= -1
-    && (workspace.viewHistoryIndex as number) < Math.max(1, workspace.viewHistory.length)
+    && (
+      workspace.viewHistory.length === 0
+        ? workspace.viewHistoryIndex === -1
+        : (workspace.viewHistoryIndex as number) >= 0
+          && (workspace.viewHistoryIndex as number) < workspace.viewHistory.length
+    )
   );
 };
 
