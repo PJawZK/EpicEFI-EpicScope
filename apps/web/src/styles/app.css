@@ -118,6 +118,57 @@ button:disabled { opacity: .48; cursor: default; }
 .workspace-tabs { gap: 3px; min-width: 0; }
 .workspace-context { gap: 6px; margin-left: auto; }
 .workspace-context button { height: 28px; padding: 0 8px; font-size: 9px; }
+.graph-selector-wrap { position: relative; }
+.graph-selector-button {
+  min-width: 128px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+}
+.graph-selector-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid #8eabba;
+  border-bottom: 1px solid #8eabba;
+  transform: rotate(45deg) translateY(-2px);
+}
+.graph-selector-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 220px;
+  padding: 5px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b151e;
+  box-shadow: 0 8px 24px rgba(0,0,0,.34);
+}
+.graph-selector-list { display: grid; gap: 3px; max-height: 280px; overflow: auto; }
+.graph-selector-choice {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  padding: 5px 7px;
+  text-align: left;
+}
+.graph-selector-choice span { font-size: 10px; font-weight: 700; }
+.graph-selector-choice small { color: var(--muted); font-size: 8px; }
+.graph-selector-choice--active { border-color: #3479ae; background: #102437; color: #fff; }
+.graph-selector-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line-soft);
+}
+.graph-selector-actions button { min-height: 27px; padding: 0 6px; font-size: 8px; }
 .workspace-tab,
 .workspace-add { height: 30px; padding: 0 12px; }
 .workspace-tab { border-radius: 4px 4px 0 0; }
