@@ -172,15 +172,10 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
         ...channels.map((channel) => channel.fieldOffset + channel.field.widthBytes),
       );
 
-      interface DecodeBatch {
-        readonly firstIndex: number;
-        readonly lastIndex: number;
-        readonly startByte: number;
-        readonly bytesPromise: Promise<Uint8Array>;
-      }
-
+      let outputIndex = 0;
       const endSampleIndex = startSampleIndex + sampleCount;
-      const createBatch = (batchFirstIndex: number): DecodeBatch => {
+      while (startSampleIndex + outputIndex < endSampleIndex) {
+        const batchFirstIndex = startSampleIndex + outputIndex;
         const firstRecordOffset = this.recordIndex.offsets[batchFirstIndex];
         if (firstRecordOffset === undefined) {
           throw new RangeError(`Missing record offset for sample ${batchFirstIndex}.`);
@@ -199,23 +194,10 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
           batchEndByte = nextEndByte;
         }
 
-        return {
-          firstIndex: batchFirstIndex,
-          lastIndex: batchLastIndex,
-          startByte: batchStartByte,
-          bytesPromise: this.source.read(batchStartByte, batchEndByte - batchStartByte),
-        };
-      };
-
-      let batch: DecodeBatch | undefined = createBatch(startSampleIndex);
-      while (batch) {
-        const bytes = await batch.bytesPromise;
-        const nextBatch: DecodeBatch | undefined = batch.lastIndex + 1 < endSampleIndex
-          ? createBatch(batch.lastIndex + 1)
-          : undefined;
+        const bytes = await this.source.read(batchStartByte, batchEndByte - batchStartByte);
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-        for (let sampleIndex = batch.firstIndex; sampleIndex <= batch.lastIndex; sampleIndex += 1) {
+        for (let sampleIndex = batchFirstIndex; sampleIndex <= batchLastIndex; sampleIndex += 1) {
           const recordOffset = this.recordIndex.offsets[sampleIndex];
           if (recordOffset === undefined) {
             throw new RangeError(`Missing record offset for sample ${sampleIndex}.`);
@@ -224,7 +206,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
             const valueOffset = recordOffset
               + BLOCK_HEADER_LENGTH
               + channel.fieldOffset
-              - batch.startByte;
+              - batchStartByte;
             channel.values[sampleIndex - startSampleIndex] = displayValue(
               decodeRawValue(view, valueOffset, channel.field),
               channel.field,
@@ -232,7 +214,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
           }
         }
 
-        batch = nextBatch;
+        outputIndex += batchLastIndex - batchFirstIndex + 1;
       }
     }
 
