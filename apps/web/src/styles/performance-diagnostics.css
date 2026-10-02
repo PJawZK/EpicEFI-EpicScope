@@ -6,14 +6,22 @@
 
 .performance-diagnostics-button {
   height: 20px;
+  min-width: 62px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 5px;
-  border-color: transparent;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 6px;
+  border: 1px solid transparent;
   background: transparent;
-  color: #7895a6;
+  color: #aebdc7;
   font-size: 8px;
+  font-weight: 750;
+}
+
+.performance-diagnostics-button > span:first-child {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .performance-diagnostics-button:hover,
