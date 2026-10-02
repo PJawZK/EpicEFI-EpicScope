@@ -11,7 +11,7 @@
 ## Active development branch / PR
 
 - branch: `main`
-- current task: hosted-validate the final Phase 1 graph-density refinements, then begin the approved INI-backed channel-catalog/persistent-workspace foundation
+- current task: hosted-validate INI/MLG stable-channel binding plus reusable application workspace persistence v2
 
 ## Current phase
 
@@ -125,7 +125,11 @@ The final Phase 1 gate is hosted validation of the latest graph-density refineme
 
 After that validation, Phase 1 can close.
 
-The approved next architecture increment is the **INI-backed channel catalog and persistent application workspace**. EpicScope should be able to retain named workspaces, pane layouts and channel assignments when no log is loaded. INI supplies stable known-channel definitions; an opened MLG binds recorded data to those logical channels; missing channels remain present but unavailable; MLG-only channels remain usable. MSQ tune-value/table enrichment follows later. CSV remains deferred.
+The INI-backed channel catalog, conservative INI↔MLG binding, and reusable application-workspace persistence foundation are now implemented. Stable `ini:<logicalKey>` channel assignments can exist without a log, known/no-data channels remain visible, log-only channels remain usable, and normalized INI catalog metadata plus reusable workspace structure are stored locally without persisting sample arrays or raw INI text.
+
+The exact-log v1 workspace artifact remains in parallel for recording-specific cursor/viewport/A-B/marker/range state. Hosted validation should now confirm that INI-only pane assignments survive reload, app restart and previously unseen log loads, and that matching channels activate automatically when data becomes available.
+
+MSQ tune-value/table enrichment follows later. CSV remains deferred.
 
 ## Key constraints still in force
 
