@@ -127,3 +127,83 @@ export function buildViewportEnvelope(
     invalidSampleCount,
   };
 }
+
+export interface RawViewportPoint {
+  readonly timeMs: number;
+  readonly value: number;
+  readonly breakBefore: boolean;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle] ?? 0;
+  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
+/**
+ * Returns the actual valid samples inside a viewport in source order.
+ *
+ * Lines are broken only when source validity is interrupted or when the
+ * timestamp spacing is substantially larger than the normal cadence in the
+ * visible range. This is intended for high-zoom rendering where pixel-bucket
+ * spacing is not evidence of missing data.
+ */
+export function buildRawViewportSeries(
+  range: NumericChannelRange,
+  startMs: number,
+  endMs: number,
+): readonly RawViewportPoint[] {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    throw new RangeError(`Invalid viewport range ${startMs}..${endMs}.`);
+  }
+
+  const startIndex = lowerBound(range.timeMs, startMs);
+  const endIndex = upperBound(range.timeMs, endMs);
+  const cadenceSamples: number[] = [];
+  let previousTime: number | undefined;
+
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const timeMs = range.timeMs[index];
+    if (timeMs === undefined || !Number.isFinite(timeMs)) continue;
+    if (previousTime !== undefined) {
+      const delta = timeMs - previousTime;
+      if (delta > 0 && Number.isFinite(delta)) cadenceSamples.push(delta);
+    }
+    previousTime = timeMs;
+  }
+
+  const normalCadenceMs = median(cadenceSamples);
+  const gapThresholdMs = Math.max(50, normalCadenceMs * 5);
+  const points: RawViewportPoint[] = [];
+  let forceBreak = true;
+  let previousValidTime: number | undefined;
+
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const timeMs = range.timeMs[index];
+    const value = range.values[index];
+    if (
+      timeMs === undefined
+      || value === undefined
+      || range.validity[index] !== 1
+      || !Number.isFinite(timeMs)
+      || !Number.isFinite(value)
+    ) {
+      forceBreak = true;
+      continue;
+    }
+
+    const timeGap = previousValidTime === undefined ? 0 : timeMs - previousValidTime;
+    points.push({
+      timeMs,
+      value,
+      breakBefore: forceBreak || previousValidTime === undefined || timeGap > gapThresholdMs,
+    });
+    forceBreak = false;
+    previousValidTime = timeMs;
+  }
+
+  return points;
+}
+
