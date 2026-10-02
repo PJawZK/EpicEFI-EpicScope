@@ -26,7 +26,14 @@ export interface InspectorWorkspaceState {
   readonly sortAscending: boolean;
 }
 
-export type GraphWorkspaceLayout = 'single' | 'grid4' | 'grid5' | 'grid6';
+export type GraphWorkspaceLayout = 'single' | 'grid4' | 'grid5' | 'grid6' | 'freeform';
+
+export interface GraphPaneGeometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 export interface GraphPaneSnapshot {
   readonly id: string;
@@ -41,6 +48,10 @@ export interface GraphWorkspaceSnapshot {
   readonly layout?: GraphWorkspaceLayout;
   readonly activePaneId?: string;
   readonly panes?: readonly GraphPaneSnapshot[];
+  readonly paneGeometry?: Readonly<Record<string, GraphPaneGeometry>>;
+  readonly minimizedPaneIds?: readonly string[];
+  readonly maximizedPaneId?: string;
+  readonly freeformArrange?: 'mosaic' | 'columns' | 'rows' | 'cascade';
   readonly viewport: TimelineViewport | undefined;
   readonly cursorTimeMs: number;
   readonly viewHistory: readonly TimelineViewport[];
