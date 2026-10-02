@@ -563,7 +563,15 @@ export function mountAppShell(root: HTMLElement): void {
 
         const definitions = catalogDefinitions(imported.catalog);
         activeIniCatalog = imported.catalog;
-        iniCatalogStorage.save(imported.fileName, imported.catalog);
+        try {
+          iniCatalogStorage.save(imported.fileName, imported.catalog);
+        } catch (error) {
+          setPersistenceStatus(
+            error instanceof Error
+              ? `INI catalog loaded but could not be saved locally: ${error.message}`
+              : 'INI catalog loaded but could not be saved locally.',
+          );
+        }
         loggerPage.setChannelCatalog(definitions, imported.fileName);
 
         if (currentRawLog) {
