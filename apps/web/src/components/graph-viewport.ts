@@ -19,6 +19,15 @@ export interface GraphCursorValue {
   readonly value: number | undefined;
 }
 
+export interface GraphChannelPerformance {
+  readonly channelId: string;
+  readonly totalMs: number;
+  readonly readDecodeMs: number;
+  readonly scaleMs: number;
+  readonly renderMs: number;
+  readonly sampleCount: number;
+}
+
 export interface GraphViewportController {
   readonly element: HTMLElement;
   setLog(
@@ -33,6 +42,7 @@ export interface GraphViewportController {
   onZoom(listener: (factor: number, anchorMs: number) => void): void;
   onPan(listener: (deltaMs: number) => void): void;
   onCursorValues(listener: (values: readonly GraphCursorValue[]) => void): void;
+  onChannelPerformance(listener: (performance: GraphChannelPerformance) => void): void;
   clear(): void;
 }
 
@@ -99,6 +109,7 @@ export function createGraphViewport(): GraphViewportController {
   let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
   let panListener: ((deltaMs: number) => void) | undefined;
   let cursorValuesListener: ((values: readonly GraphCursorValue[]) => void) | undefined;
+  let channelPerformanceListener: ((performance: GraphChannelPerformance) => void) | undefined;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -374,15 +385,36 @@ export function createGraphViewport(): GraphViewportController {
     overlayDetail.textContent = 'Reading bounded channel data from the local log.';
 
     try {
+      const now = (): number => globalThis.performance?.now() ?? Date.now();
+      const totalStart = now();
+
+      const readStart = now();
       const range = await channelData.readChannelRange(channel.id, 0, channelData.sampleCount);
+      const readDecodeMs = now() - readStart;
+
+      const scaleStart = now();
       const scale = buildStableValueScale(range);
+      const scaleMs = now() - scaleStart;
+
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       activeTraces.set(channel.id, { channel, range, scale, color });
       overlay.hidden = true;
       renderReadout();
       emitCursorValues();
+
+      const renderStart = now();
       draw();
+      const renderMs = now() - renderStart;
+
+      channelPerformanceListener?.({
+        channelId: channel.id,
+        totalMs: now() - totalStart,
+        readDecodeMs,
+        scaleMs,
+        renderMs,
+        sampleCount: range.values.length,
+      });
       return true;
     } catch (error) {
       overlay.hidden = false;
@@ -442,6 +474,7 @@ export function createGraphViewport(): GraphViewportController {
     onZoom: (listener) => { zoomListener = listener; },
     onPan: (listener) => { panListener = listener; },
     onCursorValues: (listener) => { cursorValuesListener = listener; },
+    onChannelPerformance: (listener) => { channelPerformanceListener = listener; },
     clear,
   };
 }
