@@ -274,3 +274,52 @@
   height: 100%;
   width: 0;
 }
+
+
+/* Virtualized Full Sensor List: the scroll range represents every normalized
+   channel while only the visible rows (plus small overscan) exist in the DOM. */
+.channel-list--virtual {
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+  contain: strict;
+}
+
+.channel-list-spacer {
+  width: 1px;
+  pointer-events: none;
+}
+
+.channel-list-viewport {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 0;
+}
+
+.channel-row--virtual {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 6px;
+  box-sizing: border-box;
+}
+
+.channel-row--virtual .channel-identity {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.channel-row--virtual .channel-identity strong,
+.channel-row--virtual .channel-identity span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-row--virtual .channel-identity span {
+  color: #6f8795;
+  font-size: 8px;
+}
