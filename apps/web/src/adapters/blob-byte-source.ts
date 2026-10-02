@@ -19,6 +19,7 @@ export interface BlobByteSourceStats {
   readonly cacheHitBytes: number;
   readonly cacheBytes: number;
   readonly cachePageCount: number;
+  readonly physicalReadMs: number;
 }
 
 export class BlobByteSource implements RandomAccessByteSource {
@@ -30,6 +31,7 @@ export class BlobByteSource implements RandomAccessByteSource {
   private physicalBytesReadValue = 0;
   private cacheHitBytesValue = 0;
   private cacheBytesValue = 0;
+  private physicalReadMsValue = 0;
   private wholeBuffer: Uint8Array | undefined;
   private wholeBufferPromise: Promise<Uint8Array> | undefined;
   private readonly pages = new Map<number, CachedPage>();
@@ -42,7 +44,9 @@ export class BlobByteSource implements RandomAccessByteSource {
   private async loadWholeBuffer(): Promise<Uint8Array> {
     if (this.wholeBuffer) return this.wholeBuffer;
     if (!this.wholeBufferPromise) {
+      const started = globalThis.performance?.now() ?? Date.now();
       this.wholeBufferPromise = this.blob.arrayBuffer().then((buffer) => {
+        this.physicalReadMsValue += (globalThis.performance?.now() ?? Date.now()) - started;
         const bytes = new Uint8Array(buffer);
         this.wholeBuffer = bytes;
         this.cacheBytesValue = bytes.byteLength;
@@ -60,7 +64,9 @@ export class BlobByteSource implements RandomAccessByteSource {
 
     const start = pageIndex * CACHE_PAGE_SIZE;
     const length = Math.min(CACHE_PAGE_SIZE, this.size - start);
+    const readStarted = globalThis.performance?.now() ?? Date.now();
     const buffer = await this.blob.slice(start, start + length).arrayBuffer();
+    this.physicalReadMsValue += (globalThis.performance?.now() ?? Date.now()) - readStarted;
     const page: CachedPage = {
       index: pageIndex,
       bytes: new Uint8Array(buffer),
@@ -131,6 +137,10 @@ export class BlobByteSource implements RandomAccessByteSource {
     return output;
   }
 
+  public performanceSnapshot(): { physicalReadMs: number } {
+    return { physicalReadMs: this.physicalReadMsValue };
+  }
+
   public stats(): BlobByteSourceStats {
     return {
       readCount: this.readCountValue,
@@ -140,6 +150,7 @@ export class BlobByteSource implements RandomAccessByteSource {
       cacheHitBytes: this.cacheHitBytesValue,
       cacheBytes: this.cacheBytesValue,
       cachePageCount: this.wholeBuffer ? 1 : this.pages.size,
+      physicalReadMs: this.physicalReadMsValue,
     };
   }
 }

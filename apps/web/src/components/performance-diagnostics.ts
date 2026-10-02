@@ -5,10 +5,15 @@ export interface LoadPerformanceRun {
   readonly channelCount: number;
   readonly importTotalMs: number;
   readonly headerMs: number;
+  readonly headerReadMs: number;
+  readonly headerCpuMs: number;
   readonly recordScanMs: number;
   readonly recordReadMs: number;
   readonly recordCpuMs: number;
   readonly checksumBytes: number;
+  readonly checksumCpuMs: number;
+  readonly diagnosticCpuMs: number;
+  readonly indexCpuMs: number;
   readonly finalizeMs: number;
   readonly uiPopulateMs: number;
   readonly sourceReadCount: number;
@@ -126,10 +131,15 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `channels=${latestLoad.channelCount}`,
         `total=${latestLoad.importTotalMs.toFixed(2)} ms`,
         `header=${latestLoad.headerMs.toFixed(2)} ms`,
+        `headerRead=${latestLoad.headerReadMs.toFixed(2)} ms`,
+        `headerCpu=${latestLoad.headerCpuMs.toFixed(2)} ms`,
         `recordScan=${latestLoad.recordScanMs.toFixed(2)} ms`,
         `recordRead=${latestLoad.recordReadMs.toFixed(2)} ms`,
         `recordCpu=${latestLoad.recordCpuMs.toFixed(2)} ms`,
         `checksumBytes=${latestLoad.checksumBytes}`,
+        `checksumCpu=${latestLoad.checksumCpuMs.toFixed(2)} ms`,
+        `diagnosticCpu=${latestLoad.diagnosticCpuMs.toFixed(2)} ms`,
+        `indexCpu=${latestLoad.indexCpuMs.toFixed(2)} ms`,
         `finalize=${latestLoad.finalizeMs.toFixed(2)} ms`,
         `uiPopulate=${latestLoad.uiPopulateMs.toFixed(2)} ms`,
         `sourceReads=${latestLoad.sourceReadCount}`,
@@ -166,11 +176,16 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['File', latestLoad.fileName],
         ['Size', bytes(latestLoad.fileSizeBytes)],
         ['Total import', ms(latestLoad.importTotalMs)],
-        ['Header + descriptors', ms(latestLoad.headerMs)],
+        ['Header total', ms(latestLoad.headerMs)],
+        ['Header physical read', ms(latestLoad.headerReadMs)],
+        ['Header CPU', ms(latestLoad.headerCpuMs)],
         ['Record scan / CRC / index', ms(latestLoad.recordScanMs)],
         ['Record source read', ms(latestLoad.recordReadMs)],
         ['Record CPU remainder', ms(latestLoad.recordCpuMs)],
         ['Checksum bytes', bytes(latestLoad.checksumBytes)],
+        ['Checksum CPU (sampled)', ms(latestLoad.checksumCpuMs)],
+        ['Diagnostic CPU', ms(latestLoad.diagnosticCpuMs)],
+        ['Index/timestamp CPU', ms(latestLoad.indexCpuMs)],
         ['Parser finalize', ms(latestLoad.finalizeMs)],
         ['UI population', ms(latestLoad.uiPopulateMs)],
         ['Logical source reads', latestLoad.sourceReadCount.toLocaleString()],
