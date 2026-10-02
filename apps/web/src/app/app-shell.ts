@@ -131,6 +131,13 @@ export function mountAppShell(root: HTMLElement): void {
             </div>
             <div class="settings-shortcuts-slot"></div>
           </div>
+          <div class="settings-ini-source">
+            <div>
+              <strong>INI channel catalog</strong>
+              <small class="settings-ini-status">No INI catalog loaded.</small>
+            </div>
+            <button type="button" class="setting-unload-ini" disabled>Unload INI</button>
+          </div>
           <div class="settings-persistence">
             <div>
               <strong>Saved workspace</strong>
@@ -212,14 +219,16 @@ export function mountAppShell(root: HTMLElement): void {
   const performanceVisible = header.querySelector<HTMLInputElement>('.setting-performance');
   const undoButton = header.querySelector<HTMLButtonElement>('.workspace-undo');
   const redoButton = header.querySelector<HTMLButtonElement>('.workspace-redo');
+  const unloadIniButton = header.querySelector<HTMLButtonElement>('.setting-unload-ini');
+  const iniStatus = header.querySelector<HTMLElement>('.settings-ini-status');
   const forgetWorkspaceButton = header.querySelector<HTMLButtonElement>('.setting-forget-workspace');
   const persistenceStatus = header.querySelector<HTMLElement>('.settings-persistence-status');
 
-  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !forgetWorkspaceButton || !persistenceStatus) {
+  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
 
-  type SourceLoadState = 'idle' | 'loading' | 'success' | 'issue';
+  type SourceLoadState = 'idle' | 'loading' | 'success' | 'restored' | 'issue';
 
   const setSourceLoadState = (
     button: HTMLButtonElement,
@@ -242,6 +251,8 @@ export function mountAppShell(root: HTMLElement): void {
   const iniCatalogStorage = createIniCatalogLocalStorageAdapter();
   let activeWorkspaceSource: LogSourceIdentity | undefined;
   let activeIniCatalog: ChannelCatalog | undefined;
+  let activeIniSourceName: string | undefined;
+  let activeIniBinding: BoundChannelCatalog | undefined;
   let currentRawLog: {
     summary: ImportedLogSummary;
     recordCount: number;
@@ -281,6 +292,7 @@ export function mountAppShell(root: HTMLElement): void {
 
     const started = globalThis.performance?.now() ?? Date.now();
     const binding = bindChannelCatalogToLog(activeIniCatalog, summary.channels, channelData);
+    activeIniBinding = binding;
     const totalMs = (globalThis.performance?.now() ?? Date.now()) - started;
 
     performanceDiagnostics.recordBinding({
@@ -295,6 +307,40 @@ export function mountAppShell(root: HTMLElement): void {
       },
       channelData: binding.dataSource,
       binding,
+    };
+  };
+
+  const remapWorkspaceToRawLogIds = (
+    state: WebWorkspaceState,
+    binding: BoundChannelCatalog | undefined,
+  ): WebWorkspaceState => {
+    if (!binding) return state;
+    return {
+      ...state,
+      logger: {
+        ...state.logger,
+        workspaces: state.logger.workspaces.map((workspace) => {
+          const remap = (channelId: string): string =>
+            binding.logicalToSourceChannelId.get(channelId) ?? channelId;
+          return {
+            ...workspace,
+            channelIds: workspace.channelIds.map(remap),
+            panes: workspace.panes?.map((pane) => ({
+              ...pane,
+              channelIds: pane.channelIds.map(remap),
+            })),
+          };
+        }),
+        inspector: {
+          ...state.logger.inspector,
+          favoriteChannelIds: state.logger.inspector.favoriteChannelIds.map(
+            (channelId) => binding.logicalToSourceChannelId.get(channelId) ?? channelId,
+          ),
+          recentChannelIds: state.logger.inspector.recentChannelIds.map(
+            (channelId) => binding.logicalToSourceChannelId.get(channelId) ?? channelId,
+          ),
+        },
+      },
     };
   };
 
@@ -534,6 +580,60 @@ export function mountAppShell(root: HTMLElement): void {
   openButton.addEventListener('click', () => fileInput.click());
   loadIniButton.addEventListener('click', () => iniInput.click());
 
+  unloadIniButton.addEventListener('click', () => {
+    if (!activeIniCatalog) return;
+
+    const workspaceBeforeUnload = remapWorkspaceToRawLogIds(
+      captureWorkspaceState(),
+      activeIniBinding,
+    );
+
+    try {
+      iniCatalogStorage.remove();
+    } catch (error) {
+      setPersistenceStatus(
+        error instanceof Error
+          ? `INI catalog unloaded, but saved catalog could not be removed: ${error.message}`
+          : 'INI catalog unloaded, but saved catalog could not be removed.',
+      );
+    }
+
+    activeIniCatalog = undefined;
+    activeIniSourceName = undefined;
+    activeIniBinding = undefined;
+    loggerPage.clearChannelCatalog();
+
+    setSourceLoadState(
+      loadIniButton,
+      'idle',
+      'No INI catalog loaded. Load an INI to rebuild the channel catalog.',
+    );
+    unloadIniButton.disabled = true;
+    iniStatus.textContent = 'No INI catalog loaded.';
+
+    if (currentRawLog) {
+      loggerPage.setLog(
+        currentRawLog.summary,
+        currentRawLog.recordCount,
+        currentRawLog.channelData,
+      );
+      void restoreWorkspaceSnapshot(workspaceBeforeUnload).then(() => {
+        resetWorkspaceHistory();
+        scheduleWorkspaceSave();
+      });
+      parserStatus.textContent =
+        `LOG-MLG · ${currentRawLog.summary.channels.length.toLocaleString()} raw log channels · INI unloaded`;
+      appStatus.textContent = 'INI unloaded · raw log channels active';
+    } else {
+      void restoreWorkspaceSnapshot(workspaceBeforeUnload).then(() => {
+        resetWorkspaceHistory();
+        scheduleWorkspaceSave();
+      });
+      parserStatus.textContent = 'TUNE-INI · no catalog loaded';
+      appStatus.textContent = 'INI unloaded';
+    }
+  });
+
   iniInput.addEventListener('change', () => {
     const file = iniInput.files?.item(0);
     iniInput.value = '';
@@ -572,6 +672,8 @@ export function mountAppShell(root: HTMLElement): void {
 
         const definitions = catalogDefinitions(imported.catalog);
         activeIniCatalog = imported.catalog;
+        activeIniSourceName = imported.fileName;
+        activeIniBinding = undefined;
         try {
           iniCatalogStorage.save(imported.fileName, imported.catalog);
         } catch (error) {
@@ -582,6 +684,9 @@ export function mountAppShell(root: HTMLElement): void {
           );
         }
         loggerPage.setChannelCatalog(definitions, imported.fileName);
+        unloadIniButton.disabled = false;
+        iniStatus.textContent =
+          `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} channels · loaded this session`;
 
         if (currentRawLog) {
           const workspaceBeforeBinding = captureWorkspaceState();
@@ -616,7 +721,7 @@ export function mountAppShell(root: HTMLElement): void {
         setSourceLoadState(
           loadIniButton,
           iniHasIssues ? 'issue' : 'success',
-          `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} catalog channels`
+          `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} catalog channels · loaded this session`
             + (iniHasIssues ? ` · ${errors + warnings} diagnostic issue${errors + warnings === 1 ? '' : 's'}` : ''),
         );
 
@@ -652,20 +757,31 @@ export function mountAppShell(root: HTMLElement): void {
       const persistedCatalog = iniCatalogStorage.load();
       if (persistedCatalog) {
         activeIniCatalog = persistedCatalog.catalog;
+        activeIniSourceName = persistedCatalog.sourceName;
+        activeIniBinding = undefined;
         loggerPage.setChannelCatalog(
           catalogDefinitions(persistedCatalog.catalog),
           persistedCatalog.sourceName,
         );
         setSourceLoadState(
           loadIniButton,
-          'success',
+          'restored',
           `${persistedCatalog.sourceName} · restored local channel catalog · `
             + `${persistedCatalog.catalog.entries.length.toLocaleString()} channels`,
         );
+        unloadIniButton.disabled = false;
+        iniStatus.textContent =
+          `${persistedCatalog.sourceName} · ${persistedCatalog.catalog.entries.length.toLocaleString()} channels · restored locally`;
         parserStatus.textContent =
           `INI · ${persistedCatalog.catalog.entries.length.toLocaleString()} catalog channels · restored locally`;
+      } else {
+        activeIniSourceName = undefined;
+        unloadIniButton.disabled = true;
+        iniStatus.textContent = 'No INI catalog loaded.';
       }
     } catch (error) {
+      unloadIniButton.disabled = true;
+      iniStatus.textContent = 'Saved INI catalog could not be restored.';
       setSourceLoadState(
         loadIniButton,
         'issue',
