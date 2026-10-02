@@ -127,6 +127,21 @@ button:disabled { opacity: .48; cursor: default; }
 .settings-toggle input { flex: none; }
 .settings-toggle > span { display: grid; gap: 2px; }
 .settings-toggle small { color: var(--muted); font-size: 8px; line-height: 1.25; }
+.settings-persistence {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+.settings-persistence > div { min-width: 0; }
+.settings-persistence strong,
+.settings-persistence small { display: block; }
+.settings-persistence strong { color: var(--text); font-size: 9px; }
+.settings-persistence small { margin-top: 2px; color: var(--muted); font-size: 8px; line-height: 1.25; }
+.setting-forget-workspace { min-height: 28px; padding: 0 7px; font-size: 8px; }
 .settings-note { margin: 8px 0 0; color: var(--muted); font-size: 8px; line-height: 1.35; }
 .surface-select { height: 34px; min-width: 165px; padding: 0 9px; display: flex; align-items: center; justify-content: space-between; }
 .mode-chip,
