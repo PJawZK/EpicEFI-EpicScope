@@ -48,11 +48,6 @@ interface ActiveTrace {
   readonly color: string;
 }
 
-function formatValue(value: number, precision = 2): string {
-  if (!Number.isFinite(value)) return '—';
-  return value.toFixed(Math.min(6, Math.max(0, precision)));
-}
-
 function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRepresentativePoint[] {
   const candidates: RawRepresentativePoint[] = [
     { timeMs: column.firstTimeMs, value: column.first },
@@ -114,6 +109,10 @@ export function createGraphViewport(): GraphViewportController {
       <span>Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.</span>
     </div>
     <div class="graph-readout graph-readout--multi" hidden></div>
+    <div class="graph-toast graph-toast--warning" role="status" aria-live="polite" hidden>
+      <span class="graph-toast-icon" aria-hidden="true">!</span>
+      <span class="graph-toast-message"></span>
+    </div>
   `;
 
   const canvas = root.querySelector<HTMLCanvasElement>('.graph-canvas');
@@ -121,9 +120,26 @@ export function createGraphViewport(): GraphViewportController {
   const overlayTitle = root.querySelector<HTMLElement>('.graph-overlay strong');
   const overlayDetail = root.querySelector<HTMLElement>('.graph-overlay span');
   const readout = root.querySelector<HTMLElement>('.graph-readout');
-  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !readout) {
+  const toast = root.querySelector<HTMLElement>('.graph-toast');
+  const toastMessage = root.querySelector<HTMLElement>('.graph-toast-message');
+  if (!canvas || !overlay || !overlayTitle || !overlayDetail || !readout || !toast || !toastMessage) {
     throw new Error('Graph viewport structure is incomplete.');
   }
+
+  let toastTimer: number | undefined;
+  const showToast = (message: string): void => {
+    if (toastTimer !== undefined) window.clearTimeout(toastTimer);
+    toastMessage.textContent = message;
+    toast.hidden = false;
+    toast.classList.remove('graph-toast--leaving');
+    toastTimer = window.setTimeout(() => {
+      toast.classList.add('graph-toast--leaving');
+      window.setTimeout(() => {
+        toast.hidden = true;
+        toast.classList.remove('graph-toast--leaving');
+      }, 180);
+    }, 3200);
+  };
 
   const emitCursorValues = (): void => {
     const values = [...activeTraces.entries()].map(([channelId, trace]) => ({
@@ -136,24 +152,19 @@ export function createGraphViewport(): GraphViewportController {
   const renderReadout = (): void => {
     readout.replaceChildren();
     for (const trace of activeTraces.values()) {
-      const row = document.createElement('div');
-      row.className = 'graph-readout-trace';
+      const item = document.createElement('span');
+      item.className = 'graph-readout-trace';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
       swatch.style.background = trace.color;
 
-      const name = document.createElement('strong');
+      const name = document.createElement('span');
       name.className = 'graph-readout-name';
       name.textContent = trace.channel.sourceName;
 
-      const value = document.createElement('span');
-      value.className = 'graph-readout-value';
-      const current = nearestValue(trace.range, cursorTimeMs);
-      value.textContent = `${formatValue(current ?? Number.NaN, trace.channel.precision ?? 2)}${trace.channel.unit ? ` ${trace.channel.unit}` : ''}`;
-
-      row.append(swatch, name, value);
-      readout.append(row);
+      item.append(swatch, name);
+      readout.append(item);
     }
     readout.hidden = activeTraces.size === 0;
     emitCursorValues();
@@ -326,6 +337,11 @@ export function createGraphViewport(): GraphViewportController {
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
     readout.hidden = true;
+    toast.hidden = true;
+    if (toastTimer !== undefined) {
+      window.clearTimeout(toastTimer);
+      toastTimer = undefined;
+    }
     draw();
   };
 
@@ -345,9 +361,8 @@ export function createGraphViewport(): GraphViewportController {
 
     if (!channelData) return false;
     if (activeTraces.size >= MAX_ACTIVE_TRACES) {
-      overlay.hidden = false;
-      overlayTitle.textContent = 'Trace limit reached';
-      overlayDetail.textContent = `EpicScope currently allows up to ${MAX_ACTIVE_TRACES} simultaneous Web traces.`;
+      overlay.hidden = activeTraces.size > 0;
+      showToast(`Trace limit reached — EpicScope currently allows up to ${MAX_ACTIVE_TRACES} simultaneous Web traces.`);
       return false;
     }
 
