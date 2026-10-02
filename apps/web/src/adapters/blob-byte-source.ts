@@ -9,7 +9,6 @@ const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
 interface CachedPage {
   readonly index: number;
   readonly bytes: Uint8Array;
-  lastUsed: number;
 }
 
 export interface BlobByteSourceStats {
@@ -31,7 +30,6 @@ export class BlobByteSource implements RandomAccessByteSource {
   private physicalBytesReadValue = 0;
   private cacheHitBytesValue = 0;
   private cacheBytesValue = 0;
-  private useCounter = 0;
   private readonly pages = new Map<number, CachedPage>();
 
   public constructor(blob: Blob) {
@@ -39,29 +37,9 @@ export class BlobByteSource implements RandomAccessByteSource {
     this.size = blob.size;
   }
 
-  private touch(page: CachedPage): void {
-    this.useCounter += 1;
-    page.lastUsed = this.useCounter;
-  }
-
-  private evictIfNeeded(): void {
-    while (this.cacheBytesValue > CACHE_LIMIT_BYTES && this.pages.size > 1) {
-      let oldest: CachedPage | undefined;
-      for (const page of this.pages.values()) {
-        if (!oldest || page.lastUsed < oldest.lastUsed) oldest = page;
-      }
-      if (!oldest) break;
-      this.pages.delete(oldest.index);
-      this.cacheBytesValue -= oldest.bytes.byteLength;
-    }
-  }
-
   private async page(pageIndex: number): Promise<{ page: CachedPage; cacheHit: boolean }> {
     const cached = this.pages.get(pageIndex);
-    if (cached) {
-      this.touch(cached);
-      return { page: cached, cacheHit: true };
-    }
+    if (cached) return { page: cached, cacheHit: true };
 
     const start = pageIndex * CACHE_PAGE_SIZE;
     const length = Math.min(CACHE_PAGE_SIZE, this.size - start);
@@ -69,14 +47,20 @@ export class BlobByteSource implements RandomAccessByteSource {
     const page: CachedPage = {
       index: pageIndex,
       bytes: new Uint8Array(buffer),
-      lastUsed: 0,
     };
     this.physicalReadCountValue += 1;
     this.physicalBytesReadValue += length;
-    this.cacheBytesValue += length;
-    this.touch(page);
-    this.pages.set(pageIndex, page);
-    this.evictIfNeeded();
+
+    // Admission is deliberately stable once the budget is full. Sequential
+    // channel scans start at the beginning of the log; evicting cached pages
+    // while walking forward would otherwise destroy pages that later parts of
+    // the same scan are about to use. Keeping the first admitted 96 MiB avoids
+    // that scan-thrash while preserving a strict memory cap.
+    if (this.cacheBytesValue + length <= CACHE_LIMIT_BYTES) {
+      this.pages.set(pageIndex, page);
+      this.cacheBytesValue += length;
+    }
+
     return { page, cacheHit: false };
   }
 
