@@ -19,6 +19,15 @@ export interface LoadPerformanceRun {
   readonly indexCpuMs: number;
   readonly finalizeMs: number;
   readonly uiPopulateMs: number;
+  readonly uiWorkspaceMs?: number;
+  readonly uiChannelModelMs?: number;
+  readonly uiInspectorMs?: number;
+  readonly uiTimelineMs?: number;
+  readonly uiGraphSetupMs?: number;
+  readonly uiLayoutMs?: number;
+  readonly uiValueSearchMs?: number;
+  readonly uiViewportMs?: number;
+  readonly uiDiagnosticsMs?: number;
   readonly sourceReadCount: number;
   readonly sourceBytesRead: number;
   readonly physicalReadCount: number;
@@ -72,6 +81,22 @@ export interface ChannelBindingPerformanceRun {
   readonly ambiguousLogChannelCount: number;
 }
 
+export interface WorkspaceRestorePerformanceRun {
+  readonly totalMs: number;
+  readonly prepareMs: number;
+  readonly sharedBatchMs: number;
+  readonly activationMs: number;
+  readonly finalSyncMs: number;
+  readonly visiblePaneCount: number;
+  readonly assignedChannelCount: number;
+  readonly requestedChannelCount: number;
+  readonly uniqueRequestedChannelCount: number;
+  readonly cacheHit: boolean;
+  readonly physicalReadCount: number;
+  readonly physicalBytesRead: number;
+  readonly physicalReadMs: number;
+}
+
 export interface ChannelPerformanceRun {
   readonly channelName: string;
   readonly totalMs: number;
@@ -102,6 +127,7 @@ export interface PerformanceDiagnosticsController {
   recordIniLoad(run: IniLoadPerformanceRun): void;
   recordBinding(run: ChannelBindingPerformanceRun): void;
   recordValidation(run: ValidationPerformanceRun): void;
+  recordWorkspaceRestore(run: WorkspaceRestorePerformanceRun): void;
   recordChannel(run: ChannelPerformanceRun): void;
   clear(): void;
 }
@@ -121,6 +147,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const loadRuns: LoadPerformanceRun[] = [];
   const iniLoadRuns: IniLoadPerformanceRun[] = [];
   const bindingRuns: ChannelBindingPerformanceRun[] = [];
+  const workspaceRestoreRuns: WorkspaceRestorePerformanceRun[] = [];
   const channelRuns: ChannelPerformanceRun[] = [];
 
   const root = document.createElement('div');
@@ -157,6 +184,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           <div class="performance-binding"></div>
         </section>
         <section>
+          <strong>Latest workspace restore</strong>
+          <div class="performance-workspace-restore"></div>
+        </section>
+        <section>
           <strong>Recent channel selections</strong>
           <div class="performance-channels"></div>
         </section>
@@ -174,9 +205,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const loadHost = root.querySelector<HTMLElement>('.performance-load');
   const iniLoadHost = root.querySelector<HTMLElement>('.performance-ini-load');
   const bindingHost = root.querySelector<HTMLElement>('.performance-binding');
+  const workspaceRestoreHost = root.querySelector<HTMLElement>('.performance-workspace-restore');
   const channelsHost = root.querySelector<HTMLElement>('.performance-channels');
 
-  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !bindingHost || !channelsHost) {
+  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !bindingHost || !workspaceRestoreHost || !channelsHost) {
     throw new Error('Performance diagnostics structure is incomplete.');
   }
 
@@ -222,6 +254,17 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `indexCpu=${latestLoad.indexCpuMs.toFixed(2)} ms`,
         `finalize=${latestLoad.finalizeMs.toFixed(2)} ms`,
         `uiPopulate=${latestLoad.uiPopulateMs.toFixed(2)} ms`,
+        ...(latestLoad.uiWorkspaceMs !== undefined ? [
+          `uiWorkspace=${latestLoad.uiWorkspaceMs.toFixed(2)} ms`,
+          `uiChannelModel=${(latestLoad.uiChannelModelMs ?? 0).toFixed(2)} ms`,
+          `uiInspector=${(latestLoad.uiInspectorMs ?? 0).toFixed(2)} ms`,
+          `uiTimeline=${(latestLoad.uiTimelineMs ?? 0).toFixed(2)} ms`,
+          `uiGraphSetup=${(latestLoad.uiGraphSetupMs ?? 0).toFixed(2)} ms`,
+          `uiLayout=${(latestLoad.uiLayoutMs ?? 0).toFixed(2)} ms`,
+          `uiValueSearch=${(latestLoad.uiValueSearchMs ?? 0).toFixed(2)} ms`,
+          `uiViewport=${(latestLoad.uiViewportMs ?? 0).toFixed(2)} ms`,
+          `uiDiagnostics=${(latestLoad.uiDiagnosticsMs ?? 0).toFixed(2)} ms`,
+        ] : []),
         `sourceReads=${latestLoad.sourceReadCount}`,
         `sourceBytes=${latestLoad.sourceBytesRead}`,
         `physicalReads=${latestLoad.physicalReadCount}`,
@@ -290,6 +333,27 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       );
     }
 
+    const latestRestore = workspaceRestoreRuns[workspaceRestoreRuns.length - 1];
+    if (latestRestore) {
+      lines.push(
+        '',
+        '[Workspace restore]',
+        `total=${latestRestore.totalMs.toFixed(2)} ms`,
+        `prepare=${latestRestore.prepareMs.toFixed(2)} ms`,
+        `sharedBatch=${latestRestore.sharedBatchMs.toFixed(2)} ms`,
+        `activation=${latestRestore.activationMs.toFixed(2)} ms`,
+        `finalSync=${latestRestore.finalSyncMs.toFixed(2)} ms`,
+        `visiblePanes=${latestRestore.visiblePaneCount}`,
+        `assignedChannels=${latestRestore.assignedChannelCount}`,
+        `requestedChannels=${latestRestore.requestedChannelCount}`,
+        `uniqueRequestedChannels=${latestRestore.uniqueRequestedChannelCount}`,
+        `cacheHit=${latestRestore.cacheHit}`,
+        `physicalReads=${latestRestore.physicalReadCount}`,
+        `physicalBytes=${latestRestore.physicalBytesRead}`,
+        `physicalReadMs=${latestRestore.physicalReadMs.toFixed(2)} ms`,
+      );
+    }
+
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
       channelRuns.slice(-10).forEach((run, index) => {
@@ -305,6 +369,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     const hasData = loadRuns.length > 0
       || iniLoadRuns.length > 0
       || bindingRuns.length > 0
+      || workspaceRestoreRuns.length > 0
       || channelRuns.length > 0;
     empty.hidden = hasData;
     content.hidden = !hasData;
@@ -333,6 +398,17 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Index/timestamp CPU', ms(latestLoad.indexCpuMs)],
         ['Parser finalize', ms(latestLoad.finalizeMs)],
         ['UI population', ms(latestLoad.uiPopulateMs)],
+        ...(latestLoad.uiWorkspaceMs !== undefined ? [
+          ['UI · workspace prep', ms(latestLoad.uiWorkspaceMs)],
+          ['UI · channel model', ms(latestLoad.uiChannelModelMs ?? 0)],
+          ['UI · inspector', ms(latestLoad.uiInspectorMs ?? 0)],
+          ['UI · timeline', ms(latestLoad.uiTimelineMs ?? 0)],
+          ['UI · graph setup', ms(latestLoad.uiGraphSetupMs ?? 0)],
+          ['UI · layout', ms(latestLoad.uiLayoutMs ?? 0)],
+          ['UI · value search', ms(latestLoad.uiValueSearchMs ?? 0)],
+          ['UI · viewport', ms(latestLoad.uiViewportMs ?? 0)],
+          ['UI · diagnostics', ms(latestLoad.uiDiagnosticsMs ?? 0)],
+        ] as [string, string][] : []),
         ['Logical source reads', latestLoad.sourceReadCount.toLocaleString()],
         ['Logical source bytes', bytes(latestLoad.sourceBytesRead)],
         ['Physical Blob reads', latestLoad.physicalReadCount.toLocaleString()],
@@ -444,6 +520,38 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       bindingHost.textContent = 'No INI/MLG binding captured.';
     }
 
+    workspaceRestoreHost.replaceChildren();
+    const latestRestore = workspaceRestoreRuns[workspaceRestoreRuns.length - 1];
+    if (latestRestore) {
+      const rows: [string, string][] = [
+        ['Restore total', ms(latestRestore.totalMs)],
+        ['Prepare', ms(latestRestore.prepareMs)],
+        ['Shared cache/decode batch', ms(latestRestore.sharedBatchMs)],
+        ['Pane activation', ms(latestRestore.activationMs)],
+        ['Final sync', ms(latestRestore.finalSyncMs)],
+        ['Visible panes', latestRestore.visiblePaneCount.toLocaleString()],
+        ['Assigned channels', latestRestore.assignedChannelCount.toLocaleString()],
+        ['Requested with data', latestRestore.requestedChannelCount.toLocaleString()],
+        ['Unique requested', latestRestore.uniqueRequestedChannelCount.toLocaleString()],
+        ['Shared batch cache hit', String(latestRestore.cacheHit)],
+        ['Physical reads', latestRestore.physicalReadCount.toLocaleString()],
+        ['Physical bytes', bytes(latestRestore.physicalBytesRead)],
+        ['Physical read', ms(latestRestore.physicalReadMs)],
+      ];
+      for (const [label, value] of rows) {
+        const row = document.createElement('div');
+        row.className = 'performance-row';
+        const left = document.createElement('span');
+        left.textContent = label;
+        const right = document.createElement('strong');
+        right.textContent = value;
+        row.append(left, right);
+        workspaceRestoreHost.append(row);
+      }
+    } else {
+      workspaceRestoreHost.textContent = 'No workspace restore captured.';
+    }
+
     channelsHost.replaceChildren();
     if (channelRuns.length === 0) {
       channelsHost.textContent = 'No channel selections captured.';
@@ -476,6 +584,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     loadRuns.length = 0;
     iniLoadRuns.length = 0;
     bindingRuns.length = 0;
+    workspaceRestoreRuns.length = 0;
     channelRuns.length = 0;
     render();
   });
@@ -497,6 +606,11 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     recordBinding: (run) => {
       bindingRuns.push(run);
       if (bindingRuns.length > 20) bindingRuns.shift();
+      render();
+    },
+    recordWorkspaceRestore: (run) => {
+      workspaceRestoreRuns.push(run);
+      if (workspaceRestoreRuns.length > 20) workspaceRestoreRuns.shift();
       render();
     },
     recordValidation: (run) => {
@@ -525,6 +639,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       loadRuns.length = 0;
       iniLoadRuns.length = 0;
       bindingRuns.length = 0;
+      workspaceRestoreRuns.length = 0;
       channelRuns.length = 0;
       render();
     },
