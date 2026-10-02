@@ -1,0 +1,125 @@
+.performance-diagnostics-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.performance-diagnostics-button {
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  border-color: transparent;
+  background: transparent;
+  color: #7895a6;
+  font-size: 8px;
+}
+
+.performance-diagnostics-button:hover,
+.performance-diagnostics-button[aria-expanded="true"] {
+  border-color: #2a4152;
+  background: #0b1821;
+  color: #d9edf7;
+}
+
+.performance-diagnostics-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  z-index: 300;
+  width: min(680px, 88vw);
+  max-height: min(620px, 76vh);
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid #385064;
+  border-radius: 5px;
+  background: #071722;
+  box-shadow: 0 12px 34px rgba(0,0,0,.5);
+  color: #d9edf7;
+}
+
+.performance-diagnostics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.performance-diagnostics-head > div:first-child {
+  display: grid;
+  gap: 1px;
+}
+
+.performance-diagnostics-head small,
+.performance-empty,
+.performance-channel-card span {
+  color: #7895a6;
+  font-size: 9px;
+}
+
+.performance-diagnostics-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.performance-content {
+  display: grid;
+  grid-template-columns: minmax(260px, .85fr) minmax(300px, 1.15fr);
+  gap: 10px;
+}
+
+.performance-content section {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(65,109,132,.3);
+  border-radius: 4px;
+  background: rgba(5,18,27,.5);
+}
+
+.performance-content section > strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 10px;
+}
+
+.performance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 9px;
+}
+
+.performance-row span {
+  color: #7895a6;
+}
+
+.performance-row strong {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.performance-channel-card {
+  display: grid;
+  gap: 2px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(65,109,132,.22);
+}
+
+.performance-channel-card:last-child {
+  border-bottom: 0;
+}
+
+.performance-channel-card strong {
+  font-size: 9px;
+}
+
+@media (max-width: 760px) {
+  .performance-content {
+    grid-template-columns: 1fr;
+  }
+}
