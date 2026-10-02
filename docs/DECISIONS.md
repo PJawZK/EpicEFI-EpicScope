@@ -410,6 +410,15 @@ Rules:
 - MSQ does not replace MLG as the authority for recorded runtime samples;
 - compatibility between loaded INI, MSQ, and logs must be surfaced explicitly rather than guessed or silently coerced.
 
+
+## D-040 — Vitest is the active Web/core automated test gate
+
+**Status:** Approved
+
+The bootstrap-era deferral of a dedicated automated test framework has been resolved. Vitest 5.x is now part of the normal Web CI validation path for parser/core/persistence logic.
+
+New parser, channel-binding, persistence, and analysis tasks should extend the existing Vitest gate where automated regression coverage is appropriate. This does not require browser/DOM tests for pure core logic.
+
 ## Superseding decisions
 
 A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.
