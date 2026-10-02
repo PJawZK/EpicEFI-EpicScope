@@ -5,6 +5,7 @@ import {
 
 const CACHE_PAGE_SIZE = 8 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
+const PINNED_CACHE_LIMIT_BYTES = CACHE_LIMIT_BYTES - CACHE_PAGE_SIZE;
 
 interface CachedPage {
   readonly index: number;
@@ -35,6 +36,7 @@ export class BlobByteSource implements RandomAccessByteSource {
   private wholeBuffer: Uint8Array | undefined;
   private wholeBufferPromise: Promise<Uint8Array> | undefined;
   private readonly pages = new Map<number, CachedPage>();
+  private transientPage: CachedPage | undefined;
 
   public constructor(blob: Blob) {
     this.blob = blob;
@@ -61,6 +63,9 @@ export class BlobByteSource implements RandomAccessByteSource {
   private async page(pageIndex: number): Promise<{ page: CachedPage; cacheHit: boolean }> {
     const cached = this.pages.get(pageIndex);
     if (cached) return { page: cached, cacheHit: true };
+    if (this.transientPage?.index === pageIndex) {
+      return { page: this.transientPage, cacheHit: true };
+    }
 
     const start = pageIndex * CACHE_PAGE_SIZE;
     const length = Math.min(CACHE_PAGE_SIZE, this.size - start);
@@ -74,14 +79,18 @@ export class BlobByteSource implements RandomAccessByteSource {
     this.physicalReadCountValue += 1;
     this.physicalBytesReadValue += length;
 
-    // Admission is deliberately stable once the budget is full. Sequential
-    // channel scans start at the beginning of the log; evicting cached pages
-    // while walking forward would otherwise destroy pages that later parts of
-    // the same scan are about to use. Keeping the first admitted 96 MiB avoids
-    // that scan-thrash while preserving a strict memory cap.
-    if (this.cacheBytesValue + length <= CACHE_LIMIT_BYTES) {
+    // Large logs use a two-tier cache:
+    // - the first ~88 MiB admitted stays pinned between sequential passes;
+    // - one 8 MiB rolling page preserves the boundary page for the next batch.
+    //
+    // Record/channel batches are <=8 MiB but are not page-aligned, so they can
+    // straddle two pages. Without the rolling page, every page beyond the
+    // pinned prefix was commonly read twice by adjacent batches.
+    if (this.cacheBytesValue + length <= PINNED_CACHE_LIMIT_BYTES) {
       this.pages.set(pageIndex, page);
       this.cacheBytesValue += length;
+    } else {
+      this.transientPage = page;
     }
 
     return { page, cacheHit: false };
@@ -154,8 +163,12 @@ export class BlobByteSource implements RandomAccessByteSource {
       physicalReadCount: this.physicalReadCountValue,
       physicalBytesRead: this.physicalBytesReadValue,
       cacheHitBytes: this.cacheHitBytesValue,
-      cacheBytes: this.cacheBytesValue,
-      cachePageCount: this.wholeBuffer ? 1 : this.pages.size,
+      cacheBytes: this.wholeBuffer
+        ? this.cacheBytesValue
+        : this.cacheBytesValue + (this.transientPage?.bytes.byteLength ?? 0),
+      cachePageCount: this.wholeBuffer
+        ? 1
+        : this.pages.size + (this.transientPage ? 1 : 0),
       physicalReadMs: this.physicalReadMsValue,
     };
   }
