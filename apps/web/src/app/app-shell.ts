@@ -7,6 +7,10 @@ import {
 } from '../adapters/mlg-staged-import';
 import { createLoggerPage } from '../pages/logger-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
+import {
+  createWorkspaceHistory,
+  type WebWorkspaceState,
+} from '../state/workspace-state';
 
 function importErrorMessage(error: unknown): string {
   if (error instanceof MlgFormatError) {
@@ -59,8 +63,8 @@ export function mountAppShell(root: HTMLElement): void {
     <div class="header-actions">
       <button type="button" class="open-log">Open Log</button>
       <div class="logger-tools-slot"></div>
-      <button type="button" disabled title="Undo">↶</button>
-      <button type="button" disabled title="Redo">↷</button>
+      <button type="button" class="workspace-undo" disabled title="Undo workspace change">↶</button>
+      <button type="button" class="workspace-redo" disabled title="Redo workspace change">↷</button>
       <button type="button" disabled>Tools ▾</button>
       <div class="settings-wrap">
         <button type="button" class="settings-button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false">⚙</button>
@@ -163,10 +167,71 @@ export function mountAppShell(root: HTMLElement): void {
   const samplePoints = header.querySelector<HTMLInputElement>('.setting-sample-points');
   const overviewTraces = header.querySelector<HTMLInputElement>('.setting-overview-traces');
   const performanceVisible = header.querySelector<HTMLInputElement>('.setting-performance');
+  const undoButton = header.querySelector<HTMLButtonElement>('.workspace-undo');
+  const redoButton = header.querySelector<HTMLButtonElement>('.workspace-redo');
 
-  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible) {
+  if (!brandButton || !brandMenu || !openButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
+
+  let restoringWorkspaceHistory = false;
+
+  const captureWorkspaceState = (): WebWorkspaceState => ({
+    logger: loggerPage.getWorkspaceState(),
+    settings: {
+      playbackSpeed: Number(playbackSpeed.value),
+      highZoomSamplePointsVisible: samplePoints.checked,
+      timelineOverviewTracesVisible: overviewTraces.checked,
+      performanceDiagnosticsVisible: performanceVisible.checked,
+    },
+  });
+
+  const cloneWorkspaceState = (state: WebWorkspaceState): WebWorkspaceState =>
+    structuredClone(state);
+
+  const workspaceStatesEqual = (left: WebWorkspaceState, right: WebWorkspaceState): boolean =>
+    JSON.stringify(left) === JSON.stringify(right);
+
+  const workspaceHistory = createWorkspaceHistory<WebWorkspaceState>(
+    cloneWorkspaceState,
+    workspaceStatesEqual,
+    80,
+  );
+
+  const refreshUndoRedo = (): void => {
+    undoButton.disabled = !workspaceHistory.canUndo();
+    redoButton.disabled = !workspaceHistory.canRedo();
+  };
+
+  const pushWorkspaceHistory = (): void => {
+    if (restoringWorkspaceHistory) return;
+    workspaceHistory.push(captureWorkspaceState());
+    refreshUndoRedo();
+  };
+
+  const resetWorkspaceHistory = (): void => {
+    workspaceHistory.reset(captureWorkspaceState());
+    refreshUndoRedo();
+  };
+
+  const restoreWorkspaceSnapshot = async (state: WebWorkspaceState): Promise<void> => {
+    restoringWorkspaceHistory = true;
+    try {
+      playbackSpeed.value = String(state.settings.playbackSpeed);
+      samplePoints.checked = state.settings.highZoomSamplePointsVisible;
+      overviewTraces.checked = state.settings.timelineOverviewTracesVisible;
+      performanceVisible.checked = state.settings.performanceDiagnosticsVisible;
+
+      loggerPage.setPlaybackSpeed(state.settings.playbackSpeed);
+      loggerPage.setHighZoomSamplePointsVisible(state.settings.highZoomSamplePointsVisible);
+      loggerPage.setTimelineOverviewTracesVisible(state.settings.timelineOverviewTracesVisible);
+      performanceDiagnostics.element.hidden = !state.settings.performanceDiagnosticsVisible;
+      await loggerPage.restoreWorkspaceState(state.logger);
+    } finally {
+      restoringWorkspaceHistory = false;
+      refreshUndoRedo();
+    }
+  };
 
   const closeSettings = (): void => {
     settingsPopover.hidden = true;
@@ -183,20 +248,38 @@ export function mountAppShell(root: HTMLElement): void {
 
   playbackSpeed.addEventListener('change', () => {
     const speed = Number(playbackSpeed.value);
-    if (Number.isFinite(speed) && speed > 0) loggerPage.setPlaybackSpeed(speed);
+    if (Number.isFinite(speed) && speed > 0) {
+      loggerPage.setPlaybackSpeed(speed);
+      pushWorkspaceHistory();
+    }
   });
 
   samplePoints.addEventListener('change', () => {
     loggerPage.setHighZoomSamplePointsVisible(samplePoints.checked);
+    pushWorkspaceHistory();
   });
 
   overviewTraces.addEventListener('change', () => {
     loggerPage.setTimelineOverviewTracesVisible(overviewTraces.checked);
+    pushWorkspaceHistory();
   });
 
   performanceVisible.addEventListener('change', () => {
     performanceDiagnostics.element.hidden = !performanceVisible.checked;
+    pushWorkspaceHistory();
   });
+
+  undoButton.addEventListener('click', () => {
+    const state = workspaceHistory.undo();
+    if (state) void restoreWorkspaceSnapshot(state);
+  });
+
+  redoButton.addEventListener('click', () => {
+    const state = workspaceHistory.redo();
+    if (state) void restoreWorkspaceSnapshot(state);
+  });
+
+  loggerPage.onWorkspaceMutation(pushWorkspaceHistory);
 
   const closeBrandMenu = (): void => {
     brandMenu.hidden = true;
@@ -223,6 +306,7 @@ export function mountAppShell(root: HTMLElement): void {
   loggerPage.setHighZoomSamplePointsVisible(samplePoints.checked);
   loggerPage.setTimelineOverviewTracesVisible(overviewTraces.checked);
   performanceDiagnostics.element.hidden = !performanceVisible.checked;
+  resetWorkspaceHistory();
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
@@ -237,6 +321,7 @@ export function mountAppShell(root: HTMLElement): void {
       parsed.recordIndex.offsets.length,
       parsed.channelData,
     );
+    resetWorkspaceHistory();
     const uiPopulateMs = now() - uiStart;
 
     performanceDiagnostics.recordLoad({
@@ -326,6 +411,7 @@ export function mountAppShell(root: HTMLElement): void {
           indexed.recordIndex.offsets.length,
           indexed.channelData,
         );
+        resetWorkspaceHistory();
         const uiPopulateMs = now() - uiStart;
 
         performanceDiagnostics.recordLoad({
