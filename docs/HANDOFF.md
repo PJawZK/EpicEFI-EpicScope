@@ -10,8 +10,8 @@
 
 ## Active development branch / PR
 
-- branch: `phase1/viewport-navigation`
-- current task: real visible-time viewport, zoom/pan, overview focus window, and center-follow cursor behavior
+- branch: `main`
+- current task: hosted validation of multi-channel traces and Channel Value Search
 
 ## Current phase
 
@@ -28,7 +28,12 @@ Completed and validated:
 - bounded normalized numeric channel reads;
 - Vitest 5.x parser/core test gate;
 - real current EpicEFI/TunerStudio MLG v2 validation;
-- first single-channel graph and timeline-cursor integration;
+- single- and multi-channel graph/timeline integration with up to 8 simultaneous bounded Web traces;
+- stable full-log Y scales while horizontal zoom/pan changes only time;
+- coordinated timeline focus-window handles, cursor dragging and center-follow navigation;
+- compact graph legend using trace-color dot + channel name;
+- transient auto-dismiss trace-limit warning instead of a persistent graph overlay;
+- Channel Value Search with ranked Max / Min / Closest-to-value results, Previous/Next navigation, and one optional secondary-channel constraint;
 - diagnostics moved out of the graph viewport into a compact status/popover control;
 - EpicScope-logo module menu and EpicHub-style edge-panel controls.
 
@@ -83,15 +88,14 @@ Target behavior:
 
 The viewport math belongs to `core/timeline/`; Web components only emit interaction intent and render the resulting state.
 
-## Next after viewport hosted validation
+## Next after hosted multi-channel / value-search validation
 
-1. add multiple simultaneous channels/traces and active-channel state;
-2. connect cursor values for all displayed channels and sensor-list current values;
-3. improve the whole-log timeline overview with actual trace/event content;
-4. add session/workspace persistence for selected channels and viewport state;
-5. revisit graph rendering only with real zoom/multi-channel usage available;
-6. improve retry/recovery diagnostic classification without silently repairing source data;
-7. complete the first Web performance baseline.
+1. improve the whole-log timeline overview with actual trace/event content;
+2. expand Value Search if needed after real-log use (for example multiple constraints, ranges, event-aware ranking, or distinct-value handling);
+3. add session/workspace persistence for selected channels, viewport state and search state;
+4. revisit graph rendering only with real multi-channel/zoom workflows available;
+5. improve retry/recovery diagnostic classification without silently repairing source data;
+6. complete the first Web performance baseline.
 
 ## Key constraints still in force
 
