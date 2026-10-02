@@ -47,6 +47,9 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
     resolveValidated = resolve;
     rejectValidated = reject;
   });
+  // Indexed failures also reject validation; attach a handler immediately so
+  // fallback-to-main-thread does not create an unhandled rejection.
+  void validated.catch(() => undefined);
 
   const terminate = (): void => worker.terminate();
 
