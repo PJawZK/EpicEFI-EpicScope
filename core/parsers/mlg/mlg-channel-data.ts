@@ -73,7 +73,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     this.fields = fields;
     this.recordIndex = recordIndex;
     this.sampleCount = recordIndex.offsets.length;
-    this.preferredBatchWindowMs = source.size > 128 * 1024 * 1024 ? 180 : 0;
+    this.preferredBatchWindowMs = source.size > 128 * 1024 * 1024 ? 400 : 0;
     this.fieldOffsets = new Uint32Array(fields.length);
 
     let fieldOffset = 0;
@@ -225,6 +225,16 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       });
     }
     return ranges;
+  }
+
+  public hasCachedChannelRange(
+    channelId: string,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): boolean {
+    return startSampleIndex === 0
+      && sampleCount === this.sampleCount
+      && this.decodedCache.has(channelId);
   }
 
   public async readChannelsRange(
