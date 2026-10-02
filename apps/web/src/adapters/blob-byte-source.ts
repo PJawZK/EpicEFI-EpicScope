@@ -30,11 +30,28 @@ export class BlobByteSource implements RandomAccessByteSource {
   private physicalBytesReadValue = 0;
   private cacheHitBytesValue = 0;
   private cacheBytesValue = 0;
+  private wholeBuffer: Uint8Array | undefined;
+  private wholeBufferPromise: Promise<Uint8Array> | undefined;
   private readonly pages = new Map<number, CachedPage>();
 
   public constructor(blob: Blob) {
     this.blob = blob;
     this.size = blob.size;
+  }
+
+  private async loadWholeBuffer(): Promise<Uint8Array> {
+    if (this.wholeBuffer) return this.wholeBuffer;
+    if (!this.wholeBufferPromise) {
+      this.wholeBufferPromise = this.blob.arrayBuffer().then((buffer) => {
+        const bytes = new Uint8Array(buffer);
+        this.wholeBuffer = bytes;
+        this.cacheBytesValue = bytes.byteLength;
+        this.physicalReadCountValue += 1;
+        this.physicalBytesReadValue += bytes.byteLength;
+        return bytes;
+      });
+    }
+    return this.wholeBufferPromise;
   }
 
   private async page(pageIndex: number): Promise<{ page: CachedPage; cacheHit: boolean }> {
@@ -69,6 +86,17 @@ export class BlobByteSource implements RandomAccessByteSource {
     this.readCountValue += 1;
     this.bytesReadValue += length;
     if (length === 0) return new Uint8Array(0);
+
+    // Small/medium logs that already fit within the raw-cache budget use one
+    // contiguous backing buffer. This costs no more memory than caching all
+    // 8 MiB pages, but avoids repeated cross-page joins/copies during record
+    // scans and channel extraction.
+    if (this.size <= CACHE_LIMIT_BYTES) {
+      const wasCached = this.wholeBuffer !== undefined;
+      const bytes = await this.loadWholeBuffer();
+      if (wasCached) this.cacheHitBytesValue += length;
+      return bytes.subarray(offset, offset + length);
+    }
 
     const firstPageIndex = Math.floor(offset / CACHE_PAGE_SIZE);
     const lastPageIndex = Math.floor((offset + length - 1) / CACHE_PAGE_SIZE);
@@ -111,7 +139,7 @@ export class BlobByteSource implements RandomAccessByteSource {
       physicalBytesRead: this.physicalBytesReadValue,
       cacheHitBytes: this.cacheHitBytesValue,
       cacheBytes: this.cacheBytesValue,
-      cachePageCount: this.pages.size,
+      cachePageCount: this.wholeBuffer ? 1 : this.pages.size,
     };
   }
 }
