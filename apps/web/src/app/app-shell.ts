@@ -107,6 +107,13 @@ export function mountAppShell(root: HTMLElement): void {
               <small>Show the Perf control in the status bar.</small>
             </span>
           </label>
+          <div class="settings-shortcuts">
+            <div>
+              <strong>Keyboard shortcuts</strong>
+              <small>Open the Logger shortcut reference.</small>
+            </div>
+            <div class="settings-shortcuts-slot"></div>
+          </div>
           <div class="settings-persistence">
             <div>
               <strong>Saved workspace</strong>
@@ -133,13 +140,15 @@ export function mountAppShell(root: HTMLElement): void {
 
   const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');
   const loggerToolsSlot = header.querySelector<HTMLElement>('.logger-tools-slot');
+  const settingsShortcutsSlot = header.querySelector<HTMLElement>('.settings-shortcuts-slot');
   const diagnosticsSlot = footer.querySelector<HTMLElement>('.diagnostics-slot');
   const performanceDiagnosticsSlot = footer.querySelector<HTMLElement>('.performance-diagnostics-slot');
-  if (!graphSelectorSlot || !loggerToolsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot) {
+  if (!graphSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot) {
     throw new Error('EpicScope application shell control slots are incomplete.');
   }
   graphSelectorSlot.append(loggerPage.graphSelector);
   loggerToolsSlot.append(loggerPage.headerTools);
+  settingsShortcutsSlot.append(loggerPage.keyboardShortcutsControl);
   diagnosticsSlot.append(loggerPage.diagnosticsControl);
   performanceDiagnosticsSlot.append(performanceDiagnostics.element);
 
