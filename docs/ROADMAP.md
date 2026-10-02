@@ -175,7 +175,7 @@ Implemented:
 - explicit **Forget saved workspace** control;
 - no raw MLG bytes or decoded channel arrays persisted.
 
-Hosted validation confirmed exact-log restore across page reload/open and explicit Forget behavior. This v1 model remains valid current behavior until the approved INI-backed application-workspace migration lands.
+Hosted validation confirmed exact-log restore across page reload/open and explicit Forget behavior. This v1 model remains active for recording-specific navigation/annotation state alongside the newer reusable application-workspace artifact; it has not been silently reinterpreted or replaced.
 
 Exit criteria:
 
@@ -193,7 +193,7 @@ Implementation order begins with source context because persistent graph/channel
 
 Task groups:
 
-### TUNE-INI / CHANNEL-CATALOG
+### TUNE-INI / CHANNEL-CATALOG — Foundation implemented; hosted validation in progress
 
 - decode EpicEFI/TunerStudio INI source syntax under `core/parsers/ini/`;
 - normalize firmware identity and known runtime/output-channel metadata without requiring an MLG to be open;
@@ -204,13 +204,24 @@ Task groups:
 - never hide or discard a usable MLG-only channel simply because the loaded INI does not know it;
 - keep the MLG authoritative for recorded samples and sample validity.
 
-### WORKSPACE-PERSISTENCE v2
+### WORKSPACE-PERSISTENCE v2 — Implemented; hosted validation in progress
 
 - split persistent application workspace state from log-specific analysis state;
 - persist named workspaces, pane layouts/geometry, channel assignments, favorites and display preferences independently of a specific log identity;
 - allow EpicScope to reopen with its workspace/channel structure present before any log is loaded;
 - keep viewport/cursor/A-B/log annotations and other recording-specific state associated with the relevant log/session;
 - migrate/extend the current versioned Web persistence format without silently reinterpreting existing v1 artifacts.
+
+Current implemented v2 behavior:
+
+- browser-local normalized INI channel catalog is restored across app restarts;
+- INI-only channels can be assigned to panes before any log is loaded;
+- pane assignments are separate from currently decoded traces;
+- reusable named workspaces/layouts/channel assignments persist independently of log identity;
+- known/no-data assignments remain visible while waiting for a matching log;
+- opening a previously unseen log preserves reusable pane structure;
+- matching bound channels activate through the existing MLG data source/cache;
+- recording-specific cursor/viewport/A-B/markers/ranges continue to use exact-log persistence v1.
 
 ### CHANNELS
 
