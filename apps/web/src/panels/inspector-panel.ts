@@ -18,6 +18,7 @@ export function createInspectorPanel(): InspectorPanelController {
   const activeChannelIds = new Set<string>();
   let toggleListener: ((channelId: string) => void) | undefined;
   const currentValues = new Map<string, string>();
+  const renderedValueNodes = new Map<string, HTMLElement>();
 
   const panel = document.createElement('aside');
   panel.className = 'inspector-panel';
@@ -88,6 +89,7 @@ export function createInspectorPanel(): InspectorPanelController {
     });
 
     channelList.replaceChildren();
+    renderedValueNodes.clear();
     for (const channel of filtered) {
       const active = activeChannelIds.has(channel.id);
       const row = document.createElement('button');
@@ -120,6 +122,7 @@ export function createInspectorPanel(): InspectorPanelController {
 
       row.append(state, identity, value);
       row.addEventListener('click', () => toggleListener?.(channel.id));
+      renderedValueNodes.set(channel.id, value);
       channelList.append(row);
     }
 
@@ -189,11 +192,17 @@ export function createInspectorPanel(): InspectorPanelController {
   };
 
   const setChannelValues = (values: readonly { channelId: string; value: string }[]): void => {
-    for (const item of values) currentValues.set(item.channelId, item.value);
-    renderChannels();
+    if (values.length === 0) return;
+    for (const item of values) {
+      if (currentValues.get(item.channelId) === item.value) continue;
+      currentValues.set(item.channelId, item.value);
+      const valueNode = renderedValueNodes.get(item.channelId);
+      if (valueNode) valueNode.textContent = item.value;
+    }
   };
 
   const clearChannelValues = (): void => {
+    if (currentValues.size === 0) return;
     currentValues.clear();
     renderChannels();
   };

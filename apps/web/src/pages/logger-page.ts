@@ -322,13 +322,18 @@ export function createLoggerPage(): LoggerPageController {
   graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
   graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
-  valueSearch.onJump((timeMs) => {
+  const jumpToSearchTime = (timeMs: number): void => {
+    // Search navigation is a coordinated timeline jump: the graph viewport,
+    // overview focus window, overview cursor and lower progress marker must all
+    // refer to the same target time.
     if (viewport) {
       const centered = centerViewportOn(viewport, timeMs);
       if (!viewportEquals(viewport, centered)) syncViewport(centered);
     }
     setCursorWithoutFollow(timeMs);
-  });
+  };
+
+  valueSearch.onJump(jumpToSearchTime);
 
   timelineWrap.append(timeline.element, timelineToggle);
   page.append(workspaceBar, workspaceRow, timelineWrap);
@@ -342,7 +347,6 @@ export function createLoggerPage(): LoggerPageController {
     activeChannelIds.clear();
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
     inspector.setChannels(summary.channels, summary.source.displayName);
-    inspector.setActiveChannels([]);
     timeline.setTimeRange(summary.timeRange, recordCount);
     graph.setLog(summary.channels, channelData, summary.timeRange);
     valueSearch.setLog(summary.channels, channelData);
