@@ -759,9 +759,41 @@ export function createLoggerPage(): LoggerPageController {
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
 
+  const setActivePane = (paneId: string, emit = true): void => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    const paneIndex = workspace.panes.findIndex((pane) => pane.id === paneId);
+    if (paneIndex < 0 || paneIndex >= visibleCount || workspace.activePaneId === paneId) return;
+    workspace.activePaneId = paneId;
+    renderGraphLayout();
+    syncActivePaneContext();
+    if (emit) emitWorkspaceMutation();
+  };
+
+  paneRuntimes.forEach((runtime) => {
+    runtime.windowElement.addEventListener('pointerdown', () => setActivePane(runtime.id));
+  });
+
+  layoutSelect.addEventListener('change', () => {
+    const workspace = activeWorkspace();
+    if (!workspace) return;
+    workspace.layout = layoutSelect.value as GraphWorkspaceLayout;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    const activeIndex = workspace.panes.findIndex((pane) => pane.id === workspace.activePaneId);
+    if (activeIndex < 0 || activeIndex >= visibleCount) workspace.activePaneId = 'pane-1';
+    renderGraphLayout();
+    syncActivePaneContext();
+    emitWorkspaceMutation();
+  });
+
   const restoreWorkspace = async (workspaceId: string): Promise<void> => {
     const target = workspaces.find((workspace) => workspace.id === workspaceId);
-    if (!target || target.id === activeWorkspaceId) return;
+    if (!target || target.id === activeWorkspaceId) {
+      renderGraphLayout();
+      syncActivePaneContext();
+      return;
+    }
 
     saveCurrentWorkspace();
     const generation = ++workspaceGeneration;
@@ -769,92 +801,87 @@ export function createLoggerPage(): LoggerPageController {
     refreshWorkspaceSelector();
     refreshViewHistoryState();
 
-    graph.clearChannels();
-    activeChannelIds.clear();
+    paneRuntimes.forEach((runtime) => {
+      runtime.graph.clearChannels();
+      runtime.activeChannelIds.clear();
+    });
     inspector.setActiveChannels([]);
     inspector.setQueuedChannels([]);
     valueSearch.setActiveChannels([]);
     timeline.setOverviewContent([], logMarkers);
 
+    renderGraphLayout();
     if (target.viewport) syncViewport({ ...target.viewport });
     setCursorWithoutFollow(target.cursorTimeMs);
 
-    const requestedIds = target.channelIds.filter((channelId) => channelDefinitions.has(channelId));
-    if (requestedIds.length === 0) return;
+    const visibleCount = paneCountForLayout(target.layout);
+    const loads = paneRuntimes.slice(0, visibleCount).map(async (runtime, index) => {
+      const pane = target.panes[index];
+      if (!pane) return;
+      const requestedIds = pane.channelIds
+        .filter((channelId) => channelDefinitions.has(channelId))
+        .slice(0, MAX_ACTIVE_WEB_TRACES);
+      if (requestedIds.length === 0) return;
 
-    const activations = requestedIds.map((channelId) => graph.toggleChannel(channelId));
-    graph.loadPendingChannels();
-    const results = await Promise.all(activations);
-    if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+      const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+      runtime.graph.loadPendingChannels();
+      const results = await Promise.all(activations);
+      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
 
-    activeChannelIds.clear();
-    requestedIds.forEach((channelId, index) => {
-      if (results[index]) activeChannelIds.add(channelId);
+      runtime.activeChannelIds.clear();
+      requestedIds.forEach((channelId, resultIndex) => {
+        if (results[resultIndex]) runtime.activeChannelIds.add(channelId);
+      });
+      pane.channelIds = [...runtime.activeChannelIds];
     });
-    target.channelIds = [...activeChannelIds];
-    const activeIds = [...activeChannelIds];
-    inspector.setActiveChannels(activeIds);
-    valueSearch.setActiveChannels(
-      activeIds.flatMap((id) => {
-        const channel = channelDefinitions.get(id);
-        return channel ? [channel] : [];
-      }),
-    );
-    timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+
+    await Promise.all(loads);
+    if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+    syncActivePaneContext();
   };
 
   inspector.onChannelToggled((channelId) => {
-    void graph.toggleChannel(channelId).then((active) => {
-      if (active) activeChannelIds.add(channelId);
-      else activeChannelIds.delete(channelId);
-      const workspace = activeWorkspace();
-      if (workspace) workspace.channelIds = [...activeChannelIds];
-      const activeIds = [...activeChannelIds];
-      inspector.setActiveChannels(activeIds);
-      valueSearch.setActiveChannels(
-        activeIds.flatMap((id) => {
-          const channel = channelDefinitions.get(id);
-          return channel ? [channel] : [];
-        }),
-      );
-      timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+    const runtime = activePaneRuntime();
+    const pane = activePaneState();
+    if (!runtime || !pane) return;
+
+    void runtime.graph.toggleChannel(channelId).then((active) => {
+      if (active) runtime.activeChannelIds.add(channelId);
+      else runtime.activeChannelIds.delete(channelId);
+      pane.channelIds = [...runtime.activeChannelIds];
+      syncActivePaneContext();
       emitWorkspaceMutation();
     });
   });
 
   inspector.onLoadSelected(() => {
-    graph.loadPendingChannels();
+    activePaneRuntime()?.graph.loadPendingChannels();
   });
 
   inspector.onAddFiltered((channelIds) => {
-    const available = Math.max(0, MAX_ACTIVE_WEB_TRACES - activeChannelIds.size);
+    const runtime = activePaneRuntime();
+    const pane = activePaneState();
+    if (!runtime || !pane) return;
+
+    const available = Math.max(0, MAX_ACTIVE_WEB_TRACES - runtime.activeChannelIds.size);
     const requestedIds = channelIds.slice(0, available);
     if (requestedIds.length === 0) return;
 
-    const activations = requestedIds.map((channelId) => graph.toggleChannel(channelId));
-    graph.loadPendingChannels();
+    const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+    runtime.graph.loadPendingChannels();
     void Promise.all(activations).then((results) => {
       requestedIds.forEach((channelId, index) => {
-        if (results[index]) activeChannelIds.add(channelId);
+        if (results[index]) runtime.activeChannelIds.add(channelId);
       });
-      const workspace = activeWorkspace();
-      if (workspace) workspace.channelIds = [...activeChannelIds];
-      const activeIds = [...activeChannelIds];
-      inspector.setActiveChannels(activeIds);
-      valueSearch.setActiveChannels(
-        activeIds.flatMap((id) => {
-          const channel = channelDefinitions.get(id);
-          return channel ? [channel] : [];
-        }),
-      );
-      timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+      pane.channelIds = [...runtime.activeChannelIds];
+      syncActivePaneContext();
       emitWorkspaceMutation();
     });
   });
 
   inspector.onChannelDetailsRequested((channelId) => {
     const channel = channelDefinitions.get(channelId);
-    const statistics = graph.getChannelStatistics(channelId);
+    const statistics = activePaneRuntime()?.graph.getChannelStatistics(channelId);
     if (!channel || !statistics) {
       inspector.setChannelStatistics(undefined);
       return;
@@ -870,30 +897,38 @@ export function createLoggerPage(): LoggerPageController {
     });
   });
 
-  graph.onPendingChannelsChanged((channelIds) => {
-    inspector.setQueuedChannels(channelIds);
-  });
-
-  graph.onChannelPerformance((performance) => {
-    const channel = channelDefinitions.get(performance.channelId);
-    channelPerformanceListener?.({
-      ...performance,
-      channelName: channel?.sourceName ?? performance.channelId,
-    });
-  });
-
-  graph.onCursorValues((values) => {
-    const displayValues = values.flatMap((item) => {
-      const channel = channelDefinitions.get(item.channelId);
-      if (!channel) return [];
-      if (item.value === undefined || !Number.isFinite(item.value)) {
-        return [{ channelId: item.channelId, value: '—' }];
+  paneRuntimes.forEach((runtime) => {
+    runtime.graph.onPendingChannelsChanged((channelIds) => {
+      if (runtime.id === activeWorkspace()?.activePaneId) {
+        inspector.setQueuedChannels(channelIds);
       }
-      const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
-      const unit = channel.unit ? ` ${channel.unit}` : '';
-      return [{ channelId: item.channelId, value: `${item.value.toFixed(precision)}${unit}` }];
     });
-    inspector.setChannelValues(displayValues);
+
+    runtime.graph.onChannelPerformance((performance) => {
+      const channel = channelDefinitions.get(performance.channelId);
+      channelPerformanceListener?.({
+        ...performance,
+        channelName: channel?.sourceName ?? performance.channelId,
+      });
+    });
+
+    runtime.graph.onCursorValues((values) => {
+      if (runtime.id !== activeWorkspace()?.activePaneId) return;
+      const displayValues = values.flatMap((item) => {
+        const channel = channelDefinitions.get(item.channelId);
+        if (!channel) return [];
+        if (item.value === undefined || !Number.isFinite(item.value)) {
+          return [{ channelId: item.channelId, value: '—' }];
+        }
+        const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
+        const unit = channel.unit ? ` ${channel.unit}` : '';
+        return [{ channelId: item.channelId, value: `${item.value.toFixed(precision)}${unit}` }];
+      });
+      inspector.setChannelValues(displayValues);
+    });
+
+    runtime.graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
+    runtime.graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
   });
 
   timeline.onCursorChange((timeMs) => {
@@ -902,16 +937,14 @@ export function createLoggerPage(): LoggerPageController {
       if (!viewportEquals(viewport, nextViewport)) syncViewport(nextViewport);
     }
     previousCursorTimeMs = timeMs;
-    graph.setCursorTime(timeMs);
+    paneRuntimes.forEach((runtime) => runtime.graph.setCursorTime(timeMs));
     const workspace = activeWorkspace();
     if (workspace) workspace.cursorTimeMs = timeMs;
   });
   timeline.onViewportIntent(applyViewportIntent);
   timeline.onAnnotationChange(({ aTimeMs, bTimeMs }) => {
-    graph.setAnalysisRange(aTimeMs, bTimeMs);
+    paneRuntimes.forEach((runtime) => runtime.graph.setAnalysisRange(aTimeMs, bTimeMs));
   });
-  graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
-  graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
 
   valueSearch.onJump((timeMs) => {
     if (viewport) {
