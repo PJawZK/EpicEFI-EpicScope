@@ -50,7 +50,7 @@ export interface GraphWorkspaceSnapshot {
   readonly panes?: readonly GraphPaneSnapshot[];
   readonly paneGeometry?: Readonly<Record<string, GraphPaneGeometry>>;
   readonly minimizedPaneIds?: readonly string[];
-  readonly maximizedPaneId?: string;
+  readonly maximizedPaneId?: string | undefined;
   readonly freeformArrange?: 'mosaic' | 'columns' | 'rows' | 'cascade' | 'custom';
   readonly viewport: TimelineViewport | undefined;
   readonly cursorTimeMs: number;
