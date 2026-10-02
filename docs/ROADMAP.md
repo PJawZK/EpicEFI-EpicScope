@@ -247,6 +247,9 @@ Task groups:
 
 Exit criteria:
 
+- EpicScope can start with named workspace/pane/channel structure present before any log is loaded;
+- a supported INI can establish stable logical channels and bind them safely to supported MLG data when available;
+- known-but-unlogged and log-only channel states remain explicit;
 - generic tools can reproduce and improve common MLV-style analysis workflows;
 - analyzers can depend on stable generic services rather than implementing their own copies.
 
@@ -272,8 +275,7 @@ Task groups:
 
 Exit criteria:
 
-- supported INI definitions can keep channel/workspace structure available without a log;
-- supported MSQ tune values can enrich the same source context;
+- supported MSQ tune values can enrich the existing INI/log source context;
 - supported logs can be correlated with supported tune tables without UI-specific or source-format-specific interpretation leaking into analyzers.
 
 ## Phase 4 — Specialized analyzers
@@ -338,7 +340,7 @@ Each analyzer begins as **Experimental**, advances to **Beta**, then **Stable** 
 ## Phase 5 — Sessions, sharing, and reporting
 
 - establish `core/session/` orchestration as required;
-- establish `core/persistence/` schema/version/migration logic as required;
+- extend the already-established `core/persistence/` version/migration infrastructure from workspace artifacts into full session artifacts;
 - persist local session/workspace state with domain session and UI workspace state kept conceptually separate;
 - annotations/bookmarks;
 - analysis snapshots/results;
