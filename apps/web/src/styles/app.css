@@ -361,6 +361,77 @@ button:disabled { opacity: .48; cursor: default; }
 .sort-row { gap: 4px; color: var(--muted); font-size: 9px; }
 .sort-row button { height: 24px; padding: 0 7px; font-size: 9px; }
 .sort-row button[aria-pressed="true"] { border-color: #3479ae; background: #102437; color: #e9f5ff; }
+.channel-statistics {
+  max-height: 238px;
+  overflow: auto;
+  border-bottom: 1px solid var(--line-soft);
+  background: #0c1720;
+}
+.channel-statistics > header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #0e1923;
+}
+.channel-statistics > header strong {
+  display: block;
+  max-width: 185px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--headline);
+  font-size: 10px;
+}
+.channel-statistics-close {
+  width: 25px;
+  min-width: 25px;
+  height: 25px;
+  padding: 0;
+}
+.channel-statistics-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  padding: 6px;
+}
+.channel-statistics-body > div {
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid rgba(65, 109, 132, .24);
+  background: #0a141c;
+}
+.channel-statistics-body span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.channel-statistics-body strong {
+  display: block;
+  overflow: hidden;
+  color: #dbe8ef;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-statistics-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 7px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
+}
 .panel-footer { min-width: 0; gap: 6px; justify-content: space-between; padding: 0 7px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 9px; }
 .panel-footer-actions { gap: 4px; }
 .panel-footer button { height: 23px; padding: 0 6px; font-size: 8px; }

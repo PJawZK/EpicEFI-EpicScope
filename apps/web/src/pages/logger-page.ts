@@ -25,6 +25,8 @@ import { createTimelineShell, type TimelineViewportIntent } from '../components/
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 
+const MAX_ACTIVE_WEB_TRACES = 8;
+
 export interface LoggerChannelPerformance extends GraphChannelPerformance {
   readonly channelName: string;
 }
@@ -603,6 +605,49 @@ export function createLoggerPage(): LoggerPageController {
 
   inspector.onLoadSelected(() => {
     graph.loadPendingChannels();
+  });
+
+  inspector.onAddFiltered((channelIds) => {
+    const available = Math.max(0, MAX_ACTIVE_WEB_TRACES - activeChannelIds.size);
+    const requestedIds = channelIds.slice(0, available);
+    if (requestedIds.length === 0) return;
+
+    const activations = requestedIds.map((channelId) => graph.toggleChannel(channelId));
+    graph.loadPendingChannels();
+    void Promise.all(activations).then((results) => {
+      requestedIds.forEach((channelId, index) => {
+        if (results[index]) activeChannelIds.add(channelId);
+      });
+      const workspace = activeWorkspace();
+      if (workspace) workspace.channelIds = [...activeChannelIds];
+      const activeIds = [...activeChannelIds];
+      inspector.setActiveChannels(activeIds);
+      valueSearch.setActiveChannels(
+        activeIds.flatMap((id) => {
+          const channel = channelDefinitions.get(id);
+          return channel ? [channel] : [];
+        }),
+      );
+      timeline.setOverviewContent(graph.getOverviewTraces(), logMarkers);
+    });
+  });
+
+  inspector.onChannelDetailsRequested((channelId) => {
+    const channel = channelDefinitions.get(channelId);
+    const statistics = graph.getChannelStatistics(channelId);
+    if (!channel || !statistics) {
+      inspector.setChannelStatistics(undefined);
+      return;
+    }
+    inspector.setChannelStatistics({
+      channelId,
+      title: channel.displayName || channel.sourceName,
+      unit: channel.unit,
+      category: channel.category,
+      current: statistics.current,
+      full: statistics.full,
+      visible: statistics.visible,
+    });
   });
 
   graph.onPendingChannelsChanged((channelIds) => {

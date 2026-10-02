@@ -128,8 +128,8 @@
 .channel-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px;
   align-items: center;
   border: 0;
   border-bottom: 1px solid rgba(65, 109, 132, 0.25);
@@ -137,8 +137,38 @@
   background: transparent;
   color: inherit;
   text-align: left;
-  cursor: pointer;
 }
+.channel-row-toggle {
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.channel-row-actions {
+  display: flex;
+  gap: 1px;
+  padding-right: 2px;
+}
+.channel-row-actions button {
+  width: 22px;
+  min-width: 22px;
+  height: 24px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #6f8795;
+  font-size: 11px;
+}
+.channel-row-actions button:hover { color: #dceaf2; background: rgba(72, 128, 158, .15); }
+.channel-favorite[aria-pressed="true"] { color: #f0b44d; }
 
 .channel-row:hover,
 .channel-row--active {
@@ -302,7 +332,7 @@
   left: 0;
   height: 36px;
   min-height: 36px;
-  padding: 0 6px;
+  padding: 0 2px 0 6px;
   box-sizing: border-box;
 }
 
