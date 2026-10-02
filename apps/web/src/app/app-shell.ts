@@ -165,6 +165,7 @@ export function mountAppShell(root: HTMLElement): void {
           recordCpuMs: parsed.performance.recordCpuMs,
           checksumBytes: parsed.performance.checksumBytes,
           checksumCpuMs: parsed.performance.checksumCpuMs,
+          checksumBenchmarkMs: parsed.performance.checksumBenchmarkMs,
           diagnosticCpuMs: parsed.performance.diagnosticCpuMs,
           indexCpuMs: parsed.performance.indexCpuMs,
           finalizeMs: parsed.performance.finalizeMs,

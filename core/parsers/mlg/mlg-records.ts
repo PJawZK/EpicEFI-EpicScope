@@ -24,6 +24,7 @@ export interface MlgRecordScanPerformance {
   readonly sourceReadMs: number;
   readonly checksumBytes: number;
   readonly checksumCpuMs: number;
+  readonly checksumBenchmarkMs: number;
   readonly diagnosticCpuMs: number;
   readonly indexCpuMs: number;
 }
@@ -158,10 +159,11 @@ export async function scanMlgRecords(
   let standardRecordIndex = 0;
   let sourceReadMs = 0;
   let checksumBytes = 0;
-  let checksumSampleBytes = 0;
-  let checksumSampleMs = 0;
   let diagnosticCpuMs = 0;
-  const CHECKSUM_SAMPLE_INTERVAL = 256;
+  let checksumBenchmarkChunk: Uint8Array | undefined;
+  const checksumBenchmarkStarts: number[] = [];
+  const CHECKSUM_BENCHMARK_RECORDS = 128;
+  const CHECKSUM_BENCHMARK_TARGET_BYTES = 2 * 1024 * 1024;
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const scanCpuStart = now();
   const recordLength = header.recordLength;
@@ -177,6 +179,7 @@ export async function scanMlgRecords(
     const readStart = now();
     const chunk = await readChunk(source, chunkStart, BLOCK_HEADER_LENGTH);
     sourceReadMs += now() - readStart;
+    checksumBenchmarkChunk ??= chunk;
     let cursor = 0;
 
     while (cursor < chunk.byteLength) {
@@ -244,15 +247,13 @@ export async function scanMlgRecords(
       if (blockType === STANDARD_BLOCK_TYPE) {
         const recordStart = cursor + BLOCK_HEADER_LENGTH;
         checksumBytes += recordLength;
-        let expectedCrc: number;
-        if (standardRecordIndex % CHECKSUM_SAMPLE_INTERVAL === 0) {
-          const checksumStart = now();
-          expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
-          checksumSampleMs += now() - checksumStart;
-          checksumSampleBytes += recordLength;
-        } else {
-          expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
+        if (
+          chunk === checksumBenchmarkChunk
+          && checksumBenchmarkStarts.length < CHECKSUM_BENCHMARK_RECORDS
+        ) {
+          checksumBenchmarkStarts.push(recordStart);
         }
+        const expectedCrc = calculateRecordCrcRange(chunk, recordStart, recordLength);
         const actualCrc = chunk[cursor + standardBlockLength - 1] ?? 0;
         const isCrcValid = expectedCrc === actualCrc;
 
@@ -306,8 +307,39 @@ export async function scanMlgRecords(
   }
 
   const scanCpuElapsedMs = Math.max(0, now() - scanCpuStart - sourceReadMs);
-  const checksumCpuMs = checksumSampleBytes > 0
-    ? checksumSampleMs * (checksumBytes / checksumSampleBytes)
+
+  // Benchmark checksum throughput in one timing window after the real scan.
+  // The checksum function is already JIT-hot at this point, and batching a
+  // few MiB avoids extrapolating sub-millisecond single-record samples.
+  let checksumBenchmarkMs = 0;
+  let checksumBenchmarkBytes = 0;
+  let checksumBenchmarkSink = 0;
+  if (checksumBenchmarkChunk && checksumBenchmarkStarts.length > 0) {
+    const repeats = Math.max(
+      1,
+      Math.ceil(
+        CHECKSUM_BENCHMARK_TARGET_BYTES
+        / (checksumBenchmarkStarts.length * recordLength),
+      ),
+    );
+    const checksumBenchmarkStart = now();
+    for (let repeat = 0; repeat < repeats; repeat += 1) {
+      for (const recordStart of checksumBenchmarkStarts) {
+        checksumBenchmarkSink ^= calculateRecordCrcRange(
+          checksumBenchmarkChunk,
+          recordStart,
+          recordLength,
+        );
+        checksumBenchmarkBytes += recordLength;
+      }
+    }
+    checksumBenchmarkMs = now() - checksumBenchmarkStart;
+  }
+  // Keep the benchmark result observable so engines cannot discard the work.
+  if (checksumBenchmarkSink === -1) diagnostics.length += 0;
+
+  const checksumCpuMs = checksumBenchmarkBytes > 0
+    ? checksumBenchmarkMs * (checksumBytes / checksumBenchmarkBytes)
     : 0;
   const indexCpuMs = Math.max(0, scanCpuElapsedMs - checksumCpuMs - diagnosticCpuMs);
 
@@ -324,6 +356,7 @@ export async function scanMlgRecords(
       sourceReadMs,
       checksumBytes,
       checksumCpuMs,
+      checksumBenchmarkMs,
       diagnosticCpuMs,
       indexCpuMs,
     },

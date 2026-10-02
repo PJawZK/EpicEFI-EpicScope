@@ -19,6 +19,7 @@ export interface MlgParsePerformance {
   readonly recordCpuMs: number;
   readonly checksumBytes: number;
   readonly checksumCpuMs: number;
+  readonly checksumBenchmarkMs: number;
   readonly diagnosticCpuMs: number;
   readonly indexCpuMs: number;
   readonly finalizeMs: number;
@@ -95,6 +96,7 @@ export async function parseMlg(
       recordCpuMs: Math.max(0, recordScanMs - scanResult.performance.sourceReadMs),
       checksumBytes: scanResult.performance.checksumBytes,
       checksumCpuMs: scanResult.performance.checksumCpuMs,
+      checksumBenchmarkMs: scanResult.performance.checksumBenchmarkMs,
       diagnosticCpuMs: scanResult.performance.diagnosticCpuMs,
       indexCpuMs: scanResult.performance.indexCpuMs,
       finalizeMs,
