@@ -90,7 +90,7 @@ export function createInspectorPanel(): InspectorPanelController {
       return matchesText && matchesGroup && matchesVisibility;
     });
 
-    channelList.replaceChildren();
+    const fragment = document.createDocumentFragment();
     renderedValueNodes.clear();
     renderedRows.clear();
     renderedStateNodes.clear();
@@ -125,12 +125,12 @@ export function createInspectorPanel(): InspectorPanelController {
       value.textContent = currentValues.get(channel.id) ?? channel.unit ?? '—';
 
       row.append(state, identity, value);
-      row.addEventListener('click', () => toggleListener?.(channel.id));
       renderedValueNodes.set(channel.id, value);
       renderedRows.set(channel.id, row);
       renderedStateNodes.set(channel.id, state);
-      channelList.append(row);
+      fragment.append(row);
     }
+    channelList.replaceChildren(fragment);
 
     const hasChannels = channels.length > 0;
     channelList.hidden = !hasChannels;
@@ -141,6 +141,14 @@ export function createInspectorPanel(): InspectorPanelController {
       : `${channels.length} channels · ${activeChannelIds.size} active`;
     clearGraphButton.disabled = activeChannelIds.size === 0;
   };
+
+  channelList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const row = target.closest<HTMLButtonElement>('.channel-row');
+    const channelId = row?.dataset.channelId;
+    if (channelId) toggleListener?.(channelId);
+  });
 
   search.addEventListener('input', renderChannels);
   groupSelect.addEventListener('change', renderChannels);
