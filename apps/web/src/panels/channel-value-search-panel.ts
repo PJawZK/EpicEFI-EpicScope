@@ -212,8 +212,8 @@ export function createChannelValueSearchPanel(): ChannelValueSearchPanelControll
     void searchChannelValues(source, {
       channelId: channelSelect.value,
       mode,
-      targetValue: target,
-      constraint,
+      ...(target === undefined ? {} : { targetValue: target }),
+      ...(constraint === undefined ? {} : { constraint }),
       resultLimit: 100,
     }).then((nextResults) => {
       results = nextResults;
