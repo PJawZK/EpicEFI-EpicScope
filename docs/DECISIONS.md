@@ -394,7 +394,7 @@ Reusable application workspace state may persist:
 
 Recording-specific state remains associated with the relevant log/session, including viewport/cursor position, A/B state, source-specific markers/ranges, and similar navigation context.
 
-The current `epicscope.web-workspace` v1 exact-log persistence from D-036 remains valid implemented behavior until a versioned migration/replacement lands. Future persistence must not silently reinterpret incompatible v1 artifacts.
+The `epicscope.web-workspace` v1 exact-log artifact remains valid for recording-specific state. Reusable application structure is now implemented separately as `epicscope.web-application-workspace` v1, and normalized INI channel metadata is stored separately as `epicscope.web-ini-channel-catalog` v1. The three artifacts have distinct responsibilities; incompatible v1 exact-log artifacts are not silently reinterpreted.
 
 ## D-039 — MSQ is optional tune-value enrichment, not the runtime-channel catalog
 
