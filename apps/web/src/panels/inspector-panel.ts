@@ -1,4 +1,5 @@
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
+import type { InspectorWorkspaceState } from '../state/workspace-state';
 
 const VIRTUAL_ROW_HEIGHT = 36;
 const VIRTUAL_OVERSCAN_ROWS = 6;
@@ -40,6 +41,9 @@ export interface InspectorPanelController {
   setChannelValues(values: readonly { channelId: string; value: string }[]): void;
   clearChannelValues(): void;
   setChannelStatistics(statistics: InspectorChannelStatistics | undefined): void;
+  onWorkspaceMutation(listener: () => void): void;
+  getWorkspaceState(): InspectorWorkspaceState;
+  restoreWorkspaceState(state: InspectorWorkspaceState): void;
 }
 
 export function createInspectorPanel(): InspectorPanelController {
@@ -55,6 +59,8 @@ export function createInspectorPanel(): InspectorPanelController {
   let addFilteredListener: ((channelIds: readonly string[]) => void) | undefined;
   let detailsListener: ((channelId: string) => void) | undefined;
   let selectedDetailsChannelId: string | undefined;
+  let workspaceMutationListener: (() => void) | undefined;
+  let restoringWorkspace = false;
   let sortKey: 'name' | 'group' | 'value' = 'name';
   let sortAscending = true;
   const currentValues = new Map<string, string>();
@@ -339,6 +345,7 @@ export function createInspectorPanel(): InspectorPanelController {
       else favoriteChannelIds.add(favoriteId);
       if (visibilitySelect.value === 'favorites') applyFilters(false);
       else renderVisibleRows();
+      if (!restoringWorkspace) workspaceMutationListener?.();
       return;
     }
 
@@ -358,9 +365,18 @@ export function createInspectorPanel(): InspectorPanelController {
   const resizeObserver = new ResizeObserver(scheduleVisibleRender);
   resizeObserver.observe(channelList);
 
-  search.addEventListener('input', () => applyFilters());
-  groupSelect.addEventListener('change', () => applyFilters());
-  visibilitySelect.addEventListener('change', () => applyFilters());
+  search.addEventListener('input', () => {
+    applyFilters();
+    if (!restoringWorkspace) workspaceMutationListener?.();
+  });
+  groupSelect.addEventListener('change', () => {
+    applyFilters();
+    if (!restoringWorkspace) workspaceMutationListener?.();
+  });
+  visibilitySelect.addEventListener('change', () => {
+    applyFilters();
+    if (!restoringWorkspace) workspaceMutationListener?.();
+  });
 
   for (const button of sortButtons) {
     button.addEventListener('click', () => {
@@ -372,13 +388,16 @@ export function createInspectorPanel(): InspectorPanelController {
         sortAscending = true;
       }
       applyFilters();
+      if (!restoringWorkspace) workspaceMutationListener?.();
     });
   }
 
   const setVisible = (next: boolean): void => {
+    if (visible === next) return;
     visible = next;
     panel.hidden = !visible;
     if (visible) scheduleVisibleRender();
+    if (!restoringWorkspace) workspaceMutationListener?.();
   };
 
   const setChannels = (nextChannels: readonly ChannelDefinition[], sourceName: string): void => {
@@ -618,6 +637,41 @@ export function createInspectorPanel(): InspectorPanelController {
 
   applyFilters();
 
+  const getWorkspaceState = (): InspectorWorkspaceState => ({
+    visible,
+    favoriteChannelIds: [...favoriteChannelIds],
+    recentChannelIds: [...recentChannelIds],
+    searchQuery: search.value,
+    selectedGroup: groupSelect.value,
+    visibilityFilter: visibilitySelect.value,
+    sortKey,
+    sortAscending,
+  });
+
+  const restoreWorkspaceState = (state: InspectorWorkspaceState): void => {
+    restoringWorkspace = true;
+    try {
+      visible = state.visible;
+      panel.hidden = !visible;
+      favoriteChannelIds.clear();
+      for (const channelId of state.favoriteChannelIds) favoriteChannelIds.add(channelId);
+      recentChannelIds.splice(0, recentChannelIds.length, ...state.recentChannelIds);
+      search.value = state.searchQuery;
+      groupSelect.value = [...groupSelect.options].some((option) => option.value === state.selectedGroup)
+        ? state.selectedGroup
+        : '';
+      visibilitySelect.value = [...visibilitySelect.options].some((option) => option.value === state.visibilityFilter)
+        ? state.visibilityFilter
+        : 'all';
+      sortKey = state.sortKey;
+      sortAscending = state.sortAscending;
+      applyFilters(false);
+      if (visible) scheduleVisibleRender();
+    } finally {
+      restoringWorkspace = false;
+    }
+  };
+
   return {
     element: panel,
     setVisible,
@@ -633,5 +687,8 @@ export function createInspectorPanel(): InspectorPanelController {
     setChannelValues,
     clearChannelValues,
     setChannelStatistics,
+    onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
+    getWorkspaceState,
+    restoreWorkspaceState,
   };
 }
