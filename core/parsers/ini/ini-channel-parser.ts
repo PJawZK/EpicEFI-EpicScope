@@ -104,27 +104,32 @@ function parseOutputDefinition(
   const fields = splitCommaFields(trimmed);
   const kind = fields[0]?.toLowerCase();
   if (kind === 'scalar') {
+    const byteOffset = finiteNumber(fields[2]);
+    const unit = unquote(fields[3]);
+    const scale = finiteNumber(fields[4]);
+    const translate = finiteNumber(fields[5]);
     return {
       key,
       kind: 'scalar',
       lineNumber,
       rawDefinition: trimmed,
       ...(fields[1] ? { dataType: fields[1] } : {}),
-      ...(finiteNumber(fields[2]) !== undefined ? { byteOffset: finiteNumber(fields[2]) } : {}),
-      ...(unquote(fields[3]) !== undefined ? { unit: unquote(fields[3]) } : {}),
-      ...(finiteNumber(fields[4]) !== undefined ? { scale: finiteNumber(fields[4]) } : {}),
-      ...(finiteNumber(fields[5]) !== undefined ? { translate: finiteNumber(fields[5]) } : {}),
+      ...(byteOffset !== undefined ? { byteOffset } : {}),
+      ...(unit !== undefined ? { unit } : {}),
+      ...(scale !== undefined ? { scale } : {}),
+      ...(translate !== undefined ? { translate } : {}),
     };
   }
 
   if (kind === 'bits') {
+    const byteOffset = finiteNumber(fields[2]);
     return {
       key,
       kind: 'bits',
       lineNumber,
       rawDefinition: trimmed,
       ...(fields[1] ? { dataType: fields[1] } : {}),
-      ...(finiteNumber(fields[2]) !== undefined ? { byteOffset: finiteNumber(fields[2]) } : {}),
+      ...(byteOffset !== undefined ? { byteOffset } : {}),
       ...(fields[3] ? { bitRange: fields[3] } : {}),
     };
   }
