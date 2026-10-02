@@ -54,4 +54,10 @@ describe('timeline viewport state', () => {
     expect(followCursor(viewport, 950, 840)).toEqual(viewport);
     expect(followCursor(viewport, 840, 740)).toMatchObject({ visibleStartMs: 540, visibleEndMs: 940 });
   });
+
+  it('enforces the 500 ms default minimum zoom span', () => {
+    const full = createFullViewport(0, 5000);
+    const zoomed = zoomViewport(full, 0.001, 2500);
+    expect(viewportSpan(zoomed)).toBe(500);
+  });
 });
