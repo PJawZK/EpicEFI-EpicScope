@@ -129,7 +129,9 @@ export function createGraphViewport(): GraphViewportController {
   let cursorValuesListener: ((values: readonly GraphCursorValue[]) => void) | undefined;
   let channelPerformanceListener: ((performance: GraphChannelPerformance) => void) | undefined;
   const pendingTraces = new Map<string, PendingTrace>();
-  let pendingBatchTimer: number | undefined;
+  const loadingTraceIds = new Set<string>();
+  let decodeInFlight = false;
+  let decodeGeneration = 0;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -359,28 +361,30 @@ export function createGraphViewport(): GraphViewportController {
   });
 
   const cancelPending = (): void => {
-    if (pendingBatchTimer !== undefined) {
-      window.clearTimeout(pendingBatchTimer);
-      pendingBatchTimer = undefined;
-    }
+    decodeGeneration += 1;
     for (const pending of pendingTraces.values()) pending.resolve(false);
     pendingTraces.clear();
+    loadingTraceIds.clear();
+    decodeInFlight = false;
   };
 
   const flushPending = async (): Promise<void> => {
-    pendingBatchTimer = undefined;
-    if (!channelData || pendingTraces.size === 0) return;
+    if (decodeInFlight || !channelData || pendingTraces.size === 0) return;
 
+    decodeInFlight = true;
+    const generation = decodeGeneration;
     const batch = [...pendingTraces.entries()];
     pendingTraces.clear();
     const channelIds = batch.map(([channelId]) => channelId);
+    for (const channelId of channelIds) loadingTraceIds.add(channelId);
+
     overlay.hidden = false;
     overlayTitle.textContent = batch.length > 1
       ? `Loading ${batch.length} channels…`
       : `Loading ${batch[0]?.[1].channel.sourceName ?? 'channel'}…`;
     overlayDetail.textContent = batch.length > 1
       ? 'Reading selected channels in one sequential log pass.'
-      : 'Reading bounded channel data from the local log.';
+      : 'Reading bounded channel data from the local log. Additional selections will join the next pass.';
 
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const readStart = now();
@@ -402,6 +406,12 @@ export function createGraphViewport(): GraphViewportController {
             },
           };
       const readDecodeMs = now() - readStart;
+
+      if (generation !== decodeGeneration) {
+        for (const [, pending] of batch) pending.resolve(false);
+        return;
+      }
+
       const cacheHits = new Set(result.performance.cacheHitChannelIds);
       const scaleTimes = new Map<string, number>();
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
@@ -452,11 +462,81 @@ export function createGraphViewport(): GraphViewportController {
         pending.resolve(true);
       }
     } catch (error) {
-      overlay.hidden = false;
-      overlayTitle.textContent = 'Could not graph channel';
-      overlayDetail.textContent = error instanceof Error ? error.message : 'Unknown channel-read error.';
+      if (generation === decodeGeneration) {
+        overlay.hidden = false;
+        overlayTitle.textContent = 'Could not graph channel';
+        overlayDetail.textContent = error instanceof Error ? error.message : 'Unknown channel-read error.';
+        draw();
+      }
       for (const [, pending] of batch) pending.resolve(false);
+    } finally {
+      for (const channelId of channelIds) loadingTraceIds.delete(channelId);
+      if (generation === decodeGeneration) {
+        decodeInFlight = false;
+        // Everything selected while this pass was running is now one batch.
+        if (pendingTraces.size > 0) void flushPending();
+      }
+    }
+  };
+
+  const activateCachedChannel = async (
+    channelId: string,
+    pending: PendingTrace,
+  ): Promise<boolean> => {
+    if (!channelData) return false;
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const readStart = now();
+    try {
+      const result = channelData.readChannelsRange
+        ? await channelData.readChannelsRange([channelId], 0, channelData.sampleCount)
+        : {
+            ranges: new Map([[channelId, await channelData.readChannelRange(
+              channelId,
+              0,
+              channelData.sampleCount,
+            )]]),
+            performance: {
+              channelCount: 1,
+              cacheHitChannelIds: [] as readonly string[],
+              physicalReadCount: 0,
+              physicalBytesRead: 0,
+              physicalReadMs: 0,
+            },
+          };
+      const readDecodeMs = now() - readStart;
+      const range = result.ranges.get(channelId);
+      if (!range) return false;
+
+      const scaleStart = now();
+      const scale = buildStableValueScale(range);
+      const scaleMs = now() - scaleStart;
+      const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
+      const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
+      activeTraces.set(channelId, { channel: pending.channel, range, scale, color });
+      overlay.hidden = true;
+      renderReadout();
+      emitCursorValues();
+      const renderStart = now();
       draw();
+      const renderMs = now() - renderStart;
+      const completedMs = now();
+
+      channelPerformanceListener?.({
+        channelId,
+        totalMs: completedMs - pending.startedMs,
+        readDecodeMs,
+        scaleMs,
+        renderMs,
+        sampleCount: range.values.length,
+        batchSize: 1,
+        cacheHit: result.performance.cacheHitChannelIds.includes(channelId),
+        physicalReadCount: result.performance.physicalReadCount,
+        physicalBytesRead: result.performance.physicalBytesRead,
+        physicalReadMs: result.performance.physicalReadMs,
+      });
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -499,12 +579,10 @@ export function createGraphViewport(): GraphViewportController {
     if (queued) {
       pendingTraces.delete(channelId);
       queued.resolve(false);
-      if (pendingTraces.size === 0 && pendingBatchTimer !== undefined) {
-        window.clearTimeout(pendingBatchTimer);
-        pendingBatchTimer = undefined;
-      }
       return false;
     }
+
+    if (loadingTraceIds.has(channelId)) return false;
 
     const existing = activeTraces.get(channelId);
     if (existing) {
@@ -523,7 +601,12 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     if (!channelData) return false;
-    if (activeTraces.size + pendingTraces.size >= MAX_ACTIVE_TRACES) {
+    if (
+      activeTraces.size
+      + pendingTraces.size
+      + loadingTraceIds.size
+      >= MAX_ACTIVE_TRACES
+    ) {
       overlay.hidden = activeTraces.size > 0;
       showToast(`Trace limit reached — EpicScope currently allows up to ${MAX_ACTIVE_TRACES} simultaneous Web traces.`);
       return false;
@@ -533,40 +616,40 @@ export function createGraphViewport(): GraphViewportController {
     if (!channel) return false;
 
     const now = (): number => globalThis.performance?.now() ?? Date.now();
+    let resolveSelection!: (active: boolean) => void;
     const result = new Promise<boolean>((resolve) => {
-      pendingTraces.set(channelId, {
-        channel,
-        startedMs: now(),
-        resolve,
-      });
+      resolveSelection = resolve;
     });
+    const pending: PendingTrace = {
+      channel,
+      startedMs: now(),
+      resolve: resolveSelection,
+    };
 
-    overlay.hidden = false;
-    overlayTitle.textContent = 'Queued channel selection…';
     const cacheReady = channelData.hasCachedChannelRange?.(
       channelId,
       0,
       channelData.sampleCount,
     ) ?? false;
-    overlayDetail.textContent = cacheReady
-      ? 'Using decoded channel cache.'
-      : channelData.preferredBatchWindowMs
-        ? 'Collecting rapid selections for one shared log pass.'
-        : 'Preparing channel data.';
 
-    const cached = channelData.hasCachedChannelRange?.(
-      channelId,
-      0,
-      channelData.sampleCount,
-    ) ?? false;
-    const windowMs = cached ? 0 : (channelData.preferredBatchWindowMs ?? 0);
+    if (cacheReady) {
+      overlay.hidden = false;
+      overlayTitle.textContent = `Loading ${channel.sourceName}…`;
+      overlayDetail.textContent = 'Using decoded channel cache.';
+      void activateCachedChannel(channelId, pending).then(resolveSelection);
+      return result;
+    }
 
-    if (pendingBatchTimer !== undefined) window.clearTimeout(pendingBatchTimer);
-    pendingBatchTimer = window.setTimeout(
-      () => { void flushPending(); },
-      windowMs,
-    );
+    pendingTraces.set(channelId, pending);
+    overlay.hidden = false;
+    overlayTitle.textContent = decodeInFlight
+      ? 'Queued for next channel pass…'
+      : `Loading ${channel.sourceName}…`;
+    overlayDetail.textContent = decodeInFlight
+      ? `${pendingTraces.size} channel${pendingTraces.size === 1 ? '' : 's'} waiting; they will share the next sequential pass.`
+      : 'Starting one sequential log pass. Additional selections made while it runs will be grouped.';
 
+    if (!decodeInFlight) void flushPending();
     return result;
   };
 
