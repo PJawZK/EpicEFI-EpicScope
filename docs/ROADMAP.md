@@ -112,10 +112,11 @@ Large-log hosted evidence currently includes a 318,023,627-byte MLG with 72,158 
 
 Remaining LOG-MLG/Web-performance work:
 
-1. hosted real-log spot check of decoded-channel remove/re-add cache reuse;
-2. continue benchmark capture as additional real workflows are established;
-3. improve retry/recovery diagnostic classification without changing checksum semantics or silently repairing source data;
-4. keep MLVLG v3 deferred until authoritative format evidence exists.
+1. continue benchmark capture as additional real workflows are established;
+2. improve retry/recovery diagnostic classification without changing checksum semantics or silently repairing source data;
+3. keep MLVLG v3 deferred until authoritative format evidence exists.
+
+Hosted decoded-channel cache reuse is validated: removing and re-adding previously decoded channels returns from the bounded decoded cache with zero physical source reads.
 
 ### LOG-CSV
 
@@ -125,14 +126,20 @@ Remaining LOG-MLG/Web-performance work:
 
 ### TIMELINE
 
+Implemented/validated foundation:
+
 - synchronized timeline;
 - cursor;
-- zoom/pan;
+- zoom/pan and draggable/resizable focus window;
 - graph panes;
 - viewport-follow behaviour: cursor moves independently until reaching the center region, then the viewport follows;
-- markers/bookmarks;
+- whole-log overview populated from active decoded graph traces without extra source reads;
+- parsed source markers rendered in the overview;
+- Previous/Next source-marker navigation;
 - channel selection/search;
-- select graph rendering approach only after concrete large-log/interaction requirements are defined.
+- high-zoom raw-sample rendering with bounded zoomed-out envelope rendering.
+
+Remaining timeline work should be driven by real-log workflows, including bookmarks/saved ranges, marker usability refinements, and later session persistence.
 
 Exit criteria:
 
