@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { MemoryByteSource } from '../../core/parsers/byte-source';
+import { MemoryByteSource, type RandomAccessByteSource } from '../../core/parsers/byte-source';
+import { MlgNumericChannelDataSource } from '../../core/parsers/mlg/mlg-channel-data';
 import { parseMlg } from '../../core/parsers/mlg/mlg-parser';
+import type { MlgScalarFieldDescriptor } from '../../core/parsers/mlg/mlg-format';
+import type { MlgRecordIndex } from '../../core/parsers/mlg/mlg-records';
 import { createScalarHeaderFixture } from './mlg-fixture-builder';
 
 function concat(...parts: readonly Uint8Array[]): Uint8Array {
@@ -34,6 +37,22 @@ function markerBlock(counter: number, timestamp: number): Uint8Array {
   view.setUint16(2, timestamp, false);
   block.set(new TextEncoder().encode('between samples'), 4);
   return block;
+}
+
+class CountingByteSource implements RandomAccessByteSource {
+  readonly size: number;
+  readCount = 0;
+  private readonly source: MemoryByteSource;
+
+  constructor(bytes: Uint8Array) {
+    this.source = new MemoryByteSource(bytes);
+    this.size = this.source.size;
+  }
+
+  async read(offset: number, length: number): Promise<Uint8Array> {
+    this.readCount += 1;
+    return this.source.read(offset, length);
+  }
 }
 
 describe('MlgNumericChannelDataSource', () => {
@@ -82,5 +101,48 @@ describe('MlgNumericChannelDataSource', () => {
 
     await expect(parsed.channelData.readChannelRange('missing', 0, 1)).rejects.toBeInstanceOf(RangeError);
     await expect(parsed.channelData.readChannelRange('mlg:0', 1, 1)).rejects.toBeInstanceOf(RangeError);
+  });
+  it('amortizes strided full-channel reads into multi-megabyte source batches', async () => {
+    const sampleCount = 1024;
+    const stride = 4096;
+    const bytes = new Uint8Array(sampleCount * stride);
+    const offsets = new Float64Array(sampleCount);
+    const timeMs = new Float64Array(sampleCount);
+    const counters = new Uint8Array(sampleCount);
+    const crcValid = new Uint8Array(sampleCount);
+    crcValid.fill(1);
+
+    for (let index = 0; index < sampleCount; index += 1) {
+      offsets[index] = index * stride;
+      timeMs[index] = index;
+      counters[index] = index & 0xff;
+      bytes[index * stride + 4] = index & 0xff;
+    }
+
+    const field: MlgScalarFieldDescriptor = {
+      kind: 'scalar',
+      index: 0,
+      offset: 0,
+      type: 0,
+      name: 'test',
+      units: '',
+      displayStyle: 0,
+      widthBytes: 1,
+      category: '',
+      scale: 1,
+      transform: 0,
+      digits: 0,
+    };
+    const recordIndex: MlgRecordIndex = { offsets, timeMs, counters, crcValid };
+    const source = new CountingByteSource(bytes);
+    const channelData = new MlgNumericChannelDataSource(source, [field], recordIndex);
+
+    const range = await channelData.readChannelRange('mlg:0', 0, sampleCount);
+
+    expect(source.readCount).toBe(1);
+    expect(range.values[0]).toBe(0);
+    expect(range.values[255]).toBe(255);
+    expect(range.values[256]).toBe(0);
+    expect(range.values[1023]).toBe(255);
   });
 });
