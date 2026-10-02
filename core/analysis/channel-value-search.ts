@@ -124,7 +124,7 @@ export async function searchChannelValues(
         sampleIndex: primary.startSampleIndex + index,
         timeMs,
         value,
-        constraintValue,
+        ...(constraintValue === undefined ? {} : { constraintValue }),
       }, request.mode, request.targetValue, limit);
     }
   }
