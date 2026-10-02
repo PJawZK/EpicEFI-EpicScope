@@ -64,8 +64,8 @@
 .graph-corner-readout--now {
   top: 7px;
   right: 9px;
-  justify-items: end;
-  text-align: right;
+  justify-items: start;
+  text-align: left;
 }
 
 .graph-corner-readout--min {
@@ -77,8 +77,8 @@
 .graph-corner-readout--max {
   right: 9px;
   bottom: 8px;
-  justify-items: end;
-  text-align: right;
+  justify-items: start;
+  text-align: left;
 }
 
 .graph-corner-readout[data-label]::before {
