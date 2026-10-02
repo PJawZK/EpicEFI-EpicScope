@@ -1294,13 +1294,16 @@ export function createLoggerPage(): LoggerPageController {
                 ? channelId
                 : channelIdAliases.get(channelId) ?? channelId
             )
-            .filter((channelId) => channelDefinitions.has(channelId))
             .slice(0, MAX_ACTIVE_WEB_TRACES)
         : [];
       if (pane) pane.channelIds = [...assignedIds];
       syncPaneAssignedChannels(runtime, pane);
       const requestedIds = channelDataSource
-        ? assignedIds.filter((channelId) => !unavailableChannelIds.has(channelId))
+        ? assignedIds.filter(
+            (channelId) =>
+              channelDefinitions.has(channelId)
+              && !unavailableChannelIds.has(channelId),
+          )
         : [];
       return { runtime, pane, assignedIds, requestedIds };
     });
