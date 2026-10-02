@@ -910,7 +910,8 @@ export function mountAppShell(root: HTMLElement): void {
           }
         : undefined,
     );
-    void loadPersistedWorkspace(parsed.summary.source).then(() => {
+    void loadPersistedWorkspace(parsed.summary.source).then(async (restored) => {
+      if (!restored) await loggerPage.restoreActiveWorkspace();
       resetWorkspaceHistory();
       scheduleWorkspaceSave();
     });
@@ -1037,7 +1038,8 @@ export function mountAppShell(root: HTMLElement): void {
               }
             : undefined,
         );
-        void loadPersistedWorkspace(indexed.summary.source).then(() => {
+        void loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
+          if (!restored) await loggerPage.restoreActiveWorkspace();
           resetWorkspaceHistory();
           scheduleWorkspaceSave();
         });
