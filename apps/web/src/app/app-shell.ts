@@ -778,6 +778,15 @@ export function mountAppShell(root: HTMLElement): void {
         void staged.validated
           .then((validated) => {
             if (activeStagedImport !== staged) return;
+            if (currentRawLog?.channelData === indexed.channelData) {
+              currentRawLog = {
+                ...currentRawLog,
+                summary: {
+                  ...indexed.summary,
+                  diagnostics: validated.diagnostics,
+                },
+              };
+            }
             loggerPage.setDiagnostics(validated.diagnostics);
             loggerPage.refreshValidity();
             performanceDiagnostics.recordValidation({
