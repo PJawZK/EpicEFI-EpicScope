@@ -225,9 +225,9 @@ export function createGraphViewport(): GraphViewportController {
       <span>Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.</span>
     </div>
     <div class="graph-corner-readout graph-corner-readout--names" hidden></div>
-    <div class="graph-corner-readout graph-corner-readout--now" hidden></div>
-    <div class="graph-corner-readout graph-corner-readout--min" hidden></div>
-    <div class="graph-corner-readout graph-corner-readout--max" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--now" data-label="NOW" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--min" data-label="MIN" hidden></div>
+    <div class="graph-corner-readout graph-corner-readout--max" data-label="MAX" hidden></div>
     <div class="graph-toast graph-toast--warning" role="status" aria-live="polite" hidden>
       <span class="graph-toast-icon" aria-hidden="true">!</span>
       <span class="graph-toast-message"></span>
