@@ -102,6 +102,77 @@ describe('MlgNumericChannelDataSource', () => {
     await expect(parsed.channelData.readChannelRange('missing', 0, 1)).rejects.toBeInstanceOf(RangeError);
     await expect(parsed.channelData.readChannelRange('mlg:0', 1, 1)).rejects.toBeInstanceOf(RangeError);
   });
+  it('batches multiple channels into one record-stream pass and caches decoded full ranges', async () => {
+    const sampleCount = 1024;
+    const stride = 4096;
+    const bytes = new Uint8Array(sampleCount * stride);
+    const offsets = new Float64Array(sampleCount);
+    const timeMs = new Float64Array(sampleCount);
+    const counters = new Uint8Array(sampleCount);
+    const crcValid = new Uint8Array(sampleCount);
+    crcValid.fill(1);
+
+    for (let index = 0; index < sampleCount; index += 1) {
+      offsets[index] = index * stride;
+      timeMs[index] = index;
+      counters[index] = index & 0xff;
+      bytes[index * stride + 4] = index & 0xff;
+      bytes[index * stride + 5] = (255 - index) & 0xff;
+    }
+
+    const fields: readonly MlgScalarFieldDescriptor[] = [
+      {
+        kind: 'scalar',
+        index: 0,
+        offset: 0,
+        type: 0,
+        name: 'first',
+        units: '',
+        displayStyle: 0,
+        widthBytes: 1,
+        category: '',
+        scale: 1,
+        transform: 0,
+        digits: 0,
+      },
+      {
+        kind: 'scalar',
+        index: 1,
+        offset: 1,
+        type: 0,
+        name: 'second',
+        units: '',
+        displayStyle: 0,
+        widthBytes: 1,
+        category: '',
+        scale: 1,
+        transform: 0,
+        digits: 0,
+      },
+    ];
+    const recordIndex: MlgRecordIndex = { offsets, timeMs, counters, crcValid };
+    const source = new CountingByteSource(bytes);
+    const channelData = new MlgNumericChannelDataSource(source, fields, recordIndex);
+
+    const batch = await channelData.readChannelsRange(
+      ['mlg:0', 'mlg:1'],
+      0,
+      sampleCount,
+    );
+
+    expect(source.readCount).toBe(1);
+    expect(batch.performance.channelCount).toBe(2);
+    expect(batch.performance.cacheHitChannelIds).toEqual([]);
+    expect(batch.ranges.get('mlg:0')?.values[255]).toBe(255);
+    expect(batch.ranges.get('mlg:1')?.values[255]).toBe(0);
+
+    const firstAgain = await channelData.readChannelRange('mlg:0', 0, sampleCount);
+    const secondAgain = await channelData.readChannelRange('mlg:1', 0, sampleCount);
+    expect(source.readCount).toBe(1);
+    expect(firstAgain.values[511]).toBe(255);
+    expect(secondAgain.values[511]).toBe(0);
+  });
+
   it('amortizes strided full-channel reads into multi-megabyte source batches', async () => {
     const sampleCount = 1024;
     const stride = 4096;
