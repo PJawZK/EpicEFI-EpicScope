@@ -168,9 +168,9 @@ export function createInspectorPanel(): InspectorPanelController {
     loadSelectedButton.textContent = queued > 0 ? `Load now (${queued})` : 'Load now';
     clearGraphButton.disabled = activeChannelIds.size === 0;
     addFilteredButton.disabled = filteredChannels.length === 0
-      || filteredChannels
-        .filter((channel) => !unavailableChannelIds.has(channel.id))
-        .every((channel) => activeChannelIds.has(channel.id) || queuedChannelIds.has(channel.id));
+      || filteredChannels.every(
+        (channel) => activeChannelIds.has(channel.id) || queuedChannelIds.has(channel.id),
+      );
   };
 
   const createRow = (channel: ChannelDefinition, index: number): HTMLElement => {
@@ -192,14 +192,14 @@ export function createInspectorPanel(): InspectorPanelController {
     toggle.className = 'channel-row-toggle';
     toggle.dataset.channelToggle = channel.id;
     toggle.setAttribute('aria-pressed', String(active));
-    toggle.disabled = unavailable;
+    toggle.disabled = false;
     toggle.title = unavailable
-      ? 'Known from INI; this log does not contain data for the channel'
+      ? 'Assign channel to active graph pane; data will appear when a matching log is loaded'
       : 'Toggle channel in active graph pane';
 
     const state = document.createElement('span');
     state.className = 'channel-trace-state';
-    state.textContent = unavailable ? '—' : active ? '●' : queued ? '✓' : '＋';
+    state.textContent = active ? '●' : queued ? '✓' : '＋';
     state.setAttribute('aria-hidden', 'true');
 
     const identity = document.createElement('div');
@@ -377,7 +377,7 @@ export function createInspectorPanel(): InspectorPanelController {
 
     const toggleButton = target.closest<HTMLElement>('[data-channel-toggle]');
     const channelId = toggleButton?.dataset.channelToggle;
-    if (channelId && !unavailableChannelIds.has(channelId)) toggleListener?.(channelId);
+    if (channelId) toggleListener?.(channelId);
   });
 
   const resizeObserver = new ResizeObserver(scheduleVisibleRender);
@@ -654,8 +654,7 @@ export function createInspectorPanel(): InspectorPanelController {
     const candidates = filteredChannels
       .map((channel) => channel.id)
       .filter((channelId) =>
-        !unavailableChannelIds.has(channelId)
-        && !activeChannelIds.has(channelId)
+        !activeChannelIds.has(channelId)
         && !queuedChannelIds.has(channelId)
       );
     if (candidates.length > 0) addFilteredListener?.(candidates);

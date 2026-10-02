@@ -84,6 +84,7 @@ export interface GraphViewportController {
   loadPendingChannels(): void;
   refreshValidity(): void;
   setHighZoomSamplePointsVisible(visible: boolean): void;
+  setAssignedChannels(channels: readonly ChannelDefinition[]): void;
   setDisplayMode(mode: GraphViewportDisplayMode): void;
   clear(): void;
 }
@@ -219,6 +220,7 @@ export function createGraphViewport(): GraphViewportController {
   let decodeGeneration = 0;
   let highZoomSamplePointsVisible = true;
   let displayMode: GraphViewportDisplayMode = 'overlay';
+  let assignedChannels: readonly ChannelDefinition[] = [];
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -287,50 +289,70 @@ export function createGraphViewport(): GraphViewportController {
     minReadout.replaceChildren();
     maxReadout.replaceChildren();
 
+    const displayChannels = assignedChannels.length > 0
+      ? assignedChannels
+      : [...activeTraces.values()].map((trace) => trace.channel);
+
     const appendMetric = (
       host: HTMLElement,
-      trace: ActiveTrace,
-      value: number | undefined,
-      label?: string,
+      channel: ChannelDefinition,
+      color: string,
+      value: string,
     ): void => {
       const item = document.createElement('span');
       item.className = 'graph-corner-item';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
-      swatch.style.background = trace.color;
+      swatch.style.background = color;
 
       const text = document.createElement('span');
-      const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
-      text.textContent = label
-        ? `${label} ${formatReadoutValue(trace, value)}${unit}`
-        : `${formatReadoutValue(trace, value)}${unit}`;
+      const unit = channel.unit ? ` ${channel.unit}` : '';
+      text.textContent = `${value}${unit}`;
 
       item.append(swatch, text);
       host.append(item);
     };
 
-    for (const trace of activeTraces.values()) {
+    displayChannels.forEach((channel, index) => {
+      const trace = activeTraces.get(channel.id);
+      const color = trace?.color ?? TRACE_COLORS[index % TRACE_COLORS.length] ?? '#587487';
+
       const nameItem = document.createElement('span');
       nameItem.className = 'graph-corner-item graph-corner-item--name';
 
       const swatch = document.createElement('span');
       swatch.className = 'graph-trace-swatch';
-      swatch.style.background = trace.color;
+      swatch.style.background = color;
 
       const name = document.createElement('span');
-      name.textContent = trace.channel.displayName || trace.channel.sourceName;
-      name.title = trace.channel.sourceName;
+      name.textContent = channel.displayName || channel.sourceName;
+      name.title = channel.sourceName;
 
       nameItem.append(swatch, name);
       nameReadout.append(nameItem);
 
-      appendMetric(nowReadout, trace, nearestValue(trace.range, cursorTimeMs));
-      appendMetric(minReadout, trace, trace.fullStatistics.min);
-      appendMetric(maxReadout, trace, trace.fullStatistics.max);
-    }
+      appendMetric(
+        nowReadout,
+        channel,
+        color,
+        trace ? formatReadoutValue(trace, nearestValue(trace.range, cursorTimeMs)) : '—',
+      );
+      appendMetric(
+        minReadout,
+        channel,
+        color,
+        trace ? formatReadoutValue(trace, trace.fullStatistics.min) : '—',
+      );
+      appendMetric(
+        maxReadout,
+        channel,
+        color,
+        trace ? formatReadoutValue(trace, trace.fullStatistics.max) : '—',
+      );
+    });
 
-    const hidden = activeTraces.size === 0 || displayMode === 'stacked';
+    const hidden = displayChannels.length === 0 || displayMode === 'stacked';
     nameReadout.hidden = hidden;
     nowReadout.hidden = hidden;
     minReadout.hidden = hidden;
@@ -359,7 +381,12 @@ export function createGraphViewport(): GraphViewportController {
     const plotHeight = Math.max(1, height - inset * 2);
     context.lineWidth = 1;
 
-    const stacked = displayMode === 'stacked' && activeTraces.size > 0;
+    const stackedChannels = displayMode === 'stacked'
+      ? (assignedChannels.length > 0
+          ? assignedChannels
+          : [...activeTraces.values()].map((trace) => trace.channel))
+      : [];
+    const stacked = displayMode === 'stacked' && stackedChannels.length > 0;
 
     context.strokeStyle = 'rgba(89, 129, 151, 0.14)';
     if (!stacked) {
@@ -379,21 +406,55 @@ export function createGraphViewport(): GraphViewportController {
       context.stroke();
     }
 
-    if (!viewport || activeTraces.size === 0) {
-      return;
-    }
-
     const traceEntries = [...activeTraces.entries()];
     if (stacked) {
-      const rowHeight = plotHeight / Math.max(1, traceEntries.length);
+      const rowHeight = plotHeight / Math.max(1, stackedChannels.length);
       context.strokeStyle = 'rgba(89, 129, 151, 0.20)';
-      for (let index = 1; index < traceEntries.length; index += 1) {
+      for (let index = 1; index < stackedChannels.length; index += 1) {
         const y = inset + rowHeight * index;
         context.beginPath();
         context.moveTo(inset, y + 0.5);
         context.lineTo(width - inset, y + 0.5);
         context.stroke();
       }
+    }
+
+    if (stacked) {
+      const rowHeight = plotHeight / Math.max(1, stackedChannels.length);
+      for (let rowIndex = 0; rowIndex < stackedChannels.length; rowIndex += 1) {
+        const channel = stackedChannels[rowIndex];
+        if (!channel) continue;
+        const trace = activeTraces.get(channel.id);
+        const rowTop = inset + rowHeight * rowIndex;
+        const labelHeight = Math.min(15, Math.max(10, rowHeight * 0.24));
+        const unit = channel.unit ? ` ${channel.unit}` : '';
+        const name = channel.displayName || channel.sourceName;
+        const metric = trace
+          ? `NOW ${formatReadoutValue(trace, nearestValue(trace.range, cursorTimeMs))}  ·  MIN ${formatReadoutValue(trace, trace.fullStatistics.min)}  ·  MAX ${formatReadoutValue(trace, trace.fullStatistics.max)}${unit}`
+          : 'WAITING FOR LOG DATA';
+
+        const chipWidth = Math.max(120, Math.min(plotWidth - 4, 390));
+        context.fillStyle = 'rgba(0, 0, 0, 0.72)';
+        context.fillRect(inset + 2, rowTop + 2, chipWidth, Math.max(10, labelHeight - 1));
+        context.fillStyle = trace?.color ?? '#587487';
+        context.beginPath();
+        context.arc(inset + 8, rowTop + labelHeight / 2 + 1, 2.5, 0, Math.PI * 2);
+        context.fill();
+
+        context.font = '600 8px sans-serif';
+        context.textBaseline = 'middle';
+        context.fillStyle = trace ? '#d9edf7' : '#9ab0bd';
+        context.fillText(name, inset + 14, rowTop + labelHeight / 2 + 1);
+        const nameWidth = context.measureText(name).width;
+        context.fillStyle = trace ? '#88a0af' : '#647f8f';
+        context.font = '600 7px sans-serif';
+        context.fillText(metric, inset + 22 + nameWidth, rowTop + labelHeight / 2 + 1);
+        context.textBaseline = 'alphabetic';
+      }
+    }
+
+    if (!viewport || activeTraces.size === 0) {
+      return;
     }
 
     const visibleStartMs = viewport.visibleStartMs;
@@ -427,8 +488,11 @@ export function createGraphViewport(): GraphViewportController {
         });
       }
       const axisSpan = Math.max(1e-9, trace.scale.max - trace.scale.min);
-      const rowHeight = stacked ? plotHeight / Math.max(1, traceEntries.length) : plotHeight;
-      const rowTop = stacked ? inset + rowHeight * traceIndex : inset;
+      const rowHeight = stacked ? plotHeight / Math.max(1, stackedChannels.length) : plotHeight;
+      const stackedIndex = stacked
+        ? Math.max(0, stackedChannels.findIndex((channel) => channel.id === channelId))
+        : traceIndex;
+      const rowTop = stacked ? inset + rowHeight * stackedIndex : inset;
       const labelHeight = stacked ? Math.min(15, Math.max(10, rowHeight * 0.24)) : 0;
       const traceTop = rowTop + labelHeight + (stacked ? 2 : 0);
       const traceHeight = Math.max(4, rowHeight - labelHeight - (stacked ? 5 : 0));
@@ -436,31 +500,6 @@ export function createGraphViewport(): GraphViewportController {
         const normalized = (value - trace.scale.min) / axisSpan;
         return traceTop + traceHeight - normalized * traceHeight;
       };
-
-      if (stacked) {
-        const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
-        const current = nearestValue(trace.range, cursorTimeMs);
-        const name = trace.channel.displayName || trace.channel.sourceName;
-        const metric = `NOW ${formatReadoutValue(trace, current)}  ·  MIN ${formatReadoutValue(trace, trace.fullStatistics.min)}  ·  MAX ${formatReadoutValue(trace, trace.fullStatistics.max)}${unit}`;
-
-        const chipWidth = Math.max(120, Math.min(plotWidth - 4, 390));
-        context.fillStyle = 'rgba(0, 0, 0, 0.72)';
-        context.fillRect(inset + 2, rowTop + 2, chipWidth, Math.max(10, labelHeight - 1));
-        context.fillStyle = trace.color;
-        context.beginPath();
-        context.arc(inset + 8, rowTop + labelHeight / 2 + 1, 2.5, 0, Math.PI * 2);
-        context.fill();
-
-        context.font = '600 8px sans-serif';
-        context.textBaseline = 'middle';
-        context.fillStyle = '#d9edf7';
-        context.fillText(name, inset + 14, rowTop + labelHeight / 2 + 1);
-        const nameWidth = context.measureText(name).width;
-        context.fillStyle = '#88a0af';
-        context.font = '600 7px sans-serif';
-        context.fillText(metric, inset + 22 + nameWidth, rowTop + labelHeight / 2 + 1);
-        context.textBaseline = 'alphabetic';
-      }
 
       context.strokeStyle = trace.color;
       context.lineWidth = 1.1;
@@ -851,7 +890,7 @@ export function createGraphViewport(): GraphViewportController {
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
     aTimeMs = undefined;
     bTimeMs = undefined;
-    overlay.hidden = false;
+    overlay.hidden = assignedChannels.length > 0;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
     renderReadout();
@@ -879,8 +918,8 @@ export function createGraphViewport(): GraphViewportController {
     if (existing) {
       activeTraces.delete(channelId);
       envelopeCache.delete(channelId);
-      overlay.hidden = activeTraces.size > 0;
-      if (activeTraces.size === 0) {
+      overlay.hidden = activeTraces.size > 0 || assignedChannels.length > 0;
+      if (activeTraces.size === 0 && assignedChannels.length === 0) {
         overlay.hidden = false;
         overlayTitle.textContent = 'Select channels';
         overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
@@ -958,7 +997,7 @@ export function createGraphViewport(): GraphViewportController {
     envelopeCache.clear();
     renderReadout();
     emitCursorValues();
-    overlay.hidden = false;
+    overlay.hidden = assignedChannels.length > 0;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
     draw();
@@ -990,6 +1029,7 @@ export function createGraphViewport(): GraphViewportController {
     timeRange = undefined;
     viewport = undefined;
     activeTraces.clear();
+    assignedChannels = [];
     envelopeCache.clear();
     cursorTimeMs = 0;
     aTimeMs = undefined;
@@ -1049,6 +1089,12 @@ export function createGraphViewport(): GraphViewportController {
     refreshValidity,
     setHighZoomSamplePointsVisible: (visible) => {
       highZoomSamplePointsVisible = visible;
+      draw();
+    },
+    setAssignedChannels: (nextChannels) => {
+      assignedChannels = nextChannels.slice(0, MAX_ACTIVE_TRACES);
+      overlay.hidden = assignedChannels.length > 0 || activeTraces.size > 0;
+      renderReadout();
       draw();
     },
     setDisplayMode: (mode) => {
