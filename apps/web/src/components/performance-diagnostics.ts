@@ -1,5 +1,6 @@
 export interface LoadPerformanceRun {
   readonly fileName: string;
+  readonly scanMode: 'fixed' | 'general';
   readonly fileSizeBytes: number;
   readonly recordCount: number;
   readonly channelCount: number;
@@ -130,6 +131,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `size=${latestLoad.fileSizeBytes} bytes`,
         `records=${latestLoad.recordCount}`,
         `channels=${latestLoad.channelCount}`,
+        `scanMode=${latestLoad.scanMode}`,
         `total=${latestLoad.importTotalMs.toFixed(2)} ms`,
         `header=${latestLoad.headerMs.toFixed(2)} ms`,
         `headerRead=${latestLoad.headerReadMs.toFixed(2)} ms`,
@@ -177,6 +179,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       const rows: readonly [string, string][] = [
         ['File', latestLoad.fileName],
         ['Size', bytes(latestLoad.fileSizeBytes)],
+        ['Record scan mode', latestLoad.scanMode],
         ['Total import', ms(latestLoad.importTotalMs)],
         ['Header total', ms(latestLoad.headerMs)],
         ['Header physical read', ms(latestLoad.headerReadMs)],
