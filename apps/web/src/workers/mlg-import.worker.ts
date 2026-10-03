@@ -1,9 +1,14 @@
-import type { LogTimeRange } from '../../../../core/log-model/log-types';
+import type { LogTimeRange, ParserDiagnostic } from '../../../../core/log-model/log-types';
 import { parseMlgHeader } from '../../../../core/parsers/mlg/mlg-header';
+import type { MlgHeader } from '../../../../core/parsers/mlg/mlg-format';
 import {
   classifyMlgRetryDiagnostics,
   scanMlgRecords,
-  validateMlgRecordCrc,
+} from '../../../../core/parsers/mlg/mlg-records';
+import type {
+  MlgCrcValidationPerformance,
+  MlgCrcValidationResult,
+  MlgRecordIndex,
 } from '../../../../core/parsers/mlg/mlg-records';
 import { BlobByteSource } from '../adapters/blob-byte-source';
 import type {
@@ -16,8 +21,43 @@ interface WorkerScope {
   postMessage(message: MlgWorkerResponse): void;
 }
 
+interface ValidationBatch {
+  readonly firstIndex: number;
+  readonly lastIndex: number;
+  readonly firstOffset: number;
+  readonly byteLength: number;
+  readonly relativeOffsets: Float64Array;
+}
+
+interface ReadBatchResult {
+  readonly batch: ValidationBatch;
+  readonly buffer: ArrayBuffer;
+  readonly readMs: number;
+}
+
+interface CrcChunkResult {
+  readonly type: 'chunk-result';
+  readonly chunkId: number;
+  readonly firstIndex: number;
+  readonly crcValid: Uint8Array;
+  readonly diagnostics: readonly ParserDiagnostic[];
+  readonly checksumCpuMs: number;
+  readonly diagnosticCpuMs: number;
+  readonly checksumBytes: number;
+}
+
+interface CrcChunkError {
+  readonly type: 'error';
+  readonly chunkId: number;
+  readonly message: string;
+}
+
+type CrcWorkerResponse = CrcChunkResult | CrcChunkError;
+
 const scope = globalThis as unknown as WorkerScope;
 const now = (): number => globalThis.performance?.now() ?? Date.now();
+const BLOCK_HEADER_LENGTH = 4;
+const VALIDATION_CHUNK_SIZE = 8 * 1024 * 1024;
 let validationStartResolver: (() => void) | undefined;
 let validationStartRequested = false;
 
@@ -30,6 +70,158 @@ function timeRange(timeMs: Float64Array): LogTimeRange | undefined {
     endMs,
     durationMs: Math.max(0, endMs - startMs),
   };
+}
+
+function planValidationBatch(
+  recordIndex: MlgRecordIndex,
+  blockLength: number,
+  firstIndex: number,
+): ValidationBatch {
+  const firstOffset = recordIndex.offsets[firstIndex];
+  if (firstOffset === undefined) {
+    throw new RangeError(`Missing record offset for sample ${firstIndex}.`);
+  }
+
+  let lastIndex = firstIndex;
+  let batchEnd = firstOffset + blockLength;
+  while (lastIndex + 1 < recordIndex.offsets.length) {
+    const nextOffset = recordIndex.offsets[lastIndex + 1];
+    if (nextOffset === undefined) break;
+    const nextEnd = nextOffset + blockLength;
+    if (nextEnd - firstOffset > VALIDATION_CHUNK_SIZE) break;
+    lastIndex += 1;
+    batchEnd = nextEnd;
+  }
+
+  const relativeOffsets = new Float64Array(lastIndex - firstIndex + 1);
+  for (let index = firstIndex; index <= lastIndex; index += 1) {
+    const absoluteOffset = recordIndex.offsets[index];
+    if (absoluteOffset === undefined) {
+      throw new RangeError(`Missing record offset for sample ${index}.`);
+    }
+    relativeOffsets[index - firstIndex] = absoluteOffset - firstOffset;
+  }
+
+  return {
+    firstIndex,
+    lastIndex,
+    firstOffset,
+    byteLength: batchEnd - firstOffset,
+    relativeOffsets,
+  };
+}
+
+async function readValidationBatch(file: File, batch: ValidationBatch): Promise<ReadBatchResult> {
+  const started = now();
+  const buffer = await file.slice(batch.firstOffset, batch.firstOffset + batch.byteLength).arrayBuffer();
+  const readMs = now() - started;
+  if (buffer.byteLength !== batch.byteLength) {
+    throw new RangeError(
+      `CRC validation expected ${batch.byteLength} bytes at offset ${batch.firstOffset}, received ${buffer.byteLength}.`,
+    );
+  }
+  return { batch, buffer, readMs };
+}
+
+async function validateMlgRecordCrcParallel(
+  file: File,
+  header: MlgHeader,
+  recordIndex: MlgRecordIndex,
+): Promise<MlgCrcValidationResult> {
+  const totalStart = now();
+  const recordLength = header.recordLength;
+  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  const crcValid = new Uint8Array(recordIndex.offsets.length);
+  const diagnostics: ParserDiagnostic[] = [];
+  let sourceReadMs = 0;
+  let checksumCpuMs = 0;
+  let diagnosticCpuMs = 0;
+  let checksumBytes = 0;
+  let chunkId = 0;
+
+  const checksumWorker = new Worker(
+    new URL('./mlg-crc.worker.ts', import.meta.url),
+    { type: 'module' },
+  );
+
+  let pendingResolve: ((result: CrcChunkResult) => void) | undefined;
+  let pendingReject: ((reason?: unknown) => void) | undefined;
+
+  checksumWorker.onmessage = (event: MessageEvent<CrcWorkerResponse>): void => {
+    const response = event.data;
+    if (response.type === 'error') {
+      pendingReject?.(new Error(response.message));
+      pendingResolve = undefined;
+      pendingReject = undefined;
+      return;
+    }
+    pendingResolve?.(response);
+    pendingResolve = undefined;
+    pendingReject = undefined;
+  };
+  checksumWorker.onerror = (event): void => {
+    pendingReject?.(new Error(event.message || 'CRC checksum worker failed.'));
+    pendingResolve = undefined;
+    pendingReject = undefined;
+  };
+
+  const checksumChunk = (read: ReadBatchResult): Promise<CrcChunkResult> => {
+    if (pendingResolve || pendingReject) {
+      return Promise.reject(new Error('CRC checksum worker already has an in-flight chunk.'));
+    }
+    const id = chunkId;
+    chunkId += 1;
+    return new Promise<CrcChunkResult>((resolve, reject) => {
+      pendingResolve = resolve;
+      pendingReject = reject;
+      checksumWorker.postMessage({
+        type: 'checksum-chunk',
+        chunkId: id,
+        firstIndex: read.batch.firstIndex,
+        firstOffset: read.batch.firstOffset,
+        recordLength,
+        relativeOffsets: read.batch.relativeOffsets,
+        buffer: read.buffer,
+      }, [read.batch.relativeOffsets.buffer, read.buffer]);
+    });
+  };
+
+  try {
+    let nextIndex = 0;
+    let pendingRead: Promise<ReadBatchResult> | undefined = recordIndex.offsets.length > 0
+      ? readValidationBatch(file, planValidationBatch(recordIndex, blockLength, 0))
+      : undefined;
+
+    while (pendingRead) {
+      const current = await pendingRead;
+      sourceReadMs += current.readMs;
+
+      nextIndex = current.batch.lastIndex + 1;
+      const nextRead = nextIndex < recordIndex.offsets.length
+        ? readValidationBatch(file, planValidationBatch(recordIndex, blockLength, nextIndex))
+        : undefined;
+
+      const result = await checksumChunk(current);
+      crcValid.set(result.crcValid, result.firstIndex);
+      diagnostics.push(...result.diagnostics);
+      checksumCpuMs += result.checksumCpuMs;
+      diagnosticCpuMs += result.diagnosticCpuMs;
+      checksumBytes += result.checksumBytes;
+
+      pendingRead = nextRead;
+    }
+  } finally {
+    checksumWorker.terminate();
+  }
+
+  const performance: MlgCrcValidationPerformance = {
+    totalMs: now() - totalStart,
+    sourceReadMs,
+    checksumCpuMs,
+    diagnosticCpuMs,
+    checksumBytes,
+  };
+  return { crcValid, diagnostics, performance };
 }
 
 scope.onmessage = (event): void => {
@@ -114,8 +306,8 @@ scope.onmessage = (event): void => {
       }
       validationStartResolver = undefined;
 
-      const validation = await validateMlgRecordCrc(
-        source,
+      const validation = await validateMlgRecordCrcParallel(
+        importRequest.file,
         headerResult.header,
         scanResult.records,
       );
