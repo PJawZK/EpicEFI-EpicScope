@@ -20,6 +20,8 @@ const VIEWPORT_INTERACTION_BURST_WINDOW_MS = 180;
 const VIEWPORT_INTERACTION_SETTLE_DELAY_MS = 160;
 const PROGRESSIVE_FILL_DESKTOP_MAX_STEP_SAMPLES = 65_536;
 const PROGRESSIVE_FILL_LOW_SPEC_MAX_STEP_SAMPLES = 32_768;
+const MATERIALIZATION_DESKTOP_DELAY_MS = 120;
+const MATERIALIZATION_LOW_SPEC_IDLE_DELAY_MS = 1_000;
 
 function progressiveFillStepSamples(missingSamples: number, completedSteps: number): number {
   if (completedSteps === 0 || missingSamples <= PROGRESSIVE_FILL_BASE_STEP_SAMPLES * 2) {
@@ -249,6 +251,7 @@ export function createGraphViewport(): GraphViewportController {
   const pendingTraces = new Map<string, PendingTrace>();
   const loadingTraceIds = new Set<string>();
   const materializingTraceIds = new Set<string>();
+  const materializationTimers = new Map<string, number>();
   let decodeInFlight = false;
   let decodeGeneration = 0;
   let viewportRefreshTimer: number | undefined;
@@ -874,9 +877,7 @@ export function createGraphViewport(): GraphViewportController {
         });
         pending.resolve(true);
         const activated = activeTraces.get(channelId);
-        if (activated && !activated.statisticsComplete) {
-          window.setTimeout(() => { void materializeActiveChannel(channelId); }, 120);
-        }
+        if (activated && !activated.statisticsComplete) scheduleMaterialization(channelId);
       }
 
     } catch (error) {
@@ -895,6 +896,20 @@ export function createGraphViewport(): GraphViewportController {
         if (pendingTraces.size > 0) void flushPending();
       }
     }
+  };
+
+  const scheduleMaterialization = (channelId: string): void => {
+    const existingTimer = materializationTimers.get(channelId);
+    if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+    const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
+    const delayMs = logicalThreads <= 3
+      ? MATERIALIZATION_LOW_SPEC_IDLE_DELAY_MS
+      : MATERIALIZATION_DESKTOP_DELAY_MS;
+    const timer = window.setTimeout(() => {
+      materializationTimers.delete(channelId);
+      void materializeActiveChannel(channelId);
+    }, delayMs);
+    materializationTimers.set(channelId, timer);
   };
 
   const materializeActiveChannel = async (channelId: string): Promise<void> => {
@@ -929,13 +944,11 @@ export function createGraphViewport(): GraphViewportController {
       const range = result.ranges.get(channelId);
       if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) return;
 
-      const scaleStart = now();
-      const scale = buildStableValueScale(range);
-      const scaleMs = now() - scaleStart;
+      const scaleMs = 0;
       activeTraces.set(channelId, {
         ...latest,
         range,
-        scale,
+        scale: latest.scale,
         fullStatistics: summarizeRange(range),
         statisticsComplete: true,
       });
@@ -1247,6 +1260,8 @@ export function createGraphViewport(): GraphViewportController {
       viewportRefreshTimer = undefined;
     }
     materializingTraceIds.clear();
+    for (const timer of materializationTimers.values()) window.clearTimeout(timer);
+    materializationTimers.clear();
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
@@ -1397,6 +1412,8 @@ export function createGraphViewport(): GraphViewportController {
       viewportRefreshTimer = undefined;
     }
     materializingTraceIds.clear();
+    for (const timer of materializationTimers.values()) window.clearTimeout(timer);
+    materializationTimers.clear();
     activeTraces.clear();
     envelopeCache.clear();
     renderReadout();
@@ -1417,6 +1434,14 @@ export function createGraphViewport(): GraphViewportController {
 
   const setViewport = (nextViewport: TimelineViewport | undefined): void => {
     viewport = nextViewport;
+    const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
+    if (logicalThreads <= 3) {
+      for (const [channelId, trace] of activeTraces) {
+        if (!trace.statisticsComplete && !materializingTraceIds.has(channelId)) {
+          scheduleMaterialization(channelId);
+        }
+      }
+    }
     scheduleViewportRefresh();
     draw();
   };
