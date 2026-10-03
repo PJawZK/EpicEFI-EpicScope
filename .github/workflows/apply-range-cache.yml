@@ -1,0 +1,3 @@
+name: Apply range-aware channel cache
+on:
+  workflow_dispatch:
