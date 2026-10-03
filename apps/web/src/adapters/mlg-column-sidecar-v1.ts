@@ -13,7 +13,7 @@ import type {
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
 const MANIFEST_FILE = 'manifest.json';
-const TARGET_STRIPE_BYTES = 64;
+const TARGET_STRIPE_BYTES = 256;
 const BLOCK_HEADER_LENGTH = 4;
 
 interface OpfsWritable {
@@ -258,14 +258,18 @@ export async function createMlgColumnSidecarBuilder(
       transposeMs += now() - transposeStarted;
 
       const writeStarted = now();
-      await Promise.all(outputs.map((output, index) => streams[index]!.write(output)));
+      for (let index = 0; index < outputs.length; index += 1) {
+        await streams[index]!.write(outputs[index]!);
+      }
       writeMs += now() - writeStarted;
       bytesWritten += outputs.reduce((sum, output) => sum + output.byteLength, 0);
       completedSamples += sampleCount;
     },
     finish: async () => {
       if (aborted) throw new Error('MLG sidecar build was aborted.');
-      await Promise.all(streams.map((stream) => stream.close()));
+      for (const stream of streams) {
+        await stream.close();
+      }
       if (completedSamples !== recordIndex.offsets.length) {
         await removeManifest(directory);
         throw new Error(

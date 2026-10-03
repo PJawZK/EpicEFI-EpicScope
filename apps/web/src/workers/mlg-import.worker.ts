@@ -484,10 +484,18 @@ scope.onmessage = (event): void => {
             },
           }
         : undefined;
+      let sidecarFinishDiagnostic: ParserDiagnostic | undefined;
       if (sidecarBuilder) {
         try {
           sidecar = await sidecarBuilder.finish();
-        } catch {
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          sidecarFinishDiagnostic = {
+            code: 'mlg-sidecar-finish-failed',
+            severity: 'warning',
+            message: `MLG column sidecar finalization failed: ${message}`,
+            recoverable: true,
+          };
           await sidecarBuilder.abort();
         }
       }
@@ -495,7 +503,11 @@ scope.onmessage = (event): void => {
       const classified = classifyMlgRetryDiagnostics(
         scanResult.records,
         validation.crcValid,
-        [...scanResult.diagnostics, ...validation.diagnostics],
+        [
+          ...scanResult.diagnostics,
+          ...validation.diagnostics,
+          ...(sidecarFinishDiagnostic ? [sidecarFinishDiagnostic] : []),
+        ],
         headerResult.header.recordLength,
       );
 
