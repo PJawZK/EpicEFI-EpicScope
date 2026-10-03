@@ -57,7 +57,7 @@ type CrcWorkerResponse = CrcChunkResult | CrcChunkError;
 const scope = globalThis as unknown as WorkerScope;
 const now = (): number => globalThis.performance?.now() ?? Date.now();
 const BLOCK_HEADER_LENGTH = 4;
-const VALIDATION_CHUNK_SIZE = 8 * 1024 * 1024;
+const VALIDATION_CHUNK_SIZE = 32 * 1024 * 1024;
 let validationStartResolver: (() => void) | undefined;
 let validationStartRequested = false;
 

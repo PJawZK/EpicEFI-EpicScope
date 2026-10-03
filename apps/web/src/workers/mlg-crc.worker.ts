@@ -48,9 +48,9 @@ scope.onmessage = (event): void => {
     const blockLength = BLOCK_HEADER_LENGTH + request.recordLength + 1;
     const crcValid = new Uint8Array(request.relativeOffsets.length);
     const diagnostics: ParserDiagnostic[] = [];
-    let checksumCpuMs = 0;
     let diagnosticCpuMs = 0;
     let checksumBytes = 0;
+    const checksumWorkStart = now();
 
     for (let localIndex = 0; localIndex < request.relativeOffsets.length; localIndex += 1) {
       const relativeOffset = request.relativeOffsets[localIndex];
@@ -58,10 +58,7 @@ scope.onmessage = (event): void => {
       const recordStart = relativeOffset + BLOCK_HEADER_LENGTH;
       checksumBytes += request.recordLength;
 
-      const checksumStart = now();
       const expectedCrc = calculateMlgRecordChecksum(bytes, recordStart, request.recordLength);
-      checksumCpuMs += now() - checksumStart;
-
       const actualCrc = bytes[relativeOffset + blockLength - 1] ?? 0;
       const valid = expectedCrc === actualCrc;
       crcValid[localIndex] = valid ? 1 : 0;
@@ -91,6 +88,7 @@ scope.onmessage = (event): void => {
       }
     }
 
+    const checksumCpuMs = Math.max(0, now() - checksumWorkStart - diagnosticCpuMs);
     const response: CrcChunkResult = {
       type: 'chunk-result',
       chunkId: request.chunkId,
