@@ -158,5 +158,14 @@ describe('PersistentColumnCacheDataSource', () => {
     expect(source.readCount).toBe(1);
     expect(result?.performance.physicalReadCount).toBe(7);
     expect(result?.ranges.size).toBe(5);
+
+    const reused = await cached.readChannelRange('mlg:4', 0, cached.sampleCount);
+    expect(source.readCount).toBe(1);
+    expect(reused.values).toEqual(Float64Array.from([400, 401, 402, 403, 404, 405]));
+
+    const laterSource = new FakeChannelDataSource();
+    const later = new PersistentColumnCacheDataSource(laterSource, 'log-c', timeMs, validity, store);
+    await later.readChannelRange('mlg:4', 0, later.sampleCount);
+    expect(laterSource.readCount).toBe(1);
   });
 });
