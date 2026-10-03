@@ -1,6 +1,7 @@
 import { MlgNumericChannelDataSource } from '../../../../core/parsers/mlg/mlg-channel-data';
 import type { NumericChannelDataSource } from '../../../../core/log-model/log-types';
 import { BlobByteSource } from './blob-byte-source';
+import { createPersistentColumnCacheDataSource } from './persistent-channel-cache';
 import type {
   MlgWorkerIndexedPayload,
   MlgWorkerResponse,
@@ -58,10 +59,16 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
 
     if (message.type === 'indexed') {
       const source = new BlobByteSource(file);
-      const channelData = new MlgNumericChannelDataSource(
+      const baseChannelData = new MlgNumericChannelDataSource(
         source,
         message.payload.fields,
         message.payload.recordIndex,
+      );
+      const channelData = createPersistentColumnCacheDataSource(
+        baseChannelData,
+        message.payload.summary.source.id,
+        message.payload.recordIndex.timeMs,
+        message.payload.recordIndex.crcValid,
       );
       indexedPayload = {
         ...message.payload,
