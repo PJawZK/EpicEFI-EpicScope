@@ -1,5 +1,6 @@
 import { parseMlg, type ParsedMlgLog } from '../../../../core/parsers/mlg/mlg-parser';
 import { BlobByteSource, type BlobByteSourceStats } from './blob-byte-source';
+import { createPersistentColumnCacheDataSource } from './persistent-channel-cache';
 
 export interface ImportedMlgFile extends ParsedMlgLog {
   readonly sourceStats: BlobByteSourceStats;
@@ -18,6 +19,12 @@ export async function importMlgFile(file: File): Promise<ImportedMlgFile> {
   });
   return {
     ...parsed,
+    channelData: createPersistentColumnCacheDataSource(
+      parsed.channelData,
+      parsed.summary.source.id,
+      parsed.recordIndex.timeMs,
+      parsed.recordIndex.crcValid,
+    ),
     sourceStats: source.stats(),
     importTotalMs: now() - started,
   };
