@@ -718,7 +718,8 @@ export function createGraphViewport(): GraphViewportController {
     channelIds: readonly string[],
     generation: number,
   ): Promise<void> => {
-    if (!channelData || channelIds.length === 0) return;
+    const dataSource = channelData;
+    if (!dataSource || channelIds.length === 0) return;
 
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     if (generation !== decodeGeneration) return;
@@ -729,12 +730,12 @@ export function createGraphViewport(): GraphViewportController {
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const readStart = now();
     try {
-      const result = channelData.readChannelsRange
-        ? await channelData.readChannelsRange(activeIds, 0, channelData.sampleCount)
+      const result = dataSource.readChannelsRange
+        ? await dataSource.readChannelsRange(activeIds, 0, dataSource.sampleCount)
         : {
             ranges: new Map(await Promise.all(activeIds.map(async (channelId) => [
               channelId,
-              await channelData!.readChannelRange(
+              await dataSource.readChannelRange(
                 channelId,
                 requestRange.startSampleIndex,
                 requestRange.sampleCount,
@@ -783,7 +784,7 @@ export function createGraphViewport(): GraphViewportController {
           channelId,
           phase: 'full',
           startSampleIndex: 0,
-          requestedSampleCount: channelData.sampleCount,
+          requestedSampleCount: dataSource.sampleCount,
           totalMs: completedMs - readStart,
           readDecodeMs,
           scaleMs: scaleTimes.get(channelId) ?? 0,
