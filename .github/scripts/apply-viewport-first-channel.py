@@ -1,211 +1,23 @@
 from pathlib import Path
 
-
-def replace_once(path: str, old: str, new: str) -> None:
-    p = Path(path)
-    text = p.read_text()
-    if old not in text:
-        raise SystemExit(f'pattern not found in {path}: {old[:120]!r}')
-    p.write_text(text.replace(old, new, 1))
-
-
-replace_once(
-    'core/log-model/log-types.ts',
-    "  readonly requiresExplicitBatchSelection?: boolean;\n  hasCachedChannelRange?(\n",
-    "  readonly requiresExplicitBatchSelection?: boolean;\n  sampleRangeForTime?(\n    startMs: number,\n    endMs: number,\n  ): { readonly startSampleIndex: number; readonly sampleCount: number };\n  hasCachedChannelRange?(\n",
-)
-
-replace_once(
-    'core/parsers/mlg/mlg-channel-data.ts',
-    "  public hasCachedChannelRange(\n",
-    "  public sampleRangeForTime(\n    startMs: number,\n    endMs: number,\n  ): { readonly startSampleIndex: number; readonly sampleCount: number } {\n    const times = this.recordIndex.timeMs;\n    if (times.length === 0) return { startSampleIndex: 0, sampleCount: 0 };\n\n    const lowTarget = Math.min(startMs, endMs);\n    const highTarget = Math.max(startMs, endMs);\n\n    let low = 0;\n    let high = times.length;\n    while (low < high) {\n      const mid = (low + high) >>> 1;\n      if ((times[mid] ?? Number.POSITIVE_INFINITY) < lowTarget) low = mid + 1;\n      else high = mid;\n    }\n    const startSampleIndex = Math.max(0, low - 1);\n\n    low = startSampleIndex;\n    high = times.length;\n    while (low < high) {\n      const mid = (low + high) >>> 1;\n      if ((times[mid] ?? Number.NEGATIVE_INFINITY) <= highTarget) low = mid + 1;\n      else high = mid;\n    }\n    const endSampleIndex = Math.min(times.length, low + 1);\n\n    return {\n      startSampleIndex,\n      sampleCount: Math.max(0, endSampleIndex - startSampleIndex),\n    };\n  }\n\n  public hasCachedChannelRange(\n",
-)
-
-graph = Path('apps/web/src/components/graph-viewport.ts')
-text = graph.read_text()
-
-old = "export interface GraphChannelPerformance {\n  readonly channelId: string;\n  readonly totalMs: number;"
-new = "export interface GraphChannelPerformance {\n  readonly channelId: string;\n  readonly phase: 'viewport' | 'full' | 'cache';\n  readonly startSampleIndex: number;\n  readonly requestedSampleCount: number;\n  readonly totalMs: number;"
-if old not in text:
-    raise SystemExit('GraphChannelPerformance pattern not found')
-text = text.replace(old, new, 1)
-
-marker = "  const flushPending = async (): Promise<void> => {\n"
-helper = '''  const currentChannelReadRange = (): {
-    readonly startSampleIndex: number;
-    readonly sampleCount: number;
-    readonly phase: 'viewport' | 'full';
-  } => {
-    if (!channelData) return { startSampleIndex: 0, sampleCount: 0, phase: 'full' };
-    if (!viewport || !channelData.sampleRangeForTime) {
-      return { startSampleIndex: 0, sampleCount: channelData.sampleCount, phase: 'full' };
-    }
-
-    const candidate = channelData.sampleRangeForTime(
-      viewport.visibleStartMs,
-      viewport.visibleEndMs,
-    );
-    if (candidate.sampleCount <= 0 || candidate.sampleCount >= channelData.sampleCount) {
-      return { startSampleIndex: 0, sampleCount: channelData.sampleCount, phase: 'full' };
-    }
-    return { ...candidate, phase: 'viewport' };
-  };
-
-  const promoteViewportBatchToFull = async (
-    channelIds: readonly string[],
-    generation: number,
-  ): Promise<void> => {
-    if (!channelData || channelIds.length === 0) return;
-
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-    if (generation !== decodeGeneration) return;
-
-    const activeIds = channelIds.filter((channelId) => activeTraces.has(channelId));
-    if (activeIds.length === 0) return;
-
-    const now = (): number => globalThis.performance?.now() ?? Date.now();
-    const readStart = now();
-    try {
-      const result = channelData.readChannelsRange
-        ? await channelData.readChannelsRange(activeIds, 0, channelData.sampleCount)
-        : {
-            ranges: new Map(await Promise.all(activeIds.map(async (channelId) => [
-              channelId,
-              await channelData!.readChannelRange(channelId, 0, channelData!.sampleCount),
-            ] as const))),
-            performance: {
-              channelCount: activeIds.length,
-              cacheHitChannelIds: [] as readonly string[],
-              physicalReadCount: 0,
-              physicalBytesRead: 0,
-              physicalReadMs: 0,
-            },
-          };
-      const readDecodeMs = now() - readStart;
-      if (generation !== decodeGeneration) return;
-
-      const cacheHits = new Set(result.performance.cacheHitChannelIds);
-      const scaleTimes = new Map<string, number>();
-      for (const channelId of activeIds) {
-        const existing = activeTraces.get(channelId);
-        const range = result.ranges.get(channelId);
-        if (!existing || !range) continue;
-        const scaleStart = now();
-        const scale = buildStableValueScale(range);
-        scaleTimes.set(channelId, now() - scaleStart);
-        activeTraces.set(channelId, {
-          ...existing,
-          range,
-          scale,
-          fullStatistics: summarizeRange(range),
-        });
-        envelopeCache.delete(channelId);
-      }
-
-      renderReadout();
-      emitCursorValues();
-      const renderStart = now();
-      draw();
-      const renderMs = now() - renderStart;
-      const completedMs = now();
-
-      for (const channelId of activeIds) {
-        const range = result.ranges.get(channelId);
-        if (!range || !activeTraces.has(channelId)) continue;
-        channelPerformanceListener?.({
-          channelId,
-          phase: 'full',
-          startSampleIndex: 0,
-          requestedSampleCount: channelData.sampleCount,
-          totalMs: completedMs - readStart,
-          readDecodeMs,
-          scaleMs: scaleTimes.get(channelId) ?? 0,
-          renderMs,
-          sampleCount: range.values.length,
-          batchSize: activeIds.length,
-          cacheHit: cacheHits.has(channelId),
-          physicalReadCount: result.performance.physicalReadCount,
-          physicalBytesRead: result.performance.physicalBytesRead,
-          physicalReadMs: result.performance.physicalReadMs,
-        });
-      }
-    } catch {
-      // The viewport trace is already usable. Full-range promotion is best-effort.
-    }
-  };
-
-'''
-if marker not in text:
-    raise SystemExit('flushPending marker not found')
-text = text.replace(marker, helper + marker, 1)
-
-old = "    const channelIds = batch.map(([channelId]) => channelId);\n    for (const channelId of channelIds) loadingTraceIds.add(channelId);\n"
-new = "    const channelIds = batch.map(([channelId]) => channelId);\n    const requestRange = currentChannelReadRange();\n    for (const channelId of channelIds) loadingTraceIds.add(channelId);\n"
-if old not in text:
-    raise SystemExit('channelIds block not found')
-text = text.replace(old, new, 1)
-
-old = "    overlayDetail.textContent = batch.length > 1\n      ? 'Reading selected channels in one sequential log pass.'\n      : 'Reading bounded channel data from the local log. Additional selections will join the next pass.';\n"
-new = "    overlayDetail.textContent = requestRange.phase === 'viewport'\n      ? `Reading ${requestRange.sampleCount.toLocaleString()} visible samples first.`\n      : batch.length > 1\n        ? 'Reading selected channels in one sequential log pass.'\n        : 'Reading bounded channel data from the local log. Additional selections will join the next pass.';\n"
-if old not in text:
-    raise SystemExit('overlay detail block not found')
-text = text.replace(old, new, 1)
-
-old = "        ? await channelData.readChannelsRange(channelIds, 0, channelData.sampleCount)\n"
-new = "        ? await channelData.readChannelsRange(\n            channelIds,\n            requestRange.startSampleIndex,\n            requestRange.sampleCount,\n          )\n"
-if old not in text:
-    raise SystemExit('flush batch read pattern not found')
-text = text.replace(old, new, 1)
-
-old = "              await channelData!.readChannelRange(channelId, 0, channelData!.sampleCount),\n"
-new = "              await channelData!.readChannelRange(\n                channelId,\n                requestRange.startSampleIndex,\n                requestRange.sampleCount,\n              ),\n"
-if old not in text:
-    raise SystemExit('flush fallback read pattern not found')
-text = text.replace(old, new, 1)
-
-old = "        channelPerformanceListener?.({\n          channelId,\n          totalMs: completedMs - readStart,\n          readDecodeMs,"
-new = "        channelPerformanceListener?.({\n          channelId,\n          phase: requestRange.phase,\n          startSampleIndex: requestRange.startSampleIndex,\n          requestedSampleCount: requestRange.sampleCount,\n          totalMs: completedMs - readStart,\n          readDecodeMs,"
-if old not in text:
-    raise SystemExit('flush performance payload not found')
-text = text.replace(old, new, 1)
-
-old = "        pending.resolve(true);\n      }\n    } catch (error) {"
-new = "        pending.resolve(true);\n      }\n\n      if (requestRange.phase === 'viewport') {\n        void promoteViewportBatchToFull(channelIds, generation);\n      }\n    } catch (error) {"
-if old not in text:
-    raise SystemExit('promotion insertion point not found')
-text = text.replace(old, new, 1)
-
-old = "      channelPerformanceListener?.({\n        channelId,\n        totalMs: completedMs - pending.startedMs,\n        readDecodeMs,"
-new = "      channelPerformanceListener?.({\n        channelId,\n        phase: 'cache',\n        startSampleIndex: 0,\n        requestedSampleCount: channelData.sampleCount,\n        totalMs: completedMs - pending.startedMs,\n        readDecodeMs,"
-if old not in text:
-    raise SystemExit('cached performance payload not found')
-text = text.replace(old, new, 1)
-
-graph.write_text(text)
-
-replace_once(
-    'apps/web/src/app/app-shell.ts',
-    "      channelName: run.channelName,\n      totalMs: run.totalMs,\n",
-    "      channelName: run.channelName,\n      phase: run.phase,\n      startSampleIndex: run.startSampleIndex,\n      requestedSampleCount: run.requestedSampleCount,\n      totalMs: run.totalMs,\n",
-)
-
-perf = Path('apps/web/src/components/performance-diagnostics.ts')
-text = perf.read_text()
-old = "export interface ChannelPerformanceRun {\n  readonly channelName: string;\n  readonly totalMs: number;"
-new = "export interface ChannelPerformanceRun {\n  readonly channelName: string;\n  readonly phase: 'viewport' | 'full' | 'cache';\n  readonly startSampleIndex: number;\n  readonly requestedSampleCount: number;\n  readonly totalMs: number;"
-if old not in text:
-    raise SystemExit('ChannelPerformanceRun pattern not found')
-text = text.replace(old, new, 1)
-
-old = "`${index + 1}. ${run.channelName}: total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; samples=${run.sampleCount}; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms`,"
-new = "`${index + 1}. ${run.channelName}: phase=${run.phase}; startSample=${run.startSampleIndex}; requestedSamples=${run.requestedSampleCount}; returnedSamples=${run.sampleCount}; total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms`,"
-if old not in text:
-    raise SystemExit('channel report line not found')
-text = text.replace(old, new, 1)
-
-old = "        detail.textContent = `${ms(run.totalMs)} total · ${ms(run.readDecodeMs)} read/decode · ${ms(run.scaleMs)} scale · ${ms(run.renderMs)} render · ${source}`;"
-new = "        detail.textContent = `${run.phase} · samples ${run.startSampleIndex.toLocaleString()}–${Math.max(run.startSampleIndex, run.startSampleIndex + run.requestedSampleCount - 1).toLocaleString()} · ${ms(run.totalMs)} total · ${ms(run.readDecodeMs)} read/decode · ${ms(run.scaleMs)} scale · ${ms(run.renderMs)} render · ${source}`;"
-if old not in text:
-    raise SystemExit('channel UI detail line not found')
-text = text.replace(old, new, 1)
-perf.write_text(text)
+path = Path('apps/web/src/components/graph-viewport.ts')
+text = path.read_text()
+start_marker = "  const promoteViewportBatchToFull = async (\n"
+end_marker = "  const flushPending = async (): Promise<void> => {\n"
+start = text.find(start_marker)
+end = text.find(end_marker, start)
+if start < 0 or end < 0:
+    raise SystemExit('viewport promotion block not found')
+block = text[start:end]
+old = "    if (!channelData || channelIds.length === 0) return;\n\n    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));"
+new = "    const dataSource = channelData;\n    if (!dataSource || channelIds.length === 0) return;\n\n    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));"
+if old not in block:
+    raise SystemExit('promotion capture insertion point not found')
+block = block.replace(old, new, 1)
+block = block.replace('channelData.readChannelsRange', 'dataSource.readChannelsRange')
+block = block.replace('channelData!.readChannelRange', 'dataSource.readChannelRange')
+block = block.replace('channelData.readChannelRange', 'dataSource.readChannelRange')
+block = block.replace('channelData!.sampleCount', 'dataSource.sampleCount')
+block = block.replace('channelData.sampleCount', 'dataSource.sampleCount')
+text = text[:start] + block + text[end:]
+path.write_text(text)
