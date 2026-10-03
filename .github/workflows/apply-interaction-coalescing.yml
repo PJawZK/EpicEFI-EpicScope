@@ -20,104 +20,110 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply interaction coalescing patch
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
           p = Path('apps/web/src/components/graph-viewport.ts')
           s = p.read_text()
 
           old = "const PROGRESSIVE_FILL_BASE_STEP_SAMPLES = 16_384;"
           new = """const PROGRESSIVE_FILL_BASE_STEP_SAMPLES = 16_384;
-const VIEWPORT_REFRESH_DEFAULT_DELAY_MS = 90;
-const VIEWPORT_INTERACTION_BURST_WINDOW_MS = 180;
-const VIEWPORT_INTERACTION_SETTLE_DELAY_MS = 160;"""
+          const VIEWPORT_REFRESH_DEFAULT_DELAY_MS = 90;
+          const VIEWPORT_INTERACTION_BURST_WINDOW_MS = 180;
+          const VIEWPORT_INTERACTION_SETTLE_DELAY_MS = 160;"""
+          new = new.replace('          const', 'const')
           if old not in s:
               raise SystemExit('progressive fill constant anchor not found')
           s = s.replace(old, new, 1)
 
           old = """  let viewportRefreshTimer: number | undefined;
-  let viewportRefreshGeneration = 0;"""
+          let viewportRefreshGeneration = 0;""".replace('          let', '  let')
           new = """  let viewportRefreshTimer: number | undefined;
-  let viewportRefreshGeneration = 0;
-  let lastViewportInteractionMs = Number.NEGATIVE_INFINITY;
-  let nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;"""
+          let viewportRefreshGeneration = 0;
+          let lastViewportInteractionMs = Number.NEGATIVE_INFINITY;
+          let nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;""".replace('          let', '  let')
           if old not in s:
               raise SystemExit('viewport state anchor not found')
           s = s.replace(old, new, 1)
 
           old = """  const resizeObserver = new ResizeObserver(draw);
-  resizeObserver.observe(root);
+          resizeObserver.observe(root);
 
-  canvas.addEventListener('wheel', (event) => {"""
+          canvas.addEventListener('wheel', (event) => {""".replace('          resize', '  resize').replace('          canvas', '  canvas')
           new = """  const resizeObserver = new ResizeObserver(draw);
-  resizeObserver.observe(root);
+          resizeObserver.observe(root);
 
-  const markViewportInteraction = (): void => {
-    const now = globalThis.performance?.now() ?? Date.now();
-    const repeated = now - lastViewportInteractionMs <= VIEWPORT_INTERACTION_BURST_WINDOW_MS;
-    lastViewportInteractionMs = now;
-    nextViewportRefreshDelayMs = repeated
-      ? VIEWPORT_INTERACTION_SETTLE_DELAY_MS
-      : VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
+          const markViewportInteraction = (): void => {
+            const now = globalThis.performance?.now() ?? Date.now();
+            const repeated = now - lastViewportInteractionMs <= VIEWPORT_INTERACTION_BURST_WINDOW_MS;
+            lastViewportInteractionMs = now;
+            nextViewportRefreshDelayMs = repeated
+              ? VIEWPORT_INTERACTION_SETTLE_DELAY_MS
+              : VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
 
-    // Stop progressive work from chasing a viewport that the user has already
-    // moved away from. The Blob read already in flight cannot be aborted, but
-    // its result will be discarded as soon as it resolves.
-    viewportRefreshGeneration += 1;
-    if (viewportRefreshTimer !== undefined) {
-      window.clearTimeout(viewportRefreshTimer);
-      viewportRefreshTimer = undefined;
-    }
-  };
+            // Stop progressive work from chasing a viewport that the user has already
+            // moved away from. The Blob read already in flight cannot be aborted, but
+            // its result will be discarded as soon as it resolves.
+            viewportRefreshGeneration += 1;
+            if (viewportRefreshTimer !== undefined) {
+              window.clearTimeout(viewportRefreshTimer);
+              viewportRefreshTimer = undefined;
+            }
+          };
 
-  canvas.addEventListener('wheel', (event) => {"""
+          canvas.addEventListener('wheel', (event) => {"""
+          new = '\n'.join(line[8:] if line.startswith('        ') else line for line in new.splitlines())
           if old not in s:
               raise SystemExit('wheel anchor not found')
           s = s.replace(old, new, 1)
 
           old = """    const factor = event.deltaY < 0 ? 0.72 : 1.38;
-    zoomListener(factor, anchorMs);"""
+              zoomListener(factor, anchorMs);""".replace('              zoom', '    zoom')
           new = """    const factor = event.deltaY < 0 ? 0.72 : 1.38;
-    markViewportInteraction();
-    zoomListener(factor, anchorMs);"""
+              markViewportInteraction();
+              zoomListener(factor, anchorMs);""".replace('              mark', '    mark').replace('              zoom', '    zoom')
           if old not in s:
               raise SystemExit('wheel callback anchor not found')
           s = s.replace(old, new, 1)
 
           old = """      const span = viewport.visibleEndMs - viewport.visibleStartMs;
-      panListener?.(-(deltaX / rect.width) * span);"""
+              panListener?.(-(deltaX / rect.width) * span);""".replace('              pan', '      pan')
           new = """      const span = viewport.visibleEndMs - viewport.visibleStartMs;
-      markViewportInteraction();
-      panListener?.(-(deltaX / rect.width) * span);"""
+              markViewportInteraction();
+              panListener?.(-(deltaX / rect.width) * span);""".replace('              mark', '      mark').replace('              pan', '      pan')
           if old not in s:
               raise SystemExit('pan callback anchor not found')
           s = s.replace(old, new, 1)
 
           old = """  const scheduleViewportRefresh = (): void => {
-    viewportRefreshGeneration += 1;
-    const generation = viewportRefreshGeneration;
-    if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
-    viewportRefreshTimer = window.setTimeout(() => {
-      viewportRefreshTimer = undefined;
-      void refreshActiveViewportRanges(generation);
-    }, 90);
-  };"""
+            viewportRefreshGeneration += 1;
+            const generation = viewportRefreshGeneration;
+            if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
+            viewportRefreshTimer = window.setTimeout(() => {
+              viewportRefreshTimer = undefined;
+              void refreshActiveViewportRanges(generation);
+            }, 90);
+          };"""
           new = """  const scheduleViewportRefresh = (): void => {
-    viewportRefreshGeneration += 1;
-    const generation = viewportRefreshGeneration;
-    const delayMs = nextViewportRefreshDelayMs;
-    nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
-    if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
-    viewportRefreshTimer = window.setTimeout(() => {
-      viewportRefreshTimer = undefined;
-      void refreshActiveViewportRanges(generation);
-    }, delayMs);
-  };"""
+            viewportRefreshGeneration += 1;
+            const generation = viewportRefreshGeneration;
+            const delayMs = nextViewportRefreshDelayMs;
+            nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
+            if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
+            viewportRefreshTimer = window.setTimeout(() => {
+              viewportRefreshTimer = undefined;
+              void refreshActiveViewportRanges(generation);
+            }, delayMs);
+          };"""
+          old = '\n'.join(line[8:] if line.startswith('        ') else line for line in old.splitlines())
+          new = '\n'.join(line[8:] if line.startswith('        ') else line for line in new.splitlines())
           if old not in s:
               raise SystemExit('schedule anchor not found')
           s = s.replace(old, new, 1)
 
           p.write_text(s)
+          PY
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
