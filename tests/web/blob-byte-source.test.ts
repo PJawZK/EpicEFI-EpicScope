@@ -46,32 +46,32 @@ describe('BlobByteSource bounded raw cache', () => {
 });
 
 it('reuses the rolling boundary page on large sequential reads without exceeding the cache budget', async () => {
-  const page = 16 * 1024 * 1024;
-  const total = 7 * page;
+  const page = 32 * 1024 * 1024;
+  const total = 4 * page;
   const source = new BlobByteSource(new Blob([new Uint8Array(total)]));
 
-  // Fill the pinned 80 MiB prefix (pages 0-4).
-  for (let index = 0; index < 5; index += 1) {
+  // Fill the pinned 64 MiB prefix (pages 0-1).
+  for (let index = 0; index < 2; index += 1) {
     await source.read(index * page, page);
   }
 
   const before = source.stats();
-  expect(before.physicalReadCount).toBe(5);
+  expect(before.physicalReadCount).toBe(2);
 
-  // First boundary read loads page 5 as the rolling page.
-  await source.read(5 * page - 1024, 2048);
+  // First boundary read loads page 2 as the rolling page.
+  await source.read(2 * page - 1024, 2048);
   const afterFirstBoundary = source.stats();
-  expect(afterFirstBoundary.physicalReadCount).toBe(6);
+  expect(afterFirstBoundary.physicalReadCount).toBe(3);
 
-  // The next boundary read must reuse page 5 and only load page 6.
-  await source.read(6 * page - 1024, 2048);
+  // The next boundary read must reuse page 2 and only load page 3.
+  await source.read(3 * page - 1024, 2048);
   const afterSecondBoundary = source.stats();
-  expect(afterSecondBoundary.physicalReadCount).toBe(7);
+  expect(afterSecondBoundary.physicalReadCount).toBe(4);
   expect(afterSecondBoundary.cacheHitBytes).toBeGreaterThanOrEqual(1024);
   expect(afterSecondBoundary.cacheBytes).toBeLessThanOrEqual(96 * 1024 * 1024);
 
   const runtime = latestBlobByteSourceRuntimeDiagnostics();
-  expect(runtime?.pageSizeBytes).toBe(16 * 1024 * 1024);
+  expect(runtime?.pageSizeBytes).toBe(32 * 1024 * 1024);
   expect(runtime?.cacheLimitBytes).toBe(96 * 1024 * 1024);
   expect(runtime?.physicalReadCount).toBe(afterSecondBoundary.physicalReadCount);
   expect(runtime?.physicalReadAverageMs).toBeGreaterThanOrEqual(0);
