@@ -1,0 +1,133 @@
+name: Apply interaction-aware viewport coalescing
+
+on:
+  push:
+    branches:
+      - perf/coalesce-continuous-viewport-interaction
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: perf/coalesce-continuous-viewport-interaction
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply interaction coalescing patch
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('apps/web/src/components/graph-viewport.ts')
+          s = p.read_text()
+
+          old = "const PROGRESSIVE_FILL_BASE_STEP_SAMPLES = 16_384;"
+          new = """const PROGRESSIVE_FILL_BASE_STEP_SAMPLES = 16_384;
+const VIEWPORT_REFRESH_DEFAULT_DELAY_MS = 90;
+const VIEWPORT_INTERACTION_BURST_WINDOW_MS = 180;
+const VIEWPORT_INTERACTION_SETTLE_DELAY_MS = 160;"""
+          if old not in s:
+              raise SystemExit('progressive fill constant anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """  let viewportRefreshTimer: number | undefined;
+  let viewportRefreshGeneration = 0;"""
+          new = """  let viewportRefreshTimer: number | undefined;
+  let viewportRefreshGeneration = 0;
+  let lastViewportInteractionMs = Number.NEGATIVE_INFINITY;
+  let nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;"""
+          if old not in s:
+              raise SystemExit('viewport state anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """  const resizeObserver = new ResizeObserver(draw);
+  resizeObserver.observe(root);
+
+  canvas.addEventListener('wheel', (event) => {"""
+          new = """  const resizeObserver = new ResizeObserver(draw);
+  resizeObserver.observe(root);
+
+  const markViewportInteraction = (): void => {
+    const now = globalThis.performance?.now() ?? Date.now();
+    const repeated = now - lastViewportInteractionMs <= VIEWPORT_INTERACTION_BURST_WINDOW_MS;
+    lastViewportInteractionMs = now;
+    nextViewportRefreshDelayMs = repeated
+      ? VIEWPORT_INTERACTION_SETTLE_DELAY_MS
+      : VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
+
+    // Stop progressive work from chasing a viewport that the user has already
+    // moved away from. The Blob read already in flight cannot be aborted, but
+    // its result will be discarded as soon as it resolves.
+    viewportRefreshGeneration += 1;
+    if (viewportRefreshTimer !== undefined) {
+      window.clearTimeout(viewportRefreshTimer);
+      viewportRefreshTimer = undefined;
+    }
+  };
+
+  canvas.addEventListener('wheel', (event) => {"""
+          if old not in s:
+              raise SystemExit('wheel anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """    const factor = event.deltaY < 0 ? 0.72 : 1.38;
+    zoomListener(factor, anchorMs);"""
+          new = """    const factor = event.deltaY < 0 ? 0.72 : 1.38;
+    markViewportInteraction();
+    zoomListener(factor, anchorMs);"""
+          if old not in s:
+              raise SystemExit('wheel callback anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """      const span = viewport.visibleEndMs - viewport.visibleStartMs;
+      panListener?.(-(deltaX / rect.width) * span);"""
+          new = """      const span = viewport.visibleEndMs - viewport.visibleStartMs;
+      markViewportInteraction();
+      panListener?.(-(deltaX / rect.width) * span);"""
+          if old not in s:
+              raise SystemExit('pan callback anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """  const scheduleViewportRefresh = (): void => {
+    viewportRefreshGeneration += 1;
+    const generation = viewportRefreshGeneration;
+    if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
+    viewportRefreshTimer = window.setTimeout(() => {
+      viewportRefreshTimer = undefined;
+      void refreshActiveViewportRanges(generation);
+    }, 90);
+  };"""
+          new = """  const scheduleViewportRefresh = (): void => {
+    viewportRefreshGeneration += 1;
+    const generation = viewportRefreshGeneration;
+    const delayMs = nextViewportRefreshDelayMs;
+    nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
+    if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
+    viewportRefreshTimer = window.setTimeout(() => {
+      viewportRefreshTimer = undefined;
+      void refreshActiveViewportRanges(generation);
+    }, delayMs);
+  };"""
+          if old not in s:
+              raise SystemExit('schedule anchor not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit validated patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-interaction-coalescing.yml
+          git config user.name "PJawZK"
+          git config user.email "anderswedin@hotmail.se"
+          git add apps/web/src/components/graph-viewport.ts .github/workflows/apply-interaction-coalescing.yml
+          git commit -m "Perf: coalesce continuous viewport interaction"
+          git push origin HEAD:perf/coalesce-continuous-viewport-interaction
