@@ -25,6 +25,7 @@ import {
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
+import { buildOpportunisticPredecodeSelection } from '../performance/opportunistic-predecode';
 import {
   normalizeWorkspaceChannelIds,
   renderableWorkspaceChannelIds,
@@ -1527,17 +1528,14 @@ export function createLoggerPage(): LoggerPageController {
 
     const uniqueRequestedIds = [...new Set(paneRequests.flatMap((request) => request.requestedIds))];
     const predecodeTarget = opportunisticPredecodeTarget();
-    const batchRequestedIds = [...uniqueRequestedIds];
-    if (predecodeTarget > batchRequestedIds.length) {
-      const alreadyRequested = new Set(batchRequestedIds);
-      for (const channelId of channelDefinitions.keys()) {
-        if (batchRequestedIds.length >= predecodeTarget) break;
-        if (alreadyRequested.has(channelId) || unavailableChannelIds.has(channelId)) continue;
-        batchRequestedIds.push(channelId);
-        alreadyRequested.add(channelId);
-      }
-    }
-    const opportunisticPredecodeCount = batchRequestedIds.length - uniqueRequestedIds.length;
+    const predecodeSelection = buildOpportunisticPredecodeSelection(
+      uniqueRequestedIds,
+      channelDefinitions,
+      unavailableChannelIds,
+      predecodeTarget,
+    );
+    const batchRequestedIds = [...predecodeSelection.batchIds];
+    const opportunisticPredecodeCount = predecodeSelection.opportunisticIds.length;
     const prepareMs = now() - prepareStarted;
     let sharedBatchMs = 0;
     let sharedBatchCacheHit = true;
@@ -1569,7 +1567,7 @@ export function createLoggerPage(): LoggerPageController {
       channelPerformanceListener?.({
         channelId: '__multi-pane-restore__',
         channelName: opportunisticPredecodeCount > 0
-          ? `Multi-pane restore (${uniqueRequestedIds.length} workspace + ${opportunisticPredecodeCount} predecode = ${batchRequestedIds.length} channels)`
+          ? `Multi-pane restore (${uniqueRequestedIds.length} workspace + ${opportunisticPredecodeCount} predecode = ${batchRequestedIds.length} channels); predecode=[${predecodeSelection.opportunisticLabels.join(', ')}]`
           : `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
         phase: 'full',
         startSampleIndex: 0,
