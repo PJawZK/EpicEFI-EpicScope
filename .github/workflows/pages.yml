@@ -35,6 +35,8 @@ jobs:
         run: npm run typecheck
 
       - name: Build
+        env:
+          VITE_EPICSCOPE_BUILD_SHA: ${{ github.sha }}
         run: npm run build
 
       - name: Configure Pages
