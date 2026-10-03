@@ -772,17 +772,23 @@ export async function validateMlgRecordCrc(
   const recordLength = header.recordLength;
   const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
   let sourceReadMs = 0;
+  let checksumCpuMs = 0;
   let diagnosticCpuMs = 0;
   let checksumBytes = 0;
 
-  let sampleIndex = 0;
-  while (sampleIndex < recordIndex.offsets.length) {
-    const firstOffset = recordIndex.offsets[sampleIndex];
-    if (firstOffset === undefined) {
-      throw new RangeError(`Missing record offset for sample ${sampleIndex}.`);
-    }
+  interface ValidationBatch {
+    readonly firstIndex: number;
+    readonly lastIndex: number;
+    readonly firstOffset: number;
+    readonly byteLength: number;
+  }
 
-    let lastIndex = sampleIndex;
+  const planBatch = (firstIndex: number): ValidationBatch => {
+    const firstOffset = recordIndex.offsets[firstIndex];
+    if (firstOffset === undefined) {
+      throw new RangeError(`Missing record offset for sample ${firstIndex}.`);
+    }
+    let lastIndex = firstIndex;
     let batchEnd = firstOffset + blockLength;
     while (lastIndex + 1 < recordIndex.offsets.length) {
       const nextOffset = recordIndex.offsets[lastIndex + 1];
@@ -792,32 +798,47 @@ export async function validateMlgRecordCrc(
       lastIndex += 1;
       batchEnd = nextEnd;
     }
+    return { firstIndex, lastIndex, firstOffset, byteLength: batchEnd - firstOffset };
+  };
 
-    const readStart = now();
-    const bytes = await source.read(firstOffset, batchEnd - firstOffset);
-    sourceReadMs += now() - readStart;
+  const readBatch = async (batch: ValidationBatch): Promise<{ batch: ValidationBatch; bytes: Uint8Array }> => ({
+    batch,
+    bytes: await source.read(batch.firstOffset, batch.byteLength),
+  });
 
-    for (let index = sampleIndex; index <= lastIndex; index += 1) {
+  let pendingRead = recordIndex.offsets.length > 0 ? readBatch(planBatch(0)) : undefined;
+
+  while (pendingRead) {
+    const waitStart = now();
+    const current = await pendingRead;
+    sourceReadMs += now() - waitStart;
+
+    const nextIndex = current.batch.lastIndex + 1;
+    const nextRead = nextIndex < recordIndex.offsets.length
+      ? readBatch(planBatch(nextIndex))
+      : undefined;
+
+    for (let index = current.batch.firstIndex; index <= current.batch.lastIndex; index += 1) {
       const absoluteOffset = recordIndex.offsets[index];
       if (absoluteOffset === undefined) continue;
-      const relativeOffset = absoluteOffset - firstOffset;
+      const relativeOffset = absoluteOffset - current.batch.firstOffset;
       const recordStart = relativeOffset + BLOCK_HEADER_LENGTH;
       checksumBytes += recordLength;
-      const expectedCrc = calculateMlgRecordChecksum(bytes, recordStart, recordLength);
-      const actualCrc = bytes[relativeOffset + blockLength - 1] ?? 0;
+
+      const checksumStart = now();
+      const expectedCrc = calculateMlgRecordChecksum(current.bytes, recordStart, recordLength);
+      checksumCpuMs += now() - checksumStart;
+
+      const actualCrc = current.bytes[relativeOffset + blockLength - 1] ?? 0;
       const valid = expectedCrc === actualCrc;
       crcValid[index] = valid ? 1 : 0;
 
       if (!valid) {
         const diagnosticStart = now();
-        const counter = bytes[relativeOffset + 1] ?? 0;
-        const rawTimestamp = ((bytes[relativeOffset + 2] ?? 0) << 8)
-          | (bytes[relativeOffset + 3] ?? 0);
-        const blockHeaderSum = calculateMlgRecordChecksum(
-          bytes,
-          relativeOffset,
-          BLOCK_HEADER_LENGTH,
-        );
+        const counter = current.bytes[relativeOffset + 1] ?? 0;
+        const rawTimestamp = ((current.bytes[relativeOffset + 2] ?? 0) << 8)
+          | (current.bytes[relativeOffset + 3] ?? 0);
+        const blockHeaderSum = calculateMlgRecordChecksum(current.bytes, relativeOffset, BLOCK_HEADER_LENGTH);
         const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
         const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
         diagnostics.push({
@@ -831,19 +852,13 @@ export async function validateMlgRecordCrc(
       }
     }
 
-    sampleIndex = lastIndex + 1;
+    pendingRead = nextRead;
   }
 
   const totalMs = now() - totalStart;
   return {
     crcValid,
     diagnostics,
-    performance: {
-      totalMs,
-      sourceReadMs,
-      checksumCpuMs: Math.max(0, totalMs - sourceReadMs - diagnosticCpuMs),
-      diagnosticCpuMs,
-      checksumBytes,
-    },
+    performance: { totalMs, sourceReadMs, checksumCpuMs, diagnosticCpuMs, checksumBytes },
   };
 }
