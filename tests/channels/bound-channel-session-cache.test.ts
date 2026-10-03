@@ -43,16 +43,15 @@ class CountingSource implements NumericChannelDataSource {
   }
 }
 
+const binding = () => new Map([
+  ['ini:a', 'mlg:a'],
+  ['ini:b', 'mlg:b'],
+]);
+
 describe('BoundNumericChannelDataSource session cache', () => {
   it('reuses full logical columns from a shared restore batch without touching the source again', async () => {
     const source = new CountingSource();
-    const bound = new BoundNumericChannelDataSource(
-      source,
-      new Map([
-        ['ini:a', 'mlg:a'],
-        ['ini:b', 'mlg:b'],
-      ]),
-    );
+    const bound = new BoundNumericChannelDataSource(source, binding());
 
     const restored = await bound.readChannelsRange?.(['ini:a', 'ini:b'], 0, 6);
     expect(source.batchReads).toBe(1);
@@ -72,5 +71,26 @@ describe('BoundNumericChannelDataSource session cache', () => {
     expect(source.batchReads).toBe(1);
     expect(viewport.startSampleIndex).toBe(2);
     expect(viewport.values).toEqual(Float64Array.from([102, 103]));
+  });
+
+  it('keeps restored full columns when the same raw log is rebound to a new wrapper', async () => {
+    const source = new CountingSource();
+    const restoreBinding = new BoundNumericChannelDataSource(source, binding());
+
+    const restored = await restoreBinding.readChannelsRange?.(['ini:a', 'ini:b'], 0, 6);
+    expect(restored?.performance.physicalReadCount).toBe(34);
+    expect(source.batchReads).toBe(1);
+
+    // Applying/reapplying an INI can construct a fresh bound wrapper around the
+    // same raw log datasource. The decoded full columns must remain reusable.
+    const rebound = new BoundNumericChannelDataSource(source, binding());
+    expect(rebound.hasCachedChannelRange?.('ini:a', 0, 6)).toBe(true);
+
+    const selected = await rebound.readChannelsRange?.(['ini:a'], 0, 6);
+    expect(source.batchReads).toBe(1);
+    expect(selected?.performance.cacheHitChannelIds).toEqual(['ini:a']);
+    expect(selected?.performance.physicalReadCount).toBe(0);
+    expect(selected?.performance.physicalBytesRead).toBe(0);
+    expect(selected?.performance.physicalReadMs).toBe(0);
   });
 });
