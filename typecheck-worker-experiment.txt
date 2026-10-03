@@ -1,0 +1,5 @@
+
+> epicefi-epicscope@0.1.0 typecheck
+> tsc --noEmit
+
+apps/web/src/adapters/blob-byte-source.ts(175,42): error TS2304: Cannot find name 'CACHE_PAGE_SIZE'.
