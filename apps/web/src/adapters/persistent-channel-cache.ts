@@ -275,6 +275,13 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
               physicalReadMs: 0,
             },
           };
+      if (startSampleIndex === 0 && sampleCount === this.sampleCount) {
+        for (const [channelId, range] of delegated.ranges) {
+          if (range.startSampleIndex !== 0 || range.values.length !== this.sampleCount) continue;
+          this.residentColumns.set(channelId, range.values);
+          this.missingColumns.delete(channelId);
+        }
+      }
       return delegated;
     }
 
