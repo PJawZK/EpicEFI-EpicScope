@@ -1,0 +1,38 @@
+name: Apply CRC 32 MiB experiment
+
+on:
+  push:
+    branches:
+      - perf/crc-32mib-chunks-clean-timing
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: perf/crc-32mib-chunks-clean-timing
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/workers/mlg-import.worker.ts')
+          text = path.read_text()
+          old = 'const VALIDATION_CHUNK_SIZE = 8 * 1024 * 1024;'
+          new = 'const VALIDATION_CHUNK_SIZE = 32 * 1024 * 1024;'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one validation chunk constant, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/workers/mlg-import.worker.ts
+          git commit -m "Perf: use 32 MiB CRC validation chunks"
+          git push origin HEAD:perf/crc-32mib-chunks-clean-timing
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
