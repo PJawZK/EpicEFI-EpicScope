@@ -280,6 +280,8 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
 
+  private readonly residentFullRanges = new Map<string, NumericChannelRange>();
+
   public constructor(
     private readonly source: NumericChannelDataSource,
     private readonly sourceChannelIdByBoundId: ReadonlyMap<string, string>,
@@ -301,6 +303,29 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     return sourceId;
   }
 
+  private retainFullRange(channelId: string, range: NumericChannelRange): void {
+    if (range.startSampleIndex === 0 && range.values.length === this.sampleCount) {
+      this.residentFullRanges.set(channelId, range);
+    }
+  }
+
+  private residentRange(
+    channelId: string,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): NumericChannelRange | undefined {
+    const full = this.residentFullRanges.get(channelId);
+    if (!full) return undefined;
+    if (startSampleIndex === 0 && sampleCount === this.sampleCount) return full;
+    const end = startSampleIndex + sampleCount;
+    return {
+      startSampleIndex,
+      timeMs: full.timeMs.slice(startSampleIndex, end),
+      values: full.values.slice(startSampleIndex, end),
+      validity: full.validity.slice(startSampleIndex, end),
+    };
+  }
+
   sampleRangeForTime(
     startMs: number,
     endMs: number,
@@ -315,6 +340,7 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): boolean {
+    if (this.residentFullRanges.has(channelId)) return true;
     if (!this.source.hasCachedChannelRange) return false;
     const sourceId = this.sourceChannelIdByBoundId.get(channelId);
     return sourceId
@@ -327,7 +353,15 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelRange> {
-    return this.source.readChannelRange(this.sourceId(channelId), startSampleIndex, sampleCount);
+    const resident = this.residentRange(channelId, startSampleIndex, sampleCount);
+    if (resident) return resident;
+    const range = await this.source.readChannelRange(
+      this.sourceId(channelId),
+      startSampleIndex,
+      sampleCount,
+    );
+    this.retainFullRange(channelId, range);
+    return range;
   }
 
   async readChannelsRange(
@@ -335,19 +369,26 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelBatchResult> {
-    if (!this.source.readChannelsRange) {
-      const ranges = new Map<string, NumericChannelRange>();
-      for (const channelId of channelIds) {
-        ranges.set(
-          channelId,
-          await this.readChannelRange(channelId, startSampleIndex, sampleCount),
-        );
+    const ranges = new Map<string, NumericChannelRange>();
+    const residentHits: string[] = [];
+    const misses: string[] = [];
+
+    for (const channelId of channelIds) {
+      const resident = this.residentRange(channelId, startSampleIndex, sampleCount);
+      if (resident) {
+        ranges.set(channelId, resident);
+        residentHits.push(channelId);
+      } else {
+        misses.push(channelId);
       }
+    }
+
+    if (misses.length === 0) {
       return {
         ranges,
         performance: {
           channelCount: channelIds.length,
-          cacheHitChannelIds: [],
+          cacheHitChannelIds: residentHits,
           physicalReadCount: 0,
           physicalBytesRead: 0,
           physicalReadMs: 0,
@@ -355,32 +396,55 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
       };
     }
 
-    const sourceIds = channelIds.map((channelId) => this.sourceId(channelId));
+    if (!this.source.readChannelsRange) {
+      for (const channelId of misses) {
+        const range = await this.source.readChannelRange(
+          this.sourceId(channelId),
+          startSampleIndex,
+          sampleCount,
+        );
+        ranges.set(channelId, range);
+        this.retainFullRange(channelId, range);
+      }
+      return {
+        ranges,
+        performance: {
+          channelCount: channelIds.length,
+          cacheHitChannelIds: residentHits,
+          physicalReadCount: 0,
+          physicalBytesRead: 0,
+          physicalReadMs: 0,
+        },
+      };
+    }
+
+    const sourceIds = misses.map((channelId) => this.sourceId(channelId));
     const sourceResult = await this.source.readChannelsRange(
       sourceIds,
       startSampleIndex,
       sampleCount,
     );
 
-    const ranges = new Map<string, NumericChannelRange>();
-    for (let index = 0; index < channelIds.length; index += 1) {
-      const channelId = channelIds[index];
+    const sourceCacheHits = new Set(sourceResult.performance.cacheHitChannelIds);
+    const delegatedCacheHits: string[] = [];
+    for (let index = 0; index < misses.length; index += 1) {
+      const channelId = misses[index];
       const sourceId = sourceIds[index];
       if (!channelId || !sourceId) continue;
       const range = sourceResult.ranges.get(sourceId);
-      if (range) ranges.set(channelId, range);
+      if (range) {
+        ranges.set(channelId, range);
+        this.retainFullRange(channelId, range);
+      }
+      if (sourceCacheHits.has(sourceId)) delegatedCacheHits.push(channelId);
     }
 
-    const sourceCacheHits = new Set(sourceResult.performance.cacheHitChannelIds);
     return {
       ranges,
       performance: {
         ...sourceResult.performance,
         channelCount: channelIds.length,
-        cacheHitChannelIds: channelIds.filter((_channelId, index) => {
-          const sourceId = sourceIds[index];
-          return sourceId ? sourceCacheHits.has(sourceId) : false;
-        }),
+        cacheHitChannelIds: [...residentHits, ...delegatedCacheHits],
       },
     };
   }
