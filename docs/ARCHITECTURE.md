@@ -174,20 +174,23 @@ Responsibilities:
 The UI must not become a second analysis engine.
 
 <!-- CURRENT_STATE:web-active-channel-data-path:START -->
-## Current Web active-channel data path
+## Current Web large-log data path
 
-The current browser implementation has an important performance distinction between **workspace restore** and **new arbitrary-channel activation**:
+The browser implementation currently distinguishes source indexing, workspace restore, and later arbitrary channel access:
 
-- saved/assigned visible workspace channels are decoded as one shared full-range multi-channel batch before pane activation, amortizing the row-oriented MLG traversal;
-- a newly selected arbitrary channel is activated from a bounded viewport range first, then materialized once into a complete resident `NumericChannelRange`;
-- while full resident materialization is in progress, viewport refills for that channel are suppressed rather than competing for the same source I/O;
-- once complete, the active trace retains the full decoded range directly, so later zoom/pan is presentation-only and does not reread the MLG;
-- the resident swap preserves the existing graph scale so full-data arrival does not create a delayed vertical rescale;
-- low-spec systems (currently <=3 logical threads) defer full materialization until the interaction has been idle for 1,000 ms; desktop systems keep the faster 120 ms materialization schedule.
+- initial MLG loading/indexing performs the required source scan without speculative arbitrary-channel predecode;
+- saved/assigned visible workspace channels are decoded as one shared full-range multi-channel batch before pane activation, amortizing one row-oriented source traversal across the channels actually requested;
+- a bounded persistent decoded-channel cache may reuse channels that have already been decoded, but it is not allowed to redefine normal startup around a speculative hot set;
+- the cache is bounded and explicitly clearable so it does not become an unbounded hidden dependency for correctness or benchmarking;
+- known-but-unavailable logical channels remain part of workspace structure without fabricated samples.
 
-This is a Web implementation strategy behind the normalized data-source contracts, not a requirement that Linux use the same mechanism. The row-oriented MLG cost demonstrated by the Web implementation strengthens the case for future Linux-native indexed/columnar techniques without changing product semantics.
+The `predecode=32/64/128` experiment proved that extra columns can share the workspace source traversal, but it was rejected because it moves arbitrary-channel work into startup and benefits only a selected subset. That experiment was removed in PR #130.
 
-The next planned Web refinement is to cap the **initial** low-spec viewport-first request to about 16,384 samples centered in the requested viewport. That is a performance-policy refinement, not a data-model change.
+The active architectural question is now how to reduce repeated full-file row-oriented access for arbitrary first-use channels **without extending the normal initial open path**. Candidate solutions may reuse work/index information from the initial worker scan or introduce a better post-index access representation, but they must remain behind normalized data-source contracts and must be benchmarked for startup, memory, physical I/O and low-spec behavior.
+
+This remains a Web implementation concern behind normalized contracts; Linux is free to use native mmap/indexed/columnar techniques later without changing product semantics.
+<!-- CURRENT_STATE:web-active-channel-data-path:END -->
+
 <!-- CURRENT_STATE:web-active-channel-data-path:END -->
 
 ## Web and Linux relationship

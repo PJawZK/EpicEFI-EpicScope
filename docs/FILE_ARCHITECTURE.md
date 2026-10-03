@@ -5,14 +5,19 @@
 <!-- CURRENT_STATE:current-performance-ownership:START -->
 ## Current performance-sensitive ownership
 
-Current large-log hot paths remain inside already-approved areas:
+Current large-log hot paths remain inside approved areas:
 
-- `core/parsers/mlg/` — MLG source access, indexing, bounded/multi-channel decoding and decoded chunk/cache behavior;
-- `core/channels/` — stable channel/data-source binding and forwarding such as time→sample range mapping;
-- `apps/web/src/components/graph-viewport.ts` — Web-only viewport-first activation, progressive fallback behavior, active resident-channel lifecycle and interaction scheduling;
+- `core/parsers/mlg/` — MLG source access, indexing, bounded/multi-channel decoding and source-level performance accounting;
+- `core/channels/` — stable channel/data-source binding and forwarding such as time→sample mapping;
+- `apps/web/src/adapters/` — browser `File`/`Blob` access and the bounded persistent decoded-channel cache adapter;
+- `apps/web/src/components/graph-viewport.ts` — Web-only graph activation/presentation lifecycle;
 - `apps/web/src/pages/logger-page.ts` — workspace restore coordination, graph/timeline propagation and performance diagnostics integration.
 
-The current performance work does not authorize a new top-level cache/backend subsystem. Persistent columnar/indexed storage remains a future architectural option, especially for Linux, and requires explicit review before introduction.
+The opportunistic predecode experiment was removed in PR #130 and does not authorize a new hot-set/preload subsystem. The persistent decoded-column cache remains bounded (128 columns) and user-clearable; it is reuse infrastructure, not the first-use architecture.
+
+The next performance investigation must first try to reduce repeated source traversal within these existing boundaries. A new persistent columnar/indexed store, worker-owned long-lived data service, or other new subsystem requires explicit architecture review before introduction.
+<!-- CURRENT_STATE:current-performance-ownership:END -->
+
 <!-- CURRENT_STATE:current-performance-ownership:END -->
 
 # EpicScope File Architecture

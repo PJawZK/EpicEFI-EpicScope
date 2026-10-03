@@ -52,11 +52,15 @@ The project is defined by the documentation under [`docs/`](docs/):
 
 ## Status
 
-EpicScope Web is an active hosted application, not a pre-bootstrap shell. The current implementation includes the MLG v1/v2 large-log data path, INI-backed channel catalog/binding, reusable application workspaces, multi-pane graph/timeline tooling, exact-log persistence, performance diagnostics, and large-log channel-loading optimization.
+EpicScope Web is an active hosted application with MLG v1/v2 large-log import, INI-backed channel catalog/binding, reusable application workspaces, multi-pane graph/timeline tooling, exact-log persistence, performance diagnostics, and bounded persistent decoded-channel caching.
 
-Current performance work uses a 1.19 GB / 320,458-record MLG benchmark across both a 5-thread desktop and a 2-thread / 4 GB laptop. The desktop arbitrary-channel path now uses viewport-first activation followed by one-time full resident materialization, after which zoom/pan requires no further source reads for that active channel. The remaining active task is reducing low-spec time-to-first-visible by capping the initial viewport-first read on <=3-thread systems while preserving the resident-channel model.
+The current performance authority is the 1.19 GB / 320,458-record MLG benchmark on both desktop and a deliberately weak 2-thread / 4 GB laptop. The latest clean low-spec cold run, after clearing browser and decoded-channel caches, opened/indexed the MLG in about **4.89 s** and restored 11 unique visible workspace channels in about **6.01 s**.
 
-See [`HANDOFF.md`](docs/HANDOFF.md) for the exact authoritative continuation state and benchmark evidence.
+The opportunistic `predecode=32/64/128` experiment has been removed. It proved that more channels can share one physical source traversal, but it only shifts arbitrary-channel work into startup and benefits a selected subset. The active direction is therefore to improve arbitrary first-channel access **without making normal startup slower**, ideally by reusing work from the initial load/index path or by improving post-index access to the row-oriented MLG source.
+
+After that performance direction is proven and stabilized, the next planned maintenance task is a complete file/module audit for obsolete code, duplicated responsibilities, and oversized accumulated files.
+
+See [`HANDOFF.md`](docs/HANDOFF.md) for the exact authoritative continuation state, cold baseline, experiment history, and next performance question.
 
 ## Web delivery
 
