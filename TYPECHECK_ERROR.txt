@@ -1,0 +1,5 @@
+
+> epicefi-epicscope@0.1.0 typecheck
+> tsc --noEmit
+
+apps/web/src/pages/logger-page.ts(1550,36): error TS2739: Type '{ channelId: string; channelName: string; totalMs: number; readDecodeMs: number; scaleMs: number; renderMs: number; sampleCount: number; batchSize: number; cacheHit: boolean; physicalReadCount: number; physicalBytesRead: number; physicalReadMs: number; }' is missing the following properties from type 'LoggerChannelPerformance': phase, startSampleIndex, requestedSampleCount
