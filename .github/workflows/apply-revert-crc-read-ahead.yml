@@ -20,7 +20,7 @@ jobs:
       - run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git revert --no-edit 0834ccb2e47ffe898b3345645ed2f14cd49cb129
+          git revert -m 1 --no-edit 0834ccb2e47ffe898b3345645ed2f14cd49cb129
           git push origin HEAD:perf/revert-crc-read-ahead
       - run: npm ci
       - run: npm run typecheck
