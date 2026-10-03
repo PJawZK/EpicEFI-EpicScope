@@ -58,7 +58,9 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
     const message = event.data;
 
     if (message.type === 'indexed') {
-      const source = new BlobByteSource(file);
+      const source = new BlobByteSource(file, {
+        cacheSeedPages: message.payload.sourceCacheSeed,
+      });
       const baseChannelData = new MlgNumericChannelDataSource(
         source,
         message.payload.fields,

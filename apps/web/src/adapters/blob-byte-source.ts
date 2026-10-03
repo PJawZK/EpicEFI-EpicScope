@@ -37,8 +37,14 @@ interface CachedPage {
   readonly bytes: Uint8Array;
 }
 
+export interface BlobByteSourceCacheSeedPage {
+  readonly index: number;
+  readonly bytes: Uint8Array;
+}
+
 export interface BlobByteSourceOptions {
   readonly pageSizeBytes?: number;
+  readonly cacheSeedPages?: readonly BlobByteSourceCacheSeedPage[];
 }
 
 export interface BlobByteSourceStats {
@@ -82,6 +88,26 @@ export class BlobByteSource implements RandomAccessByteSource {
     this.preferredReadAlignmentBytes = this.size > CACHE_LIMIT_BYTES
       ? this.pageSizeBytes
       : undefined;
+
+    if (this.size > CACHE_LIMIT_BYTES && options.cacheSeedPages) {
+      for (const seed of options.cacheSeedPages) {
+        const start = seed.index * this.pageSizeBytes;
+        const expectedLength = Math.min(this.pageSizeBytes, this.size - start);
+        if (
+          !Number.isSafeInteger(seed.index)
+          || seed.index < 0
+          || start < 0
+          || start >= this.size
+          || seed.bytes.byteLength !== expectedLength
+        ) {
+          continue;
+        }
+        if (this.cacheBytesValue + seed.bytes.byteLength > this.pinnedCacheLimitBytes) break;
+        this.pages.set(seed.index, { index: seed.index, bytes: seed.bytes });
+        this.cacheBytesValue += seed.bytes.byteLength;
+      }
+    }
+
     latestBlobByteSource = this;
   }
 
@@ -204,6 +230,16 @@ export class BlobByteSource implements RandomAccessByteSource {
     if (this.size <= CACHE_LIMIT_BYTES && this.size > 0) {
       await this.loadWholeBuffer();
     }
+  }
+
+  public takePinnedCacheSeed(): readonly BlobByteSourceCacheSeedPage[] {
+    if (this.wholeBuffer || this.pages.size === 0) return [];
+    const seed = [...this.pages.values()]
+      .sort((left, right) => left.index - right.index)
+      .map((page) => ({ index: page.index, bytes: page.bytes }));
+    this.pages.clear();
+    this.cacheBytesValue = 0;
+    return seed;
   }
 
   public performanceSnapshot(): {

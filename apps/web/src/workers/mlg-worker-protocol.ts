@@ -10,6 +10,7 @@ import type {
 } from '../../../../core/parsers/mlg/mlg-records';
 import type { MlgParsePerformance } from '../../../../core/parsers/mlg/mlg-parser';
 import type {
+  BlobByteSourceCacheSeedPage,
   BlobByteSourceRuntimeDiagnostics,
   BlobByteSourceStats,
 } from '../adapters/blob-byte-source';
@@ -34,6 +35,7 @@ export interface MlgWorkerIndexedPayload {
   readonly performance: MlgParsePerformance;
   readonly sourceStats: BlobByteSourceStats;
   readonly sourceRuntime: BlobByteSourceRuntimeDiagnostics;
+  readonly sourceCacheSeed: readonly BlobByteSourceCacheSeedPage[];
   readonly importTotalMs: number;
 }
 

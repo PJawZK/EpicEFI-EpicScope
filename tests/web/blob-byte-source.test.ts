@@ -43,6 +43,29 @@ describe('BlobByteSource bounded raw cache', () => {
     expect(secondStats.cacheHitBytes).toBe(2);
     expect(range.buffer).toBe(again.buffer);
   });
+
+  it('can hand pinned pages to a replacement source without rereading them', async () => {
+    const page = 32 * 1024 * 1024;
+    const blob = new Blob([new Uint8Array(4 * page)]);
+    const workerSource = new BlobByteSource(blob);
+
+    await workerSource.read(0, page);
+    await workerSource.read(page, page);
+    const seed = workerSource.takePinnedCacheSeed();
+
+    expect(seed).toHaveLength(2);
+    expect(workerSource.stats().cacheBytes).toBe(0);
+
+    const mainSource = new BlobByteSource(blob, { cacheSeedPages: seed });
+    await mainSource.read(0, page);
+    await mainSource.read(page, page);
+    const stats = mainSource.stats();
+
+    expect(stats.physicalReadCount).toBe(0);
+    expect(stats.physicalBytesRead).toBe(0);
+    expect(stats.cacheHitBytes).toBe(2 * page);
+    expect(stats.cacheBytes).toBe(2 * page);
+  });
 });
 
 it('reuses the rolling boundary page on large sequential reads without exceeding the cache budget', async () => {
