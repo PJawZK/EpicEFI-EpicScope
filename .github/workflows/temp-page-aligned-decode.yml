@@ -1,0 +1,27 @@
+name: Temporary page aligned decode patch
+
+on:
+  push:
+    branches:
+      - perf/page-aligned-channel-reads
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: contains(github.event.head_commit.message, 'Run page aligned decode patch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/page-aligned-channel-reads
+      - name: Apply page aligned decode patch
+        run: python3 tools/temp_page_aligned_decode_patch.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/parsers/byte-source.ts apps/web/src/adapters/blob-byte-source.ts core/parsers/mlg/mlg-channel-data.ts tests/parsers/mlg/mlg-channel-read-alignment.test.ts
+          git commit -m "Perf: align channel reads to Blob cache pages"
+          git push origin HEAD:perf/page-aligned-channel-reads
