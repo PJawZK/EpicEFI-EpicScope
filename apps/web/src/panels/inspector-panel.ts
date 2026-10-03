@@ -11,6 +11,7 @@ export interface InspectorChannelStatistics {
   readonly category: string | undefined;
   readonly current: number | undefined;
   readonly full: {
+    readonly complete: boolean;
     readonly validCount: number;
     readonly invalidCount: number;
     readonly min: number | undefined;
@@ -601,14 +602,15 @@ export function createInspectorPanel(): InspectorPanelController {
 
     statisticsPanel.hidden = false;
     statisticsTitle.textContent = statistics.title;
+    const scope = statistics.full.complete ? 'Full' : 'Loaded';
     statisticsBody.innerHTML = [
       cell('Current', statistics.current === undefined ? '—' : `${formatStatistic(statistics.current, precision)}${unit}`),
-      cell('Full min', statistics.full.min === undefined ? '—' : `${formatStatistic(statistics.full.min, precision)}${unit}`),
-      cell('Full max', statistics.full.max === undefined ? '—' : `${formatStatistic(statistics.full.max, precision)}${unit}`),
-      cell('Full mean', statistics.full.mean === undefined ? '—' : `${formatStatistic(statistics.full.mean, precision)}${unit}`),
-      cell('Std dev', statistics.full.standardDeviation === undefined ? '—' : `${formatStatistic(statistics.full.standardDeviation, precision)}${unit}`),
-      cell('Valid samples', statistics.full.validCount.toLocaleString()),
-      cell('Invalid samples', statistics.full.invalidCount.toLocaleString()),
+      cell(`${scope} min`, statistics.full.min === undefined ? '—' : `${formatStatistic(statistics.full.min, precision)}${unit}`),
+      cell(`${scope} max`, statistics.full.max === undefined ? '—' : `${formatStatistic(statistics.full.max, precision)}${unit}`),
+      cell(`${scope} mean`, statistics.full.mean === undefined ? '—' : `${formatStatistic(statistics.full.mean, precision)}${unit}`),
+      cell(`${scope} std dev`, statistics.full.standardDeviation === undefined ? '—' : `${formatStatistic(statistics.full.standardDeviation, precision)}${unit}`),
+      cell(`${scope} valid`, statistics.full.validCount.toLocaleString()),
+      cell(`${scope} invalid`, statistics.full.invalidCount.toLocaleString()),
       cell('Visible min', statistics.visible.min === undefined ? '—' : `${formatStatistic(statistics.visible.min, precision)}${unit}`),
       cell('Visible max', statistics.visible.max === undefined ? '—' : `${formatStatistic(statistics.visible.max, precision)}${unit}`),
       cell('Visible mean', statistics.visible.mean === undefined ? '—' : `${formatStatistic(statistics.visible.mean, precision)}${unit}`),

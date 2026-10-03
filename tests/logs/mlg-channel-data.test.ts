@@ -173,6 +173,42 @@ describe('MlgNumericChannelDataSource', () => {
     expect(secondAgain.values[511]).toBe(0);
   });
 
+
+  it('caches bounded ranges and serves contained subranges without another source read', async () => {
+    const sampleCount = 512;
+    const stride = 4096;
+    const bytes = new Uint8Array(sampleCount * stride);
+    const offsets = new Float64Array(sampleCount);
+    const timeMs = new Float64Array(sampleCount);
+    const counters = new Uint8Array(sampleCount);
+    const crcValid = new Uint8Array(sampleCount);
+    crcValid.fill(1);
+    for (let index = 0; index < sampleCount; index += 1) {
+      offsets[index] = index * stride;
+      timeMs[index] = index;
+      counters[index] = index & 0xff;
+      bytes[index * stride + 4] = index & 0xff;
+    }
+    const field: MlgScalarFieldDescriptor = {
+      kind: 'scalar', index: 0, offset: 0, type: 0, name: 'test', units: '',
+      displayStyle: 0, widthBytes: 1, category: '', scale: 1, transform: 0, digits: 0,
+    };
+    const recordIndex: MlgRecordIndex = { offsets, timeMs, counters, crcValid };
+    const source = new CountingByteSource(bytes);
+    const channelData = new MlgNumericChannelDataSource(source, [field], recordIndex);
+
+    const first = await channelData.readChannelRange('mlg:0', 100, 200);
+    const readsAfterFirst = source.readCount;
+    expect(first.startSampleIndex).toBe(100);
+    expect(channelData.hasCachedChannelRange('mlg:0', 120, 40)).toBe(true);
+
+    const contained = await channelData.readChannelRange('mlg:0', 120, 40);
+    expect(source.readCount).toBe(readsAfterFirst);
+    expect(contained.startSampleIndex).toBe(120);
+    expect(contained.values.length).toBe(40);
+    expect(contained.values[0]).toBe(120);
+  });
+
   it('amortizes strided full-channel reads into multi-megabyte source batches', async () => {
     const sampleCount = 1024;
     const stride = 4096;
