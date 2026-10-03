@@ -15,7 +15,9 @@ jobs:
         with:
           node-version: 22
       - name: Apply source patch
-        run: python3 .github/range_cache_patch.py
+        run: |
+          python3 .github/range_cache_patch.py
+          python3 .github/range_cache_fix.py
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -24,7 +26,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm -f .github/workflows/apply-range-cache.yml .github/range_cache_patch.py
+          rm -f .github/workflows/apply-range-cache.yml .github/range_cache_patch.py .github/range_cache_fix.py
           git add -A
           git diff --cached --quiet || git commit -m "Perf: retain decoded viewport channel ranges"
           git push origin HEAD:perf/range-aware-channel-cache
