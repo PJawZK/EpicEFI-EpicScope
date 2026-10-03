@@ -3,7 +3,7 @@ import {
   type RandomAccessByteSource,
 } from '../../../../core/parsers/byte-source';
 
-const CACHE_PAGE_SIZE = 16 * 1024 * 1024;
+const CACHE_PAGE_SIZE = 32 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
 const PINNED_CACHE_LIMIT_BYTES = CACHE_LIMIT_BYTES - CACHE_PAGE_SIZE;
 const MAX_PHYSICAL_READ_DIAGNOSTICS = 512;
@@ -124,8 +124,8 @@ export class BlobByteSource implements RandomAccessByteSource {
 
     // Large logs use a two-tier cache while keeping the total raw-cache
     // budget fixed at 96 MiB:
-    // - the first ~80 MiB admitted stays pinned between sequential passes;
-    // - one 16 MiB rolling page preserves the boundary page for the next batch.
+    // - the first ~64 MiB admitted stays pinned between sequential passes;
+    // - one 32 MiB rolling page preserves the boundary page for the next batch.
     //
     // Larger backing pages reduce Blob.slice().arrayBuffer() calls while the
     // decoder's preferred-read hint keeps channel extraction inside one page
