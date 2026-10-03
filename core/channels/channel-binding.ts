@@ -275,18 +275,34 @@ export function bindChannelCatalogToLog(
   };
 }
 
+const residentFullRangesBySource = new WeakMap<
+  NumericChannelDataSource,
+  Map<string, NumericChannelRange>
+>();
+
+function residentFullRangesForSource(
+  source: NumericChannelDataSource,
+): Map<string, NumericChannelRange> {
+  const existing = residentFullRangesBySource.get(source);
+  if (existing) return existing;
+  const created = new Map<string, NumericChannelRange>();
+  residentFullRangesBySource.set(source, created);
+  return created;
+}
+
 export class BoundNumericChannelDataSource implements NumericChannelDataSource {
   readonly sampleCount: number;
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
 
-  private readonly residentFullRanges = new Map<string, NumericChannelRange>();
+  private readonly residentFullRanges: Map<string, NumericChannelRange>;
 
   public constructor(
     private readonly source: NumericChannelDataSource,
     private readonly sourceChannelIdByBoundId: ReadonlyMap<string, string>,
   ) {
     this.sampleCount = source.sampleCount;
+    this.residentFullRanges = residentFullRangesForSource(source);
     if (source.preferredBatchWindowMs !== undefined) {
       this.preferredBatchWindowMs = source.preferredBatchWindowMs;
     }
@@ -305,7 +321,7 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
 
   private retainFullRange(channelId: string, range: NumericChannelRange): void {
     if (range.startSampleIndex === 0 && range.values.length === this.sampleCount) {
-      this.residentFullRanges.set(channelId, range);
+      this.residentFullRanges.set(this.sourceId(channelId), range);
     }
   }
 
@@ -314,7 +330,9 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): NumericChannelRange | undefined {
-    const full = this.residentFullRanges.get(channelId);
+    const sourceId = this.sourceChannelIdByBoundId.get(channelId);
+    if (!sourceId) return undefined;
+    const full = this.residentFullRanges.get(sourceId);
     if (!full) return undefined;
     if (startSampleIndex === 0 && sampleCount === this.sampleCount) return full;
     const end = startSampleIndex + sampleCount;
@@ -340,9 +358,9 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): boolean {
-    if (this.residentFullRanges.has(channelId)) return true;
-    if (!this.source.hasCachedChannelRange) return false;
     const sourceId = this.sourceChannelIdByBoundId.get(channelId);
+    if (sourceId && this.residentFullRanges.has(sourceId)) return true;
+    if (!this.source.hasCachedChannelRange) return false;
     return sourceId
       ? this.source.hasCachedChannelRange(sourceId, startSampleIndex, sampleCount)
       : false;
