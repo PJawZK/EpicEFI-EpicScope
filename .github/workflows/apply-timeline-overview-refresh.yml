@@ -1,47 +1,38 @@
-name: Apply timeline overview refresh
-
-on:
-  push:
-    branches: [fix/timeline-overview-after-materialization]
-
+name: Timeline refresh patch
+on: push
 permissions:
   contents: write
-
 jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/timeline-overview-after-materialization
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Patch logger timeline refresh
-        run: |
-          python3 <<'PY'
+          node-version: 22
+      - run: |
+          python3 - <<'PY'
           from pathlib import Path
-          p = Path("apps/web/src/pages/logger-page.ts")
+          p = Path('apps/web/src/pages/logger-page.ts')
           s = p.read_text()
-          needle = """      channelPerformanceListener?.({
+          old = '''      channelPerformanceListener?.({
         ...performance,
         channelName: channel?.sourceName ?? performance.channelId,
       });
-"""
-          replacement = needle + """      if (runtime.id === activeWorkspace()?.activePaneId) {
+'''
+          new = old + '''      if (runtime.id === activeWorkspace()?.activePaneId) {
         timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);
       }
-"""
-          if needle not in s:
-              raise SystemExit("performance listener anchor not found")
-          p.write_text(s.replace(needle, replacement, 1))
+'''
+          if old not in s:
+              raise SystemExit('anchor not found')
+          p.write_text(s.replace(old, new, 1))
           PY
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Commit patch
-        run: |
+      - run: |
           rm .github/workflows/apply-timeline-overview-refresh.yml
           git config user.name PJawZK
           git config user.email anderswedin@hotmail.se
