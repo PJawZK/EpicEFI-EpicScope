@@ -21,17 +21,22 @@ Large features should be split into reviewable tasks before coding.
 <!-- CURRENT_STATE:current-execution-position:START -->
 ## Current execution position — 2026-10-03
 
-EpicScope Web has progressed past the original Phase-1 shell/log-foundation closeout described in older milestone text. Current implementation already includes the INI-backed channel catalog/binding and reusable application-workspace foundation from Phase 2, while active engineering is hardening the large-log data path before moving deeper into generic analysis/analyzers.
+EpicScope Web is beyond the original shell/log-foundation stage. The INI-backed channel catalog/binding, reusable application workspace foundation, exact-log persistence, multi-pane graph/timeline tooling, staged validation and large-log diagnostics are implemented. Active engineering remains focused on large-log performance before deeper generic analysis/analyzer work.
 
-Current performance milestone:
+Current performance position:
 
-- shared full-range workspace restore is established;
-- arbitrary new channels use viewport-first activation followed by one-time resident full materialization;
-- desktop behavior is smooth and no longer rereads resident channels during zoom/pan;
-- low-spec <=3-thread hardware uses idle-delayed materialization and a scale-preserving resident swap;
-- the next task is a low-spec-only cap of about 16,384 samples for the first viewport activation so a wide viewport cannot force hundreds of MiB of source I/O before the first trace appears.
+- shared full-range workspace restore is established and loads only channels actually requested by the visible workspace;
+- the independent persistent decoded-channel cache is retained, bounded to 128 stored columns, and can be cleared from Settings;
+- the `predecode=32/64/128` hot-set experiment is complete and **rejected as a product direction** because it shifts arbitrary-channel work into startup instead of removing it;
+- PR #130 removed the opportunistic predecode experiment;
+- the new low-spec cold baseline is the 1.19 GB log opening/indexing in ~4.89 s and restoring 11 unique workspace channels in ~6.01 s on the 2-thread / 4 GB laptop;
+- the next task is to investigate reuse of initial-load/index work or a better post-index access representation so arbitrary first-use channels stop requiring repeated expensive row-oriented source traversal **without worsening normal startup**.
 
-This performance hardening does not change the longer product order: generic analysis/events/compare still precede specialized analyzers, MSQ enrichment remains later than the INI/channel-catalog foundation, and Linux remains the eventual production-performance target.
+After the replacement performance approach is proven and reasonably optimized, perform the planned whole-repository file/module audit for obsolete performance experiments, dead code, duplicated responsibilities and oversized files.
+
+This hardening does not change the longer product order: generic analysis/events/compare still precede specialized analyzers, MSQ enrichment remains later than the INI/channel-catalog foundation, and Linux remains the eventual production-performance target.
+<!-- CURRENT_STATE:current-execution-position:END -->
+
 <!-- CURRENT_STATE:current-execution-position:END -->
 
 ## Phase 0 — Foundation

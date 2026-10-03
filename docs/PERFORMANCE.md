@@ -52,49 +52,69 @@ Examples of unacceptable Web habits include:
 
 ## Current Web benchmark evidence
 
-The current primary large-log benchmark is `2026-07-14_22.07.05.mlg`:
+The primary large-log benchmark remains `2026-07-14_22.07.05.mlg`:
 
 - 1,193,898,186 bytes;
 - 320,458 records;
 - 1,389 channels;
 - MLVLG v2;
-- row-oriented layout, making a full arbitrary single-channel materialization I/O-heavy even though only one field is decoded.
+- row-oriented layout, so arbitrary full-history column extraction can require reading broad portions of the original file.
 
-Current Web source/data parameters include:
+Current Web source parameters include 32 MiB Blob pages, an approximately 96 MiB source cache, and an approximately 64 MiB pinned-source allowance. A separate persistent decoded-channel cache is bounded to 128 stored columns and can be cleared from Settings.
 
-- 32 MiB Blob source pages;
-- about 96 MiB source-cache ceiling;
-- about 64 MiB pinned-source allowance;
-- 32 MiB decoded-channel cache;
-- 8,192-sample fixed decoded chunks for bounded range reuse.
+### Authoritative low-spec cold baseline — 2026-10-03
 
-### Desktop class — 5 logical threads
+Environment: Chromium 150 on Linux, 1,366×645 DPR 1, 2 logical threads, 4 GB RAM class. Browser history/cache and EpicScope decoded-channel cache were cleared before loading. No predecode parameter was used.
 
-Representative validated run:
+Initial load/index:
 
-- log load/index: ~1.03 s;
-- 12-channel shared workspace restore: ~1.19 s;
-- arbitrary `instantMAPValue` viewport-first activation: 23,458 samples in ~133 ms;
-- full resident materialization: 320,458 samples in ~789 ms;
-- after materialization, continuous zoom/pan performs no further source reads for that active channel and feels immediate.
+- total: **4,885.7 ms**;
+- record read: **4,571.3 ms**;
+- record CPU: **135.7 ms**;
+- 36 physical reads / **1,193,898,186 bytes**.
 
-### Low-spec class — 2 logical threads / 4 GB RAM class
+Workspace restore for 11 unique requested channels:
 
-Representative latest run:
+- total: **6,007.3 ms**;
+- shared batch: **5,213.5 ms**;
+- source-read await: **4,442.7 ms**;
+- decode/transform: **748.9 ms**;
+- 36 physical reads / **1,193,898,186 bytes**.
 
-- log load/index: ~8.02 s;
-- 13-channel shared workspace restore: ~7.90 s;
-- arbitrary viewport-first activation at a wide viewport: 81,691 samples, ~369 MB physical source data, ~2.38 s;
-- full resident materialization: ~1.126 GB physical source data, ~8.19 s total, of which ~7.97 s was physical source-read time;
-- 32 MiB physical reads averaged ~213 ms in that run and included a ~906 ms outlier.
+Deferred serial validation:
 
-The low-spec result shows that the remaining first-visible problem is dominated by source I/O, not graph drawing or statistics. The next planned change is therefore to cap low-spec first activation to roughly 16,384 centered samples rather than allowing the initial request to scale to a very wide visible viewport. The later full resident materialization remains one-time and idle-delayed.
+- validation: **6,577.8 ms**;
+- validation read: **4,415.1 ms**;
+- checksum CPU: **2,114.0 ms**;
+- fully validated: **18,034.4 ms** from initial open start.
 
-### Current interpretation
+The baseline confirms that cold low-spec performance is primarily source-I/O dominated. INI parsing/binding and UI population are secondary costs.
 
-The desktop resident-channel model is accepted as the preferred Web interaction model unless later regression evidence appears. The low-spec laptop remains the acceptance gate for I/O scheduling, allocation/memory pressure and time-to-first-visible changes.
+### Desktop class
 
-These numbers are regression evidence for the current Web implementation, not final Linux acceptance targets.
+Desktop runs on the same 1.19 GB source remain dramatically faster (roughly ~1 s class for initial load and shared workspace restore in representative runs), demonstrating that the same architecture is highly sensitive to storage/hardware throughput. Desktop results remain a regression check, but low-spec hardware is the acceptance gate for changes that affect I/O, allocation or scheduling.
+
+### Opportunistic predecode experiment — rejected direction
+
+A/B experiments decoded total batches of 32, 64 and 128 channels during the existing workspace traversal. The physical traversal remained a single 36-read / ~1.194 GB pass, but extra CPU/memory-side work increased with batch size. More importantly, only the preselected channels became cheap afterward; arbitrary channels outside the set retained the original cost.
+
+The experiment therefore demonstrated a useful mechanism but a poor product trade: **startup work was shifted, not removed**. PR #130 removed the predecode experiment. Future work must not front-load arbitrary channel subsets merely to improve later selection latency.
+
+### Current interpretation and optimization target
+
+The active problem is not graph rendering. It is repeated access to a row-oriented 1.19 GB source when arbitrary full-history channels are requested.
+
+Current priority is to investigate methods that improve arbitrary first-use access without worsening the normal cold open path, especially:
+
+- reusing worker/index work or source knowledge produced during initial load;
+- reducing duplicate worker/main-thread physical traversal where possible;
+- building compact access/index information during already-required work rather than decoding speculative channels;
+- evaluating transient or persistent post-index representations only if their build/startup/memory cost is demonstrably better than the problem they solve;
+- avoiding extra validation reads if checksum/diagnostic work can safely consume bytes already read without extending time-to-usable.
+
+The persistent decoded-channel cache remains useful for channels already decoded once, but it is not considered a solution to first-use arbitrary-channel latency.
+
+The performance acceptance rule is explicit: **do not make startup slower merely to make selected channels faster later.**
 
 ## Benchmark categories
 

@@ -10,9 +10,9 @@
 
 Implementation baseline entering this documentation refresh:
 
-`7da764a7be6c6107523c1582ae4f1a91b655b217`
+`3f0e3c76ceb012bcacc6ee6add55b587a703d414`
 
-That baseline is PR #121, **Perf: defer low-spec resident channel materialization until idle**. The documentation-only merge that updates this handoff becomes the newer authoritative `main`; no application behavior is changed by the documentation refresh itself.
+That baseline is the merge of PR #130, **Perf: remove opportunistic predecode experiment**. The documentation-only merge that updates this handoff becomes the newer authoritative `main`; no application behavior is changed by this documentation refresh itself.
 
 ## Hosted application
 
@@ -22,17 +22,21 @@ GitHub Actions remains the required Web validation path and GitHub Pages remains
 
 ## Current project position
 
-EpicScope Web is well beyond the original shell/bootstrap stage. The current application has a working large-log MLG parser/data path, INI-backed channel catalog/binding, reusable application workspaces, exact-log persistence, multi-pane graph/timeline workflows, large-log diagnostics, and active performance hardening.
+EpicScope Web has a working large-log MLG v1/v2 data path, INI-backed channel catalog/binding, reusable application workspaces, exact-log persistence, multi-pane graph/timeline workflows, large-log diagnostics, and an actively measured performance path.
 
-The current active engineering focus is **large-log arbitrary-channel activation on both a fast desktop and a deliberately weak 2-thread / 4 GB laptop**. The desktop path is now smooth; the remaining problem is first-visible latency on the low-spec laptop when a wide viewport causes too much row-oriented MLG I/O before the first trace appears.
+The current engineering focus is no longer viewport-fill tuning or opportunistic channel predecode. The latest experiments showed that predecoding arbitrary channel groups only moves cost into startup and therefore does not solve the real requirement: after a log is open, arbitrary channel access should not require repeated multi-second traversals of the original row-oriented MLG.
 
-Do not reconstruct current state from the old 318 MB Phase-1 benchmark alone. The current performance authority is the 1.19 GB benchmark described below.
+The active performance rule is now:
+
+> **Do not make startup slower merely to make selected channels faster later.**
+
+Fast initial MLG open remains valuable in its own right. The next architectural investigation should reduce repeated source traversal by reusing work already performed during initial load/indexing, or by introducing a better post-index access representation that does not front-load arbitrary channel decoding.
+
+After this performance direction is proven and stabilized, perform the planned repository/file-structure audit for dead/obsolete code, duplicated responsibilities, and files that have accumulated beyond a healthy modular size.
 
 ## Current large-log benchmark authority
 
-Primary performance log:
-
-`2026-07-14_22.07.05.mlg`
+Primary benchmark log: `2026-07-14_22.07.05.mlg`
 
 Known structure:
 
@@ -42,110 +46,114 @@ Known structure:
 - 1,389 logged channels;
 - fixed record scan;
 - row-oriented source layout;
-- source block/page behavior means a sparse arbitrary channel still requires reading broad portions of the source file;
 - source Blob page size: 32 MiB;
-- source cache ceiling: about 96 MiB;
-- pinned source-cache allowance: about 64 MiB;
-- decoded-channel cache ceiling: 32 MiB;
-- bounded decoded chunks: 8,192 samples.
+- about 96 MiB source-page cache ceiling;
+- about 64 MiB pinned-source allowance.
 
-### Desktop validation class
+### Authoritative cold low-spec baseline — 2026-10-03
 
-Representative desktop environment:
-
-- Chromium 154 / Linux / Zorin;
-- 1,920×947 DPR 1;
-- 5 logical threads.
-
-Representative validated run after resident-channel work:
-
-- initial log load/index: about 1.03 s;
-- 12-channel saved-workspace restore: about 1.19 s;
-- arbitrary `instantMAPValue` viewport-first activation: 23,458 samples in about 133 ms;
-- one-time full resident materialization: 320,458 samples in about 789 ms;
-- after materialization, continuous zoom/pan no longer causes additional source reads for that active channel;
-- continuous zoom subjectively feels immediate once the channel is resident;
-- timeline overview is refreshed when the partial trace becomes fully resident.
-
-This desktop behavior is considered a good stopping point unless later regressions appear.
-
-### Low-spec validation class
-
-Representative low-spec laptop:
+Environment:
 
 - Chromium 150 / Linux;
 - 1,366×645 DPR 1;
 - 2 logical threads;
-- 4 GB RAM class machine.
+- 4 GB RAM class machine;
+- browser history/cache and EpicScope decoded-channel cache cleared before loading;
+- no predecode parameter;
+- one reusable workspace;
+- 12 assigned visible channels, 11 renderable/unique requested channels, one known-unavailable channel;
+- zero runtime errors.
 
-The laptop is strongly storage/I/O constrained. Observed 32 MiB physical reads are commonly around 150–210 ms average and can spike far higher.
+Measured initial MLG load/index:
 
-Latest representative run:
+- total: **4,885.7 ms**;
+- record read: **4,571.3 ms**;
+- record CPU: **135.7 ms**;
+- physical reads: **36**;
+- physical bytes: **1,193,898,186**.
 
-- initial log load/index: 8.02 s;
-- 13-channel shared workspace restore: 7.90 s;
-- viewport-first `instantMAPValue` activation requested 81,691 samples and therefore read about 369 MB, taking 2.38 s;
-- one-time full resident materialization then read about 1.126 GB and took 8.19 s;
-- about 7.97 s of that full materialization was physical source-read time;
-- scale-preserving resident swap worked (`scale=0.00 ms` for the full promotion), so the previous late vertical rescale/jump has been removed;
-- the remaining visible problem is first-trace latency when the requested viewport itself is too wide.
+Measured workspace restore:
 
-An earlier, narrower low-spec run showed about 637 ms for a 20,229-sample viewport and about 5.04 s for full materialization, confirming that the first-visible cost scales heavily with source I/O width and storage variability.
+- total: **6,007.3 ms**;
+- shared 11-channel batch: **5,213.5 ms**;
+- source-read await: **4,442.7 ms**;
+- decode/transform: **748.9 ms**;
+- physical reads: **36**;
+- physical bytes: **1,193,898,186**.
 
-## Current active-channel loading architecture
+Deferred serial validation:
 
-The current Web graph path deliberately uses two stages for an arbitrary newly selected channel:
+- validation: **6,577.8 ms**;
+- validation read: **4,415.1 ms**;
+- checksum CPU: **2,114.0 ms**;
+- fully validated: **18,034.4 ms** from initial open start.
 
-1. **viewport-first activation** so something useful appears before a full row-oriented scan;
-2. **one-time full resident materialization** so the selected active channel becomes fully decoded and future zoom/pan does not chase the viewport with repeated source reads.
+This is the new low-spec cold baseline for future performance work. Storage variability remains material, so compare physical read time/bytes separately from decode/transform CPU.
 
-Once fully resident, the active trace directly holds the full `NumericChannelRange`; normal graph navigation then becomes presentation work rather than repeated MLG I/O.
+## Predecode experiment — concluded and removed
 
-Saved workspace channels remain different: visible channels are restored through one shared full-range multi-channel batch before pane activation so several channels amortize a single source traversal.
+PRs #127–#129 explored opportunistic full-range predecode batches of 32, 64 and 128 channels during the existing workspace source traversal. The experiment proved that more channels can be decoded during the same 36-read / 1.194 GB physical traversal without adding another source pass.
+
+It also proved why this is not the product solution:
+
+- extra decoding increases startup CPU/memory-side work;
+- 32 channels was relatively cheap, 64 materially more expensive, and 128 clearly crossed into diminishing returns on the 2-thread laptop;
+- only preselected/hot channels benefit afterward;
+- arbitrary channels outside that set still require their own expensive access;
+- larger sets move per-channel cost into startup rather than removing the underlying row-oriented access problem.
+
+PR #130 removed the opportunistic predecode experiment and its experiment-only resident retention. Do not restore `?predecode=32/64/128`, runtime hot-set selection, or equivalent startup front-loading without a new architectural decision and evidence that the underlying trade has changed.
+
+## Current channel/cache behavior
+
+Retained after PR #130:
+
+- workspace restore loads only channels actually requested by the visible workspace;
+- visible workspace channels share one full-range multi-channel decode batch;
+- the independent persistent decoded-channel cache remains available for channels already decoded in prior use;
+- that persistent cache is bounded to **128 stored columns**;
+- Settings exposes **Clear channel cache** for repeatable cold-cache testing and manual reset;
+- known-but-unavailable INI channels remain assigned/visible as unavailable rather than being silently removed.
+
+The persistent cache is reuse for already-decoded data. It is not the solution to initial arbitrary-channel access latency.
 
 ## Performance implementation history that matters
 
-The current architecture was reached through measured A/B iterations:
+Important measured steps include:
 
-- PR #111 — adaptive CRC validation: serial on <=3 threads, parallel pipeline on >=4 threads; considered settled;
-- PR #112 — viewport-first arbitrary-channel selection;
-- PR #113 — `sampleRangeForTime()` forwarding through INI/channel binding;
-- PR #114 — removed eager viewport→full promotion and added range-aware partial caching;
-- PR #115 — fixed 8,192-sample decoded chunks for overlapping viewport reuse;
-- PR #116 — progressive active-channel fill;
-- PR #117 — adaptive progressive fill sizing;
-- PR #118 — interaction-aware coalescing during continuous wheel/pan activity;
-- PR #119 — pivot to viewport-first then one-time fully resident active channel;
-- PR #120 — timeline overview refresh when an active trace changes from partial to full resident range;
-- PR #121 — low-spec idle-delayed materialization plus scale-preserving resident swap.
+- adaptive CRC validation: serial on <=3 threads, parallel on >=4 threads;
+- shared full-range multi-channel workspace restore;
+- viewport-first/progressive/resident-channel experiments for arbitrary channels;
+- range/chunk reuse and interaction coalescing experiments;
+- persistent decoded-column cache with a bounded 128-column limit and explicit clear control;
+- PRs #127–#129: opportunistic predecode A/B experiment;
+- PR #130: rollback/removal of opportunistic predecode as the active strategy.
 
-An earlier concurrency/pipelining experiment in PR #89 regressed behavior and was reverted. Do not casually reintroduce channel-read concurrency/pipelining without new measured evidence.
-
-The progressive-fill work is retained as fallback/cache machinery, but it is no longer the preferred steady-state user model for newly selected active channels because continuous interaction could outrun or visually expose the fill process.
+Earlier channel-read concurrency/pipelining also regressed behavior and was reverted. Do not reintroduce concurrency or startup predecode simply because it can hide one benchmark symptom.
 
 ## Exact next performance task
 
-The next planned implementation is deliberately narrow:
+Investigate approaches that improve **first use of arbitrary channels without increasing normal startup work**.
 
-**On systems with <=3 logical threads, cap viewport-first activation to about 16,384 samples, centered within the requested viewport, instead of letting first activation scale to the entire visible viewport.**
+Highest-value architectural question:
 
-Keep all of the following from PR #121:
+> Can EpicScope avoid rereading essentially the whole row-oriented MLG for each newly requested full-history channel by reusing information/bytes/work already produced during the initial load/index pass, or by creating a compact access structure whose construction does not materially worsen startup?
 
-- desktop (>3 threads) behavior unchanged;
-- 1,000 ms low-spec idle delay before full resident materialization;
-- viewport activity restarts that low-spec idle timer;
-- one-time full resident materialization after the user settles;
-- preserve the viewport-first scale when swapping in the full resident range;
-- no repeated viewport-driven I/O once full resident materialization completes.
+Candidate directions to investigate and benchmark, not pre-approved implementations:
 
-Purpose of the cap:
+- retain/transfer reusable index/source information from the worker-side initial scan so main-thread channel extraction does not independently cold-traverse the file;
+- build compact row/block access information during work already required for initial parsing, without decoding arbitrary channels up front;
+- evaluate a post-index transient or persistent representation that improves arbitrary column extraction while respecting memory and startup budgets;
+- determine whether validation can consume bytes already read without adding another complete source pass, but only if this does not extend the critical open path;
+- measure whether source ownership can be consolidated enough to reduce current worker/main-thread duplicate physical traffic.
 
-- reduce low-spec time-to-first-visible;
-- avoid cases like 81,691 samples / ~369 MB / ~2.38 s just to show the first trace;
-- ideally turn first activation into roughly one or a few 32 MiB source-page reads rather than 11 pages;
-- accept temporary partial horizontal coverage while the later resident scan completes.
+Acceptance discipline:
 
-Do not apply this cap to the desktop path unless measurements justify it.
+- no startup regression should be accepted merely to improve a selected subset of channels;
+- arbitrary channel selection must be tested from a truly cold decoded-channel cache;
+- compare physical source bytes/read count/read time separately from decode CPU;
+- desktop and low-spec laptop must both be checked;
+- preserve local-only behavior and current workspace/channel semantics.
 
 ## Current workspace / source-context state
 
@@ -160,7 +168,8 @@ Implemented and retained:
 - reusable application workspace persists named workspaces, layouts/geometry and stable channel assignments independently of exact log identity;
 - exact-log persistence remains separate for cursor/viewport/A-B/markers/ranges;
 - restored catalog/workspace state is distinct from freshly loaded state;
-- Settings can unload the persisted INI catalog for repeatable fresh-load testing.
+- Settings can unload the persisted INI catalog for repeatable fresh-load testing;
+- Settings can clear the persistent decoded-channel cache independently.
 
 MSQ tune-value/table enrichment remains later work. CSV remains deferred.
 
@@ -177,33 +186,34 @@ Implemented and working:
 - high-zoom raw-sample rendering and zoomed-out envelope rendering;
 - Now/Min/Max and channel details;
 - source validity handling;
-- active-channel timeline overview refresh after resident materialization;
-- no graph navigation I/O for fully resident active channels.
+- timeline overview and graph interaction remain independent of the abandoned predecode experiment.
 
 Canvas 2D remains a Web implementation choice, not a Linux/Android architecture commitment.
 
 ## Current diagnostic/validation rules
 
-Performance diagnostics should be treated as measurement authority for Web optimization. Always compare:
+Performance diagnostics are the Web measurement authority. Always record/compare:
 
 - workload/log;
-- hardware class and logical thread count;
-- viewport width/sample count;
+- browser/hardware class and logical thread count;
+- cold/warm decoded-channel cache state;
+- requested/unique channel count;
 - physical read count/bytes/time;
-- decode vs I/O time;
-- subjective graph responsiveness;
+- source-read await vs decode/transform time;
+- initial load time;
+- workspace restore time;
+- arbitrary first-channel activation time when testing that path;
+- subjective interaction behavior;
 - memory/GC pressure on the 4 GB laptop where observable.
 
-Desktop wins are not considered complete until the low-spec laptop has also been checked when the change can affect memory, allocation, I/O scheduling or interaction behavior.
-
-Do not claim MegaLogViewer's internal implementation strategy as fact; it is only a behavioral comparison target.
+Do not claim MegaLogViewer's internal implementation strategy as fact; it is only a behavioral comparison target. The practical product goal is to keep EpicScope's initial MLG load competitive/faster while improving arbitrary-channel access through EpicScope's own measured architecture.
 
 ## UI/reference constraints still in force
 
 - authoritative Logger/Analyzer visual/interaction reference remains `EpicHub-Tablet-Landscape-0.0.45(2).html`;
 - use TunerStudio/MegaLogViewer channel terminology where practical;
-- do not change established UI colors in response to apparent visibility/performance reports unless the user explicitly requests a color change; a recent apparent color issue was a TN-panel viewing-angle effect, not a palette problem;
-- performance may simplify implementation but should not silently alter established interaction semantics.
+- do not change established UI colors in response to apparent visibility/performance reports unless explicitly requested;
+- performance work must not silently alter established interaction semantics.
 
 ## Repository/workflow constraints
 
@@ -214,6 +224,20 @@ Do not claim MegaLogViewer's internal implementation strategy as fact; it is onl
 - temporary branch-only patch/validation workflows or scripts must remove themselves before PR/final diff;
 - avoid accidental no-op commits on `main`;
 - project-owner testing is hosted; do not require a local clone.
+
+## Planned code-structure audit after performance direction stabilizes
+
+Once the replacement performance approach is proven and reasonably optimized, audit the complete application source tree for:
+
+- obsolete experiment code and dead branches;
+- duplicated helpers/paths left by iterative performance work;
+- unused files/exports;
+- responsibilities that have drifted into the wrong architectural layer;
+- very large files that should be split into coherent modules;
+- temporary compatibility or diagnostic code that no longer earns its complexity;
+- test coverage around cleanup-sensitive behavior.
+
+Do not perform destructive cleanup merely for line-count aesthetics; preserve behavior and use the architecture documents as the ownership authority.
 
 ## Architecture authority
 
@@ -238,4 +262,4 @@ A new chat should be able to start with:
 
 > Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue from there.
 
-The new chat must use the repository handoff and current repository state as authority. It should not reconstruct present architecture from older chats or older prototype code.
+Use the repository handoff and current repository state as authority. Do not reconstruct present architecture from older chats or superseded performance experiments.

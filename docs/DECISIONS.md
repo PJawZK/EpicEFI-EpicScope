@@ -424,30 +424,41 @@ The bootstrap-era deferral of a dedicated automated test framework has been reso
 New parser, channel-binding, persistence, and analysis tasks should extend the existing Vitest gate where automated regression coverage is appropriate. This does not require browser/DOM tests for pure core logic.
 
 <!-- CURRENT_STATE:current-performance-decisions:START -->
-## D-041 — Web arbitrary active channels become fully resident after first-visible activation
+## D-041 — Web arbitrary active-channel reuse may retain fully decoded data
 
-**Status:** Approved / implemented
+**Status:** Approved / implemented behavior, not the active first-use solution
 
-For the current Web MLG data path, a newly selected arbitrary channel may appear from a bounded viewport-first read and then be materialized once into a complete resident decoded range.
+The Web data path may retain a completely decoded active channel and may reuse decoded channel data through bounded cache mechanisms so later graph navigation does not unnecessarily reread source data.
 
-Once resident, normal zoom/pan must reuse that active decoded range rather than repeatedly rereading the row-oriented MLG source. Saved-workspace restoration remains a separate shared multi-channel full-range batch so several assigned channels can amortize one source traversal.
+This is an implementation optimization behind normalized data contracts. It does **not** authorize speculative startup decoding of arbitrary channels and does not mandate the same storage strategy for Linux.
 
-This is a Web implementation policy behind existing normalized data contracts, not a mandate that Linux use the same storage strategy.
+## D-042 — Low-spec Web scheduling is evidence-driven
 
-## D-042 — Low-spec Web scheduling may adapt to measured hardware constraints
+**Status:** Approved
 
-**Status:** Approved / implemented
+Performance behavior may adapt to measured hardware constraints while preserving product semantics. Low-spec changes must be judged from physical source I/O, startup time, responsiveness, decode CPU and memory pressure rather than desktop measurements alone.
 
-Measured low-spec behavior justifies hardware-adaptive scheduling while preserving identical product semantics.
+Earlier viewport/progressive/resident scheduling experiments remain historical evidence. They do not override the current performance rule in D-043.
 
-Current rules:
+## D-043 — Do not front-load arbitrary channel work into normal startup
 
-- CRC validation uses the established serial path on <=3 logical threads and parallel pipeline on >=4 threads;
-- resident active-channel materialization starts quickly on desktop-class hardware but waits for 1,000 ms of interaction idle on <=3-thread systems;
-- the resident swap preserves the current trace scale so data completion does not create a delayed visual rescale;
-- low-spec performance work must be judged from physical I/O, responsiveness and memory/GC behavior, not desktop measurements alone.
+**Status:** Approved / current performance direction
 
-A planned follow-up will cap low-spec first-visible activation to a small centered range (target about 16,384 samples). That cap is an implementation task, not yet an implemented decision in this snapshot.
+The opportunistic `predecode=32/64/128` experiment is rejected as a production strategy and was removed in PR #130.
+
+Rules:
+
+- normal startup/workspace restore decodes only channels actually requested by the active workspace;
+- do not make normal MLG startup slower merely to make a selected subset of possible future channels faster;
+- hardcoded or firmware-specific channel hot sets are prohibited as a performance mechanism;
+- runtime-derived hot sets are also not sufficient if they merely shift the same work into startup;
+- the bounded persistent decoded-channel cache may accelerate channels already decoded, but must not be treated as a substitute for solving first-use access;
+- the next performance architecture should target reuse of already-required initial load/index work or a post-index access method that reduces repeated row-oriented source traversal without material startup regression;
+- any new persistent columnar/indexed representation or new long-lived source service requires explicit architecture review and measured startup/memory/I/O evidence.
+
+D-043 supersedes any interpretation of D-041/D-042 that would make speculative channel preloading the default solution.
+<!-- CURRENT_STATE:current-performance-decisions:END -->
+
 <!-- CURRENT_STATE:current-performance-decisions:END -->
 
 ## Superseding decisions
