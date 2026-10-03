@@ -48,6 +48,9 @@ export interface GraphChannelStatistics {
 
 export interface GraphChannelPerformance {
   readonly channelId: string;
+  readonly phase: 'viewport' | 'full' | 'cache';
+  readonly startSampleIndex: number;
+  readonly requestedSampleCount: number;
   readonly totalMs: number;
   readonly readDecodeMs: number;
   readonly scaleMs: number;
@@ -691,6 +694,114 @@ export function createGraphViewport(): GraphViewportController {
     emitPendingChannels();
   };
 
+  const currentChannelReadRange = (): {
+    readonly startSampleIndex: number;
+    readonly sampleCount: number;
+    readonly phase: 'viewport' | 'full';
+  } => {
+    if (!channelData) return { startSampleIndex: 0, sampleCount: 0, phase: 'full' };
+    if (!viewport || !channelData.sampleRangeForTime) {
+      return { startSampleIndex: 0, sampleCount: channelData.sampleCount, phase: 'full' };
+    }
+
+    const candidate = channelData.sampleRangeForTime(
+      viewport.visibleStartMs,
+      viewport.visibleEndMs,
+    );
+    if (candidate.sampleCount <= 0 || candidate.sampleCount >= channelData.sampleCount) {
+      return { startSampleIndex: 0, sampleCount: channelData.sampleCount, phase: 'full' };
+    }
+    return { ...candidate, phase: 'viewport' };
+  };
+
+  const promoteViewportBatchToFull = async (
+    channelIds: readonly string[],
+    generation: number,
+  ): Promise<void> => {
+    const dataSource = channelData;
+    if (!dataSource || channelIds.length === 0) return;
+
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    if (generation !== decodeGeneration) return;
+
+    const activeIds = channelIds.filter((channelId) => activeTraces.has(channelId));
+    if (activeIds.length === 0) return;
+
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const readStart = now();
+    try {
+      const result = dataSource.readChannelsRange
+        ? await dataSource.readChannelsRange(activeIds, 0, dataSource.sampleCount)
+        : {
+            ranges: new Map(await Promise.all(activeIds.map(async (channelId) => [
+              channelId,
+              await dataSource.readChannelRange(
+                channelId,
+                0,
+                dataSource.sampleCount,
+              ),
+            ] as const))),
+            performance: {
+              channelCount: activeIds.length,
+              cacheHitChannelIds: [] as readonly string[],
+              physicalReadCount: 0,
+              physicalBytesRead: 0,
+              physicalReadMs: 0,
+            },
+          };
+      const readDecodeMs = now() - readStart;
+      if (generation !== decodeGeneration) return;
+
+      const cacheHits = new Set(result.performance.cacheHitChannelIds);
+      const scaleTimes = new Map<string, number>();
+      for (const channelId of activeIds) {
+        const existing = activeTraces.get(channelId);
+        const range = result.ranges.get(channelId);
+        if (!existing || !range) continue;
+        const scaleStart = now();
+        const scale = buildStableValueScale(range);
+        scaleTimes.set(channelId, now() - scaleStart);
+        activeTraces.set(channelId, {
+          ...existing,
+          range,
+          scale,
+          fullStatistics: summarizeRange(range),
+        });
+        envelopeCache.delete(channelId);
+      }
+
+      renderReadout();
+      emitCursorValues();
+      const renderStart = now();
+      draw();
+      const renderMs = now() - renderStart;
+      const completedMs = now();
+
+      for (const channelId of activeIds) {
+        const range = result.ranges.get(channelId);
+        if (!range || !activeTraces.has(channelId)) continue;
+        channelPerformanceListener?.({
+          channelId,
+          phase: 'full',
+          startSampleIndex: 0,
+          requestedSampleCount: dataSource.sampleCount,
+          totalMs: completedMs - readStart,
+          readDecodeMs,
+          scaleMs: scaleTimes.get(channelId) ?? 0,
+          renderMs,
+          sampleCount: range.values.length,
+          batchSize: activeIds.length,
+          cacheHit: cacheHits.has(channelId),
+          physicalReadCount: result.performance.physicalReadCount,
+          physicalBytesRead: result.performance.physicalBytesRead,
+          physicalReadMs: result.performance.physicalReadMs,
+        });
+      }
+    } catch {
+      // The viewport trace is already usable. Full-range promotion is best-effort.
+    }
+  };
+
   const flushPending = async (): Promise<void> => {
     if (decodeInFlight || !channelData || pendingTraces.size === 0) return;
 
@@ -700,26 +811,37 @@ export function createGraphViewport(): GraphViewportController {
     pendingTraces.clear();
     emitPendingChannels();
     const channelIds = batch.map(([channelId]) => channelId);
+    const requestRange = currentChannelReadRange();
     for (const channelId of channelIds) loadingTraceIds.add(channelId);
 
     overlay.hidden = false;
     overlayTitle.textContent = batch.length > 1
       ? `Loading ${batch.length} channels…`
       : `Loading ${batch[0]?.[1].channel.sourceName ?? 'channel'}…`;
-    overlayDetail.textContent = batch.length > 1
-      ? 'Reading selected channels in one sequential log pass.'
-      : 'Reading bounded channel data from the local log. Additional selections will join the next pass.';
+    overlayDetail.textContent = requestRange.phase === 'viewport'
+      ? `Reading ${requestRange.sampleCount.toLocaleString()} visible samples first.`
+      : batch.length > 1
+        ? 'Reading selected channels in one sequential log pass.'
+        : 'Reading bounded channel data from the local log. Additional selections will join the next pass.';
 
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const readStart = now();
 
     try {
       const result = channelData.readChannelsRange
-        ? await channelData.readChannelsRange(channelIds, 0, channelData.sampleCount)
+        ? await channelData.readChannelsRange(
+            channelIds,
+            requestRange.startSampleIndex,
+            requestRange.sampleCount,
+          )
         : {
             ranges: new Map(await Promise.all(channelIds.map(async (channelId) => [
               channelId,
-              await channelData!.readChannelRange(channelId, 0, channelData!.sampleCount),
+              await channelData!.readChannelRange(
+                channelId,
+                requestRange.startSampleIndex,
+                requestRange.sampleCount,
+              ),
             ] as const))),
             performance: {
               channelCount: channelIds.length,
@@ -773,6 +895,9 @@ export function createGraphViewport(): GraphViewportController {
         }
         channelPerformanceListener?.({
           channelId,
+          phase: requestRange.phase,
+          startSampleIndex: requestRange.startSampleIndex,
+          requestedSampleCount: requestRange.sampleCount,
           totalMs: completedMs - readStart,
           readDecodeMs,
           scaleMs: scaleTimes.get(channelId) ?? 0,
@@ -785,6 +910,10 @@ export function createGraphViewport(): GraphViewportController {
           physicalReadMs: result.performance.physicalReadMs,
         });
         pending.resolve(true);
+      }
+
+      if (requestRange.phase === 'viewport') {
+        void promoteViewportBatchToFull(channelIds, generation);
       }
     } catch (error) {
       if (generation === decodeGeneration) {
@@ -854,6 +983,9 @@ export function createGraphViewport(): GraphViewportController {
 
       channelPerformanceListener?.({
         channelId,
+        phase: 'cache',
+        startSampleIndex: 0,
+        requestedSampleCount: channelData.sampleCount,
         totalMs: completedMs - pending.startedMs,
         readDecodeMs,
         scaleMs,

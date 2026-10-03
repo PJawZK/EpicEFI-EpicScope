@@ -248,6 +248,9 @@ export function mountAppShell(root: HTMLElement): void {
   loggerPage.onChannelPerformance((run) => {
     performanceDiagnostics.recordChannel({
       channelName: run.channelName,
+      phase: run.phase,
+      startSampleIndex: run.startSampleIndex,
+      requestedSampleCount: run.requestedSampleCount,
       totalMs: run.totalMs,
       readDecodeMs: run.readDecodeMs,
       scaleMs: run.scaleMs,
