@@ -11,6 +11,7 @@ import type { MlgRecordIndex } from './mlg-records';
 const BLOCK_HEADER_LENGTH = 4;
 const MAX_BATCH_SPAN = 8 * 1024 * 1024;
 const DECODED_CHANNEL_CACHE_LIMIT = 32 * 1024 * 1024;
+const DECODED_CHANNEL_CHUNK_SAMPLES = 8192;
 
 interface ResolvedChannel {
   readonly channelId: string;
@@ -136,6 +137,18 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     };
   }
 
+  private cacheKey(channelId: string, startSampleIndex: number, sampleCount: number): string {
+    return `${channelId}:${startSampleIndex}:${sampleCount}`;
+  }
+
+  private touchCached(key: string): CachedChannel | undefined {
+    const entry = this.decodedCache.get(key);
+    if (!entry) return undefined;
+    this.decodedCache.delete(key);
+    this.decodedCache.set(key, entry);
+    return entry;
+  }
+
   private cachedEntryContaining(
     channelId: string,
     startSampleIndex: number,
@@ -161,8 +174,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     const match = this.cachedEntryContaining(channelId, startSampleIndex, sampleCount);
     if (!match) return undefined;
     const [key, entry] = match;
-    this.decodedCache.delete(key);
-    this.decodedCache.set(key, entry);
+    this.touchCached(key);
 
     const offset = startSampleIndex - entry.range.startSampleIndex;
     if (offset === 0 && sampleCount === entry.range.values.length) return entry.range;
@@ -176,9 +188,9 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
   }
 
   private cache(channelId: string, range: NumericChannelRange): void {
-    const bytes = range.values.byteLength;
+    const bytes = range.values.byteLength + range.timeMs.byteLength + range.validity.byteLength;
     if (bytes > DECODED_CHANNEL_CACHE_LIMIT) return;
-    const key = `${channelId}:${range.startSampleIndex}:${range.values.length}`;
+    const key = this.cacheKey(channelId, range.startSampleIndex, range.values.length);
 
     const previous = this.decodedCache.get(key);
     if (previous) {
@@ -365,7 +377,55 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): boolean {
-    return this.cachedEntryContaining(channelId, startSampleIndex, sampleCount) !== undefined;
+    if (this.cachedEntryContaining(channelId, startSampleIndex, sampleCount) !== undefined) return true;
+    if (sampleCount === 0) return true;
+    const firstChunk = Math.floor(startSampleIndex / DECODED_CHANNEL_CHUNK_SAMPLES);
+    const lastChunk = Math.floor((startSampleIndex + sampleCount - 1) / DECODED_CHANNEL_CHUNK_SAMPLES);
+    for (let chunkIndex = firstChunk; chunkIndex <= lastChunk; chunkIndex += 1) {
+      const chunkStart = chunkIndex * DECODED_CHANNEL_CHUNK_SAMPLES;
+      const chunkCount = Math.min(DECODED_CHANNEL_CHUNK_SAMPLES, this.sampleCount - chunkStart);
+      if (!this.decodedCache.has(this.cacheKey(channelId, chunkStart, chunkCount))) return false;
+    }
+    return true;
+  }
+
+  private composeCachedChunks(
+    channelId: string,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): NumericChannelRange | undefined {
+    const containing = this.cached(channelId, startSampleIndex, sampleCount);
+    if (containing) return containing;
+    if (sampleCount === 0) {
+      return {
+        startSampleIndex,
+        timeMs: new Float64Array(),
+        values: new Float64Array(),
+        validity: new Uint8Array(),
+      };
+    }
+
+    const values = new Float64Array(sampleCount);
+    const timeMs = this.recordIndex.timeMs.slice(startSampleIndex, startSampleIndex + sampleCount);
+    const validity = this.recordIndex.crcValid.slice(startSampleIndex, startSampleIndex + sampleCount);
+    const firstChunk = Math.floor(startSampleIndex / DECODED_CHANNEL_CHUNK_SAMPLES);
+    const lastChunk = Math.floor((startSampleIndex + sampleCount - 1) / DECODED_CHANNEL_CHUNK_SAMPLES);
+
+    for (let chunkIndex = firstChunk; chunkIndex <= lastChunk; chunkIndex += 1) {
+      const chunkStart = chunkIndex * DECODED_CHANNEL_CHUNK_SAMPLES;
+      const chunkCount = Math.min(DECODED_CHANNEL_CHUNK_SAMPLES, this.sampleCount - chunkStart);
+      const key = this.cacheKey(channelId, chunkStart, chunkCount);
+      const entry = this.touchCached(key);
+      if (!entry) return undefined;
+      const copyStart = Math.max(startSampleIndex, chunkStart);
+      const copyEnd = Math.min(startSampleIndex + sampleCount, chunkStart + chunkCount);
+      values.set(
+        entry.range.values.subarray(copyStart - chunkStart, copyEnd - chunkStart),
+        copyStart - startSampleIndex,
+      );
+    }
+
+    return { startSampleIndex, timeMs, values, validity };
   }
 
   public async readChannelsRange(
@@ -379,25 +439,84 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     const before = this.source.performanceSnapshot?.();
     const ranges = new Map<string, NumericChannelRange>();
     const cacheHitChannelIds: string[] = [];
-    const misses: ResolvedChannel[] = [];
+    let batchCount = 0;
+    let batchPlanMs = 0;
+    let sourceReadAwaitMs = 0;
+    let decodeTransformMs = 0;
+    let resultAssemblyMs = 0;
 
     const cacheResolveStarted = nowMs();
-    for (const channelId of uniqueIds) {
-      const cached = this.cached(channelId, startSampleIndex, sampleCount);
-      if (cached) {
-        ranges.set(channelId, cached);
-        cacheHitChannelIds.push(channelId);
-        continue;
+    const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
+    if (isFullRange) {
+      const misses: ResolvedChannel[] = [];
+      for (const channelId of uniqueIds) {
+        const cached = this.cached(channelId, startSampleIndex, sampleCount);
+        if (cached) {
+          ranges.set(channelId, cached);
+          cacheHitChannelIds.push(channelId);
+        } else {
+          misses.push(this.resolveChannel(channelId, sampleCount));
+        }
       }
-      misses.push(this.resolveChannel(channelId, sampleCount));
+      const cacheResolveMs = nowMs() - cacheResolveStarted;
+      const decoded = await this.decodeChannels(misses, startSampleIndex, sampleCount);
+      batchCount += decoded.performance.batchCount;
+      batchPlanMs += decoded.performance.batchPlanMs;
+      sourceReadAwaitMs += decoded.performance.sourceReadAwaitMs;
+      decodeTransformMs += decoded.performance.decodeTransformMs;
+      resultAssemblyMs += decoded.performance.resultAssemblyMs;
+      const cacheStoreStarted = nowMs();
+      for (const [channelId, range] of decoded.ranges) {
+        ranges.set(channelId, range);
+        this.cache(channelId, range);
+      }
+      const cacheStoreMs = nowMs() - cacheStoreStarted;
+      const after = this.source.performanceSnapshot?.();
+      const totalMs = nowMs() - totalStarted;
+      recordChannelDecodePerformance({
+        recordedAt: Date.now(), channelCount: uniqueIds.length, sampleCount, batchCount, totalMs,
+        cacheResolveMs, batchPlanMs, sourceReadAwaitMs, decodeTransformMs, resultAssemblyMs, cacheStoreMs,
+      });
+      return {
+        ranges,
+        performance: {
+          channelCount: uniqueIds.length, cacheHitChannelIds,
+          physicalReadCount: Math.max(0, (after?.physicalReadCount ?? 0) - (before?.physicalReadCount ?? 0)),
+          physicalBytesRead: Math.max(0, (after?.physicalBytesRead ?? 0) - (before?.physicalBytesRead ?? 0)),
+          physicalReadMs: Math.max(0, (after?.physicalReadMs ?? 0) - (before?.physicalReadMs ?? 0)),
+        },
+      };
+    }
+
+    const firstChunk = sampleCount === 0 ? 0 : Math.floor(startSampleIndex / DECODED_CHANNEL_CHUNK_SAMPLES);
+    const lastChunk = sampleCount === 0 ? -1 : Math.floor((startSampleIndex + sampleCount - 1) / DECODED_CHANNEL_CHUNK_SAMPLES);
+    for (let chunkIndex = firstChunk; chunkIndex <= lastChunk; chunkIndex += 1) {
+      const chunkStart = chunkIndex * DECODED_CHANNEL_CHUNK_SAMPLES;
+      const chunkCount = Math.min(DECODED_CHANNEL_CHUNK_SAMPLES, this.sampleCount - chunkStart);
+      const missingIds = uniqueIds.filter((channelId) =>
+        !this.decodedCache.has(this.cacheKey(channelId, chunkStart, chunkCount))
+        && this.cachedEntryContaining(channelId, chunkStart, chunkCount) === undefined
+      );
+      if (missingIds.length === 0) continue;
+      const decoded = await this.decodeChannels(
+        missingIds.map((channelId) => this.resolveChannel(channelId, chunkCount)),
+        chunkStart,
+        chunkCount,
+      );
+      batchCount += decoded.performance.batchCount;
+      batchPlanMs += decoded.performance.batchPlanMs;
+      sourceReadAwaitMs += decoded.performance.sourceReadAwaitMs;
+      decodeTransformMs += decoded.performance.decodeTransformMs;
+      resultAssemblyMs += decoded.performance.resultAssemblyMs;
+      for (const [channelId, range] of decoded.ranges) this.cache(channelId, range);
     }
     const cacheResolveMs = nowMs() - cacheResolveStarted;
-
-    const decoded = await this.decodeChannels(misses, startSampleIndex, sampleCount);
     const cacheStoreStarted = nowMs();
-    for (const [channelId, range] of decoded.ranges) {
-      ranges.set(channelId, range);
-      this.cache(channelId, range);
+    for (const channelId of uniqueIds) {
+      const composed = this.composeCachedChunks(channelId, startSampleIndex, sampleCount);
+      if (!composed) throw new Error(`Decoded chunk cache could not compose ${channelId}.`);
+      ranges.set(channelId, composed);
+      if (batchCount === 0) cacheHitChannelIds.push(channelId);
     }
     const cacheStoreMs = nowMs() - cacheStoreStarted;
 
@@ -407,13 +526,13 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       recordedAt: Date.now(),
       channelCount: uniqueIds.length,
       sampleCount,
-      batchCount: decoded.performance.batchCount,
+      batchCount,
       totalMs,
       cacheResolveMs,
-      batchPlanMs: decoded.performance.batchPlanMs,
-      sourceReadAwaitMs: decoded.performance.sourceReadAwaitMs,
-      decodeTransformMs: decoded.performance.decodeTransformMs,
-      resultAssemblyMs: decoded.performance.resultAssemblyMs,
+      batchPlanMs,
+      sourceReadAwaitMs,
+      decodeTransformMs,
+      resultAssemblyMs,
       cacheStoreMs,
     });
 
