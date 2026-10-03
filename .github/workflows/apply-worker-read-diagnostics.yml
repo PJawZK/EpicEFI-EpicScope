@@ -1,0 +1,85 @@
+name: Apply worker Blob read diagnostics
+
+on:
+  push:
+    branches:
+      - diag/worker-blob-read-latency
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: diag/worker-blob-read-latency
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - run: npm ci
+      - name: Apply worker source diagnostics patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          protocol = Path('apps/web/src/workers/mlg-worker-protocol.ts')
+          text = protocol.read_text()
+          text = text.replace(
+              "import type { BlobByteSourceStats } from '../adapters/blob-byte-source';",
+              "import type {\n  BlobByteSourceRuntimeDiagnostics,\n  BlobByteSourceStats,\n} from '../adapters/blob-byte-source';",
+          )
+          text = text.replace(
+              "  readonly sourceStats: BlobByteSourceStats;\n  readonly importTotalMs: number;",
+              "  readonly sourceStats: BlobByteSourceStats;\n  readonly sourceRuntime: BlobByteSourceRuntimeDiagnostics;\n  readonly importTotalMs: number;",
+          )
+          protocol.write_text(text)
+
+          worker = Path('apps/web/src/workers/mlg-import.worker.ts')
+          text = worker.read_text()
+          text = text.replace(
+              "          sourceStats: source.stats(),\n          importTotalMs: now() - started,",
+              "          sourceStats: source.stats(),\n          sourceRuntime: source.runtimeDiagnostics(),\n          importTotalMs: now() - started,",
+          )
+          worker.write_text(text)
+
+          perf = Path('apps/web/src/components/performance-diagnostics.ts')
+          text = perf.read_text()
+          text = text.replace(
+              "import { latestBlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';",
+              "import {\n  latestBlobByteSourceRuntimeDiagnostics,\n  type BlobByteSourceRuntimeDiagnostics,\n} from '../adapters/blob-byte-source';",
+          )
+          text = text.replace(
+              "  readonly cachePageCount: number;\n  readonly fullyValidatedMs?: number;",
+              "  readonly cachePageCount: number;\n  readonly workerSourceRuntime?: BlobByteSourceRuntimeDiagnostics;\n  readonly fullyValidatedMs?: number;",
+          )
+          marker = "        `cachePages=${latestLoad.cachePageCount}`,\n      );"
+          replacement = "        `cachePages=${latestLoad.cachePageCount}`,\n      );\n      if (latestLoad.workerSourceRuntime) {\n        const worker = latestLoad.workerSourceRuntime;\n        lines.push(\n          '',\n          '[Worker Blob source]',\n          'scope=worker-index-source-lifetime',\n          `pageSizeBytes=${worker.pageSizeBytes}`,\n          `cacheLimitBytes=${worker.cacheLimitBytes}`,\n          `pinnedCacheLimitBytes=${worker.pinnedCacheLimitBytes}`,\n          `physicalReads=${worker.physicalReadCount}`,\n          `physicalReadMs=${worker.physicalReadMs.toFixed(2)} ms`,\n          `physicalReadMinMs=${worker.physicalReadMinMs.toFixed(2)} ms`,\n          `physicalReadAverageMs=${worker.physicalReadAverageMs.toFixed(2)} ms`,\n          `physicalReadMaxMs=${worker.physicalReadMaxMs.toFixed(2)} ms`,\n        );\n        worker.slowestReads.forEach((read, index) => {\n          lines.push(\n            `slowRead${index + 1}=offset:${read.offset};bytes:${read.bytes};ms:${read.durationMs.toFixed(2)}`\n          );\n        });\n      }"
+          if marker not in text:
+              raise SystemExit('performance report marker not found')
+          text = text.replace(marker, replacement)
+          perf.write_text(text)
+
+          app = Path('apps/web/src/app/app-shell.ts')
+          text = app.read_text()
+          marker = "          cacheBytes: indexed.sourceStats.cacheBytes,\n          cachePageCount: indexed.sourceStats.cachePageCount,\n        });"
+          replacement = "          cacheBytes: indexed.sourceStats.cacheBytes,\n          cachePageCount: indexed.sourceStats.cachePageCount,\n          workerSourceRuntime: indexed.sourceRuntime,\n        });"
+          if marker not in text:
+              raise SystemExit('staged recordLoad marker not found')
+          text = text.replace(marker, replacement, 1)
+          app.write_text(text)
+          PY
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/workers/mlg-worker-protocol.ts apps/web/src/workers/mlg-import.worker.ts apps/web/src/components/performance-diagnostics.ts apps/web/src/app/app-shell.ts
+          git commit -m "Diag: report worker Blob read latency"
+          git push origin HEAD:diag/worker-blob-read-latency
