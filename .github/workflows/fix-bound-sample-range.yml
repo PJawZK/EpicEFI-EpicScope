@@ -1,0 +1,68 @@
+name: Fix bound sample range forwarding
+
+on:
+  push:
+    branches:
+      - fix/forward-sample-range-through-binding
+    paths:
+      - .github/workflows/fix-bound-sample-range.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/forward-sample-range-through-binding
+          fetch-depth: 0
+
+      - name: Forward sample range capability and add regression test
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          binding = Path('core/channels/channel-binding.ts')
+          text = binding.read_text()
+          old = "  hasCachedChannelRange(\n    channelId: string,\n"
+          new = "  sampleRangeForTime(\n    startMs: number,\n    endMs: number,\n  ): { readonly startSampleIndex: number; readonly sampleCount: number } {\n    return this.source.sampleRangeForTime\n      ? this.source.sampleRangeForTime(startMs, endMs)\n      : { startSampleIndex: 0, sampleCount: this.sampleCount };\n  }\n\n  hasCachedChannelRange(\n    channelId: string,\n"
+          if old not in text:
+              raise SystemExit('binding insertion point not found')
+          binding.write_text(text.replace(old, new, 1))
+
+          test = Path('tests/channels/channel-binding.test.ts')
+          text = test.read_text()
+          old = "  readonly readIds: string[] = [];\n\n  hasCachedChannelRange(channelId: string): boolean {\n"
+          new = "  readonly readIds: string[] = [];\n  readonly sampleRangeCalls: Array<{ startMs: number; endMs: number }> = [];\n\n  sampleRangeForTime(startMs: number, endMs: number): { readonly startSampleIndex: number; readonly sampleCount: number } {\n    this.sampleRangeCalls.push({ startMs, endMs });\n    return { startSampleIndex: 1, sampleCount: 1 };\n  }\n\n  hasCachedChannelRange(channelId: string): boolean {\n"
+          if old not in text:
+              raise SystemExit('fake source insertion point not found')
+          text = text.replace(old, new, 1)
+
+          old = "    expect(wrapped.hasCachedChannelRange?.('ini:RPMValue', 0, 2)).toBe(true);\n"
+          new = "    expect(wrapped.sampleRangeForTime?.(100, 200)).toEqual({ startSampleIndex: 1, sampleCount: 1 });\n    expect(source.sampleRangeCalls).toEqual([{ startMs: 100, endMs: 200 }]);\n\n    expect(wrapped.hasCachedChannelRange?.('ini:RPMValue', 0, 2)).toBe(true);\n"
+          if old not in text:
+              raise SystemExit('test assertion insertion point not found')
+          test.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/channels/channel-binding.ts tests/channels/channel-binding.test.ts
+          git commit -m "Fix: forward sample-range lookup through INI binding"
+          git push origin HEAD:fix/forward-sample-range-through-binding
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          git rm .github/workflows/fix-bound-sample-range.yml
+          git commit -m "Chore: remove temporary bound range workflow"
+          git push origin HEAD:fix/forward-sample-range-through-binding
