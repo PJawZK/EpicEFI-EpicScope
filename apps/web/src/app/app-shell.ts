@@ -13,6 +13,7 @@ import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
 import { importMlgFile } from '../adapters/mlg-file-import';
+import { clearPersistentChannelCache } from '../adapters/persistent-channel-cache';
 import {
   importMlgFileStaged,
   supportsStagedMlgWorker,
@@ -184,6 +185,13 @@ export function mountAppShell(root: HTMLElement): void {
             </div>
             <button type="button" class="setting-forget-workspace" disabled>Forget saved log view</button>
           </div>
+          <div class="settings-persistence">
+            <div>
+              <strong>Decoded channel cache</strong>
+              <small class="settings-channel-cache-status">Up to 128 recently decoded channels are retained locally.</small>
+            </div>
+            <button type="button" class="setting-clear-channel-cache">Clear channel cache</button>
+          </div>
           <p class="settings-note">Layouts/channel assignments are reusable across logs. Cursor, A/B, markers and ranges remain log-specific.</p>
         </div>
       </div>
@@ -299,10 +307,25 @@ export function mountAppShell(root: HTMLElement): void {
   const iniStatus = header.querySelector<HTMLElement>('.settings-ini-status');
   const forgetWorkspaceButton = header.querySelector<HTMLButtonElement>('.setting-forget-workspace');
   const persistenceStatus = header.querySelector<HTMLElement>('.settings-persistence-status');
+  const clearChannelCacheButton = header.querySelector<HTMLButtonElement>('.setting-clear-channel-cache');
+  const channelCacheStatus = header.querySelector<HTMLElement>('.settings-channel-cache-status');
 
-  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus) {
+  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
+
+  clearChannelCacheButton.addEventListener('click', () => {
+    clearChannelCacheButton.disabled = true;
+    channelCacheStatus.textContent = 'Clearing decoded channel cache…';
+    void clearPersistentChannelCache().then(() => {
+      channelCacheStatus.textContent = 'Decoded channel cache cleared.';
+      appStatus.textContent = 'Channel cache cleared';
+    }).catch((error: unknown) => {
+      channelCacheStatus.textContent = `Unable to clear cache: ${error instanceof Error ? error.message : String(error)}`;
+    }).finally(() => {
+      clearChannelCacheButton.disabled = false;
+    });
+  });
 
   type SourceLoadState = 'idle' | 'loading' | 'success' | 'restored' | 'issue';
 
