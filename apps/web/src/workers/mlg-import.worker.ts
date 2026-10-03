@@ -19,7 +19,7 @@ import type {
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<MlgWorkerRequest>) => void) | null;
-  postMessage(message: MlgWorkerResponse): void;
+  postMessage(message: MlgWorkerResponse, transfer?: Transferable[]): void;
 }
 
 interface ValidationBatch {
@@ -263,6 +263,9 @@ scope.onmessage = (event): void => {
       const finalizeStart = now();
       const range = timeRange(scanResult.records.timeMs);
       const finalizeMs = now() - finalizeStart;
+      const indexedSourceStats = source.stats();
+      const indexedSourceRuntime = source.runtimeDiagnostics();
+      const sourceCacheSeed = source.takePinnedCacheSeed();
 
       scope.postMessage({
         type: 'indexed',
@@ -277,8 +280,9 @@ scope.onmessage = (event): void => {
           header: headerResult.header,
           fields: headerResult.fields,
           recordIndex: scanResult.records,
-          sourceStats: source.stats(),
-          sourceRuntime: source.runtimeDiagnostics(),
+          sourceStats: indexedSourceStats,
+          sourceRuntime: indexedSourceRuntime,
+          sourceCacheSeed,
           importTotalMs: now() - started,
           performance: {
             scanMode: scanResult.performance.scanMode,
@@ -297,7 +301,7 @@ scope.onmessage = (event): void => {
             totalMs: now() - started,
           },
         },
-      });
+      }, sourceCacheSeed.map((page) => page.bytes.buffer as ArrayBuffer));
 
       if (!validationStartRequested) {
         await new Promise<void>((resolve) => {
