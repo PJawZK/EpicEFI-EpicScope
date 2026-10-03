@@ -72,6 +72,12 @@ class FakeDataSource implements NumericChannelDataSource {
   readonly preferredBatchWindowMs = 0;
   readonly requiresExplicitBatchSelection = false;
   readonly readIds: string[] = [];
+  readonly sampleRangeCalls: Array<{ startMs: number; endMs: number }> = [];
+
+  sampleRangeForTime(startMs: number, endMs: number): { readonly startSampleIndex: number; readonly sampleCount: number } {
+    this.sampleRangeCalls.push({ startMs, endMs });
+    return { startSampleIndex: 1, sampleCount: 1 };
+  }
 
   hasCachedChannelRange(channelId: string): boolean {
     return channelId === 'mlg:0';
@@ -359,6 +365,9 @@ describe('INI to log channel binding', () => {
         ['ini:MAPValue', 'mlg:1'],
       ]),
     );
+
+    expect(wrapped.sampleRangeForTime?.(100, 200)).toEqual({ startSampleIndex: 1, sampleCount: 1 });
+    expect(source.sampleRangeCalls).toEqual([{ startMs: 100, endMs: 200 }]);
 
     expect(wrapped.hasCachedChannelRange?.('ini:RPMValue', 0, 2)).toBe(true);
     expect(wrapped.hasCachedChannelRange?.('ini:MAPValue', 0, 2)).toBe(false);

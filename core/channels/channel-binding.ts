@@ -301,6 +301,15 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     return sourceId;
   }
 
+  sampleRangeForTime(
+    startMs: number,
+    endMs: number,
+  ): { readonly startSampleIndex: number; readonly sampleCount: number } {
+    return this.source.sampleRangeForTime
+      ? this.source.sampleRangeForTime(startMs, endMs)
+      : { startSampleIndex: 0, sampleCount: this.sampleCount };
+  }
+
   hasCachedChannelRange(
     channelId: string,
     startSampleIndex: number,
