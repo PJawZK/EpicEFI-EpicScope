@@ -14,8 +14,10 @@ import type {
 import { BlobByteSource } from '../adapters/blob-byte-source';
 import {
   createMlgColumnSidecarBuilder,
+  planMlgColumnStripes,
   type MlgColumnSidecarBuilder,
 } from '../adapters/mlg-column-sidecar';
+import { findCompleteMlgColumnSidecar } from '../adapters/mlg-column-sidecar-storage';
 import type {
   MlgColumnSidecarBuildResult,
   MlgWorkerRequest,
@@ -433,12 +435,22 @@ scope.onmessage = (event): void => {
       }
       validationStartResolver = undefined;
 
-      const sidecarBuilder = await createMlgColumnSidecarBuilder(
+      const sidecarPlan = planMlgColumnStripes(headerResult.fields);
+      const existingSidecar = await findCompleteMlgColumnSidecar(
         importRequest.sourceIdentity.id,
-        headerResult.fields,
-        scanResult.records,
-        headerResult.header.recordLength,
+        scanResult.records.offsets.length,
+        headerResult.fields.length,
+        sidecarPlan.fieldPayloadBytes,
       );
+      const sidecarBuilder = existingSidecar
+        ? undefined
+        : await createMlgColumnSidecarBuilder(
+            importRequest.sourceIdentity.id,
+            headerResult.fields,
+            scanResult.records,
+            headerResult.header.recordLength,
+          );
+
       const hardwareConcurrency = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
       const validationMode = hardwareConcurrency >= 4 ? 'parallel' : 'serial';
       let validation: MlgCrcValidationResult;
@@ -461,7 +473,17 @@ scope.onmessage = (event): void => {
         throw error;
       }
 
-      let sidecar: MlgColumnSidecarBuildResult | undefined;
+      let sidecar: MlgColumnSidecarBuildResult | undefined = existingSidecar
+        ? {
+            manifest: existingSidecar,
+            performance: {
+              totalMs: 0,
+              transposeMs: 0,
+              writeMs: 0,
+              bytesWritten: 0,
+            },
+          }
+        : undefined;
       if (sidecarBuilder) {
         try {
           sidecar = await sidecarBuilder.finish();
