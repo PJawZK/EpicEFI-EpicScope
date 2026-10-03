@@ -1303,6 +1303,7 @@ export function mountAppShell(root: HTMLElement): void {
           cacheHitBytes: indexed.sourceStats.cacheHitBytes,
           cacheBytes: indexed.sourceStats.cacheBytes,
           cachePageCount: indexed.sourceStats.cachePageCount,
+          workerSourceRuntime: indexed.sourceRuntime,
         });
 
         const workspaceRestore = loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
