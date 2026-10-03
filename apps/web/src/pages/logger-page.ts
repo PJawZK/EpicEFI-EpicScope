@@ -1734,6 +1734,9 @@ export function createLoggerPage(): LoggerPageController {
         ...performance,
         channelName: channel?.sourceName ?? performance.channelId,
       });
+      if (runtime.id === activeWorkspace()?.activePaneId) {
+        timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);
+      }
     });
 
     runtime.graph.onCursorValues((values) => {
