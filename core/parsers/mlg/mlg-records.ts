@@ -77,60 +77,77 @@ export function classifyMlgRetryDiagnostics(
   let invalidCount = 0;
 
   for (let index = 0; index < crcValid.length; index += 1) {
-    if (crcValid[index] !== 0) continue;
-    invalidCount += 1;
-
-    const nextIndex = index + 1;
-    if (nextIndex >= crcValid.length || crcValid[nextIndex] !== 1) continue;
-
-    const counter = recordIndex.counters[index];
-    const nextCounter = recordIndex.counters[nextIndex];
-    if (counter === undefined || nextCounter === undefined || counter !== nextCounter) continue;
-
-    const invalidOffset = recordIndex.offsets[index];
-    const retryOffset = recordIndex.offsets[nextIndex];
-    if (invalidOffset === undefined || retryOffset === undefined) continue;
-
-    recoveredInvalidIndices.add(index);
-    // Both the invalid attempt and its valid same-counter retry can generate
-    // counter discontinuities. The CRC retry diagnostic is the more precise
-    // evidence, so suppress both redundant counter warnings.
-    retryCounterOffsets.add(invalidOffset + 1);
-    retryCounterOffsets.add(retryOffset + 1);
-    recoveredCrcOffsets.add(invalidOffset + blockLength - 1);
+    if (crcValid[index] === 0) invalidCount += 1;
   }
 
-  for (let index = 1; index + 1 < recordIndex.counters.length; index += 1) {
-    if (crcValid[index] !== 1 || crcValid[index + 1] !== 1) continue;
+  // Retry behavior in real EpicEFI MLG logs is run-shaped: consecutive
+  // attempts repeat both the block counter and the source timestamp. Treat
+  // the complete run as one unit so bad -> bad -> valid retries are recovered
+  // correctly and a merely repeated counter with advancing time is not hidden.
+  let runStart = 0;
+  while (runStart < recordIndex.counters.length) {
+    const counter = recordIndex.counters[runStart];
+    const timeMs = recordIndex.timeMs[runStart];
+    if (counter === undefined || timeMs === undefined) {
+      runStart += 1;
+      continue;
+    }
 
-    const previousCounter = recordIndex.counters[index - 1];
-    const counter = recordIndex.counters[index];
-    const repeatedCounter = recordIndex.counters[index + 1];
-    const offset = recordIndex.offsets[index];
-    const repeatedOffset = recordIndex.offsets[index + 1];
-    if (
-      previousCounter === undefined
-      || counter === undefined
-      || repeatedCounter === undefined
-      || offset === undefined
-      || repeatedOffset === undefined
-    ) continue;
+    let runEnd = runStart + 1;
+    while (
+      runEnd < recordIndex.counters.length
+      && recordIndex.counters[runEnd] === counter
+      && recordIndex.timeMs[runEnd] === timeMs
+    ) {
+      runEnd += 1;
+    }
 
-    const expected = (previousCounter + 1) % COUNTER_MODULUS;
-    const jumped = (previousCounter + 2) % COUNTER_MODULUS;
-    if (counter !== jumped || repeatedCounter !== counter) continue;
+    const runLength = runEnd - runStart;
+    if (runLength > 1) {
+      const invalidIndices: number[] = [];
+      let allValid = true;
+      for (let index = runStart; index < runEnd; index += 1) {
+        if (crcValid[index] !== 1) {
+          allValid = false;
+          invalidIndices.push(index);
+        }
+      }
 
-    const firstCounterOffset = offset + 1;
-    const repeatedCounterOffset = repeatedOffset + 1;
-    counterPatternOffsets.add(firstCounterOffset);
-    counterPatternOffsets.add(repeatedCounterOffset);
-    counterPatternDiagnostics.push({
-      code: 'mlg-counter-retry-pattern',
-      severity: 'info',
-      message: `MLG counter skipped ${expected} and then repeated ${counter} on the next CRC-valid record. Classified as a retry-like counter pattern; both source records remain valid and unchanged.`,
-      recoverable: true,
-      offset: firstCounterOffset,
-    });
+      const finalValid = crcValid[runEnd - 1] === 1;
+      if (invalidIndices.length > 0 && finalValid) {
+        for (let index = runStart; index < runEnd; index += 1) {
+          const offset = recordIndex.offsets[index];
+          if (offset !== undefined) retryCounterOffsets.add(offset + 1);
+        }
+        for (const index of invalidIndices) {
+          const offset = recordIndex.offsets[index];
+          if (offset === undefined) continue;
+          recoveredInvalidIndices.add(index);
+          recoveredCrcOffsets.add(offset + blockLength - 1);
+        }
+      } else if (allValid && runStart > 0) {
+        const previousCounter = recordIndex.counters[runStart - 1];
+        const firstOffset = recordIndex.offsets[runStart];
+        if (previousCounter !== undefined && firstOffset !== undefined) {
+          const advance = (counter - previousCounter + COUNTER_MODULUS) % COUNTER_MODULUS;
+          if (advance === runLength) {
+            for (let index = runStart; index < runEnd; index += 1) {
+              const offset = recordIndex.offsets[index];
+              if (offset !== undefined) counterPatternOffsets.add(offset + 1);
+            }
+            counterPatternDiagnostics.push({
+              code: 'mlg-counter-retry-pattern',
+              severity: 'info',
+              message: `MLG counter advanced from ${previousCounter} to ${counter}, followed by ${runLength} CRC-valid records with the same counter and timestamp. Classified as retry-like counter behavior; source records remain valid and unchanged.`,
+              recoverable: true,
+              offset: firstOffset + 1,
+            });
+          }
+        }
+      }
+    }
+
+    runStart = runEnd;
   }
 
   const classified: ParserDiagnostic[] = [];
@@ -155,7 +172,7 @@ export function classifyMlgRetryDiagnostics(
         ...diagnostic,
         code: 'mlg-crc-retry-recovered',
         severity: 'info',
-        message: `${diagnostic.message} A following valid record repeats the same block counter, indicating a recovered retry; the invalid attempt remains excluded from trusted data.`,
+        message: `${diagnostic.message} A later valid record in the same counter/timestamp retry run recovers this attempt; the invalid attempt remains excluded from trusted data.`,
       });
       continue;
     }
@@ -172,7 +189,7 @@ export function classifyMlgRetryDiagnostics(
     classified.unshift({
       code: 'mlg-counter-pattern-summary',
       severity: 'info',
-      message: `MLG counter classification: ${counterRetryPatternCount.toLocaleString()} CRC-valid jump-and-repeat pattern${counterRetryPatternCount === 1 ? '' : 's'} classified as retry-like counter behavior. Source records remain valid and unchanged.`,
+      message: `MLG counter classification: ${counterRetryPatternCount.toLocaleString()} CRC-valid same-counter/same-timestamp retry-like run${counterRetryPatternCount === 1 ? '' : 's'} classified. Source records remain valid and unchanged.`,
       recoverable: true,
     });
   }
@@ -181,7 +198,7 @@ export function classifyMlgRetryDiagnostics(
     classified.unshift({
       code: 'mlg-retry-recovery-summary',
       severity: unrecoveredInvalidCount > 0 ? 'warning' : 'info',
-      message: `MLG CRC classification: ${recoveredRetryCount.toLocaleString()} invalid record${recoveredRetryCount === 1 ? '' : 's'} followed by a valid same-counter retry; ${unrecoveredInvalidCount.toLocaleString()} invalid record${unrecoveredInvalidCount === 1 ? '' : 's'} not recovered by an immediate same-counter retry. Invalid attempts remain retained as source evidence and excluded from trusted samples.`,
+      message: `MLG CRC classification: ${recoveredRetryCount.toLocaleString()} invalid record${recoveredRetryCount === 1 ? '' : 's'} recovered by a later valid record in the same counter/timestamp retry run; ${unrecoveredInvalidCount.toLocaleString()} invalid record${unrecoveredInvalidCount === 1 ? '' : 's'} not recovered in such a run. Invalid attempts remain retained as source evidence and excluded from trusted samples.`,
       recoverable: true,
     });
   }
