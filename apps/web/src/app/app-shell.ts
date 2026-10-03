@@ -1239,7 +1239,7 @@ export function mountAppShell(root: HTMLElement): void {
         const pendingDiagnostic = {
           code: 'mlg-crc-validation-pending',
           severity: 'info' as const,
-          message: 'Record CRC validation is running in the background.',
+          message: 'Record CRC validation is queued until the initial workspace channel restore completes.',
           recoverable: true,
         };
         const rawSummary: ImportedLogSummary = {
@@ -1305,17 +1305,25 @@ export function mountAppShell(root: HTMLElement): void {
           cachePageCount: indexed.sourceStats.cachePageCount,
         });
 
-        void loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
+        const workspaceRestore = loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
           if (!restored) await loggerPage.restoreActiveWorkspace();
           resetWorkspaceHistory();
           scheduleWorkspaceSave();
         });
 
         loadedLog.textContent = indexed.summary.source.displayName;
-        setSourceLoadState(openButton, 'loading', `${indexed.summary.source.displayName} · CRC validating`);
-        appStatus.textContent = 'Ready · validating CRC…';
-        parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validating`;
+        setSourceLoadState(openButton, 'loading', `${indexed.summary.source.displayName} · restoring channels before CRC validation`);
+        appStatus.textContent = 'Ready · restoring channels…';
+        parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validation queued`;
         openButton.disabled = false;
+
+        void workspaceRestore.finally(() => {
+          if (activeStagedImport !== staged) return;
+          staged.startValidation();
+          setSourceLoadState(openButton, 'loading', `${indexed.summary.source.displayName} · CRC validating`);
+          appStatus.textContent = 'Ready · validating CRC…';
+          parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validating`;
+        });
 
         void staged.validated
           .then((validated) => {

@@ -7,17 +7,19 @@ import {
 } from '../../../../core/parsers/mlg/mlg-records';
 import { BlobByteSource } from '../adapters/blob-byte-source';
 import type {
-  MlgWorkerImportRequest,
+  MlgWorkerRequest,
   MlgWorkerResponse,
 } from './mlg-worker-protocol';
 
 interface WorkerScope {
-  onmessage: ((event: MessageEvent<MlgWorkerImportRequest>) => void) | null;
+  onmessage: ((event: MessageEvent<MlgWorkerRequest>) => void) | null;
   postMessage(message: MlgWorkerResponse): void;
 }
 
 const scope = globalThis as unknown as WorkerScope;
 const now = (): number => globalThis.performance?.now() ?? Date.now();
+let validationStartResolver: (() => void) | undefined;
+let validationStartRequested = false;
 
 function timeRange(timeMs: Float64Array): LogTimeRange | undefined {
   if (timeMs.length === 0) return undefined;
@@ -31,11 +33,20 @@ function timeRange(timeMs: Float64Array): LogTimeRange | undefined {
 }
 
 scope.onmessage = (event): void => {
+  if (event.data.type === 'start-validation') {
+    validationStartRequested = true;
+    validationStartResolver?.();
+    return;
+  }
   if (event.data.type !== 'import') return;
+
+  const importRequest = event.data;
+  validationStartRequested = false;
+  validationStartResolver = undefined;
 
   void (async () => {
     const started = now();
-    const source = new BlobByteSource(event.data.file);
+    const source = new BlobByteSource(importRequest.file);
 
     try {
       const headerPhysicalStart = source.performanceSnapshot().physicalReadMs;
@@ -64,7 +75,7 @@ scope.onmessage = (event): void => {
         type: 'indexed',
         payload: {
           summary: {
-            source: event.data.sourceIdentity,
+            source: importRequest.sourceIdentity,
             channels: headerResult.channels,
             diagnostics: scanResult.diagnostics,
             markers: scanResult.markers,
@@ -93,6 +104,14 @@ scope.onmessage = (event): void => {
           },
         },
       });
+
+      if (!validationStartRequested) {
+        await new Promise<void>((resolve) => {
+          validationStartResolver = resolve;
+          if (validationStartRequested) resolve();
+        });
+      }
+      validationStartResolver = undefined;
 
       const validation = await validateMlgRecordCrc(
         source,
