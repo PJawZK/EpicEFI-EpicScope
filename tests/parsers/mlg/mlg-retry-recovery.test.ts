@@ -33,11 +33,11 @@ function makeRecord(
 }
 
 describe('MLG retry/recovery diagnostics', () => {
-  it('classifies an invalid attempt followed by a valid same-counter retry', async () => {
+  it('classifies an invalid attempt followed by a valid same-counter/same-timestamp retry', async () => {
     const bytes = new Uint8Array(24 + 24);
     bytes.set(makeRecord(10, 100, 1), 24);
     bytes.set(makeRecord(11, 101, 2, false), 30);
-    bytes.set(makeRecord(11, 102, 2, true), 36);
+    bytes.set(makeRecord(11, 101, 2, true), 36);
     bytes.set(makeRecord(12, 103, 3), 42);
 
     const result = await scanMlgRecords(new MemoryByteSource(bytes), header);
@@ -58,7 +58,7 @@ describe('MLG retry/recovery diagnostics', () => {
       (diagnostic) => diagnostic.code === 'mlg-retry-recovery-summary',
     );
     expect(summary?.severity).toBe('info');
-    expect(summary?.message).toContain('1 invalid record followed by a valid same-counter retry');
+    expect(summary?.message).toContain('1 invalid record recovered');
     expect(summary?.message).toContain('0 invalid records not recovered');
   });
 
@@ -87,11 +87,11 @@ describe('MLG retry/recovery diagnostics', () => {
 
 
 describe('MLG CRC-valid counter retry patterns', () => {
-  it('classifies jump then immediate repeat as informational without changing validity', async () => {
+  it('classifies a counter jump followed by a same-timestamp repeat as informational', async () => {
     const bytes = new Uint8Array(24 + 24);
     bytes.set(makeRecord(1, 300, 1), 24);
     bytes.set(makeRecord(3, 301, 2), 30);
-    bytes.set(makeRecord(3, 302, 3), 36);
+    bytes.set(makeRecord(3, 301, 3), 36);
     bytes.set(makeRecord(4, 303, 4), 42);
 
     const result = await scanMlgRecords(new MemoryByteSource(bytes), header);
@@ -106,14 +106,15 @@ describe('MLG CRC-valid counter retry patterns', () => {
     );
     expect(patterns).toHaveLength(1);
     expect(patterns[0]?.severity).toBe('info');
-    expect(patterns[0]?.message).toContain('skipped 2');
-    expect(patterns[0]?.message).toContain('repeated 3');
+    expect(patterns[0]?.message).toContain('advanced from 1 to 3');
+    expect(patterns[0]?.message).toContain('2 CRC-valid records');
+    expect(patterns[0]?.message).toContain('same counter and timestamp');
 
     const summary = result.diagnostics.find(
       (diagnostic) => diagnostic.code === 'mlg-counter-pattern-summary',
     );
     expect(summary?.severity).toBe('info');
-    expect(summary?.message).toContain('1 CRC-valid jump-and-repeat pattern');
+    expect(summary?.message).toContain('1 CRC-valid same-counter/same-timestamp retry-like run');
   });
 
   it('keeps an unpaired counter jump as a warning', async () => {
