@@ -14,7 +14,22 @@ import {
 
 const MAX_ACTIVE_TRACES = 8;
 const TRACE_COLORS = ['#42a5f5', '#26c6a3', '#f0b44d', '#c98cff', '#ef6c75', '#70d6ff', '#b8d95a', '#ff8c42'] as const;
-const PROGRESSIVE_FILL_STEP_SAMPLES = 16_384;
+const PROGRESSIVE_FILL_BASE_STEP_SAMPLES = 16_384;
+const PROGRESSIVE_FILL_DESKTOP_MAX_STEP_SAMPLES = 65_536;
+const PROGRESSIVE_FILL_LOW_SPEC_MAX_STEP_SAMPLES = 32_768;
+
+function progressiveFillStepSamples(missingSamples: number, completedSteps: number): number {
+  if (completedSteps === 0 || missingSamples <= PROGRESSIVE_FILL_BASE_STEP_SAMPLES * 2) {
+    return PROGRESSIVE_FILL_BASE_STEP_SAMPLES;
+  }
+
+  const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
+  const maximum = logicalThreads <= 3
+    ? PROGRESSIVE_FILL_LOW_SPEC_MAX_STEP_SAMPLES
+    : PROGRESSIVE_FILL_DESKTOP_MAX_STEP_SAMPLES;
+  if (missingSamples >= PROGRESSIVE_FILL_BASE_STEP_SAMPLES * 8) return maximum;
+  return Math.min(maximum, PROGRESSIVE_FILL_BASE_STEP_SAMPLES * 2);
+}
 
 export interface GraphCursorValue {
   readonly channelId: string;
@@ -911,6 +926,7 @@ export function createGraphViewport(): GraphViewportController {
 
     for (const channelId of channelIds) {
       let preferLeft = true;
+      let completedSteps = 0;
       while (generation === viewportRefreshGeneration) {
         const existing = activeTraces.get(channelId);
         if (!existing || rangeCovers(existing.range, desiredStart, requestRange.sampleCount)) break;
@@ -926,20 +942,24 @@ export function createGraphViewport(): GraphViewportController {
 
         if (disjointLeft || disjointRight) {
           chunkStart = desiredStart;
-          chunkCount = Math.min(PROGRESSIVE_FILL_STEP_SAMPLES, requestRange.sampleCount);
+          chunkCount = Math.min(PROGRESSIVE_FILL_BASE_STEP_SAMPLES, requestRange.sampleCount);
           replaceExisting = true;
         } else {
           const missingLeft = Math.max(0, existingStart - desiredStart);
           const missingRight = Math.max(0, desiredEnd - existingEnd);
+          const fillStepSamples = progressiveFillStepSamples(
+            missingLeft + missingRight,
+            completedSteps,
+          );
           if (missingLeft <= 0 && missingRight <= 0) break;
 
           if (missingLeft > 0 && (missingRight <= 0 || preferLeft)) {
-            chunkCount = Math.min(PROGRESSIVE_FILL_STEP_SAMPLES, missingLeft);
+            chunkCount = Math.min(fillStepSamples, missingLeft);
             chunkStart = existingStart - chunkCount;
             preferLeft = false;
           } else {
             chunkStart = existingEnd;
-            chunkCount = Math.min(PROGRESSIVE_FILL_STEP_SAMPLES, missingRight);
+            chunkCount = Math.min(fillStepSamples, missingRight);
             preferLeft = true;
           }
         }
@@ -1008,6 +1028,7 @@ export function createGraphViewport(): GraphViewportController {
             physicalBytesRead: result.performance.physicalBytesRead,
             physicalReadMs: result.performance.physicalReadMs,
           });
+          completedSteps += 1;
         } catch {
           // Keep already decoded coverage visible if a progressive refill fails.
           break;
