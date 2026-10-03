@@ -4,6 +4,7 @@ import type { MlgHeader } from '../../../../core/parsers/mlg/mlg-format';
 import {
   classifyMlgRetryDiagnostics,
   scanMlgRecords,
+  validateMlgRecordCrc,
 } from '../../../../core/parsers/mlg/mlg-records';
 import type {
   MlgCrcValidationPerformance,
@@ -306,11 +307,19 @@ scope.onmessage = (event): void => {
       }
       validationStartResolver = undefined;
 
-      const validation = await validateMlgRecordCrcParallel(
-        importRequest.file,
-        headerResult.header,
-        scanResult.records,
-      );
+      const hardwareConcurrency = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
+      const validationMode = hardwareConcurrency >= 4 ? 'parallel' : 'serial';
+      const validation = validationMode === 'parallel'
+        ? await validateMlgRecordCrcParallel(
+            importRequest.file,
+            headerResult.header,
+            scanResult.records,
+          )
+        : await validateMlgRecordCrc(
+            source,
+            headerResult.header,
+            scanResult.records,
+          );
 
       const classified = classifyMlgRetryDiagnostics(
         scanResult.records,
@@ -325,6 +334,7 @@ scope.onmessage = (event): void => {
           crcValid: validation.crcValid,
           diagnostics: classified.diagnostics,
           performance: validation.performance,
+          validationMode,
           sourceStats: source.stats(),
           completedMs: now() - started,
         },

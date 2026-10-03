@@ -51,6 +51,7 @@ export interface LoadPerformanceRun {
   readonly validationChecksumCpuMs?: number;
   readonly validationDiagnosticCpuMs?: number;
   readonly validationChecksumBytes?: number;
+  readonly validationMode?: 'serial' | 'parallel';
 }
 
 export interface IniLoadPerformanceRun {
@@ -129,6 +130,7 @@ export interface ValidationPerformanceRun {
   readonly validationChecksumCpuMs: number;
   readonly validationDiagnosticCpuMs: number;
   readonly validationChecksumBytes: number;
+  readonly validationMode: 'serial' | 'parallel';
 }
 
 export interface PerformanceDiagnosticsController {
@@ -339,6 +341,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       if (latestLoad.fullyValidatedMs !== undefined) {
         lines.push(
           `fullyValidated=${latestLoad.fullyValidatedMs.toFixed(2)} ms`,
+          `validationMode=${latestLoad.validationMode ?? 'unknown'}`,
           `validation=${latestLoad.validationMs?.toFixed(2) ?? '0.00'} ms`,
           `validationRead=${latestLoad.validationReadMs?.toFixed(2) ?? '0.00'} ms`,
           `validationChecksumCpu=${latestLoad.validationChecksumCpuMs?.toFixed(2) ?? '0.00'} ms`,
@@ -513,6 +516,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       if (latestLoad.fullyValidatedMs !== undefined) {
         rows.push(
           ['Fully validated', ms(latestLoad.fullyValidatedMs)],
+          ['CRC validation mode', latestLoad.validationMode ?? 'unknown'],
           ['CRC validation', ms(latestLoad.validationMs ?? 0)],
           ['Validation source read', ms(latestLoad.validationReadMs ?? 0)],
           ['Validation checksum CPU', ms(latestLoad.validationChecksumCpuMs ?? 0)],
@@ -739,6 +743,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           validationChecksumCpuMs: run.validationChecksumCpuMs,
           validationDiagnosticCpuMs: run.validationDiagnosticCpuMs,
           validationChecksumBytes: run.validationChecksumBytes,
+          validationMode: run.validationMode,
         };
         break;
       }
