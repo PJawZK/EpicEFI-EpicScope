@@ -46,6 +46,7 @@ jobs:
               '  public constructor(blob: Blob, options: BlobByteSourceOptions = {}) {\n    this.blob = blob;\n    this.size = blob.size;\n    this.pageSizeBytes = options.pageSizeBytes ?? DEFAULT_CACHE_PAGE_SIZE;\n    if (!Number.isFinite(this.pageSizeBytes) || this.pageSizeBytes <= 0 || this.pageSizeBytes > CACHE_LIMIT_BYTES) {\n      throw new RangeError(`Invalid Blob page size: ${this.pageSizeBytes}`);\n    }\n    this.pinnedCacheLimitBytes = CACHE_LIMIT_BYTES - this.pageSizeBytes;\n    this.preferredReadAlignmentBytes = this.size > CACHE_LIMIT_BYTES\n      ? this.pageSizeBytes\n      : undefined;\n    latestBlobByteSource = this;\n  }'
           )
           text = text.replace('pageIndex * CACHE_PAGE_SIZE', 'pageIndex * this.pageSizeBytes')
+          text = text.replace('firstPageIndex * CACHE_PAGE_SIZE', 'firstPageIndex * this.pageSizeBytes')
           text = text.replace('Math.min(CACHE_PAGE_SIZE, this.size - start)', 'Math.min(this.pageSizeBytes, this.size - start)')
           text = text.replace('<= PINNED_CACHE_LIMIT_BYTES', '<= this.pinnedCacheLimitBytes')
           text = text.replace('Math.floor(offset / CACHE_PAGE_SIZE)', 'Math.floor(offset / this.pageSizeBytes)')
@@ -66,26 +67,14 @@ jobs:
           )
           worker.write_text(text)
           PY
-      - name: Type-check and capture failure
-        shell: bash
-        run: |
-          set +e
-          npm run typecheck > typecheck-worker-experiment.txt 2>&1
-          status=$?
-          if [ $status -ne 0 ]; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add typecheck-worker-experiment.txt
-            git commit -m "Diag: capture worker experiment typecheck failure"
-            git push origin HEAD:perf/worker-16mib-pages
-            exit $status
-          fi
+      - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - name: Commit patch
         run: |
+          rm -f typecheck-worker-experiment.txt
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/web/src/adapters/blob-byte-source.ts apps/web/src/workers/mlg-import.worker.ts
+          git add -A apps/web/src/adapters/blob-byte-source.ts apps/web/src/workers/mlg-import.worker.ts typecheck-worker-experiment.txt
           git commit -m "Perf: test 16 MiB worker Blob pages"
           git push origin HEAD:perf/worker-16mib-pages
