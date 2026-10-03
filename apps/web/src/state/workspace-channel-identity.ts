@@ -12,9 +12,12 @@ export function normalizeWorkspaceChannelIds(
   const normalized: string[] = [];
   for (const channelId of channelIds) {
     let candidate = channelId;
-    if (!options.knownChannelIds.has(candidate)) {
-      const alias = options.aliases?.get(candidate);
-      if (alias) candidate = alias;
+    const alias = options.aliases?.get(candidate);
+    if (
+      alias
+      && (options.knownChannelIds.has(alias) || !options.knownChannelIds.has(candidate))
+    ) {
+      candidate = alias;
     }
 
     if (!normalized.includes(candidate)) normalized.push(candidate);

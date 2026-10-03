@@ -979,7 +979,7 @@ export function mountAppShell(root: HTMLElement): void {
             prepared.binding
               ? {
                   unavailableChannelIds: [...prepared.binding.unavailableChannelIds],
-                  channelIdAliases: prepared.binding.sourceToLogicalChannelId,
+                  channelIdAliases: prepared.binding.workspaceChannelAliases,
                 }
               : undefined,
           );
@@ -1131,7 +1131,7 @@ export function mountAppShell(root: HTMLElement): void {
       prepared.binding
         ? {
             unavailableChannelIds: [...prepared.binding.unavailableChannelIds],
-            channelIdAliases: prepared.binding.sourceToLogicalChannelId,
+            channelIdAliases: prepared.binding.workspaceChannelAliases,
           }
         : undefined,
     );
@@ -1260,7 +1260,7 @@ export function mountAppShell(root: HTMLElement): void {
           prepared.binding
             ? {
                 unavailableChannelIds: [...prepared.binding.unavailableChannelIds],
-                channelIdAliases: prepared.binding.sourceToLogicalChannelId,
+                channelIdAliases: prepared.binding.workspaceChannelAliases,
               }
             : undefined,
         );

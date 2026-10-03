@@ -41,6 +41,7 @@ export interface BoundChannelCatalog {
   readonly unavailableChannelIds: ReadonlySet<string>;
   readonly sourceToLogicalChannelId: ReadonlyMap<string, string>;
   readonly logicalToSourceChannelId: ReadonlyMap<string, string>;
+  readonly workspaceChannelAliases: ReadonlyMap<string, string>;
   readonly bindings: readonly BoundChannelBinding[];
   readonly metrics: ChannelBindingMetrics;
 }
@@ -79,6 +80,21 @@ function chooseByUnit(
   if (!normalizedUnit) return undefined;
   const matching = candidates.filter((candidate) => normalized(candidate.unit) === normalizedUnit);
   return matching.length === 1 ? matching[0] : undefined;
+}
+
+function chooseWorkspaceAliasTarget(
+  candidates: readonly ChannelCatalogEntry[] | undefined,
+  source: ChannelCatalogEntry,
+): ChannelCatalogEntry | undefined {
+  if (!candidates) return undefined;
+  const sourceUnit = normalized(source.unit);
+  const compatible = candidates.filter((candidate) => {
+    if (candidate.logicalKey === source.logicalKey) return false;
+    if (candidate.valueType !== source.valueType) return false;
+    const candidateUnit = normalized(candidate.unit);
+    return !sourceUnit || !candidateUnit || sourceUnit === candidateUnit;
+  });
+  return compatible.length === 1 ? compatible[0] : undefined;
 }
 
 export function bindChannelCatalogToLog(
@@ -192,6 +208,29 @@ export function bindChannelCatalogToLog(
     logicalToSourceChannelId.set(logChannel.id, logChannel.id);
   }
 
+  // A reusable workspace may still contain an older INI identity that remains
+  // valid in the catalog but has no data in this particular log. When exactly
+  // one currently bound catalog entry has the same user-facing identity and a
+  // compatible value type/unit, treat the unavailable identity as a safe alias.
+  const boundDisplayIndex = new Map<string, ChannelCatalogEntry[]>();
+  for (const entry of catalog.entries) {
+    if (boundByLogicalKey.has(entry.logicalKey)) {
+      addIndex(boundDisplayIndex, normalized(entry.displayName), entry);
+    }
+  }
+
+  const workspaceChannelAliases = new Map(sourceToLogicalChannelId);
+  for (const entry of catalog.entries) {
+    if (boundByLogicalKey.has(entry.logicalKey)) continue;
+    const target = chooseWorkspaceAliasTarget(
+      boundDisplayIndex.get(normalized(entry.displayName)),
+      entry,
+    );
+    if (target) {
+      workspaceChannelAliases.set(stableId(entry.logicalKey), stableId(target.logicalKey));
+    }
+  }
+
   const dataSource = new BoundNumericChannelDataSource(sourceData, logicalToSourceChannelId);
 
   return {
@@ -201,6 +240,7 @@ export function bindChannelCatalogToLog(
     unavailableChannelIds,
     sourceToLogicalChannelId,
     logicalToSourceChannelId,
+    workspaceChannelAliases,
     bindings,
     metrics: {
       catalogChannelCount: catalog.entries.length,
