@@ -1348,6 +1348,7 @@ export function mountAppShell(root: HTMLElement): void {
               validationChecksumCpuMs: validated.performance.checksumCpuMs,
               validationDiagnosticCpuMs: validated.performance.diagnosticCpuMs,
               validationChecksumBytes: validated.performance.checksumBytes,
+              validationMode: validated.validationMode,
             });
             setSourceLoadState(
               openButton,

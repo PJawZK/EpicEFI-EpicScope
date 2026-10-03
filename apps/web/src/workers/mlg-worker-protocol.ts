@@ -37,10 +37,13 @@ export interface MlgWorkerIndexedPayload {
   readonly importTotalMs: number;
 }
 
+export type MlgValidationMode = 'serial' | 'parallel';
+
 export interface MlgWorkerValidatedPayload {
   readonly crcValid: Uint8Array;
   readonly diagnostics: readonly ParserDiagnostic[];
   readonly performance: MlgCrcValidationPerformance;
+  readonly validationMode: MlgValidationMode;
   readonly sourceStats: BlobByteSourceStats;
   readonly completedMs: number;
 }
