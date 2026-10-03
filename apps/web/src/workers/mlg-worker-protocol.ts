@@ -17,6 +17,12 @@ export interface MlgWorkerImportRequest {
   readonly sourceIdentity: LogSourceIdentity;
 }
 
+export interface MlgWorkerStartValidationRequest {
+  readonly type: 'start-validation';
+}
+
+export type MlgWorkerRequest = MlgWorkerImportRequest | MlgWorkerStartValidationRequest;
+
 export interface MlgWorkerIndexedPayload {
   readonly summary: ImportedLogSummary;
   readonly header: MlgHeader;
