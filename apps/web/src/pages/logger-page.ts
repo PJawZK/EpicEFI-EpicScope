@@ -38,6 +38,13 @@ import type {
 } from '../state/workspace-state';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
+const OPPORTUNISTIC_PREDECODE_OPTIONS = new Set([32, 64, 128]);
+
+function opportunisticPredecodeTarget(): number {
+  const raw = new URLSearchParams(globalThis.location?.search ?? '').get('predecode');
+  const parsed = Number(raw);
+  return OPPORTUNISTIC_PREDECODE_OPTIONS.has(parsed) ? parsed : 0;
+}
 const GRAPH_PANE_IDS = ['pane-1', 'pane-2', 'pane-3', 'pane-4', 'pane-5', 'pane-6'] as const;
 
 function paneCountForLayout(layout: GraphWorkspaceLayout): number {
@@ -1519,6 +1526,18 @@ export function createLoggerPage(): LoggerPageController {
     });
 
     const uniqueRequestedIds = [...new Set(paneRequests.flatMap((request) => request.requestedIds))];
+    const predecodeTarget = opportunisticPredecodeTarget();
+    const batchRequestedIds = [...uniqueRequestedIds];
+    if (predecodeTarget > batchRequestedIds.length) {
+      const alreadyRequested = new Set(batchRequestedIds);
+      for (const channelId of channelDefinitions.keys()) {
+        if (batchRequestedIds.length >= predecodeTarget) break;
+        if (alreadyRequested.has(channelId) || unavailableChannelIds.has(channelId)) continue;
+        batchRequestedIds.push(channelId);
+        alreadyRequested.add(channelId);
+      }
+    }
+    const opportunisticPredecodeCount = batchRequestedIds.length - uniqueRequestedIds.length;
     const prepareMs = now() - prepareStarted;
     let sharedBatchMs = 0;
     let sharedBatchCacheHit = true;
@@ -1533,7 +1552,7 @@ export function createLoggerPage(): LoggerPageController {
     ) {
       const batchStarted = globalThis.performance?.now() ?? Date.now();
       const batch = await channelDataSource.readChannelsRange(
-        uniqueRequestedIds,
+        batchRequestedIds,
         0,
         channelDataSource.sampleCount,
       );
@@ -1541,7 +1560,7 @@ export function createLoggerPage(): LoggerPageController {
       sharedBatchMs = batchElapsed;
       sharedBatchRanges = batch.ranges;
       sharedBatchCacheHit =
-        batch.performance.cacheHitChannelIds.length === uniqueRequestedIds.length;
+        batch.performance.cacheHitChannelIds.length === batchRequestedIds.length;
       sharedPhysicalReadCount = batch.performance.physicalReadCount;
       sharedPhysicalBytesRead = batch.performance.physicalBytesRead;
       sharedPhysicalReadMs = batch.performance.physicalReadMs;
@@ -1549,7 +1568,9 @@ export function createLoggerPage(): LoggerPageController {
 
       channelPerformanceListener?.({
         channelId: '__multi-pane-restore__',
-        channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
+        channelName: opportunisticPredecodeCount > 0
+          ? `Multi-pane restore (${uniqueRequestedIds.length} workspace + ${opportunisticPredecodeCount} predecode = ${batchRequestedIds.length} channels)`
+          : `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
         phase: 'full',
         startSampleIndex: 0,
         requestedSampleCount: channelDataSource.sampleCount,
@@ -1558,8 +1579,8 @@ export function createLoggerPage(): LoggerPageController {
         scaleMs: 0,
         renderMs: 0,
         sampleCount: channelDataSource.sampleCount,
-        batchSize: uniqueRequestedIds.length,
-        cacheHit: batch.performance.cacheHitChannelIds.length === uniqueRequestedIds.length,
+        batchSize: batchRequestedIds.length,
+        cacheHit: batch.performance.cacheHitChannelIds.length === batchRequestedIds.length,
         physicalReadCount: batch.performance.physicalReadCount,
         physicalBytesRead: batch.performance.physicalBytesRead,
         physicalReadMs: batch.performance.physicalReadMs,
