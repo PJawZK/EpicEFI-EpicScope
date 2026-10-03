@@ -22,6 +22,7 @@ const PROGRESSIVE_FILL_DESKTOP_MAX_STEP_SAMPLES = 65_536;
 const PROGRESSIVE_FILL_LOW_SPEC_MAX_STEP_SAMPLES = 32_768;
 const MATERIALIZATION_DESKTOP_DELAY_MS = 120;
 const MATERIALIZATION_LOW_SPEC_IDLE_DELAY_MS = 1_000;
+const LOW_SPEC_INITIAL_VIEWPORT_MAX_SAMPLES = 16_384;
 
 function progressiveFillStepSamples(missingSamples: number, completedSteps: number): number {
   if (completedSteps === 0 || missingSamples <= PROGRESSIVE_FILL_BASE_STEP_SAMPLES * 2) {
@@ -764,6 +765,19 @@ export function createGraphViewport(): GraphViewportController {
     if (candidate.sampleCount <= 0 || candidate.sampleCount >= channelData.sampleCount) {
       return { startSampleIndex: 0, sampleCount: channelData.sampleCount, phase: 'full' };
     }
+
+    const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
+    if (logicalThreads <= 3 && candidate.sampleCount > LOW_SPEC_INITIAL_VIEWPORT_MAX_SAMPLES) {
+      const centeredStart = candidate.startSampleIndex
+        + Math.floor((candidate.sampleCount - LOW_SPEC_INITIAL_VIEWPORT_MAX_SAMPLES) / 2);
+      const maximumStart = Math.max(0, channelData.sampleCount - LOW_SPEC_INITIAL_VIEWPORT_MAX_SAMPLES);
+      return {
+        startSampleIndex: Math.min(maximumStart, Math.max(0, centeredStart)),
+        sampleCount: LOW_SPEC_INITIAL_VIEWPORT_MAX_SAMPLES,
+        phase: 'viewport',
+      };
+    }
+
     return { ...candidate, phase: 'viewport' };
   };
 
