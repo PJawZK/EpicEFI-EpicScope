@@ -53,6 +53,20 @@ describe('reusable workspace channel identity normalization', () => {
     expect(result).toEqual(['ini:RPMValue', 'ini:MAPValue']);
   });
 
+  it('maps a stale but still-known INI identity through an explicit safe alias', () => {
+    const result = renderableWorkspaceChannelIds(
+      ['ini:rpm', 'ini:MAPValue'],
+      {
+        knownChannelIds: new Set(['ini:rpm', 'ini:RPMValue', 'ini:MAPValue']),
+        aliases: new Map([['ini:rpm', 'ini:RPMValue']]),
+        iniCatalogActive: true,
+        limit: 8,
+      },
+    );
+
+    expect(result).toEqual(['ini:RPMValue', 'ini:MAPValue']);
+  });
+
   it('keeps raw mlg IDs when no INI catalog is active', () => {
     const result = renderableWorkspaceChannelIds(
       ['mlg:0', 'mlg:1'],

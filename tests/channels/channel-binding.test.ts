@@ -169,6 +169,59 @@ describe('INI to log channel binding', () => {
     });
   });
 
+  it('creates conservative workspace aliases from unavailable INI identities to unique bound equivalents', () => {
+    const source = new FakeDataSource();
+    const entries = [
+      {
+        logicalKey: 'rpm',
+        sourceName: 'rpm',
+        displayName: 'RPM',
+        valueType: 'integer' as const,
+        unit: 'RPM',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'RPMValue',
+        sourceName: 'RPMValue',
+        displayName: 'RPM',
+        valueType: 'integer' as const,
+        unit: 'RPM',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'rpmOtherUnit',
+        sourceName: 'rpmOtherUnit',
+        displayName: 'RPM',
+        valueType: 'integer' as const,
+        unit: 'percent',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+    ];
+    const aliasCatalog: ChannelCatalog = {
+      entries,
+      byLogicalKey: new Map(entries.map((entry) => [entry.logicalKey, entry] as const)),
+    };
+
+    const result = bindChannelCatalogToLog(
+      aliasCatalog,
+      [{
+        id: 'mlg:0',
+        sourceName: 'RPMValue',
+        displayName: 'RPMValue',
+        valueType: 'integer',
+        unit: 'RPM',
+      }],
+      source,
+    );
+
+    expect(result.workspaceChannelAliases.get('mlg:0')).toBe('ini:RPMValue');
+    expect(result.workspaceChannelAliases.get('ini:rpm')).toBe('ini:RPMValue');
+    expect(result.workspaceChannelAliases.has('ini:rpmOtherUnit')).toBe(false);
+  });
+
   it('leaves ambiguous duplicate labels as log-only when unit cannot resolve them', () => {
     const source = new FakeDataSource();
     const result = bindChannelCatalogToLog(
