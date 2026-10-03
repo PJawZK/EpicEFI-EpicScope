@@ -15,6 +15,9 @@ import {
 const MAX_ACTIVE_TRACES = 8;
 const TRACE_COLORS = ['#42a5f5', '#26c6a3', '#f0b44d', '#c98cff', '#ef6c75', '#70d6ff', '#b8d95a', '#ff8c42'] as const;
 const PROGRESSIVE_FILL_BASE_STEP_SAMPLES = 16_384;
+const VIEWPORT_REFRESH_DEFAULT_DELAY_MS = 90;
+const VIEWPORT_INTERACTION_BURST_WINDOW_MS = 180;
+const VIEWPORT_INTERACTION_SETTLE_DELAY_MS = 160;
 const PROGRESSIVE_FILL_DESKTOP_MAX_STEP_SAMPLES = 65_536;
 const PROGRESSIVE_FILL_LOW_SPEC_MAX_STEP_SAMPLES = 32_768;
 
@@ -249,6 +252,8 @@ export function createGraphViewport(): GraphViewportController {
   let decodeGeneration = 0;
   let viewportRefreshTimer: number | undefined;
   let viewportRefreshGeneration = 0;
+  let lastViewportInteractionMs = Number.NEGATIVE_INFINITY;
+  let nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
   let highZoomSamplePointsVisible = true;
   let displayMode: GraphViewportDisplayMode = 'overlay';
   let assignedChannels: readonly ChannelDefinition[] = [];
@@ -667,6 +672,23 @@ export function createGraphViewport(): GraphViewportController {
   const resizeObserver = new ResizeObserver(draw);
   resizeObserver.observe(root);
 
+  const markViewportInteraction = (): void => {
+    const now = globalThis.performance?.now() ?? Date.now();
+    const repeated = now - lastViewportInteractionMs <= VIEWPORT_INTERACTION_BURST_WINDOW_MS;
+    lastViewportInteractionMs = now;
+    nextViewportRefreshDelayMs = repeated
+      ? VIEWPORT_INTERACTION_SETTLE_DELAY_MS
+      : VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
+
+    // Stop progressive work from chasing a viewport the user has already left.
+    // An in-flight Blob read cannot be aborted, but its result is discarded.
+    viewportRefreshGeneration += 1;
+    if (viewportRefreshTimer !== undefined) {
+      window.clearTimeout(viewportRefreshTimer);
+      viewportRefreshTimer = undefined;
+    }
+  };
+
   canvas.addEventListener('wheel', (event) => {
     if (!viewport || !zoomListener) return;
     event.preventDefault();
@@ -675,6 +697,7 @@ export function createGraphViewport(): GraphViewportController {
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     const anchorMs = viewport.visibleStartMs + ratio * (viewport.visibleEndMs - viewport.visibleStartMs);
     const factor = event.deltaY < 0 ? 0.72 : 1.38;
+    markViewportInteraction();
     zoomListener(factor, anchorMs);
   }, { passive: false });
 
@@ -692,6 +715,7 @@ export function createGraphViewport(): GraphViewportController {
       const deltaX = moveEvent.clientX - lastX;
       lastX = moveEvent.clientX;
       const span = viewport.visibleEndMs - viewport.visibleStartMs;
+      markViewportInteraction();
       panListener?.(-(deltaX / rect.width) * span);
     };
     const end = (endEvent: PointerEvent): void => {
@@ -1040,11 +1064,13 @@ export function createGraphViewport(): GraphViewportController {
   const scheduleViewportRefresh = (): void => {
     viewportRefreshGeneration += 1;
     const generation = viewportRefreshGeneration;
+    const delayMs = nextViewportRefreshDelayMs;
+    nextViewportRefreshDelayMs = VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
     if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
     viewportRefreshTimer = window.setTimeout(() => {
       viewportRefreshTimer = undefined;
       void refreshActiveViewportRanges(generation);
-    }, 90);
+    }, delayMs);
   };
 
   const activateCachedChannel = async (
