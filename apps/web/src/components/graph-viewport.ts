@@ -737,8 +737,8 @@ export function createGraphViewport(): GraphViewportController {
               channelId,
               await dataSource.readChannelRange(
                 channelId,
-                requestRange.startSampleIndex,
-                requestRange.sampleCount,
+                0,
+                dataSource.sampleCount,
               ),
             ] as const))),
             performance: {
@@ -837,7 +837,11 @@ export function createGraphViewport(): GraphViewportController {
         : {
             ranges: new Map(await Promise.all(channelIds.map(async (channelId) => [
               channelId,
-              await channelData!.readChannelRange(channelId, 0, channelData!.sampleCount),
+              await channelData!.readChannelRange(
+                channelId,
+                requestRange.startSampleIndex,
+                requestRange.sampleCount,
+              ),
             ] as const))),
             performance: {
               channelCount: channelIds.length,
