@@ -232,10 +232,15 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     }
   }
 
-  private persistFullColumn(channelId: string, range: NumericChannelRange): void {
-    if (range.startSampleIndex !== 0 || range.values.length !== this.sampleCount) return;
+  private retainFullColumn(channelId: string, range: NumericChannelRange): boolean {
+    if (range.startSampleIndex !== 0 || range.values.length !== this.sampleCount) return false;
     this.residentColumns.set(channelId, range.values);
     this.missingColumns.delete(channelId);
+    return true;
+  }
+
+  private persistFullColumn(channelId: string, range: NumericChannelRange): void {
+    if (!this.retainFullColumn(channelId, range)) return;
     void this.store.put(this.logKey, channelId, range.values).catch(() => undefined);
   }
 
@@ -275,6 +280,9 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
               physicalReadMs: 0,
             },
           };
+      for (const [channelId, range] of delegated.ranges) {
+        this.retainFullColumn(channelId, range);
+      }
       return delegated;
     }
 
