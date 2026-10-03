@@ -15,6 +15,41 @@ import type {
   BlobByteSourceStats,
 } from '../adapters/blob-byte-source';
 
+export interface MlgColumnSidecarStripeManifest {
+  readonly index: number;
+  readonly fileName: string;
+  readonly startByte: number;
+  readonly widthBytes: number;
+  readonly firstFieldIndex: number;
+  readonly lastFieldIndexExclusive: number;
+}
+
+export interface MlgColumnSidecarManifest {
+  readonly schemaVersion: 1;
+  readonly logKey: string;
+  readonly storageKey: string;
+  readonly sampleCount: number;
+  readonly fieldCount: number;
+  readonly recordLength: number;
+  readonly fieldPayloadBytes: number;
+  readonly targetStripeBytes: number;
+  readonly totalBytes: number;
+  readonly stripes: readonly MlgColumnSidecarStripeManifest[];
+  readonly createdAt: number;
+}
+
+export interface MlgColumnSidecarBuildPerformance {
+  readonly totalMs: number;
+  readonly transposeMs: number;
+  readonly writeMs: number;
+  readonly bytesWritten: number;
+}
+
+export interface MlgColumnSidecarBuildResult {
+  readonly manifest: MlgColumnSidecarManifest;
+  readonly performance: MlgColumnSidecarBuildPerformance;
+}
+
 export interface MlgWorkerImportRequest {
   readonly type: 'import';
   readonly file: File;
@@ -48,6 +83,7 @@ export interface MlgWorkerValidatedPayload {
   readonly validationMode: MlgValidationMode;
   readonly sourceStats: BlobByteSourceStats;
   readonly completedMs: number;
+  readonly sidecar?: MlgColumnSidecarBuildResult;
 }
 
 export type MlgWorkerResponse =
