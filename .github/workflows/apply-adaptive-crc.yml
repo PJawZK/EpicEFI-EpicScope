@@ -1,0 +1,111 @@
+name: Apply adaptive CRC validation
+
+on:
+  push:
+    branches:
+      - perf/adaptive-crc-validation
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: perf/adaptive-crc-validation
+      - name: Apply adaptive CRC patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected 1 match, found {count}: {old[:80]!r}')
+              p.write_text(text.replace(old, new))
+
+          worker = 'apps/web/src/workers/mlg-import.worker.ts'
+          replace_once(
+              worker,
+              "  classifyMlgRetryDiagnostics,\n  scanMlgRecords,\n} from '../../../../core/parsers/mlg/mlg-records';",
+              "  classifyMlgRetryDiagnostics,\n  scanMlgRecords,\n  validateMlgRecordCrc,\n} from '../../../../core/parsers/mlg/mlg-records';",
+          )
+          replace_once(
+              worker,
+              "      const validation = await validateMlgRecordCrcParallel(\n        importRequest.file,\n        headerResult.header,\n        scanResult.records,\n      );",
+              "      const hardwareConcurrency = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);\n      const validationMode = hardwareConcurrency >= 4 ? 'parallel' : 'serial';\n      const validation = validationMode === 'parallel'\n        ? await validateMlgRecordCrcParallel(\n            importRequest.file,\n            headerResult.header,\n            scanResult.records,\n          )\n        : await validateMlgRecordCrc(\n            source,\n            headerResult.header,\n            scanResult.records,\n          );",
+          )
+          replace_once(
+              worker,
+              "          performance: validation.performance,\n          sourceStats: source.stats(),",
+              "          performance: validation.performance,\n          validationMode,\n          sourceStats: source.stats(),",
+          )
+
+          protocol = 'apps/web/src/workers/mlg-worker-protocol.ts'
+          replace_once(
+              protocol,
+              "export interface MlgWorkerValidatedPayload {\n  readonly crcValid: Uint8Array;",
+              "export type MlgValidationMode = 'serial' | 'parallel';\n\nexport interface MlgWorkerValidatedPayload {\n  readonly crcValid: Uint8Array;",
+          )
+          replace_once(
+              protocol,
+              "  readonly performance: MlgCrcValidationPerformance;\n  readonly sourceStats: BlobByteSourceStats;",
+              "  readonly performance: MlgCrcValidationPerformance;\n  readonly validationMode: MlgValidationMode;\n  readonly sourceStats: BlobByteSourceStats;",
+          )
+
+          perf = 'apps/web/src/components/performance-diagnostics.ts'
+          replace_once(
+              perf,
+              "  readonly validationChecksumBytes?: number;\n}",
+              "  readonly validationChecksumBytes?: number;\n  readonly validationMode?: 'serial' | 'parallel';\n}",
+          )
+          replace_once(
+              perf,
+              "  readonly validationChecksumBytes: number;\n}",
+              "  readonly validationChecksumBytes: number;\n  readonly validationMode: 'serial' | 'parallel';\n}",
+          )
+          replace_once(
+              perf,
+              "          `fullyValidated=${latestLoad.fullyValidatedMs.toFixed(2)} ms`,\n          `validation=${latestLoad.validationMs?.toFixed(2) ?? '0.00'} ms`,",
+              "          `fullyValidated=${latestLoad.fullyValidatedMs.toFixed(2)} ms`,\n          `validationMode=${latestLoad.validationMode ?? 'unknown'}`,\n          `validation=${latestLoad.validationMs?.toFixed(2) ?? '0.00'} ms`,",
+          )
+          replace_once(
+              perf,
+              "          ['Fully validated', ms(latestLoad.fullyValidatedMs)],\n          ['CRC validation', ms(latestLoad.validationMs ?? 0)],",
+              "          ['Fully validated', ms(latestLoad.fullyValidatedMs)],\n          ['CRC validation mode', latestLoad.validationMode ?? 'unknown'],\n          ['CRC validation', ms(latestLoad.validationMs ?? 0)],",
+          )
+          replace_once(
+              perf,
+              "          validationChecksumBytes: run.validationChecksumBytes,\n        };",
+              "          validationChecksumBytes: run.validationChecksumBytes,\n          validationMode: run.validationMode,\n        };",
+          )
+
+          app = 'apps/web/src/app/app-shell.ts'
+          replace_once(
+              app,
+              "              validationChecksumBytes: validated.performance.checksumBytes,\n            });",
+              "              validationChecksumBytes: validated.performance.checksumBytes,\n              validationMode: validated.validationMode,\n            });",
+          )
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/workers/mlg-import.worker.ts apps/web/src/workers/mlg-worker-protocol.ts apps/web/src/components/performance-diagnostics.ts apps/web/src/app/app-shell.ts
+          git commit -m "Perf: adapt CRC validation to hardware concurrency"
+          git push origin HEAD:perf/adaptive-crc-validation
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          git rm .github/workflows/apply-adaptive-crc.yml
+          git commit -m "Chore: remove temporary adaptive CRC workflow"
+          git push origin HEAD:perf/adaptive-crc-validation
