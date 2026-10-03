@@ -3,6 +3,7 @@ import type {
   NumericChannelDataSource,
   NumericChannelRange,
 } from '../../../../core/log-model/log-types';
+import { clearMlgColumnSidecars } from './mlg-column-sidecar-storage';
 
 const DATABASE_NAME = 'epicscope-column-cache';
 const DATABASE_VERSION = 2;
@@ -122,26 +123,29 @@ export class IndexedDbPersistentChannelColumnStore implements PersistentChannelC
 }
 
 export async function clearPersistentChannelCache(): Promise<void> {
-  if (typeof globalThis.indexedDB === 'undefined') return;
-  const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = globalThis.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      const store = db.objectStoreNames.contains(COLUMN_STORE_NAME)
-        ? request.transaction!.objectStore(COLUMN_STORE_NAME)
-        : db.createObjectStore(COLUMN_STORE_NAME, { keyPath: 'key' });
-      if (!store.indexNames.contains(UPDATED_AT_INDEX)) store.createIndex(UPDATED_AT_INDEX, UPDATED_AT_INDEX);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Unable to open IndexedDB column cache.'));
-  });
-  try {
-    const transaction = database.transaction(COLUMN_STORE_NAME, 'readwrite');
-    transaction.objectStore(COLUMN_STORE_NAME).clear();
-    await transactionDone(transaction);
-  } finally {
-    database.close();
+  if (typeof globalThis.indexedDB !== 'undefined') {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = globalThis.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        const store = db.objectStoreNames.contains(COLUMN_STORE_NAME)
+          ? request.transaction!.objectStore(COLUMN_STORE_NAME)
+          : db.createObjectStore(COLUMN_STORE_NAME, { keyPath: 'key' });
+        if (!store.indexNames.contains(UPDATED_AT_INDEX)) store.createIndex(UPDATED_AT_INDEX, UPDATED_AT_INDEX);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error('Unable to open IndexedDB column cache.'));
+    });
+    try {
+      const transaction = database.transaction(COLUMN_STORE_NAME, 'readwrite');
+      transaction.objectStore(COLUMN_STORE_NAME).clear();
+      await transactionDone(transaction);
+    } finally {
+      database.close();
+    }
   }
+
+  await clearMlgColumnSidecars();
 }
 
 function buildRange(

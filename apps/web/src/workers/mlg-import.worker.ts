@@ -2,9 +2,9 @@ import type { LogTimeRange, ParserDiagnostic } from '../../../../core/log-model/
 import { parseMlgHeader } from '../../../../core/parsers/mlg/mlg-header';
 import type { MlgHeader } from '../../../../core/parsers/mlg/mlg-format';
 import {
+  calculateMlgRecordChecksum,
   classifyMlgRetryDiagnostics,
   scanMlgRecords,
-  validateMlgRecordCrc,
 } from '../../../../core/parsers/mlg/mlg-records';
 import type {
   MlgCrcValidationPerformance,
@@ -12,7 +12,14 @@ import type {
   MlgRecordIndex,
 } from '../../../../core/parsers/mlg/mlg-records';
 import { BlobByteSource } from '../adapters/blob-byte-source';
+import {
+  createMlgColumnSidecarBuilder,
+  planMlgColumnStripes,
+  type MlgColumnSidecarBuilder,
+} from '../adapters/mlg-column-sidecar';
+import { findCompleteMlgColumnSidecar } from '../adapters/mlg-column-sidecar-storage';
 import type {
+  MlgColumnSidecarBuildResult,
   MlgWorkerRequest,
   MlgWorkerResponse,
 } from './mlg-worker-protocol';
@@ -58,7 +65,8 @@ type CrcWorkerResponse = CrcChunkResult | CrcChunkError;
 const scope = globalThis as unknown as WorkerScope;
 const now = (): number => globalThis.performance?.now() ?? Date.now();
 const BLOCK_HEADER_LENGTH = 4;
-const VALIDATION_CHUNK_SIZE = 32 * 1024 * 1024;
+const SERIAL_VALIDATION_CHUNK_SIZE = 8 * 1024 * 1024;
+const PARALLEL_VALIDATION_CHUNK_SIZE = 32 * 1024 * 1024;
 let validationStartResolver: (() => void) | undefined;
 let validationStartRequested = false;
 
@@ -77,6 +85,7 @@ function planValidationBatch(
   recordIndex: MlgRecordIndex,
   blockLength: number,
   firstIndex: number,
+  maximumBytes: number,
 ): ValidationBatch {
   const firstOffset = recordIndex.offsets[firstIndex];
   if (firstOffset === undefined) {
@@ -89,7 +98,7 @@ function planValidationBatch(
     const nextOffset = recordIndex.offsets[lastIndex + 1];
     if (nextOffset === undefined) break;
     const nextEnd = nextOffset + blockLength;
-    if (nextEnd - firstOffset > VALIDATION_CHUNK_SIZE) break;
+    if (nextEnd - firstOffset > maximumBytes) break;
     lastIndex += 1;
     batchEnd = nextEnd;
   }
@@ -124,10 +133,113 @@ async function readValidationBatch(file: File, batch: ValidationBatch): Promise<
   return { batch, buffer, readMs };
 }
 
+async function appendSidecarBatch(
+  sidecar: MlgColumnSidecarBuilder | undefined,
+  batch: ValidationBatch,
+  bytes: Uint8Array,
+): Promise<number> {
+  if (!sidecar) return 0;
+  const started = now();
+  await sidecar.append({
+    bytes,
+    firstOffset: batch.firstOffset,
+    firstIndex: batch.firstIndex,
+    lastIndex: batch.lastIndex,
+  });
+  return now() - started;
+}
+
+async function validateMlgRecordCrcSerial(
+  source: BlobByteSource,
+  header: MlgHeader,
+  recordIndex: MlgRecordIndex,
+  sidecar: MlgColumnSidecarBuilder | undefined,
+): Promise<MlgCrcValidationResult> {
+  const totalStart = now();
+  const recordLength = header.recordLength;
+  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  const crcValid = new Uint8Array(recordIndex.offsets.length);
+  const diagnostics: ParserDiagnostic[] = [];
+  let sourceReadMs = 0;
+  let sidecarMs = 0;
+  let diagnosticCpuMs = 0;
+  let checksumBytes = 0;
+  let sampleIndex = 0;
+
+  while (sampleIndex < recordIndex.offsets.length) {
+    const batch = planValidationBatch(
+      recordIndex,
+      blockLength,
+      sampleIndex,
+      SERIAL_VALIDATION_CHUNK_SIZE,
+    );
+    const readStarted = now();
+    const bytes = await source.read(batch.firstOffset, batch.byteLength);
+    sourceReadMs += now() - readStarted;
+    if (bytes.byteLength !== batch.byteLength) {
+      throw new RangeError(
+        `CRC validation expected ${batch.byteLength} bytes at offset ${batch.firstOffset}, received ${bytes.byteLength}.`,
+      );
+    }
+
+    sidecarMs += await appendSidecarBatch(sidecar, batch, bytes);
+
+    for (let index = batch.firstIndex; index <= batch.lastIndex; index += 1) {
+      const absoluteOffset = recordIndex.offsets[index];
+      if (absoluteOffset === undefined) continue;
+      const relativeOffset = absoluteOffset - batch.firstOffset;
+      const recordStart = relativeOffset + BLOCK_HEADER_LENGTH;
+      checksumBytes += recordLength;
+      const expectedCrc = calculateMlgRecordChecksum(bytes, recordStart, recordLength);
+      const actualCrc = bytes[relativeOffset + blockLength - 1] ?? 0;
+      const valid = expectedCrc === actualCrc;
+      crcValid[index] = valid ? 1 : 0;
+
+      if (!valid) {
+        const diagnosticStart = now();
+        const counter = bytes[relativeOffset + 1] ?? 0;
+        const rawTimestamp = ((bytes[relativeOffset + 2] ?? 0) << 8)
+          | (bytes[relativeOffset + 3] ?? 0);
+        const blockHeaderSum = calculateMlgRecordChecksum(
+          bytes,
+          relativeOffset,
+          BLOCK_HEADER_LENGTH,
+        );
+        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+        diagnostics.push({
+          code: 'mlg-crc-mismatch',
+          severity: 'warning',
+          message: `MLG record ${index.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+          recoverable: true,
+          offset: absoluteOffset + blockLength - 1,
+        });
+        diagnosticCpuMs += now() - diagnosticStart;
+      }
+    }
+
+    sampleIndex = batch.lastIndex + 1;
+  }
+
+  const totalMs = now() - totalStart;
+  return {
+    crcValid,
+    diagnostics,
+    performance: {
+      totalMs,
+      sourceReadMs,
+      checksumCpuMs: Math.max(0, totalMs - sourceReadMs - sidecarMs - diagnosticCpuMs),
+      diagnosticCpuMs,
+      checksumBytes,
+    },
+  };
+}
+
 async function validateMlgRecordCrcParallel(
   file: File,
   header: MlgHeader,
   recordIndex: MlgRecordIndex,
+  sidecar: MlgColumnSidecarBuilder | undefined,
 ): Promise<MlgCrcValidationResult> {
   const totalStart = now();
   const recordLength = header.recordLength;
@@ -190,7 +302,10 @@ async function validateMlgRecordCrcParallel(
   try {
     let nextIndex = 0;
     let pendingRead: Promise<ReadBatchResult> | undefined = recordIndex.offsets.length > 0
-      ? readValidationBatch(file, planValidationBatch(recordIndex, blockLength, 0))
+      ? readValidationBatch(
+          file,
+          planValidationBatch(recordIndex, blockLength, 0, PARALLEL_VALIDATION_CHUNK_SIZE),
+        )
       : undefined;
 
     while (pendingRead) {
@@ -199,9 +314,18 @@ async function validateMlgRecordCrcParallel(
 
       nextIndex = current.batch.lastIndex + 1;
       const nextRead = nextIndex < recordIndex.offsets.length
-        ? readValidationBatch(file, planValidationBatch(recordIndex, blockLength, nextIndex))
+        ? readValidationBatch(
+            file,
+            planValidationBatch(
+              recordIndex,
+              blockLength,
+              nextIndex,
+              PARALLEL_VALIDATION_CHUNK_SIZE,
+            ),
+          )
         : undefined;
 
+      await appendSidecarBatch(sidecar, current.batch, new Uint8Array(current.buffer));
       const result = await checksumChunk(current);
       crcValid.set(result.crcValid, result.firstIndex);
       diagnostics.push(...result.diagnostics);
@@ -311,19 +435,62 @@ scope.onmessage = (event): void => {
       }
       validationStartResolver = undefined;
 
+      const sidecarPlan = planMlgColumnStripes(headerResult.fields);
+      const existingSidecar = await findCompleteMlgColumnSidecar(
+        importRequest.sourceIdentity.id,
+        scanResult.records.offsets.length,
+        headerResult.fields.length,
+        sidecarPlan.fieldPayloadBytes,
+      );
+      const sidecarBuilder = existingSidecar
+        ? undefined
+        : await createMlgColumnSidecarBuilder(
+            importRequest.sourceIdentity.id,
+            headerResult.fields,
+            scanResult.records,
+            headerResult.header.recordLength,
+          );
+
       const hardwareConcurrency = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
       const validationMode = hardwareConcurrency >= 4 ? 'parallel' : 'serial';
-      const validation = validationMode === 'parallel'
-        ? await validateMlgRecordCrcParallel(
-            importRequest.file,
-            headerResult.header,
-            scanResult.records,
-          )
-        : await validateMlgRecordCrc(
-            source,
-            headerResult.header,
-            scanResult.records,
-          );
+      let validation: MlgCrcValidationResult;
+      try {
+        validation = validationMode === 'parallel'
+          ? await validateMlgRecordCrcParallel(
+              importRequest.file,
+              headerResult.header,
+              scanResult.records,
+              sidecarBuilder,
+            )
+          : await validateMlgRecordCrcSerial(
+              source,
+              headerResult.header,
+              scanResult.records,
+              sidecarBuilder,
+            );
+      } catch (error) {
+        await sidecarBuilder?.abort();
+        throw error;
+      }
+
+      let sidecar: MlgColumnSidecarBuildResult | undefined = existingSidecar
+        ? {
+            manifest: existingSidecar,
+            performance: {
+              totalMs: 0,
+              transposeMs: 0,
+              writeMs: 0,
+              bytesWritten: 0,
+            },
+          }
+        : undefined;
+      if (sidecarBuilder) {
+        try {
+          sidecar = await sidecarBuilder.finish();
+        } catch {
+          await sidecarBuilder.abort();
+        }
+      }
 
       const classified = classifyMlgRetryDiagnostics(
         scanResult.records,
@@ -341,6 +508,7 @@ scope.onmessage = (event): void => {
           validationMode,
           sourceStats: source.stats(),
           completedMs: now() - started,
+          ...(sidecar ? { sidecar } : {}),
         },
       });
     } catch (error) {

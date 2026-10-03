@@ -1,6 +1,7 @@
 import { MlgNumericChannelDataSource } from '../../../../core/parsers/mlg/mlg-channel-data';
 import type { NumericChannelDataSource } from '../../../../core/log-model/log-types';
 import { BlobByteSource } from './blob-byte-source';
+import { MlgColumnSidecarDataSource } from './mlg-column-sidecar';
 import { createPersistentColumnCacheDataSource } from './persistent-channel-cache';
 import type {
   MlgWorkerIndexedPayload,
@@ -32,6 +33,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
   );
 
   let indexedPayload: StagedIndexedMlgFile | undefined;
+  let sidecarChannelData: MlgColumnSidecarDataSource | undefined;
   let indexedSettled = false;
   let validationSettled = false;
   let validationStarted = false;
@@ -66,8 +68,14 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
         message.payload.fields,
         message.payload.recordIndex,
       );
-      const channelData = createPersistentColumnCacheDataSource(
+      sidecarChannelData = new MlgColumnSidecarDataSource(
         baseChannelData,
+        message.payload.summary.source.id,
+        message.payload.fields,
+        message.payload.recordIndex,
+      );
+      const channelData = createPersistentColumnCacheDataSource(
+        sidecarChannelData,
         message.payload.summary.source.id,
         message.payload.recordIndex.timeMs,
         message.payload.recordIndex.crcValid,
@@ -80,7 +88,8 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
       resolveIndexed(indexedPayload);
 
       // Warm only the bounded <=96 MiB contiguous cache. This never blocks
-      // time-to-usable, but normally makes the first channel selection instant.
+      // time-to-usable. Large logs rely on the post-ready column sidecar for
+      // arbitrary first-use channel access once background validation finishes.
       void source.warmCache();
       return;
     }
@@ -94,6 +103,9 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
         return;
       }
       indexedPayload.recordIndex.crcValid.set(message.payload.crcValid);
+      if (message.payload.sidecar) {
+        sidecarChannelData?.activate(message.payload.sidecar.manifest);
+      }
       validationSettled = true;
       resolveValidated(message.payload);
       terminate();
