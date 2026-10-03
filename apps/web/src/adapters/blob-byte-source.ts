@@ -3,7 +3,7 @@ import {
   type RandomAccessByteSource,
 } from '../../../../core/parsers/byte-source';
 
-const CACHE_PAGE_SIZE = 8 * 1024 * 1024;
+const CACHE_PAGE_SIZE = 16 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
 const PINNED_CACHE_LIMIT_BYTES = CACHE_LIMIT_BYTES - CACHE_PAGE_SIZE;
 
@@ -83,13 +83,14 @@ export class BlobByteSource implements RandomAccessByteSource {
     this.physicalReadCountValue += 1;
     this.physicalBytesReadValue += length;
 
-    // Large logs use a two-tier cache:
-    // - the first ~88 MiB admitted stays pinned between sequential passes;
-    // - one 8 MiB rolling page preserves the boundary page for the next batch.
+    // Large logs use a two-tier cache while keeping the total raw-cache
+    // budget fixed at 96 MiB:
+    // - the first ~80 MiB admitted stays pinned between sequential passes;
+    // - one 16 MiB rolling page preserves the boundary page for the next batch.
     //
-    // Record/channel batches are <=8 MiB but are not page-aligned, so they can
-    // straddle two pages. Without the rolling page, every page beyond the
-    // pinned prefix was commonly read twice by adjacent batches.
+    // Larger backing pages reduce Blob.slice().arrayBuffer() calls while the
+    // decoder's preferred-read hint keeps channel extraction inside one page
+    // whenever possible, avoiding cross-page join/copy work.
     if (this.cacheBytesValue + length <= PINNED_CACHE_LIMIT_BYTES) {
       this.pages.set(pageIndex, page);
       this.cacheBytesValue += length;
@@ -108,8 +109,8 @@ export class BlobByteSource implements RandomAccessByteSource {
 
     // Small/medium logs that already fit within the raw-cache budget use one
     // contiguous backing buffer. This costs no more memory than caching all
-    // 8 MiB pages, but avoids repeated cross-page joins/copies during record
-    // scans and channel extraction.
+    // pages, but avoids repeated cross-page joins/copies during record scans
+    // and channel extraction.
     if (this.size <= CACHE_LIMIT_BYTES) {
       const wasCached = this.wholeBuffer !== undefined;
       const bytes = await this.loadWholeBuffer();
