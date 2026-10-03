@@ -2,6 +2,7 @@ import {
   clearChannelDecodePerformance,
   latestChannelDecodePerformance,
 } from '../../../../core/diagnostics/channel-decode-performance';
+import { latestBlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
 
 export interface LoadPerformanceRun {
   readonly fileName: string;
@@ -245,6 +246,27 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
 
   const reportText = (): string => {
     const lines: string[] = ['EpicScope performance diagnostics'];
+    const blobRuntime = latestBlobByteSourceRuntimeDiagnostics();
+    if (blobRuntime) {
+      lines.push(
+        '',
+        '[Blob source runtime]',
+        `scope=${blobRuntime.scope}`,
+        `pageSizeBytes=${blobRuntime.pageSizeBytes}`,
+        `cacheLimitBytes=${blobRuntime.cacheLimitBytes}`,
+        `pinnedCacheLimitBytes=${blobRuntime.pinnedCacheLimitBytes}`,
+        `physicalReads=${blobRuntime.physicalReadCount}`,
+        `physicalReadMs=${blobRuntime.physicalReadMs.toFixed(2)} ms`,
+        `physicalReadMinMs=${blobRuntime.physicalReadMinMs.toFixed(2)} ms`,
+        `physicalReadAverageMs=${blobRuntime.physicalReadAverageMs.toFixed(2)} ms`,
+        `physicalReadMaxMs=${blobRuntime.physicalReadMaxMs.toFixed(2)} ms`,
+      );
+      blobRuntime.slowestReads.forEach((read, index) => {
+        lines.push(
+          `slowRead${index + 1}=offset:${read.offset};bytes:${read.bytes};ms:${read.durationMs.toFixed(2)}`
+        );
+      });
+    }
     const latestLoad = loadRuns[loadRuns.length - 1];
     if (latestLoad) {
       lines.push(

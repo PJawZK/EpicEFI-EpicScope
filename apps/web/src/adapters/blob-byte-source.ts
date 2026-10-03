@@ -6,6 +6,32 @@ import {
 const CACHE_PAGE_SIZE = 32 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
 const PINNED_CACHE_LIMIT_BYTES = CACHE_LIMIT_BYTES - CACHE_PAGE_SIZE;
+const MAX_PHYSICAL_READ_DIAGNOSTICS = 512;
+
+export interface BlobPhysicalReadDiagnostic {
+  readonly offset: number;
+  readonly bytes: number;
+  readonly durationMs: number;
+}
+
+export interface BlobByteSourceRuntimeDiagnostics {
+  readonly scope: 'main-thread-source-lifetime';
+  readonly pageSizeBytes: number;
+  readonly cacheLimitBytes: number;
+  readonly pinnedCacheLimitBytes: number;
+  readonly physicalReadCount: number;
+  readonly physicalReadMs: number;
+  readonly physicalReadMinMs: number;
+  readonly physicalReadAverageMs: number;
+  readonly physicalReadMaxMs: number;
+  readonly slowestReads: readonly BlobPhysicalReadDiagnostic[];
+}
+
+let latestBlobByteSource: BlobByteSource | undefined;
+
+export function latestBlobByteSourceRuntimeDiagnostics(): BlobByteSourceRuntimeDiagnostics | undefined {
+  return latestBlobByteSource?.runtimeDiagnostics();
+}
 
 interface CachedPage {
   readonly index: number;
@@ -34,6 +60,7 @@ export class BlobByteSource implements RandomAccessByteSource {
   private cacheHitBytesValue = 0;
   private cacheBytesValue = 0;
   private physicalReadMsValue = 0;
+  private readonly physicalReadDiagnostics: BlobPhysicalReadDiagnostic[] = [];
   private wholeBuffer: Uint8Array | undefined;
   private wholeBufferPromise: Promise<Uint8Array> | undefined;
   private readonly pages = new Map<number, CachedPage>();
@@ -45,6 +72,14 @@ export class BlobByteSource implements RandomAccessByteSource {
     this.preferredReadAlignmentBytes = this.size > CACHE_LIMIT_BYTES
       ? CACHE_PAGE_SIZE
       : undefined;
+    latestBlobByteSource = this;
+  }
+
+  private recordPhysicalRead(offset: number, bytes: number, durationMs: number): void {
+    this.physicalReadDiagnostics.push({ offset, bytes, durationMs });
+    if (this.physicalReadDiagnostics.length > MAX_PHYSICAL_READ_DIAGNOSTICS) {
+      this.physicalReadDiagnostics.shift();
+    }
   }
 
   private async loadWholeBuffer(): Promise<Uint8Array> {
@@ -52,7 +87,9 @@ export class BlobByteSource implements RandomAccessByteSource {
     if (!this.wholeBufferPromise) {
       const started = globalThis.performance?.now() ?? Date.now();
       this.wholeBufferPromise = this.blob.arrayBuffer().then((buffer) => {
-        this.physicalReadMsValue += (globalThis.performance?.now() ?? Date.now()) - started;
+        const durationMs = (globalThis.performance?.now() ?? Date.now()) - started;
+        this.physicalReadMsValue += durationMs;
+        this.recordPhysicalRead(0, buffer.byteLength, durationMs);
         const bytes = new Uint8Array(buffer);
         this.wholeBuffer = bytes;
         this.cacheBytesValue = bytes.byteLength;
@@ -75,7 +112,9 @@ export class BlobByteSource implements RandomAccessByteSource {
     const length = Math.min(CACHE_PAGE_SIZE, this.size - start);
     const readStarted = globalThis.performance?.now() ?? Date.now();
     const buffer = await this.blob.slice(start, start + length).arrayBuffer();
-    this.physicalReadMsValue += (globalThis.performance?.now() ?? Date.now()) - readStarted;
+    const durationMs = (globalThis.performance?.now() ?? Date.now()) - readStarted;
+    this.physicalReadMsValue += durationMs;
+    this.recordPhysicalRead(start, length, durationMs);
     const page: CachedPage = {
       index: pageIndex,
       bytes: new Uint8Array(buffer),
@@ -166,6 +205,27 @@ export class BlobByteSource implements RandomAccessByteSource {
       physicalReadMs: this.physicalReadMsValue,
       physicalReadCount: this.physicalReadCountValue,
       physicalBytesRead: this.physicalBytesReadValue,
+    };
+  }
+
+  public runtimeDiagnostics(): BlobByteSourceRuntimeDiagnostics {
+    const durations = this.physicalReadDiagnostics.map((read) => read.durationMs);
+    const count = durations.length;
+    const total = durations.reduce((sum, duration) => sum + duration, 0);
+    const slowestReads = [...this.physicalReadDiagnostics]
+      .sort((left, right) => right.durationMs - left.durationMs)
+      .slice(0, 5);
+    return {
+      scope: 'main-thread-source-lifetime',
+      pageSizeBytes: CACHE_PAGE_SIZE,
+      cacheLimitBytes: CACHE_LIMIT_BYTES,
+      pinnedCacheLimitBytes: PINNED_CACHE_LIMIT_BYTES,
+      physicalReadCount: count,
+      physicalReadMs: total,
+      physicalReadMinMs: count > 0 ? Math.min(...durations) : 0,
+      physicalReadAverageMs: count > 0 ? total / count : 0,
+      physicalReadMaxMs: count > 0 ? Math.max(...durations) : 0,
+      slowestReads,
     };
   }
 

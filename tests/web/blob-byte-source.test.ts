@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { BlobByteSource } from '../../apps/web/src/adapters/blob-byte-source';
+import {
+  BlobByteSource,
+  latestBlobByteSourceRuntimeDiagnostics,
+} from '../../apps/web/src/adapters/blob-byte-source';
 
 describe('BlobByteSource bounded raw cache', () => {
   it('reuses cached bytes without another physical Blob read', async () => {
@@ -66,4 +69,12 @@ it('reuses the rolling boundary page on large sequential reads without exceeding
   expect(afterSecondBoundary.physicalReadCount).toBe(4);
   expect(afterSecondBoundary.cacheHitBytes).toBeGreaterThanOrEqual(1024);
   expect(afterSecondBoundary.cacheBytes).toBeLessThanOrEqual(96 * 1024 * 1024);
+
+  const runtime = latestBlobByteSourceRuntimeDiagnostics();
+  expect(runtime?.pageSizeBytes).toBe(32 * 1024 * 1024);
+  expect(runtime?.cacheLimitBytes).toBe(96 * 1024 * 1024);
+  expect(runtime?.physicalReadCount).toBe(afterSecondBoundary.physicalReadCount);
+  expect(runtime?.physicalReadAverageMs).toBeGreaterThanOrEqual(0);
+  expect(runtime?.physicalReadMaxMs).toBeGreaterThanOrEqual(runtime?.physicalReadMinMs ?? 0);
+  expect(runtime?.slowestReads.length).toBeGreaterThan(0);
 });
