@@ -12,6 +12,7 @@ import {
 
 class MemoryColumnStore implements PersistentChannelColumnStore {
   private readonly columns = new Map<string, Float64Array>();
+  putCount = 0;
 
   private key(logKey: string, channelId: string, sampleCount: number): string {
     return `${logKey}|${channelId}|${sampleCount}`;
@@ -22,6 +23,7 @@ class MemoryColumnStore implements PersistentChannelColumnStore {
   }
 
   async put(logKey: string, channelId: string, values: Float64Array): Promise<void> {
+    this.putCount += 1;
     this.columns.set(this.key(logKey, channelId, values.length), values.slice());
   }
 }
@@ -144,7 +146,7 @@ describe('PersistentColumnCacheDataSource', () => {
     expect(range.validity).toEqual(Uint8Array.from([1, 1, 1]));
   });
 
-  it('keeps large workspace batches on the underlying shared-scan path', async () => {
+  it('keeps large workspace batches on the shared-scan path and retains them for session reuse', async () => {
     const store = new MemoryColumnStore();
     const source = new FakeChannelDataSource();
     const cached = new PersistentColumnCacheDataSource(source, 'log-c', timeMs, validity, store);
@@ -158,5 +160,11 @@ describe('PersistentColumnCacheDataSource', () => {
     expect(source.readCount).toBe(1);
     expect(result?.performance.physicalReadCount).toBe(7);
     expect(result?.ranges.size).toBe(5);
+    expect(store.putCount).toBe(0);
+
+    const reused = await cached.readChannelRange('mlg:0', 0, cached.sampleCount);
+    expect(source.readCount).toBe(1);
+    expect(reused.values).toEqual(Float64Array.from([0, 1, 2, 3, 4, 5]));
+    expect(store.putCount).toBe(0);
   });
 });
