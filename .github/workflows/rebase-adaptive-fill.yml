@@ -1,0 +1,25 @@
+name: Rebase adaptive fill branch
+on:
+  push:
+    branches: [perf/progressive-channel-fill]
+    paths: [.github/workflows/rebase-adaptive-fill.yml]
+permissions:
+  contents: write
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: perf/progressive-channel-fill
+          fetch-depth: 0
+      - name: Rebase onto main and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          rm .github/workflows/rebase-adaptive-fill.yml
+          git add .github/workflows/rebase-adaptive-fill.yml
+          git commit -m "Chore: remove temporary rebase workflow"
+          git rebase origin/main
+          git push --force-with-lease origin HEAD:perf/progressive-channel-fill
