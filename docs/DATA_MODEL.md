@@ -1,3 +1,15 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
+<!-- CURRENT_STATE:current-range-residency-note:START -->
+## Current Web range/residency implementation note
+
+`NumericChannelRange` is currently used both for bounded/partial reads and for complete decoded active-channel ranges. A Web graph trace may therefore begin with partial coverage and later replace its backing range with the complete resident range without changing logical channel identity.
+
+This does not redefine the normalized model: partial/full coverage is execution state. Recorded MLG values/validity remain authoritative, and analyzers must not infer absent samples from an unloaded portion of a partial range.
+<!-- CURRENT_STATE:current-range-residency-note:END -->
+
 # EpicScope Data Model
 
 ## Purpose

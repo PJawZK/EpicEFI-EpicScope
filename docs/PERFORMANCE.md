@@ -1,3 +1,7 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
 # EpicScope Performance Requirements
 
 ## Priority
@@ -48,16 +52,47 @@ Examples of unacceptable Web habits include:
 
 ## Current Web benchmark evidence
 
-The current Phase 1 benchmark log is `2026-09-30_12.09.28.mlg`:
+The current primary large-log benchmark is `2026-07-14_22.07.05.mlg`:
 
-- 318,023,627 bytes;
-- 72,158 records;
-- 1,652 channels;
-- staged Worker indexing has repeatedly reached a usable state in roughly the low-single-digit-second range;
-- a representative persisted-workspace run reached usable load in about 1.95 s and full CRC validation in about 4.85 s;
-- four-channel selection/restore uses one shared physical traversal rather than one traversal per channel;
-- decoded-cache re-adds have been validated at zero physical source reads;
-- multi-pane restore now pre-batches the unique visible channel set before pane activation and must be regression-checked on hosted builds.
+- 1,193,898,186 bytes;
+- 320,458 records;
+- 1,389 channels;
+- MLVLG v2;
+- row-oriented layout, making a full arbitrary single-channel materialization I/O-heavy even though only one field is decoded.
+
+Current Web source/data parameters include:
+
+- 32 MiB Blob source pages;
+- about 96 MiB source-cache ceiling;
+- about 64 MiB pinned-source allowance;
+- 32 MiB decoded-channel cache;
+- 8,192-sample fixed decoded chunks for bounded range reuse.
+
+### Desktop class — 5 logical threads
+
+Representative validated run:
+
+- log load/index: ~1.03 s;
+- 12-channel shared workspace restore: ~1.19 s;
+- arbitrary `instantMAPValue` viewport-first activation: 23,458 samples in ~133 ms;
+- full resident materialization: 320,458 samples in ~789 ms;
+- after materialization, continuous zoom/pan performs no further source reads for that active channel and feels immediate.
+
+### Low-spec class — 2 logical threads / 4 GB RAM class
+
+Representative latest run:
+
+- log load/index: ~8.02 s;
+- 13-channel shared workspace restore: ~7.90 s;
+- arbitrary viewport-first activation at a wide viewport: 81,691 samples, ~369 MB physical source data, ~2.38 s;
+- full resident materialization: ~1.126 GB physical source data, ~8.19 s total, of which ~7.97 s was physical source-read time;
+- 32 MiB physical reads averaged ~213 ms in that run and included a ~906 ms outlier.
+
+The low-spec result shows that the remaining first-visible problem is dominated by source I/O, not graph drawing or statistics. The next planned change is therefore to cap low-spec first activation to roughly 16,384 centered samples rather than allowing the initial request to scale to a very wide visible viewport. The later full resident materialization remains one-time and idle-delayed.
+
+### Current interpretation
+
+The desktop resident-channel model is accepted as the preferred Web interaction model unless later regression evidence appears. The low-spec laptop remains the acceptance gate for I/O scheduling, allocation/memory pressure and time-to-first-visible changes.
 
 These numbers are regression evidence for the current Web implementation, not final Linux acceptance targets.
 

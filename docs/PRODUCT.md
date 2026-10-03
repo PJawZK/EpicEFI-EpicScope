@@ -1,3 +1,7 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
 # EpicScope Product Definition
 
 ## Purpose
@@ -41,6 +45,16 @@ Visual polish may be reduced whenever it conflicts materially with speed, memory
 After Web behaviour and Linux performance are mature, proven analysis concepts and reusable core logic may be adapted for EpicHub / Android.
 
 Android requirements must not distort the Web or Linux architecture prematurely.
+
+<!-- CURRENT_STATE:current-web-implementation:START -->
+## Current Web implementation state
+
+The Web product is now a usable hosted large-log analyzer foundation rather than an early shell. Current capabilities include MLG v1/v2 import/index/validation, INI-backed channel identity and log binding, persisted named workspaces and pane assignments, multi-pane graph/timeline navigation, annotations/ranges, channel statistics/search, diagnostics, and large-log source/decode caching.
+
+For arbitrary newly selected channels, the current interaction model is **fast visible subset first, then one-time full resident channel**. This lets the UI become useful before an expensive row-oriented full-file scan, while still making later zoom/pan independent of source I/O after materialization. Hardware-adaptive scheduling is permitted where measured evidence shows a clear low-spec benefit, provided product semantics remain the same.
+
+The Web stage remains the functional reference. The current optimization work is not intended to turn browser-specific Blob/cache behavior into a Linux architecture requirement.
+<!-- CURRENT_STATE:current-web-implementation:END -->
 
 ## Primary workflows
 

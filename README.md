@@ -52,8 +52,11 @@ The project is defined by the documentation under [`docs/`](docs/):
 
 ## Status
 
-EpicScope is currently in **Phase 1 — Web log foundation**. `WEB-REFERENCE` has established the initial UI/interaction authority; application code still waits for the concrete `WEB-BOOT` task split and tooling decision.
+EpicScope Web is an active hosted application, not a pre-bootstrap shell. The current implementation includes the MLG v1/v2 large-log data path, INI-backed channel catalog/binding, reusable application workspaces, multi-pane graph/timeline tooling, exact-log persistence, performance diagnostics, and large-log channel-loading optimization.
 
+Current performance work uses a 1.19 GB / 320,458-record MLG benchmark across both a 5-thread desktop and a 2-thread / 4 GB laptop. The desktop arbitrary-channel path now uses viewport-first activation followed by one-time full resident materialization, after which zoom/pan requires no further source reads for that active channel. The remaining active task is reducing low-spec time-to-first-visible by capping the initial viewport-first read on <=3-thread systems while preserving the resident-channel model.
+
+See [`HANDOFF.md`](docs/HANDOFF.md) for the exact authoritative continuation state and benchmark evidence.
 
 ## Web delivery
 

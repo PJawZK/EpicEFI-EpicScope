@@ -8,162 +8,234 @@
 
 `main`
 
-## Active development branch / PR
+Implementation baseline entering this documentation refresh:
 
-- branch: `main`
-- current task: hosted-validate INI/MLG stable-channel binding plus reusable application workspace persistence v2
+`7da764a7be6c6107523c1582ae4f1a91b655b217`
 
-## Current phase
-
-**Phase 1 — Web log foundation**
-
-Completed and validated:
-
-- Phase 0 foundation;
-- WEB-REFERENCE using `EpicHub-Tablet-Landscape-0.0.45(2).html`;
-- WEB-BOOT through GitHub Actions + GitHub Pages, validated in Brave;
-- MLG v1/v2 header/descriptor parsing;
-- compact record indexing, marker support and timestamp rollover handling;
-- browser-local MLG import and Full Sensor List population;
-- bounded normalized numeric channel reads;
-- Vitest 5.x parser/core test gate;
-- real current EpicEFI/TunerStudio MLG v2 validation;
-- single- and multi-channel graph/timeline integration with up to 8 simultaneous bounded Web traces;
-- stable full-log Y scales while horizontal zoom/pan changes only time;
-- coordinated timeline focus-window handles, cursor dragging and center-follow navigation;
-- compact graph legend using trace-color dot + channel name;
-- transient auto-dismiss trace-limit warning instead of a persistent graph overlay;
-- Channel Value Search with ranked Max / Min / Closest-to-value results, Previous/Next navigation, and one optional secondary-channel constraint;
-- diagnostics moved out of the graph viewport into a compact status/popover control;
-- EpicScope-logo module menu and EpicHub-style edge-panel controls;
-- staged Worker import for large MLG files, with time-to-usable before full CRC validation completes;
-- bounded large-log source caching with a ~96 MiB Web cache ceiling;
-- batched multi-channel MLG decoding with a bounded 32 MiB decoded-channel cache;
-- automatic large-log channel batch commit when leaving the Full Sensor List, preserving one shared row-oriented decode pass without an extra confirmation click;
-- whole-log timeline overview with active trace context and source-marker rendering;
-- source-marker Previous/Next navigation tied to the existing cursor/focus-window behavior;
-- high-zoom raw-sample rendering with real source-gap detection and a 500 ms minimum viewport span;
-- graph workspaces with independent channel/viewport/cursor state;
-- timeline annotations: user markers, editable saved ranges, A/B boundaries/range shading and per-workspace view history;
-- Full Sensor List favorites/recent filters, Add filtered, MLG-derived groups and active-channel statistics;
-- compact graph-corner Now/Min/Max readouts plus floating Channel Details;
-- fixed multi-graph layouts (Single, 2×2/4, 2×3/5, 3×2/6) with active-pane channel assignment;
-- freeform five-pane graph workspaces with Mosaic/Columns/Rows/Cascade arrangements, drag/resize/snap, minimize/maximize, Clear pane and Reset layout;
-- shared cursor/viewport/A-B/timeline state across panes;
-- one shared multi-pane restore decode before pane activation so large logs do not require one physical source traversal per pane;
-- compact graph-pane chrome: static labels for fixed layouts and draggable floating title chips for freeform panes;
-- single-layout stacked channel rows with shared time navigation and compact per-row Now/Min/Max;
-- Logger keyboard shortcuts with the reference control housed under Settings;
-- consolidated Web WorkspaceState with bounded Undo/Redo history;
-- versioned per-log Web workspace persistence using browser-local storage, explicit compatibility validation and a Forget saved workspace escape hatch;
-- full parser-diagnostics Copy report;
-- conservative MLG retry/recovery classification separating recovered CRC retries, CRC-valid jump/repeat counter patterns, and genuinely unresolved warnings.
+That baseline is PR #121, **Perf: defer low-spec resident channel materialization until idle**. The documentation-only merge that updates this handoff becomes the newer authoritative `main`; no application behavior is changed by the documentation refresh itself.
 
 ## Hosted application
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-GitHub Actions is the required Web validation path and GitHub Pages is the project-owner test surface. No local clone/Node/npm is required for normal project-owner testing.
+GitHub Actions remains the required Web validation path and GitHub Pages remains the project-owner test surface. Normal project-owner testing does not require a local clone, Node.js or npm.
 
-## Real-log validation evidence
+## Current project position
 
-Validated file: `2026-10-01_13.29.06.mlg`.
+EpicScope Web is well beyond the original shell/bootstrap stage. The current application has a working large-log MLG parser/data path, INI-backed channel catalog/binding, reusable application workspaces, exact-log persistence, multi-pane graph/timeline workflows, large-log diagnostics, and active performance hardening.
 
-Observed/verified:
+The current active engineering focus is **large-log arbitrary-channel activation on both a fast desktop and a deliberately weak 2-thread / 4 GB laptop**. The desktop path is now smooth; the remaining problem is first-visible latency on the low-spec laptop when a wide viewport causes too much row-oriented MLG I/O before the first trace appears.
 
-- MLG v2;
-- 36,452 logger records;
-- 1,652 channels;
-- parser record boundaries land exactly at EOF;
-- source file contains genuine checksum-invalid/retried records;
-- CRC-invalid samples are retained as source evidence through the normalized validity array and must not be treated as trusted graph/analysis samples;
-- 8-bit block counter uses full 0..255 wrap (`254 -> 255 -> 0` is valid).
+Do not reconstruct current state from the old 318 MB Phase-1 benchmark alone. The current performance authority is the 1.19 GB benchmark described below.
 
-Retry/recovery diagnostic classification is now hosted-validated. On the 318 MB benchmark log the final classified result retained 28 recovered CRC retries and 11 CRC-valid jump/repeat patterns as informational evidence, while leaving one unrecovered CRC mismatch and two unpaired counter discontinuities visible as warnings. Do not change the documented MLG checksum formula to suppress genuine source evidence.
+## Current large-log benchmark authority
 
-### Large-log performance validation
+Primary performance log:
 
-Validated file: `2026-09-30_12.09.28.mlg`.
+`2026-07-14_22.07.05.mlg`
 
-Observed/verified on the hosted Web build:
+Known structure:
 
-- source size: 318,023,627 bytes;
-- 72,158 records and 1,652 channels;
-- staged Worker import becomes usable in roughly 1.7-2.5 s across observed runs, with full CRC validation completing separately afterward;
-- four uncached channels (RPM, MAP, TPS and `lowerWgSolenoidTestActive`) load together as `batch=4`;
-- the four-channel batch uses one shared 318,023,627-byte physical traversal rather than four independent source passes;
-- validated batch decode/read time is about 1.94 s, with all four performance entries reporting the same ~2.03 s operation total;
-- the earlier four independent selections required about 995 MB of cumulative physical channel reads, so shared batching cuts that workflow to roughly one-third of the physical I/O;
-- timing-based debounce/coordinator experiments were superseded by staged selection plus automatic commit when the pointer leaves Full Sensor List;
-- decoded-cache remove/re-add behavior is hosted-validated: re-adding RPM, MAP, TPS and `lowerWgSolenoidTestActive` produced `cacheHit=true`, `physicalReads=0`, and `physicalBytes=0`;
-- later hosted persistence validation restored a four-channel workspace on the same 318 MB log with one shared `batch=4` physical traversal;
-- a representative persisted-workspace run reached initial usable load in about 1.95 s and full CRC validation in about 4.85 s.
+- size: 1,193,898,186 bytes;
+- MLVLG v2;
+- 320,458 records;
+- 1,389 logged channels;
+- fixed record scan;
+- row-oriented source layout;
+- source block/page behavior means a sparse arbitrary channel still requires reading broad portions of the source file;
+- source Blob page size: 32 MiB;
+- source cache ceiling: about 96 MiB;
+- pinned source-cache allowance: about 64 MiB;
+- decoded-channel cache ceiling: 32 MiB;
+- bounded decoded chunks: 8,192 samples.
 
-## Graph renderer status
+### Desktop validation class
 
-The current Canvas 2D renderer is **Experimental**.
+Representative desktop environment:
 
-- it uses bounded raw-preserving downsampling rather than plotting every source record;
-- CRC-invalid samples are excluded from trusted graph data;
-- sparse/conditional-channel rendering has been improved and hosted-validated, but Canvas 2D remains Experimental;
-- renderer/UI refinements are now driven by real workflow evidence rather than a blanket polish freeze;
-- do not replace source behavior with smoothing/averaging simply to make the trace look nicer.
+- Chromium 154 / Linux / Zorin;
+- 1,920×947 DPR 1;
+- 5 logical threads.
 
-Canvas 2D is an initial Web renderer choice, not a Linux/Android architecture commitment.
+Representative validated run after resident-channel work:
 
-## Current Phase 1 continuation
+- initial log load/index: about 1.03 s;
+- 12-channel saved-workspace restore: about 1.19 s;
+- arbitrary `instantMAPValue` viewport-first activation: 23,458 samples in about 133 ms;
+- one-time full resident materialization: 320,458 samples in about 789 ms;
+- after materialization, continuous zoom/pan no longer causes additional source reads for that active channel;
+- continuous zoom subjectively feels immediate once the channel is resident;
+- timeline overview is refreshed when the partial trace becomes fully resident.
 
-The core Web log foundation is substantially complete. Large-log import/batching/cache behavior, retry/recovery diagnostics, graph workspaces, fixed/freeform multi-pane layouts, timeline annotations, channel browser/statistics, keyboard shortcuts, Undo/Redo and exact-log workspace persistence are implemented.
+This desktop behavior is considered a good stopping point unless later regressions appear.
 
-The final Phase 1 gate is hosted validation of the latest graph-density refinement:
+### Low-spec validation class
 
-1. verify fixed panes no longer consume a full-width header row;
-2. verify freeform panes use compact draggable title chips;
-3. verify Single layout renders each active channel in its own compact stacked row with Now/Min/Max;
-4. verify the keyboard-shortcut control now lives under Settings and Compare is labeled compactly;
-5. regression-check multi-pane persistence and the shared restore batch on the 318 MB benchmark log.
+Representative low-spec laptop:
 
-After that validation, Phase 1 can close.
+- Chromium 150 / Linux;
+- 1,366×645 DPR 1;
+- 2 logical threads;
+- 4 GB RAM class machine.
 
-The INI-backed channel catalog, conservative INI↔MLG binding, and reusable application-workspace persistence foundation are now implemented. Stable `ini:<logicalKey>` channel assignments can exist without a log, known/no-data channels remain visible, log-only channels remain usable, and normalized INI catalog metadata plus reusable workspace structure are stored locally without persisting sample arrays or raw INI text. Restored catalog state is visually distinct from a freshly loaded INI, and Settings provides an explicit **Unload INI** action that removes the persisted catalog so fresh-load performance can be benchmarked repeatedly.
+The laptop is strongly storage/I/O constrained. Observed 32 MiB physical reads are commonly around 150–210 ms average and can spike far higher.
 
-The exact-log v1 workspace artifact remains in parallel for recording-specific cursor/viewport/A-B/marker/range state. Hosted validation should now confirm that INI-only pane assignments survive reload, app restart and previously unseen log loads, and that matching channels activate automatically when data becomes available.
+Latest representative run:
 
-MSQ tune-value/table enrichment follows later. CSV remains deferred.
+- initial log load/index: 8.02 s;
+- 13-channel shared workspace restore: 7.90 s;
+- viewport-first `instantMAPValue` activation requested 81,691 samples and therefore read about 369 MB, taking 2.38 s;
+- one-time full resident materialization then read about 1.126 GB and took 8.19 s;
+- about 7.97 s of that full materialization was physical source-read time;
+- scale-preserving resident swap worked (`scale=0.00 ms` for the full promotion), so the previous late vertical rescale/jump has been removed;
+- the remaining visible problem is first-trace latency when the requested viewport itself is too wide.
 
-## Key constraints still in force
+An earlier, narrower low-spec run showed about 637 ms for a 20,229-sample viewport and about 5.04 s for full materialization, confirming that the first-visible cost scales heavily with source I/O width and storage variability.
 
-- Web -> Linux -> Android/EpicHub;
-- Chromium/Brave first;
-- MLG remains the first-class log source; CSV is still the secondary log format but is intentionally deferred behind the approved INI channel-catalog work;
-- local-first privacy; opening a local log must not upload it;
-- source formats normalize before UI/analyzers;
-- imported files are untrusted input;
-- bounded parser/data APIs must remain compatible with future indexed/native implementations;
-- invalid source records must not be silently fabricated or treated as valid;
-- MLG v3 remains deferred until authoritative format evidence exists;
-- branch protection/ruleset enforcement remains unresolved.
+## Current active-channel loading architecture
+
+The current Web graph path deliberately uses two stages for an arbitrary newly selected channel:
+
+1. **viewport-first activation** so something useful appears before a full row-oriented scan;
+2. **one-time full resident materialization** so the selected active channel becomes fully decoded and future zoom/pan does not chase the viewport with repeated source reads.
+
+Once fully resident, the active trace directly holds the full `NumericChannelRange`; normal graph navigation then becomes presentation work rather than repeated MLG I/O.
+
+Saved workspace channels remain different: visible channels are restored through one shared full-range multi-channel batch before pane activation so several channels amortize a single source traversal.
+
+## Performance implementation history that matters
+
+The current architecture was reached through measured A/B iterations:
+
+- PR #111 — adaptive CRC validation: serial on <=3 threads, parallel pipeline on >=4 threads; considered settled;
+- PR #112 — viewport-first arbitrary-channel selection;
+- PR #113 — `sampleRangeForTime()` forwarding through INI/channel binding;
+- PR #114 — removed eager viewport→full promotion and added range-aware partial caching;
+- PR #115 — fixed 8,192-sample decoded chunks for overlapping viewport reuse;
+- PR #116 — progressive active-channel fill;
+- PR #117 — adaptive progressive fill sizing;
+- PR #118 — interaction-aware coalescing during continuous wheel/pan activity;
+- PR #119 — pivot to viewport-first then one-time fully resident active channel;
+- PR #120 — timeline overview refresh when an active trace changes from partial to full resident range;
+- PR #121 — low-spec idle-delayed materialization plus scale-preserving resident swap.
+
+An earlier concurrency/pipelining experiment in PR #89 regressed behavior and was reverted. Do not casually reintroduce channel-read concurrency/pipelining without new measured evidence.
+
+The progressive-fill work is retained as fallback/cache machinery, but it is no longer the preferred steady-state user model for newly selected active channels because continuous interaction could outrun or visually expose the fill process.
+
+## Exact next performance task
+
+The next planned implementation is deliberately narrow:
+
+**On systems with <=3 logical threads, cap viewport-first activation to about 16,384 samples, centered within the requested viewport, instead of letting first activation scale to the entire visible viewport.**
+
+Keep all of the following from PR #121:
+
+- desktop (>3 threads) behavior unchanged;
+- 1,000 ms low-spec idle delay before full resident materialization;
+- viewport activity restarts that low-spec idle timer;
+- one-time full resident materialization after the user settles;
+- preserve the viewport-first scale when swapping in the full resident range;
+- no repeated viewport-driven I/O once full resident materialization completes.
+
+Purpose of the cap:
+
+- reduce low-spec time-to-first-visible;
+- avoid cases like 81,691 samples / ~369 MB / ~2.38 s just to show the first trace;
+- ideally turn first activation into roughly one or a few 32 MiB source-page reads rather than 11 pages;
+- accept temporary partial horizontal coverage while the later resident scan completes.
+
+Do not apply this cap to the desktop path unless measurements justify it.
+
+## Current workspace / source-context state
+
+Implemented and retained:
+
+- INI parsing and normalized channel catalog;
+- stable logical `ini:<logicalKey>` identity;
+- conservative INI↔MLG binding;
+- known/no-data channels remain visible;
+- usable log-only channels remain usable;
+- MLG remains authoritative for recorded values and validity;
+- reusable application workspace persists named workspaces, layouts/geometry and stable channel assignments independently of exact log identity;
+- exact-log persistence remains separate for cursor/viewport/A-B/markers/ranges;
+- restored catalog/workspace state is distinct from freshly loaded state;
+- Settings can unload the persisted INI catalog for repeatable fresh-load testing.
+
+MSQ tune-value/table enrichment remains later work. CSV remains deferred.
+
+## Graph / timeline state
+
+Implemented and working:
+
+- multiple workspaces;
+- fixed and freeform multi-pane layouts;
+- shared viewport/cursor/timeline/A-B navigation;
+- active-pane context;
+- graph/timeline source markers and user markers;
+- saved ranges and view history;
+- high-zoom raw-sample rendering and zoomed-out envelope rendering;
+- Now/Min/Max and channel details;
+- source validity handling;
+- active-channel timeline overview refresh after resident materialization;
+- no graph navigation I/O for fully resident active channels.
+
+Canvas 2D remains a Web implementation choice, not a Linux/Android architecture commitment.
+
+## Current diagnostic/validation rules
+
+Performance diagnostics should be treated as measurement authority for Web optimization. Always compare:
+
+- workload/log;
+- hardware class and logical thread count;
+- viewport width/sample count;
+- physical read count/bytes/time;
+- decode vs I/O time;
+- subjective graph responsiveness;
+- memory/GC pressure on the 4 GB laptop where observable.
+
+Desktop wins are not considered complete until the low-spec laptop has also been checked when the change can affect memory, allocation, I/O scheduling or interaction behavior.
+
+Do not claim MegaLogViewer's internal implementation strategy as fact; it is only a behavioral comparison target.
+
+## UI/reference constraints still in force
+
+- authoritative Logger/Analyzer visual/interaction reference remains `EpicHub-Tablet-Landscape-0.0.45(2).html`;
+- use TunerStudio/MegaLogViewer channel terminology where practical;
+- do not change established UI colors in response to apparent visibility/performance reports unless the user explicitly requests a color change; a recent apparent color issue was a TN-panel viewing-angle effect, not a palette problem;
+- performance may simplify implementation but should not silently alter established interaction semantics.
+
+## Repository/workflow constraints
+
+- `main` is authoritative;
+- normal implementation uses a focused branch/PR;
+- run type-check, tests and production build before merge;
+- verify post-merge Web CI and GitHub Pages deployment;
+- temporary branch-only patch/validation workflows or scripts must remove themselves before PR/final diff;
+- avoid accidental no-op commits on `main`;
+- project-owner testing is hosted; do not require a local clone.
 
 ## Architecture authority
 
 Read before significant implementation:
 
-1. `docs/PRODUCT.md`
-2. `docs/ARCHITECTURE.md`
-3. `docs/FILE_ARCHITECTURE.md`
-4. `docs/DATA_MODEL.md`
-5. `docs/UI_REFERENCE.md`
-6. `docs/LOG_MLG_PLAN.md`
-7. `docs/PERFORMANCE.md`
-8. `docs/PLATFORMS.md`
-9. `docs/ROADMAP.md`
-10. `docs/WORKFLOW.md`
-11. `docs/DECISIONS.md`
+1. `docs/HANDOFF.md`
+2. `docs/PRODUCT.md`
+3. `docs/ARCHITECTURE.md`
+4. `docs/FILE_ARCHITECTURE.md`
+5. `docs/DATA_MODEL.md`
+6. `docs/UI_REFERENCE.md`
+7. `docs/LOG_MLG_PLAN.md`
+8. `docs/PERFORMANCE.md`
+9. `docs/PLATFORMS.md`
+10. `docs/ROADMAP.md`
+11. `docs/WORKFLOW.md`
+12. `docs/DECISIONS.md`
 
 ## Continuation instruction
 
-A new chat should be able to say:
+A new chat should be able to start with:
 
-> Read the EpicScope repository handoff and continue from there.
+> Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue from there.
 
-The new chat must inspect current repository/branch/CI state rather than reconstructing state from older chat history.
+The new chat must use the repository handoff and current repository state as authority. It should not reconstruct present architecture from older chats or older prototype code.

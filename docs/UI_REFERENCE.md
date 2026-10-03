@@ -1,3 +1,15 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
+<!-- CURRENT_STATE:current-performance-ui-note:START -->
+## Current performance-driven UI behavior
+
+The current large-log implementation may initially show only bounded horizontal coverage for a newly selected arbitrary channel while complete resident data is being materialized. This is an approved performance behavior so long as channel identity, viewport/navigation semantics and source truth are preserved. Once resident, navigation should feel immediate without repeated source reads.
+
+Do not change established UI colors merely to address performance or apparent visibility reports unless the project owner explicitly requests a palette change. A recent apparent color problem was confirmed to be a TN-monitor viewing-angle effect, not a color-system defect.
+<!-- CURRENT_STATE:current-performance-ui-note:END -->
+
 # EpicScope Web UI Reference
 
 ## Purpose
