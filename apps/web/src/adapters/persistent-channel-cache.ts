@@ -112,8 +112,8 @@ function buildRange(
 
 export class PersistentColumnCacheDataSource implements NumericChannelDataSource {
   readonly sampleCount: number;
-  readonly preferredBatchWindowMs: number | undefined;
-  readonly requiresExplicitBatchSelection: boolean | undefined;
+  readonly preferredBatchWindowMs: number;
+  readonly requiresExplicitBatchSelection: boolean;
 
   private readonly source: NumericChannelDataSource;
   private readonly logKey: string;
@@ -136,8 +136,8 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     this.validity = validity;
     this.store = store;
     this.sampleCount = source.sampleCount;
-    this.preferredBatchWindowMs = source.preferredBatchWindowMs;
-    this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection;
+    this.preferredBatchWindowMs = source.preferredBatchWindowMs ?? 0;
+    this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection ?? false;
   }
 
   public sampleRangeForTime(
