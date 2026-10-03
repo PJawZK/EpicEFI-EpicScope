@@ -2,8 +2,7 @@ name: Apply timeline overview refresh
 
 on:
   push:
-    branches:
-      - fix/timeline-overview-after-materialization
+    branches: [fix/timeline-overview-after-materialization]
 
 permissions:
   contents: write
@@ -12,51 +11,40 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: fix/timeline-overview-after-materialization
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-      - name: Apply timeline overview refresh patch
-        shell: bash
+          node-version: '22'
+      - name: Patch logger timeline refresh
         run: |
-          python - <<'PY'
+          python3 <<'PY'
           from pathlib import Path
-          p = Path('apps/web/src/pages/logger-page.ts')
+          p = Path("apps/web/src/pages/logger-page.ts")
           s = p.read_text()
-          old = """    runtime.graph.onChannelPerformance((performance) => {
-      const channel = channelDefinitions.get(performance.channelId);
-      channelPerformanceListener?.({
+          needle = """      channelPerformanceListener?.({
         ...performance,
         channelName: channel?.sourceName ?? performance.channelId,
       });
-    });"""
-          new = """    runtime.graph.onChannelPerformance((performance) => {
-      const channel = channelDefinitions.get(performance.channelId);
-      channelPerformanceListener?.({
-        ...performance,
-        channelName: channel?.sourceName ?? performance.channelId,
-      });
-      if (runtime.id === activeWorkspace()?.activePaneId) {
+"""
+          replacement = needle + """      if (runtime.id === activeWorkspace()?.activePaneId) {
         timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);
       }
-    });"""
-          if old not in s:
-              raise SystemExit('channel performance anchor not found')
-          p.write_text(s.replace(old, new, 1))
+"""
+          if needle not in s:
+              raise SystemExit("performance listener anchor not found")
+          p.write_text(s.replace(needle, replacement, 1))
           PY
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Commit validated patch and remove temporary workflow
-        shell: bash
+      - name: Commit patch
         run: |
           rm .github/workflows/apply-timeline-overview-refresh.yml
-          git config user.name "PJawZK"
-          git config user.email "anderswedin@hotmail.se"
+          git config user.name PJawZK
+          git config user.email anderswedin@hotmail.se
           git add apps/web/src/pages/logger-page.ts .github/workflows/apply-timeline-overview-refresh.yml
-          git commit -m "Fix: refresh timeline overview when active trace data changes"
+          git commit -m 'Fix timeline overview after trace materialization'
           git push origin HEAD:fix/timeline-overview-after-materialization
