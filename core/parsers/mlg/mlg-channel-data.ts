@@ -293,6 +293,40 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     };
   }
 
+  public sampleRangeForTime(
+    startMs: number,
+    endMs: number,
+  ): { readonly startSampleIndex: number; readonly sampleCount: number } {
+    const times = this.recordIndex.timeMs;
+    if (times.length === 0) return { startSampleIndex: 0, sampleCount: 0 };
+
+    const lowTarget = Math.min(startMs, endMs);
+    const highTarget = Math.max(startMs, endMs);
+
+    let low = 0;
+    let high = times.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if ((times[mid] ?? Number.POSITIVE_INFINITY) < lowTarget) low = mid + 1;
+      else high = mid;
+    }
+    const startSampleIndex = Math.max(0, low - 1);
+
+    low = startSampleIndex;
+    high = times.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if ((times[mid] ?? Number.NEGATIVE_INFINITY) <= highTarget) low = mid + 1;
+      else high = mid;
+    }
+    const endSampleIndex = Math.min(times.length, low + 1);
+
+    return {
+      startSampleIndex,
+      sampleCount: Math.max(0, endSampleIndex - startSampleIndex),
+    };
+  }
+
   public hasCachedChannelRange(
     channelId: string,
     startSampleIndex: number,

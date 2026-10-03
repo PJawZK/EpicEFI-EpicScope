@@ -54,6 +54,10 @@ export interface NumericChannelDataSource {
   readonly sampleCount: number;
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
+  sampleRangeForTime?(
+    startMs: number,
+    endMs: number,
+  ): { readonly startSampleIndex: number; readonly sampleCount: number };
   hasCachedChannelRange?(
     channelId: string,
     startSampleIndex: number,

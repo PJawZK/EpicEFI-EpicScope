@@ -110,6 +110,9 @@ export interface WorkspaceRestorePerformanceRun {
 
 export interface ChannelPerformanceRun {
   readonly channelName: string;
+  readonly phase: 'viewport' | 'full' | 'cache';
+  readonly startSampleIndex: number;
+  readonly requestedSampleCount: number;
   readonly totalMs: number;
   readonly readDecodeMs: number;
   readonly scaleMs: number;
@@ -453,7 +456,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       lines.push('', '[Channel selections]');
       channelRuns.slice(-10).forEach((run, index) => {
         lines.push(
-          `${index + 1}. ${run.channelName}: total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; samples=${run.sampleCount}; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms`,
+          `${index + 1}. ${run.channelName}: phase=${run.phase}; startSample=${run.startSampleIndex}; requestedSamples=${run.requestedSampleCount}; returnedSamples=${run.sampleCount}; total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms`,
         );
       });
     }
@@ -674,7 +677,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         const source = run.cacheHit
           ? 'decoded cache'
           : `${run.batchSize} ch batch · ${bytes(run.physicalBytesRead)} physical`;
-        detail.textContent = `${ms(run.totalMs)} total · ${ms(run.readDecodeMs)} read/decode · ${ms(run.scaleMs)} scale · ${ms(run.renderMs)} render · ${source}`;
+        detail.textContent = `${run.phase} · samples ${run.startSampleIndex.toLocaleString()}–${Math.max(run.startSampleIndex, run.startSampleIndex + run.requestedSampleCount - 1).toLocaleString()} · ${ms(run.totalMs)} total · ${ms(run.readDecodeMs)} read/decode · ${ms(run.scaleMs)} scale · ${ms(run.renderMs)} render · ${source}`;
         card.append(title, detail);
         channelsHost.append(card);
       }
