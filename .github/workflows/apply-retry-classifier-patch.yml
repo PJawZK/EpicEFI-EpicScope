@@ -1,0 +1,32 @@
+name: Apply retry classifier patch
+
+on:
+  push:
+    branches:
+      - fix/mlg-retry-run-classification
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/mlg-retry-run-classification
+          fetch-depth: 0
+      - name: Apply classifier patch
+        run: python .github/scripts/apply-retry-classifier-patch.py
+      - name: Commit classifier patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/parsers/mlg/mlg-records.ts
+          if git diff --cached --quiet; then
+            echo "No classifier changes to commit."
+            exit 0
+          fi
+          git commit -m "Fix: classify MLG retry runs by counter and timestamp"
+          git push origin HEAD:fix/mlg-retry-run-classification
