@@ -11,7 +11,7 @@ export interface RandomAccessByteSource {
    * Callers may use this to avoid requesting spans that force the source to
    * join/copy multiple backing pages. This is a performance hint only.
    */
-  readonly preferredReadAlignmentBytes?: number;
+  readonly preferredReadAlignmentBytes?: number | undefined;
   read(offset: number, length: number): Promise<Uint8Array>;
   performanceSnapshot?(): ByteSourcePerformanceSnapshot;
 }
@@ -38,7 +38,7 @@ export function validateReadRange(size: number, offset: number, length: number):
 
   if (offset > size || length > size - offset) {
     throw new ByteSourceRangeError(
-      `Read range [${offset}, ${offset + length}) exceeds source size ${size}`,
+      `Read range [${offset}, ${offset + length}) exceeds source size ${size}.`,
     );
   }
 }
