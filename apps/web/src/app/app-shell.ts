@@ -379,11 +379,22 @@ export function mountAppShell(root: HTMLElement): void {
     if (currentRawLog && snapshot.channelDefinitionCount === 0) {
       issues.push('Log is loaded but Logger has zero channel definitions.');
     }
-    if (snapshot.assignedChannelCount > 0 && snapshot.activeTraceCount === 0) {
-      issues.push(`${snapshot.assignedChannelCount} channels are assigned to visible panes but zero traces are active.`);
+    if (
+      snapshot.renderableAssignedChannelCount > 0
+      && snapshot.activeTraceCount < snapshot.renderableAssignedChannelCount
+    ) {
+      issues.push(
+        `${snapshot.renderableAssignedChannelCount - snapshot.activeTraceCount} of `
+        + `${snapshot.renderableAssignedChannelCount} renderable channels assigned to visible panes are not active.`,
+      );
     }
-    if (snapshot.activeTraceCount > snapshot.assignedChannelCount) {
-      warnings.push('Active trace count exceeds assigned visible-channel count.');
+    if (snapshot.unavailableAssignedChannelCount > 0) {
+      warnings.push(
+        `${snapshot.unavailableAssignedChannelCount} assigned visible-pane channel(s) are unavailable in the current log.`,
+      );
+    }
+    if (snapshot.activeTraceCount > snapshot.renderableAssignedChannelCount) {
+      warnings.push('Active trace count exceeds renderable assigned visible-channel count.');
     }
     if (runtimeErrors.length > 0) {
       issues.push(`${runtimeErrors.length} runtime error/unhandled rejection event(s) captured.`);
@@ -438,9 +449,13 @@ export function mountAppShell(root: HTMLElement): void {
       `restoringWorkspace=${snapshot.restoringWorkspaceState}`,
       `visiblePanes=${snapshot.visiblePaneCount}`,
       `assignedVisibleChannels=${snapshot.assignedChannelCount}`,
+      `renderableAssignedVisibleChannels=${snapshot.renderableAssignedChannelCount}`,
+      `unavailableAssignedVisibleChannels=${snapshot.unavailableAssignedChannelCount}`,
       `activeVisibleTraces=${snapshot.activeTraceCount}`,
       ...snapshot.panes.map((pane) =>
-        `pane=${pane.id}; visible=${pane.visible}; assigned=[${pane.assignedChannelIds.join(',')}]; active=[${pane.activeChannelIds.join(',')}]`
+        `pane=${pane.id}; visible=${pane.visible}; assigned=[${pane.assignedChannelIds.join(',')}]; `
+        + `renderable=[${pane.renderableAssignedChannelIds.join(',')}]; `
+        + `unavailable=[${pane.unavailableAssignedChannelIds.join(',')}]; active=[${pane.activeChannelIds.join(',')}]`
       ),
       '',
       '[Workspace state]',
