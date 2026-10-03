@@ -18,6 +18,7 @@ interface WorkerScope {
 
 const scope = globalThis as unknown as WorkerScope;
 const now = (): number => globalThis.performance?.now() ?? Date.now();
+const WORKER_CACHE_PAGE_SIZE = 16 * 1024 * 1024;
 let validationStartResolver: (() => void) | undefined;
 let validationStartRequested = false;
 
@@ -46,7 +47,9 @@ scope.onmessage = (event): void => {
 
   void (async () => {
     const started = now();
-    const source = new BlobByteSource(importRequest.file);
+    const source = new BlobByteSource(importRequest.file, {
+      pageSizeBytes: WORKER_CACHE_PAGE_SIZE,
+    });
 
     try {
       const headerPhysicalStart = source.performanceSnapshot().physicalReadMs;

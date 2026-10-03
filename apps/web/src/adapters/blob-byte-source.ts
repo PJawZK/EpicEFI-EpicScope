@@ -3,9 +3,8 @@ import {
   type RandomAccessByteSource,
 } from '../../../../core/parsers/byte-source';
 
-const CACHE_PAGE_SIZE = 32 * 1024 * 1024;
+const DEFAULT_CACHE_PAGE_SIZE = 32 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
-const PINNED_CACHE_LIMIT_BYTES = CACHE_LIMIT_BYTES - CACHE_PAGE_SIZE;
 const MAX_PHYSICAL_READ_DIAGNOSTICS = 512;
 
 export interface BlobPhysicalReadDiagnostic {
@@ -38,6 +37,10 @@ interface CachedPage {
   readonly bytes: Uint8Array;
 }
 
+export interface BlobByteSourceOptions {
+  readonly pageSizeBytes?: number;
+}
+
 export interface BlobByteSourceStats {
   readonly readCount: number;
   readonly bytesRead: number;
@@ -53,6 +56,8 @@ export class BlobByteSource implements RandomAccessByteSource {
   readonly size: number;
   readonly preferredReadAlignmentBytes: number | undefined;
   private readonly blob: Blob;
+  private readonly pageSizeBytes: number;
+  private readonly pinnedCacheLimitBytes: number;
   private readCountValue = 0;
   private bytesReadValue = 0;
   private physicalReadCountValue = 0;
@@ -66,11 +71,16 @@ export class BlobByteSource implements RandomAccessByteSource {
   private readonly pages = new Map<number, CachedPage>();
   private transientPage: CachedPage | undefined;
 
-  public constructor(blob: Blob) {
+  public constructor(blob: Blob, options: BlobByteSourceOptions = {}) {
     this.blob = blob;
     this.size = blob.size;
+    this.pageSizeBytes = options.pageSizeBytes ?? DEFAULT_CACHE_PAGE_SIZE;
+    if (!Number.isFinite(this.pageSizeBytes) || this.pageSizeBytes <= 0 || this.pageSizeBytes > CACHE_LIMIT_BYTES) {
+      throw new RangeError(`Invalid Blob page size: ${this.pageSizeBytes}`);
+    }
+    this.pinnedCacheLimitBytes = CACHE_LIMIT_BYTES - this.pageSizeBytes;
     this.preferredReadAlignmentBytes = this.size > CACHE_LIMIT_BYTES
-      ? CACHE_PAGE_SIZE
+      ? this.pageSizeBytes
       : undefined;
     latestBlobByteSource = this;
   }
@@ -108,8 +118,8 @@ export class BlobByteSource implements RandomAccessByteSource {
       return { page: this.transientPage, cacheHit: true };
     }
 
-    const start = pageIndex * CACHE_PAGE_SIZE;
-    const length = Math.min(CACHE_PAGE_SIZE, this.size - start);
+    const start = pageIndex * this.pageSizeBytes;
+    const length = Math.min(this.pageSizeBytes, this.size - start);
     const readStarted = globalThis.performance?.now() ?? Date.now();
     const buffer = await this.blob.slice(start, start + length).arrayBuffer();
     const durationMs = (globalThis.performance?.now() ?? Date.now()) - readStarted;
@@ -130,7 +140,7 @@ export class BlobByteSource implements RandomAccessByteSource {
     // Larger backing pages reduce Blob.slice().arrayBuffer() calls while the
     // decoder's preferred-read hint keeps channel extraction inside one page
     // whenever possible, avoiding cross-page join/copy work.
-    if (this.cacheBytesValue + length <= PINNED_CACHE_LIMIT_BYTES) {
+    if (this.cacheBytesValue + length <= this.pinnedCacheLimitBytes) {
       this.pages.set(pageIndex, page);
       this.cacheBytesValue += length;
     } else {
@@ -157,12 +167,12 @@ export class BlobByteSource implements RandomAccessByteSource {
       return bytes.subarray(offset, offset + length);
     }
 
-    const firstPageIndex = Math.floor(offset / CACHE_PAGE_SIZE);
-    const lastPageIndex = Math.floor((offset + length - 1) / CACHE_PAGE_SIZE);
+    const firstPageIndex = Math.floor(offset / this.pageSizeBytes);
+    const lastPageIndex = Math.floor((offset + length - 1) / this.pageSizeBytes);
 
     if (firstPageIndex === lastPageIndex) {
       const loaded = await this.page(firstPageIndex);
-      const pageStart = firstPageIndex * CACHE_PAGE_SIZE;
+      const pageStart = firstPageIndex * this.pageSizeBytes;
       const relativeStart = offset - pageStart;
       if (loaded.cacheHit) this.cacheHitBytesValue += length;
       return loaded.page.bytes.subarray(relativeStart, relativeStart + length);
@@ -174,7 +184,7 @@ export class BlobByteSource implements RandomAccessByteSource {
 
     for (let pageIndex = firstPageIndex; pageIndex <= lastPageIndex; pageIndex += 1) {
       const loaded = await this.page(pageIndex);
-      const pageStart = pageIndex * CACHE_PAGE_SIZE;
+      const pageStart = pageIndex * this.pageSizeBytes;
       const relativeStart = Math.max(0, sourceOffset - pageStart);
       const available = loaded.page.bytes.byteLength - relativeStart;
       const copyLength = Math.min(available, length - outputOffset);
@@ -217,9 +227,9 @@ export class BlobByteSource implements RandomAccessByteSource {
       .slice(0, 5);
     return {
       scope: 'main-thread-source-lifetime',
-      pageSizeBytes: CACHE_PAGE_SIZE,
+      pageSizeBytes: this.pageSizeBytes,
       cacheLimitBytes: CACHE_LIMIT_BYTES,
-      pinnedCacheLimitBytes: PINNED_CACHE_LIMIT_BYTES,
+      pinnedCacheLimitBytes: this.pinnedCacheLimitBytes,
       physicalReadCount: count,
       physicalReadMs: total,
       physicalReadMinMs: count > 0 ? Math.min(...durations) : 0,
