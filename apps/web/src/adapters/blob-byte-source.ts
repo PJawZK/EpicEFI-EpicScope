@@ -2,6 +2,7 @@ import {
   validateReadRange,
   type RandomAccessByteSource,
 } from '../../../../core/parsers/byte-source';
+import { latestBoundCacheDiagnosticSnapshot } from '../../../../core/diagnostics/bound-cache-observability';
 
 const DEFAULT_CACHE_PAGE_SIZE = 32 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
@@ -14,7 +15,7 @@ export interface BlobPhysicalReadDiagnostic {
 }
 
 export interface BlobByteSourceRuntimeDiagnostics {
-  readonly scope: 'main-thread-source-lifetime';
+  readonly scope: string;
   readonly pageSizeBytes: number;
   readonly cacheLimitBytes: number;
   readonly pinnedCacheLimitBytes: number;
@@ -261,8 +262,21 @@ export class BlobByteSource implements RandomAccessByteSource {
     const slowestReads = [...this.physicalReadDiagnostics]
       .sort((left, right) => right.durationMs - left.durationMs)
       .slice(0, 5);
+    const boundCache = latestBoundCacheDiagnosticSnapshot();
+    const cacheLines = [
+      `build=${import.meta.env.VITE_EPICSCOPE_BUILD_SHA ?? 'local'}`,
+      '[Bound channel cache]',
+      `boundInstances=${boundCache.boundInstances}`,
+      `rawSources=${boundCache.rawSources}`,
+      `retainAttempts=${boundCache.retainAttempts}`,
+      `retainSuccesses=${boundCache.retainSuccesses}`,
+      `hasCacheChecks=${boundCache.hasCacheChecks}`,
+      ...boundCache.recentEvents.map((event) =>
+        `event=${event.sequence};kind=${event.kind};bound=${event.boundInstanceId};source=${event.sourceInstanceId};channels=${event.channelIds.join(',')};sourceChannels=${event.sourceChannelIds.join(',')};resident=${event.residentCount};residentIds=${event.residentSourceIds.join(',')};start=${event.startSampleIndex ?? '-'};samples=${event.sampleCount ?? '-'};retained=${event.retained ?? '-'};cacheReady=${event.cacheReady ?? '-'};cacheHits=${event.cacheHitChannelIds?.join(',') ?? '-'};physicalReads=${event.physicalReadCount ?? '-'};physicalBytes=${event.physicalBytesRead ?? '-'}`,
+      ),
+    ];
     return {
-      scope: 'main-thread-source-lifetime',
+      scope: ['main-thread-source-lifetime', ...cacheLines].join('\n'),
       pageSizeBytes: this.pageSizeBytes,
       cacheLimitBytes: CACHE_LIMIT_BYTES,
       pinnedCacheLimitBytes: this.pinnedCacheLimitBytes,
