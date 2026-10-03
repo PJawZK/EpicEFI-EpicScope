@@ -1375,6 +1375,16 @@ export function mountAppShell(root: HTMLElement): void {
               validationDiagnosticCpuMs: validated.performance.diagnosticCpuMs,
               validationChecksumBytes: validated.performance.checksumBytes,
               validationMode: validated.validationMode,
+              ...(validated.sidecar ? {
+                sidecarStatus: validated.sidecar.performance.totalMs === 0 ? 'reused' as const : 'built' as const,
+                sidecarTotalMs: validated.sidecar.performance.totalMs,
+                sidecarTransposeMs: validated.sidecar.performance.transposeMs,
+                sidecarWriteMs: validated.sidecar.performance.writeMs,
+                sidecarBytesWritten: validated.sidecar.performance.bytesWritten,
+                sidecarStripeCount: validated.sidecar.manifest.stripes.length,
+                sidecarTargetStripeBytes: validated.sidecar.manifest.targetStripeBytes,
+                sidecarTotalBytes: validated.sidecar.manifest.totalBytes,
+              } : {}),
             });
             setSourceLoadState(
               openButton,

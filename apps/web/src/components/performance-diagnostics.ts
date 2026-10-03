@@ -52,7 +52,16 @@ export interface LoadPerformanceRun {
   readonly validationDiagnosticCpuMs?: number;
   readonly validationChecksumBytes?: number;
   readonly validationMode?: 'serial' | 'parallel';
+  readonly sidecarStatus?: 'built' | 'reused';
+  readonly sidecarTotalMs?: number;
+  readonly sidecarTransposeMs?: number;
+  readonly sidecarWriteMs?: number;
+  readonly sidecarBytesWritten?: number;
+  readonly sidecarStripeCount?: number;
+  readonly sidecarTargetStripeBytes?: number;
+  readonly sidecarTotalBytes?: number;
 }
+
 
 export interface IniLoadPerformanceRun {
   readonly fileName: string;
@@ -134,7 +143,16 @@ export interface ValidationPerformanceRun {
   readonly validationDiagnosticCpuMs: number;
   readonly validationChecksumBytes: number;
   readonly validationMode: 'serial' | 'parallel';
+  readonly sidecarStatus?: 'built' | 'reused';
+  readonly sidecarTotalMs?: number;
+  readonly sidecarTransposeMs?: number;
+  readonly sidecarWriteMs?: number;
+  readonly sidecarBytesWritten?: number;
+  readonly sidecarStripeCount?: number;
+  readonly sidecarTargetStripeBytes?: number;
+  readonly sidecarTotalBytes?: number;
 }
+
 
 export interface PerformanceDiagnosticsController {
   readonly element: HTMLElement;
@@ -351,6 +369,20 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           `validationDiagnosticCpu=${latestLoad.validationDiagnosticCpuMs?.toFixed(2) ?? '0.00'} ms`,
           `validationChecksumBytes=${latestLoad.validationChecksumBytes ?? 0}`,
         );
+        if (latestLoad.sidecarStatus) {
+          lines.push(
+            '[MLG column sidecar]',
+            `status=${latestLoad.sidecarStatus}`,
+            `total=${(latestLoad.sidecarTotalMs ?? 0).toFixed(2)} ms`,
+            `transpose=${(latestLoad.sidecarTransposeMs ?? 0).toFixed(2)} ms`,
+            `write=${(latestLoad.sidecarWriteMs ?? 0).toFixed(2)} ms`,
+            `other=${Math.max(0, (latestLoad.sidecarTotalMs ?? 0) - (latestLoad.sidecarTransposeMs ?? 0) - (latestLoad.sidecarWriteMs ?? 0)).toFixed(2)} ms`,
+            `bytesWritten=${latestLoad.sidecarBytesWritten ?? 0}`,
+            `stripes=${latestLoad.sidecarStripeCount ?? 0}`,
+            `targetStripeBytes=${latestLoad.sidecarTargetStripeBytes ?? 0}`,
+            `storedBytes=${latestLoad.sidecarTotalBytes ?? 0}`,
+          );
+        }
       }
     }
     const latestIniLoad = iniLoadRuns[iniLoadRuns.length - 1];
@@ -747,6 +779,16 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           validationDiagnosticCpuMs: run.validationDiagnosticCpuMs,
           validationChecksumBytes: run.validationChecksumBytes,
           validationMode: run.validationMode,
+          ...(run.sidecarStatus ? {
+            sidecarStatus: run.sidecarStatus,
+            sidecarTotalMs: run.sidecarTotalMs ?? 0,
+            sidecarTransposeMs: run.sidecarTransposeMs ?? 0,
+            sidecarWriteMs: run.sidecarWriteMs ?? 0,
+            sidecarBytesWritten: run.sidecarBytesWritten ?? 0,
+            sidecarStripeCount: run.sidecarStripeCount ?? 0,
+            sidecarTargetStripeBytes: run.sidecarTargetStripeBytes ?? 0,
+            sidecarTotalBytes: run.sidecarTotalBytes ?? 0,
+          } : {}),
         };
         break;
       }
