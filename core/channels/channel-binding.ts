@@ -231,6 +231,24 @@ export function bindChannelCatalogToLog(
     }
   }
 
+  // Older browser workspaces used short user-facing channel names such as
+  // `ini:rpm` or `ini:iat` rather than INI logical keys. Those IDs are not
+  // catalog entries, so the stale-known migration above cannot see them.
+  // Add a legacy shorthand alias only when the normalized display label maps
+  // to exactly one currently bound INI channel and does not collide with a
+  // real current INI logical key.
+  for (const [displayIdentity, candidates] of boundDisplayIndex) {
+    if (candidates.length != 1) continue;
+    if (keyIndex.has(displayIdentity)) continue;
+    const target = candidates[0];
+    if (!target) continue;
+    const legacyId = `ini:${displayIdentity}`;
+    const targetId = stableId(target.logicalKey);
+    if (legacyId !== targetId && !workspaceChannelAliases.has(legacyId)) {
+      workspaceChannelAliases.set(legacyId, targetId);
+    }
+  }
+
   const dataSource = new BoundNumericChannelDataSource(sourceData, logicalToSourceChannelId);
 
   return {

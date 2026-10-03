@@ -222,6 +222,115 @@ describe('INI to log channel binding', () => {
     expect(result.workspaceChannelAliases.has('ini:rpmOtherUnit')).toBe(false);
   });
 
+  it('maps legacy shorthand workspace IDs from unique bound INI display labels', () => {
+    const source = new FakeDataSource();
+    const entries = [
+      {
+        logicalKey: 'RPMValue',
+        sourceName: 'RPMValue',
+        displayName: 'RPM',
+        valueType: 'integer' as const,
+        unit: 'RPM',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'MAPValue',
+        sourceName: 'MAPValue',
+        displayName: 'MAP',
+        valueType: 'number' as const,
+        unit: 'kPa',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'TPSValue',
+        sourceName: 'TPSValue',
+        displayName: 'TPS',
+        valueType: 'number' as const,
+        unit: '%',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'intake',
+        sourceName: 'intake',
+        displayName: 'IAT',
+        valueType: 'number' as const,
+        unit: 'deg C',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'coolant',
+        sourceName: 'coolant',
+        displayName: 'CLT',
+        valueType: 'number' as const,
+        unit: 'deg C',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+    ];
+    const aliasCatalog: ChannelCatalog = {
+      entries,
+      byLogicalKey: new Map(entries.map((entry) => [entry.logicalKey, entry] as const)),
+    };
+
+    const result = bindChannelCatalogToLog(
+      aliasCatalog,
+      [
+        { id: 'mlg:0', sourceName: 'RPM', displayName: 'RPM', valueType: 'integer', unit: 'RPM' },
+        { id: 'mlg:1', sourceName: 'MAP', displayName: 'MAP', valueType: 'number', unit: 'kPa' },
+        { id: 'mlg:2', sourceName: 'TPS', displayName: 'TPS', valueType: 'number', unit: '%' },
+        { id: 'mlg:3', sourceName: 'IAT', displayName: 'IAT', valueType: 'number', unit: 'deg C' },
+        { id: 'mlg:4', sourceName: 'CLT', displayName: 'CLT', valueType: 'number', unit: 'deg C' },
+      ],
+      source,
+    );
+
+    expect(result.workspaceChannelAliases.get('ini:rpm')).toBe('ini:RPMValue');
+    expect(result.workspaceChannelAliases.get('ini:map')).toBe('ini:MAPValue');
+    expect(result.workspaceChannelAliases.get('ini:tps')).toBe('ini:TPSValue');
+    expect(result.workspaceChannelAliases.get('ini:iat')).toBe('ini:intake');
+    expect(result.workspaceChannelAliases.has('ini:coolant')).toBe(false);
+  });
+
+  it('does not create a shorthand alias when the display label collides with a real INI key', () => {
+    const source = new FakeDataSource();
+    const entries = [
+      {
+        logicalKey: 'rpm',
+        sourceName: 'rpm',
+        displayName: 'Legacy RPM',
+        valueType: 'integer' as const,
+        unit: 'RPM',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+      {
+        logicalKey: 'RPMValue',
+        sourceName: 'RPMValue',
+        displayName: 'RPM',
+        valueType: 'integer' as const,
+        unit: 'RPM',
+        availability: 'known-no-data' as const,
+        provenance: { kind: 'ini' as const },
+      },
+    ];
+    const aliasCatalog: ChannelCatalog = {
+      entries,
+      byLogicalKey: new Map(entries.map((entry) => [entry.logicalKey, entry] as const)),
+    };
+
+    const result = bindChannelCatalogToLog(
+      aliasCatalog,
+      [{ id: 'mlg:0', sourceName: 'RPMValue', displayName: 'RPMValue', valueType: 'integer', unit: 'RPM' }],
+      source,
+    );
+
+    expect(result.workspaceChannelAliases.has('ini:rpm')).toBe(false);
+  });
+
   it('leaves ambiguous duplicate labels as log-only when unit cannot resolve them', () => {
     const source = new FakeDataSource();
     const result = bindChannelCatalogToLog(
