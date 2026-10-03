@@ -248,6 +248,7 @@ export function createGraphViewport(): GraphViewportController {
   let pendingChannelsListener: ((channelIds: readonly string[]) => void) | undefined;
   const pendingTraces = new Map<string, PendingTrace>();
   const loadingTraceIds = new Set<string>();
+  const materializingTraceIds = new Set<string>();
   let decodeInFlight = false;
   let decodeGeneration = 0;
   let viewportRefreshTimer: number | undefined;
@@ -872,6 +873,10 @@ export function createGraphViewport(): GraphViewportController {
           physicalReadMs: result.performance.physicalReadMs,
         });
         pending.resolve(true);
+        const activated = activeTraces.get(channelId);
+        if (activated && !activated.statisticsComplete) {
+          window.setTimeout(() => { void materializeActiveChannel(channelId); }, 120);
+        }
       }
 
     } catch (error) {
@@ -889,6 +894,80 @@ export function createGraphViewport(): GraphViewportController {
         // Everything selected while this pass was running is now one batch.
         if (pendingTraces.size > 0) void flushPending();
       }
+    }
+  };
+
+  const materializeActiveChannel = async (channelId: string): Promise<void> => {
+    const dataSource = channelData;
+    const initial = activeTraces.get(channelId);
+    if (!dataSource || !initial || initial.statisticsComplete || materializingTraceIds.has(channelId)) return;
+
+    materializingTraceIds.add(channelId);
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const readStart = now();
+    try {
+      const result = dataSource.readChannelsRange
+        ? await dataSource.readChannelsRange([channelId], 0, dataSource.sampleCount)
+        : {
+            ranges: new Map([[channelId, await dataSource.readChannelRange(
+              channelId,
+              0,
+              dataSource.sampleCount,
+            )]]),
+            performance: {
+              channelCount: 1,
+              cacheHitChannelIds: [] as readonly string[],
+              physicalReadCount: 0,
+              physicalBytesRead: 0,
+              physicalReadMs: 0,
+            },
+          };
+      const readDecodeMs = now() - readStart;
+      if (channelData !== dataSource) return;
+
+      const latest = activeTraces.get(channelId);
+      const range = result.ranges.get(channelId);
+      if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) return;
+
+      const scaleStart = now();
+      const scale = buildStableValueScale(range);
+      const scaleMs = now() - scaleStart;
+      activeTraces.set(channelId, {
+        ...latest,
+        range,
+        scale,
+        fullStatistics: summarizeRange(range),
+        statisticsComplete: true,
+      });
+      envelopeCache.delete(channelId);
+      renderReadout();
+      emitCursorValues();
+      const renderStart = now();
+      draw();
+      const renderMs = now() - renderStart;
+      const completedMs = now();
+      channelPerformanceListener?.({
+        channelId,
+        phase: 'full',
+        startSampleIndex: 0,
+        requestedSampleCount: dataSource.sampleCount,
+        totalMs: completedMs - readStart,
+        readDecodeMs,
+        scaleMs,
+        renderMs,
+        sampleCount: range.values.length,
+        batchSize: 1,
+        cacheHit: result.performance.cacheHitChannelIds.includes(channelId),
+        physicalReadCount: result.performance.physicalReadCount,
+        physicalBytesRead: result.performance.physicalBytesRead,
+        physicalReadMs: result.performance.physicalReadMs,
+      });
+    } catch {
+      // Keep the viewport-first trace usable if complete materialization fails.
+    } finally {
+      materializingTraceIds.delete(channelId);
+      const latest = activeTraces.get(channelId);
+      if (latest && !latest.statisticsComplete) scheduleViewportRefresh();
     }
   };
 
@@ -942,7 +1021,8 @@ export function createGraphViewport(): GraphViewportController {
     const desiredStart = requestRange.startSampleIndex;
     const desiredEnd = desiredStart + requestRange.sampleCount;
     const channelIds = [...activeTraces.entries()]
-      .filter(([, trace]) => !rangeCovers(trace.range, desiredStart, requestRange.sampleCount))
+      .filter(([channelId, trace]) => !materializingTraceIds.has(channelId)
+        && !rangeCovers(trace.range, desiredStart, requestRange.sampleCount))
       .map(([channelId]) => channelId);
     if (channelIds.length === 0) return;
 
@@ -1166,6 +1246,7 @@ export function createGraphViewport(): GraphViewportController {
       window.clearTimeout(viewportRefreshTimer);
       viewportRefreshTimer = undefined;
     }
+    materializingTraceIds.clear();
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
@@ -1315,6 +1396,7 @@ export function createGraphViewport(): GraphViewportController {
       window.clearTimeout(viewportRefreshTimer);
       viewportRefreshTimer = undefined;
     }
+    materializingTraceIds.clear();
     activeTraces.clear();
     envelopeCache.clear();
     renderReadout();
