@@ -20,6 +20,7 @@ interface ResolvedChannel {
 }
 
 interface CachedChannel {
+  readonly channelId: string;
   readonly range: NumericChannelRange;
   readonly bytes: number;
 }
@@ -135,21 +136,53 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     };
   }
 
-  private cached(channelId: string): NumericChannelRange | undefined {
-    const entry = this.decodedCache.get(channelId);
-    if (!entry) return undefined;
-    this.decodedCache.delete(channelId);
-    this.decodedCache.set(channelId, entry);
-    return entry.range;
+  private cachedEntryContaining(
+    channelId: string,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): readonly [string, CachedChannel] | undefined {
+    const requestedEnd = startSampleIndex + sampleCount;
+    let match: readonly [string, CachedChannel] | undefined;
+    for (const entry of this.decodedCache) {
+      const [key, cached] = entry;
+      if (cached.channelId !== channelId) continue;
+      const cachedStart = cached.range.startSampleIndex;
+      const cachedEnd = cachedStart + cached.range.values.length;
+      if (startSampleIndex >= cachedStart && requestedEnd <= cachedEnd) match = [key, cached];
+    }
+    return match;
+  }
+
+  private cached(
+    channelId: string,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): NumericChannelRange | undefined {
+    const match = this.cachedEntryContaining(channelId, startSampleIndex, sampleCount);
+    if (!match) return undefined;
+    const [key, entry] = match;
+    this.decodedCache.delete(key);
+    this.decodedCache.set(key, entry);
+
+    const offset = startSampleIndex - entry.range.startSampleIndex;
+    if (offset === 0 && sampleCount === entry.range.values.length) return entry.range;
+    const end = offset + sampleCount;
+    return {
+      startSampleIndex,
+      timeMs: entry.range.timeMs.slice(offset, end),
+      values: entry.range.values.slice(offset, end),
+      validity: entry.range.validity.slice(offset, end),
+    };
   }
 
   private cache(channelId: string, range: NumericChannelRange): void {
     const bytes = range.values.byteLength;
     if (bytes > DECODED_CHANNEL_CACHE_LIMIT) return;
+    const key = `${channelId}:${range.startSampleIndex}:${range.values.length}`;
 
-    const previous = this.decodedCache.get(channelId);
+    const previous = this.decodedCache.get(key);
     if (previous) {
-      this.decodedCache.delete(channelId);
+      this.decodedCache.delete(key);
       this.decodedCacheBytes -= previous.bytes;
     }
 
@@ -157,14 +190,14 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
       this.decodedCache.size > 0
       && this.decodedCacheBytes + bytes > DECODED_CHANNEL_CACHE_LIMIT
     ) {
-      const oldestId = this.decodedCache.keys().next().value as string | undefined;
-      if (!oldestId) break;
-      const oldest = this.decodedCache.get(oldestId);
-      this.decodedCache.delete(oldestId);
+      const oldestKey = this.decodedCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      const oldest = this.decodedCache.get(oldestKey);
+      this.decodedCache.delete(oldestKey);
       this.decodedCacheBytes -= oldest?.bytes ?? 0;
     }
 
-    this.decodedCache.set(channelId, { range, bytes });
+    this.decodedCache.set(key, { channelId, range, bytes });
     this.decodedCacheBytes += bytes;
   }
 
@@ -332,9 +365,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): boolean {
-    return startSampleIndex === 0
-      && sampleCount === this.sampleCount
-      && this.decodedCache.has(channelId);
+    return this.cachedEntryContaining(channelId, startSampleIndex, sampleCount) !== undefined;
   }
 
   public async readChannelsRange(
@@ -345,7 +376,6 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     const totalStarted = nowMs();
     this.validateRange(startSampleIndex, sampleCount);
     const uniqueIds = [...new Set(channelIds)];
-    const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
     const before = this.source.performanceSnapshot?.();
     const ranges = new Map<string, NumericChannelRange>();
     const cacheHitChannelIds: string[] = [];
@@ -353,13 +383,11 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
 
     const cacheResolveStarted = nowMs();
     for (const channelId of uniqueIds) {
-      if (isFullRange) {
-        const cached = this.cached(channelId);
-        if (cached) {
-          ranges.set(channelId, cached);
-          cacheHitChannelIds.push(channelId);
-          continue;
-        }
+      const cached = this.cached(channelId, startSampleIndex, sampleCount);
+      if (cached) {
+        ranges.set(channelId, cached);
+        cacheHitChannelIds.push(channelId);
+        continue;
       }
       misses.push(this.resolveChannel(channelId, sampleCount));
     }
@@ -369,7 +397,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     const cacheStoreStarted = nowMs();
     for (const [channelId, range] of decoded.ranges) {
       ranges.set(channelId, range);
-      if (isFullRange) this.cache(channelId, range);
+      this.cache(channelId, range);
     }
     const cacheStoreMs = nowMs() - cacheStoreStarted;
 

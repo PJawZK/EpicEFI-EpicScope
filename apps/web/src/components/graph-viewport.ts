@@ -31,6 +31,7 @@ export interface GraphChannelStatistics {
   readonly channelId: string;
   readonly current: number | undefined;
   readonly full: {
+    readonly complete: boolean;
     readonly validCount: number;
     readonly invalidCount: number;
     readonly min: number | undefined;
@@ -105,6 +106,7 @@ interface ActiveTrace {
   readonly range: NumericChannelRange;
   readonly scale: StableValueScale;
   readonly fullStatistics: ReturnType<typeof summarizeRange>;
+  readonly statisticsComplete: boolean;
   readonly color: string;
 }
 
@@ -134,6 +136,11 @@ function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRe
 
 function nearestValue(range: NumericChannelRange, cursorTimeMs: number): number | undefined {
   if (range.timeMs.length === 0) return undefined;
+  const firstTime = range.timeMs[0];
+  const lastTime = range.timeMs[range.timeMs.length - 1];
+  if (firstTime === undefined || lastTime === undefined || cursorTimeMs < firstTime || cursorTimeMs > lastTime) {
+    return undefined;
+  }
   let low = 0;
   let high = range.timeMs.length - 1;
   while (low < high) {
@@ -224,6 +231,8 @@ export function createGraphViewport(): GraphViewportController {
   const loadingTraceIds = new Set<string>();
   let decodeInFlight = false;
   let decodeGeneration = 0;
+  let viewportRefreshTimer: number | undefined;
+  let viewportRefreshGeneration = 0;
   let highZoomSamplePointsVisible = true;
   let displayMode: GraphViewportDisplayMode = 'overlay';
   let assignedChannels: readonly ChannelDefinition[] = [];
@@ -714,94 +723,6 @@ export function createGraphViewport(): GraphViewportController {
     return { ...candidate, phase: 'viewport' };
   };
 
-  const promoteViewportBatchToFull = async (
-    channelIds: readonly string[],
-    generation: number,
-  ): Promise<void> => {
-    const dataSource = channelData;
-    if (!dataSource || channelIds.length === 0) return;
-
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-    if (generation !== decodeGeneration) return;
-
-    const activeIds = channelIds.filter((channelId) => activeTraces.has(channelId));
-    if (activeIds.length === 0) return;
-
-    const now = (): number => globalThis.performance?.now() ?? Date.now();
-    const readStart = now();
-    try {
-      const result = dataSource.readChannelsRange
-        ? await dataSource.readChannelsRange(activeIds, 0, dataSource.sampleCount)
-        : {
-            ranges: new Map(await Promise.all(activeIds.map(async (channelId) => [
-              channelId,
-              await dataSource.readChannelRange(
-                channelId,
-                0,
-                dataSource.sampleCount,
-              ),
-            ] as const))),
-            performance: {
-              channelCount: activeIds.length,
-              cacheHitChannelIds: [] as readonly string[],
-              physicalReadCount: 0,
-              physicalBytesRead: 0,
-              physicalReadMs: 0,
-            },
-          };
-      const readDecodeMs = now() - readStart;
-      if (generation !== decodeGeneration) return;
-
-      const cacheHits = new Set(result.performance.cacheHitChannelIds);
-      const scaleTimes = new Map<string, number>();
-      for (const channelId of activeIds) {
-        const existing = activeTraces.get(channelId);
-        const range = result.ranges.get(channelId);
-        if (!existing || !range) continue;
-        const scaleStart = now();
-        const scale = buildStableValueScale(range);
-        scaleTimes.set(channelId, now() - scaleStart);
-        activeTraces.set(channelId, {
-          ...existing,
-          range,
-          scale,
-          fullStatistics: summarizeRange(range),
-        });
-        envelopeCache.delete(channelId);
-      }
-
-      renderReadout();
-      emitCursorValues();
-      const renderStart = now();
-      draw();
-      const renderMs = now() - renderStart;
-      const completedMs = now();
-
-      for (const channelId of activeIds) {
-        const range = result.ranges.get(channelId);
-        if (!range || !activeTraces.has(channelId)) continue;
-        channelPerformanceListener?.({
-          channelId,
-          phase: 'full',
-          startSampleIndex: 0,
-          requestedSampleCount: dataSource.sampleCount,
-          totalMs: completedMs - readStart,
-          readDecodeMs,
-          scaleMs: scaleTimes.get(channelId) ?? 0,
-          renderMs,
-          sampleCount: range.values.length,
-          batchSize: activeIds.length,
-          cacheHit: cacheHits.has(channelId),
-          physicalReadCount: result.performance.physicalReadCount,
-          physicalBytesRead: result.performance.physicalBytesRead,
-          physicalReadMs: result.performance.physicalReadMs,
-        });
-      }
-    } catch {
-      // The viewport trace is already usable. Full-range promotion is best-effort.
-    }
-  };
-
   const flushPending = async (): Promise<void> => {
     if (decodeInFlight || !channelData || pendingTraces.size === 0) return;
 
@@ -875,6 +796,7 @@ export function createGraphViewport(): GraphViewportController {
           range,
           scale,
           fullStatistics: summarizeRange(range),
+          statisticsComplete: requestRange.phase === 'full',
           color,
         });
       }
@@ -912,9 +834,6 @@ export function createGraphViewport(): GraphViewportController {
         pending.resolve(true);
       }
 
-      if (requestRange.phase === 'viewport') {
-        void promoteViewportBatchToFull(channelIds, generation);
-      }
     } catch (error) {
       if (generation === decodeGeneration) {
         overlay.hidden = false;
@@ -931,6 +850,123 @@ export function createGraphViewport(): GraphViewportController {
         if (pendingTraces.size > 0) void flushPending();
       }
     }
+  };
+
+  const rangeCovers = (
+    range: NumericChannelRange,
+    startSampleIndex: number,
+    sampleCount: number,
+  ): boolean => {
+    const rangeEnd = range.startSampleIndex + range.values.length;
+    return startSampleIndex >= range.startSampleIndex
+      && startSampleIndex + sampleCount <= rangeEnd;
+  };
+
+  const refreshActiveViewportRanges = async (generation: number): Promise<void> => {
+    const dataSource = channelData;
+    if (!dataSource || !viewport || activeTraces.size === 0) return;
+    if (decodeInFlight) {
+      if (generation === viewportRefreshGeneration) scheduleViewportRefresh();
+      return;
+    }
+
+    const requestRange = currentChannelReadRange();
+    const channelIds = [...activeTraces.entries()]
+      .filter(([, trace]) => !rangeCovers(
+        trace.range,
+        requestRange.startSampleIndex,
+        requestRange.sampleCount,
+      ))
+      .map(([channelId]) => channelId);
+    if (channelIds.length === 0) return;
+
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const readStart = now();
+    try {
+      const result = dataSource.readChannelsRange
+        ? await dataSource.readChannelsRange(
+            channelIds,
+            requestRange.startSampleIndex,
+            requestRange.sampleCount,
+          )
+        : {
+            ranges: new Map(await Promise.all(channelIds.map(async (channelId) => [
+              channelId,
+              await dataSource.readChannelRange(
+                channelId,
+                requestRange.startSampleIndex,
+                requestRange.sampleCount,
+              ),
+            ] as const))),
+            performance: {
+              channelCount: channelIds.length,
+              cacheHitChannelIds: [] as readonly string[],
+              physicalReadCount: 0,
+              physicalBytesRead: 0,
+              physicalReadMs: 0,
+            },
+          };
+      const readDecodeMs = now() - readStart;
+      if (generation !== viewportRefreshGeneration) return;
+
+      const cacheHits = new Set(result.performance.cacheHitChannelIds);
+      const scaleTimes = new Map<string, number>();
+      for (const channelId of channelIds) {
+        const existing = activeTraces.get(channelId);
+        const range = result.ranges.get(channelId);
+        if (!existing || !range) continue;
+        const scaleStart = now();
+        const scale = buildStableValueScale(range);
+        scaleTimes.set(channelId, now() - scaleStart);
+        activeTraces.set(channelId, {
+          ...existing,
+          range,
+          scale,
+          fullStatistics: summarizeRange(range),
+          statisticsComplete: requestRange.phase === 'full',
+        });
+        envelopeCache.delete(channelId);
+      }
+
+      renderReadout();
+      emitCursorValues();
+      const renderStart = now();
+      draw();
+      const renderMs = now() - renderStart;
+      const completedMs = now();
+      for (const channelId of channelIds) {
+        const range = result.ranges.get(channelId);
+        if (!range || !activeTraces.has(channelId)) continue;
+        channelPerformanceListener?.({
+          channelId,
+          phase: requestRange.phase,
+          startSampleIndex: requestRange.startSampleIndex,
+          requestedSampleCount: requestRange.sampleCount,
+          totalMs: completedMs - readStart,
+          readDecodeMs,
+          scaleMs: scaleTimes.get(channelId) ?? 0,
+          renderMs,
+          sampleCount: range.values.length,
+          batchSize: channelIds.length,
+          cacheHit: cacheHits.has(channelId),
+          physicalReadCount: result.performance.physicalReadCount,
+          physicalBytesRead: result.performance.physicalBytesRead,
+          physicalReadMs: result.performance.physicalReadMs,
+        });
+      }
+    } catch {
+      // Keep the last decoded range visible if a viewport refill fails.
+    }
+  };
+
+  const scheduleViewportRefresh = (): void => {
+    viewportRefreshGeneration += 1;
+    const generation = viewportRefreshGeneration;
+    if (viewportRefreshTimer !== undefined) window.clearTimeout(viewportRefreshTimer);
+    viewportRefreshTimer = window.setTimeout(() => {
+      viewportRefreshTimer = undefined;
+      void refreshActiveViewportRanges(generation);
+    }, 90);
   };
 
   const activateCachedChannel = async (
@@ -971,6 +1007,7 @@ export function createGraphViewport(): GraphViewportController {
         range,
         scale,
         fullStatistics: summarizeRange(range),
+        statisticsComplete: true,
         color,
       });
       overlay.hidden = true;
@@ -1020,6 +1057,11 @@ export function createGraphViewport(): GraphViewportController {
         }
       : undefined;
     cancelPending();
+    viewportRefreshGeneration += 1;
+    if (viewportRefreshTimer !== undefined) {
+      window.clearTimeout(viewportRefreshTimer);
+      viewportRefreshTimer = undefined;
+    }
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
@@ -1060,6 +1102,8 @@ export function createGraphViewport(): GraphViewportController {
         range,
         scale,
         fullStatistics: summarizeRange(range),
+        statisticsComplete: range.startSampleIndex === 0
+          && range.values.length === channelData?.sampleCount,
         color,
       });
       activated.push(channelId);
@@ -1162,6 +1206,11 @@ export function createGraphViewport(): GraphViewportController {
 
   const clearChannels = (): void => {
     cancelPending();
+    viewportRefreshGeneration += 1;
+    if (viewportRefreshTimer !== undefined) {
+      window.clearTimeout(viewportRefreshTimer);
+      viewportRefreshTimer = undefined;
+    }
     activeTraces.clear();
     envelopeCache.clear();
     renderReadout();
@@ -1182,6 +1231,7 @@ export function createGraphViewport(): GraphViewportController {
 
   const setViewport = (nextViewport: TimelineViewport | undefined): void => {
     viewport = nextViewport;
+    scheduleViewportRefresh();
     draw();
   };
 
@@ -1234,7 +1284,7 @@ export function createGraphViewport(): GraphViewportController {
       return {
         channelId,
         current: nearestValue(trace.range, cursorTimeMs),
-        full,
+        full: { ...full, complete: trace.statisticsComplete },
         visible: {
           validCount: visible.validCount,
           min: visible.min,
