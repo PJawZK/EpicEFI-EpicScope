@@ -219,12 +219,22 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
 
         let batchLastIndex = batchFirstIndex;
         let batchEndByte = firstRecordOffset + BLOCK_HEADER_LENGTH + maxFieldEnd;
+        const readAlignmentBytes = this.source.preferredReadAlignmentBytes;
+        const alignedBoundaryEnd = readAlignmentBytes && readAlignmentBytes > 0
+          ? (Math.floor(batchStartByte / readAlignmentBytes) + 1) * readAlignmentBytes
+          : undefined;
         while (batchLastIndex + 1 < endSampleIndex) {
           const nextIndex = batchLastIndex + 1;
           const nextRecordOffset = this.recordIndex.offsets[nextIndex];
           if (nextRecordOffset === undefined) break;
           const nextEndByte = nextRecordOffset + BLOCK_HEADER_LENGTH + maxFieldEnd;
           if (nextEndByte - batchStartByte > MAX_BATCH_SPAN) break;
+          // A paged source can return a subarray without copying when a read
+          // stays within one backing page. Stop before the next page boundary
+          // instead of forcing BlobByteSource to allocate/join an ~8 MiB span.
+          // If the first record itself crosses a boundary, keep that unavoidable
+          // small cross-page read but do not add more records to it.
+          if (alignedBoundaryEnd !== undefined && nextEndByte > alignedBoundaryEnd) break;
           batchLastIndex = nextIndex;
           batchEndByte = nextEndByte;
         }

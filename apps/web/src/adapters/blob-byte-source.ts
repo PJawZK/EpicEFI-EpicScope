@@ -25,6 +25,7 @@ export interface BlobByteSourceStats {
 
 export class BlobByteSource implements RandomAccessByteSource {
   readonly size: number;
+  readonly preferredReadAlignmentBytes: number | undefined;
   private readonly blob: Blob;
   private readCountValue = 0;
   private bytesReadValue = 0;
@@ -41,6 +42,9 @@ export class BlobByteSource implements RandomAccessByteSource {
   public constructor(blob: Blob) {
     this.blob = blob;
     this.size = blob.size;
+    this.preferredReadAlignmentBytes = this.size > CACHE_LIMIT_BYTES
+      ? CACHE_PAGE_SIZE
+      : undefined;
   }
 
   private async loadWholeBuffer(): Promise<Uint8Array> {

@@ -6,6 +6,12 @@ export interface ByteSourcePerformanceSnapshot {
 
 export interface RandomAccessByteSource {
   readonly size: number;
+  /**
+   * Optional byte boundary that is cheap for the source to read within.
+   * Callers may use this to avoid requesting spans that force the source to
+   * join/copy multiple backing pages. This is a performance hint only.
+   */
+  readonly preferredReadAlignmentBytes?: number;
   read(offset: number, length: number): Promise<Uint8Array>;
   performanceSnapshot?(): ByteSourcePerformanceSnapshot;
 }
