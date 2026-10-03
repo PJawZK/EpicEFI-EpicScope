@@ -52,10 +52,6 @@ jobs:
           text = text.replace('Math.floor((offset + length - 1) / CACHE_PAGE_SIZE)', 'Math.floor((offset + length - 1) / this.pageSizeBytes)')
           text = text.replace('pageSizeBytes: CACHE_PAGE_SIZE,', 'pageSizeBytes: this.pageSizeBytes,')
           text = text.replace('pinnedCacheLimitBytes: PINNED_CACHE_LIMIT_BYTES,', 'pinnedCacheLimitBytes: this.pinnedCacheLimitBytes,')
-          text = text.replace(
-              '// - the first ~64 MiB admitted stays pinned between sequential passes;\n    // - one 32 MiB rolling page preserves the boundary page for the next batch.\n    //\n    // Larger backing pages reduce Blob.slice().arrayBuffer() calls while the\n    // decoder\'s preferred-read hint keeps channel extraction inside one page',
-              '// - the prefix admitted within the pinned budget stays resident between passes;\n    // - one rolling page preserves the boundary page for the next batch.\n    //\n    // The default 32 MiB backing pages reduce Blob.slice().arrayBuffer() calls while\n    // callers may choose a smaller page size for a different access pattern. The\n    // preferred-read hint keeps channel extraction inside one page'
-          )
           path.write_text(text)
 
           worker = Path('apps/web/src/workers/mlg-import.worker.ts')
@@ -70,7 +66,20 @@ jobs:
           )
           worker.write_text(text)
           PY
-      - run: npm run typecheck
+      - name: Type-check and capture failure
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > typecheck-worker-experiment.txt 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add typecheck-worker-experiment.txt
+            git commit -m "Diag: capture worker experiment typecheck failure"
+            git push origin HEAD:perf/worker-16mib-pages
+            exit $status
+          fi
       - run: npm test
       - run: npm run build
       - name: Commit patch
