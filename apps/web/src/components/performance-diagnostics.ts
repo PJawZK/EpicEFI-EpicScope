@@ -2,7 +2,10 @@ import {
   clearChannelDecodePerformance,
   latestChannelDecodePerformance,
 } from '../../../../core/diagnostics/channel-decode-performance';
-import { latestBlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
+import {
+  latestBlobByteSourceRuntimeDiagnostics,
+  type BlobByteSourceRuntimeDiagnostics,
+} from '../adapters/blob-byte-source';
 
 export interface LoadPerformanceRun {
   readonly fileName: string;
@@ -41,6 +44,7 @@ export interface LoadPerformanceRun {
   readonly cacheHitBytes: number;
   readonly cacheBytes: number;
   readonly cachePageCount: number;
+  readonly workerSourceRuntime?: BlobByteSourceRuntimeDiagnostics;
   readonly fullyValidatedMs?: number;
   readonly validationMs?: number;
   readonly validationReadMs?: number;
@@ -311,6 +315,27 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `cacheBytes=${latestLoad.cacheBytes}`,
         `cachePages=${latestLoad.cachePageCount}`,
       );
+      if (latestLoad.workerSourceRuntime) {
+        const worker = latestLoad.workerSourceRuntime;
+        lines.push(
+          '',
+          '[Worker Blob source]',
+          'scope=worker-index-source-lifetime',
+          `pageSizeBytes=${worker.pageSizeBytes}`,
+          `cacheLimitBytes=${worker.cacheLimitBytes}`,
+          `pinnedCacheLimitBytes=${worker.pinnedCacheLimitBytes}`,
+          `physicalReads=${worker.physicalReadCount}`,
+          `physicalReadMs=${worker.physicalReadMs.toFixed(2)} ms`,
+          `physicalReadMinMs=${worker.physicalReadMinMs.toFixed(2)} ms`,
+          `physicalReadAverageMs=${worker.physicalReadAverageMs.toFixed(2)} ms`,
+          `physicalReadMaxMs=${worker.physicalReadMaxMs.toFixed(2)} ms`,
+        );
+        worker.slowestReads.forEach((read, index) => {
+          lines.push(
+            `slowRead${index + 1}=offset:${read.offset};bytes:${read.bytes};ms:${read.durationMs.toFixed(2)}`
+          );
+        });
+      }
       if (latestLoad.fullyValidatedMs !== undefined) {
         lines.push(
           `fullyValidated=${latestLoad.fullyValidatedMs.toFixed(2)} ms`,

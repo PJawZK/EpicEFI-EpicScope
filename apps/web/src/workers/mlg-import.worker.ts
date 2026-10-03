@@ -85,6 +85,7 @@ scope.onmessage = (event): void => {
           fields: headerResult.fields,
           recordIndex: scanResult.records,
           sourceStats: source.stats(),
+          sourceRuntime: source.runtimeDiagnostics(),
           importTotalMs: now() - started,
           performance: {
             scanMode: scanResult.performance.scanMode,

@@ -9,7 +9,10 @@ import type {
   MlgRecordIndex,
 } from '../../../../core/parsers/mlg/mlg-records';
 import type { MlgParsePerformance } from '../../../../core/parsers/mlg/mlg-parser';
-import type { BlobByteSourceStats } from '../adapters/blob-byte-source';
+import type {
+  BlobByteSourceRuntimeDiagnostics,
+  BlobByteSourceStats,
+} from '../adapters/blob-byte-source';
 
 export interface MlgWorkerImportRequest {
   readonly type: 'import';
@@ -30,6 +33,7 @@ export interface MlgWorkerIndexedPayload {
   readonly recordIndex: MlgRecordIndex;
   readonly performance: MlgParsePerformance;
   readonly sourceStats: BlobByteSourceStats;
+  readonly sourceRuntime: BlobByteSourceRuntimeDiagnostics;
   readonly importTotalMs: number;
 }
 
