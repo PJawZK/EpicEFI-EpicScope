@@ -1,0 +1,478 @@
+name: Temporary current-state documentation refresh
+
+on:
+  push:
+    branches:
+      - docs/current-state-2026-10-03
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/current-state-2026-10-03
+          fetch-depth: 0
+      - name: Refresh current-state documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              text = text[:a] + replacement.rstrip() + "\n\n" + text[b:]
+              p.write_text(text)
+
+          handoff = '''# EpicScope Handoff
+
+## Repository
+
+`PJawZK/EpicEFI-EpicScope`
+
+## Authoritative branch
+
+`main`
+
+Implementation baseline entering this documentation refresh:
+
+`3f0e3c76ceb012bcacc6ee6add55b587a703d414`
+
+That baseline is the merge of PR #130, **Perf: remove opportunistic predecode experiment**. The documentation-only merge that updates this handoff becomes the newer authoritative `main`; no application behavior is changed by this documentation refresh itself.
+
+## Hosted application
+
+`https://pjawzk.github.io/EpicEFI-EpicScope/`
+
+GitHub Actions remains the required Web validation path and GitHub Pages remains the project-owner test surface. Normal project-owner testing does not require a local clone, Node.js or npm.
+
+## Current project position
+
+EpicScope Web has a working large-log MLG v1/v2 data path, INI-backed channel catalog/binding, reusable application workspaces, exact-log persistence, multi-pane graph/timeline workflows, large-log diagnostics, and an actively measured performance path.
+
+The current engineering focus is no longer viewport-fill tuning or opportunistic channel predecode. The latest experiments showed that predecoding arbitrary channel groups only moves cost into startup and therefore does not solve the real requirement: after a log is open, arbitrary channel access should not require repeated multi-second traversals of the original row-oriented MLG.
+
+The active performance rule is now:
+
+> **Do not make startup slower merely to make selected channels faster later.**
+
+Fast initial MLG open remains valuable in its own right. The next architectural investigation should reduce repeated source traversal by reusing work already performed during initial load/indexing, or by introducing a better post-index access representation that does not front-load arbitrary channel decoding.
+
+After this performance direction is proven and stabilized, perform the planned repository/file-structure audit for dead/obsolete code, duplicated responsibilities, and files that have accumulated beyond a healthy modular size.
+
+## Current large-log benchmark authority
+
+Primary benchmark log:
+
+`2026-07-14_22.07.05.mlg`
+
+Known structure:
+
+- size: 1,193,898,186 bytes;
+- MLVLG v2;
+- 320,458 records;
+- 1,389 logged channels;
+- fixed record scan;
+- row-oriented source layout;
+- source Blob page size: 32 MiB;
+- about 96 MiB source-page cache ceiling;
+- about 64 MiB pinned-source allowance.
+
+### Authoritative cold low-spec baseline — 2026-10-03
+
+Environment:
+
+- Chromium 150 / Linux;
+- 1,366×645 DPR 1;
+- 2 logical threads;
+- 4 GB RAM class machine;
+- browser history/cache and EpicScope decoded-channel cache cleared before loading;
+- no `predecode` parameter;
+- one reusable workspace;
+- 12 assigned visible channels, 11 renderable/unique requested channels, one known-unavailable channel;
+- zero runtime errors.
+
+Measured initial MLG load/index:
+
+- total: **4,885.7 ms**;
+- record read: **4,571.3 ms**;
+- record CPU: **135.7 ms**;
+- physical reads: **36**;
+- physical bytes: **1,193,898,186**.
+
+Measured workspace restore:
+
+- total: **6,007.3 ms**;
+- shared 11-channel batch: **5,213.5 ms**;
+- source-read await: **4,442.7 ms**;
+- decode/transform: **748.9 ms**;
+- physical reads: **36**;
+- physical bytes: **1,193,898,186**.
+
+Deferred serial validation:
+
+- validation: **6,577.8 ms**;
+- validation read: **4,415.1 ms**;
+- checksum CPU: **2,114.0 ms**;
+- fully validated: **18,034.4 ms** from initial open start.
+
+This is the new low-spec cold baseline for future performance work. Storage variability remains material, so compare physical read time/bytes separately from decode/transform CPU.
+
+## Predecode experiment — concluded and removed
+
+PRs #127–#129 explored opportunistic full-range predecode batches of 32, 64 and 128 channels during the existing workspace source traversal. The experiment proved an important fact: more channels can be decoded during the same 36-read / 1.194 GB physical traversal without adding another source pass.
+
+It also proved why this is not the product solution:
+
+- the extra decoding increases startup CPU/memory-side work;
+- 32 channels was relatively cheap, 64 materially more expensive, and 128 clearly crossed into diminishing returns on the 2-thread laptop;
+- only preselected/hot channels benefit afterward;
+- arbitrary channels outside that set still require their own expensive access;
+- choosing larger sets merely moves per-channel cost into startup rather than removing the underlying row-oriented access problem.
+
+PR #130 removed the opportunistic predecode experiment and its experiment-only resident retention. Do not restore `?predecode=32/64/128`, runtime hot-set selection, or equivalent startup front-loading without a new architectural decision and evidence that the underlying trade has changed.
+
+## Current channel/cache behavior
+
+Retained behavior after PR #130:
+
+- workspace restore loads only the channels actually requested by the visible workspace;
+- visible workspace channels share one full-range multi-channel decode batch;
+- the independent persistent decoded-channel cache remains available for channels already decoded in prior use;
+- that persistent cache is bounded to **128 stored columns**;
+- Settings exposes **Clear channel cache** for repeatable cold-cache testing and manual reset;
+- known-but-unavailable INI channels remain assigned/visible as unavailable rather than being silently removed.
+
+The persistent cache is an optimization for already-decoded data. It is not considered a solution to initial arbitrary-channel access latency.
+
+## Performance implementation history that matters
+
+Important measured steps include:
+
+- adaptive CRC validation: serial on <=3 threads, parallel on >=4 threads;
+- shared full-range multi-channel workspace restore;
+- viewport-first/progressive/resident-channel experiments for arbitrary channels;
+- range/chunk reuse and interaction coalescing experiments;
+- persistent decoded-column cache with a bounded 128-column limit and explicit clear control;
+- PRs #127–#129: opportunistic predecode A/B experiment;
+- PR #130: complete rollback/removal of opportunistic predecode as the active strategy.
+
+Earlier channel-read concurrency/pipelining also regressed behavior and was reverted. Do not reintroduce either concurrency or startup predecode simply because it can hide one benchmark symptom.
+
+## Exact next performance task
+
+Investigate approaches that improve **first use of arbitrary channels without increasing normal startup work**.
+
+Highest-value architectural question:
+
+> Can EpicScope avoid rereading essentially the whole row-oriented MLG for each newly requested full-history channel by reusing information/bytes/work already produced during the initial load/index pass, or by creating a compact access structure whose construction does not materially worsen startup?
+
+Candidate directions to investigate and benchmark, not pre-approved implementations:
+
+- retain/transfer reusable index/source information from the worker-side initial scan so main-thread channel extraction does not independently cold-traverse the file;
+- opportunistically build a compact row/block access index during work already required for initial parsing, without decoding arbitrary channels up front;
+- evaluate a post-index transient or persistent representation that improves arbitrary column extraction while respecting memory and startup budgets;
+- determine whether validation can consume bytes already read without adding another complete source pass, but only if this does not extend the critical open path;
+- measure whether source ownership can be consolidated enough to reduce the current worker/main-thread duplicate physical traffic.
+
+Acceptance discipline:
+
+- no startup regression should be accepted merely to improve a selected subset of channels;
+- arbitrary channel selection must be tested from a truly cold decoded-channel cache;
+- compare physical source bytes/read count/read time separately from decode CPU;
+- desktop and low-spec laptop must both be checked;
+- preserve local-only behavior and current workspace/channel semantics.
+
+## Current workspace / source-context state
+
+Implemented and retained:
+
+- INI parsing and normalized channel catalog;
+- stable logical `ini:<logicalKey>` identity;
+- conservative INI↔MLG binding;
+- known/no-data channels remain visible;
+- usable log-only channels remain usable;
+- MLG remains authoritative for recorded values and validity;
+- reusable application workspace persists named workspaces, layouts/geometry and stable channel assignments independently of exact log identity;
+- exact-log persistence remains separate for cursor/viewport/A-B/markers/ranges;
+- restored catalog/workspace state is distinct from freshly loaded state;
+- Settings can unload the persisted INI catalog for repeatable fresh-load testing;
+- Settings can clear the persistent decoded-channel cache independently.
+
+MSQ tune-value/table enrichment remains later work. CSV remains deferred.
+
+## Graph / timeline state
+
+Implemented and working:
+
+- multiple workspaces;
+- fixed and freeform multi-pane layouts;
+- shared viewport/cursor/timeline/A-B navigation;
+- active-pane context;
+- graph/timeline source markers and user markers;
+- saved ranges and view history;
+- high-zoom raw-sample rendering and zoomed-out envelope rendering;
+- Now/Min/Max and channel details;
+- source validity handling;
+- timeline overview and graph interaction remain independent of the abandoned predecode experiment.
+
+Canvas 2D remains a Web implementation choice, not a Linux/Android architecture commitment.
+
+## Current diagnostic/validation rules
+
+Performance diagnostics are the Web measurement authority. Always record/compare:
+
+- workload/log;
+- browser/hardware class and logical thread count;
+- cold/warm decoded-channel cache state;
+- requested/unique channel count;
+- physical read count/bytes/time;
+- source-read await vs decode/transform time;
+- initial load time;
+- workspace restore time;
+- arbitrary first-channel activation time when testing that path;
+- subjective interaction behavior;
+- memory/GC pressure on the 4 GB laptop where observable.
+
+Do not claim MegaLogViewer's internal implementation strategy as fact; it is only a behavioral comparison target. The practical product goal is to keep EpicScope's initial MLG load competitive/faster while improving arbitrary-channel access through EpicScope's own measured architecture.
+
+## UI/reference constraints still in force
+
+- authoritative Logger/Analyzer visual/interaction reference remains `EpicHub-Tablet-Landscape-0.0.45(2).html`;
+- use TunerStudio/MegaLogViewer channel terminology where practical;
+- do not change established UI colors in response to apparent visibility/performance reports unless explicitly requested;
+- performance work must not silently alter established interaction semantics.
+
+## Repository/workflow constraints
+
+- `main` is authoritative;
+- normal implementation uses a focused branch/PR;
+- run type-check, tests and production build before merge;
+- verify post-merge Web CI and GitHub Pages deployment;
+- temporary branch-only patch/validation workflows or scripts must remove themselves before PR/final diff;
+- avoid accidental no-op commits on `main`;
+- project-owner testing is hosted; do not require a local clone.
+
+## Planned code-structure audit after performance direction stabilizes
+
+Once the replacement performance approach is proven and reasonably optimized, audit the complete application source tree for:
+
+- obsolete experiment code and dead branches;
+- duplicated helpers/paths left by iterative performance work;
+- unused files/exports;
+- responsibilities that have drifted into the wrong architectural layer;
+- very large files that should be split into coherent modules;
+- temporary compatibility or diagnostic code that no longer earns its complexity;
+- test coverage around any cleanup-sensitive behavior.
+
+Do not perform destructive cleanup merely for line-count aesthetics; preserve behavior and use the architecture documents as the ownership authority.
+
+## Architecture authority
+
+Read before significant implementation:
+
+1. `docs/HANDOFF.md`
+2. `docs/PRODUCT.md`
+3. `docs/ARCHITECTURE.md`
+4. `docs/FILE_ARCHITECTURE.md`
+5. `docs/DATA_MODEL.md`
+6. `docs/UI_REFERENCE.md`
+7. `docs/LOG_MLG_PLAN.md`
+8. `docs/PERFORMANCE.md`
+9. `docs/PLATFORMS.md`
+10. `docs/ROADMAP.md`
+11. `docs/WORKFLOW.md`
+12. `docs/DECISIONS.md`
+
+## Continuation instruction
+
+A new chat should be able to start with:
+
+> Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue from there.
+
+Use the repository handoff and current repository state as authority. Do not reconstruct present architecture from older chats or superseded performance experiments.
+'''
+          Path('docs/HANDOFF.md').write_text(handoff)
+
+          replace_between('README.md', '## Status', '## Web delivery', '''## Status
+
+EpicScope Web is an active hosted application with MLG v1/v2 large-log import, INI-backed channel catalog/binding, reusable application workspaces, multi-pane graph/timeline tooling, exact-log persistence, performance diagnostics, and bounded persistent decoded-channel caching.
+
+The current performance authority is the 1.19 GB / 320,458-record MLG benchmark on both desktop and a deliberately weak 2-thread / 4 GB laptop. The latest clean low-spec cold run, after clearing browser and decoded-channel caches, opened/indexed the MLG in about **4.89 s** and restored 11 unique visible workspace channels in about **6.01 s**.
+
+The opportunistic `predecode=32/64/128` experiment has been removed. It proved that more channels can share one physical source traversal, but it only shifts arbitrary-channel work into startup and benefits a selected subset. The active direction is therefore to improve arbitrary first-channel access **without making normal startup slower**, ideally by reusing work from the initial load/index path or by improving post-index access to the row-oriented MLG source.
+
+After that performance direction is proven and stabilized, the next planned maintenance task is a complete file/module audit for obsolete code, duplicated responsibilities, and oversized accumulated files.
+
+See [`HANDOFF.md`](docs/HANDOFF.md) for the exact authoritative continuation state, cold baseline, experiment history, and next performance question.''')
+
+          replace_between('docs/PERFORMANCE.md', '## Current Web benchmark evidence', '## Benchmark categories', '''## Current Web benchmark evidence
+
+The primary large-log benchmark remains `2026-07-14_22.07.05.mlg`:
+
+- 1,193,898,186 bytes;
+- 320,458 records;
+- 1,389 channels;
+- MLVLG v2;
+- row-oriented layout, so arbitrary full-history column extraction can require reading broad portions of the original file.
+
+Current Web source parameters include 32 MiB Blob pages, an approximately 96 MiB source cache, and an approximately 64 MiB pinned-source allowance. A separate persistent decoded-channel cache is bounded to 128 stored columns and can be cleared from Settings.
+
+### Authoritative low-spec cold baseline — 2026-10-03
+
+Environment: Chromium 150 on Linux, 1,366×645 DPR 1, 2 logical threads, 4 GB RAM class. Browser history/cache and EpicScope decoded-channel cache were cleared before loading. No predecode parameter was used.
+
+Initial load/index:
+
+- total: **4,885.7 ms**;
+- record read: **4,571.3 ms**;
+- record CPU: **135.7 ms**;
+- 36 physical reads / **1,193,898,186 bytes**.
+
+Workspace restore for 11 unique requested channels:
+
+- total: **6,007.3 ms**;
+- shared batch: **5,213.5 ms**;
+- source-read await: **4,442.7 ms**;
+- decode/transform: **748.9 ms**;
+- 36 physical reads / **1,193,898,186 bytes**.
+
+Deferred serial validation:
+
+- validation: **6,577.8 ms**;
+- validation read: **4,415.1 ms**;
+- checksum CPU: **2,114.0 ms**;
+- fully validated: **18,034.4 ms** from initial open start.
+
+The baseline confirms that cold low-spec performance is primarily source-I/O dominated. INI parsing/binding and UI population are secondary costs.
+
+### Desktop class
+
+Desktop runs on the same 1.19 GB source remain dramatically faster (roughly ~1 s class for initial load and shared workspace restore in representative runs), demonstrating that the same architecture is highly sensitive to storage/hardware throughput. Desktop results remain a regression check, but low-spec hardware is the acceptance gate for changes that affect I/O, allocation or scheduling.
+
+### Opportunistic predecode experiment — rejected direction
+
+A/B experiments decoded total batches of 32, 64 and 128 channels during the existing workspace traversal. The physical traversal remained a single 36-read / ~1.194 GB pass, but extra CPU/memory-side work increased with batch size. More importantly, only the preselected channels became cheap afterward; arbitrary channels outside the set retained the original cost.
+
+The experiment therefore demonstrated a useful mechanism but a poor product trade: **startup work was shifted, not removed**. PR #130 removed the predecode experiment. Future work must not front-load arbitrary channel subsets merely to improve later selection latency.
+
+### Current interpretation and optimization target
+
+The active problem is not graph rendering. It is repeated access to a row-oriented 1.19 GB source when arbitrary full-history channels are requested.
+
+Current priority is to investigate methods that improve arbitrary first-use access without worsening the normal cold open path, especially:
+
+- reusing worker/index work or source knowledge produced during initial load;
+- reducing duplicate worker/main-thread physical traversal where possible;
+- building compact access/index information during already-required work rather than decoding speculative channels;
+- evaluating transient or persistent post-index representations only if their build/startup/memory cost is demonstrably better than the problem they solve;
+- avoiding extra validation reads if checksum/diagnostic work can safely consume bytes already read without extending time-to-usable.
+
+The persistent decoded-channel cache remains useful for channels already decoded once, but it is not considered a solution to first-use arbitrary-channel latency.
+
+The performance acceptance rule is explicit: **do not make startup slower merely to make selected channels faster later.**''')
+
+          replace_between('docs/ARCHITECTURE.md', '<!-- CURRENT_STATE:web-active-channel-data-path:START -->', '<!-- CURRENT_STATE:web-active-channel-data-path:END -->', '''<!-- CURRENT_STATE:web-active-channel-data-path:START -->
+## Current Web large-log data path
+
+The browser implementation currently distinguishes source indexing, workspace restore, and later arbitrary channel access:
+
+- initial MLG loading/indexing performs the required source scan without speculative arbitrary-channel predecode;
+- saved/assigned visible workspace channels are decoded as one shared full-range multi-channel batch before pane activation, amortizing one row-oriented source traversal across the channels actually requested;
+- a bounded persistent decoded-channel cache may reuse channels that have already been decoded, but it is not allowed to redefine normal startup around a speculative hot set;
+- the cache is bounded and explicitly clearable so it does not become an unbounded hidden dependency for correctness or benchmarking;
+- known-but-unavailable logical channels remain part of workspace structure without fabricated samples.
+
+The `predecode=32/64/128` experiment proved that extra columns can share the workspace source traversal, but it was rejected because it moves arbitrary-channel work into startup and benefits only a selected subset. That experiment was removed in PR #130.
+
+The active architectural question is now how to reduce repeated full-file row-oriented access for arbitrary first-use channels **without extending the normal initial open path**. Candidate solutions may reuse work/index information from the initial worker scan or introduce a better post-index access representation, but they must remain behind normalized data-source contracts and must be benchmarked for startup, memory, physical I/O and low-spec behavior.
+
+This remains a Web implementation concern behind normalized contracts; Linux is free to use native mmap/indexed/columnar techniques later without changing product semantics.
+<!-- CURRENT_STATE:web-active-channel-data-path:END -->''')
+
+          replace_between('docs/FILE_ARCHITECTURE.md', '<!-- CURRENT_STATE:current-performance-ownership:START -->', '<!-- CURRENT_STATE:current-performance-ownership:END -->', '''<!-- CURRENT_STATE:current-performance-ownership:START -->
+## Current performance-sensitive ownership
+
+Current large-log hot paths remain inside approved areas:
+
+- `core/parsers/mlg/` — MLG source access, indexing, bounded/multi-channel decoding and source-level performance accounting;
+- `core/channels/` — stable channel/data-source binding and forwarding such as time→sample mapping;
+- `apps/web/src/adapters/` — browser `File`/`Blob` access and the bounded persistent decoded-channel cache adapter;
+- `apps/web/src/components/graph-viewport.ts` — Web-only graph activation/presentation lifecycle;
+- `apps/web/src/pages/logger-page.ts` — workspace restore coordination, graph/timeline propagation and performance diagnostics integration.
+
+The opportunistic predecode experiment was removed in PR #130 and does not authorize a new hot-set/preload subsystem. The persistent decoded-column cache remains bounded (128 columns) and user-clearable; it is reuse infrastructure, not the first-use architecture.
+
+The next performance investigation must first try to reduce repeated source traversal within these existing boundaries. A new persistent columnar/indexed store, worker-owned long-lived data service, or other new subsystem requires explicit architecture review before introduction.
+<!-- CURRENT_STATE:current-performance-ownership:END -->''')
+
+          replace_between('docs/ROADMAP.md', '<!-- CURRENT_STATE:current-execution-position:START -->', '<!-- CURRENT_STATE:current-execution-position:END -->', '''<!-- CURRENT_STATE:current-execution-position:START -->
+## Current execution position — 2026-10-03
+
+EpicScope Web is beyond the original shell/log-foundation stage. The INI-backed channel catalog/binding, reusable application workspace foundation, exact-log persistence, multi-pane graph/timeline tooling, staged validation and large-log diagnostics are implemented. Active engineering remains focused on large-log performance before deeper generic analysis/analyzer work.
+
+Current performance position:
+
+- shared full-range workspace restore is established and loads only channels actually requested by the visible workspace;
+- the independent persistent decoded-channel cache is retained, bounded to 128 stored columns, and can be cleared from Settings;
+- the `predecode=32/64/128` hot-set experiment is complete and **rejected as a product direction** because it shifts arbitrary-channel work into startup instead of removing it;
+- PR #130 removed the opportunistic predecode experiment;
+- the new low-spec cold baseline is the 1.19 GB log opening/indexing in ~4.89 s and restoring 11 unique workspace channels in ~6.01 s on the 2-thread / 4 GB laptop;
+- the next task is to investigate reuse of initial-load/index work or a better post-index access representation so arbitrary first-use channels stop requiring repeated expensive row-oriented source traversal **without worsening normal startup**.
+
+After the replacement performance approach is proven and reasonably optimized, perform the planned whole-repository file/module audit for obsolete performance experiments, dead code, duplicated responsibilities and oversized files.
+
+This hardening does not change the longer product order: generic analysis/events/compare still precede specialized analyzers, MSQ enrichment remains later than the INI/channel-catalog foundation, and Linux remains the eventual production-performance target.
+<!-- CURRENT_STATE:current-execution-position:END -->''')
+
+          replace_between('docs/DECISIONS.md', '<!-- CURRENT_STATE:current-performance-decisions:START -->', '<!-- CURRENT_STATE:current-performance-decisions:END -->', '''<!-- CURRENT_STATE:current-performance-decisions:START -->
+## D-041 — Web arbitrary active-channel reuse may retain fully decoded data
+
+**Status:** Approved / implemented behavior, not the active first-use solution
+
+The Web data path may retain a completely decoded active channel and may reuse decoded channel data through bounded cache mechanisms so later graph navigation does not unnecessarily reread source data.
+
+This is an implementation optimization behind normalized data contracts. It does **not** authorize speculative startup decoding of arbitrary channels and does not mandate the same storage strategy for Linux.
+
+## D-042 — Low-spec Web scheduling is evidence-driven
+
+**Status:** Approved
+
+Performance behavior may adapt to measured hardware constraints while preserving product semantics. Low-spec changes must be judged from physical source I/O, startup time, responsiveness, decode CPU and memory pressure rather than desktop measurements alone.
+
+Earlier viewport/progressive/resident scheduling experiments remain historical evidence. They do not override the current performance rule in D-043.
+
+## D-043 — Do not front-load arbitrary channel work into normal startup
+
+**Status:** Approved / current performance direction
+
+The opportunistic `predecode=32/64/128` experiment is rejected as a production strategy and was removed in PR #130.
+
+Rules:
+
+- normal startup/workspace restore decodes only channels actually requested by the active workspace;
+- do not make normal MLG startup slower merely to make a selected subset of possible future channels faster;
+- hardcoded or firmware-specific channel hot sets are prohibited as a performance mechanism;
+- runtime-derived hot sets are also not sufficient if they merely shift the same work into startup;
+- the bounded persistent decoded-channel cache may accelerate channels already decoded, but must not be treated as a substitute for solving first-use access;
+- the next performance architecture should target reuse of already-required initial load/index work or a post-index access method that reduces repeated row-oriented source traversal without material startup regression;
+- any new persistent columnar/indexed representation or new long-lived source service requires explicit architecture review and measured startup/memory/I/O evidence.
+
+D-043 supersedes any interpretation of D-041/D-042 that would make speculative channel preloading the default solution.
+<!-- CURRENT_STATE:current-performance-decisions:END -->''')
+
+          PY
+
+          rm .github/workflows/temp-doc-refresh.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md docs .github/workflows/temp-doc-refresh.yml
+          git commit -m "Docs: align current state after predecode rollback"
+          git push origin HEAD:docs/current-state-2026-10-03
