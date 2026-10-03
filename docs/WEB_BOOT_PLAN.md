@@ -1,3 +1,11 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
+<!-- CURRENT_STATE:historical-status:START -->
+> **Historical bootstrap authority.** WEB-BOOT is complete and deployed. This document remains the detailed record of the initial toolchain/shell task and should not be read as the current implementation status. For current development state, use `docs/HANDOFF.md`, `docs/ROADMAP.md`, and `docs/PERFORMANCE.md`.
+<!-- CURRENT_STATE:historical-status:END -->
+
 # WEB-BOOT Implementation Plan
 
 ## Status

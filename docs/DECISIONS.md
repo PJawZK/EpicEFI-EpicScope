@@ -1,3 +1,7 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
 # EpicScope Decision Log
 
 This file records approved project and architectural decisions that future implementation must respect until deliberately superseded.
@@ -418,6 +422,33 @@ Rules:
 The bootstrap-era deferral of a dedicated automated test framework has been resolved. Vitest 5.x is now part of the normal Web CI validation path for parser/core/persistence logic.
 
 New parser, channel-binding, persistence, and analysis tasks should extend the existing Vitest gate where automated regression coverage is appropriate. This does not require browser/DOM tests for pure core logic.
+
+<!-- CURRENT_STATE:current-performance-decisions:START -->
+## D-041 — Web arbitrary active channels become fully resident after first-visible activation
+
+**Status:** Approved / implemented
+
+For the current Web MLG data path, a newly selected arbitrary channel may appear from a bounded viewport-first read and then be materialized once into a complete resident decoded range.
+
+Once resident, normal zoom/pan must reuse that active decoded range rather than repeatedly rereading the row-oriented MLG source. Saved-workspace restoration remains a separate shared multi-channel full-range batch so several assigned channels can amortize one source traversal.
+
+This is a Web implementation policy behind existing normalized data contracts, not a mandate that Linux use the same storage strategy.
+
+## D-042 — Low-spec Web scheduling may adapt to measured hardware constraints
+
+**Status:** Approved / implemented
+
+Measured low-spec behavior justifies hardware-adaptive scheduling while preserving identical product semantics.
+
+Current rules:
+
+- CRC validation uses the established serial path on <=3 logical threads and parallel pipeline on >=4 threads;
+- resident active-channel materialization starts quickly on desktop-class hardware but waits for 1,000 ms of interaction idle on <=3-thread systems;
+- the resident swap preserves the current trace scale so data completion does not create a delayed visual rescale;
+- low-spec performance work must be judged from physical I/O, responsiveness and memory/GC behavior, not desktop measurements alone.
+
+A planned follow-up will cap low-spec first-visible activation to a small centered range (target about 16,384 samples). That cap is an implementation task, not yet an implemented decision in this snapshot.
+<!-- CURRENT_STATE:current-performance-decisions:END -->
 
 ## Superseding decisions
 

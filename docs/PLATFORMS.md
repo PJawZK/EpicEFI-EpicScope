@@ -1,3 +1,7 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
 # EpicScope Platform Policy
 
 ## Platform order
@@ -29,6 +33,17 @@ Chromium is the primary browser family for development and validation.
 Brave is the user's normal browser and should be treated as a first-class practical test target.
 
 Firefox/Safari compatibility may be considered later, but must not delay core Web development unless a dependency choice would create unnecessary long-term lock-in.
+
+<!-- CURRENT_STATE:current-web-validation-classes:START -->
+## Current Web validation classes
+
+Performance-sensitive Web changes are currently checked on two deliberately different Chromium/Linux classes:
+
+- **desktop class:** about 5 logical threads, fast storage, where the 1.19 GB benchmark log indexes in roughly one second and arbitrary-channel full materialization is sub-second;
+- **low-spec class:** 2 logical threads / 4 GB RAM class hardware with much slower storage, where the same source scans can take several seconds.
+
+Hardware-adaptive Web policy already exists for CRC validation and active-channel materialization timing. This is allowed as an implementation optimization when both paths preserve the same product semantics. Desktop improvements that can affect I/O, allocation, GC or interaction behavior should be checked on the low-spec class before the performance task is considered settled.
+<!-- CURRENT_STATE:current-web-validation-classes:END -->
 
 ## Linux
 

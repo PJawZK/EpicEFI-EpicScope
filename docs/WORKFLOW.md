@@ -1,3 +1,26 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
+<!-- CURRENT_STATE:current-performance-workflow:START -->
+## Current large-log performance workflow
+
+For performance work, the normal repository workflow is supplemented by measured A/B validation:
+
+1. start from authoritative `main`;
+2. make one focused performance change on a short-lived branch;
+3. run type-check, full tests and production build;
+4. merge only after the final diff contains no temporary patch/workflow artifacts;
+5. verify post-merge Web CI and GitHub Pages deployment;
+6. benchmark the deployed build with the same representative log and interaction sequence;
+7. compare physical reads/bytes/time, decode/render time and subjective interaction behavior;
+8. when relevant, repeat on the 2-thread / 4 GB laptop before calling the optimization settled.
+
+Temporary branch-only GitHub workflows/scripts are acceptable for controlled patching/validation but must remove themselves before the PR. Do not require the project owner to create a local clone for normal testing.
+
+Current caution: a prior channel concurrency/pipelining experiment (PR #89) regressed behavior and was reverted. Reintroducing similar concurrency requires new evidence rather than assumption.
+<!-- CURRENT_STATE:current-performance-workflow:END -->
+
 # EpicScope Development Workflow
 
 ## Purpose

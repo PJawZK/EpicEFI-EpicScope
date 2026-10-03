@@ -1,3 +1,19 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
+<!-- CURRENT_STATE:current-large-log-performance-state:START -->
+## Current large-log performance state
+
+The authoritative performance regression log is now `2026-07-14_22.07.05.mlg` (1,193,898,186 bytes, 320,458 records, 1,389 channels), in addition to the older 318 MB validation logs retained as parser/recovery evidence.
+
+The Web implementation has demonstrated that row-oriented MLG makes an arbitrary full single-channel materialization fundamentally source-I/O heavy: on the fast desktop it is sub-second, while the 2-thread laptop can spend roughly 5–8 seconds scanning about 1.13 GB for one new full channel.
+
+Current policy therefore combines bounded viewport-first activation with a one-time resident full-channel materialization. Fixed 8,192-sample decoded chunks support bounded reuse. Once an active channel is fully resident, zoom/pan must not require another source traversal for that channel.
+
+The next low-spec task is to cap the first viewport activation near 16,384 centered samples so a wide viewport cannot force an 80k-sample / hundreds-of-MiB read before first paint. Checksum/retry semantics must not be altered as a performance shortcut.
+<!-- CURRENT_STATE:current-large-log-performance-state:END -->
+
 # EpicScope LOG-MLG Plan
 
 ## Status

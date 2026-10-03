@@ -1,3 +1,7 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
 # EpicScope Roadmap
 
 ## Roadmap principles
@@ -13,6 +17,22 @@ Each implementation task should identify:
 - completion criteria.
 
 Large features should be split into reviewable tasks before coding.
+
+<!-- CURRENT_STATE:current-execution-position:START -->
+## Current execution position — 2026-10-03
+
+EpicScope Web has progressed past the original Phase-1 shell/log-foundation closeout described in older milestone text. Current implementation already includes the INI-backed channel catalog/binding and reusable application-workspace foundation from Phase 2, while active engineering is hardening the large-log data path before moving deeper into generic analysis/analyzers.
+
+Current performance milestone:
+
+- shared full-range workspace restore is established;
+- arbitrary new channels use viewport-first activation followed by one-time resident full materialization;
+- desktop behavior is smooth and no longer rereads resident channels during zoom/pan;
+- low-spec <=3-thread hardware uses idle-delayed materialization and a scale-preserving resident swap;
+- the next task is a low-spec-only cap of about 16,384 samples for the first viewport activation so a wide viewport cannot force hundreds of MiB of source I/O before the first trace appears.
+
+This performance hardening does not change the longer product order: generic analysis/events/compare still precede specialized analyzers, MSQ enrichment remains later than the INI/channel-catalog foundation, and Linux remains the eventual production-performance target.
+<!-- CURRENT_STATE:current-execution-position:END -->
 
 ## Phase 0 — Foundation
 
@@ -41,7 +61,7 @@ Phase 0 does **not** require the EpicHub UI reference itself to be inspected. Th
 
 ## Phase 1 — Web log foundation
 
-Status: **Closeout pending hosted validation of the final graph-density refinement**
+Status: **Functional foundation implemented; current Web work has moved into source/workspace foundation and large-log performance hardening**
 
 Purpose: create the smallest useful EpicScope Web application and prove the import/data/navigation path.
 

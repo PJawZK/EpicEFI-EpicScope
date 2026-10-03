@@ -1,3 +1,20 @@
+<!-- CURRENT_STATE:handoff-pointer:START -->
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+<!-- CURRENT_STATE:handoff-pointer:END -->
+
+<!-- CURRENT_STATE:current-performance-ownership:START -->
+## Current performance-sensitive ownership
+
+Current large-log hot paths remain inside already-approved areas:
+
+- `core/parsers/mlg/` — MLG source access, indexing, bounded/multi-channel decoding and decoded chunk/cache behavior;
+- `core/channels/` — stable channel/data-source binding and forwarding such as time→sample range mapping;
+- `apps/web/src/components/graph-viewport.ts` — Web-only viewport-first activation, progressive fallback behavior, active resident-channel lifecycle and interaction scheduling;
+- `apps/web/src/pages/logger-page.ts` — workspace restore coordination, graph/timeline propagation and performance diagnostics integration.
+
+The current performance work does not authorize a new top-level cache/backend subsystem. Persistent columnar/indexed storage remains a future architectural option, especially for Linux, and requires explicit review before introduction.
+<!-- CURRENT_STATE:current-performance-ownership:END -->
+
 # EpicScope File Architecture
 
 ## Purpose
