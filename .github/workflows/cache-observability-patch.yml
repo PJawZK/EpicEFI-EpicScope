@@ -10,25 +10,24 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           ref: perf/cache-observability
           fetch-depth: 0
 
-      - name: Apply diagnostic instrumentation
+      - name: Patch diagnostics
+        shell: bash
         run: |
-          python3 <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
 
           binding = Path('core/channels/channel-binding.ts')
           text = binding.read_text()
-
           anchor = "const residentFullRangesBySource = new WeakMap<\n  NumericChannelDataSource,\n  Map<string, NumericChannelRange>\n>();\n"
-          replacement = anchor + """
+          addition = """
 
 export interface BoundCacheDiagnosticEvent {
   readonly sequence: number;
@@ -106,10 +105,10 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
 }
 """
           if 'latestBoundCacheDiagnosticSnapshot' not in text:
-              text = text.replace(anchor, replacement)
+              text = text.replace(anchor, anchor + addition)
 
           constructor_anchor = "    this.sampleCount = source.sampleCount;\n    this.residentFullRanges = residentFullRangesForSource(source);\n"
-          constructor_replacement = constructor_anchor + """    recordBoundCacheEvent({
+          constructor_addition = """    recordBoundCacheEvent({
       kind: 'construct',
       boundInstanceId: boundDiagnosticId(this),
       sourceInstanceId: sourceDiagnosticId(source),
@@ -117,15 +116,15 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
     });
 """
           if "kind: 'construct'" not in text:
-              text = text.replace(constructor_anchor, constructor_replacement)
+              text = text.replace(constructor_anchor, constructor_anchor + constructor_addition)
 
-          old_retain = """  private retainFullRange(channelId: string, range: NumericChannelRange): void {
+          old = """  private retainFullRange(channelId: string, range: NumericChannelRange): void {
     if (range.startSampleIndex === 0 && range.values.length === this.sampleCount) {
       this.residentFullRanges.set(this.sourceId(channelId), range);
     }
   }
 """
-          new_retain = """  private retainFullRange(channelId: string, range: NumericChannelRange): void {
+          new = """  private retainFullRange(channelId: string, range: NumericChannelRange): void {
     retainAttempts += 1;
     const sourceChannelId = this.sourceChannelIdByBoundId.get(channelId);
     const retained = range.startSampleIndex === 0
@@ -148,13 +147,12 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
     });
   }
 """
-          if old_retain in text:
-              text = text.replace(old_retain, new_retain)
+          text = text.replace(old, new)
 
-          old_resident = """    const full = this.residentFullRanges.get(sourceId);
+          old = """    const full = this.residentFullRanges.get(sourceId);
     if (!full) return undefined;
 """
-          new_resident = """    const full = this.residentFullRanges.get(sourceId);
+          new = """    const full = this.residentFullRanges.get(sourceId);
     if (!full) {
       residentMisses += 1;
       recordBoundCacheEvent({
@@ -181,22 +179,20 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
       sampleCount,
     });
 """
-          if old_resident in text:
-              text = text.replace(old_resident, new_resident)
+          text = text.replace(old, new)
 
-          old_has = """    const sourceId = this.sourceChannelIdByBoundId.get(channelId);
+          old = """    const sourceId = this.sourceChannelIdByBoundId.get(channelId);
     if (sourceId && this.residentFullRanges.has(sourceId)) return true;
     if (!this.source.hasCachedChannelRange) return false;
     return sourceId
       ? this.source.hasCachedChannelRange(sourceId, startSampleIndex, sampleCount)
       : false;
 """
-          new_has = """    hasCacheChecks += 1;
+          new = """    hasCacheChecks += 1;
     const sourceId = this.sourceChannelIdByBoundId.get(channelId);
     const residentReady = Boolean(sourceId && this.residentFullRanges.has(sourceId));
     const delegatedReady = !residentReady && Boolean(
-      sourceId
-      && this.source.hasCachedChannelRange?.(sourceId, startSampleIndex, sampleCount)
+      sourceId && this.source.hasCachedChannelRange?.(sourceId, startSampleIndex, sampleCount)
     );
     const cacheReady = residentReady || delegatedReady;
     recordBoundCacheEvent({
@@ -212,23 +208,16 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
     });
     return cacheReady;
 """
-          if old_has in text:
-              text = text.replace(old_has, new_has)
-
+          text = text.replace(old, new)
           binding.write_text(text)
 
           perf = Path('apps/web/src/components/performance-diagnostics.ts')
           text = perf.read_text()
-          import_anchor = "import {\n  clearChannelDecodePerformance,\n  latestChannelDecodePerformance,\n} from '../../../../core/diagnostics/channel-decode-performance';\n"
-          import_replacement = import_anchor + "import { latestBoundCacheDiagnosticSnapshot } from '../../../../core/channels/channel-binding';\n"
+          anchor = "import {\n  clearChannelDecodePerformance,\n  latestChannelDecodePerformance,\n} from '../../../../core/diagnostics/channel-decode-performance';\n"
           if 'latestBoundCacheDiagnosticSnapshot' not in text:
-              text = text.replace(import_anchor, import_replacement)
-
-          report_anchor = "    const lines: string[] = ['EpicScope performance diagnostics'];\n"
-          report_replacement = """    const lines: string[] = [
-      'EpicScope performance diagnostics',
-      `build=${import.meta.env.VITE_EPICSCOPE_BUILD_SHA ?? 'local'}`,
-    ];
+              text = text.replace(anchor, anchor + "import { latestBoundCacheDiagnosticSnapshot } from '../../../../core/channels/channel-binding';\n")
+          anchor = "    const lines: string[] = ['EpicScope performance diagnostics'];\n"
+          replacement = """    const lines: string[] = ['EpicScope performance diagnostics'];
     const boundCache = latestBoundCacheDiagnosticSnapshot();
     lines.push(
       '',
@@ -247,17 +236,8 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
       );
     });
 """
-          if report_anchor in text:
-              text = text.replace(report_anchor, report_replacement)
+          text = text.replace(anchor, replacement)
           perf.write_text(text)
-
-          pages = Path('.github/workflows/pages.yml')
-          text = pages.read_text()
-          build_anchor = "      - name: Build\n        run: npm run build\n"
-          build_replacement = "      - name: Build\n        env:\n          VITE_EPICSCOPE_BUILD_SHA: ${{ github.sha }}\n        run: npm run build\n"
-          if 'VITE_EPICSCOPE_BUILD_SHA' not in text:
-              text = text.replace(build_anchor, build_replacement)
-          pages.write_text(text)
 
           Path('.github/workflows/cache-observability-patch.yml').unlink()
           PY
@@ -268,10 +248,10 @@ export function latestBoundCacheDiagnosticSnapshot(): BoundCacheDiagnosticSnapsh
           npm run typecheck
           npm test -- --run
 
-      - name: Commit instrumentation
+      - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add core/channels/channel-binding.ts apps/web/src/components/performance-diagnostics.ts .github/workflows/pages.yml .github/workflows/cache-observability-patch.yml
+          git add -A
           git commit -m "diagnostics: expose bound cache runtime state"
           git push origin HEAD:perf/cache-observability
