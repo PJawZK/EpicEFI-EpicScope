@@ -1550,6 +1550,9 @@ export function createLoggerPage(): LoggerPageController {
       channelPerformanceListener?.({
         channelId: '__multi-pane-restore__',
         channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
+        phase: 'full',
+        startSampleIndex: 0,
+        requestedSampleCount: channelDataSource.sampleCount,
         totalMs: batchElapsed,
         readDecodeMs: batchElapsed,
         scaleMs: 0,
