@@ -1,0 +1,73 @@
+name: Apply active channel materialization
+
+on:
+  push:
+    branches:
+      - perf/materialize-active-channels
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: perf/materialize-active-channels
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply active materialization patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/src/components/graph-viewport.ts')
+          s = p.read_text()
+
+          s = s.replace(
+            "  const loadingTraceIds = new Set<string>();\n",
+            "  const loadingTraceIds = new Set<string>();\n  const materializingTraceIds = new Set<string>();\n",
+            1,
+          )
+
+          anchor = """  const rangeCovers = (\n    range: NumericChannelRange,\n    startSampleIndex: number,\n    sampleCount: number,\n  ): boolean => {"""
+          materializer = """  const materializeActiveChannel = async (channelId: string): Promise<void> => {\n    const dataSource = channelData;\n    const initial = activeTraces.get(channelId);\n    if (!dataSource || !initial || initial.statisticsComplete || materializingTraceIds.has(channelId)) return;\n\n    materializingTraceIds.add(channelId);\n    const now = (): number => globalThis.performance?.now() ?? Date.now();\n    const readStart = now();\n    try {\n      const result = dataSource.readChannelsRange\n        ? await dataSource.readChannelsRange([channelId], 0, dataSource.sampleCount)\n        : {\n            ranges: new Map([[channelId, await dataSource.readChannelRange(\n              channelId,\n              0,\n              dataSource.sampleCount,\n            )]]),\n            performance: {\n              channelCount: 1,\n              cacheHitChannelIds: [] as readonly string[],\n              physicalReadCount: 0,\n              physicalBytesRead: 0,\n              physicalReadMs: 0,\n            },\n          };\n      const readDecodeMs = now() - readStart;\n      if (channelData !== dataSource) return;\n\n      const latest = activeTraces.get(channelId);\n      const range = result.ranges.get(channelId);\n      if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) return;\n\n      const scaleStart = now();\n      const scale = buildStableValueScale(range);\n      const scaleMs = now() - scaleStart;\n      activeTraces.set(channelId, {\n        ...latest,\n        range,\n        scale,\n        fullStatistics: summarizeRange(range),\n        statisticsComplete: true,\n      });\n      envelopeCache.delete(channelId);\n      renderReadout();\n      emitCursorValues();\n      const renderStart = now();\n      draw();\n      const renderMs = now() - renderStart;\n      const completedMs = now();\n      channelPerformanceListener?.({\n        channelId,\n        phase: 'full',\n        startSampleIndex: 0,\n        requestedSampleCount: dataSource.sampleCount,\n        totalMs: completedMs - readStart,\n        readDecodeMs,\n        scaleMs,\n        renderMs,\n        sampleCount: range.values.length,\n        batchSize: 1,\n        cacheHit: result.performance.cacheHitChannelIds.includes(channelId),\n        physicalReadCount: result.performance.physicalReadCount,\n        physicalBytesRead: result.performance.physicalBytesRead,\n        physicalReadMs: result.performance.physicalReadMs,\n      });\n    } catch {\n      // Keep the viewport-first trace usable if complete materialization fails.\n    } finally {\n      materializingTraceIds.delete(channelId);\n      const latest = activeTraces.get(channelId);\n      if (latest && !latest.statisticsComplete) scheduleViewportRefresh();\n    }\n  };\n\n"""
+          if anchor not in s:
+              raise SystemExit('rangeCovers anchor not found')
+          s = s.replace(anchor, materializer + anchor, 1)
+
+          old = """    const channelIds = [...activeTraces.entries()]\n      .filter(([, trace]) => !rangeCovers(trace.range, desiredStart, requestRange.sampleCount))\n      .map(([channelId]) => channelId);"""
+          new = """    const channelIds = [...activeTraces.entries()]\n      .filter(([channelId, trace]) => !materializingTraceIds.has(channelId)\n        && !rangeCovers(trace.range, desiredStart, requestRange.sampleCount))\n      .map(([channelId]) => channelId);"""
+          if old not in s:
+              raise SystemExit('refresh filter anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = """        pending.resolve(true);\n      }\n\n    } catch (error) {"""
+          new = """        pending.resolve(true);\n        const activated = activeTraces.get(channelId);\n        if (activated && !activated.statisticsComplete) {\n          window.setTimeout(() => { void materializeActiveChannel(channelId); }, 120);\n        }\n      }\n\n    } catch (error) {"""
+          if old not in s:
+              raise SystemExit('flush completion anchor not found')
+          s = s.replace(old, new, 1)
+
+          s = s.replace(
+            "    activeTraces.clear();\n    envelopeCache.clear();\n",
+            "    materializingTraceIds.clear();\n    activeTraces.clear();\n    envelopeCache.clear();\n",
+          )
+
+          p.write_text(s)
+          PY
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit validated patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-active-materialization.yml
+          git config user.name "PJawZK"
+          git config user.email "anderswedin@hotmail.se"
+          git add apps/web/src/components/graph-viewport.ts .github/workflows/apply-active-materialization.yml
+          git commit -m "Perf: materialize active channels after viewport-first load"
+          git push origin HEAD:perf/materialize-active-channels
