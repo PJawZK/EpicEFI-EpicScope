@@ -229,6 +229,24 @@ function summarizeRange(
   };
 }
 
+function stableScaleFromStatistics(
+  statistics: ReturnType<typeof summarizeRange>,
+): StableValueScale {
+  const { min, max, validCount } = statistics;
+  if (validCount === 0 || min === undefined || max === undefined) return { min: 0, max: 1 };
+
+  const rawSpan = max - min;
+  const padding = rawSpan > 0
+    ? rawSpan * 0.04
+    : Math.max(1, Math.abs(max) * 0.04);
+
+  const paddedMin = min >= 0 ? Math.max(0, min - padding) : min - padding;
+  const paddedMax = max <= 0 ? Math.min(0, max + padding) : max + padding;
+
+  if (paddedMax > paddedMin) return { min: paddedMin, max: paddedMax };
+  return { min: paddedMin, max: paddedMin + 1 };
+}
+
 export function createGraphViewport(): GraphViewportController {
   let channels: readonly ChannelDefinition[] = [];
   let channelData: NumericChannelDataSource | undefined;
@@ -1118,13 +1136,14 @@ export function createGraphViewport(): GraphViewportController {
             : mergeContiguousRanges(latest.range, nextRange);
 
           const scaleStart = now();
-          const scale = buildStableValueScale(merged);
+          const fullStatistics = summarizeRange(merged);
+          const scale = stableScaleFromStatistics(fullStatistics);
           const scaleMs = now() - scaleStart;
           activeTraces.set(channelId, {
             ...latest,
             range: merged,
             scale,
-            fullStatistics: summarizeRange(merged),
+            fullStatistics,
             statisticsComplete: merged.startSampleIndex === 0
               && merged.values.length === dataSource.sampleCount,
           });
@@ -1202,7 +1221,8 @@ export function createGraphViewport(): GraphViewportController {
       if (!range) return false;
 
       const scaleStart = now();
-      const scale = buildStableValueScale(range);
+      const fullStatistics = summarizeRange(range);
+      const scale = stableScaleFromStatistics(fullStatistics);
       const scaleMs = now() - scaleStart;
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
@@ -1210,7 +1230,7 @@ export function createGraphViewport(): GraphViewportController {
         channel: pending.channel,
         range,
         scale,
-        fullStatistics: summarizeRange(range),
+        fullStatistics,
         statisticsComplete: true,
         color,
       });
@@ -1301,14 +1321,15 @@ export function createGraphViewport(): GraphViewportController {
       const channel = channels.find((candidate) => candidate.id === channelId);
       if (!channel) continue;
 
-      const scale = buildStableValueScale(range);
+      const fullStatistics = summarizeRange(range);
+      const scale = stableScaleFromStatistics(fullStatistics);
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       usedColors.add(color);
       activeTraces.set(channelId, {
         channel,
         range,
         scale,
-        fullStatistics: summarizeRange(range),
+        fullStatistics,
         statisticsComplete: range.startSampleIndex === 0
           && range.values.length === channelData?.sampleCount,
         color,
@@ -1495,7 +1516,9 @@ export function createGraphViewport(): GraphViewportController {
     getChannelStatistics: (channelId) => {
       const trace = activeTraces.get(channelId);
       if (!trace) return undefined;
-      const full = summarizeRange(trace.range);
+      const full = trace.statisticsComplete
+        ? trace.fullStatistics
+        : summarizeRange(trace.range);
       const visible = viewport
         ? summarizeRange(trace.range, viewport.visibleStartMs, viewport.visibleEndMs)
         : full;
