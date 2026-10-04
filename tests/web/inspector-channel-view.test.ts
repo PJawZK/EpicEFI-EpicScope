@@ -17,6 +17,7 @@ const channel = (
   id,
   sourceName,
   displayName,
+  valueType: 'number',
   ...(unit ? { unit } : {}),
   ...(category ? { category } : {}),
   precision,
