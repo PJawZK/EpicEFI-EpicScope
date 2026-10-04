@@ -30,6 +30,9 @@ import {
   renderableWorkspaceChannelIds,
 } from '../state/workspace-channel-identity';
 import type {
+  GraphPaneGeometry,
+  GraphPaneSnapshot,
+  GraphWorkspaceLayout,
   GraphWorkspaceSnapshot,
   LoggerWorkspaceState,
 } from '../state/workspace-state';
