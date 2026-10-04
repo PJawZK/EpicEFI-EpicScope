@@ -1,4 +1,5 @@
 import { buildNumericHeatmap, type NumericHeatmapResult } from '../../../../core/analysis/heatmap';
+import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
@@ -19,6 +20,16 @@ function channelLabel(trace: HistogramTraceContext): string {
   return trace.channel.displayName || trace.channel.sourceName;
 }
 
+function aggregationLabel(method: NumericAggregationMethod): string {
+  if (method === 'count') return 'Count';
+  if (method === 'mean') return 'Mean';
+  if (method === 'min') return 'Minimum';
+  if (method === 'max') return 'Maximum';
+  if (method === 'standard-deviation') return 'Std dev';
+  if (method === 'sum') return 'Sum';
+  return 'Variance';
+}
+
 export function createHeatmapView(): HeatmapViewController {
   let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHeatmapResult | undefined;
@@ -35,6 +46,20 @@ export function createHeatmapView(): HeatmapViewController {
       <label>
         <span>Y channel</span>
         <select class="heatmap-y-channel"></select>
+      </label>
+      <label>
+        <span>Cell value</span>
+        <select class="heatmap-aggregation">
+          <option value="count">Count</option>
+          <option value="mean">Mean</option>
+          <option value="min">Minimum</option>
+          <option value="max">Maximum</option>
+          <option value="standard-deviation">Std dev</option>
+        </select>
+      </label>
+      <label class="heatmap-value-channel-field" hidden>
+        <span>Value channel</span>
+        <select class="heatmap-value-channel"></select>
       </label>
       <label>
         <span>X bins</span>
@@ -65,9 +90,9 @@ export function createHeatmapView(): HeatmapViewController {
         <div><span>Scope</span><strong data-heatmap-summary="scope">—</strong></div>
         <div><span>Coverage</span><strong data-heatmap-summary="coverage">—</strong></div>
         <div><span>Input</span><strong data-heatmap-summary="input">0</strong></div>
-        <div><span>Valid pairs</span><strong data-heatmap-summary="valid">0</strong></div>
-        <div><span>Invalid</span><strong data-heatmap-summary="invalid">0</strong></div>
-        <div><span>Unavailable</span><strong data-heatmap-summary="unavailable">0</strong></div>
+        <div><span>Valid XY pairs</span><strong data-heatmap-summary="valid">0</strong></div>
+        <div><span>XY invalid</span><strong data-heatmap-summary="invalid">0</strong></div>
+        <div><span>XY unavailable</span><strong data-heatmap-summary="unavailable">0</strong></div>
       </div>
       <div class="heatmap-chart-wrap">
         <canvas class="heatmap-chart" aria-label="Two-dimensional histogram heatmap"></canvas>
@@ -75,22 +100,32 @@ export function createHeatmapView(): HeatmapViewController {
       <div class="heatmap-axis-summary">
         <span>X <strong data-heatmap-summary="x-range">—</strong></span>
         <span>Y <strong data-heatmap-summary="y-range">—</strong></span>
+        <span>Cell value <strong data-heatmap-summary="cell-value">Count</strong></span>
+        <span>Cell range <strong data-heatmap-summary="cell-range">—</strong></span>
         <span>Binned <strong data-heatmap-summary="binned">0</strong></span>
         <span>Outside range <strong data-heatmap-summary="outside">0</strong></span>
-        <span>Peak cell <strong data-heatmap-summary="peak">0</strong></span>
+      </div>
+      <div class="heatmap-value-evidence" hidden>
+        <span>Value samples <strong data-heatmap-summary="value-valid">0</strong></span>
+        <span>Value invalid <strong data-heatmap-summary="value-invalid">0</strong></span>
+        <span>Value unavailable <strong data-heatmap-summary="value-unavailable">0</strong></span>
       </div>
     </div>
   `;
 
   const xSelect = root.querySelector<HTMLSelectElement>('.heatmap-x-channel');
   const ySelect = root.querySelector<HTMLSelectElement>('.heatmap-y-channel');
+  const aggregationSelect = root.querySelector<HTMLSelectElement>('.heatmap-aggregation');
+  const valueField = root.querySelector<HTMLElement>('.heatmap-value-channel-field');
+  const valueSelect = root.querySelector<HTMLSelectElement>('.heatmap-value-channel');
   const xBinsSelect = root.querySelector<HTMLSelectElement>('.heatmap-x-bins');
   const yBinsSelect = root.querySelector<HTMLSelectElement>('.heatmap-y-bins');
   const refreshButton = root.querySelector<HTMLButtonElement>('.heatmap-refresh');
   const empty = root.querySelector<HTMLElement>('.heatmap-empty');
   const content = root.querySelector<HTMLElement>('.heatmap-content');
+  const valueEvidence = root.querySelector<HTMLElement>('.heatmap-value-evidence');
   const canvas = root.querySelector<HTMLCanvasElement>('.heatmap-chart');
-  if (!xSelect || !ySelect || !xBinsSelect || !yBinsSelect || !refreshButton || !empty || !content || !canvas) {
+  if (!xSelect || !ySelect || !aggregationSelect || !valueField || !valueSelect || !xBinsSelect || !yBinsSelect || !refreshButton || !empty || !content || !valueEvidence || !canvas) {
     throw new Error('Heatmap view structure is incomplete.');
   }
 
@@ -103,8 +138,20 @@ export function createHeatmapView(): HeatmapViewController {
   const traceFor = (channelId: string): HistogramTraceContext | undefined =>
     context.traces.find((trace) => trace.channel.id === channelId);
 
+  const selectedAggregation = (): NumericAggregationMethod =>
+    aggregationSelect.value as NumericAggregationMethod;
+
   const hasValidRange = (): boolean =>
     context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
+
+  const cellValueUnit = (
+    method: NumericAggregationMethod,
+    valueTrace: HistogramTraceContext | undefined,
+  ): string => {
+    if (method === 'count') return '';
+    if (method === 'variance') return valueTrace?.channel.unit ? `${valueTrace.channel.unit}²` : '';
+    return valueTrace?.channel.unit ?? '';
+  };
 
   const renderChart = (
     result: NumericHeatmapResult,
@@ -131,16 +178,22 @@ export function createHeatmapView(): HeatmapViewController {
     const chartHeight = Math.max(1, height - padTop - padBottom);
     const cellWidth = chartWidth / result.xBins.length;
     const cellHeight = chartHeight / result.yBins.length;
-    const peak = Math.max(1, result.maxCellCount);
+    const valueMin = result.cellValueMin;
+    const valueMax = result.cellValueMax;
+    const valueSpan = valueMin === undefined || valueMax === undefined ? 0 : valueMax - valueMin;
 
     ctx.fillStyle = '#0b171f';
     ctx.fillRect(padLeft, padTop, chartWidth, chartHeight);
 
     for (let yIndex = 0; yIndex < result.yBins.length; yIndex += 1) {
       for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
-        const count = result.counts[yIndex * result.xBins.length + xIndex] ?? 0;
-        if (count === 0) continue;
-        const intensity = Math.sqrt(count / peak);
+        const cellIndex = yIndex * result.xBins.length + xIndex;
+        const value = result.cellValues[cellIndex];
+        if (value === undefined || !Number.isFinite(value)) continue;
+        const normalized = valueSpan > 0 && valueMin !== undefined
+          ? Math.max(0, Math.min(1, (value - valueMin) / valueSpan))
+          : 1;
+        const intensity = result.aggregationMethod === 'count' ? Math.sqrt(normalized) : normalized;
         const x = padLeft + xIndex * cellWidth;
         const y = padTop + chartHeight - (yIndex + 1) * cellHeight;
         ctx.globalAlpha = 0.18 + intensity * 0.82;
@@ -180,7 +233,14 @@ export function createHeatmapView(): HeatmapViewController {
   const render = (): void => {
     const xTrace = traceFor(xSelect.value) ?? context.traces[0];
     const yTrace = traceFor(ySelect.value) ?? context.traces[1] ?? context.traces[0];
-    if (!xTrace || !yTrace || context.traces.length < 2 || !hasValidRange()) {
+    const aggregation = selectedAggregation();
+    const valueTrace = aggregation === 'count'
+      ? undefined
+      : traceFor(valueSelect.value) ?? context.traces[0];
+    valueField.hidden = aggregation === 'count';
+    valueEvidence.hidden = aggregation === 'count';
+
+    if (!xTrace || !yTrace || context.traces.length < 2 || !hasValidRange() || (aggregation !== 'count' && !valueTrace)) {
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -203,10 +263,24 @@ export function createHeatmapView(): HeatmapViewController {
       sampleIndices: scoped.eligibleSampleIndices,
       xBinCount: Number(xBinsSelect.value),
       yBinCount: Number(yBinsSelect.value),
+      aggregation,
+      ...(valueTrace ? { valueRange: valueTrace.range } : {}),
     });
 
     const yComplete = yTrace.complete || numericRangeCoversTime(yTrace.range, startMs, endMs);
-    const complete = scoped.complete && yComplete && currentResult.unavailableSampleCount === 0;
+    const valueComplete = !valueTrace
+      || valueTrace.complete
+      || numericRangeCoversTime(valueTrace.range, startMs, endMs);
+    const complete = scoped.complete
+      && yComplete
+      && valueComplete
+      && currentResult.unavailableSampleCount === 0
+      && currentResult.valueUnavailableSampleCount === 0;
+    const unit = cellValueUnit(aggregation, valueTrace);
+    const cellMeaning = aggregation === 'count'
+      ? 'Count'
+      : `${aggregationLabel(aggregation)} · ${channelLabel(valueTrace!)}`;
+
     empty.hidden = true;
     content.hidden = false;
     summary('scope').textContent = `${((endMs - startMs) / 1000).toFixed(3)} s`;
@@ -217,7 +291,13 @@ export function createHeatmapView(): HeatmapViewController {
     summary('unavailable').textContent = currentResult.unavailableSampleCount.toLocaleString();
     summary('binned').textContent = currentResult.binnedSampleCount.toLocaleString();
     summary('outside').textContent = currentResult.outsideRangeSampleCount.toLocaleString();
-    summary('peak').textContent = currentResult.maxCellCount.toLocaleString();
+    summary('cell-value').textContent = cellMeaning;
+    summary('cell-range').textContent = currentResult.cellValueMin === undefined || currentResult.cellValueMax === undefined
+      ? '—'
+      : `${formatNumber(currentResult.cellValueMin)} – ${formatNumber(currentResult.cellValueMax)}${unit ? ` ${unit}` : ''}`;
+    summary('value-valid').textContent = currentResult.valueValidSampleCount.toLocaleString();
+    summary('value-invalid').textContent = currentResult.valueInvalidSampleCount.toLocaleString();
+    summary('value-unavailable').textContent = currentResult.valueUnavailableSampleCount.toLocaleString();
     summary('x-range').textContent = currentResult.xRangeMin === undefined || currentResult.xRangeMax === undefined
       ? '—'
       : `${formatNumber(currentResult.xRangeMin)} – ${formatNumber(currentResult.xRangeMax)}${xTrace.channel.unit ? ` ${xTrace.channel.unit}` : ''}`;
@@ -237,14 +317,18 @@ export function createHeatmapView(): HeatmapViewController {
   const setContext = (nextContext: HistogramPageContext): void => {
     const previousX = xSelect.value;
     const previousY = ySelect.value;
+    const previousValue = valueSelect.value;
     context = nextContext;
     fillSelect(xSelect, previousX, 0);
     fillSelect(ySelect, previousY, 1);
+    fillSelect(valueSelect, previousValue, 0);
     render();
   };
 
   xSelect.addEventListener('change', render);
   ySelect.addEventListener('change', render);
+  aggregationSelect.addEventListener('change', render);
+  valueSelect.addEventListener('change', render);
   xBinsSelect.addEventListener('change', render);
   yBinsSelect.addEventListener('change', render);
   refreshButton.addEventListener('click', render);
