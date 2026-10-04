@@ -1,5 +1,6 @@
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { InspectorWorkspaceState } from '../state/workspace-state';
+import { channelMatchesInspectorFilters } from './inspector-channel-view';
 
 const VIRTUAL_ROW_HEIGHT = 36;
 const VIRTUAL_OVERSCAN_ROWS = 6;
@@ -327,19 +328,14 @@ export function createInspectorPanel(): InspectorPanelController {
     const selectedGroup = groupSelect.value;
     const visibility = visibilitySelect.value;
 
-    filteredChannels = channels.filter((channel) => {
-      const matchesText = query.length === 0
-        || channel.sourceName.toLocaleLowerCase().includes(query)
-        || channel.displayName.toLocaleLowerCase().includes(query)
-        || (channel.unit?.toLocaleLowerCase().includes(query) ?? false);
-      const matchesGroup = selectedGroup === ''
-        || (selectedGroup === '__ungrouped__' ? !channel.category?.trim() : channel.category === selectedGroup);
-      const matchesVisibility = visibility === 'all'
-        || (visibility === 'active' && activeChannelIds.has(channel.id))
-        || (visibility === 'favorites' && favoriteChannelIds.has(channel.id))
-        || (visibility === 'recent' && recentChannelIds.includes(channel.id));
-      return matchesText && matchesGroup && matchesVisibility;
-    }).sort(compareChannels);
+    filteredChannels = channels.filter((channel) => channelMatchesInspectorFilters(channel, {
+      query,
+      selectedGroup,
+      visibility: visibility as 'all' | 'active' | 'favorites' | 'recent',
+      activeChannelIds,
+      favoriteChannelIds,
+      recentChannelIds,
+    })).sort(compareChannels);
 
     renderSortButtons();
     spacer.style.height = `${filteredChannels.length * VIRTUAL_ROW_HEIGHT}px`;

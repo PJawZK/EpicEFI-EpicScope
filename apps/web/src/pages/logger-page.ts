@@ -24,6 +24,7 @@ import {
 import { createTimelineShell, type TimelineViewportIntent } from '../components/timeline-shell';
 import { createParserDiagnosticsIndicator } from '../components/parser-diagnostics-indicator';
 import { createInspectorPanel } from '../panels/inspector-panel';
+import { formatInspectorChannelValue } from '../panels/inspector-channel-view';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 import {
   normalizeWorkspaceChannelIds,
@@ -1455,12 +1456,10 @@ export function createLoggerPage(): LoggerPageController {
       const displayValues = values.flatMap((item) => {
         const channel = channelDefinitions.get(item.channelId);
         if (!channel) return [];
-        if (item.value === undefined || !Number.isFinite(item.value)) {
-          return [{ channelId: item.channelId, value: '—' }];
-        }
-        const precision = Math.min(6, Math.max(0, channel.precision ?? 2));
-        const unit = channel.unit ? ` ${channel.unit}` : '';
-        return [{ channelId: item.channelId, value: `${item.value.toFixed(precision)}${unit}` }];
+        return [{
+          channelId: item.channelId,
+          value: formatInspectorChannelValue(channel, item.value),
+        }];
       });
       inspector.setChannelValues(displayValues);
     });
