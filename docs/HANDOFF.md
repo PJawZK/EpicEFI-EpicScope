@@ -10,9 +10,9 @@
 
 Application baseline entering this documentation refresh:
 
-`d67958712770d64908e4eeb64978c6a9d2643d51`
+`0e1f003364c589c531ac021cb2ba74a7eb9a8e4c`
 
-That commit is the merge of PR #172, **Simplify channel browser control hierarchy**. The documentation-only merge produced by this refresh will become the newer authoritative `main`; it must not change application behavior.
+That commit is the merge of PR #175, **Add selected range statistics**.
 
 ## Hosted application
 
@@ -22,15 +22,19 @@ GitHub Actions is the required Web validation path and GitHub Pages is the norma
 
 ## Current project position
 
-EpicScope Web now has a stable large-log/import/workspace foundation and the earlier storage/channel optimization campaign is **done for now**. The subsequent repository/file-structure audit is also at its natural stopping point.
+EpicScope Web has a stable large-log/import/workspace foundation. The earlier storage/channel optimization campaign and repository/file-structure audit are **done for now**.
 
-The active product focus is **UI hierarchy and workflow clarity before adding more generic analysis tools**.
+The approved UI-hierarchy sequence is also complete enough to proceed with generic analysis primitives.
 
 Approved top-level user workflow:
 
 > **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
 
-The first three UI hierarchy passes are implemented and deployed. The next implementation pass is the timeline area: **Navigate → Range/Markers → Analyze**.
+Current active product focus:
+
+> **generic, reusable analysis primitives before specialized Boost/Idle/AE/etc analyzers**
+
+The first primitive, **selected-range statistics**, is implemented and deployed. The next implementation target is **filters / qualification**.
 
 Do not restart broad performance micro-optimization or structural refactoring unless a feature/regression gives a concrete reason.
 
@@ -43,7 +47,7 @@ Completed:
 - Active/Favorites/Recent/group/search filter semantics have focused tests;
 - live channel values use standardized unit-aware presentation;
 - examples: `848 rpm`, `2.1 %`, `λ 0.987`, `82.2 °C`;
-- no value bars;
+- no decorative value bars;
 - source/channel identity semantics remain unchanged.
 
 ### PR #171 — Header workflow hierarchy
@@ -51,28 +55,62 @@ Completed:
 Completed:
 
 - separate **Open Log** and **Load INI** top-level buttons became **Load Data ▾**;
-- workspace context now reads **Graphs · <workspace> ▾** instead of an unexplained bare workspace name;
+- workspace context reads **Graphs · <workspace> ▾**;
 - empty top-level **Tools** and **Compare** placeholders were removed;
-- the **EpicScope logo dropdown** is explicitly the in-product mode switcher, following the intent of EpicHub without inheriting EpicHub's broader app shell;
-- current mode entries:
-  - **Logger** — active;
-  - **Analyzer** — planned;
-  - **Histogram** — planned;
-- existing file-loading handlers/data semantics were intentionally preserved.
+- the **EpicScope logo dropdown** is the in-product mode/surface switcher;
+- existing file-loading handlers/data semantics were preserved.
 
 ### PR #172 — Channel browser hierarchy
 
 Completed:
 
 - clearer **Channels / Channel browser** identity;
-- Search remains the first interaction;
+- Search is first;
 - Group + visibility filters remain together;
-- three permanent sort buttons became a compact Sort selector plus ↑/↓ direction button;
+- sort controls are compact;
 - **Load now** is the primary footer action;
 - **Add all filtered** and **Clear active pane** moved under `⋯`;
 - existing filter, queued-channel and active-channel semantics remain in force.
 
-Exact-main validation for PR #172 passed type-check, tests, production build, Web CI, Pages build and Pages deployment.
+### PR #174 — Timeline workflow hierarchy
+
+Completed:
+
+- timeline primary row is explicitly **Navigate**;
+- playback/step, scrub/cursor, Fit/zoom and view history stay together;
+- A/B, saved ranges and marker actions are grouped under **Range / Markers**;
+- low-frequency range/marker maintenance actions are behind `⋯`;
+- contextual Analyze state reports whether A/B is ready without presenting a fake analysis tool;
+- playback, cursor, viewport, A/B, markers, saved ranges, view history and persistence semantics were preserved;
+- compact timeline retains the interactive overview/focus strip.
+
+PR #174 passed PR CI, post-merge Web CI and Pages deployment.
+
+## Current generic analysis foundation
+
+### PR #175 — Selected range statistics
+
+Completed and deployed:
+
+- reusable numeric range summarization extracted to `core/analysis/range-statistics.ts`;
+- full/visible graph statistics reuse that primitive rather than maintaining a second implementation;
+- selected A/B statistics are exposed through existing **Channel Details**;
+- selected range reports:
+  - span;
+  - decoded coverage state;
+  - min;
+  - max;
+  - mean;
+  - standard deviation;
+  - valid sample count;
+  - invalid sample count;
+- reversed A/B boundaries are normalized;
+- incomplete active-trace coverage is shown as **Partial decoded coverage** rather than being presented as complete;
+- an already-open Channel Details window refreshes when A/B changes;
+- the selected-range calculation works on the already-decoded active trace and does not introduce a new original-log read path;
+- focused tests cover range selection, invalid samples, reversed boundaries and decoded coverage semantics.
+
+PR #175 exact-head Web CI passed type-check, tests and production build. Post-merge Web CI and GitHub Pages deployment passed on merge commit `0e1f003364c589c531ac021cb2ba74a7eb9a8e4c`.
 
 ## UI rules now considered authoritative
 
@@ -82,11 +120,11 @@ The EpicScope logo dropdown in the upper-right is reserved as the mode/surface s
 
 It is **not** merely branding and it is **not** the broader EpicHub Dashboard/Tuner/Diagnostics shell.
 
-Expected future EpicScope modes/surfaces may include Logger, Analyzer, Histogram/Table, Scatter, Math Channels and other approved analysis surfaces as they become real capabilities. Do not add disabled clutter merely to advertise future work; planned entries should be deliberate and compact.
+Expected future EpicScope modes/surfaces may include Logger, Analyzer, Histogram/Table, Scatter, Math Channels and other approved analysis surfaces as they become real capabilities. Do not add disabled clutter merely to advertise future work.
 
 ### Workflow hierarchy
 
-Controls should be grouped according to normal use and importance rather than by implementation ownership.
+Controls should be grouped according to normal use and importance rather than implementation ownership.
 
 Permanent visibility rule:
 
@@ -98,32 +136,26 @@ Other controls should be contextual, grouped, placed in overflow menus, or revea
 
 - global workspace context is **Graphs · <workspace>**;
 - individual graph/pane identity stays local to each pane;
-- do not clutter the header with `Graph - General`-style repetition;
-- active-pane treatment should make the currently targeted graph obvious locally.
+- do not clutter the header with repeated graph naming;
+- active-pane treatment should make the targeted graph obvious locally.
 
 ### Channels
 
 - Search is first;
-- Group and visibility filters are a single conceptual filter group;
+- Group and visibility filters are one conceptual filter group;
 - Active/Favorites/Recent semantics must remain tested;
-- channel rows may show current values directly with proper unit/symbol formatting;
+- channel rows may show current values with proper unit/symbol formatting;
 - use conventional symbols where genuinely useful, e.g. `λ`; otherwise use normal units such as `rpm`, `%`, `kPa`, `°C`, `V`;
-- do not add value bars merely for decoration;
+- do not add decorative value bars;
 - primary and secondary actions must remain visually distinct.
 
-### Timeline next-pass direction
+### Timeline / range selection
 
-The current timeline exposes many useful functions simultaneously and is the next major clutter target.
-
-Planned grouping:
-
-1. **Navigate** — playback/step, timeline scrub/cursor, Fit, zoom, view history;
-2. **Range / Markers** — A/B selection, selected-range status, saved ranges, marker actions/navigation;
-3. **Analyze** — contextual next action once source/channel/range context is meaningful.
-
-Buttons within each group should be ordered by frequency/importance. Rare maintenance actions should move behind compact menus instead of occupying permanent space.
-
-The existing underlying navigation/range/marker semantics are valuable and should be reorganized rather than discarded.
+- **Navigate** owns playback/step, scrub/cursor, Fit/zoom and view history;
+- **Range / Markers** owns A/B, saved ranges and marker actions/navigation;
+- rare maintenance actions stay contextual/overflowed;
+- Analyze should become a real action only when a real analysis surface exists;
+- existing navigation/range/marker semantics are valuable and should be extended rather than replaced.
 
 ## Current large-log architecture
 
@@ -158,7 +190,7 @@ The 16-byte stripe experiment was rejected because transpose/build cost rose sub
 
 Performance is considered **good enough for the current feature stage**.
 
-The most recent supplied post-audit benchmark before the UI-only PR #170–#172 series showed approximately:
+The most recent supplied post-audit benchmark before the UI/analysis feature sequence showed approximately:
 
 - MLG load: **8.47 s**;
 - workspace restore: **0.54 s**;
@@ -186,7 +218,7 @@ Completed cleanup/refactor sequence:
 - **PR #168** — repository cleanup only after accidental temp-file commits; no runtime application content affected;
 - **PR #169** — extracted pure Bug report formatter.
 
-The audit reached a natural stopping point. Large files alone are not a defect. Do not continue splitting modules simply to reduce line count.
+Large files alone are not a defect. Do not continue splitting modules simply to reduce line count.
 
 ## Current source/workspace behavior
 
@@ -217,28 +249,49 @@ Implemented and working:
 - saved ranges and view history;
 - A/B boundaries and range shading;
 - zoomed-in raw-sample and zoomed-out exact-envelope rendering;
-- Now/Min/Max context and channel details;
+- Now/Min/Max context and Channel Details;
+- selected A/B range statistics;
 - timeline overview;
 - versioned exact-log and reusable workspace persistence.
 
-The timeline feature set is mature enough that the next work is **information hierarchy**, not removal of capability.
+## Generic analysis roadmap
 
-## Generic analysis roadmap after UI hierarchy
+Reusable analysis primitives should continue before specialized analyzers:
 
-Once the navigation/range flow is clear, Phase 2 should resume with reusable analysis primitives before specialized analyzers:
-
-- range statistics;
-- filters/qualification;
-- histogram;
-- 2D histogram/heatmap;
-- scatter;
-- aggregation/statistics/sample-count semantics;
-- generic Events;
-- generic Compare base;
-- then MSQ/table correlation;
-- then specialized Boost/Idle/AE/etc analyzers.
+1. **range statistics — implemented in PR #175**;
+2. **filters / qualification — next**;
+3. histogram;
+4. 2D histogram / heatmap;
+5. scatter;
+6. aggregation/statistics/sample-count semantics;
+7. generic Events;
+8. generic Compare base;
+9. MSQ/table correlation;
+10. specialized Boost/Idle/AE/etc analyzers.
 
 The UI hierarchy work exists specifically so these capabilities do not create another layer of permanent toolbar clutter.
+
+## Filters / qualification direction
+
+The next primitive should answer the reusable question:
+
+> Which samples inside the current source/range are eligible for this analysis?
+
+Initial implementation should remain generic and data-model-first. Prefer a small qualification model that can later feed histogram, scatter, heatmap, events and compare without each surface inventing its own filter semantics.
+
+At minimum investigate:
+
+- qualification against one or more channel values;
+- comparison operators/ranges appropriate for numeric channels;
+- combining conditions with explicit AND semantics first unless there is a strong reason to add OR immediately;
+- selected A/B range as an independent time scope rather than a hidden filter;
+- valid/invalid sample handling;
+- sample counts before/after qualification;
+- explicit coverage/completeness state when the active decoded range does not contain all requested samples;
+- no silent original-log rereads merely to evaluate an already-active qualification;
+- testable pure logic in `core/analysis` before substantial UI.
+
+Do not jump directly to a specialized engine-load/RPM/TPS filter vocabulary. Generic channel/value qualification should be the base.
 
 ## UI/reference constraints still in force
 
@@ -281,25 +334,27 @@ When an older milestone/status statement conflicts with this handoff or current 
 
 ## Exact next task
 
-Continue the approved UI hierarchy work from current `main`.
+Continue Phase 2 generic analysis from current `main`.
 
 Next implementation pass:
 
-1. inspect the current `timeline-shell.ts` presentation and logger wiring without changing underlying semantics;
-2. separate/reorder permanently visible controls into **Navigate**, **Range/Markers**, and contextual **Analyze** responsibility;
-3. order controls by frequency and importance;
-4. move rare range/marker maintenance actions into compact menus where appropriate;
-5. preserve playback, cursor, zoom, A/B, markers, saved ranges and view-history behavior;
-6. keep the EpicScope logo mode switcher in the upper-right unchanged except where a deliberate mode-surface update is part of the task;
-7. add focused tests for any extracted pure UI-state/grouping logic where appropriate;
-8. hosted visual review after deployment.
+1. inspect existing channel/range data models and active-trace access paths;
+2. define a small reusable numeric **qualification/filter model** in `core/analysis`;
+3. define explicit validity and decoded-coverage semantics;
+4. expose before/after eligible sample counts so later analysis surfaces can make sample-count provenance visible;
+5. start with explicit AND composition unless evidence requires more complexity;
+6. add focused pure tests before UI integration;
+7. integrate with the current selected A/B range without conflating time range with value qualification;
+8. avoid introducing new original-log reads on the normal active-trace path;
+9. keep the UI minimal/contextual and do not add a permanent toolbar of analysis controls;
+10. validate on hosted Web after merge.
 
-Do not begin Range Statistics/Histogram implementation until the navigation/range UI hierarchy is in a good state unless the project owner explicitly changes priority.
+Do not begin Histogram/Scatter/Heatmap or a specialized analyzer until the qualification primitive has clear semantics unless the project owner explicitly changes priority.
 
 ## Continuation instruction
 
 A new chat should be able to start with:
 
-> Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue the timeline UI hierarchy pass from there.
+> Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue the filters/qualification analysis primitive from there.
 
 Use the repository handoff and current repository state as authority. Do not reconstruct present architecture from older chats or superseded performance experiments.
