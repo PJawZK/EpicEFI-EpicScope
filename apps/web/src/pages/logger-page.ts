@@ -133,6 +133,19 @@ export interface LoggerRuntimeDiagnosticSnapshot {
   }[];
 }
 
+export interface LoggerAnalysisTraceContext {
+  readonly channel: ChannelDefinition;
+  readonly range: NumericChannelRange;
+  readonly complete: boolean;
+  readonly color: string;
+}
+
+export interface LoggerAnalysisContext {
+  readonly traces: readonly LoggerAnalysisTraceContext[];
+  readonly aTimeMs: number | undefined;
+  readonly bTimeMs: number | undefined;
+}
+
 export interface LoggerPageController {
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
@@ -163,6 +176,7 @@ export interface LoggerPageController {
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): LoggerWorkspaceState;
   getRuntimeDiagnosticSnapshot(): LoggerRuntimeDiagnosticSnapshot;
+  getAnalysisContext(): LoggerAnalysisContext;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
 }
@@ -2006,6 +2020,28 @@ export function createLoggerPage(): LoggerPageController {
     }
   };
 
+  const getAnalysisContext = (): LoggerAnalysisContext => {
+    const runtime = activePaneRuntime();
+    const traces = runtime
+      ? runtime.graph.getOverviewTraces().flatMap((trace) => {
+          const channel = channelDefinitions.get(trace.channelId);
+          if (!channel) return [];
+          const statistics = runtime.graph.getChannelStatistics(trace.channelId);
+          return [{
+            channel,
+            range: trace.range,
+            complete: statistics?.full.complete ?? false,
+            color: trace.color,
+          }];
+        })
+      : [];
+    return {
+      traces,
+      aTimeMs: analysisStartMs,
+      bTimeMs: analysisEndMs,
+    };
+  };
+
   const getRuntimeDiagnosticSnapshot = (): LoggerRuntimeDiagnosticSnapshot => {
     const workspace = activeWorkspace();
     const visiblePaneCount = workspace ? paneCountForLayout(workspace.layout) : 0;
@@ -2089,6 +2125,7 @@ export function createLoggerPage(): LoggerPageController {
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
+    getAnalysisContext,
     restoreWorkspaceState,
     restoreActiveWorkspace: async () => {
       const workspaceId = activeWorkspaceId;

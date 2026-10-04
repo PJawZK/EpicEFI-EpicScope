@@ -20,6 +20,7 @@ import {
   type StagedMlgImportHandle,
 } from '../adapters/mlg-staged-import';
 import { createLoggerPage } from '../pages/logger-page';
+import { createHistogramPage } from '../pages/histogram-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
 import { evaluateBugReportHealth } from '../components/bug-report-health';
 import {
@@ -55,6 +56,7 @@ export function mountAppShell(root: HTMLElement): void {
   app.className = 'epicscope-app';
 
   const loggerPage = createLoggerPage();
+  const histogramPage = createHistogramPage();
   const performanceDiagnostics = createPerformanceDiagnostics();
 
   const runtimeErrors: BugReportRuntimeErrorEntry[] = [];
@@ -99,7 +101,7 @@ export function mountAppShell(root: HTMLElement): void {
             <strong>EpicScope</strong>
             <small>Analysis workspace</small>
           </div>
-          <button type="button" class="global-module-choice global-module-choice--active" role="menuitem" aria-current="page">
+          <button type="button" class="global-module-choice global-module-choice--active" data-epicscope-mode="logger" role="menuitem" aria-current="page">
             <span>
               <strong>Logger</strong>
               <small>Recorded log viewing and navigation</small>
@@ -113,12 +115,12 @@ export function mountAppShell(root: HTMLElement): void {
             </span>
             <span class="module-state">Planned</span>
           </button>
-          <button type="button" class="global-module-choice" role="menuitem" aria-disabled="true" disabled>
+          <button type="button" class="global-module-choice" data-epicscope-mode="histogram" role="menuitem" aria-current="false">
             <span>
               <strong>Histogram</strong>
               <small>Distribution and binned analysis</small>
             </span>
-            <span class="module-state">Planned</span>
+            <span class="module-state">Available</span>
           </button>
         </div>
       </div>
@@ -326,6 +328,8 @@ export function mountAppShell(root: HTMLElement): void {
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
+  const modeChip = header.querySelector<HTMLElement>('.mode-chip');
+  const modeChoices = [...header.querySelectorAll<HTMLButtonElement>('[data-epicscope-mode]')];
   const settingsButton = header.querySelector<HTMLButtonElement>('.settings-button');
   const settingsPopover = header.querySelector<HTMLElement>('.settings-popover');
   const playbackSpeed = header.querySelector<HTMLSelectElement>('.setting-playback-speed');
@@ -341,7 +345,7 @@ export function mountAppShell(root: HTMLElement): void {
   const clearChannelCacheButton = header.querySelector<HTMLButtonElement>('.setting-clear-channel-cache');
   const channelCacheStatus = header.querySelector<HTMLElement>('.settings-channel-cache-status');
 
-  if (!brandButton || !brandMenu || !loadDataButton || !loadDataMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
+  if (!brandButton || !brandMenu || !loadDataButton || !loadDataMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !modeChip || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
 
@@ -828,6 +832,35 @@ export function mountAppShell(root: HTMLElement): void {
     brandButton.setAttribute('aria-expanded', 'false');
   };
 
+  type EpicScopeMode = 'logger' | 'histogram';
+  let activeMode: EpicScopeMode = 'logger';
+  const setEpicScopeMode = (mode: EpicScopeMode): void => {
+    activeMode = mode;
+    const loggerActive = mode === 'logger';
+    loggerPage.element.hidden = !loggerActive;
+    histogramPage.element.hidden = loggerActive;
+    graphSelectorSlot.hidden = !loggerActive;
+    loggerToolsSlot.hidden = !loggerActive;
+    undoButton.hidden = !loggerActive;
+    redoButton.hidden = !loggerActive;
+    modeChip.textContent = loggerActive ? 'RECORDED' : 'HISTOGRAM';
+
+    for (const choice of modeChoices) {
+      const choiceMode = choice.dataset.epicscopeMode;
+      const selected = choiceMode === mode;
+      choice.classList.toggle('global-module-choice--active', selected);
+      choice.setAttribute('aria-current', selected ? 'page' : 'false');
+      const state = choice.querySelector<HTMLElement>('.module-state');
+      if (state) state.textContent = selected ? 'Active' : 'Available';
+    }
+
+    if (!loggerActive) {
+      histogramPage.setContext(loggerPage.getAnalysisContext());
+      histogramPage.refresh();
+    }
+    closeBrandMenu();
+  };
+
   const closeLoadDataMenu = (): void => {
     loadDataMenu.hidden = true;
     loadDataButton.setAttribute('aria-expanded', 'false');
@@ -852,7 +885,14 @@ export function mountAppShell(root: HTMLElement): void {
     brandButton.classList.toggle('brand-button--open', nextOpen);
     brandButton.setAttribute('aria-expanded', String(nextOpen));
   });
-  brandMenu.addEventListener('click', (event) => event.stopPropagation());
+  brandMenu.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const choice = target.closest<HTMLButtonElement>('[data-epicscope-mode]');
+    const mode = choice?.dataset.epicscopeMode;
+    if (mode === 'logger' || mode === 'histogram') setEpicScopeMode(mode);
+  });
   document.addEventListener('click', () => {
     closeBrandMenu();
     closeLoadDataMenu();
@@ -861,6 +901,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   openButton.addEventListener('click', () => {
     closeLoadDataMenu();
+    if (activeMode !== 'logger') setEpicScopeMode('logger');
     fileInput.click();
   });
   loadIniButton.addEventListener('click', () => {
@@ -1490,6 +1531,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, footer, fileInput, iniInput, bugReportDialog);
+  app.append(header, loggerPage.element, histogramPage.element, footer, fileInput, iniInput, bugReportDialog);
   root.append(app);
 }
