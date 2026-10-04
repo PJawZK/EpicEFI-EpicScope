@@ -26,6 +26,17 @@ export interface InspectorChannelStatistics {
     readonly max: number | undefined;
     readonly mean: number | undefined;
   };
+  readonly selected: {
+    readonly startMs: number;
+    readonly endMs: number;
+    readonly complete: boolean;
+    readonly validCount: number;
+    readonly invalidCount: number;
+    readonly min: number | undefined;
+    readonly max: number | undefined;
+    readonly mean: number | undefined;
+    readonly standardDeviation: number | undefined;
+  } | undefined;
 }
 
 export interface InspectorPanelController {
@@ -48,6 +59,7 @@ export interface InspectorPanelController {
   setChannelValues(values: readonly { channelId: string; value: string }[]): void;
   clearChannelValues(): void;
   setChannelStatistics(statistics: InspectorChannelStatistics | undefined): void;
+  getSelectedDetailsChannelId(): string | undefined;
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): InspectorWorkspaceState;
   restoreWorkspaceState(state: InspectorWorkspaceState): void;
@@ -623,8 +635,19 @@ export function createInspectorPanel(): InspectorPanelController {
     statisticsPanel.hidden = false;
     statisticsTitle.textContent = statistics.title;
     const scope = statistics.full.complete ? 'Full' : 'Loaded';
+    const selectedCells = statistics.selected ? [
+      cell('A/B span', `${((statistics.selected.endMs - statistics.selected.startMs) / 1_000).toFixed(3)} s`),
+      cell('A/B coverage', statistics.selected.complete ? 'Complete' : 'Partial decoded coverage'),
+      cell('A/B min', statistics.selected.min === undefined ? '—' : `${formatStatistic(statistics.selected.min, precision)}${unit}`),
+      cell('A/B max', statistics.selected.max === undefined ? '—' : `${formatStatistic(statistics.selected.max, precision)}${unit}`),
+      cell('A/B mean', statistics.selected.mean === undefined ? '—' : `${formatStatistic(statistics.selected.mean, precision)}${unit}`),
+      cell('A/B std dev', statistics.selected.standardDeviation === undefined ? '—' : `${formatStatistic(statistics.selected.standardDeviation, precision)}${unit}`),
+      cell('A/B valid', statistics.selected.validCount.toLocaleString()),
+      cell('A/B invalid', statistics.selected.invalidCount.toLocaleString()),
+    ] : [];
     statisticsBody.innerHTML = [
       cell('Current', statistics.current === undefined ? '—' : `${formatStatistic(statistics.current, precision)}${unit}`),
+      ...selectedCells,
       cell(`${scope} min`, statistics.full.min === undefined ? '—' : `${formatStatistic(statistics.full.min, precision)}${unit}`),
       cell(`${scope} max`, statistics.full.max === undefined ? '—' : `${formatStatistic(statistics.full.max, precision)}${unit}`),
       cell(`${scope} mean`, statistics.full.mean === undefined ? '—' : `${formatStatistic(statistics.full.mean, precision)}${unit}`),
@@ -754,6 +777,7 @@ export function createInspectorPanel(): InspectorPanelController {
     setChannelValues,
     clearChannelValues,
     setChannelStatistics,
+    getSelectedDetailsChannelId: () => selectedDetailsChannelId,
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
     restoreWorkspaceState,
