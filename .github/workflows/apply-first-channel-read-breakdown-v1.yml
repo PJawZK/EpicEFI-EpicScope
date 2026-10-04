@@ -1,0 +1,24 @@
+name: Apply first-channel read breakdown
+
+on:
+  push:
+    branches:
+      - perf/first-channel-read-breakdown-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/first-channel-read-breakdown-v1
+      - run: python tools/apply-first-channel-read-breakdown-v1.py
+      - run: |
+          git config user.name "EpicScope Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add core/log-model/log-types.ts apps/web/src/adapters/persistent-channel-cache.ts apps/web/src/adapters/mlg-column-sidecar-v1.ts apps/web/src/components/graph-viewport.ts apps/web/src/components/performance-diagnostics.ts
+          git commit -m "Perf: instrument first-channel read breakdown"
+          git push origin HEAD:perf/first-channel-read-breakdown-v1
