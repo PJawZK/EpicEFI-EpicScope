@@ -1,8 +1,12 @@
 import {
   clearChannelDecodePerformance,
+  latestChannelDecodePerformance,
 } from '../../../../core/parsers/mlg/channel-decode-performance';
 import type { BlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
-import { buildPerformanceDiagnosticsReport } from './performance-diagnostics-report';
+import {
+  buildPerformanceDiagnosticsReport,
+  decodeMeasuredMs,
+} from './performance-diagnostics-report';
 
 export interface LoadPerformanceRun {
   readonly fileName: string;

@@ -8,7 +8,7 @@ import type {
   WorkspaceRestorePerformanceRun,
 } from './performance-diagnostics';
 
-function decodeMeasuredMs(snapshot: ReturnType<typeof latestChannelDecodePerformance>): number {
+export function decodeMeasuredMs(snapshot: ReturnType<typeof latestChannelDecodePerformance>): number {
   if (!snapshot) return 0;
   return snapshot.cacheResolveMs
     + snapshot.batchPlanMs
