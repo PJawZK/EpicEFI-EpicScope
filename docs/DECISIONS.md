@@ -1,466 +1,274 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Decision Log
 
-This file records approved project and architectural decisions that future implementation must respect until deliberately superseded.
+This file records approved project/architectural decisions. A later decision may refine or supersede an earlier one; superseded decisions remain historically relevant unless explicitly removed.
 
 ## D-001 — Product name
-
 **Status:** Approved
 
-The project is named **EpicEFI – EpicScope** for formal/outward-facing use and **EpicScope** as the compact application/project name.
-
-The project concept is to **scope a tune**: inspect ECU/log behaviour to identify faults and opportunities for improvement.
+Formal/outward-facing name: **EpicEFI – EpicScope**. Compact name: **EpicScope**. Product concept: *scope a tune*.
 
 ## D-002 — Platform development order
-
 **Status:** Approved
 
-Development order is:
-
-1. Web
-2. Linux
-3. Android / EpicHub
-
-Web is the functional reference. Linux is the primary production/performance target. Android follows after behaviour and performance architecture are mature.
+1. Web functional reference
+2. Linux production/performance implementation
+3. Android / EpicHub reuse
 
 ## D-003 — Web technology direction
-
 **Status:** Approved
 
-EpicScope Web uses lightweight TypeScript as the default direction.
-
-A large frontend framework is not assumed and requires justification before adoption.
+Lightweight TypeScript by default. Large frontend frameworks require explicit justification.
 
 ## D-004 — Primary browser target
-
 **Status:** Approved
 
-Chromium is the primary Web target, with Brave treated as the user's first-class practical test browser.
-
-Other browser families may be added later without delaying initial development.
+Chromium-first with Brave treated as a first-class practical test browser.
 
 ## D-005 — Linux baseline
-
 **Status:** Approved
 
-Debian 13 Stable is the minimum authoritative Linux target.
-
-Raising the minimum requires substantial demonstrated benefit; development convenience alone is insufficient.
+Debian 13 Stable is the minimum authoritative Linux target unless substantial demonstrated benefit justifies raising it.
 
 ## D-006 — Performance priority
-
 **Status:** Approved
 
-Log-reading/analysis speed and low RAM use outrank visual polish.
-
-The mature Linux goal includes interactive analysis of a supported 1 GiB log on a 2 GiB RAM system without holding the complete source log in memory.
+Log-reading/analysis speed and low RAM outrank visual polish. Mature Linux target includes interactive analysis of a supported 1 GiB log on 2 GiB RAM without requiring the complete source in memory.
 
 ## D-007 — Web optimization policy
-
 **Status:** Approved
 
-Web development prioritizes discovering and validating the complete functional model before deep native-style optimization.
-
-Obviously wasteful data architecture is still prohibited. Final performance optimization belongs primarily to the Linux stage once major feature requirements are known.
+Web validates complete product behavior first, while still prohibiting obviously wasteful architecture. Final deep native optimization belongs mainly to Linux after feature requirements mature.
 
 ## D-008 — Initial source formats
-
 **Status:** Approved
 
-MLG is the first-class initial log format. CSV follows as the secondary import format.
-
-Future formats must normalize through approved internal models rather than leaking source-format semantics into analyzers or UI.
+MLG is first-class initial log format. CSV remains secondary/deferred. All formats normalize through approved internal models.
 
 ## D-009 — Normalized data authority
-
 **Status:** Approved
 
-Parsers normalize source data into the appropriate common contracts before generic analysis or presentation.
-
-Log sources such as MLG/CSV normalize into log/channel/time contracts. Tune/configuration sources such as INI/MSQ normalize into tune/firmware contracts.
-
-Analyzers and UI must not become source-format parsers.
+Parsers normalize source data before generic analysis/presentation. UI/analyzers do not become source-format parsers.
 
 ## D-010 — Controlled file architecture
-
 **Status:** Approved
 
-Repository/file architecture is controlled architecture.
-
-New production code must fit an approved architectural responsibility/location. If it does not, architecture must be reviewed and updated before implementation.
-
-Architecture may evolve explicitly; silent deviation is prohibited.
+Production code must fit approved responsibilities/locations. Silent architectural drift is prohibited.
 
 ## D-011 — Task-to-file planning
-
 **Status:** Approved
 
-Implementation work should be split into architectural tasks that identify ownership/location, dependencies, validation, and completion criteria before coding.
-
-A feature request does not automatically authorize a new top-level subsystem.
+Implementation tasks should identify ownership, dependencies, validation and completion criteria before coding.
 
 ## D-012 — Repository workflow
-
 **Status:** Approved
 
-`main` is authoritative. Normal development should use short-lived task/feature branches and pull-request review before merge.
-
-Long-lived parallel architecture branches are discouraged unless explicitly approved.
+`main` is authoritative. Normal work uses focused short-lived branches and PR review.
 
 ## D-013 — Versioning
-
 **Status:** Approved
 
-EpicScope uses semantic-style versioning.
-
-`0.x` covers evolving Web/architecture development. `1.0` is reserved for a stable production baseline expected to align with mature Linux delivery rather than merely first Web availability.
+Semantic-style versioning. `0.x` covers evolving Web/architecture development; `1.0` is reserved for a mature production baseline, expected to align with Linux maturity rather than first Web availability.
 
 ## D-014 — License
-
 **Status:** Approved
 
-EpicScope is open source under the Apache License 2.0.
+Apache License 2.0.
 
 ## D-015 — Dependency discipline
-
 **Status:** Approved
 
-Dependencies must justify their runtime, memory, maintenance, compatibility, and architectural cost.
-
-Dependencies that materially raise Linux/runtime requirements or introduce major framework coupling require explicit review.
+Dependencies must justify runtime, memory, compatibility, maintenance and architectural cost.
 
 ## D-016 — Privacy model
-
 **Status:** Approved
 
-Local log analysis is local by default.
-
-Upload/share/publish functions are optional explicit actions and must never be required simply to analyze a local log.
+Local analysis is local by default. Upload/share/publish are explicit optional actions.
 
 ## D-017 — Test-data policy
-
 **Status:** Approved
 
-Small curated fixtures may live in the repository. Large real logs must not casually bloat normal Git history and require a deliberate artifact/test-data strategy.
+Small curated fixtures may live in-repo. Large real logs require deliberate artifact/test-data handling and must not bloat normal Git history casually.
 
 ## D-018 — Benchmark policy
-
 **Status:** Approved
 
-Performance benchmarks exist from early development to detect regressions, even though Web is not required to satisfy final Linux targets.
-
-Linux performance claims must eventually be measurement-driven on representative logs/hardware.
+Performance benchmarks exist from early development to detect regressions. Linux claims later require representative measurement.
 
 ## D-019 — Error-handling policy
-
 **Status:** Approved
 
-Malformed files, missing channels, incompatible tune context, and unavailable analyzer inputs should degrade affected functionality where possible rather than crash the entire session.
-
-Invalid/missing data must not be silently substituted with fabricated values.
+Malformed/missing/incompatible data should degrade affected capability where possible rather than crash the whole session. Missing data must not be fabricated.
 
 ## D-020 — Feature maturity labels
-
 **Status:** Approved
 
-Major analyzers/features use **Experimental**, **Beta**, and **Stable** maturity states.
-
-Promotion requires validation evidence.
+Major features/analyzers use **Experimental**, **Beta**, **Stable**. Promotion requires validation evidence.
 
 ## D-021 — Naming conventions
-
 **Status:** Approved
 
-Consistent file/module/analyzer/channel terminology will be maintained. Exact source channel names should be preserved where useful, especially TunerStudio/MegaLogViewer terminology.
-
-Default code naming rules are defined in `WORKFLOW.md`: kebab-case directories/files, PascalCase exported types/classes, camelCase functions/variables, and documented task/decision identifiers.
-
-Generic dumping-ground names such as `misc`, `stuff`, or `helpers2` are not acceptable architectural ownership.
+Preserve useful source terminology, especially TunerStudio/MegaLogViewer names. Follow repository naming rules; generic dumping-ground modules are prohibited.
 
 ## D-022 — Compatibility policy
-
 **Status:** Approved
 
-Persisted sessions/public schemas must be versioned once introduced. Breaking changes require backward-compatible extension, migration, or explicit unsupported-version handling.
-
-Silent compatibility breakage is prohibited.
+Persisted/public schemas are versioned. Breaking changes require extension, migration or explicit unsupported-version behavior.
 
 ## D-023 — EpicHub UI relationship
-
 **Status:** Approved
 
-The EpicHub Logger/Analyzer interaction model is the starting UI authority for EpicScope, not the full EpicHub application.
-
-Relevant established behaviours include a consistent right-side details/settings area and timeline/navigation concepts already developed for the Logger/Analyzer work.
-
-EpicScope may refine these behaviours as its analysis requirements mature.
-
-The exact current reference must be inspected/identified before Phase 1 shell implementation so the UI is not reconstructed from memory alone.
+EpicHub Logger/Analyzer interaction is the starting reference, not the full EpicHub app architecture. EpicScope may deliberately refine it.
 
 ## D-024 — Handoff system
-
 **Status:** Approved
 
-EpicScope uses a single continuously updated `docs/HANDOFF.md` file for chat continuation.
-
-The handoff summarizes the latest valid project state and points to authoritative documents. It is not a transcript or duplicate architecture specification.
-
-A new chat should be able to continue from a short instruction such as: **“Read the EpicScope repository handoff and continue from there.”**
+A single continuously updated `docs/HANDOFF.md` is the present-tense continuation authority.
 
 ## D-025 — Project-owner architecture approval
-
 **Status:** Approved
 
-Architectural changes require project-owner approval before implementation.
-
-Contributors, implementation agents, and future chats may propose changes but may not self-authorize structural deviation simply by editing architecture documents or the decision log.
+Architectural changes require project-owner approval; contributors/agents may propose but not self-authorize structural deviation.
 
 ## D-026 — Parser/tune ownership
-
 **Status:** Approved
 
-Raw source-format decoding belongs under `core/parsers/`.
-
-MLG and CSV are log parsers. INI and MSQ decoding also belong under parser ownership when tune-awareness is implemented.
-
-`core/tune/` owns normalized firmware/tune/table semantics and relationships, not raw INI/MSQ syntax parsing.
+Raw MLG/CSV/INI/MSQ decoding belongs under `core/parsers/`. `core/tune/` owns normalized tune/table semantics, not raw source syntax.
 
 ## D-027 — Session and persistence ownership
-
 **Status:** Approved
 
-`core/session/` is the approved home for non-UI session composition/orchestration.
-
-`core/persistence/` is the approved home for storage-independent serialization, schema versioning, migration, and persisted-artifact compatibility logic.
-
-Platform-specific storage remains behind application/platform adapters.
+`core/session/` owns non-UI domain-session composition. `core/persistence/` owns storage-independent versioning/migration/compatibility. Platform storage stays behind adapters.
 
 ## D-028 — Untrusted input policy
-
 **Status:** Approved
 
-Imported logs, tune files, session files, metadata, and shared artifacts are untrusted input.
-
-Parsers/importers must validate file-provided sizes, offsets, counts, strings, and similar fields before allowing them to drive allocation or execution behavior.
-
-Malformed input must not cause uncontrolled memory allocation or silently fabricated data.
+Imported files/metadata/shared artifacts are untrusted. File-provided sizes/counts/offsets/strings must be bounded before driving allocation/execution.
 
 ## D-029 — Extended local-first privacy
-
 **Status:** Approved
 
-Local-first privacy includes network behavior.
+Without explicit user action/consent, EpicScope must not transmit log/tune contents, filenames, derived values or analysis results to remote services/analytics.
 
-Without explicit user action/consent, EpicScope must not transmit log contents, tune contents, filenames, derived values, or analysis results to remote services or analytics systems.
-
-Any future telemetry requires separate review and must not silently include tune/log content.
-
-## D-030 — Capability-driven boost analyzer
-
+## D-030 — Capability-driven Boost Analyzer
 **Status:** Approved
 
-The Boost Analyzer must not be architecturally limited to the user's current upper/lower chamber setup.
-
-It should support single-duty, dual-solenoid, upper/lower chamber, open-loop, and closed-loop arrangements where logged channels/context permit, while keeping the current upper/lower chamber system as an important first-class use case.
+Boost analysis must support different control arrangements where channels permit: single/dual solenoid, upper/lower chamber, open/closed loop. The current vehicle setup is important but not architecture-defining.
 
 ## D-031 — Current file tree is deliberately incomplete
-
 **Status:** Approved
 
-`FILE_ARCHITECTURE.md` defines approved currently known implementation areas, not a speculative complete future tree.
-
-Linux, Android, sharing/backend, live-acquisition, or other new platform areas require explicit approval before their directories/layers are introduced.
-
-This does not permit deviation from the current map; it requires deliberate extension of the map first.
+`FILE_ARCHITECTURE.md` defines approved known areas, not a speculative complete future tree. Linux/Android/backend/live-acquisition areas require explicit approval before introduction.
 
 ## D-032 — Domain session and workspace state are separate
-
 **Status:** Approved
 
-`Session` is the top-level domain analysis context and must not become a general UI-state container.
-
-Presentation/application workspace state may be persisted alongside a session artifact, but it remains conceptually separate so Web, Linux, and Android can use different workspace representations without changing core session semantics.
-
-`core/persistence/` may serialize both through a versioned persisted artifact while preserving that separation.
+Domain `Session` is not a general UI-state container. Web/Linux/Android may have different presentation workspace representations while core session semantics remain stable.
 
 ## D-033 — EpicScope UI reference authority
+**Status:** Approved; refined by D-045
 
-**Status:** Approved
+`docs/UI_REFERENCE.md` is the authoritative EpicScope interpretation of `EpicHub-Tablet-Landscape-0.0.45(2).html` and current project-owner refinements.
 
-`docs/UI_REFERENCE.md` is the authoritative EpicScope interpretation of the reviewed EpicHub Logger/Analyzer reference.
+Inherited concepts include graph/timeline/channel/range/marker/Scatter/Histogram/Table/Math/compare workflows. EpicScope does not inherit EpicHub Android implementation architecture or the broader Dashboard/Tuner/Diagnostics app shell.
 
-The authoritative prototype inspected during `WEB-REFERENCE` is `EpicHub-Tablet-Landscape-0.0.45(2).html`, together with current EpicHub UI architecture. It supersedes the older `EpicHub-1.12.1_TabletLandscape.html` prototype for EpicScope UI-reference purposes.
+Right-side controls on wide layouts, offline/imported-log initial focus, Trigger Logger deferral and performance-over-exact-reproduction remain approved.
 
-EpicScope inherits the Logger/Analyzer graph, timeline, channel, Scatter, Histogram/Table, Math Channels, comparison, range/marker, workspace, sensor/timeline visibility, and related analysis interaction concepts, but not the broader EpicHub application shell or Android implementation architecture.
-
-Approved EpicScope refinements include:
-
-- a dedicated EpicScope shell rather than EpicHub's module switcher;
-- consistent right-side analysis/detail controls on wide layouts, including moving Scatter/Histogram/Table control responsibility from the prototype's left side to the right;
-- preserve 0.0.45's explicit loaded-log identity and sensor/timeline edge-control concepts where applicable;
-- offline/imported-log focus for initial Web development;
-- Trigger Logger deferred unless deliberately added later;
-- performance and memory requirements may simplify visual implementation while preserving capability.
-
-Prototype demo/localStorage/JSON machinery is not production architecture. The 0.0.45 `REC` control is a UI/reference concept only until EpicScope live acquisition/recording architecture is explicitly approved.
-
-Future changes to this UI reference require explicit review and a superseding decision where they alter these approved semantics.
+The earlier wording that EpicScope should have no module-like switcher is refined by D-045: the EpicScope-logo dropdown is an **in-product EpicScope mode/surface switcher**, not the broader EpicHub shell.
 
 ## D-034 — WEB-BOOT Web toolchain
-
 **Status:** Approved
 
-The initial EpicScope Web bootstrap uses:
-
-- npm with a committed lockfile;
-- Vite 8.x;
-- vanilla TypeScript 7.x;
-- browser-native HTML/CSS/DOM APIs;
-- Chromium/Brave as the primary development/smoke-test target.
-
-No frontend framework, graph/chart library, state-management framework, CSS framework, or general UI component library is approved as part of WEB-BOOT.
-
-TypeScript checking and Vite production-build validation are required bootstrap checks. A dedicated automated test framework is intentionally deferred until parser/core logic requires it, at which point the relevant task must review and document the choice before implementation.
-
-The Web-development Node.js requirement imposed by Vite is a build-tool requirement only and does not redefine the eventual Linux end-user platform baseline.
-
-`docs/WEB_BOOT_PLAN.md` is the detailed authority for the initial bootstrap task split and exact files.
+npm lockfile, Vite 8.x, vanilla TypeScript 7.x, browser-native HTML/CSS/DOM, Chromium/Brave-first. No framework/chart/state/CSS library was approved by bootstrap alone.
 
 ## D-035 — GitHub-hosted Web delivery
-
 **Status:** Approved
 
-During the Web stage, the normal project-owner workflow must not require a local clone, Node.js, npm, or a development environment.
-
-GitHub Actions is the authoritative automated Web build/type-check path and GitHub Pages is the normal hosted browser test/distribution surface. Local development remains optional for contributors.
-
-The Pages-hosted application is still local-first: selecting a local log/tune file for analysis must not upload its contents merely because the application itself is hosted by GitHub Pages.
-
-The initial repository Pages path is `/EpicEFI-EpicScope/`, and Vite build configuration must respect that base path.
-
-`web-ci.yml` owns branch/PR validation. `pages.yml` owns `main` build/deployment. Pages source may require the one-time repository setting **Settings → Pages → Source: GitHub Actions**.
-
+Project-owner testing should not require local Node/npm/clone. GitHub Actions is build/test authority; GitHub Pages is normal hosted test surface. Hosted delivery does not authorize log/tune upload.
 
 ## D-036 — Web workspace persistence v1
-
 **Status:** Approved
 
-The Phase 1 Web application persists presentation/workspace state locally per matching source log using a versioned `epicscope.web-workspace` v1 artifact.
-
-Rules:
-
-- Web WorkspaceState remains presentation/application state and is not promoted into the domain `Session`;
-- storage-independent versioning/compatibility handling belongs under `core/persistence/`;
-- browser storage is a Web adapter and must not leak browser APIs into core persistence;
-- the Web persistence key uses the existing source identity, which includes filename, file size and last-modified identity for local MLG files;
-- persisted workspaces may include graph-workspace state, selected channels, viewport/cursor state, annotations/ranges, inspector state and Web settings;
-- raw log bytes and decoded channel arrays are not persisted;
-- unknown/malformed artifact versions are rejected explicitly and must not be silently overwritten during automatic restore/save;
-- the user must have an explicit local **Forget saved workspace** action;
-- persistence remains local-first and does not authorize network transmission or cloud storage.
-
+Exact-log `epicscope.web-workspace` v1 persists presentation/navigation state for the matching source identity. Raw log bytes/decoded arrays are not persisted. Unsupported artifacts are rejected explicitly and user can forget saved state.
 
 ## D-037 — INI-backed channel catalog and log binding
-
 **Status:** Approved
 
-EpicScope will use normalized INI information as the preferred source of stable known runtime/output-channel definitions independently of any one opened log.
+Normalized INI is preferred stable known runtime/output-channel context. MLG remains authoritative for samples/validity. Known-no-data and log-only states remain explicit. INI is optional for ordinary log analysis.
 
-Rules:
-
-- raw INI syntax decoding belongs under `core/parsers/ini/`;
-- stable logical channel identity/catalog responsibilities belong under approved channel/source-context services, not the Web UI;
-- an opened MLG remains authoritative for recorded sample values and source validity;
-- EpicScope binds logical catalog channels to matching MLG channels when data exists;
-- a catalog channel may remain visible as **known, no data** when absent from the current log;
-- usable **log-only** channels remain available even when the loaded INI does not define them;
-- MLG field position/index may remain a source-local identifier but must not be the sole long-term persisted workspace identity once catalog binding is available;
-- INI remains optional for ordinary log analysis.
-
-This decision intentionally allows TUNE-INI/channel-catalog work to proceed before the deferred CSV importer. D-008 still defines CSV as the secondary log format; it no longer implies that CSV must be the next implementation task after MLG.
-
-## D-038 — Persistent application workspace is independent of exact log identity
-
+## D-038 — Persistent application workspace independent of exact log identity
 **Status:** Approved
 
-The long-term workspace model separates reusable application configuration from recording-specific analysis state.
+Reusable named workspaces/layouts/stable channel assignments persist separately from recording-specific viewport/cursor/A-B/marker/range state.
 
-Reusable application workspace state may persist:
+Current separate artifacts:
 
-- named workspaces;
-- fixed/freeform pane layout and geometry;
-- stable logical channel assignments;
-- favorites and presentation preferences;
-- other configuration that should exist before a log is opened.
+- `epicscope.web-workspace` v1 — exact-log navigation/annotations;
+- `epicscope.web-application-workspace` v1 — reusable app workspace;
+- `epicscope.web-ini-channel-catalog` v1 — normalized INI catalog.
 
-Recording-specific state remains associated with the relevant log/session, including viewport/cursor position, A/B state, source-specific markers/ranges, and similar navigation context.
-
-The `epicscope.web-workspace` v1 exact-log artifact remains valid for recording-specific state. Reusable application structure is now implemented separately as `epicscope.web-application-workspace` v1, and normalized INI channel metadata is stored separately as `epicscope.web-ini-channel-catalog` v1. The three artifacts have distinct responsibilities; incompatible v1 exact-log artifacts are not silently reinterpreted.
-
-## D-039 — MSQ is optional tune-value enrichment, not the runtime-channel catalog
-
+## D-039 — MSQ is optional tune-value enrichment
 **Status:** Approved
 
-MSQ support follows the INI-backed channel/source-context foundation.
+MSQ later supplies actual calibration values/tables/curves/scalars. It does not replace INI as channel-definition context or MLG as recorded-sample authority.
 
-Rules:
-
-- raw MSQ syntax decoding belongs under `core/parsers/msq/`;
-- MSQ supplies actual tune/calibration values, tables, curves, and scalar settings through normalized tune context;
-- MSQ does not replace INI as the preferred stable runtime/output-channel definition source;
-- MSQ does not replace MLG as the authority for recorded runtime samples;
-- compatibility between loaded INI, MSQ, and logs must be surfaced explicitly rather than guessed or silently coerced.
-
-
-## D-040 — Vitest is the active Web/core automated test gate
-
+## D-040 — Vitest is active Web/core automated test gate
 **Status:** Approved
 
-The bootstrap-era deferral of a dedicated automated test framework has been resolved. Vitest 5.x is now part of the normal Web CI validation path for parser/core/persistence logic.
+Vitest 5.x is part of normal CI validation for parser/core/persistence/analysis logic where appropriate.
 
-New parser, channel-binding, persistence, and analysis tasks should extend the existing Vitest gate where automated regression coverage is appropriate. This does not require browser/DOM tests for pure core logic.
+## D-041 — Web active-channel reuse may retain decoded data
+**Status:** Approved
 
-<!-- CURRENT_STATE:current-performance-decisions:START -->
-## D-041 — Web arbitrary active-channel reuse may retain fully decoded data
-
-**Status:** Approved / implemented behavior, not the active first-use solution
-
-The Web data path may retain a completely decoded active channel and may reuse decoded channel data through bounded cache mechanisms so later graph navigation does not unnecessarily reread source data.
-
-This is an implementation optimization behind normalized data contracts. It does **not** authorize speculative startup decoding of arbitrary channels and does not mandate the same storage strategy for Linux.
+The Web path may retain fully decoded/materialized channels and use bounded persistent reuse. This is an implementation optimization, not a Linux mandate.
 
 ## D-042 — Low-spec Web scheduling is evidence-driven
-
 **Status:** Approved
 
-Performance behavior may adapt to measured hardware constraints while preserving product semantics. Low-spec changes must be judged from physical source I/O, startup time, responsiveness, decode CPU and memory pressure rather than desktop measurements alone.
+Low-spec behavior is judged by measured I/O, startup, responsiveness, decode CPU and memory pressure rather than desktop intuition alone.
 
-Earlier viewport/progressive/resident scheduling experiments remain historical evidence. They do not override the current performance rule in D-043.
+## D-043 — Do not front-load arbitrary channel work into startup
+**Status:** Approved; performance campaign concluded for now
 
-## D-043 — Do not front-load arbitrary channel work into normal startup
+The `predecode=32/64/128` strategy is rejected. Normal startup must not decode speculative arbitrary hot sets merely to reduce later selection latency.
 
-**Status:** Approved / current performance direction
+The replacement architecture is now implemented through OPFS sidecar/native-column access and session reuse. Performance should be revisited only for measured regression/maturity work rather than continuous micro-optimization.
 
-The opportunistic `predecode=32/64/128` experiment is rejected as a production strategy and was removed in PR #130.
+## D-044 — Workflow-first UI hierarchy
+**Status:** Approved
+
+The primary Logger workflow is:
+
+> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
 Rules:
 
-- normal startup/workspace restore decodes only channels actually requested by the active workspace;
-- do not make normal MLG startup slower merely to make a selected subset of possible future channels faster;
-- hardcoded or firmware-specific channel hot sets are prohibited as a performance mechanism;
-- runtime-derived hot sets are also not sufficient if they merely shift the same work into startup;
-- the bounded persistent decoded-channel cache may accelerate channels already decoded, but must not be treated as a substitute for solving first-use access;
-- the next performance architecture should target reuse of already-required initial load/index work or a post-index access method that reduces repeated row-oriented source traversal without material startup regression;
-- any new persistent columnar/indexed representation or new long-lived source service requires explicit architecture review and measured startup/memory/I/O evidence.
+- controls are grouped by user goal and normal sequence, not implementation ownership;
+- frequently used controls may remain visible at the current stage;
+- secondary/rare controls should be contextual, grouped or placed in compact overflow/menu surfaces;
+- future analysis features should not each create a permanent top-level button;
+- disabled placeholders for absent functionality should not consume primary UI space;
+- global workspace context is **Graphs · <workspace>** while active-pane identity stays local to the graph pane;
+- timeline work should group **Navigate**, **Range/Markers**, then contextual **Analyze**.
 
-D-043 supersedes any interpretation of D-041/D-042 that would make speculative channel preloading the default solution.
-<!-- CURRENT_STATE:current-performance-decisions:END -->
+## D-045 — EpicScope logo dropdown is the in-product mode switcher
+**Status:** Approved; refines D-033
 
-<!-- CURRENT_STATE:current-performance-decisions:END -->
+The EpicScope logo dropdown in the upper-right is intentionally the mode/surface switcher, similar in concept to EpicHub's mode selection.
 
-## Superseding decisions
+Current intended entries:
 
-A decision is not removed merely because it becomes obsolete. A later entry should explicitly state that it supersedes the older decision and explain the approved replacement.
+- Logger — active;
+- Analyzer — planned;
+- Histogram — planned.
+
+Future real EpicScope surfaces may be added deliberately as capability lands.
+
+This does **not** adopt EpicHub's broader Dashboard/Tuner/Diagnostics application shell or Android navigation architecture. The mode menu switches EpicScope analysis surfaces only.
+
+## Superseding/refining decisions
+
+Decisions are not silently deleted when refined. A later numbered decision should state what it changes and why. D-045 currently refines the mode-switcher interpretation inside D-033 while preserving the rest of the EpicHub-reference boundary.
