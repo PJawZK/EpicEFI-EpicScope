@@ -1,6 +1,6 @@
 import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
-import { buildViewportEnvelope } from '../../../../core/timeline/viewport-series';
+import { buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../../../core/timeline/viewport-series';
 import type { TimelineWorkspaceState } from '../state/workspace-state';
 
 export type TimelineViewportIntent =
@@ -34,6 +34,7 @@ export interface TimelineShellController {
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
   refreshOverview(): void;
+  refreshValidity(): void;
   setViewport(viewport: TimelineViewport | undefined): void;
   setCursorTime(timeMs: number): void;
   getCursorTime(): number;
@@ -74,6 +75,7 @@ export function createTimelineShell(): TimelineShellController {
   let playbackLastNow: number | undefined;
   let playbackSpeed = 1;
   let overviewTracesVisible = true;
+  let precomputedEnvelopeBlocksEnabled = true;
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
   let annotationListener: ((state: TimelineAnnotationState) => void) | undefined;
@@ -282,7 +284,15 @@ export function createTimelineShell(): TimelineShellController {
     const envelopeWidth = Math.max(1, width);
     if (!overviewTracesVisible) return;
     for (const trace of overviewTraces) {
-      const envelope = buildViewportEnvelope(trace.range, fullStartMs, fullEndMs, envelopeWidth);
+      const envelope = precomputedEnvelopeBlocksEnabled && trace.range.fullEnvelopeBlocks
+        ? buildViewportEnvelopeFromBlocks(
+            trace.range,
+            trace.range.fullEnvelopeBlocks,
+            fullStartMs,
+            fullEndMs,
+            envelopeWidth,
+          )
+        : buildViewportEnvelope(trace.range, fullStartMs, fullEndMs, envelopeWidth);
       if (envelope.validSampleCount === 0 || envelope.columns.length === 0) continue;
 
       const valueSpan = Math.max(1e-12, envelope.valueMax - envelope.valueMin);
@@ -444,6 +454,7 @@ export function createTimelineShell(): TimelineShellController {
   };
 
   const setTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number): void => {
+    precomputedEnvelopeBlocksEnabled = true;
     fullStartMs = nextRange?.startMs ?? 0;
     fullEndMs = nextRange?.endMs ?? 0;
     overviewTraces = [];
@@ -863,6 +874,10 @@ export function createTimelineShell(): TimelineShellController {
     setTimeRange,
     setOverviewContent,
     refreshOverview: renderOverview,
+    refreshValidity: () => {
+      precomputedEnvelopeBlocksEnabled = false;
+      renderOverview();
+    },
     setViewport,
     setCursorTime: (timeMs) => updateCursor(timeMs, false),
     getCursorTime: () => cursorTimeMs,
