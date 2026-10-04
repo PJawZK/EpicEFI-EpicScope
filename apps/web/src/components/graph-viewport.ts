@@ -1370,7 +1370,7 @@ export function createGraphViewport(): GraphViewportController {
       if (!channel) continue;
 
       const statisticsStarted = now();
-      const fullStatistics = summarizeRange(range);
+      const fullStatistics = range.fullStatistics ?? summarizeRange(range);
       const scale = stableScaleFromStatistics(fullStatistics);
       statisticsScaleMs += now() - statisticsStarted;
 

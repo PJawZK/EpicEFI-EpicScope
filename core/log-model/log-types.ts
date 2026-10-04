@@ -29,12 +29,23 @@ export interface ChannelDefinition {
   readonly precision?: number;
 }
 
+export interface NumericChannelStatistics {
+  readonly validCount: number;
+  readonly invalidCount: number;
+  readonly min: number | undefined;
+  readonly max: number | undefined;
+  readonly mean: number | undefined;
+  readonly standardDeviation: number | undefined;
+}
+
 export interface NumericChannelRange {
   readonly startSampleIndex: number;
   readonly timeMs: Float64Array;
   readonly values: Float64Array;
   /** 1 = valid source record, 0 = invalid/corrupt source record. */
   readonly validity: Uint8Array;
+  /** Optional full-range statistics computed while source samples were already being decoded. */
+  readonly fullStatistics?: NumericChannelStatistics;
 }
 
 export interface NumericChannelBatchPerformance {

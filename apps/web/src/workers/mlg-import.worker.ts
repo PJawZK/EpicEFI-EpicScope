@@ -455,6 +455,12 @@ scope.onmessage = (event): void => {
         field: headerResult.fields[index]!,
         fieldOffset: fieldOffsets[index] ?? 0,
         values: new Float64Array(fixedRecordCount),
+        validCount: 0,
+        invalidCount: 0,
+        min: Number.POSITIVE_INFINITY,
+        max: Number.NEGATIVE_INFINITY,
+        mean: 0,
+        m2: 0,
       })) : [];
 
       const scanStart = now();
@@ -471,7 +477,18 @@ scope.onmessage = (event): void => {
                 const sampleIndex = firstRecordIndex + localIndex;
                 for (const captured of capturedPriority) {
                   const raw = decodeMlgRawValue(view, recordStart + captured.fieldOffset, captured.field);
-                  captured.values[sampleIndex] = displayMlgValue(raw, captured.field);
+                  const value = displayMlgValue(raw, captured.field);
+                  captured.values[sampleIndex] = value;
+                  if (!Number.isFinite(value)) {
+                    captured.invalidCount += 1;
+                    continue;
+                  }
+                  captured.validCount += 1;
+                  captured.min = Math.min(captured.min, value);
+                  captured.max = Math.max(captured.max, value);
+                  const delta = value - captured.mean;
+                  captured.mean += delta / captured.validCount;
+                  captured.m2 += delta * (value - captured.mean);
                 }
               }
             },
@@ -505,7 +522,20 @@ scope.onmessage = (event): void => {
           sourceCacheSeed,
           importTotalMs: now() - started,
           ...(capturedPriority.length > 0 && scanResult.performance.scanMode === 'fixed' ? {
-            capturedPriorityColumns: capturedPriority.map(({ channelId, values }) => ({ channelId, values })),
+            capturedPriorityColumns: capturedPriority.map((captured) => ({
+              channelId: captured.channelId,
+              values: captured.values,
+              statistics: {
+                validCount: captured.validCount,
+                invalidCount: captured.invalidCount,
+                min: captured.validCount > 0 ? captured.min : undefined,
+                max: captured.validCount > 0 ? captured.max : undefined,
+                mean: captured.validCount > 0 ? captured.mean : undefined,
+                standardDeviation: captured.validCount > 1
+                  ? Math.sqrt(captured.m2 / (captured.validCount - 1))
+                  : captured.validCount === 1 ? 0 : undefined,
+              },
+            })),
           } : {}),
           performance: {
             scanMode: scanResult.performance.scanMode,
