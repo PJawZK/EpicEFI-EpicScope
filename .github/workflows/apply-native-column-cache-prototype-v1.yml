@@ -1,0 +1,24 @@
+name: Apply native column cache prototype v1
+
+on:
+  push:
+    branches:
+      - perf/native-column-cache-prototype-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/native-column-cache-prototype-v1
+      - run: python tools/apply-native-column-cache-prototype-v1.py
+      - run: |
+          git config user.name "EpicScope Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add core/log-model/log-types.ts apps/web/src/adapters/mlg-column-sidecar-v1.ts apps/web/src/adapters/persistent-channel-cache.ts
+          git commit -m "Perf: prototype native-width MLG column cache"
+          git push origin HEAD:perf/native-column-cache-prototype-v1
