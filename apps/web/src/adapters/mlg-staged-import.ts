@@ -18,7 +18,7 @@ export interface StagedValidatedMlgFile extends MlgWorkerValidatedPayload {}
 export interface StagedMlgImportHandle {
   readonly indexed: Promise<StagedIndexedMlgFile>;
   readonly validated: Promise<StagedValidatedMlgFile>;
-  startValidation(): void;
+  startValidation(prioritizedChannelIds?: readonly string[]): void;
   cancel(): void;
 }
 
@@ -106,6 +106,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
       if (message.payload.sidecar) {
         sidecarChannelData?.activate(message.payload.sidecar.manifest);
       }
+      sidecarChannelData?.releasePrioritizedChannels();
       validationSettled = true;
       resolveValidated(message.payload);
       terminate();
@@ -122,6 +123,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
       validationSettled = true;
       rejectValidated(error);
     }
+    sidecarChannelData?.releasePrioritizedChannels();
     terminate();
   };
 
@@ -135,6 +137,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
       validationSettled = true;
       rejectValidated(error);
     }
+    sidecarChannelData?.releasePrioritizedChannels();
     terminate();
   };
 
@@ -152,9 +155,10 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
   return {
     indexed,
     validated,
-    startValidation: () => {
+    startValidation: (prioritizedChannelIds = []) => {
       if (validationStarted || validationSettled) return;
       validationStarted = true;
+      sidecarChannelData?.prioritizeChannelsUntilReady(prioritizedChannelIds);
       worker.postMessage({ type: 'start-validation' });
     },
     cancel: () => {
@@ -167,6 +171,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
         validationSettled = true;
         rejectValidated(error);
       }
+      sidecarChannelData?.releasePrioritizedChannels();
       terminate();
     },
   };

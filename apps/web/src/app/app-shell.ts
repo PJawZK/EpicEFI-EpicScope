@@ -1138,6 +1138,33 @@ export function mountAppShell(root: HTMLElement): void {
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
+  const prioritizedWorkspaceSourceChannelIds = (
+    workspaceState: WebWorkspaceState,
+    logicalToSourceChannelId: ReadonlyMap<string, string> | undefined,
+  ): string[] => {
+    const activeWorkspace = workspaceState.logger.workspaces.find(
+      (workspace) => workspace.id === workspaceState.logger.activeWorkspaceId,
+    );
+    if (!activeWorkspace) return [];
+
+    const logicalIds = new Set<string>();
+    if (activeWorkspace.panes && activeWorkspace.panes.length > 0) {
+      for (const pane of activeWorkspace.panes) {
+        for (const channelId of pane.channelIds) logicalIds.add(channelId);
+      }
+    } else {
+      for (const channelId of activeWorkspace.channelIds) logicalIds.add(channelId);
+    }
+
+    const sourceIds = new Set<string>();
+    for (const channelId of logicalIds) {
+      const sourceId = logicalToSourceChannelId?.get(channelId)
+        ?? (channelId.startsWith('mlg:') ? channelId : undefined);
+      if (sourceId) sourceIds.add(sourceId);
+    }
+    return [...sourceIds];
+  };
+
   const recordFullLoad = (
     file: File,
     parsed: Awaited<ReturnType<typeof importMlgFile>>,
@@ -1268,6 +1295,7 @@ export function mountAppShell(root: HTMLElement): void {
           message: 'Record CRC validation is queued until the initial workspace channel restore completes.',
           recoverable: true,
         };
+        const reusableWorkspaceBeforeLog = captureWorkspaceState();
         const rawSummary: ImportedLogSummary = {
           ...indexed.summary,
           diagnostics: [...indexed.summary.diagnostics, pendingDiagnostic],
@@ -1332,25 +1360,32 @@ export function mountAppShell(root: HTMLElement): void {
           workerSourceRuntime: indexed.sourceRuntime,
         });
 
+        const prioritizedSourceChannelIds = prioritizedWorkspaceSourceChannelIds(
+          reusableWorkspaceBeforeLog,
+          prepared.binding?.logicalToSourceChannelId,
+        );
+        staged.startValidation(prioritizedSourceChannelIds);
+
         const workspaceRestore = loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
           if (!restored) await loggerPage.restoreActiveWorkspace();
           resetWorkspaceHistory();
           scheduleWorkspaceSave();
         });
+        void workspaceRestore.catch(() => undefined);
 
         loadedLog.textContent = indexed.summary.source.displayName;
-        setSourceLoadState(openButton, 'loading', `${indexed.summary.source.displayName} · restoring channels before CRC validation`);
-        appStatus.textContent = 'Ready · restoring channels…';
-        parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validation queued`;
+        setSourceLoadState(
+          openButton,
+          'loading',
+          prioritizedSourceChannelIds.length > 0
+            ? `${indexed.summary.source.displayName} · prioritizing ${prioritizedSourceChannelIds.length.toLocaleString()} restored channel(s) during CRC validation`
+            : `${indexed.summary.source.displayName} · CRC validating`,
+        );
+        appStatus.textContent = prioritizedSourceChannelIds.length > 0
+          ? 'Ready · prioritizing restored channels during CRC…'
+          : 'Ready · validating CRC…';
+        parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validating`;
         openButton.disabled = false;
-
-        void workspaceRestore.finally(() => {
-          if (activeStagedImport !== staged) return;
-          staged.startValidation();
-          setSourceLoadState(openButton, 'loading', `${indexed.summary.source.displayName} · CRC validating`);
-          appStatus.textContent = 'Ready · validating CRC…';
-          parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validating`;
-        });
 
         void staged.validated
           .then((validated) => {
