@@ -86,6 +86,22 @@ export interface GraphChannelPerformance {
   readonly physicalReadMs: number;
 }
 
+export interface GraphPreloadedActivationPerformance {
+  readonly totalMs: number;
+  readonly channelLookupMs: number;
+  readonly statisticsScaleMs: number;
+  readonly traceRegistrationMs: number;
+  readonly readoutMs: number;
+  readonly cursorMs: number;
+  readonly drawMs: number;
+  readonly envelopeMs: number;
+}
+
+export interface GraphPreloadedActivationResult {
+  readonly activatedChannelIds: readonly string[];
+  readonly performance: GraphPreloadedActivationPerformance;
+}
+
 export type GraphViewportDisplayMode = 'overlay' | 'stacked';
 
 export interface GraphViewportController {
@@ -98,7 +114,7 @@ export interface GraphViewportController {
   toggleChannel(channelId: string): Promise<boolean>;
   activatePreloadedChannels(
     ranges: ReadonlyMap<string, NumericChannelRange>,
-  ): readonly string[];
+  ): GraphPreloadedActivationResult;
   clearChannels(): void;
   getOverviewTraces(): readonly GraphOverviewTrace[];
   getChannelStatistics(channelId: string): GraphChannelStatistics | undefined;
@@ -280,6 +296,8 @@ export function createGraphViewport(): GraphViewportController {
   let highZoomSamplePointsVisible = true;
   let displayMode: GraphViewportDisplayMode = 'overlay';
   let assignedChannels: readonly ChannelDefinition[] = [];
+  let measureEnvelopeBuild = false;
+  let measuredEnvelopeBuildMs = 0;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -532,12 +550,21 @@ export function createGraphViewport(): GraphViewportController {
         && cachedEnvelope.visibleEndMs === visibleEndMs
         && cachedEnvelope.pixelWidth === pixelWidth
         ? cachedEnvelope.envelope
-        : buildViewportEnvelope(
-            trace.range,
-            visibleStartMs,
-            visibleEndMs,
-            pixelWidth,
-          );
+        : (() => {
+            const envelopeStarted = measureEnvelopeBuild
+              ? (globalThis.performance?.now() ?? Date.now())
+              : 0;
+            const built = buildViewportEnvelope(
+              trace.range,
+              visibleStartMs,
+              visibleEndMs,
+              pixelWidth,
+            );
+            if (measureEnvelopeBuild) {
+              measuredEnvelopeBuildMs += (globalThis.performance?.now() ?? Date.now()) - envelopeStarted;
+            }
+            return built;
+          })();
       if (cachedEnvelope?.envelope !== envelope) {
         envelopeCache.set(channelId, {
           visibleStartMs,
@@ -1309,20 +1336,45 @@ export function createGraphViewport(): GraphViewportController {
 
   const activatePreloadedChannels = (
     ranges: ReadonlyMap<string, NumericChannelRange>,
-  ): readonly string[] => {
-    if (ranges.size === 0) return [];
+  ): GraphPreloadedActivationResult => {
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const totalStarted = now();
+    if (ranges.size === 0) {
+      return {
+        activatedChannelIds: [],
+        performance: {
+          totalMs: now() - totalStarted,
+          channelLookupMs: 0,
+          statisticsScaleMs: 0,
+          traceRegistrationMs: 0,
+          readoutMs: 0,
+          cursorMs: 0,
+          drawMs: 0,
+          envelopeMs: 0,
+        },
+      };
+    }
 
     cancelPending();
     const activated: string[] = [];
     const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
+    let channelLookupMs = 0;
+    let statisticsScaleMs = 0;
+    let traceRegistrationMs = 0;
 
     for (const [channelId, range] of ranges) {
       if (activeTraces.has(channelId) || activeTraces.size >= MAX_ACTIVE_TRACES) continue;
+      const lookupStarted = now();
       const channel = channels.find((candidate) => candidate.id === channelId);
+      channelLookupMs += now() - lookupStarted;
       if (!channel) continue;
 
+      const statisticsStarted = now();
       const fullStatistics = summarizeRange(range);
       const scale = stableScaleFromStatistics(fullStatistics);
+      statisticsScaleMs += now() - statisticsStarted;
+
+      const registrationStarted = now();
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       usedColors.add(color);
       activeTraces.set(channelId, {
@@ -1335,13 +1387,40 @@ export function createGraphViewport(): GraphViewportController {
         color,
       });
       activated.push(channelId);
+      traceRegistrationMs += now() - registrationStarted;
     }
 
     overlay.hidden = activeTraces.size > 0;
+    const readoutStarted = now();
     renderReadout();
+    const readoutMs = now() - readoutStarted;
+    const cursorStarted = now();
     emitCursorValues();
-    draw();
-    return activated;
+    const cursorMs = now() - cursorStarted;
+    measuredEnvelopeBuildMs = 0;
+    measureEnvelopeBuild = true;
+    const drawStarted = now();
+    try {
+      draw();
+    } finally {
+      measureEnvelopeBuild = false;
+    }
+    const drawMs = now() - drawStarted;
+    const envelopeMs = measuredEnvelopeBuildMs;
+
+    return {
+      activatedChannelIds: activated,
+      performance: {
+        totalMs: now() - totalStarted,
+        channelLookupMs,
+        statisticsScaleMs,
+        traceRegistrationMs,
+        readoutMs,
+        cursorMs,
+        drawMs,
+        envelopeMs,
+      },
+    };
   };
 
   const toggleChannel = async (channelId: string): Promise<boolean> => {

@@ -106,6 +106,14 @@ export interface WorkspaceRestorePerformanceRun {
   readonly prepareMs: number;
   readonly sharedBatchMs: number;
   readonly activationMs: number;
+  readonly activationGraphTotalMs: number;
+  readonly activationChannelLookupMs: number;
+  readonly activationStatisticsScaleMs: number;
+  readonly activationTraceRegistrationMs: number;
+  readonly activationReadoutMs: number;
+  readonly activationCursorMs: number;
+  readonly activationDrawMs: number;
+  readonly activationEnvelopeMs: number;
   readonly finalSyncMs: number;
   readonly visiblePaneCount: number;
   readonly assignedChannelCount: number;
@@ -443,6 +451,16 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `prepare=${latestRestore.prepareMs.toFixed(2)} ms`,
         `sharedBatch=${latestRestore.sharedBatchMs.toFixed(2)} ms`,
         `activation=${latestRestore.activationMs.toFixed(2)} ms`,
+        `activationGraphTotal=${latestRestore.activationGraphTotalMs.toFixed(2)} ms`,
+        `activationChannelLookup=${latestRestore.activationChannelLookupMs.toFixed(2)} ms`,
+        `activationStatisticsScale=${latestRestore.activationStatisticsScaleMs.toFixed(2)} ms`,
+        `activationTraceRegistration=${latestRestore.activationTraceRegistrationMs.toFixed(2)} ms`,
+        `activationReadout=${latestRestore.activationReadoutMs.toFixed(2)} ms`,
+        `activationCursor=${latestRestore.activationCursorMs.toFixed(2)} ms`,
+        `activationDraw=${latestRestore.activationDrawMs.toFixed(2)} ms`,
+        `activationEnvelope=${latestRestore.activationEnvelopeMs.toFixed(2)} ms`,
+        `activationDrawOther=${Math.max(0, latestRestore.activationDrawMs - latestRestore.activationEnvelopeMs).toFixed(2)} ms`,
+        `activationRemainder=${Math.max(0, latestRestore.activationMs - latestRestore.activationGraphTotalMs).toFixed(2)} ms`,
         `finalSync=${latestRestore.finalSyncMs.toFixed(2)} ms`,
         `visiblePanes=${latestRestore.visiblePaneCount}`,
         `assignedChannels=${latestRestore.assignedChannelCount}`,
@@ -659,6 +677,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Prepare', ms(latestRestore.prepareMs)],
         ['Shared cache/decode batch', ms(latestRestore.sharedBatchMs)],
         ['Pane activation', ms(latestRestore.activationMs)],
+        ['Graph activation total', ms(latestRestore.activationGraphTotalMs)],
+        ['Statistics + scale', ms(latestRestore.activationStatisticsScaleMs)],
+        ['Graph draw', ms(latestRestore.activationDrawMs)],
+        ['Envelope build', ms(latestRestore.activationEnvelopeMs)],
         ['Final sync', ms(latestRestore.finalSyncMs)],
         ['Visible panes', latestRestore.visiblePaneCount.toLocaleString()],
         ['Assigned channels', latestRestore.assignedChannelCount.toLocaleString()],
