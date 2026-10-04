@@ -158,6 +158,19 @@ async function openLogDirectory(
   return sidecars.getDirectoryHandle(sidecarStorageKey(logKey), { create });
 }
 
+async function resetLogDirectory(logKey: string): Promise<OpfsDirectoryHandle | undefined> {
+  const storage = storageManager();
+  if (!storage?.getDirectory) return undefined;
+  const root = await storage.getDirectory();
+  const sidecars = await root.getDirectoryHandle(SIDECAR_ROOT, { create: true });
+  try {
+    await sidecars.removeEntry(sidecarStorageKey(logKey), { recursive: true });
+  } catch {
+    // Missing or incomplete prior sidecar storage needs no cleanup.
+  }
+  return sidecars.getDirectoryHandle(sidecarStorageKey(logKey), { create: true });
+}
+
 async function readStoredManifest(logKey: string): Promise<MlgColumnSidecarManifest | undefined> {
   try {
     const directory = await openLogDirectory(logKey, false);
@@ -192,6 +205,16 @@ export async function createMlgColumnSidecarBuilder(
   if (plan.fieldPayloadBytes > recordLength) return undefined;
 
   const estimatedBytes = plan.fieldPayloadBytes * recordIndex.offsets.length;
+
+  let directory: OpfsDirectoryHandle;
+  try {
+    const opened = await resetLogDirectory(logKey);
+    if (!opened) return undefined;
+    directory = opened;
+  } catch {
+    return undefined;
+  }
+
   try {
     const estimate = await storage.estimate();
     if (
@@ -203,16 +226,6 @@ export async function createMlgColumnSidecarBuilder(
     }
   } catch {
     // Quota estimates are advisory only.
-  }
-
-  let directory: OpfsDirectoryHandle;
-  try {
-    const opened = await openLogDirectory(logKey, true);
-    if (!opened) return undefined;
-    directory = opened;
-    await removeManifest(directory);
-  } catch {
-    return undefined;
   }
 
   let dataFileHandle: OpfsFileHandle;
