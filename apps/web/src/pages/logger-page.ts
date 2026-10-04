@@ -1039,7 +1039,9 @@ export function createLoggerPage(): LoggerPageController {
     readonly totalMs: number;
   }
 
-  const syncActivePaneContext = (): ActivePaneSyncPerformance => {
+  const syncActivePaneContext = (
+    options: { readonly syncAssignedChannels?: boolean } = {},
+  ): ActivePaneSyncPerformance => {
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const started = now();
     let stageStarted = started;
@@ -1071,7 +1073,7 @@ export function createLoggerPage(): LoggerPageController {
     const valueSearchMs = now() - stageStarted;
 
     stageStarted = now();
-    if (runtime) syncPaneAssignedChannels(runtime, pane);
+    if (runtime && options.syncAssignedChannels !== false) syncPaneAssignedChannels(runtime, pane);
     const assignedSyncMs = now() - stageStarted;
 
     stageStarted = now();
@@ -1713,7 +1715,7 @@ export function createLoggerPage(): LoggerPageController {
     const activationMs = now() - activationStarted;
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
     const finalSyncStarted = now();
-    const finalSyncPerformance = syncActivePaneContext();
+    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
     const finalSyncMs = now() - finalSyncStarted;
     workspaceRestorePerformanceListener?.({
       totalMs: now() - restoreStarted,
@@ -2430,6 +2432,7 @@ export function createLoggerPage(): LoggerPageController {
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
     refreshValidity: () => {
       paneRuntimes.forEach((runtime) => runtime.graph.refreshValidity());
+      timeline.refreshValidity();
       timeline.refreshOverview();
     },
     setPlaybackSpeed: (speed) => { timeline.setPlaybackSpeed(speed); },
