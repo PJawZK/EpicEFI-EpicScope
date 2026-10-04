@@ -1015,12 +1015,38 @@ export function createLoggerPage(): LoggerPageController {
     runtime.graph.setAssignedChannels(assigned);
   };
 
-  const syncActivePaneContext = (): void => {
+  interface ActivePaneSyncPerformance {
+    readonly resolveMs: number;
+    readonly assignedNormalizeMs: number;
+    readonly inspectorActiveMs: number;
+    readonly inspectorQueuedMs: number;
+    readonly valueSearchMs: number;
+    readonly assignedSyncMs: number;
+    readonly overviewMs: number;
+    readonly totalMs: number;
+  }
+
+  const syncActivePaneContext = (): ActivePaneSyncPerformance => {
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    const started = now();
+    let stageStarted = started;
     const runtime = activePaneRuntime();
     const pane = activePaneState();
+    const resolveMs = now() - stageStarted;
+
+    stageStarted = now();
     const assignedIds = renderablePersistentChannelIds(pane?.channelIds ?? []);
+    const assignedNormalizeMs = now() - stageStarted;
+
+    stageStarted = now();
     inspector.setActiveChannels(assignedIds);
+    const inspectorActiveMs = now() - stageStarted;
+
+    stageStarted = now();
     inspector.setQueuedChannels([]);
+    const inspectorQueuedMs = now() - stageStarted;
+
+    stageStarted = now();
     valueSearch.setActiveChannels(
       runtime
         ? [...runtime.activeChannelIds].flatMap((id) => {
@@ -1029,8 +1055,20 @@ export function createLoggerPage(): LoggerPageController {
           })
         : [],
     );
+    const valueSearchMs = now() - stageStarted;
+
+    stageStarted = now();
     if (runtime) syncPaneAssignedChannels(runtime, pane);
+    const assignedSyncMs = now() - stageStarted;
+
+    stageStarted = now();
     timeline.setOverviewContent(runtime?.graph.getOverviewTraces() ?? [], logMarkers);
+    const overviewMs = now() - stageStarted;
+
+    return {
+      resolveMs, assignedNormalizeMs, inspectorActiveMs, inspectorQueuedMs,
+      valueSearchMs, assignedSyncMs, overviewMs, totalMs: now() - started,
+    };
   };
 
   const renderGraphLayout = (): void => {
@@ -1496,11 +1534,14 @@ export function createLoggerPage(): LoggerPageController {
 
     if (!force) saveCurrentWorkspace();
     const prepareStarted = now();
+    let prepareStageStarted = prepareStarted;
     const generation = ++workspaceGeneration;
     activeWorkspaceId = target.id;
     refreshWorkspaceSelector();
     refreshViewHistoryState();
+    const prepareStateMs = now() - prepareStageStarted;
 
+    prepareStageStarted = now();
     paneRuntimes.forEach((runtime) => {
       runtime.graph.clearChannels();
       runtime.activeChannelIds.clear();
@@ -1509,11 +1550,18 @@ export function createLoggerPage(): LoggerPageController {
     inspector.setQueuedChannels([]);
     valueSearch.setActiveChannels([]);
     timeline.setOverviewContent([], logMarkers);
+    const prepareClearMs = now() - prepareStageStarted;
 
+    prepareStageStarted = now();
     renderGraphLayout();
+    const prepareLayoutMs = now() - prepareStageStarted;
+
+    prepareStageStarted = now();
     if (target.viewport) syncViewport({ ...target.viewport });
     setCursorWithoutFollow(target.cursorTimeMs);
+    const prepareViewportMs = now() - prepareStageStarted;
 
+    prepareStageStarted = now();
     const visibleCount = paneCountForLayout(target.layout);
     const paneRequests = paneRuntimes.slice(0, visibleCount).map((runtime, index) => {
       const pane = target.panes[index];
@@ -1533,6 +1581,9 @@ export function createLoggerPage(): LoggerPageController {
       return { runtime, pane, assignedIds, requestedIds };
     });
 
+    const preparePaneRequestsMs = now() - prepareStageStarted;
+
+    prepareStageStarted = now();
     const uniqueRequestedIds = [...new Set(paneRequests.flatMap((request) => request.requestedIds))];
     const predecodeTarget = opportunisticPredecodeTarget();
     const batchRequestedIds = [...uniqueRequestedIds];
@@ -1546,6 +1597,7 @@ export function createLoggerPage(): LoggerPageController {
       }
     }
     const opportunisticPredecodeCount = batchRequestedIds.length - uniqueRequestedIds.length;
+    const prepareBatchPlanMs = now() - prepareStageStarted;
     const prepareMs = now() - prepareStarted;
     let sharedBatchMs = 0;
     let sharedBatchCacheHit = true;
@@ -1648,11 +1700,17 @@ export function createLoggerPage(): LoggerPageController {
     const activationMs = now() - activationStarted;
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
     const finalSyncStarted = now();
-    syncActivePaneContext();
+    const finalSyncPerformance = syncActivePaneContext();
     const finalSyncMs = now() - finalSyncStarted;
     workspaceRestorePerformanceListener?.({
       totalMs: now() - restoreStarted,
       prepareMs,
+      prepareStateMs,
+      prepareClearMs,
+      prepareLayoutMs,
+      prepareViewportMs,
+      preparePaneRequestsMs,
+      prepareBatchPlanMs,
       sharedBatchMs,
       activationMs,
       activationGraphTotalMs,
@@ -1664,6 +1722,13 @@ export function createLoggerPage(): LoggerPageController {
       activationDrawMs,
       activationEnvelopeMs,
       finalSyncMs,
+      finalSyncResolveMs: finalSyncPerformance.resolveMs,
+      finalSyncAssignedNormalizeMs: finalSyncPerformance.assignedNormalizeMs,
+      finalSyncInspectorActiveMs: finalSyncPerformance.inspectorActiveMs,
+      finalSyncInspectorQueuedMs: finalSyncPerformance.inspectorQueuedMs,
+      finalSyncValueSearchMs: finalSyncPerformance.valueSearchMs,
+      finalSyncAssignedSyncMs: finalSyncPerformance.assignedSyncMs,
+      finalSyncOverviewMs: finalSyncPerformance.overviewMs,
       visiblePaneCount: visibleCount,
       assignedChannelCount: paneRequests.reduce(
         (sum, request) => sum + request.assignedIds.length,

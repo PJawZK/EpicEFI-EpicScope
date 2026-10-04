@@ -12,7 +12,7 @@ import type {
   MlgRecordIndex,
 } from '../../../../core/parsers/mlg/mlg-records';
 import { BlobByteSource } from '../adapters/blob-byte-source';
-import { buildEnvelopeBlockHierarchy } from '../../../../core/timeline/viewport-series';
+import { buildEnvelopeBlockSummary } from '../../../../core/timeline/viewport-series';
 import { decodeMlgRawValue, displayMlgValue } from '../../../../core/parsers/mlg/mlg-channel-data';
 import {
   createMlgColumnSidecarBuilder,
@@ -497,12 +497,11 @@ scope.onmessage = (event): void => {
         },
       );
       const recordScanMs = now() - scanStart;
-      const capturedEnvelopeBlocks = capturedPriority.map((captured) => buildEnvelopeBlockHierarchy(
+      const capturedEnvelopeBlocks = capturedPriority.map((captured) => buildEnvelopeBlockSummary(
         captured.values,
         scanResult.records.timeMs,
         scanResult.records.crcValid,
         64,
-        3,
       ));
 
       const finalizeStart = now();
@@ -566,11 +565,11 @@ scope.onmessage = (event): void => {
       }, [
         ...sourceCacheSeed.map((page) => page.bytes.buffer as ArrayBuffer),
         ...capturedPriority.map((captured) => captured.values.buffer as ArrayBuffer),
-        ...capturedEnvelopeBlocks.flatMap((levels) => levels.flatMap((blocks) => [
+        ...capturedEnvelopeBlocks.flatMap((blocks) => [
           blocks.validCount.buffer, blocks.invalidCount.buffer,
           blocks.first.buffer, blocks.firstTimeMs.buffer, blocks.min.buffer, blocks.minTimeMs.buffer,
           blocks.max.buffer, blocks.maxTimeMs.buffer, blocks.last.buffer, blocks.lastTimeMs.buffer,
-        ] as ArrayBuffer[])),
+        ] as ArrayBuffer[]),
       ]);
 
       if (!validationStartRequested) {

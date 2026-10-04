@@ -400,7 +400,7 @@ function buildRange(
   sampleCount: number,
   values: Float64Array,
   fullStatistics?: NumericChannelStatistics,
-  fullEnvelopeBlocks?: readonly NumericChannelEnvelopeBlocks[],
+  fullEnvelopeBlocks?: NumericChannelEnvelopeBlocks,
 ): NumericChannelRange {
   const end = startSampleIndex + sampleCount;
   const isFullRange = startSampleIndex === 0 && sampleCount === recordIndex.timeMs.length;
@@ -432,7 +432,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private readonly capturedPriorityColumns = new Map<string, {
     readonly values: Float64Array;
     readonly statistics: NumericChannelStatistics;
-    readonly envelopeBlocks: readonly NumericChannelEnvelopeBlocks[];
+    readonly envelopeBlocks: NumericChannelEnvelopeBlocks;
   }>();
   private priorityReadyPromise: Promise<void> | undefined;
   private resolvePriorityReady: (() => void) | undefined;
