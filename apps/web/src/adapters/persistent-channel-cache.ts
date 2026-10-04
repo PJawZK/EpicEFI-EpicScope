@@ -225,7 +225,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     this.sampleCount = source.sampleCount;
     this.preferredBatchWindowMs = source.preferredBatchWindowMs ?? 0;
     this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection ?? false;
-    if (store.listCachedChannelIds) {
+    if (!source.managesPersistentColumns && store.listCachedChannelIds) {
       void store.listCachedChannelIds(logKey, this.sampleCount).then((channelIds) => {
         const warmed = new Set(channelIds);
         for (const channelId of this.residentColumns.keys()) warmed.add(channelId);
@@ -253,6 +253,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
 
   private async persistedColumn(channelId: string): Promise<Float64Array | undefined> {
     const resident = this.residentColumns.get(channelId);
+    if (this.source.managesPersistentColumns) return undefined;
     if (resident) return resident;
     if (this.missingColumns.has(channelId)) return undefined;
     if (this.cachedChannelIdIndex && !this.cachedChannelIdIndex.has(channelId)) {
@@ -286,6 +287,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
 
   private persistFullColumn(channelId: string, range: NumericChannelRange): void {
     if (!this.retainFullColumn(channelId, range)) return;
+    if (this.source.managesPersistentColumns) return;
     void this.store.put(this.logKey, channelId, range.values).catch(() => undefined);
   }
 

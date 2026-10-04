@@ -89,6 +89,7 @@ export interface NumericChannelDataSource {
   readonly sampleCount: number;
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
+  readonly managesPersistentColumns?: boolean;
   sampleRangeForTime?(
     startMs: number,
     endMs: number,
