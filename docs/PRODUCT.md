@@ -1,5 +1,5 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Product Definition
@@ -18,12 +18,10 @@ The Web application is the functional reference and feature-validation platform.
 
 Primary goals:
 
-- rapid iteration across the user's different computers and operating systems;
+- rapid iteration across different computers/operating systems;
 - establish complete workflows before expensive native optimization;
-- validate analysis tools, UI behaviour, data contracts, and tune-aware features;
+- validate analysis tools, UI behaviour, data contracts and tune-aware features;
 - keep architecture compatible with later native replacement of heavy processing layers.
-
-The Web stage should avoid obviously wasteful architecture, but final low-RAM and large-file performance is not its primary acceptance criterion.
 
 ### Stage 2 — EpicScope Linux
 
@@ -31,176 +29,223 @@ The Linux application is the primary production target.
 
 Primary goals:
 
-- maximum practical log-reading and analysis speed;
-- very low memory use;
-- large-log support;
-- native file access and indexing;
+- maximum practical log-reading/analysis speed;
+- low memory use;
+- very large log support;
+- native file access/indexing;
 - deterministic performance on modest hardware;
-- compatibility with Debian 13 Stable and suitably compatible newer Linux systems.
-
-Visual polish may be reduced whenever it conflicts materially with speed, memory use, clarity, or responsiveness.
+- Debian 13 Stable compatibility baseline.
 
 ### Stage 3 — EpicScope for EpicHub / Android
 
-After Web behaviour and Linux performance are mature, proven analysis concepts and reusable core logic may be adapted for EpicHub / Android.
+After Web behaviour and Linux performance mature, proven analysis concepts/core logic may be adapted for EpicHub/Android without forcing Android constraints into earlier stages.
 
-Android requirements must not distort the Web or Linux architecture prematurely.
-
-<!-- CURRENT_STATE:current-web-implementation:START -->
 ## Current Web implementation state
 
-The Web product is now a usable hosted large-log analyzer foundation rather than an early shell. Current capabilities include MLG v1/v2 import/index/validation, INI-backed channel identity and log binding, persisted named workspaces and pane assignments, multi-pane graph/timeline navigation, annotations/ranges, channel statistics/search, diagnostics, and large-log source/decode caching.
+EpicScope Web is now a usable hosted large-log analysis foundation with:
 
-For arbitrary newly selected channels, the current interaction model is **fast visible subset first, then one-time full resident channel**. This lets the UI become useful before an expensive row-oriented full-file scan, while still making later zoom/pan independent of source I/O after materialization. Hardware-adaptive scheduling is permitted where measured evidence shows a clear low-spec benefit, provided product semantics remain the same.
+- MLG v1/v2 import/index/staged CRC validation;
+- OPFS MLG sidecar/native-column access for large-log reuse;
+- INI-backed stable channel identity and MLG binding;
+- reusable named graph workspaces and pane assignments;
+- exact-log viewport/cursor/A-B/marker/range persistence kept separate from reusable workspace state;
+- multi-pane graph/timeline navigation;
+- channel search/filter/statistics and standardized live-value display;
+- performance/source diagnostics and tested report formatting.
 
-The Web stage remains the functional reference. The current optimization work is not intended to turn browser-specific Blob/cache behavior into a Linux architecture requirement.
-<!-- CURRENT_STATE:current-web-implementation:END -->
+The earlier Web performance campaign and repository structural audit are considered good enough for now. The active product milestone is UI hierarchy, followed by generic analysis primitives.
 
-## Primary workflows
+## Primary user workflow
 
-EpicScope should support these core workflows:
+The approved visible workflow is:
 
-1. Reopen the application with named workspaces, pane layouts, and channel assignments still present even when no log is loaded.
-2. Load an EpicEFI/TunerStudio INI definition to establish stable known-channel/firmware context where available.
-3. Open a local log and bind recorded channels/data into that existing workspace immediately.
-4. Keep known-but-unlogged channels visible as unavailable and keep usable log-only channels accessible.
-5. Search and organize channels.
-6. Navigate the timeline quickly using zoom, pan, cursor, markers, and synchronized graph panes.
-7. Create derived/math channels.
-8. Filter samples and build histograms, heatmaps, scatter plots, statistics, and aggregations.
-9. Detect relevant tuning events automatically.
-10. Optionally load MSQ tune values/tables and correlate logged behaviour with actual tune-table cells.
-11. Use specialized analyzers for tuning systems.
-12. Compare logs, events, and tune revisions.
-13. Save analysis/session state.
-14. Optionally share or publish a session without making upload mandatory for analysis.
+> **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
 
-## Initial specialized analyzers
+This is the product-level interaction order. UI controls should make this progression obvious rather than presenting every capability at the same visual priority.
 
-The initial planned specialized analyzer families are:
+### 1. Load Data
 
-- Boost control
-- Idle / PID
-- Acceleration enrichment / MAP Predict
-- Fueling / VE / AFR error
-- Ignition / knock
-- Fuel pressure / injector behaviour
-- Trigger / sync
+- Open Log and Load INI are grouped under **Load Data ▾**.
+- INI remains optional for ordinary log analysis.
+- MLG remains authoritative for recorded samples/validity.
 
-Analyzer availability may evolve through explicit roadmap and architecture decisions.
+### 2. Channels
 
-### Boost analyzer scope
+- search/filter/group/sort channels;
+- preserve Active/Favorites/Recent semantics;
+- show current unit-aware values directly where useful;
+- keep known-but-unlogged channels explicit;
+- keep usable log-only channels accessible.
 
-Boost analysis must be capability-driven rather than tied to one wastegate plumbing strategy.
+### 3. Navigate
 
-The analyzer should be able to support, where channels/context permit:
+- timeline/cursor;
+- zoom/pan/Fit;
+- playback/step;
+- synchronized graph panes;
+- previous/next view history.
 
-- single-solenoid / single-duty systems;
-- dual-solenoid systems;
-- upper/lower chamber control;
-- open-loop control;
-- closed-loop control;
-- target vs actual boost behavior;
-- spool, overshoot, undershoot, and steady-state behavior.
+### 4. Select / qualify range
 
-The user's current upper/lower chamber setup is an important first-class use case, but must not define the analyzer so narrowly that other EpicEFI boost-control arrangements require a separate architecture.
+- A/B boundaries;
+- saved ranges;
+- markers;
+- future sample filters/qualification criteria.
+
+### 5. Analyze
+
+Generic tools should come before specialized analyzers:
+
+- range statistics;
+- histogram;
+- 2D histogram/heatmap/table;
+- scatter;
+- generic event analysis;
+- later specialized analyzers.
+
+### 6. Compare / Export
+
+Compare/export are result-stage capabilities. Empty or disabled top-level placeholders are not product value and should not consume permanent toolbar space before the capability exists.
+
+## EpicScope modes/surfaces
+
+The **EpicScope logo dropdown** is the approved in-product mode/surface switcher.
+
+Current entries:
+
+- Logger — active;
+- Analyzer — planned;
+- Histogram — planned.
+
+Future real capabilities may justify Scatter, Histogram/Table, Math Channels, or specialized Analyzer surfaces. This mode switcher is not the full EpicHub Dashboard/Tuner/Diagnostics shell.
+
+## Graph workspace model
+
+Global workspace context is presented as **Graphs · <workspace>** rather than an unexplained bare name such as `General`.
+
+The global shell communicates the active graph workspace. Active pane identity remains local to the pane so the header does not duplicate graph/pane information.
 
 ## Analysis principles
 
 ### Evidence before recommendation
 
-EpicScope should expose the evidence behind findings: qualifying sample count, event selection, statistical method, variance or spread where relevant, and the exact data region used.
+EpicScope should expose evidence behind findings:
 
-Recommendations must not be presented as unexplained conclusions.
+- qualifying sample count;
+- event/range selection;
+- statistical/aggregation method;
+- variance/spread where relevant;
+- exact source region used.
+
+Recommendations must not appear as unexplained conclusions.
 
 ### Tune awareness
 
-When firmware/tune information is available, EpicScope should understand the relationship between logged samples and tune structures rather than treating every channel as an isolated signal.
+When source/tune context exists:
 
-INI and MSQ serve different product roles:
+- INI establishes firmware identity and stable known runtime/output-channel definitions;
+- MLG remains authoritative for recorded samples and validity;
+- MSQ later supplies actual tune/calibration values, tables, curves and scalars.
 
-- INI can establish firmware identity and a stable known runtime/output-channel catalog before any log is opened;
-- MLG remains authoritative for recorded samples and sample validity;
-- MSQ later supplies actual tune/calibration values, tables, curves, and scalar settings.
+Examples of later tune-aware workflows:
 
-A persistent workspace should therefore be able to show its configured channels while waiting for log data rather than requiring channel-layout recreation for every recording.
+- map RPM/load samples into tune-table cells;
+- compare target vs actual behavior;
+- show tune value, observed result, error, sample count and stability together;
+- compare tune revisions against resulting behavior.
 
-Examples include:
+### Explicit binned-analysis semantics
 
-- mapping RPM/load samples into actual tune-table cells;
-- comparing target vs actual behaviour;
-- showing current table value, observed value, error, sample count, and stability together;
-- comparing table revisions against resulting behaviour.
+Every table/histogram/heatmap must visibly state:
 
-### Explicit histogram semantics
+- X axis;
+- Y axis where applicable;
+- value/cell meaning;
+- aggregation method;
+- active filters;
+- sample count.
 
-Every table/histogram/heatmap must make its meaning visible:
-
-- X axis
-- Y axis
-- cell value
-- aggregation method
-- active filters
-- sample count
-
-The user should never have to infer whether a cell represents MAP, duty, error, average, maximum, or another quantity.
+The user must never need to guess whether a cell represents MAP, duty, error, average, maximum, or another quantity.
 
 ## Event system
 
-EpicScope should develop a reusable event-detection layer capable of identifying and navigating events such as:
+EpicScope should develop reusable event detection for examples such as:
 
-- WOT pulls
-- tip-in / acceleration events
-- gear changes
-- throttle closures
-- boost overshoot / undershoot
-- idle entry
-- idle sag / disturbance
-- DFCO entry/exit
-- transient fuel events
+- WOT pulls;
+- tip-in/acceleration events;
+- gear changes;
+- throttle closures;
+- boost overshoot/undershoot;
+- idle entry/sag/disturbance;
+- DFCO entry/exit;
+- transient fuel events.
 
-Event detection must be separated from presentation so events can be reused by analyzers, comparisons, and reports.
+Event detection must remain separate from presentation so analyzers/comparison/reporting can reuse it.
 
 ## Comparison system
 
 Comparison is a first-class product capability.
 
-EpicScope should support:
+Expected later support:
 
 - before/after log comparison;
-- aligned comparable events;
-- tune-revision comparisons;
+- aligned comparable events/ranges;
+- tune-revision comparison;
 - aggregate metric deltas;
-- overlayed traces;
-- analyzer-specific comparisons such as boost spool/overshoot or idle recovery/settling.
+- trace overlays;
+- analyzer-specific comparisons.
+
+## Initial specialized analyzers
+
+Planned families:
+
+- Boost control;
+- Idle / PID;
+- Acceleration enrichment / MAP Predict;
+- Fueling / VE / AFR error;
+- Ignition / knock;
+- Fuel pressure / injector behavior;
+- Trigger / sync.
+
+Specialized analyzers must build on generic analysis/events/compare/tune services rather than privately reimplementing them.
+
+### Boost analyzer scope
+
+Boost analysis must remain capability-driven and support, where channels permit:
+
+- single-solenoid/single-duty;
+- dual-solenoid;
+- upper/lower chamber;
+- open-loop;
+- closed-loop;
+- target vs actual behavior;
+- spool/overshoot/undershoot/steady-state metrics.
 
 ## Local-first privacy
 
-Opening and analyzing a local log must not require upload.
+Opening/analyzing a local log must not require upload.
 
-Local-first also means EpicScope must not silently transmit log contents, tune contents, filenames, derived values, or analysis results as telemetry/analytics.
-
-Any future sharing, publishing, or telemetry function must be explicit, separately reviewed, and clearly distinguished from ordinary local analysis.
+EpicScope must not silently transmit log/tune contents, filenames, derived values or analysis results as telemetry/analytics. Future sharing/publishing/telemetry must be explicit and separately reviewed.
 
 ## Feature maturity
 
-Major analyzers and user-facing capabilities use one of these maturity labels:
+Major analyzers/capabilities use:
 
-- **Experimental** — behaviour/API may change substantially; results require extra scrutiny.
-- **Beta** — intended workflow is established but validation and edge-case coverage are incomplete.
-- **Stable** — behaviour is considered suitable for normal use and compatibility should be preserved.
+- **Experimental**;
+- **Beta**;
+- **Stable**.
 
-Promotion between levels requires evidence appropriate to the feature.
+Promotion requires validation evidence.
 
-## Non-goals for early Web development
+## Non-goals for current Web work
 
-The early Web phase does not need to solve:
+Current Web development does not need to solve:
 
 - final native memory mapping;
-- native thread-pool design;
-- final Linux binary packaging;
+- final Linux thread-pool/runtime design;
+- final Linux packaging;
 - direct ECU serial/CAN acquisition;
 - Android integration;
-- extreme visual polish.
+- decorative polish that conflicts with clarity/performance.
 
-Those concerns remain part of the long-term map but must not slow functional discovery prematurely.
+The immediate product priority is to finish the Logger navigation/range UI hierarchy, then build the first generic analysis workflow on top of it.
