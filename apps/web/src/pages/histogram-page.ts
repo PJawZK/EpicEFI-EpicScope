@@ -2,6 +2,7 @@ import type { ChannelDefinition, NumericChannelRange } from '../../../../core/lo
 import { buildNumericHistogram, type NumericHistogramResult } from '../../../../core/analysis/histogram';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { createHeatmapView } from './heatmap-view';
+import { createScatterView } from './scatter-view';
 
 export interface HistogramTraceContext {
   readonly channel: ChannelDefinition;
@@ -31,8 +32,9 @@ function formatNumber(value: number | undefined, precision = 3): string {
 export function createHistogramPage(): HistogramPageController {
   let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHistogramResult | undefined;
-  let activeView: 'distribution' | 'heatmap' = 'distribution';
+  let activeView: 'distribution' | 'heatmap' | 'scatter' = 'distribution';
   const heatmapView = createHeatmapView();
+  const scatterView = createScatterView();
 
   const page = document.createElement('main');
   page.className = 'histogram-page';
@@ -48,6 +50,7 @@ export function createHistogramPage(): HistogramPageController {
         <div class="histogram-view-switch" role="group" aria-label="Histogram analysis view">
           <button type="button" class="histogram-view-choice histogram-view-choice--active" data-histogram-view="distribution" aria-pressed="true">Distribution</button>
           <button type="button" class="histogram-view-choice" data-histogram-view="heatmap" aria-pressed="false">Heatmap</button>
+          <button type="button" class="histogram-view-choice" data-histogram-view="scatter" aria-pressed="false">Scatter</button>
         </div>
         <div class="histogram-controls">
           <label>
@@ -97,7 +100,7 @@ export function createHistogramPage(): HistogramPageController {
       </div>
     </section>
   `;
-  page.append(heatmapView.element);
+  page.append(heatmapView.element, scatterView.element);
 
   const title = page.querySelector<HTMLElement>('.histogram-title');
   const description = page.querySelector<HTMLElement>('.histogram-description');
@@ -244,20 +247,32 @@ export function createHistogramPage(): HistogramPageController {
 
   const renderActiveView = (): void => {
     if (activeView === 'heatmap') heatmapView.refresh();
+    else if (activeView === 'scatter') scatterView.refresh();
     else renderDistribution();
   };
 
-  const setActiveView = (nextView: 'distribution' | 'heatmap'): void => {
+  const setActiveView = (nextView: 'distribution' | 'heatmap' | 'scatter'): void => {
     activeView = nextView;
+    const distributionActive = activeView === 'distribution';
     const heatmapActive = activeView === 'heatmap';
-    controls.hidden = heatmapActive;
-    empty.classList.toggle('histogram-view-hidden', heatmapActive);
-    content.classList.toggle('histogram-view-hidden', heatmapActive);
+    const scatterActive = activeView === 'scatter';
+    controls.hidden = !distributionActive;
+    empty.classList.toggle('histogram-view-hidden', !distributionActive);
+    content.classList.toggle('histogram-view-hidden', !distributionActive);
     heatmapView.element.hidden = !heatmapActive;
-    title.textContent = heatmapActive ? 'Selected range heatmap' : 'Selected range distribution';
-    description.textContent = heatmapActive
-      ? 'Two-dimensional sample density across two active decoded channels inside the current Logger A/B range.'
-      : 'Distribution of one active decoded channel inside the current Logger A/B range.';
+    scatterView.element.hidden = !scatterActive;
+
+    if (heatmapActive) {
+      title.textContent = 'Selected range heatmap';
+      description.textContent = 'Two-dimensional sample density across two active decoded channels inside the current Logger A/B range.';
+    } else if (scatterActive) {
+      title.textContent = 'Selected range scatter';
+      description.textContent = 'Aligned X/Y sample pairs across two active decoded channels inside the current Logger A/B range.';
+    } else {
+      title.textContent = 'Selected range distribution';
+      description.textContent = 'Distribution of one active decoded channel inside the current Logger A/B range.';
+    }
+
     for (const choice of viewChoices) {
       const selected = choice.dataset.histogramView === activeView;
       choice.classList.toggle('histogram-view-choice--active', selected);
@@ -277,6 +292,7 @@ export function createHistogramPage(): HistogramPageController {
       channelSelect.value = previousChannel;
     }
     heatmapView.setContext(nextContext);
+    scatterView.setContext(nextContext);
     renderActiveView();
   };
 
@@ -286,7 +302,7 @@ export function createHistogramPage(): HistogramPageController {
   viewChoices.forEach((choice) => {
     choice.addEventListener('click', () => {
       const view = choice.dataset.histogramView;
-      if (view === 'distribution' || view === 'heatmap') setActiveView(view);
+      if (view === 'distribution' || view === 'heatmap' || view === 'scatter') setActiveView(view);
     });
   });
   new ResizeObserver(() => {
@@ -294,6 +310,7 @@ export function createHistogramPage(): HistogramPageController {
   }).observe(canvas);
 
   heatmapView.setContext(context);
+  scatterView.setContext(context);
   setActiveView('distribution');
 
   return {
