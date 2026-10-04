@@ -84,8 +84,8 @@ export function createInspectorPanel(): InspectorPanelController {
   panel.innerHTML = `
     <header class="panel-header">
       <div>
-        <span class="eyebrow">Channels</span>
-        <strong>Full Sensor List</strong>
+        <span class="eyebrow">Channel browser</span>
+        <strong>Channels</strong>
       </div>
       <span class="panel-state">No log loaded</span>
     </header>
@@ -102,9 +102,12 @@ export function createInspectorPanel(): InspectorPanelController {
       </div>
       <div class="sort-row" aria-label="Channel sorting">
         <span>Sort</span>
-        <button type="button" data-sort-key="name" disabled>Name ↑</button>
-        <button type="button" data-sort-key="group" disabled>Group</button>
-        <button type="button" data-sort-key="value" disabled>Value</button>
+        <select class="channel-sort-select" disabled aria-label="Sort channels by">
+          <option value="name">Name</option>
+          <option value="group">Group</option>
+          <option value="value">Value</option>
+        </select>
+        <button type="button" class="channel-sort-direction" disabled aria-label="Sort ascending" title="Sort ascending">↑</button>
       </div>
     </div>
     <div class="channel-list channel-list--virtual" role="list">
@@ -128,9 +131,14 @@ export function createInspectorPanel(): InspectorPanelController {
     <footer class="panel-footer">
       <span class="channel-count">0 channels</span>
       <div class="panel-footer-actions">
-        <button type="button" class="add-filtered" disabled>Add filtered</button>
-        <button type="button" class="load-selected" disabled>Load selected</button>
-        <button type="button" class="clear-graph" disabled>Clear graph</button>
+        <button type="button" class="load-selected channel-primary-action" disabled>Load now</button>
+        <div class="channel-more-wrap">
+          <button type="button" class="channel-more-button" aria-label="More channel actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
+          <div class="channel-more-menu" role="menu" hidden>
+            <button type="button" class="add-filtered" disabled role="menuitem">Add all filtered</button>
+            <button type="button" class="clear-graph" disabled role="menuitem">Clear active pane</button>
+          </div>
+        </div>
       </div>
     </footer>
   `;
@@ -149,12 +157,15 @@ export function createInspectorPanel(): InspectorPanelController {
   const statisticsClose = panel.querySelector<HTMLButtonElement>('.channel-statistics-close');
   const statisticsDragHandle = panel.querySelector<HTMLElement>('.channel-statistics-drag-handle');
   const channelCount = panel.querySelector<HTMLElement>('.channel-count');
-  const sortButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-sort-key]')];
+  const sortSelect = panel.querySelector<HTMLSelectElement>('.channel-sort-select');
+  const sortDirectionButton = panel.querySelector<HTMLButtonElement>('.channel-sort-direction');
   const addFilteredButton = panel.querySelector<HTMLButtonElement>('.add-filtered');
   const loadSelectedButton = panel.querySelector<HTMLButtonElement>('.load-selected');
   const clearGraphButton = panel.querySelector<HTMLButtonElement>('.clear-graph');
+  const moreButton = panel.querySelector<HTMLButtonElement>('.channel-more-button');
+  const moreMenu = panel.querySelector<HTMLElement>('.channel-more-menu');
 
-  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !statisticsPanel || !statisticsTitle || !statisticsBody || !statisticsClose || !statisticsDragHandle || !channelCount || !addFilteredButton || !loadSelectedButton || !clearGraphButton) {
+  if (!panelState || !search || !groupSelect || !visibilitySelect || !channelList || !spacer || !viewportHost || !emptyState || !statisticsPanel || !statisticsTitle || !statisticsBody || !statisticsClose || !statisticsDragHandle || !channelCount || !sortSelect || !sortDirectionButton || !addFilteredButton || !loadSelectedButton || !clearGraphButton || !moreButton || !moreMenu) {
     throw new Error('Inspector panel structure is incomplete.');
   }
 
@@ -314,13 +325,11 @@ export function createInspectorPanel(): InspectorPanelController {
     return sortAscending ? result : -result;
   };
 
-  const renderSortButtons = (): void => {
-    for (const button of sortButtons) {
-      const key = button.dataset.sortKey;
-      const label = key === 'name' ? 'Name' : key === 'group' ? 'Group' : 'Value';
-      button.textContent = key === sortKey ? `${label} ${sortAscending ? '↑' : '↓'}` : label;
-      button.setAttribute('aria-pressed', String(key === sortKey));
-    }
+  const renderSortControls = (): void => {
+    sortSelect.value = sortKey;
+    sortDirectionButton.textContent = sortAscending ? '↑' : '↓';
+    sortDirectionButton.title = sortAscending ? 'Sort ascending' : 'Sort descending';
+    sortDirectionButton.setAttribute('aria-label', sortDirectionButton.title);
   };
 
   const applyFilters = (resetScroll = true): void => {
@@ -337,7 +346,7 @@ export function createInspectorPanel(): InspectorPanelController {
       recentChannelIds,
     })).sort(compareChannels);
 
-    renderSortButtons();
+    renderSortControls();
     spacer.style.height = `${filteredChannels.length * VIRTUAL_ROW_HEIGHT}px`;
     if (resetScroll) channelList.scrollTop = 0;
     renderVisibleRows();
@@ -393,19 +402,32 @@ export function createInspectorPanel(): InspectorPanelController {
     if (!restoringWorkspace) workspaceMutationListener?.();
   });
 
-  for (const button of sortButtons) {
-    button.addEventListener('click', () => {
-      const key = button.dataset.sortKey;
-      if (key !== 'name' && key !== 'group' && key !== 'value') return;
-      if (sortKey === key) sortAscending = !sortAscending;
-      else {
-        sortKey = key;
-        sortAscending = true;
-      }
-      applyFilters();
-      if (!restoringWorkspace) workspaceMutationListener?.();
-    });
-  }
+  sortSelect.addEventListener('change', () => {
+    const key = sortSelect.value;
+    if (key !== 'name' && key !== 'group' && key !== 'value') return;
+    sortKey = key;
+    sortAscending = true;
+    applyFilters();
+    if (!restoringWorkspace) workspaceMutationListener?.();
+  });
+  sortDirectionButton.addEventListener('click', () => {
+    sortAscending = !sortAscending;
+    applyFilters();
+    if (!restoringWorkspace) workspaceMutationListener?.();
+  });
+
+  const closeMoreMenu = (): void => {
+    moreMenu.hidden = true;
+    moreButton.setAttribute('aria-expanded', 'false');
+  };
+  moreButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = moreMenu.hidden;
+    moreMenu.hidden = !nextOpen;
+    moreButton.setAttribute('aria-expanded', String(nextOpen));
+  });
+  moreMenu.addEventListener('click', (event) => event.stopPropagation());
+  document.addEventListener('click', closeMoreMenu);
 
   const setVisible = (next: boolean): void => {
     if (visible === next) return;
@@ -433,7 +455,8 @@ export function createInspectorPanel(): InspectorPanelController {
     search.disabled = false;
     groupSelect.disabled = false;
     visibilitySelect.disabled = false;
-    for (const button of sortButtons) button.disabled = false;
+    sortSelect.disabled = false;
+    sortDirectionButton.disabled = false;
     groupSelect.replaceChildren(new Option(`All (${channels.length.toLocaleString()})`, ''));
 
     const groupCounts = new Map<string, number>();
@@ -483,7 +506,8 @@ export function createInspectorPanel(): InspectorPanelController {
     search.disabled = true;
     groupSelect.disabled = true;
     visibilitySelect.disabled = true;
-    for (const button of sortButtons) button.disabled = true;
+    sortSelect.disabled = true;
+    sortDirectionButton.disabled = true;
     spacer.style.height = '0px';
     viewportHost.replaceChildren();
     channelList.hidden = true;
@@ -649,6 +673,7 @@ export function createInspectorPanel(): InspectorPanelController {
 
   addFilteredButton.addEventListener('click', () => {
     if (addFilteredButton.disabled) return;
+    closeMoreMenu();
     const candidates = filteredChannels
       .map((channel) => channel.id)
       .filter((channelId) =>
@@ -672,6 +697,7 @@ export function createInspectorPanel(): InspectorPanelController {
   });
 
   clearGraphButton.addEventListener('click', () => {
+    closeMoreMenu();
     for (const channelId of [...activeChannelIds]) toggleListener?.(channelId);
   });
 
