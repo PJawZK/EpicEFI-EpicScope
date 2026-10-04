@@ -27,6 +27,7 @@ import { createInspectorPanel } from '../panels/inspector-panel';
 import { formatInspectorChannelValue } from '../panels/inspector-channel-view';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
 import { createRangeQualificationPanel } from '../panels/range-qualification-panel';
+import { findNumericEvents } from '../../../../core/analysis/events';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import {
   normalizeWorkspaceChannelIds,
@@ -601,22 +602,46 @@ export function createLoggerPage(): LoggerPageController {
       : [];
   };
 
-  rangeQualification.setEvaluator((referenceChannelId, conditions) => {
+  const activeAnalysisRanges = () => {
     const runtime = activePaneRuntime();
-    if (!runtime || analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) {
-      return undefined;
-    }
-    const traces = runtime.graph.getOverviewTraces();
-    const channels = new Map(traces.map((trace) => [
+    if (!runtime) return undefined;
+    return new Map(runtime.graph.getOverviewTraces().map((trace) => [
       trace.channelId,
       { range: trace.range, complete: false },
     ]));
+  };
+
+  rangeQualification.setEvaluator((referenceChannelId, conditions) => {
+    if (analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) {
+      return undefined;
+    }
+    const channels = activeAnalysisRanges();
+    if (!channels) return undefined;
     try {
       return qualifyNumericSamples({
         referenceChannelId,
         channels,
         conditions,
         timeRange: { startMs: analysisStartMs, endMs: analysisEndMs },
+      });
+    } catch {
+      return undefined;
+    }
+  });
+
+  rangeQualification.setEventEvaluator((referenceChannelId, conditions, eventOptions) => {
+    if (analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) {
+      return undefined;
+    }
+    const channels = activeAnalysisRanges();
+    if (!channels) return undefined;
+    try {
+      return findNumericEvents({
+        referenceChannelId,
+        channels,
+        conditions,
+        timeRange: { startMs: analysisStartMs, endMs: analysisEndMs },
+        eventOptions,
       });
     } catch {
       return undefined;
