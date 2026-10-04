@@ -420,6 +420,9 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private dataFile: File | undefined;
   private manifest: MlgColumnSidecarManifest | undefined;
   private readonly existingManifestPromise: Promise<void>;
+  private prioritizedChannelIds = new Set<string>();
+  private priorityReadyPromise: Promise<void> | undefined;
+  private resolvePriorityReady: (() => void) | undefined;
 
   public constructor(
     private readonly source: NumericChannelDataSource,
@@ -472,7 +475,37 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     }
     this.manifest = manifest;
     this.dataFile = undefined;
+    this.releasePrioritizedChannels();
     return true;
+  }
+
+  public prioritizeChannelsUntilReady(channelIds: readonly string[]): void {
+    this.prioritizedChannelIds = new Set(
+      channelIds.filter((channelId) => this.fieldByChannelId.has(channelId)),
+    );
+    if (this.manifest || this.prioritizedChannelIds.size === 0) {
+      this.releasePrioritizedChannels();
+      return;
+    }
+    if (!this.priorityReadyPromise) {
+      this.priorityReadyPromise = new Promise<void>((resolve) => {
+        this.resolvePriorityReady = resolve;
+      });
+    }
+  }
+
+  public releasePrioritizedChannels(): void {
+    this.resolvePriorityReady?.();
+    this.resolvePriorityReady = undefined;
+    this.priorityReadyPromise = undefined;
+    this.prioritizedChannelIds.clear();
+  }
+
+  private async waitForPrioritizedChannels(channelIds: readonly string[]): Promise<void> {
+    const wait = this.priorityReadyPromise;
+    if (!wait || this.manifest || channelIds.length === 0) return;
+    if (!channelIds.every((channelId) => this.prioritizedChannelIds.has(channelId))) return;
+    await wait;
   }
 
   private async ensureManifest(): Promise<MlgColumnSidecarManifest | undefined> {
@@ -494,6 +527,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelBatchResult | undefined> {
+    await this.waitForPrioritizedChannels(channelIds);
     const manifest = await this.ensureManifest();
     if (!manifest) return undefined;
 
