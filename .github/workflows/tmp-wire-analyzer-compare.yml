@@ -1,0 +1,39 @@
+name: Temporary Analyzer Compare integration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-wire-analyzer-compare.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: analysis/compare-surface-v1
+          fetch-depth: 0
+      - name: Apply Analyzer integration
+        run: |
+          git show origin/main:scripts/tmp-wire-analyzer-compare.py > /tmp/patch.py
+          python /tmp/patch.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit Analyzer integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/pages/logger-page.ts apps/web/src/app/app-shell.ts
+          git commit -m "Activate Analyzer saved-range comparison"
+          git push origin HEAD:analysis/compare-surface-v1
