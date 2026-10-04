@@ -1426,6 +1426,7 @@ export function createLoggerPage(): LoggerPageController {
       current: statistics.current,
       full: statistics.full,
       visible: statistics.visible,
+      selected: statistics.selected,
     });
   });
 
@@ -1502,6 +1503,7 @@ export function createLoggerPage(): LoggerPageController {
       current: statistics.current,
       full: statistics.full,
       visible: statistics.visible,
+      selected: statistics.selected,
     });
   };
 

@@ -5,6 +5,11 @@ import type {
   NumericChannelRange,
 } from '../../../../core/log-model/log-types';
 import type { TimelineViewport } from '../../../../core/timeline/viewport-state';
+import {
+  numericRangeCoversTime,
+  summarizeNumericRange,
+  type NumericRangeStatistics,
+} from '../../../../core/analysis/range-statistics';
 import { buildStableValueScale, type StableValueScale } from '../../../../core/timeline/value-scale';
 import {
   buildRawViewportSeries,
@@ -68,6 +73,17 @@ export interface GraphChannelStatistics {
     readonly max: number | undefined;
     readonly mean: number | undefined;
   };
+  readonly selected: {
+    readonly startMs: number;
+    readonly endMs: number;
+    readonly complete: boolean;
+    readonly validCount: number;
+    readonly invalidCount: number;
+    readonly min: number | undefined;
+    readonly max: number | undefined;
+    readonly mean: number | undefined;
+    readonly standardDeviation: number | undefined;
+  } | undefined;
 }
 
 export interface GraphChannelPerformance {
@@ -155,7 +171,7 @@ interface ActiveTrace {
   readonly channel: ChannelDefinition;
   readonly range: NumericChannelRange;
   readonly scale: StableValueScale;
-  readonly fullStatistics: ReturnType<typeof summarizeRange>;
+  readonly fullStatistics: NumericRangeStatistics;
   readonly statisticsComplete: boolean;
   readonly color: string;
 }
@@ -212,53 +228,8 @@ function nearestValue(range: NumericChannelRange, cursorTimeMs: number): number 
   return value !== undefined && Number.isFinite(value) ? value : undefined;
 }
 
-function summarizeRange(
-  range: NumericChannelRange,
-  startMs = Number.NEGATIVE_INFINITY,
-  endMs = Number.POSITIVE_INFINITY,
-): {
-  validCount: number;
-  invalidCount: number;
-  min: number | undefined;
-  max: number | undefined;
-  mean: number | undefined;
-  standardDeviation: number | undefined;
-} {
-  let validCount = 0;
-  let invalidCount = 0;
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-  let mean = 0;
-  let m2 = 0;
-
-  for (let index = 0; index < range.values.length; index += 1) {
-    const timeMs = range.timeMs[index];
-    if (timeMs === undefined || timeMs < startMs || timeMs > endMs) continue;
-    const value = range.values[index];
-    if (range.validity[index] !== 1 || value === undefined || !Number.isFinite(value)) {
-      invalidCount += 1;
-      continue;
-    }
-    validCount += 1;
-    min = Math.min(min, value);
-    max = Math.max(max, value);
-    const delta = value - mean;
-    mean += delta / validCount;
-    m2 += delta * (value - mean);
-  }
-
-  return {
-    validCount,
-    invalidCount,
-    min: validCount > 0 ? min : undefined,
-    max: validCount > 0 ? max : undefined,
-    mean: validCount > 0 ? mean : undefined,
-    standardDeviation: validCount > 1 ? Math.sqrt(m2 / (validCount - 1)) : validCount === 1 ? 0 : undefined,
-  };
-}
-
 function stableScaleFromStatistics(
-  statistics: ReturnType<typeof summarizeRange>,
+  statistics: NumericRangeStatistics,
 ): StableValueScale {
   const { min, max, validCount } = statistics;
   if (validCount === 0 || min === undefined || max === undefined) return { min: 0, max: 1 };
@@ -937,7 +908,7 @@ export function createGraphViewport(): GraphViewportController {
           channel: pending.channel,
           range,
           scale,
-          fullStatistics: summarizeRange(range),
+          fullStatistics: summarizeNumericRange(range),
           statisticsComplete: requestRange.phase === 'full',
           color,
         });
@@ -1055,7 +1026,7 @@ export function createGraphViewport(): GraphViewportController {
         ...latest,
         range,
         scale: latest.scale,
-        fullStatistics: summarizeRange(range),
+        fullStatistics: summarizeNumericRange(range),
         statisticsComplete: true,
       });
       envelopeCache.delete(channelId);
@@ -1217,7 +1188,7 @@ export function createGraphViewport(): GraphViewportController {
             : mergeContiguousRanges(latest.range, nextRange);
 
           const scaleStart = now();
-          const fullStatistics = summarizeRange(merged);
+          const fullStatistics = summarizeNumericRange(merged);
           const scale = stableScaleFromStatistics(fullStatistics);
           const scaleMs = now() - scaleStart;
           activeTraces.set(channelId, {
@@ -1310,7 +1281,7 @@ export function createGraphViewport(): GraphViewportController {
       if (!range) return false;
 
       const scaleStart = now();
-      const fullStatistics = summarizeRange(range);
+      const fullStatistics = summarizeNumericRange(range);
       const scale = stableScaleFromStatistics(fullStatistics);
       const scaleMs = now() - scaleStart;
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
@@ -1444,7 +1415,7 @@ export function createGraphViewport(): GraphViewportController {
       if (!channel) continue;
 
       const statisticsStarted = now();
-      const fullStatistics = range.fullStatistics ?? summarizeRange(range);
+      const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
       const scale = stableScaleFromStatistics(fullStatistics);
       statisticsScaleMs += now() - statisticsStarted;
 
@@ -1680,10 +1651,19 @@ export function createGraphViewport(): GraphViewportController {
       if (!trace) return undefined;
       const full = trace.statisticsComplete
         ? trace.fullStatistics
-        : summarizeRange(trace.range);
+        : summarizeNumericRange(trace.range);
       const visible = viewport
-        ? summarizeRange(trace.range, viewport.visibleStartMs, viewport.visibleEndMs)
+        ? summarizeNumericRange(trace.range, viewport.visibleStartMs, viewport.visibleEndMs)
         : full;
+      const selectedStartMs = aTimeMs !== undefined && bTimeMs !== undefined && aTimeMs !== bTimeMs
+        ? Math.min(aTimeMs, bTimeMs)
+        : undefined;
+      const selectedEndMs = aTimeMs !== undefined && bTimeMs !== undefined && aTimeMs !== bTimeMs
+        ? Math.max(aTimeMs, bTimeMs)
+        : undefined;
+      const selectedStatistics = selectedStartMs !== undefined && selectedEndMs !== undefined
+        ? summarizeNumericRange(trace.range, selectedStartMs, selectedEndMs)
+        : undefined;
       return {
         channelId,
         current: nearestValue(trace.range, cursorTimeMs),
@@ -1694,6 +1674,15 @@ export function createGraphViewport(): GraphViewportController {
           max: visible.max,
           mean: visible.mean,
         },
+        selected: selectedStatistics && selectedStartMs !== undefined && selectedEndMs !== undefined
+          ? {
+              startMs: selectedStartMs,
+              endMs: selectedEndMs,
+              complete: trace.statisticsComplete
+                || numericRangeCoversTime(trace.range, selectedStartMs, selectedEndMs),
+              ...selectedStatistics,
+            }
+          : undefined,
       };
     },
     setCursorTime,
