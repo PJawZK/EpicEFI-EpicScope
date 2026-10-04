@@ -85,14 +85,14 @@ export interface GraphChannelPerformance {
   readonly physicalReadCount: number;
   readonly physicalBytesRead: number;
   readonly physicalReadMs: number;
-  readonly persistentLookupMs?: number;
-  readonly persistentRangeBuildMs?: number;
-  readonly delegatedSourceMs?: number;
-  readonly sidecarManifestMs?: number;
-  readonly sidecarFileOpenMs?: number;
-  readonly sidecarBlobReadMs?: number;
-  readonly sidecarDecodeMs?: number;
-  readonly sidecarRangeBuildMs?: number;
+  readonly persistentLookupMs?: number | undefined;
+  readonly persistentRangeBuildMs?: number | undefined;
+  readonly delegatedSourceMs?: number | undefined;
+  readonly sidecarManifestMs?: number | undefined;
+  readonly sidecarFileOpenMs?: number | undefined;
+  readonly sidecarBlobReadMs?: number | undefined;
+  readonly sidecarDecodeMs?: number | undefined;
+  readonly sidecarRangeBuildMs?: number | undefined;
 }
 
 export interface GraphPreloadedActivationPerformance {

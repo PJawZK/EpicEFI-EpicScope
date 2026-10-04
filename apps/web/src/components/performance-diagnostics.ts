@@ -143,6 +143,14 @@ export interface WorkspaceRestorePerformanceRun {
 
 export interface ChannelPerformanceRun {
   readonly channelName: string;
+  readonly persistentLookupMs?: number | undefined;
+  readonly persistentRangeBuildMs?: number | undefined;
+  readonly delegatedSourceMs?: number | undefined;
+  readonly sidecarManifestMs?: number | undefined;
+  readonly sidecarFileOpenMs?: number | undefined;
+  readonly sidecarBlobReadMs?: number | undefined;
+  readonly sidecarDecodeMs?: number | undefined;
+  readonly sidecarRangeBuildMs?: number | undefined;
   readonly phase: 'viewport' | 'full' | 'cache';
   readonly startSampleIndex: number;
   readonly requestedSampleCount: number;
