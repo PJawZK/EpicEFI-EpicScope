@@ -1595,18 +1595,7 @@ export function createLoggerPage(): LoggerPageController {
 
     prepareStageStarted = now();
     const uniqueRequestedIds = [...new Set(paneRequests.flatMap((request) => request.requestedIds))];
-    const predecodeTarget = opportunisticPredecodeTarget();
-    const batchRequestedIds = [...uniqueRequestedIds];
-    if (predecodeTarget > batchRequestedIds.length) {
-      const alreadyRequested = new Set(batchRequestedIds);
-      for (const channelId of channelDefinitions.keys()) {
-        if (batchRequestedIds.length >= predecodeTarget) break;
-        if (alreadyRequested.has(channelId) || unavailableChannelIds.has(channelId)) continue;
-        batchRequestedIds.push(channelId);
-        alreadyRequested.add(channelId);
-      }
-    }
-    const opportunisticPredecodeCount = batchRequestedIds.length - uniqueRequestedIds.length;
+    const batchRequestedIds = uniqueRequestedIds;
     const prepareBatchPlanMs = now() - prepareStageStarted;
     const prepareMs = now() - prepareStarted;
     let sharedBatchMs = 0;
@@ -1638,9 +1627,7 @@ export function createLoggerPage(): LoggerPageController {
 
       channelPerformanceListener?.({
         channelId: '__multi-pane-restore__',
-        channelName: opportunisticPredecodeCount > 0
-          ? `Multi-pane restore (${uniqueRequestedIds.length} workspace + ${opportunisticPredecodeCount} predecode = ${batchRequestedIds.length} channels)`
-          : `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
+        channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
         phase: 'full',
         startSampleIndex: 0,
         requestedSampleCount: channelDataSource.sampleCount,
