@@ -22,6 +22,14 @@ describe('buildNumericHeatmap', () => {
     expect(result.xBins).toHaveLength(2);
     expect(result.yBins).toHaveLength(2);
     expect([...result.counts]).toEqual([2, 0, 0, 2]);
+    expect([...result.cellValues]).toEqual([2, Number.NaN, Number.NaN, 2]);
+    expect([...result.cellValueSampleCounts]).toEqual([2, 0, 0, 2]);
+    expect(result.aggregationMethod).toBe('count');
+    expect(result.valueValidSampleCount).toBe(4);
+    expect(result.valueInvalidSampleCount).toBe(0);
+    expect(result.valueUnavailableSampleCount).toBe(0);
+    expect(result.cellValueMin).toBe(2);
+    expect(result.cellValueMax).toBe(2);
     expect(result.binnedSampleCount).toBe(4);
     expect(result.maxCellCount).toBe(2);
   });
@@ -73,6 +81,7 @@ describe('buildNumericHeatmap', () => {
     expect(result.xAboveRangeSampleCount).toBe(1);
     expect(result.yBelowRangeSampleCount).toBe(1);
     expect(result.yAboveRangeSampleCount).toBe(1);
+    expect(result.valueValidSampleCount).toBe(2);
   });
 
   it('normalizes reversed explicit axis bounds', () => {
@@ -101,6 +110,78 @@ describe('buildNumericHeatmap', () => {
     expect(result.xBinWidth).toBe(0);
     expect(result.yBinWidth).toBe(0);
     expect([...result.counts]).toEqual([3]);
+    expect([...result.cellValues]).toEqual([3]);
+  });
+
+  it('aggregates an explicit value channel by source sample index', () => {
+    const result = buildNumericHeatmap(
+      range(100, [0, 0, 10, 10]),
+      range(100, [0, 0, 10, 10]),
+      {
+        xBinCount: 2,
+        yBinCount: 2,
+        aggregation: 'mean',
+        valueRange: range(99, [900, 10, 30, 50, 70]),
+      },
+    );
+
+    expect(result.aggregationMethod).toBe('mean');
+    expect([...result.counts]).toEqual([2, 0, 0, 2]);
+    expect(result.cellValues[0]).toBe(20);
+    expect(Number.isNaN(result.cellValues[1]!)).toBe(true);
+    expect(Number.isNaN(result.cellValues[2]!)).toBe(true);
+    expect(result.cellValues[3]).toBe(60);
+    expect([...result.cellValueSampleCounts]).toEqual([2, 0, 0, 2]);
+    expect(result.valueValidSampleCount).toBe(4);
+    expect(result.valueInvalidSampleCount).toBe(0);
+    expect(result.valueUnavailableSampleCount).toBe(0);
+    expect(result.cellValueMin).toBe(20);
+    expect(result.cellValueMax).toBe(60);
+  });
+
+  it('uses the shared sample standard-deviation convention inside cells', () => {
+    const result = buildNumericHeatmap(
+      range(0, [1, 1, 1]),
+      range(0, [2, 2, 2]),
+      {
+        aggregation: 'standard-deviation',
+        valueRange: range(0, [1, 2, 3]),
+      },
+    );
+
+    expect(result.cellValues).toHaveLength(1);
+    expect(result.cellValues[0]).toBe(1);
+    expect(result.cellValueSampleCounts[0]).toBe(3);
+  });
+
+  it('separates value-channel invalid and unavailable evidence from valid X/Y pairs', () => {
+    const result = buildNumericHeatmap(
+      range(10, [1, 2, 3, 4]),
+      range(10, [10, 20, 30, 40]),
+      {
+        aggregation: 'mean',
+        valueRange: range(11, [100, 200], [1, 0]),
+      },
+    );
+
+    expect(result.validPairSampleCount).toBe(4);
+    expect(result.binnedSampleCount).toBe(4);
+    expect(result.invalidSampleCount).toBe(0);
+    expect(result.unavailableSampleCount).toBe(0);
+    expect(result.valueValidSampleCount).toBe(1);
+    expect(result.valueInvalidSampleCount).toBe(1);
+    expect(result.valueUnavailableSampleCount).toBe(2);
+    expect(
+      result.valueValidSampleCount + result.valueInvalidSampleCount + result.valueUnavailableSampleCount,
+    ).toBe(result.binnedSampleCount);
+  });
+
+  it('requires a value range for non-count aggregation', () => {
+    expect(() => buildNumericHeatmap(
+      range(0, [1]),
+      range(0, [2]),
+      { aggregation: 'mean' },
+    )).toThrow(/requires valueRange/);
   });
 
   it('returns empty axes when no valid pair exists', () => {
@@ -112,8 +193,10 @@ describe('buildNumericHeatmap', () => {
     expect(result.xBins).toEqual([]);
     expect(result.yBins).toEqual([]);
     expect(result.counts).toHaveLength(0);
+    expect(result.cellValues).toHaveLength(0);
     expect(result.validPairSampleCount).toBe(0);
     expect(result.invalidSampleCount).toBe(2);
+    expect(result.valueValidSampleCount).toBe(0);
   });
 
   it('rejects non-finite configuration values', () => {
