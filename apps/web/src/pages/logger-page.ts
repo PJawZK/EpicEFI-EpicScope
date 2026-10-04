@@ -1558,7 +1558,7 @@ export function createLoggerPage(): LoggerPageController {
 
     prepareStageStarted = now();
     paneRuntimes.forEach((runtime) => {
-      runtime.graph.clearChannels();
+      runtime.graph.clearChannels({ render: false });
       runtime.activeChannelIds.clear();
     });
     inspector.setActiveChannels([]);
@@ -1585,7 +1585,6 @@ export function createLoggerPage(): LoggerPageController {
         : [];
       const assignedIds = renderablePersistentChannelIds(normalizedIds);
       if (pane && channelIdAliases.size > 0) pane.channelIds = [...assignedIds];
-      syncPaneAssignedChannels(runtime, pane);
       const requestedIds = channelDataSource
         ? assignedIds.filter(
             (channelId) =>

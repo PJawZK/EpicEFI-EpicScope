@@ -116,7 +116,7 @@ export interface GraphViewportController {
   activatePreloadedChannels(
     ranges: ReadonlyMap<string, NumericChannelRange>,
   ): GraphPreloadedActivationResult;
-  clearChannels(): void;
+  clearChannels(options?: { readonly render?: boolean }): void;
   getOverviewTraces(): readonly GraphOverviewTrace[];
   getChannelStatistics(channelId: string): GraphChannelStatistics | undefined;
   setCursorTime(timeMs: number): void;
@@ -1522,7 +1522,7 @@ export function createGraphViewport(): GraphViewportController {
     return result;
   };
 
-  const clearChannels = (): void => {
+  const clearChannels = (options: { readonly render?: boolean } = {}): void => {
     cancelPending();
     viewportRefreshGeneration += 1;
     if (viewportRefreshTimer !== undefined) {
@@ -1534,12 +1534,12 @@ export function createGraphViewport(): GraphViewportController {
     materializationTimers.clear();
     activeTraces.clear();
     envelopeCache.clear();
-    renderReadout();
-    emitCursorValues();
+    if (options.render !== false) renderReadout();
+    if (options.render !== false) emitCursorValues();
     overlay.hidden = assignedChannels.length > 0;
     overlayTitle.textContent = 'Select channels';
     overlayDetail.textContent = `Choose up to ${MAX_ACTIVE_TRACES} channels from Full Sensor List to graph them.`;
-    draw();
+    if (options.render !== false) draw();
   };
 
   const setCursorTime = (timeMs: number): void => {
