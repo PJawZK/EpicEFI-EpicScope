@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: perf/first-channel-read-breakdown-v1
+      - run: sed -i 's/if count < 3:/if count < 2:/' tools/apply-first-channel-read-breakdown-v1.py
       - run: python tools/apply-first-channel-read-breakdown-v1.py
       - run: |
           git config user.name "EpicScope Automation"
