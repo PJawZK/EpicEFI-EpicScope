@@ -59,6 +59,7 @@ export interface InspectorPanelController {
   setChannelValues(values: readonly { channelId: string; value: string }[]): void;
   clearChannelValues(): void;
   setChannelStatistics(statistics: InspectorChannelStatistics | undefined): void;
+  getSelectedDetailsChannelId(): string | undefined;
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): InspectorWorkspaceState;
   restoreWorkspaceState(state: InspectorWorkspaceState): void;
@@ -776,6 +777,7 @@ export function createInspectorPanel(): InspectorPanelController {
     setChannelValues,
     clearChannelValues,
     setChannelStatistics,
+    getSelectedDetailsChannelId: () => selectedDetailsChannelId,
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
     restoreWorkspaceState,

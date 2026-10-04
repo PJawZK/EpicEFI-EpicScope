@@ -1411,7 +1411,9 @@ export function createLoggerPage(): LoggerPageController {
     });
   });
 
-  inspector.onChannelDetailsRequested((channelId) => {
+  const refreshSelectedChannelStatistics = (): void => {
+    const channelId = inspector.getSelectedDetailsChannelId();
+    if (!channelId) return;
     const channel = channelDefinitions.get(channelId);
     const statistics = activePaneRuntime()?.graph.getChannelStatistics(channelId);
     if (!channel || !statistics) {
@@ -1428,6 +1430,10 @@ export function createLoggerPage(): LoggerPageController {
       visible: statistics.visible,
       selected: statistics.selected,
     });
+  };
+
+  inspector.onChannelDetailsRequested(() => {
+    refreshSelectedChannelStatistics();
   });
 
   paneRuntimes.forEach((runtime) => {
@@ -1478,6 +1484,7 @@ export function createLoggerPage(): LoggerPageController {
   timeline.onViewportIntent(applyViewportIntent);
   timeline.onAnnotationChange(({ aTimeMs, bTimeMs }) => {
     paneRuntimes.forEach((runtime) => runtime.graph.setAnalysisRange(aTimeMs, bTimeMs));
+    refreshSelectedChannelStatistics();
   });
 
   valueSearch.onJump((timeMs) => {
