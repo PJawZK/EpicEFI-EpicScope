@@ -1,264 +1,318 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
 <!-- CURRENT_STATE:handoff-pointer:END -->
-
-<!-- CURRENT_STATE:current-performance-ui-note:START -->
-## Current performance-driven UI behavior
-
-The current large-log implementation may initially show only bounded horizontal coverage for a newly selected arbitrary channel while complete resident data is being materialized. This is an approved performance behavior so long as channel identity, viewport/navigation semantics and source truth are preserved. Once resident, navigation should feel immediate without repeated source reads.
-
-Do not change established UI colors merely to address performance or apparent visibility reports unless the project owner explicitly requests a palette change. A recent apparent color problem was confirmed to be a TN-monitor viewing-angle effect, not a color-system defect.
-<!-- CURRENT_STATE:current-performance-ui-note:END -->
 
 # EpicScope Web UI Reference
 
 ## Purpose
 
-This document records the approved EpicHub Logger/Analyzer interaction and layout reference that EpicScope Web should use as its starting point.
+This document records the approved EpicHub-derived interaction reference and the current EpicScope-specific information hierarchy.
 
-EpicScope inherits **only the Logger/Analyzer-facing interaction model**. Dashboard, Tuner, Diagnostics, Android runtime structure, Compose implementation details, and other EpicHub application concerns are not EpicScope UI authority.
-
-The authoritative visual/interaction source for this task is:
+The authoritative visual/interaction source remains:
 
 - `EpicHub-Tablet-Landscape-0.0.45(2).html`
 
-This file supersedes the previously inspected `EpicHub-1.12.1_TabletLandscape.html` as the EpicScope Logger/Analyzer UI reference. The older prototype is not implementation authority for `WEB-REFERENCE`.
+EpicScope inherits useful Logger/Analyzer interaction concepts, but does not copy EpicHub demo state, Android implementation, Dashboard/Tuner responsibilities, or unrelated shell behavior.
 
-The primary EpicHub architectural sources reviewed alongside the prototype are:
+The project owner has explicitly refined one earlier interpretation: the **EpicScope logo dropdown is intentionally the in-product mode/surface switcher**, similar in spirit to EpicHub's mode selection. This does not turn EpicScope into the full EpicHub application shell.
 
-- `docs/HANDOFF.md` on `phase2/ui-diagnostics-foundation`;
-- `docs/architecture/UI_FOUNDATION_LAYOUT.md` on the same branch;
-- `docs/architecture/ANALYSIS_RESPONSIBILITY_MAP.md` for analysis ownership principles.
+## Core UI principle
 
-The HTML is a design/interaction prototype. EpicScope may reproduce approved interaction concepts without importing its demo data, prototype JSON/state implementation, or unrelated EpicHub shell responsibilities.
+EpicScope should make the normal analysis path visible in the interface:
 
-## Scope of inheritance
+> **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
 
-EpicScope should inherit these major concepts:
+Controls should be grouped by **what the user is trying to do next**, not by which source file or component owns the implementation.
 
-- graph-centric primary workspace;
-- multiple named graph workspaces;
-- selectable graph layouts;
-- persistent bottom timeline/transport area with expandable/compact control behavior;
-- right-side channel/detail surfaces on wide layouts;
-- explicit edge controls for showing/hiding the sensor panel and timeline controls;
-- Full Sensor List with search/filter/sort/favorites/recent behavior;
+Permanent visibility rule:
+
+> A control should remain permanently visible only when it is frequently useful at the current workflow stage.
+
+Everything else should be contextual, grouped, placed under a compact menu/overflow, or revealed by state.
+
+## EpicScope shell and mode switcher
+
+EpicScope is a dedicated analysis product, but it has multiple analysis modes/surfaces.
+
+The **EpicScope logo dropdown in the upper-right** is the approved mode/surface switcher. It must remain visually distinct from the Logger workflow controls.
+
+Current menu state:
+
+- **Logger** — active;
+- **Analyzer** — planned;
+- **Histogram** — planned.
+
+Future approved modes may include Scatter, Histogram/Table, Math Channels, specialized Analyzer surfaces, or other genuine product modes. Do not populate the switcher with meaningless disabled clutter simply to advertise roadmap items.
+
+The logo/mode menu is not the place for:
+
+- Load Data;
+- graph-layout controls;
+- range/marker actions;
+- diagnostics;
+- Settings;
+- EpicHub Dashboard/Tuner/Diagnostics application navigation.
+
+## Primary Logger flow
+
+The Logger surface should communicate this progression:
+
+```text
+Load Data
+   ↓
+Channels / graph workspace
+   ↓
+Navigate the recording
+   ↓
+Select / qualify a range or event context
+   ↓
+Analyze
+   ↓
+Compare / Export result
+```
+
+This hierarchy is more important than preserving the exact button placement of the EpicHub prototype.
+
+## Load Data
+
+Log and INI loading belong to one source-input concept.
+
+Current implemented presentation:
+
+**Load Data ▾**
+
+Menu entries:
+
+- Open Log…
+- Load INI…
+
+Existing file-loading handlers and data semantics remain authoritative; the dropdown is an information-hierarchy change, not a new source architecture.
+
+The UI should communicate current source state compactly rather than keeping both load actions permanently equal in the top bar.
+
+When no log is loaded, Load Data should be among the strongest visible actions. Once data is loaded, it may visually recede.
+
+## Graph workspaces
+
+A bare workspace name such as `General` does not explain its meaning. The global context is therefore:
+
+**Graphs · <workspace> ▾**
+
+Examples:
+
+- Graphs · General
+- Graphs · Idle
+- Graphs · Boost
+
+The header communicates **which graph workspace** is active. The graph area itself communicates **which pane inside that workspace** is active.
+
+Do not duplicate pane identity in the global header with clutter such as `Graph - General - Pane 3`.
+
+Reference/retained behavior:
+
+- named graph workspaces;
+- create/rename/duplicate/delete where supported;
+- Single and multi-pane layouts;
+- freeform layout where supported;
+- independent channel assignments per pane;
+- shared cursor/viewport/timeline/A-B navigation;
+- active-pane context;
+- maximize/minimize where useful;
+- compact graph chrome.
+
+Current EpicScope density refinements remain approved:
+
+- fixed panes use compact static identity rather than a full-height header bar;
+- freeform panes use compact draggable title chips;
+- Single layout may use synchronized stacked channel rows with compact Now/Min/Max information.
+
+## Header hierarchy
+
+Current implemented hierarchy through PR #171:
+
+- Open Log + Load INI → **Load Data ▾**;
+- workspace context → **Graphs · <workspace> ▾**;
+- empty top-level **Tools** placeholder removed;
+- empty top-level **Compare** placeholder removed;
+- EpicScope logo menu explicitly owns mode/surface switching.
+
+Workspace/layout maintenance actions should be grouped together rather than scattered across the header.
+
+Preferred conceptual grouping:
+
+```text
+Load Data | Graphs · workspace | Layout / workspace actions | Undo/Redo | contextual analysis/output
+                                                             ...                  EpicScope ▾
+```
+
+Exact spacing may adapt to viewport width.
+
+## Right-side inspector rule
+
+On wide layouts, EpicScope keeps channel/detail/tool-specific controls on the **right side**:
+
+```text
+main graph / plot / table surface | right-side inspector / controls
+```
+
+Depending on mode, the right side may contain:
+
+- channel browser;
 - channel statistics/details;
-- markers and saved ranges;
-- A/B cursors and delta/statistics workflows;
-- source/session comparison;
-- Scatter Plot;
-- Histogram / Table analysis;
-- Math Channels / derived channels;
-- explicit filters and presets;
-- linked navigation from analysis results back to graph context;
-- view snapshots/session metadata where useful;
-- explicit recorded-log identity in the header;
-- recording control semantics where later supported by platform scope;
-- bounded viewport-oriented interaction rather than requiring full-dataset redraws.
+- scatter controls;
+- histogram/table controls;
+- math-channel editor/source browser;
+- specialized analyzer settings.
 
-EpicScope does **not** inherit by default:
+Future Linux/Android layouts may adapt presentation while preserving these responsibilities.
 
-- EpicHub's four-workspace global navigation shell;
-- Dashboard, Tuner, Tuning Tools, or Diagnostics pages;
-- Android/Compose navigation/state architecture;
-- live ECU connection authority;
-- ECU write/Burn behavior;
-- Trigger Logger as an initial EpicScope requirement;
-- prototype demo/fixture truth;
-- prototype JSON/localStorage implementation as a production contract.
+## Channels / Channel browser
 
-Trigger Logger and direct live acquisition may be considered later through their own roadmap/architecture decisions.
+The channel browser is workflow step 2 and should be immediately understandable.
 
-## EpicScope shell
+Current implemented hierarchy through PR #172:
 
-EpicScope is a dedicated analysis application, so it does not need EpicHub's module switcher.
+- primary identity: **Channels**;
+- secondary descriptor: **Channel browser**;
+- Search remains first;
+- Group + visibility filters remain together;
+- sort uses one compact selector plus ↑/↓ direction control;
+- **Load now** is the primary footer action;
+- **Add all filtered** and **Clear active pane** live under `⋯`.
 
-The EpicScope shell should therefore be simpler:
+### Filter semantics
 
-```text
-EpicScope header / loaded-log context / tools / settings
-------------------------------------------------------
-active analysis surface
-------------------------------------------------------
-persistent timeline / range / transport where relevant
-```
+Active/Favorites/Recent/group/search behavior is covered by focused tests.
 
-The 0.0.45 reference adds two useful shell concepts that EpicScope should preserve semantically:
+Expected meanings:
 
-- an explicit `REC` state/action rather than hiding recording state in a secondary control;
-- an explicit loaded-recording identity in the header.
+- **All** — channels allowed by current search/group constraints;
+- **Active** — channels active in the relevant graph/pane context, not merely channels that exist in the catalog;
+- **Favorites** — favorited channels within current search/group constraints;
+- **Recent** — recently used channels within current search/group constraints.
 
-For the initial Web phase, the loaded-log identity is immediately relevant. Recording remains platform/roadmap dependent and must not imply live acquisition support before that architecture exists.
+Known-but-unavailable channels must not be silently reclassified as active data merely because they remain assigned to a workspace.
 
-The shell must prioritize usable analysis area and low rendering overhead over decorative navigation.
+If hosted behavior contradicts these semantics, treat it as a bug candidate rather than assuming user error.
 
-## Primary analysis surfaces
+### Live channel values
 
-The 0.0.45 prototype exposes these relevant pages:
+Channel rows may show the current value directly. A decorative value bar is not required.
 
-```text
-Logger / Analyzer   -> graph workspace
-Scatter Plot        -> X/Y analysis
-Histogram / Table   -> binned analysis
-Math Channels       -> derived channel editor
-```
+Approved style examples:
 
-`Trigger Logger` is also present in EpicHub but is not an initial EpicScope requirement.
+- `848 rpm`
+- `2.1 %`
+- `λ 0.987`
+- `48 kPa`
+- `82.2 °C`
+- `13.9 V`
 
-For EpicScope the four analysis pages above become first-class analysis surfaces rather than children of a broader EpicHub application.
+Use an established symbol where it communicates the measurement naturally, such as `λ`. Otherwise use the normal unit text.
 
-The initial EpicScope navigation should preserve fast switching between them while keeping common session, channel, cursor/range, marker, and source context stable.
+Exact source/channel names should remain available even if aliases are introduced later.
 
-## Graph workspace
+## Timeline: next hierarchy pass
 
-The graph workspace is the primary inspection surface.
+The timeline is a first-class analysis control, but the existing implementation exposes too many functions at the same visual level.
 
-Reference behavior includes:
+The next approved UI pass should reorganize the existing controls without removing underlying functionality.
 
-- named workspaces such as General, Idle, and Boost;
-- addable graph workspaces;
-- workspace switching without discarding each workspace's graph state;
-- workspace rename/duplicate/delete actions through contextual interaction;
-- Single View;
-- multi-graph grid layouts;
-- optional freeform windows;
-- channel assignments per graph/workspace;
-- maximize/minimize behavior where useful;
-- compact pane identity that does not consume unnecessary graph height;
-- comparison controls;
-- selectable view panels;
-- snapshots and workspace configuration.
+### Group 1 — Navigate
 
-The current Web implementation now includes Single, 4-, 5- and 6-pane fixed layouts plus a five-pane freeform mode. EpicScope deliberately adapts the reference presentation for higher graph density:
+Frequent recording-navigation actions:
 
-- fixed panes use a compact static title label rather than a full-width pane bar;
-- freeform panes use a compact floating draggable title chip with an integrated dotted drag grip;
-- freeform panes may be moved/resized/snapped and minimized/maximized without reserving a permanent header row;
-- Single layout uses one stacked trace row per active channel rather than overlaying all selected channels into one value scale;
-- each Single-layout row shares the same time/cursor/A-B navigation and presents compact channel/color + Now/Min/Max context.
+- play/pause;
+- step backward/forward;
+- timeline scrub/cursor;
+- current/total time;
+- Fit;
+- zoom out/in;
+- previous/next view history.
 
-These are semantic adaptations of the reference UX, not copies of the prototype implementation.
+Order controls by normal frequency/importance. Start/end jumps and other rare navigation helpers may be visually secondary.
 
-## Right-side inspector/channel rule
+Marker navigation does not belong here merely because it moves the cursor; it belongs with Markers.
 
-EpicScope keeps additional/detail interaction on the **right side** for wide layouts.
+### Group 2 — Range / Markers
 
-The 0.0.45 reference places Full Sensor List and Channel Statistics on the graph workspace's right side. EpicScope extends this convention deliberately so tool-specific configuration/details also use a consistent right-side inspector rather than changing sides between analysis pages.
+Range selection should become the bridge from navigation to analysis.
 
-This is an intentional EpicScope refinement of the Tablet Landscape prototype, whose Scatter and Histogram/Table control sidebars remain left-side columns.
-
-Therefore the wide-layout rule is:
+Initial state may present:
 
 ```text
-main plot / table / graph surface | right-side inspector / controls
+Range   A —   B —    [Set A] [Set B]
 ```
 
-The right-side responsibility may contain, depending on the active surface:
+Once both boundaries exist:
 
-- channel list/search/filter;
-- selected-channel detail/statistics;
-- scatter axis/filter/preset controls;
-- histogram/table axis/value/statistic/filter controls;
-- math-channel editor controls/source browser;
-- specialized analyzer settings later.
+```text
+Range 12.400 → 16.820   Δ 4.420 s
+```
 
-Presentation on narrow/mobile layouts is intentionally deferred; future Linux and Android layouts may adapt this responsibility differently while preserving semantics.
+Secondary range maintenance should be grouped rather than permanently exposed:
 
-## Full Sensor List and Channel Statistics
+- Save range;
+- Clear A/B;
+- Saved ranges;
+- Rename saved range;
+- Delete saved range.
 
-Reference behavior to preserve:
+Markers should similarly form one conceptual group:
 
-- search channels;
-- group filter;
-- All / Visible / Favorites / Recently used filters;
-- sort by name/group/value;
-- indication of derived/math channels;
-- add all filtered;
-- clear active graph;
-- selected-channel interaction with statistics/details;
-- channel identity remains shared across graphs and analysis tools;
-- explicit side-edge show/hide control for the sensor panel;
-- Channel Statistics remains a separate detail overlay/surface tied to the active graph/channel context.
+- Add marker;
+- Previous marker;
+- Next marker;
+- Edit current marker;
+- Delete current marker.
 
-Exact TunerStudio/MegaLogViewer source names should remain available through EpicScope's channel model even if display aliases are added.
+### Group 3 — Analyze
 
-## Timeline and cursor
+`Analyze` becomes the contextual next action after data/channel/range context is meaningful.
 
-The timeline is a persistent, first-class analysis control.
+Future menu contents may include:
 
-Reference capabilities include:
+- Range statistics;
+- Histogram;
+- 2D Histogram / Heatmap;
+- Scatter;
+- Events;
+- later specialized analyzers.
 
-- overview channel strip;
-- draggable visible focus range;
-- playback/transport controls for recorded data;
-- cursor time;
-- visible range display;
-- saved ranges;
-- markers and marker navigation;
-- A/B cursors;
-- extremes toggle in the reference prototype;
-- previous/next view history;
-- Zoom Event in the reference prototype;
-- Fit / Zoom In / Zoom Out;
-- configurable overview channel;
-- configurable playback speed;
-- explicit edge toggle for expanding/collapsing timeline controls rather than treating the timeline as simply present/absent.
+The Analyze entry should be context-sensitive rather than creating a permanent button for every new analysis feature.
 
-### Cursor-follow rule
+## Cursor-follow and graph-navigation behavior
 
-The approved behavior is:
+Retained interaction contract:
 
-> The cursor moves independently until it reaches the middle of the visible range. After that, the visible window follows the cursor while maintaining the current range width.
+- cursor moves independently until it reaches the middle region of the visible window;
+- after that, the viewport follows while maintaining range width;
+- if the cursor jumps outside the window, the viewport recovers to include it;
+- graphs/panes remain synchronized to shared navigation context.
 
-If the cursor jumps behind the current window, the viewport should recover to include it rather than becoming detached.
+The project owner previously chose not to require the prototype's hard-coded Extremes or Zoom Event controls. Do not re-add them merely for reference fidelity.
 
-This behavior is part of EpicScope's interaction contract, not merely prototype animation.
+## Generic analysis surfaces
 
-**Current EpicScope deviation:** the project owner deliberately chose not to implement the prototype's hard-coded **Extremes** function or **Zoom Event** control during the Phase 1 closeout. They are not current completion requirements. A future generic extreme/event navigation feature must be justified by real analysis workflows rather than copied as prototype behavior.
+After the Logger hierarchy is clear, generic analysis remains the planned foundation before specialized analyzers.
 
-## Scatter Plot
+### Range statistics
 
-Reference behavior includes:
-
-- any compatible raw or derived channel on X;
-- any compatible raw or derived channel on Y;
-- optional third channel for color;
-- selectable sample limit/downsampling policy;
-- Full recording vs Current visible range;
-- sample filter expression;
-- presets;
-- named filters;
-- X/Y swap;
-- navigation back to selected context in Logger/graph workspace;
-- range overview when operating on the current visible range.
-
-EpicScope should keep the semantic link between an analysis selection and its source time/sample context.
-
-## Histogram / Table
-
-Reference behavior includes two related modes.
+Should consume explicit source/channel/range context and expose sample count, relevant statistics and qualification evidence.
 
 ### Histogram
 
-- channel selection;
-- bucket count;
-- full-recording or visible-range scope;
-- sample filter;
-- explicit result/readout.
+Must expose:
 
-### Table
+- selected channel/value;
+- bucket definition/count;
+- scope (full recording or selected/visible range);
+- active filters;
+- sample count.
 
-- explicit X bins channel;
-- explicit Y bins channel;
-- explicit cell-value channel;
-- explicit statistic/aggregation;
-- configurable X/Y resolution;
-- full-recording or visible-range scope;
-- sample filter;
-- linked navigation to source context.
+### 2D Histogram / Table / Heatmap
 
-EpicScope strengthens this with the existing PRODUCT requirement that every binned analysis visibly states:
+Must make semantics explicit:
 
 ```text
 X axis
@@ -269,94 +323,99 @@ active filters
 sample count
 ```
 
-The user must never need to infer what a cell means.
+A cell's meaning must never require guesswork.
 
-## Math Channels
+### Scatter
 
-Reference behavior to preserve conceptually:
+Reference behavior includes:
 
-- create/edit/delete derived channels;
-- derived channels behave like normal channels downstream;
-- visible derived marker;
-- formula references use stable channel identifiers;
-- source-channel browser/filter;
-- current/min/max preview;
-- preview graph;
-- derived channels may reference other derived channels only where dependency validation prevents invalid cycles/pathology;
-- invalid formulas fail visibly rather than fabricate values.
+- X channel;
+- Y channel;
+- optional color channel;
+- full-recording vs range scope;
+- filter expression/preset;
+- linked navigation back to source time/sample context.
 
-The prototype's exact expression implementation is not production authority. EpicScope's eventual expression evaluator must follow the project's untrusted-input, bounded-resource, and dependency rules.
+### Math Channels
 
-## Comparison
+Derived/math channels should behave like normal channels downstream and use stable channel identifiers. Invalid formulas/dependencies fail visibly rather than fabricating data.
 
-The reference includes a second-run overlay and multiple alignment choices:
+## Compare / Export
 
-- time;
-- RPM crossing;
-- TPS opening;
-- nearest marker;
-- manual offset;
-- optional delta presentation.
+Compare remains a first-class future product capability, but a disabled top-level Compare placeholder is not useful.
 
-EpicScope's roadmap already treats comparison as a first-class generic service. The UI should preserve the concept while allowing the underlying alignment model to become more rigorous than the prototype.
+Comparison may later become:
 
-## Analysis presets, named filters, snapshots, and metadata
+- a dedicated mode/surface;
+- a contextual Analyze/Compare action;
+- or a result-stage menu,
 
-The reference demonstrates useful reusable analysis state:
+provided the generic compare service remains the underlying authority.
 
-- Scatter presets;
-- Histogram/Table presets;
-- named filters;
-- graph workspaces;
-- saved ranges;
-- snapshots;
-- session metadata;
-- configuration import/export.
+Expected comparison concepts include:
 
-EpicScope should preserve these concepts where they improve repeatability, but persistence must follow `DATA_MODEL.md`, `core/session/`, `core/persistence/`, and schema-version rules rather than copying prototype localStorage/JSON behavior directly.
+- second-run/log overlay;
+- time/event/range alignment;
+- manual offset where needed;
+- metric deltas;
+- linked source context.
+
+Export similarly belongs to the result/output stage rather than permanently occupying Logger navigation space before useful export functions exist.
+
+## Diagnostics and Settings
+
+Healthy diagnostics should visually recede.
+
+Preferred conceptual status:
+
+`Ready · CRC ✓`
+
+with a compact Diagnostics entry containing parser/source diagnostics, performance diagnostics and Bug report tooling. Warnings/errors may become more prominent when action is useful.
+
+Settings should be grouped by responsibility, for example:
+
+- Display;
+- Playback;
+- Sources;
+- Storage/cache;
+- Diagnostics;
+- Help/shortcuts.
+
+Do not allow development diagnostics to compete visually with ordinary Logger workflow.
 
 ## Performance implications
 
-The UI reference is subordinate to EpicScope performance requirements.
+The UI reference remains subordinate to EpicScope performance requirements.
 
-If a visual/reference behavior would require excessive DOM nodes, unbounded point rendering, repeated full-log scans, large duplicated state, or high idle redraw cost, EpicScope should preserve the user-visible capability while implementing it more efficiently.
+Avoid:
 
-In particular:
+- unbounded DOM channel lists;
+- full-dataset redraw on every interaction;
+- continuous expensive animations;
+- duplicated full channel arrays in analysis panels;
+- analysis modes recomputing while inactive.
 
-- graphs should request bounded/downsampled viewport data;
-- analysis panels should not own full copies of channel data;
-- inactive surfaces should not continuously recompute/redraw;
-- large channel lists should support efficient rendering/filtering;
-- comparison overlays should not duplicate complete source logs unnecessarily.
+Preserve capability while using bounded/virtualized/downsampled implementations where appropriate.
 
-Visual fidelity is not allowed to override the performance priority established in `PERFORMANCE.md`.
+## Approved EpicScope deviations/refinements
 
-## Deliberate EpicScope deviations from the prototype
+1. **EpicScope mode switcher** — the EpicScope logo dropdown is an in-product mode/surface switcher. This supersedes the earlier interpretation that EpicScope needed no module-like switcher at all.
+2. **Not the broader EpicHub shell** — Dashboard/Tuner/Diagnostics and Android app-navigation architecture are still not inherited.
+3. **Workflow-first Logger hierarchy** — Load Data → Channels → Navigate → Range → Analyze → Compare/Export.
+4. **Right-side control consistency** on wide layouts.
+5. **Offline/imported-log focus** initially; live ECU acquisition/REC remains separate roadmap work.
+6. **Trigger Logger deferred** unless deliberately approved.
+7. **Performance over exact visual reproduction**.
+8. **Compact dense graph chrome** rather than large permanent pane bars.
+9. **Single-view stacked traces** are an approved EpicScope adaptation.
+10. **No hard requirement for Extremes / Zoom Event**.
+11. **Shortcut discoverability under Settings/Help** rather than permanent toolbar space.
+12. **No disabled future-tool clutter** — absent functionality does not need a permanent header placeholder.
+13. **Current channel values without bars** — direct unit-aware values are preferred.
+14. **Mode/pane identity separation** — mode belongs to EpicScope logo switcher; workspace belongs to Graphs; active pane belongs locally to the graph pane.
 
-The following deviations are approved for EpicScope:
+## Reference completion/control
 
-1. **Dedicated product shell** — remove EpicHub's Dashboard/Tuner/Diagnostics module navigation; EpicScope is already the analysis application.
-2. **Right-side control consistency** — Scatter, Histogram/Table, Math Channels, and future specialized analyzer controls/details should use a right-side inspector on wide layouts rather than switching to a left sidebar.
-3. **Offline-first initial state** — the first Web implementation focuses on imported logs; live ECU mode and functional recording are not required for initial Web phases.
-4. **Trigger Logger deferred** — digital trigger capture is not part of the initial EpicScope analysis foundation unless deliberately added later.
-5. **Performance over exact visual reproduction** — density, animation, panel effects, or other appearance details may be simplified whenever necessary for speed, RAM use, or maintainability.
-6. **No prototype implementation inheritance** — localStorage/JSON/demo-state implementation is not copied as architecture.
-7. **Dense graph chrome** — fixed graph layouts use compact static labels; freeform layouts use draggable floating title chips rather than full-width graph header bars.
-8. **Single-view stacked traces** — Single View separates active channels into synchronized horizontal rows with compact Now/Min/Max context rather than forcing all channels onto one overlaid plot.
-9. **Extremes / Zoom Event omitted for now** — those prototype controls are not Phase 1 requirements.
-10. **Shortcut discoverability lives under Settings** — keyboard actions remain available globally where safe, but the shortcut reference does not consume persistent top-bar space.
-11. **Compact comparison label** — the top-level comparison entry may be labeled simply **Compare**; future comparison semantics remain governed by the comparison service rather than prototype demo behavior.
+`EpicHub-Tablet-Landscape-0.0.45(2).html` remains the reviewed reference source, but this document is the EpicScope authority after project-owner refinements.
 
-## WEB-REFERENCE completion criteria
-
-`WEB-REFERENCE` is complete when:
-
-- the exact current Tablet Landscape source has been inspected;
-- the EpicHub semantic UI contract has been compared against it;
-- inherited interaction concepts are recorded;
-- deliberate EpicScope deviations are recorded;
-- no implementation code has been created merely to discover these rules.
-
-These criteria are satisfied by the review of `EpicHub-Tablet-Landscape-0.0.45(2).html` and the resulting authority in this document.
-
-Future prototype revisions may supersede parts of this reference only through explicit review and a documented EpicScope decision.
+Future prototype changes do not silently supersede these rules. Meaningful changes require explicit review and corresponding decision/document updates.
