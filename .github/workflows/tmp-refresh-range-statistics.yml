@@ -37,3 +37,5 @@ jobs:
           git add apps/web/src/panels/inspector-panel.ts apps/web/src/pages/logger-page.ts
           git commit -m "Refresh selected statistics when A/B changes"
           git push origin HEAD:analysis/range-statistics-v1
+
+# trigger
