@@ -153,8 +153,10 @@ export function buildViewportEnvelopeFromBlocks(
 
   const mergeBlock = (block: number): boolean => {
     const count = blocks.validCount[block] ?? 0;
-    invalidSampleCount += blocks.invalidCount[block] ?? 0;
-    if (count === 0) return true;
+    if (count === 0) {
+      invalidSampleCount += blocks.invalidCount[block] ?? 0;
+      return true;
+    }
     const firstTime = blocks.firstTimeMs[block];
     const lastTime = blocks.lastTimeMs[block];
     if (firstTime === undefined || lastTime === undefined || !Number.isFinite(firstTime) || !Number.isFinite(lastTime)) return false;
@@ -181,6 +183,7 @@ export function buildViewportEnvelopeFromBlocks(
       bucket.last = lastValue!; bucket.lastTimeMs = lastTime;
     }
     validSampleCount += count;
+    invalidSampleCount += blocks.invalidCount[block] ?? 0;
     valueMin = Math.min(valueMin, minValue!); valueMax = Math.max(valueMax, maxValue!);
     return true;
   };
