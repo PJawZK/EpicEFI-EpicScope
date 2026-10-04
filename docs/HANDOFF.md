@@ -8,45 +8,53 @@
 
 `main`
 
-Application baseline entering this documentation refresh:
+Application baseline entering this handoff refresh:
 
-`0e1f003364c589c531ac021cb2ba74a7eb9a8e4c`
+`d01c31ee05803e3a4d6255c285ada824697d3b66`
 
-That commit is the merge of PR #175, **Add selected range statistics**.
+That commit is the merge of PR #187, **Expose Heatmap cell aggregation controls**.
 
 ## Hosted application
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-GitHub Actions is the required Web validation path and GitHub Pages is the normal project-owner test surface. Normal testing must not require a local clone, Node.js or npm.
+GitHub Actions is the required Web validation path and GitHub Pages is the normal project-owner test surface. Normal owner testing must not require a local clone, Node.js or npm.
 
 ## Current project position
 
 EpicScope Web has a stable large-log/import/workspace foundation. The earlier storage/channel optimization campaign and repository/file-structure audit are **done for now**.
 
-The approved UI-hierarchy sequence is also complete enough to proceed with generic analysis primitives.
+The approved UI-hierarchy work is complete enough that the active product focus is now:
 
-Approved top-level user workflow:
+> **generic, reusable analysis primitives and surfaces before specialized Boost/Idle/AE/etc analyzers**
+
+Approved top-level workflow:
 
 > **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
 
-Current active product focus:
+Generic analysis is now implemented through:
 
-> **generic, reusable analysis primitives before specialized Boost/Idle/AE/etc analyzers**
+- selected-range statistics;
+- generic qualification/filter semantics;
+- contextual A/B qualification UI;
+- 1D Histogram;
+- 2D Histogram / Heatmap;
+- Scatter;
+- shared numeric aggregation/statistics/sample-count semantics;
+- explicit Heatmap cell-value aggregation.
 
-The first primitive, **selected-range statistics**, is implemented and deployed. The next implementation target is **filters / qualification**.
+The next roadmap primitive is **generic Events**.
 
 Do not restart broad performance micro-optimization or structural refactoring unless a feature/regression gives a concrete reason.
 
-## Current implemented UI hierarchy
+## Implemented workflow hierarchy
 
 ### PR #170 — Channels foundation
 
 Completed:
 
-- Active/Favorites/Recent/group/search filter semantics have focused tests;
-- live channel values use standardized unit-aware presentation;
-- examples: `848 rpm`, `2.1 %`, `λ 0.987`, `82.2 °C`;
+- Active/Favorites/Recent/group/search semantics have focused tests;
+- live values use standardized unit-aware presentation;
 - no decorative value bars;
 - source/channel identity semantics remain unchanged.
 
@@ -54,108 +62,225 @@ Completed:
 
 Completed:
 
-- separate **Open Log** and **Load INI** top-level buttons became **Load Data ▾**;
-- workspace context reads **Graphs · <workspace> ▾**;
-- empty top-level **Tools** and **Compare** placeholders were removed;
-- the **EpicScope logo dropdown** is the in-product mode/surface switcher;
-- existing file-loading handlers/data semantics were preserved.
+- **Load Data ▾** owns log/INI loading;
+- workspace context is **Graphs · <workspace> ▾**;
+- empty top-level placeholder controls were removed;
+- the EpicScope logo dropdown is the in-product mode/surface switcher.
 
 ### PR #172 — Channel browser hierarchy
 
 Completed:
 
-- clearer **Channels / Channel browser** identity;
-- Search is first;
-- Group + visibility filters remain together;
-- sort controls are compact;
-- **Load now** is the primary footer action;
-- **Add all filtered** and **Clear active pane** moved under `⋯`;
-- existing filter, queued-channel and active-channel semantics remain in force.
+- Search first;
+- Group + visibility filters together;
+- compact sort controls;
+- **Load now** primary;
+- low-frequency actions under `⋯`;
+- queued/active semantics preserved.
 
 ### PR #174 — Timeline workflow hierarchy
 
 Completed:
 
-- timeline primary row is explicitly **Navigate**;
+- primary row is **Navigate**;
 - playback/step, scrub/cursor, Fit/zoom and view history stay together;
-- A/B, saved ranges and marker actions are grouped under **Range / Markers**;
-- low-frequency range/marker maintenance actions are behind `⋯`;
-- contextual Analyze state reports whether A/B is ready without presenting a fake analysis tool;
-- playback, cursor, viewport, A/B, markers, saved ranges, view history and persistence semantics were preserved;
-- compact timeline retains the interactive overview/focus strip.
+- A/B, saved ranges and marker actions are under **Range / Markers**;
+- rare range/marker maintenance actions are behind `⋯`;
+- compact timeline retains the interactive overview/focus strip;
+- the Analyze context becomes actionable when A/B is valid.
 
-PR #174 passed PR CI, post-merge Web CI and Pages deployment.
-
-## Current generic analysis foundation
+## Generic analysis foundation
 
 ### PR #175 — Selected range statistics
 
-Completed and deployed:
+Implemented and deployed:
 
-- reusable numeric range summarization extracted to `core/analysis/range-statistics.ts`;
-- full/visible graph statistics reuse that primitive rather than maintaining a second implementation;
-- selected A/B statistics are exposed through existing **Channel Details**;
-- selected range reports:
-  - span;
-  - decoded coverage state;
+- reusable `core/analysis/range-statistics.ts`;
+- selected A/B statistics in Channel Details;
+- min/max/mean/sample standard deviation/valid/invalid counts;
+- reversed A/B normalization;
+- explicit complete vs partial decoded coverage;
+- open Channel Details refreshes when A/B changes;
+- operates on already-decoded active traces without a new source-read path.
+
+### PR #177 — Sample qualification core
+
+Implemented and deployed:
+
+- reusable `core/analysis/sample-qualification.ts`;
+- numeric operators `gt/gte/lt/lte/eq`;
+- multiple conditions with explicit **AND** semantics;
+- time scope remains independent from value conditions;
+- multi-channel alignment by source sample index;
+- explicit evidence buckets:
+  - eligible;
+  - value-rejected;
+  - invalid;
+  - unavailable/not decoded;
+- explicit decoded-coverage/completeness state;
+- source sample indices returned for downstream Histogram/Heatmap/Scatter/etc consumers;
+- Channel Value Search reuses the same comparison predicate/type.
+
+### PR #178 — Contextual A/B qualification UI
+
+Implemented and deployed:
+
+- **Analyze · range ready** becomes a real contextual action;
+- modal analysis UI works on current A/B plus active decoded traces only;
+- supports multiple AND conditions;
+- reports qualification provenance counts and decoded coverage;
+- does not trigger a hidden full-log/source scan.
+
+## Histogram mode
+
+### PR #179 — 1D Histogram core
+
+Implemented and deployed:
+
+- `core/analysis/histogram.ts`;
+- optional source-sample-index input from qualification;
+- configurable numeric bins;
+- inclusive final maximum;
+- constant-value collapse;
+- explicit input/valid/binned/invalid/unavailable/below/above counts;
+- no source reads.
+
+### PR #180 — Histogram EpicScope mode surface
+
+Implemented and deployed:
+
+- **Histogram** is a real EpicScope mode in the logo switcher;
+- Logger remains default mode;
+- Histogram is a read-only analysis view over Logger's current active decoded traces and current A/B range;
+- no second importer or second data-source path;
+- global Load Data/settings remain global while Logger-specific graph controls hide in Histogram mode.
+
+### PR #181 / #182 — 2D Histogram / Heatmap
+
+Implemented and deployed:
+
+- reusable `core/analysis/heatmap.ts`;
+- X/Y alignment by source sample index;
+- independent X/Y bin counts;
+- explicit pair evidence: input, valid pair, invalid, unavailable, binned, outside range;
+- inclusive final X/Y maxima and constant-axis handling;
+- **Heatmap** subview inside Histogram mode;
+- X/Y channels are selected from active decoded traces;
+- same current Logger A/B scope is used;
+- no new source reads.
+
+### PR #183 / #184 — Scatter
+
+Implemented and deployed:
+
+- reusable `core/analysis/scatter.ts`;
+- aligned source sample indices + typed X/Y arrays;
+- explicit input/valid/invalid/unavailable counts and finite X/Y bounds;
+- **Scatter** subview inside Histogram mode;
+- uses current A/B plus active decoded traces;
+- analysis retains all valid pairs;
+- canvas presentation is deterministically thinned only above 20,000 points;
+- **Valid pairs** remains the full analysis count and **Rendered points** reports the visual subset;
+- correlation/regression/trend lines are intentionally not yet part of Scatter semantics.
+
+## Aggregation / statistic semantics
+
+### PR #185 — Reusable numeric aggregation
+
+Implemented and deployed:
+
+- `core/analysis/numeric-aggregation.ts`;
+- methods:
+  - count;
+  - sum;
   - min;
   - max;
   - mean;
-  - standard deviation;
-  - valid sample count;
-  - invalid sample count;
-- reversed A/B boundaries are normalized;
-- incomplete active-trace coverage is shown as **Partial decoded coverage** rather than being presented as complete;
-- an already-open Channel Details window refreshes when A/B changes;
-- the selected-range calculation works on the already-decoded active trace and does not introduce a new original-log read path;
-- focused tests cover range selection, invalid samples, reversed boundaries and decoded coverage semantics.
+  - sample variance `(n - 1)`;
+  - sample standard deviation `(n - 1)`;
+- source-sample-index selection;
+- explicit input/valid/invalid/unavailable evidence counts;
+- mean/std-dev convention is explicitly tested against Range Statistics so analysis surfaces cannot drift.
 
-PR #175 exact-head Web CI passed type-check, tests and production build. Post-merge Web CI and GitHub Pages deployment passed on merge commit `0e1f003364c589c531ac021cb2ba74a7eb9a8e4c`.
+### PR #186 — Heatmap cell aggregation core
 
-## UI rules now considered authoritative
+Implemented and deployed:
 
-### EpicScope mode switcher
+- Count remains the default/backward-compatible density cell value;
+- non-count cells take an explicit value channel/range;
+- Heatmap returns row-major `cellValues` plus per-cell valid value sample counts;
+- X/Y occupancy counts remain separate from cell aggregate values;
+- explicit value-channel evidence:
+  - valid;
+  - invalid;
+  - unavailable;
+- finite cell-value min/max are provided for rendering normalization;
+- non-count cell math reuses the shared aggregation primitive.
 
-The EpicScope logo dropdown in the upper-right is reserved as the mode/surface switcher.
+### PR #187 — Heatmap aggregation UI
 
-It is **not** merely branding and it is **not** the broader EpicHub Dashboard/Tuner/Diagnostics shell.
+Implemented and merged; use current CI/Pages state to confirm final deployment if continuation starts immediately after this handoff refresh.
 
-Expected future EpicScope modes/surfaces may include Logger, Analyzer, Histogram/Table, Scatter, Math Channels and other approved analysis surfaces as they become real capabilities. Do not add disabled clutter merely to advertise future work.
+- **Cell value** choices:
+  - Count;
+  - Mean;
+  - Minimum;
+  - Maximum;
+  - Std dev;
+- **Value channel** appears only for non-count aggregation;
+- X channel, Y channel, value channel and cell statistic are all explicit;
+- UI reports cell meaning, e.g. `Mean · Coolant`;
+- cell-value range is shown with units;
+- X/Y pair evidence stays separate from value-channel evidence;
+- decoded coverage includes the value trace for non-count aggregation;
+- Count preserves the existing `count / peak` density visual scaling;
+- non-count cell intensity is normalized from finite aggregate-value min→max;
+- no original-log/source rereads are introduced.
 
-### Workflow hierarchy
+## Current EpicScope mode/surface model
 
-Controls should be grouped according to normal use and importance rather than implementation ownership.
+The EpicScope logo dropdown remains the mode/surface switcher.
 
-Permanent visibility rule:
+Current real modes:
 
-> A control should remain permanently visible only when it is frequently useful at the current workflow stage.
+- **Logger** — recorded log viewing/navigation, graphs, channels, A/B and range workflow;
+- **Histogram** — analysis surface containing:
+  - Distribution;
+  - Heatmap;
+  - Scatter.
 
-Other controls should be contextual, grouped, placed in overflow menus, or revealed by state.
+**Analyzer** remains planned. Do not enable it merely as an empty shell.
 
-### Graph workspace context
+Do not add new top-level modes when an analysis view naturally belongs inside an existing real surface.
 
-- global workspace context is **Graphs · <workspace>**;
-- individual graph/pane identity stays local to each pane;
-- do not clutter the header with repeated graph naming;
-- active-pane treatment should make the targeted graph obvious locally.
+## Analysis provenance rules now authoritative
 
-### Channels
+Analysis must not silently discard or invent evidence.
 
-- Search is first;
-- Group and visibility filters are one conceptual filter group;
-- Active/Favorites/Recent semantics must remain tested;
-- channel rows may show current values with proper unit/symbol formatting;
-- use conventional symbols where genuinely useful, e.g. `λ`; otherwise use normal units such as `rpm`, `%`, `kPa`, `°C`, `V`;
-- do not add decorative value bars;
-- primary and secondary actions must remain visually distinct.
+Where applicable expose or retain:
 
-### Timeline / range selection
+- requested/input sample count;
+- valid/eligible sample count;
+- invalid sample count;
+- unavailable/not-decoded sample count;
+- value-rejected count when qualification applies;
+- binned/used sample count;
+- explicit complete vs partial decoded coverage.
 
-- **Navigate** owns playback/step, scrub/cursor, Fit/zoom and view history;
-- **Range / Markers** owns A/B, saved ranges and marker actions/navigation;
-- rare maintenance actions stay contextual/overflowed;
-- Analyze should become a real action only when a real analysis surface exists;
-- existing navigation/range/marker semantics are valuable and should be extended rather than replaced.
+For pair analysis, distinguish X/Y pair validity/availability from a third value-channel's validity/availability.
+
+Presentation thinning must never be represented as analysis thinning. Example: Scatter may draw a capped subset while retaining the full valid-pair analysis count.
+
+## Statistical conventions
+
+Unless a future documented decision deliberately changes it:
+
+- mean uses the normal arithmetic mean;
+- variance is **sample variance `(n - 1)`**;
+- standard deviation is **sample standard deviation `(n - 1)`**;
+- one valid sample yields variance/std-dev `0`;
+- no valid samples yield undefined numeric statistics;
+- shared aggregation helpers are the authority instead of surface-specific copies.
 
 ## Current large-log architecture
 
@@ -188,37 +313,19 @@ The 16-byte stripe experiment was rejected because transpose/build cost rose sub
 
 ## Current performance position
 
-Performance is considered **good enough for the current feature stage**.
+Performance remains **good enough for the current feature stage**.
 
-The most recent supplied post-audit benchmark before the UI/analysis feature sequence showed approximately:
+Most recent supplied post-audit benchmark before this analysis sequence was approximately:
 
 - MLG load: **8.47 s**;
 - workspace restore: **0.54 s**;
-- workspace shared data batch: single-digit milliseconds with zero original-log rereads;
-- first native-cached arbitrary-channel activation: about **0.27 s** total;
-- repeated same-session selection: about **0.05 s** total with effectively free data lookup.
+- workspace shared batch: single-digit milliseconds with zero original-log rereads;
+- first native-cached arbitrary-channel activation: about **0.27 s**;
+- repeated same-session selection: about **0.05 s**.
 
-Earlier/better runs and hardware variance exist. Do not treat one number as a universal SLA. The important architectural result is that restored/arbitrary channel access no longer requires repeated full original-MLG traversal in the normal sidecar/cache path.
+These are observations, not universal SLA values.
 
-Background CRC/sidecar completion and time-to-usable UI are distinct measurements and must not be collapsed into one performance claim.
-
-Performance should be re-profiled after meaningful feature growth or if a regression is observed.
-
-## Repository/file-structure audit — concluded for now
-
-Completed cleanup/refactor sequence:
-
-- **PR #161** — removed rejected predecode runtime path;
-- **PR #162** — corrected diagnostics ownership drift;
-- **PR #163** — extracted logger pane/layout state;
-- **PR #164** — parser/source-integrity diagnostics extraction;
-- **PR #165** — parser diagnostics helper/test cleanup and merge verification;
-- **PR #166** — extracted pure performance-report formatting;
-- **PR #167** — extracted Bug report health evaluation;
-- **PR #168** — repository cleanup only after accidental temp-file commits; no runtime application content affected;
-- **PR #169** — extracted pure Bug report formatter.
-
-Large files alone are not a defect. Do not continue splitting modules simply to reduce line count.
+Re-profile only after meaningful feature growth or a concrete regression. Do not restart generic micro-optimization merely because analysis features were added.
 
 ## Current source/workspace behavior
 
@@ -231,77 +338,63 @@ Retained semantics:
 - known/no-data channels remain visible;
 - usable log-only channels remain usable;
 - reusable named application workspaces persist independently of exact log identity;
-- exact-log persistence remains separate for cursor/viewport/A-B/markers/ranges;
+- exact-log cursor/viewport/A-B/markers/ranges remain separate;
 - visible workspace channels share one restore batch;
-- channel/cache clearing is explicit and must not remove reusable workspace/state;
-- MSQ tune/table enrichment remains later work;
-- CSV remains deferred unless roadmap priorities change.
-
-## Graph / timeline state
-
-Implemented and working:
-
-- multiple reusable workspaces;
-- fixed and freeform multi-pane layouts;
-- active-pane context;
-- shared viewport/cursor/timeline navigation;
-- source markers and user markers;
-- saved ranges and view history;
-- A/B boundaries and range shading;
-- zoomed-in raw-sample and zoomed-out exact-envelope rendering;
-- Now/Min/Max context and Channel Details;
-- selected A/B range statistics;
-- timeline overview;
-- versioned exact-log and reusable workspace persistence.
+- explicit channel/cache clear must not remove reusable workspace state;
+- MSQ/table enrichment remains later work;
+- CSV remains deferred unless roadmap priority changes.
 
 ## Generic analysis roadmap
 
-Reusable analysis primitives should continue before specialized analyzers:
+Completed/deployed or merged:
 
-1. **range statistics — implemented in PR #175**;
-2. **filters / qualification — next**;
-3. histogram;
-4. 2D histogram / heatmap;
-5. scatter;
-6. aggregation/statistics/sample-count semantics;
-7. generic Events;
+1. range statistics — PR #175;
+2. filters / qualification — PR #177 / #178;
+3. histogram — PR #179 / #180;
+4. 2D histogram / heatmap — PR #181 / #182;
+5. scatter — PR #183 / #184;
+6. aggregation/statistics/sample-count semantics — PR #185 / #186 / #187.
+
+Next:
+
+7. **generic Events**;
 8. generic Compare base;
 9. MSQ/table correlation;
 10. specialized Boost/Idle/AE/etc analyzers.
 
-The UI hierarchy work exists specifically so these capabilities do not create another layer of permanent toolbar clutter.
+## Generic Events direction — next task
 
-## Filters / qualification direction
+The next reusable primitive should answer:
 
-The next primitive should answer the reusable question:
+> Which meaningful intervals or occurrences in the selected source/range satisfy an event definition, and what evidence belongs to each occurrence?
 
-> Which samples inside the current source/range are eligible for this analysis?
+Start data-model/core first. Investigate at minimum:
 
-Initial implementation should remain generic and data-model-first. Prefer a small qualification model that can later feed histogram, scatter, heatmap, events and compare without each surface inventing its own filter semantics.
+- event conditions built from existing generic qualification/comparison semantics where appropriate;
+- point event vs interval event representation;
+- rising/enter and falling/exit boundaries;
+- minimum duration / debounce semantics;
+- whether adjacent qualifying samples should merge into one event;
+- source sample indices and start/end times;
+- sample/evidence counts per event;
+- invalid/unavailable handling at event boundaries;
+- explicit A/B time scope independent from value conditions;
+- deterministic behavior for partial decoded coverage;
+- no hidden original-log rereads on the normal active-trace path;
+- pure focused tests before a substantial Events UI.
 
-At minimum investigate:
-
-- qualification against one or more channel values;
-- comparison operators/ranges appropriate for numeric channels;
-- combining conditions with explicit AND semantics first unless there is a strong reason to add OR immediately;
-- selected A/B range as an independent time scope rather than a hidden filter;
-- valid/invalid sample handling;
-- sample counts before/after qualification;
-- explicit coverage/completeness state when the active decoded range does not contain all requested samples;
-- no silent original-log rereads merely to evaluate an already-active qualification;
-- testable pure logic in `core/analysis` before substantial UI.
-
-Do not jump directly to a specialized engine-load/RPM/TPS filter vocabulary. Generic channel/value qualification should be the base.
+Do **not** start with specialized labels such as knock event, overboost event, clutch event or lean event. Generic channel/value event semantics should be the base.
 
 ## UI/reference constraints still in force
 
 - authoritative visual/interaction reference remains `EpicHub-Tablet-Landscape-0.0.45(2).html`, as interpreted by `docs/UI_REFERENCE.md`;
-- current EpicScope implementation may deliberately refine that reference;
+- EpicScope may deliberately refine that reference;
 - use TunerStudio/MegaLogViewer terminology where practical;
 - do not alter established colors based only on viewing-angle artifacts;
 - performance/cleanup work must not silently change interaction semantics;
-- right-side channel/detail/control responsibility remains preferred on wide layouts;
-- EpicScope logo dropdown owns mode/surface switching.
+- right-side channel/detail/control responsibility remains preferred on wide Logger layouts;
+- the EpicScope logo dropdown owns mode/surface switching;
+- avoid permanent toolbar clutter as analysis capabilities expand.
 
 ## Repository/workflow constraints
 
@@ -309,7 +402,7 @@ Do not jump directly to a specialized engine-load/RPM/TPS filter vocabulary. Gen
 - normal implementation uses a focused branch/PR;
 - type-check, tests and production build must pass before merge;
 - verify post-merge Web CI and GitHub Pages deployment;
-- temporary patch/validation workflows/scripts must not remain in the final PR diff;
+- temporary patch/validation workflows/scripts must not remain in the final feature diff;
 - avoid accidental/no-op commits on `main`;
 - project-owner testing is hosted.
 
@@ -334,27 +427,27 @@ When an older milestone/status statement conflicts with this handoff or current 
 
 ## Exact next task
 
-Continue Phase 2 generic analysis from current `main`.
+Continue Phase 2 generic analysis from current `main` with **generic Events**.
 
-Next implementation pass:
+Recommended next implementation pass:
 
-1. inspect existing channel/range data models and active-trace access paths;
-2. define a small reusable numeric **qualification/filter model** in `core/analysis`;
-3. define explicit validity and decoded-coverage semantics;
-4. expose before/after eligible sample counts so later analysis surfaces can make sample-count provenance visible;
-5. start with explicit AND composition unless evidence requires more complexity;
-6. add focused pure tests before UI integration;
-7. integrate with the current selected A/B range without conflating time range with value qualification;
-8. avoid introducing new original-log reads on the normal active-trace path;
-9. keep the UI minimal/contextual and do not add a permanent toolbar of analysis controls;
-10. validate on hosted Web after merge.
+1. inspect existing qualification/range/sample-index primitives;
+2. define a small reusable event model in `core/analysis`;
+3. start with one or more generic numeric AND conditions rather than domain-specific event types;
+4. define point vs interval semantics and deterministic enter/exit boundaries;
+5. define minimum-duration/debounce/merge behavior explicitly;
+6. preserve source sample indices, timestamps and evidence counts;
+7. define invalid/unavailable/partial-coverage behavior;
+8. add focused pure tests before UI;
+9. only then expose a minimal contextual Events surface;
+10. keep normal active-trace analysis free of silent original-log rereads.
 
-Do not begin Histogram/Scatter/Heatmap or a specialized analyzer until the qualification primitive has clear semantics unless the project owner explicitly changes priority.
+Do not start Compare/MSQ/specialized analyzers until generic Events semantics are clear unless the project owner changes priority.
 
 ## Continuation instruction
 
 A new chat should be able to start with:
 
-> Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue the filters/qualification analysis primitive from there.
+> Read `docs/HANDOFF.md` in `PJawZK/EpicEFI-EpicScope`, inspect current `main`/PR/CI state, and continue the generic Events analysis primitive from there.
 
 Use the repository handoff and current repository state as authority. Do not reconstruct present architecture from older chats or superseded performance experiments.
