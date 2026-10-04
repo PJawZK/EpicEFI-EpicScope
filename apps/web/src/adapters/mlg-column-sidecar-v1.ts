@@ -13,7 +13,8 @@ import type {
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
 const MANIFEST_FILE = 'manifest.json';
-const TARGET_STRIPE_BYTES = 256;
+const TARGET_STRIPE_BYTES = 64;
+const DATA_FILE = 'columns.bin';
 const BLOCK_HEADER_LENGTH = 4;
 
 interface OpfsWritable {
@@ -22,9 +23,17 @@ interface OpfsWritable {
   abort?(reason?: unknown): Promise<void>;
 }
 
+interface OpfsSyncAccessHandle {
+  write(data: BufferSource, options?: { readonly at?: number }): number;
+  truncate(size: number): void;
+  flush(): void;
+  close(): void;
+}
+
 interface OpfsFileHandle {
   getFile(): Promise<File>;
   createWritable(options?: { readonly keepExistingData?: boolean }): Promise<OpfsWritable>;
+  createSyncAccessHandle?: () => Promise<OpfsSyncAccessHandle>;
 }
 
 interface OpfsDirectoryHandle {
@@ -102,11 +111,11 @@ export function planMlgColumnStripes(
     const index = stripes.length;
     stripes.push({
       index,
-      fileName: `stripe-${String(index).padStart(4, '0')}.bin`,
       startByte: stripeStartByte,
       widthBytes: stripeWidth,
       firstFieldIndex: stripeFirstField,
       lastFieldIndexExclusive,
+      storageOffset: 0,
     });
     stripeStartByte += stripeWidth;
     stripeWidth = 0;
@@ -206,16 +215,25 @@ export async function createMlgColumnSidecarBuilder(
     return undefined;
   }
 
-  const streams: OpfsWritable[] = [];
+  let dataFileHandle: OpfsFileHandle;
+  let access: OpfsSyncAccessHandle;
   try {
-    for (const stripe of plan.stripes) {
-      const handle = await directory.getFileHandle(stripe.fileName, { create: true });
-      streams.push(await handle.createWritable({ keepExistingData: false }));
-    }
+    dataFileHandle = await directory.getFileHandle(DATA_FILE, { create: true });
+    if (!dataFileHandle.createSyncAccessHandle) return undefined;
+    access = await dataFileHandle.createSyncAccessHandle();
+    access.truncate(estimatedBytes);
   } catch {
-    await Promise.all(streams.map((stream) => stream.abort?.().catch(() => undefined)));
     return undefined;
   }
+
+  const laidOutStripes = plan.stripes.map((stripe, index) => {
+    let storageOffset = 0;
+    for (let prior = 0; prior < index; prior += 1) {
+      const previous = plan.stripes[prior];
+      if (previous) storageOffset += previous.widthBytes * recordIndex.offsets.length;
+    }
+    return { ...stripe, storageOffset };
+  });
 
   const buildStarted = now();
   let transposeMs = 0;
@@ -223,12 +241,24 @@ export async function createMlgColumnSidecarBuilder(
   let bytesWritten = 0;
   let completedSamples = 0;
   let aborted = false;
+  let closed = false;
+
+  const closeAccess = (): void => {
+    if (closed) return;
+    closed = true;
+    access.close();
+  };
 
   const abort = async (): Promise<void> => {
     if (aborted) return;
     aborted = true;
-    await Promise.all(streams.map((stream) => stream.abort?.().catch(() => undefined)));
+    closeAccess();
     await removeManifest(directory);
+    try {
+      await directory.removeEntry(DATA_FILE);
+    } catch {
+      // Missing partial data file is already equivalent to an aborted sidecar.
+    }
   };
 
   return {
@@ -238,7 +268,7 @@ export async function createMlgColumnSidecarBuilder(
       if (sampleCount <= 0) return;
 
       const transposeStarted = now();
-      const outputs = plan.stripes.map(
+      const outputs = laidOutStripes.map(
         (stripe) => new Uint8Array(sampleCount * stripe.widthBytes),
       );
       for (let index = batch.firstIndex; index <= batch.lastIndex; index += 1) {
@@ -248,7 +278,7 @@ export async function createMlgColumnSidecarBuilder(
         }
         const relativeRecordOffset = absoluteOffset - batch.firstOffset;
         const outputSampleIndex = index - batch.firstIndex;
-        for (const stripe of plan.stripes) {
+        for (const stripe of laidOutStripes) {
           const sourceStart = relativeRecordOffset + BLOCK_HEADER_LENGTH + stripe.startByte;
           const sourceEnd = sourceStart + stripe.widthBytes;
           const outputStart = outputSampleIndex * stripe.widthBytes;
@@ -258,32 +288,45 @@ export async function createMlgColumnSidecarBuilder(
       transposeMs += now() - transposeStarted;
 
       const writeStarted = now();
-      await Promise.all(outputs.map((output, index) => streams[index]!.write(output)));
+      for (let index = 0; index < outputs.length; index += 1) {
+        const stripe = laidOutStripes[index];
+        const output = outputs[index];
+        if (!stripe || !output) continue;
+        const at = stripe.storageOffset + batch.firstIndex * stripe.widthBytes;
+        const written = access.write(output, { at });
+        if (written != output.byteLength) {
+          throw new RangeError(
+            `MLG sidecar stripe ${stripe.index} wrote ${written} bytes, expected ${output.byteLength}.`,
+          );
+        }
+      }
       writeMs += now() - writeStarted;
       bytesWritten += outputs.reduce((sum, output) => sum + output.byteLength, 0);
       completedSamples += sampleCount;
     },
     finish: async () => {
       if (aborted) throw new Error('MLG sidecar build was aborted.');
-      await Promise.all(streams.map((stream) => stream.close()));
       if (completedSamples !== recordIndex.offsets.length) {
-        await removeManifest(directory);
+        await abort();
         throw new Error(
           `MLG sidecar expected ${recordIndex.offsets.length} samples, wrote ${completedSamples}.`,
         );
       }
+      access.flush();
+      closeAccess();
 
       const manifest: MlgColumnSidecarManifest = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         logKey,
         storageKey: sidecarStorageKey(logKey),
+        dataFileName: DATA_FILE,
         sampleCount: recordIndex.offsets.length,
         fieldCount: fields.length,
         recordLength,
         fieldPayloadBytes: plan.fieldPayloadBytes,
         targetStripeBytes: TARGET_STRIPE_BYTES,
         totalBytes: bytesWritten,
-        stripes: plan.stripes,
+        stripes: laidOutStripes,
         createdAt: Date.now(),
       };
       const stream = await (await directory.getFileHandle(MANIFEST_FILE, { create: true }))
@@ -361,7 +404,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
 
   private readonly plan: MlgColumnStripePlan;
   private readonly fieldByChannelId = new Map<string, PlannedField>();
-  private readonly stripeFiles = new Map<number, File>();
+  private dataFile: File | undefined;
   private manifest: MlgColumnSidecarManifest | undefined;
   private readonly existingManifestPromise: Promise<void>;
 
@@ -389,7 +432,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
 
   public activate(manifest: MlgColumnSidecarManifest): boolean {
     if (
-      manifest.schemaVersion !== 1
+      manifest.schemaVersion !== 2
       || manifest.logKey !== this.logKey
       || manifest.sampleCount !== this.sampleCount
       || manifest.fieldCount !== this.fields.length
@@ -409,12 +452,13 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
         || actual.widthBytes !== expected.widthBytes
         || actual.firstFieldIndex !== expected.firstFieldIndex
         || actual.lastFieldIndexExclusive !== expected.lastFieldIndexExclusive
+        || actual.storageOffset < 0
       ) {
         return false;
       }
     }
     this.manifest = manifest;
-    this.stripeFiles.clear();
+    this.dataFile = undefined;
     return true;
   }
 
@@ -423,13 +467,12 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     return this.manifest;
   }
 
-  private async stripeFile(stripe: MlgColumnSidecarStripeManifest): Promise<File> {
-    const cached = this.stripeFiles.get(stripe.index);
-    if (cached) return cached;
+  private async sidecarDataFile(manifest: MlgColumnSidecarManifest): Promise<File> {
+    if (this.dataFile) return this.dataFile;
     const directory = await openLogDirectory(this.logKey, false);
     if (!directory) throw new Error('MLG sidecar OPFS directory is unavailable.');
-    const file = await (await directory.getFileHandle(stripe.fileName)).getFile();
-    this.stripeFiles.set(stripe.index, file);
+    const file = await (await directory.getFileHandle(manifest.dataFileName)).getFile();
+    this.dataFile = file;
     return file;
   }
 
@@ -459,8 +502,8 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
 
       const valuesByChannel = new Map<string, Float64Array>();
       await Promise.all([...byStripe.values()].map(async ({ stripe, fields }) => {
-        const file = await this.stripeFile(stripe);
-        const byteStart = startSampleIndex * stripe.widthBytes;
+        const file = await this.sidecarDataFile(manifest);
+        const byteStart = stripe.storageOffset + startSampleIndex * stripe.widthBytes;
         const byteLength = sampleCount * stripe.widthBytes;
         const bytes = new Uint8Array(await file.slice(byteStart, byteStart + byteLength).arrayBuffer());
         if (bytes.byteLength !== byteLength) {
@@ -500,7 +543,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
       };
     } catch {
       this.manifest = undefined;
-      this.stripeFiles.clear();
+      this.dataFile = undefined;
       return undefined;
     }
   }

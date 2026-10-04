@@ -17,17 +17,18 @@ import type {
 
 export interface MlgColumnSidecarStripeManifest {
   readonly index: number;
-  readonly fileName: string;
   readonly startByte: number;
   readonly widthBytes: number;
   readonly firstFieldIndex: number;
   readonly lastFieldIndexExclusive: number;
+  readonly storageOffset: number;
 }
 
 export interface MlgColumnSidecarManifest {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly logKey: string;
   readonly storageKey: string;
+  readonly dataFileName: string;
   readonly sampleCount: number;
   readonly fieldCount: number;
   readonly recordLength: number;
