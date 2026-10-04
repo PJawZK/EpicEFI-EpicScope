@@ -293,27 +293,39 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     const ranges = new Map<string, NumericChannelRange>();
     const persistentHits: string[] = [];
     const misses: string[] = [];
+    const now = (): number => globalThis.performance?.now() ?? Date.now();
+    let persistentLookupMs = 0;
+    let persistentRangeBuildMs = 0;
 
     for (const channelId of channelIds) {
+      const lookupStarted = now();
       const persisted = await this.persistedColumn(channelId);
+      persistentLookupMs += now() - lookupStarted;
       if (!persisted) {
         misses.push(channelId);
         continue;
       }
       persistentHits.push(channelId);
+      const rangeStarted = now();
       ranges.set(
         channelId,
         buildRange(startSampleIndex, sampleCount, persisted, this.timeMs, this.validity),
       );
+      persistentRangeBuildMs += now() - rangeStarted;
     }
 
     let physicalReadCount = 0;
     let physicalBytesRead = 0;
     let physicalReadMs = 0;
+    let delegatedSourceMs = 0;
+    let delegatedPerformance: NumericChannelBatchResult['performance'] | undefined;
     const delegatedCacheHits: string[] = [];
 
     if (misses.length > 0) {
+      const delegatedStarted = now();
       const delegated = await this.source.readChannelsRange(misses, startSampleIndex, sampleCount);
+      delegatedSourceMs = now() - delegatedStarted;
+      delegatedPerformance = delegated.performance;
       physicalReadCount = delegated.performance.physicalReadCount;
       physicalBytesRead = delegated.performance.physicalBytesRead;
       physicalReadMs = delegated.performance.physicalReadMs;
@@ -334,6 +346,14 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
         physicalReadCount,
         physicalBytesRead,
         physicalReadMs,
+        persistentLookupMs,
+        persistentRangeBuildMs,
+        delegatedSourceMs,
+        ...(delegatedPerformance?.sidecarManifestMs !== undefined ? { sidecarManifestMs: delegatedPerformance.sidecarManifestMs } : {}),
+        ...(delegatedPerformance?.sidecarFileOpenMs !== undefined ? { sidecarFileOpenMs: delegatedPerformance.sidecarFileOpenMs } : {}),
+        ...(delegatedPerformance?.sidecarBlobReadMs !== undefined ? { sidecarBlobReadMs: delegatedPerformance.sidecarBlobReadMs } : {}),
+        ...(delegatedPerformance?.sidecarDecodeMs !== undefined ? { sidecarDecodeMs: delegatedPerformance.sidecarDecodeMs } : {}),
+        ...(delegatedPerformance?.sidecarRangeBuildMs !== undefined ? { sidecarRangeBuildMs: delegatedPerformance.sidecarRangeBuildMs } : {}),
       },
     };
   }

@@ -573,8 +573,10 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
         return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 } };
       }
     }
+    const manifestStarted = now();
     await this.waitForPrioritizedChannels(channelIds);
     const manifest = await this.ensureManifest();
+    const sidecarManifestMs = now() - manifestStarted;
     if (!manifest) return undefined;
 
     const planned = channelIds.map((channelId) => this.fieldByChannelId.get(channelId));
@@ -594,17 +596,25 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
       }
 
       const valuesByChannel = new Map<string, Float64Array>();
+      let sidecarFileOpenMs = 0;
+      let sidecarBlobReadMs = 0;
+      let sidecarDecodeMs = 0;
       await Promise.all([...byStripe.values()].map(async ({ stripe, fields }) => {
+        const fileStarted = now();
         const file = await this.sidecarDataFile(manifest);
+        sidecarFileOpenMs += now() - fileStarted;
         const byteStart = stripe.storageOffset + startSampleIndex * stripe.widthBytes;
         const byteLength = sampleCount * stripe.widthBytes;
+        const readStarted = now();
         const bytes = new Uint8Array(await file.slice(byteStart, byteStart + byteLength).arrayBuffer());
+        sidecarBlobReadMs += now() - readStarted;
         if (bytes.byteLength !== byteLength) {
           throw new RangeError(
             `MLG sidecar stripe ${stripe.index} returned ${bytes.byteLength} bytes, expected ${byteLength}.`,
           );
         }
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const decodeStarted = now();
         for (const field of fields) {
           const values = new Float64Array(sampleCount);
           for (let sample = 0; sample < sampleCount; sample += 1) {
@@ -616,14 +626,17 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
           }
           valuesByChannel.set(`mlg:${field.fieldIndex}`, values);
         }
+        sidecarDecodeMs += now() - decodeStarted;
       }));
 
+      const rangeBuildStarted = now();
       const ranges = new Map<string, NumericChannelRange>();
       for (const channelId of channelIds) {
         const values = valuesByChannel.get(channelId);
         if (!values) return undefined;
         ranges.set(channelId, buildRange(this.recordIndex, startSampleIndex, sampleCount, values));
       }
+      const sidecarRangeBuildMs = now() - rangeBuildStarted;
       return {
         ranges,
         performance: {
@@ -632,6 +645,11 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
           physicalReadCount: 0,
           physicalBytesRead: 0,
           physicalReadMs: 0,
+          sidecarManifestMs,
+          sidecarFileOpenMs,
+          sidecarBlobReadMs,
+          sidecarDecodeMs,
+          sidecarRangeBuildMs,
         },
       };
     } catch {

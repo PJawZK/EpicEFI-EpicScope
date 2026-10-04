@@ -539,8 +539,18 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
       channelRuns.slice(-10).forEach((run, index) => {
+        const lowLevel = [
+          run.persistentLookupMs !== undefined ? `persistentLookup=${run.persistentLookupMs.toFixed(2)} ms` : '',
+          run.persistentRangeBuildMs !== undefined ? `persistentRange=${run.persistentRangeBuildMs.toFixed(2)} ms` : '',
+          run.delegatedSourceMs !== undefined ? `delegatedSource=${run.delegatedSourceMs.toFixed(2)} ms` : '',
+          run.sidecarManifestMs !== undefined ? `sidecarManifest=${run.sidecarManifestMs.toFixed(2)} ms` : '',
+          run.sidecarFileOpenMs !== undefined ? `sidecarFileOpen=${run.sidecarFileOpenMs.toFixed(2)} ms` : '',
+          run.sidecarBlobReadMs !== undefined ? `sidecarBlobRead=${run.sidecarBlobReadMs.toFixed(2)} ms` : '',
+          run.sidecarDecodeMs !== undefined ? `sidecarDecode=${run.sidecarDecodeMs.toFixed(2)} ms` : '',
+          run.sidecarRangeBuildMs !== undefined ? `sidecarRange=${run.sidecarRangeBuildMs.toFixed(2)} ms` : '',
+        ].filter(Boolean).join('; ');
         lines.push(
-          `${index + 1}. ${run.channelName}: phase=${run.phase}; startSample=${run.startSampleIndex}; requestedSamples=${run.requestedSampleCount}; returnedSamples=${run.sampleCount}; total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms`,
+          `${index + 1}. ${run.channelName}: phase=${run.phase}; startSample=${run.startSampleIndex}; requestedSamples=${run.requestedSampleCount}; returnedSamples=${run.sampleCount}; total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms${lowLevel ? `; ${lowLevel}` : ''}`,
         );
       });
     }

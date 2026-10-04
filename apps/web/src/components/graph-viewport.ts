@@ -85,6 +85,14 @@ export interface GraphChannelPerformance {
   readonly physicalReadCount: number;
   readonly physicalBytesRead: number;
   readonly physicalReadMs: number;
+  readonly persistentLookupMs?: number;
+  readonly persistentRangeBuildMs?: number;
+  readonly delegatedSourceMs?: number;
+  readonly sidecarManifestMs?: number;
+  readonly sidecarFileOpenMs?: number;
+  readonly sidecarBlobReadMs?: number;
+  readonly sidecarDecodeMs?: number;
+  readonly sidecarRangeBuildMs?: number;
 }
 
 export interface GraphPreloadedActivationPerformance {
@@ -964,6 +972,14 @@ export function createGraphViewport(): GraphViewportController {
           physicalReadCount: result.performance.physicalReadCount,
           physicalBytesRead: result.performance.physicalBytesRead,
           physicalReadMs: result.performance.physicalReadMs,
+          persistentLookupMs: result.performance.persistentLookupMs,
+          persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+          delegatedSourceMs: result.performance.delegatedSourceMs,
+          sidecarManifestMs: result.performance.sidecarManifestMs,
+          sidecarFileOpenMs: result.performance.sidecarFileOpenMs,
+          sidecarBlobReadMs: result.performance.sidecarBlobReadMs,
+          sidecarDecodeMs: result.performance.sidecarDecodeMs,
+          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
         });
         pending.resolve(true);
         const activated = activeTraces.get(channelId);
@@ -1235,6 +1251,14 @@ export function createGraphViewport(): GraphViewportController {
             physicalReadCount: result.performance.physicalReadCount,
             physicalBytesRead: result.performance.physicalBytesRead,
             physicalReadMs: result.performance.physicalReadMs,
+          persistentLookupMs: result.performance.persistentLookupMs,
+          persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+          delegatedSourceMs: result.performance.delegatedSourceMs,
+          sidecarManifestMs: result.performance.sidecarManifestMs,
+          sidecarFileOpenMs: result.performance.sidecarFileOpenMs,
+          sidecarBlobReadMs: result.performance.sidecarBlobReadMs,
+          sidecarDecodeMs: result.performance.sidecarDecodeMs,
+          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
           });
           completedSteps += 1;
         } catch {

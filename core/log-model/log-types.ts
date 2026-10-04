@@ -70,6 +70,14 @@ export interface NumericChannelBatchPerformance {
   readonly physicalReadCount: number;
   readonly physicalBytesRead: number;
   readonly physicalReadMs: number;
+  readonly persistentLookupMs?: number;
+  readonly persistentRangeBuildMs?: number;
+  readonly delegatedSourceMs?: number;
+  readonly sidecarManifestMs?: number;
+  readonly sidecarFileOpenMs?: number;
+  readonly sidecarBlobReadMs?: number;
+  readonly sidecarDecodeMs?: number;
+  readonly sidecarRangeBuildMs?: number;
 }
 
 export interface NumericChannelBatchResult {
