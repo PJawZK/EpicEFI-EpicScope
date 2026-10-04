@@ -77,7 +77,8 @@
 }
 
 .histogram-controls,
-.heatmap-controls {
+.heatmap-controls,
+.scatter-controls {
   display: flex;
   align-items: flex-end;
   gap: 7px;
@@ -90,13 +91,15 @@
 }
 
 .histogram-controls label,
-.heatmap-controls label {
+.heatmap-controls label,
+.scatter-controls label {
   display: grid;
   gap: 4px;
 }
 
 .histogram-controls label > span,
-.heatmap-controls label > span {
+.heatmap-controls label > span,
+.scatter-controls label > span {
   color: #78909e;
   font-size: 8px;
   font-weight: 700;
@@ -107,7 +110,9 @@
 .histogram-controls select,
 .histogram-refresh,
 .heatmap-controls select,
-.heatmap-refresh {
+.heatmap-refresh,
+.scatter-controls select,
+.scatter-refresh {
   min-height: 29px;
   border: 1px solid #2f4b59;
   border-radius: 3px;
@@ -117,7 +122,8 @@
 }
 
 .histogram-controls select,
-.heatmap-controls select {
+.heatmap-controls select,
+.scatter-controls select {
   min-width: 170px;
   padding: 0 7px;
 }
@@ -129,12 +135,14 @@
 }
 
 .histogram-refresh,
-.heatmap-refresh {
+.heatmap-refresh,
+.scatter-refresh {
   padding: 0 11px;
 }
 
 .histogram-empty,
-.heatmap-empty {
+.heatmap-empty,
+.scatter-empty {
   display: grid;
   place-items: center;
   gap: 5px;
@@ -146,13 +154,15 @@
 }
 
 .histogram-empty strong,
-.heatmap-empty strong {
+.heatmap-empty strong,
+.scatter-empty strong {
   color: #dbe8ef;
   font-size: 12px;
 }
 
 .histogram-empty span,
-.heatmap-empty span {
+.heatmap-empty span,
+.scatter-empty span {
   max-width: 520px;
   color: #79909f;
   font-size: 9px;
@@ -160,7 +170,8 @@
 }
 
 .histogram-content,
-.heatmap-content {
+.heatmap-content,
+.scatter-content {
   display: grid;
   gap: 10px;
 }
@@ -171,13 +182,16 @@
 
 .histogram-content[hidden],
 .heatmap-content[hidden],
+.scatter-content[hidden],
 .histogram-view-hidden,
-.heatmap-view[hidden] {
+.heatmap-view[hidden],
+.scatter-view[hidden] {
   display: none;
 }
 
 .histogram-summary,
-.heatmap-summary {
+.heatmap-summary,
+.scatter-summary {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 5px;
@@ -193,14 +207,18 @@
 .histogram-chart-wrap,
 .heatmap-summary > div,
 .heatmap-axis-summary,
-.heatmap-chart-wrap {
+.heatmap-chart-wrap,
+.scatter-summary > div,
+.scatter-axis-summary,
+.scatter-chart-wrap {
   border: 1px solid #263b4c;
   border-radius: 4px;
   background: #0b171f;
 }
 
 .histogram-summary > div,
-.heatmap-summary > div {
+.heatmap-summary > div,
+.scatter-summary > div {
   min-width: 0;
   padding: 7px 9px;
 }
@@ -208,7 +226,9 @@
 .histogram-summary span,
 .histogram-range-summary span,
 .heatmap-summary span,
-.heatmap-axis-summary span {
+.heatmap-axis-summary span,
+.scatter-summary span,
+.scatter-axis-summary span {
   color: #78909e;
   font-size: 7px;
   font-weight: 700;
@@ -217,7 +237,8 @@
 }
 
 .histogram-summary strong,
-.heatmap-summary strong {
+.heatmap-summary strong,
+.scatter-summary strong {
   display: block;
   margin-top: 3px;
   overflow: hidden;
@@ -229,13 +250,15 @@
 }
 
 .histogram-chart-wrap,
-.heatmap-chart-wrap {
+.heatmap-chart-wrap,
+.scatter-chart-wrap {
   min-height: 340px;
   padding: 8px;
 }
 
 .histogram-chart,
-.heatmap-chart {
+.heatmap-chart,
+.scatter-chart {
   width: 100%;
   height: 100%;
   min-height: 320px;
@@ -243,7 +266,8 @@
 }
 
 .histogram-range-summary,
-.heatmap-axis-summary {
+.heatmap-axis-summary,
+.scatter-axis-summary {
   display: flex;
   align-items: center;
   gap: 18px;
@@ -256,7 +280,8 @@
 }
 
 .histogram-range-summary strong,
-.heatmap-axis-summary strong {
+.heatmap-axis-summary strong,
+.scatter-axis-summary strong {
   margin-left: 4px;
   color: #dceaf1;
   font-size: 9px;
@@ -306,19 +331,22 @@
   color: #cddce4;
 }
 
-.heatmap-view {
+.heatmap-view,
+.scatter-view {
   display: grid;
   gap: 10px;
 }
 
-.heatmap-controls {
+.heatmap-controls,
+.scatter-controls {
   padding: 9px 10px;
   border: 1px solid #273d4d;
   border-radius: 4px;
   background: #0b171f;
 }
 
-.heatmap-content {
+.heatmap-content,
+.scatter-content {
   grid-template-columns: 1fr;
 }
 
@@ -333,7 +361,8 @@
   }
 
   .histogram-controls,
-  .heatmap-controls {
+  .heatmap-controls,
+  .scatter-controls {
     justify-content: flex-start;
   }
 
@@ -342,7 +371,8 @@
   }
 
   .histogram-summary,
-  .heatmap-summary {
+  .heatmap-summary,
+  .scatter-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
