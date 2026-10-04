@@ -97,6 +97,10 @@
   gap: 4px;
 }
 
+.heatmap-value-channel-field[hidden] {
+  display: none;
+}
+
 .histogram-controls label > span,
 .heatmap-controls label > span,
 .scatter-controls label > span {
@@ -381,4 +385,36 @@
     grid-column: 1;
     grid-row: auto;
   }
+}
+
+.heatmap-value-evidence {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 7px 9px;
+  border: 1px solid #263b4c;
+  border-radius: 4px;
+  background: #0b171f;
+  flex-wrap: wrap;
+}
+
+.heatmap-value-evidence[hidden] {
+  display: none;
+}
+
+.heatmap-value-evidence span {
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.heatmap-value-evidence strong {
+  margin-left: 4px;
+  color: #dceaf1;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: normal;
 }
