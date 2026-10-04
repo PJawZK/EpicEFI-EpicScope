@@ -596,18 +596,18 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
       }
 
       const valuesByChannel = new Map<string, Float64Array>();
-      let sidecarFileOpenMs = 0;
-      let sidecarBlobReadMs = 0;
-      let sidecarDecodeMs = 0;
+      let sidecarFileOpenAggregateMs = 0;
+      let sidecarBlobReadAggregateMs = 0;
+      let sidecarDecodeAggregateMs = 0;
       await Promise.all([...byStripe.values()].map(async ({ stripe, fields }) => {
         const fileStarted = now();
         const file = await this.sidecarDataFile(manifest);
-        sidecarFileOpenMs += now() - fileStarted;
+        sidecarFileOpenAggregateMs += now() - fileStarted;
         const byteStart = stripe.storageOffset + startSampleIndex * stripe.widthBytes;
         const byteLength = sampleCount * stripe.widthBytes;
         const readStarted = now();
         const bytes = new Uint8Array(await file.slice(byteStart, byteStart + byteLength).arrayBuffer());
-        sidecarBlobReadMs += now() - readStarted;
+        sidecarBlobReadAggregateMs += now() - readStarted;
         if (bytes.byteLength !== byteLength) {
           throw new RangeError(
             `MLG sidecar stripe ${stripe.index} returned ${bytes.byteLength} bytes, expected ${byteLength}.`,
@@ -626,7 +626,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
           }
           valuesByChannel.set(`mlg:${field.fieldIndex}`, values);
         }
-        sidecarDecodeMs += now() - decodeStarted;
+        sidecarDecodeAggregateMs += now() - decodeStarted;
       }));
 
       const rangeBuildStarted = now();
@@ -646,9 +646,9 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
           physicalBytesRead: 0,
           physicalReadMs: 0,
           sidecarManifestMs,
-          sidecarFileOpenMs,
-          sidecarBlobReadMs,
-          sidecarDecodeMs,
+          sidecarFileOpenAggregateMs,
+          sidecarBlobReadAggregateMs,
+          sidecarDecodeAggregateMs,
           sidecarRangeBuildMs,
         },
       };

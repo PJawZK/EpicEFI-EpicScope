@@ -89,9 +89,9 @@ export interface GraphChannelPerformance {
   readonly persistentRangeBuildMs?: number | undefined;
   readonly delegatedSourceMs?: number | undefined;
   readonly sidecarManifestMs?: number | undefined;
-  readonly sidecarFileOpenMs?: number | undefined;
-  readonly sidecarBlobReadMs?: number | undefined;
-  readonly sidecarDecodeMs?: number | undefined;
+  readonly sidecarFileOpenAggregateMs?: number | undefined;
+  readonly sidecarBlobReadAggregateMs?: number | undefined;
+  readonly sidecarDecodeAggregateMs?: number | undefined;
   readonly sidecarRangeBuildMs?: number | undefined;
 }
 
@@ -976,9 +976,9 @@ export function createGraphViewport(): GraphViewportController {
           persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
           delegatedSourceMs: result.performance.delegatedSourceMs,
           sidecarManifestMs: result.performance.sidecarManifestMs,
-          sidecarFileOpenMs: result.performance.sidecarFileOpenMs,
-          sidecarBlobReadMs: result.performance.sidecarBlobReadMs,
-          sidecarDecodeMs: result.performance.sidecarDecodeMs,
+          sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+          sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+          sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
           sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
         });
         pending.resolve(true);
@@ -1255,9 +1255,9 @@ export function createGraphViewport(): GraphViewportController {
           persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
           delegatedSourceMs: result.performance.delegatedSourceMs,
           sidecarManifestMs: result.performance.sidecarManifestMs,
-          sidecarFileOpenMs: result.performance.sidecarFileOpenMs,
-          sidecarBlobReadMs: result.performance.sidecarBlobReadMs,
-          sidecarDecodeMs: result.performance.sidecarDecodeMs,
+          sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+          sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+          sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
           sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
           });
           completedSteps += 1;
@@ -1350,9 +1350,9 @@ export function createGraphViewport(): GraphViewportController {
         persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
         delegatedSourceMs: result.performance.delegatedSourceMs,
         sidecarManifestMs: result.performance.sidecarManifestMs,
-        sidecarFileOpenMs: result.performance.sidecarFileOpenMs,
-        sidecarBlobReadMs: result.performance.sidecarBlobReadMs,
-        sidecarDecodeMs: result.performance.sidecarDecodeMs,
+        sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+        sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+        sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
         sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
       });
       return true;

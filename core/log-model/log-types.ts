@@ -74,9 +74,9 @@ export interface NumericChannelBatchPerformance {
   readonly persistentRangeBuildMs?: number;
   readonly delegatedSourceMs?: number;
   readonly sidecarManifestMs?: number;
-  readonly sidecarFileOpenMs?: number;
-  readonly sidecarBlobReadMs?: number;
-  readonly sidecarDecodeMs?: number;
+  readonly sidecarFileOpenAggregateMs?: number;
+  readonly sidecarBlobReadAggregateMs?: number;
+  readonly sidecarDecodeAggregateMs?: number;
   readonly sidecarRangeBuildMs?: number;
 }
 

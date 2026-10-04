@@ -147,9 +147,9 @@ export interface ChannelPerformanceRun {
   readonly persistentRangeBuildMs?: number | undefined;
   readonly delegatedSourceMs?: number | undefined;
   readonly sidecarManifestMs?: number | undefined;
-  readonly sidecarFileOpenMs?: number | undefined;
-  readonly sidecarBlobReadMs?: number | undefined;
-  readonly sidecarDecodeMs?: number | undefined;
+  readonly sidecarFileOpenAggregateMs?: number | undefined;
+  readonly sidecarBlobReadAggregateMs?: number | undefined;
+  readonly sidecarDecodeAggregateMs?: number | undefined;
   readonly sidecarRangeBuildMs?: number | undefined;
   readonly phase: 'viewport' | 'full' | 'cache';
   readonly startSampleIndex: number;
@@ -552,9 +552,9 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           run.persistentRangeBuildMs !== undefined ? `persistentRange=${run.persistentRangeBuildMs.toFixed(2)} ms` : '',
           run.delegatedSourceMs !== undefined ? `delegatedSource=${run.delegatedSourceMs.toFixed(2)} ms` : '',
           run.sidecarManifestMs !== undefined ? `sidecarManifest=${run.sidecarManifestMs.toFixed(2)} ms` : '',
-          run.sidecarFileOpenMs !== undefined ? `sidecarFileOpen=${run.sidecarFileOpenMs.toFixed(2)} ms` : '',
-          run.sidecarBlobReadMs !== undefined ? `sidecarBlobRead=${run.sidecarBlobReadMs.toFixed(2)} ms` : '',
-          run.sidecarDecodeMs !== undefined ? `sidecarDecode=${run.sidecarDecodeMs.toFixed(2)} ms` : '',
+          run.sidecarFileOpenAggregateMs !== undefined ? `sidecarFileOpenAggregate=${run.sidecarFileOpenAggregateMs.toFixed(2)} ms` : '',
+          run.sidecarBlobReadAggregateMs !== undefined ? `sidecarBlobReadAggregate=${run.sidecarBlobReadAggregateMs.toFixed(2)} ms` : '',
+          run.sidecarDecodeAggregateMs !== undefined ? `sidecarDecodeAggregate=${run.sidecarDecodeAggregateMs.toFixed(2)} ms` : '',
           run.sidecarRangeBuildMs !== undefined ? `sidecarRange=${run.sidecarRangeBuildMs.toFixed(2)} ms` : '',
         ].filter(Boolean).join('; ');
         lines.push(

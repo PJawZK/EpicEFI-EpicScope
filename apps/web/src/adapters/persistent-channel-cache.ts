@@ -350,9 +350,9 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
         persistentRangeBuildMs,
         delegatedSourceMs,
         ...(delegatedPerformance?.sidecarManifestMs !== undefined ? { sidecarManifestMs: delegatedPerformance.sidecarManifestMs } : {}),
-        ...(delegatedPerformance?.sidecarFileOpenMs !== undefined ? { sidecarFileOpenMs: delegatedPerformance.sidecarFileOpenMs } : {}),
-        ...(delegatedPerformance?.sidecarBlobReadMs !== undefined ? { sidecarBlobReadMs: delegatedPerformance.sidecarBlobReadMs } : {}),
-        ...(delegatedPerformance?.sidecarDecodeMs !== undefined ? { sidecarDecodeMs: delegatedPerformance.sidecarDecodeMs } : {}),
+        ...(delegatedPerformance?.sidecarFileOpenAggregateMs !== undefined ? { sidecarFileOpenAggregateMs: delegatedPerformance.sidecarFileOpenAggregateMs } : {}),
+        ...(delegatedPerformance?.sidecarBlobReadAggregateMs !== undefined ? { sidecarBlobReadAggregateMs: delegatedPerformance.sidecarBlobReadAggregateMs } : {}),
+        ...(delegatedPerformance?.sidecarDecodeAggregateMs !== undefined ? { sidecarDecodeAggregateMs: delegatedPerformance.sidecarDecodeAggregateMs } : {}),
         ...(delegatedPerformance?.sidecarRangeBuildMs !== undefined ? { sidecarRangeBuildMs: delegatedPerformance.sidecarRangeBuildMs } : {}),
       },
     };
