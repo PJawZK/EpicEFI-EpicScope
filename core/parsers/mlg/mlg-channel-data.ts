@@ -303,8 +303,8 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
               + BLOCK_HEADER_LENGTH
               + channel.fieldOffset
               - batchStartByte;
-            channel.values[sampleIndex - startSampleIndex] = displayValue(
-              decodeRawValue(view, valueOffset, channel.field),
+            channel.values[sampleIndex - startSampleIndex] = displayMlgValue(
+              decodeMlgRawValue(view, valueOffset, channel.field),
               channel.field,
             );
           }
