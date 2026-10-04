@@ -16,9 +16,22 @@ import type {
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
 const MANIFEST_FILE = 'manifest.json';
-const TARGET_STRIPE_BYTES = 16;
+const TARGET_STRIPE_BYTES = 64;
 const DATA_FILE = 'columns.bin';
+const NATIVE_INDEX_FILE = 'native-columns.json';
+const NATIVE_FILE_PREFIX = 'native-column-';
 const BLOCK_HEADER_LENGTH = 4;
+
+interface MlgNativeColumnIndex {
+  readonly schemaVersion: 1;
+  readonly logKey: string;
+  readonly sampleCount: number;
+  readonly fieldIndices: readonly number[];
+}
+
+function nativeColumnFileName(fieldIndex: number): string {
+  return `${NATIVE_FILE_PREFIX}${fieldIndex}.bin`;
+}
 
 interface OpfsWritable {
   write(data: Uint8Array | Blob | string): Promise<void>;
@@ -181,6 +194,25 @@ async function readStoredManifest(logKey: string): Promise<MlgColumnSidecarManif
     const file = await (await directory.getFileHandle(MANIFEST_FILE)).getFile();
     const manifest = JSON.parse(await file.text()) as MlgColumnSidecarManifest;
     return manifest.logKey === logKey ? manifest : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readNativeColumnIndex(
+  logKey: string,
+  sampleCount: number,
+): Promise<MlgNativeColumnIndex | undefined> {
+  try {
+    const directory = await openLogDirectory(logKey, false);
+    if (!directory) return undefined;
+    const file = await (await directory.getFileHandle(NATIVE_INDEX_FILE)).getFile();
+    const index = JSON.parse(await file.text()) as MlgNativeColumnIndex;
+    return index.schemaVersion === 1
+      && index.logKey === logKey
+      && index.sampleCount === sampleCount
+      ? index
+      : undefined;
   } catch {
     return undefined;
   }
@@ -420,6 +452,7 @@ function buildRange(
 
 export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   readonly sampleCount: number;
+  readonly managesPersistentColumns = true;
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
 
@@ -429,6 +462,9 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private dataFilePromise: Promise<File> | undefined;
   private manifest: MlgColumnSidecarManifest | undefined;
   private readonly existingManifestPromise: Promise<void>;
+  private readonly nativeIndexPromise: Promise<void>;
+  private readonly nativeFieldIndices = new Set<number>();
+  private nativeWritePromise: Promise<void> = Promise.resolve();
   private prioritizedChannelIds = new Set<string>();
   private readonly capturedPriorityColumns = new Map<string, {
     readonly values: Float64Array;
@@ -457,6 +493,14 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     });
     this.existingManifestPromise = readStoredManifest(logKey).then((manifest) => {
       if (manifest) this.activate(manifest);
+    });
+    this.nativeIndexPromise = readNativeColumnIndex(logKey, this.sampleCount).then((index) => {
+      if (!index) return;
+      for (const fieldIndex of index.fieldIndices) {
+        if (Number.isSafeInteger(fieldIndex) && fieldIndex >= 0 && fieldIndex < this.fields.length) {
+          this.nativeFieldIndices.add(fieldIndex);
+        }
+      }
     });
   }
 
@@ -560,6 +604,75 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     }
   }
 
+  private async readNativeColumn(
+    field: PlannedField,
+  ): Promise<{
+    readonly values: Float64Array;
+    readonly fileOpenMs: number;
+    readonly blobReadMs: number;
+    readonly decodeMs: number;
+  } | undefined> {
+    await this.nativeIndexPromise;
+    if (!this.nativeFieldIndices.has(field.fieldIndex)) return undefined;
+    try {
+      const fileStarted = now();
+      const directory = await openLogDirectory(this.logKey, false);
+      if (!directory) return undefined;
+      const file = await (await directory.getFileHandle(nativeColumnFileName(field.fieldIndex))).getFile();
+      const fileOpenMs = now() - fileStarted;
+      const expectedBytes = this.sampleCount * field.field.widthBytes;
+      if (file.size !== expectedBytes) {
+        this.nativeFieldIndices.delete(field.fieldIndex);
+        return undefined;
+      }
+      const readStarted = now();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const blobReadMs = now() - readStarted;
+      if (bytes.byteLength !== expectedBytes) {
+        this.nativeFieldIndices.delete(field.fieldIndex);
+        return undefined;
+      }
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const values = new Float64Array(this.sampleCount);
+      const decodeStarted = now();
+      for (let sample = 0; sample < this.sampleCount; sample += 1) {
+        values[sample] = displayValue(
+          decodeRawValue(view, sample * field.field.widthBytes, field.field),
+          field.field,
+        );
+      }
+      return { values, fileOpenMs, blobReadMs, decodeMs: now() - decodeStarted };
+    } catch {
+      this.nativeFieldIndices.delete(field.fieldIndex);
+      return undefined;
+    }
+  }
+
+  private queueNativeColumnPersist(field: PlannedField, bytes: Uint8Array): void {
+    if (this.nativeFieldIndices.has(field.fieldIndex)) return;
+    this.nativeWritePromise = this.nativeWritePromise.then(async () => {
+      await this.nativeIndexPromise;
+      if (this.nativeFieldIndices.has(field.fieldIndex)) return;
+      const directory = await openLogDirectory(this.logKey, true);
+      if (!directory) return;
+      const stream = await (await directory.getFileHandle(nativeColumnFileName(field.fieldIndex), { create: true }))
+        .createWritable({ keepExistingData: false });
+      await stream.write(bytes);
+      await stream.close();
+      this.nativeFieldIndices.add(field.fieldIndex);
+      const indexStream = await (await directory.getFileHandle(NATIVE_INDEX_FILE, { create: true }))
+        .createWritable({ keepExistingData: false });
+      const index: MlgNativeColumnIndex = {
+        schemaVersion: 1,
+        logKey: this.logKey,
+        sampleCount: this.sampleCount,
+        fieldIndices: [...this.nativeFieldIndices].sort((a, b) => a - b),
+      };
+      await indexStream.write(JSON.stringify(index));
+      await indexStream.close();
+    }).catch(() => undefined);
+  }
+
   private async readFromSidecar(
     channelIds: readonly string[],
     startSampleIndex: number,
@@ -594,6 +707,46 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
 
     const planned = channelIds.map((channelId) => this.fieldByChannelId.get(channelId));
     if (planned.some((field) => field === undefined)) return undefined;
+
+    if (startSampleIndex === 0 && sampleCount === this.sampleCount) {
+      await this.nativeIndexPromise;
+      const nativePlanned = planned as PlannedField[];
+      if (nativePlanned.length > 0 && nativePlanned.every((field) => this.nativeFieldIndices.has(field.fieldIndex))) {
+        const ranges = new Map<string, NumericChannelRange>();
+        let sidecarFileOpenAggregateMs = 0;
+        let sidecarBlobReadAggregateMs = 0;
+        let sidecarDecodeAggregateMs = 0;
+        let nativeComplete = true;
+        for (const field of nativePlanned) {
+          const native = await this.readNativeColumn(field);
+          if (!native) {
+            nativeComplete = false;
+            break;
+          }
+          sidecarFileOpenAggregateMs += native.fileOpenMs;
+          sidecarBlobReadAggregateMs += native.blobReadMs;
+          sidecarDecodeAggregateMs += native.decodeMs;
+          ranges.set(`mlg:${field.fieldIndex}`, buildRange(this.recordIndex, 0, this.sampleCount, native.values));
+        }
+        if (nativeComplete && ranges.size === channelIds.length) {
+          return {
+            ranges,
+            performance: {
+              channelCount: channelIds.length,
+              cacheHitChannelIds: [...channelIds],
+              physicalReadCount: 0,
+              physicalBytesRead: 0,
+              physicalReadMs: 0,
+              sidecarManifestMs,
+              sidecarFileOpenAggregateMs,
+              sidecarBlobReadAggregateMs,
+              sidecarDecodeAggregateMs,
+              sidecarRangeBuildMs: 0,
+            },
+          };
+        }
+      }
+    }
 
     try {
       const byStripe = new Map<number, {
@@ -630,13 +783,26 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
         const decodeStarted = now();
         for (const field of fields) {
           const values = new Float64Array(sampleCount);
+          const persistNative = startSampleIndex === 0
+            && sampleCount === this.sampleCount
+            && !this.nativeFieldIndices.has(field.fieldIndex);
+          const nativeBytes = persistNative
+            ? new Uint8Array(sampleCount * field.field.widthBytes)
+            : undefined;
           for (let sample = 0; sample < sampleCount; sample += 1) {
             const offset = sample * stripe.widthBytes + field.stripeOffset;
             values[sample] = displayValue(
               decodeRawValue(view, offset, field.field),
               field.field,
             );
+            if (nativeBytes) {
+              nativeBytes.set(
+                bytes.subarray(offset, offset + field.field.widthBytes),
+                sample * field.field.widthBytes,
+              );
+            }
           }
+          if (nativeBytes) this.queueNativeColumnPersist(field, nativeBytes);
           valuesByChannel.set(`mlg:${field.fieldIndex}`, values);
         }
         sidecarDecodeAggregateMs += now() - decodeStarted;
