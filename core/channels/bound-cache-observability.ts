@@ -1,4 +1,4 @@
-import { BoundNumericChannelDataSource } from '../channels/channel-binding';
+import { BoundNumericChannelDataSource } from './channel-binding';
 import type {
   NumericChannelBatchResult,
   NumericChannelDataSource,

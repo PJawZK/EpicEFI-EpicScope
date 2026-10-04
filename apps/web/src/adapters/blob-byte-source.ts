@@ -2,7 +2,7 @@ import {
   validateReadRange,
   type RandomAccessByteSource,
 } from '../../../../core/parsers/byte-source';
-import { latestBoundCacheDiagnosticSnapshot } from '../../../../core/diagnostics/bound-cache-observability';
+import { latestBoundCacheDiagnosticSnapshot } from '../../../../core/channels/bound-cache-observability';
 
 const DEFAULT_CACHE_PAGE_SIZE = 32 * 1024 * 1024;
 const CACHE_LIMIT_BYTES = 96 * 1024 * 1024;
