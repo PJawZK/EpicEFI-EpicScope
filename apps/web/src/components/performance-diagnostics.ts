@@ -120,6 +120,9 @@ export interface WorkspaceRestorePerformanceRun {
   readonly activationCursorMs: number;
   readonly activationDrawMs: number;
   readonly activationEnvelopeMs: number;
+  readonly activationDrawSetupMs: number;
+  readonly activationDrawTraceMs: number;
+  readonly activationDrawOverlayMs: number;
   readonly finalSyncMs: number;
   readonly finalSyncResolveMs: number;
   readonly finalSyncAssignedNormalizeMs: number;
@@ -479,7 +482,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `activationCursor=${latestRestore.activationCursorMs.toFixed(2)} ms`,
         `activationDraw=${latestRestore.activationDrawMs.toFixed(2)} ms`,
         `activationEnvelope=${latestRestore.activationEnvelopeMs.toFixed(2)} ms`,
-        `activationDrawOther=${Math.max(0, latestRestore.activationDrawMs - latestRestore.activationEnvelopeMs).toFixed(2)} ms`,
+        `activationDrawSetup=${latestRestore.activationDrawSetupMs.toFixed(2)} ms`,
+        `activationDrawTrace=${latestRestore.activationDrawTraceMs.toFixed(2)} ms`,
+        `activationDrawOverlay=${latestRestore.activationDrawOverlayMs.toFixed(2)} ms`,
+        `activationDrawRemainder=${Math.max(0, latestRestore.activationDrawMs - latestRestore.activationEnvelopeMs - latestRestore.activationDrawSetupMs - latestRestore.activationDrawTraceMs - latestRestore.activationDrawOverlayMs).toFixed(2)} ms`,
         `activationRemainder=${Math.max(0, latestRestore.activationMs - latestRestore.activationGraphTotalMs).toFixed(2)} ms`,
         `finalSync=${latestRestore.finalSyncMs.toFixed(2)} ms`,
         `finalSyncResolve=${latestRestore.finalSyncResolveMs.toFixed(2)} ms`,

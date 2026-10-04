@@ -153,6 +153,9 @@ export interface LoggerWorkspaceRestorePerformance {
   readonly activationCursorMs: number;
   readonly activationDrawMs: number;
   readonly activationEnvelopeMs: number;
+  readonly activationDrawSetupMs: number;
+  readonly activationDrawTraceMs: number;
+  readonly activationDrawOverlayMs: number;
   readonly finalSyncMs: number;
   readonly finalSyncResolveMs: number;
   readonly finalSyncAssignedNormalizeMs: number;
@@ -1670,6 +1673,9 @@ export function createLoggerPage(): LoggerPageController {
     let activationCursorMs = 0;
     let activationDrawMs = 0;
     let activationEnvelopeMs = 0;
+    let activationDrawSetupMs = 0;
+    let activationDrawTraceMs = 0;
+    let activationDrawOverlayMs = 0;
     const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {
       if (!pane || requestedIds.length === 0) return;
 
@@ -1691,6 +1697,9 @@ export function createLoggerPage(): LoggerPageController {
           activationCursorMs += graphPerformance.cursorMs;
           activationDrawMs += graphPerformance.drawMs;
           activationEnvelopeMs += graphPerformance.envelopeMs;
+          activationDrawSetupMs += graphPerformance.drawSetupMs;
+          activationDrawTraceMs += graphPerformance.drawTraceMs;
+          activationDrawOverlayMs += graphPerformance.drawOverlayMs;
           runtime.activeChannelIds.clear();
           activation.activatedChannelIds.forEach((channelId) => runtime.activeChannelIds.add(channelId));
           pane.channelIds = [...assignedIds];
@@ -1735,6 +1744,9 @@ export function createLoggerPage(): LoggerPageController {
       activationCursorMs,
       activationDrawMs,
       activationEnvelopeMs,
+      activationDrawSetupMs,
+      activationDrawTraceMs,
+      activationDrawOverlayMs,
       finalSyncMs,
       finalSyncResolveMs: finalSyncPerformance.resolveMs,
       finalSyncAssignedNormalizeMs: finalSyncPerformance.assignedNormalizeMs,
