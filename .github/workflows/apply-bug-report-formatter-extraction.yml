@@ -1,0 +1,30 @@
+name: Apply bug report formatter extraction
+
+on:
+  push:
+    branches:
+      - refactor/extract-bug-report-formatter-v1
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, 'Apply bug report formatter extraction') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/extract-bug-report-formatter-v1
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: python tools/extract-bug-report-formatter.py
+      - run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/app/app-shell.ts
+          git commit -m "Refactor: extract bug report formatter"
+          git push
