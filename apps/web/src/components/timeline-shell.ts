@@ -96,7 +96,8 @@ export function createTimelineShell(): TimelineShellController {
       </div>
       <span class="timeline-overview-cursor" title="Drag timeline cursor" hidden></span>
     </div>
-    <div class="timeline-controls">
+    <div class="timeline-controls" aria-label="Navigate">
+      <span class="timeline-group-label">Navigate</span>
       <div class="transport" aria-label="Playback controls">
         <button type="button" data-action="start" disabled title="Start">|◀</button>
         <button type="button" data-action="back" disabled title="Back">◀</button>
@@ -106,38 +107,45 @@ export function createTimelineShell(): TimelineShellController {
       </div>
       <span class="timeline-time">00:00.000 / 00:00.000</span>
       <div class="timeline-progress" role="slider" aria-label="Timeline cursor" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="0"><span></span></div>
-      <div class="timeline-marker-actions" aria-label="Marker navigation">
-        <button type="button" data-marker-action="previous" disabled title="Previous marker">◀ M</button>
-        <button type="button" data-marker-action="next" disabled title="Next marker">M ▶</button>
+      <div class="timeline-zoom-actions" aria-label="Zoom controls">
+        <button type="button" data-viewport-action="fit" disabled>Fit</button>
+        <button type="button" data-viewport-action="zoom-in" disabled title="Zoom in">＋</button>
+        <button type="button" data-viewport-action="zoom-out" disabled title="Zoom out">−</button>
       </div>
       <div class="timeline-history-actions" aria-label="View history">
         <button type="button" data-view-history="back" disabled title="Previous view">↶ View</button>
         <button type="button" data-view-history="forward" disabled title="Next view">View ↷</button>
       </div>
-      <div class="timeline-zoom-actions">
-        <button type="button" data-viewport-action="fit" disabled>Fit</button>
-        <button type="button" data-viewport-action="zoom-in" disabled title="Zoom in">＋</button>
-        <button type="button" data-viewport-action="zoom-out" disabled title="Zoom out">−</button>
-      </div>
+      <span class="timeline-navigate-status">Cursor <strong class="timeline-cursor-value">00:00.000</strong></span>
+      <span class="timeline-navigate-status">Visible <strong class="timeline-visible-range">—</strong></span>
     </div>
-    <div class="timeline-meta">
-      <span>Cursor <strong class="timeline-cursor-value">00:00.000</strong></span>
-      <span>Visible range <strong class="timeline-visible-range">—</strong></span>
+    <div class="timeline-meta" aria-label="Range and markers">
+      <span class="timeline-group-label">Range / Markers</span>
       <span>Marker <strong class="timeline-marker-value">—</strong></span>
+      <div class="timeline-marker-actions" aria-label="Marker navigation">
+        <button type="button" data-marker-action="previous" disabled title="Previous marker">◀ M</button>
+        <button type="button" data-marker-action="next" disabled title="Next marker">M ▶</button>
+      </div>
       <span>A/B <strong class="timeline-ab-value">—</strong></span>
+      <button type="button" class="timeline-set-a" disabled>Set A</button>
+      <button type="button" class="timeline-set-b" disabled>Set B</button>
+      <button type="button" class="timeline-save-range" disabled>Save Range</button>
       <select class="timeline-saved-ranges" aria-label="Saved ranges" hidden>
         <option value="">Saved ranges</option>
       </select>
-      <button type="button" class="timeline-rename-range" disabled title="Rename selected saved range">Rename Range</button>
-      <button type="button" class="timeline-delete-range" disabled title="Delete selected saved range">Delete Range</button>
-      <span class="grow"></span>
-      <button type="button" class="timeline-save-range" disabled>Save Range</button>
       <button type="button" class="timeline-add-marker" disabled>＋ Marker</button>
-      <button type="button" class="timeline-edit-marker" disabled>Edit Marker</button>
-      <button type="button" class="timeline-delete-marker" disabled>Delete Marker</button>
-      <button type="button" class="timeline-set-a" disabled>Set A</button>
-      <button type="button" class="timeline-set-b" disabled>Set B</button>
-      <button type="button" class="timeline-clear-ab" disabled>Clear A/B</button>
+      <span class="grow"></span>
+      <span class="timeline-analysis-context">Analyze · set A and B</span>
+      <details class="timeline-maintenance-menu">
+        <summary title="More range and marker actions" aria-label="More range and marker actions">⋯</summary>
+        <span class="timeline-maintenance-actions">
+          <button type="button" class="timeline-rename-range" disabled title="Rename selected saved range">Rename Range</button>
+          <button type="button" class="timeline-delete-range" disabled title="Delete selected saved range">Delete Range</button>
+          <button type="button" class="timeline-edit-marker" disabled>Edit Marker</button>
+          <button type="button" class="timeline-delete-marker" disabled>Delete Marker</button>
+          <button type="button" class="timeline-clear-ab" disabled>Clear A/B</button>
+        </span>
+      </details>
     </div>
   `;
 
@@ -153,6 +161,7 @@ export function createTimelineShell(): TimelineShellController {
   const visibleRangeText = timeline.querySelector<HTMLElement>('.timeline-visible-range');
   const markerText = timeline.querySelector<HTMLElement>('.timeline-marker-value');
   const abText = timeline.querySelector<HTMLElement>('.timeline-ab-value');
+  const analysisContext = timeline.querySelector<HTMLElement>('.timeline-analysis-context');
   const savedRangeSelect = timeline.querySelector<HTMLSelectElement>('.timeline-saved-ranges');
   const saveRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-save-range');
   const renameRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-rename-range');
@@ -169,7 +178,7 @@ export function createTimelineShell(): TimelineShellController {
   const markerButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-marker-action]')];
   const historyButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-view-history]')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !savedRangeSelect || !saveRangeButton || !renameRangeButton || !deleteRangeButton || !addMarkerButton || !editMarkerButton || !deleteMarkerButton || !setAButton || !setBButton || !clearAbButton || !progress || !progressFill) {
+  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !analysisContext || !savedRangeSelect || !saveRangeButton || !renameRangeButton || !deleteRangeButton || !addMarkerButton || !editMarkerButton || !deleteMarkerButton || !setAButton || !setBButton || !clearAbButton || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
 
@@ -201,6 +210,9 @@ export function createTimelineShell(): TimelineShellController {
     setAButton.disabled = fullDuration() <= 0;
     setBButton.disabled = fullDuration() <= 0;
     clearAbButton.disabled = aTimeMs === undefined && bTimeMs === undefined;
+    const analysisReady = aTimeMs !== undefined && bTimeMs !== undefined && aTimeMs !== bTimeMs;
+    analysisContext.textContent = analysisReady ? 'Analyze · range ready' : 'Analyze · set A and B';
+    analysisContext.classList.toggle('timeline-analysis-context--ready', analysisReady);
   };
 
   const refreshSavedRangeSelect = (): void => {
