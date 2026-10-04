@@ -1,0 +1,24 @@
+name: Fix channel read diagnostics forwarding
+
+on:
+  push:
+    branches:
+      - fix/channel-read-diagnostics-forwarding
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/channel-read-diagnostics-forwarding
+      - run: python tools/fix-channel-read-diagnostics-forwarding.py
+      - run: |
+          git config user.name "EpicScope Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/web/src/app/app-shell.ts
+          git commit -m "Fix channel read diagnostics forwarding"
+          git push origin HEAD:fix/channel-read-diagnostics-forwarding
