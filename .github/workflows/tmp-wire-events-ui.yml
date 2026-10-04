@@ -37,3 +37,5 @@ jobs:
           git add apps/web/src/pages/logger-page.ts apps/web/src/styles/logger-ui.css
           git commit -m "Wire generic Events into range analysis"
           git push origin HEAD:analysis/events-ui-v1
+
+# trigger
