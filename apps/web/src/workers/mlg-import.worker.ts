@@ -161,47 +161,73 @@ async function validateMlgRecordCrcSerial(
   const crcValid = new Uint8Array(recordIndex.offsets.length);
   const diagnostics: ParserDiagnostic[] = [];
   let sourceReadMs = 0;
-  let sidecarMs = 0;
+  let checksumCpuMs = 0;
   let diagnosticCpuMs = 0;
   let checksumBytes = 0;
-  let sampleIndex = 0;
 
-  while (sampleIndex < recordIndex.offsets.length) {
-    const batch = planValidationBatch(
-      recordIndex,
-      blockLength,
-      sampleIndex,
-      SERIAL_VALIDATION_CHUNK_SIZE,
-    );
+  const readBatch = async (batch: ValidationBatch): Promise<{
+    readonly batch: ValidationBatch;
+    readonly bytes: Uint8Array;
+    readonly readMs: number;
+  }> => {
     const readStarted = now();
     const bytes = await source.read(batch.firstOffset, batch.byteLength);
-    sourceReadMs += now() - readStarted;
+    const readMs = now() - readStarted;
     if (bytes.byteLength !== batch.byteLength) {
       throw new RangeError(
         `CRC validation expected ${batch.byteLength} bytes at offset ${batch.firstOffset}, received ${bytes.byteLength}.`,
       );
     }
+    return { batch, bytes, readMs };
+  };
 
-    sidecarMs += await appendSidecarBatch(sidecar, batch, bytes);
+  let pendingRead = recordIndex.offsets.length > 0
+    ? readBatch(planValidationBatch(
+        recordIndex,
+        blockLength,
+        0,
+        SERIAL_VALIDATION_CHUNK_SIZE,
+      ))
+    : undefined;
 
-    for (let index = batch.firstIndex; index <= batch.lastIndex; index += 1) {
+  while (pendingRead) {
+    const current = await pendingRead;
+    sourceReadMs += current.readMs;
+
+    const nextIndex = current.batch.lastIndex + 1;
+    const nextRead = nextIndex < recordIndex.offsets.length
+      ? readBatch(planValidationBatch(
+          recordIndex,
+          blockLength,
+          nextIndex,
+          SERIAL_VALIDATION_CHUNK_SIZE,
+        ))
+      : undefined;
+
+    // Transpose synchronously, then allow OPFS writes to stay in flight while
+    // checksum CPU and the next file read progress.
+    const sidecarPromise = appendSidecarBatch(sidecar, current.batch, current.bytes);
+
+    const checksumStarted = now();
+    const diagnosticBefore = diagnosticCpuMs;
+    for (let index = current.batch.firstIndex; index <= current.batch.lastIndex; index += 1) {
       const absoluteOffset = recordIndex.offsets[index];
       if (absoluteOffset === undefined) continue;
-      const relativeOffset = absoluteOffset - batch.firstOffset;
+      const relativeOffset = absoluteOffset - current.batch.firstOffset;
       const recordStart = relativeOffset + BLOCK_HEADER_LENGTH;
       checksumBytes += recordLength;
-      const expectedCrc = calculateMlgRecordChecksum(bytes, recordStart, recordLength);
-      const actualCrc = bytes[relativeOffset + blockLength - 1] ?? 0;
+      const expectedCrc = calculateMlgRecordChecksum(current.bytes, recordStart, recordLength);
+      const actualCrc = current.bytes[relativeOffset + blockLength - 1] ?? 0;
       const valid = expectedCrc === actualCrc;
       crcValid[index] = valid ? 1 : 0;
 
       if (!valid) {
         const diagnosticStart = now();
-        const counter = bytes[relativeOffset + 1] ?? 0;
-        const rawTimestamp = ((bytes[relativeOffset + 2] ?? 0) << 8)
-          | (bytes[relativeOffset + 3] ?? 0);
+        const counter = current.bytes[relativeOffset + 1] ?? 0;
+        const rawTimestamp = ((current.bytes[relativeOffset + 2] ?? 0) << 8)
+          | (current.bytes[relativeOffset + 3] ?? 0);
         const blockHeaderSum = calculateMlgRecordChecksum(
-          bytes,
+          current.bytes,
           relativeOffset,
           BLOCK_HEADER_LENGTH,
         );
@@ -217,18 +243,22 @@ async function validateMlgRecordCrcSerial(
         diagnosticCpuMs += now() - diagnosticStart;
       }
     }
+    checksumCpuMs += Math.max(
+      0,
+      now() - checksumStarted - (diagnosticCpuMs - diagnosticBefore),
+    );
 
-    sampleIndex = batch.lastIndex + 1;
+    await sidecarPromise;
+    pendingRead = nextRead;
   }
 
-  const totalMs = now() - totalStart;
   return {
     crcValid,
     diagnostics,
     performance: {
-      totalMs,
+      totalMs: now() - totalStart,
       sourceReadMs,
-      checksumCpuMs: Math.max(0, totalMs - sourceReadMs - sidecarMs - diagnosticCpuMs),
+      checksumCpuMs,
       diagnosticCpuMs,
       checksumBytes,
     },
