@@ -97,6 +97,10 @@
   gap: 4px;
 }
 
+.heatmap-value-channel-field[hidden] {
+  display: none;
+}
+
 .histogram-controls label > span,
 .heatmap-controls label > span,
 .scatter-controls label > span {
@@ -382,7 +386,6 @@
     grid-row: auto;
   }
 }
-
 
 .heatmap-value-evidence {
   display: flex;
