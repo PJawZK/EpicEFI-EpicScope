@@ -1,0 +1,154 @@
+name: Apply sidecar serial pipeline
+
+on:
+  push:
+    branches:
+      - perf/mlg-sidecar-serial-pipeline-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/mlg-sidecar-serial-pipeline-v1
+      - name: Apply focused serial validation pipeline patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/workers/mlg-import.worker.ts')
+          text = path.read_text()
+          start = text.index('async function validateMlgRecordCrcSerial(')
+          end = text.index('\nasync function validateMlgRecordCrcParallel(', start)
+          old = text[start:end]
+          new = r'''async function validateMlgRecordCrcSerial(
+  source: BlobByteSource,
+  header: MlgHeader,
+  recordIndex: MlgRecordIndex,
+  sidecar: MlgColumnSidecarBuilder | undefined,
+): Promise<MlgCrcValidationResult> {
+  const totalStart = now();
+  const recordLength = header.recordLength;
+  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  const crcValid = new Uint8Array(recordIndex.offsets.length);
+  const diagnostics: ParserDiagnostic[] = [];
+  let sourceReadMs = 0;
+  let checksumCpuMs = 0;
+  let diagnosticCpuMs = 0;
+  let checksumBytes = 0;
+
+  const readBatch = async (batch: ValidationBatch): Promise<{
+    readonly batch: ValidationBatch;
+    readonly bytes: Uint8Array;
+    readonly readMs: number;
+  }> => {
+    const readStarted = now();
+    const bytes = await source.read(batch.firstOffset, batch.byteLength);
+    const readMs = now() - readStarted;
+    if (bytes.byteLength !== batch.byteLength) {
+      throw new RangeError(
+        `CRC validation expected ${batch.byteLength} bytes at offset ${batch.firstOffset}, received ${bytes.byteLength}.`,
+      );
+    }
+    return { batch, bytes, readMs };
+  };
+
+  let pendingRead = recordIndex.offsets.length > 0
+    ? readBatch(planValidationBatch(
+        recordIndex,
+        blockLength,
+        0,
+        SERIAL_VALIDATION_CHUNK_SIZE,
+      ))
+    : undefined;
+
+  while (pendingRead) {
+    const current = await pendingRead;
+    sourceReadMs += current.readMs;
+
+    const nextIndex = current.batch.lastIndex + 1;
+    const nextRead = nextIndex < recordIndex.offsets.length
+      ? readBatch(planValidationBatch(
+          recordIndex,
+          blockLength,
+          nextIndex,
+          SERIAL_VALIDATION_CHUNK_SIZE,
+        ))
+      : undefined;
+
+    // Transpose synchronously, then allow OPFS writes to stay in flight while
+    // checksum CPU and the next file read progress.
+    const sidecarPromise = appendSidecarBatch(sidecar, current.batch, current.bytes);
+
+    const checksumStarted = now();
+    const diagnosticBefore = diagnosticCpuMs;
+    for (let index = current.batch.firstIndex; index <= current.batch.lastIndex; index += 1) {
+      const absoluteOffset = recordIndex.offsets[index];
+      if (absoluteOffset === undefined) continue;
+      const relativeOffset = absoluteOffset - current.batch.firstOffset;
+      const recordStart = relativeOffset + BLOCK_HEADER_LENGTH;
+      checksumBytes += recordLength;
+      const expectedCrc = calculateMlgRecordChecksum(current.bytes, recordStart, recordLength);
+      const actualCrc = current.bytes[relativeOffset + blockLength - 1] ?? 0;
+      const valid = expectedCrc === actualCrc;
+      crcValid[index] = valid ? 1 : 0;
+
+      if (!valid) {
+        const diagnosticStart = now();
+        const counter = current.bytes[relativeOffset + 1] ?? 0;
+        const rawTimestamp = ((current.bytes[relativeOffset + 2] ?? 0) << 8)
+          | (current.bytes[relativeOffset + 3] ?? 0);
+        const blockHeaderSum = calculateMlgRecordChecksum(
+          current.bytes,
+          relativeOffset,
+          BLOCK_HEADER_LENGTH,
+        );
+        const headerInclusiveCrc = (expectedCrc + blockHeaderSum) & 0xff;
+        const checksumDelta = (actualCrc - expectedCrc + 256) & 0xff;
+        diagnostics.push({
+          code: 'mlg-crc-mismatch',
+          severity: 'warning',
+          message: `MLG record ${index.toLocaleString()} checksum expected ${expectedCrc}, found ${actualCrc}; delta ${checksumDelta}; counter ${counter}; timestamp ${rawTimestamp}; header-inclusive candidate ${headerInclusiveCrc}.`,
+          recoverable: true,
+          offset: absoluteOffset + blockLength - 1,
+        });
+        diagnosticCpuMs += now() - diagnosticStart;
+      }
+    }
+    checksumCpuMs += Math.max(
+      0,
+      now() - checksumStarted - (diagnosticCpuMs - diagnosticBefore),
+    );
+
+    await sidecarPromise;
+    pendingRead = nextRead;
+  }
+
+  return {
+    crcValid,
+    diagnostics,
+    performance: {
+      totalMs: now() - totalStart,
+      sourceReadMs,
+      checksumCpuMs,
+      diagnosticCpuMs,
+      checksumBytes,
+    },
+  };
+}
+'''
+          path.write_text(text[:start] + new + text[end:])
+          PY
+      - name: Commit patch when changed
+        run: |
+          if git diff --quiet -- apps/web/src/workers/mlg-import.worker.ts; then
+            exit 0
+          fi
+          git config user.name "EpicScope Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/web/src/workers/mlg-import.worker.ts
+          git commit -m "Perf: pipeline serial validation with sidecar IO"
+          git push origin HEAD:perf/mlg-sidecar-serial-pipeline-v1
