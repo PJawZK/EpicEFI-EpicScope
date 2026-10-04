@@ -1,5 +1,5 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Performance Requirements
@@ -13,7 +13,7 @@ EpicScope prioritizes:
 3. responsiveness under large datasets;
 4. visual polish.
 
-If visual effects or presentation complexity materially conflict with performance or memory goals, performance wins.
+If presentation complexity materially conflicts with performance or memory goals, performance wins.
 
 ## Primary Linux target
 
@@ -21,116 +21,159 @@ If visual effects or presentation complexity materially conflict with performanc
 
 The mature Linux application must be capable of opening and interactively analyzing a supported 1 GiB log on a system with 2 GiB physical RAM without requiring the entire source log to reside in memory at once.
 
-This is a design constraint, not merely a late optimization goal.
-
-### PERF-002 — No full-log duplication
+### PERF-002 — No uncontrolled full-log duplication
 
 Core architecture must not require uncontrolled duplicate in-memory copies of the full log for parsing, filtering, graphing, or analysis.
 
 ### PERF-003 — Bounded view queries
 
-Graph and table presentation should request only the data necessary for the active viewport or analysis operation where practical.
+Graph/table presentation should request only data necessary for the active viewport/operation where practical.
 
-### PERF-004 — Large-log capable storage model
+### PERF-004 — Native storage freedom
 
-The Linux implementation must be free to use streaming parsing, chunking, memory mapping, indexed storage, lazy decoding, downsampling, or other native techniques without changing product semantics.
+Linux remains free to use streaming, chunking, mmap, indexed/columnar storage, lazy decoding, downsampling, parallelism, or other native techniques without changing established product semantics.
 
 ## Web-stage policy
 
-EpicScope Web is the functional reference. It is not required to meet the final Linux memory target during early development.
+EpicScope Web is the functional reference, not the final Linux performance implementation.
 
-However, Web code must avoid architectural choices that inherently prevent later efficient implementation.
+Web code must still avoid architectures that inherently block later efficiency. Examples of unacceptable patterns include:
 
-Examples of unacceptable Web habits include:
+- one large object per sample without need;
+- repeated full channel copies per view;
+- full-log recomputation on every cursor/viewport move;
+- browser-storage representation leaking into analyzer semantics;
+- independent full source rereads per visible graph pane;
+- persisting decoded arrays merely to keep workspace structure alive.
 
-- representing every sample as a large independent object without need;
-- making repeated full copies of every channel for each view;
-- recalculating the entire log on every cursor/viewport movement;
-- coupling analyzer semantics to a browser-only storage representation;
-- re-reading the full log independently for every visible graph pane;
-- persisting decoded sample arrays merely to keep workspace/channel structure available without a log.
+## Current large-log benchmark authority
 
-## Current Web benchmark evidence
+Primary benchmark log:
 
-The primary large-log benchmark remains `2026-07-14_22.07.05.mlg`:
+`2026-07-14_22.07.05.mlg`
 
-- 1,193,898,186 bytes;
-- 320,458 records;
-- 1,389 channels;
-- MLVLG v2;
-- row-oriented layout, so arbitrary full-history column extraction can require reading broad portions of the original file.
+Structure:
 
-Current Web source parameters include 32 MiB Blob pages, an approximately 96 MiB source cache, and an approximately 64 MiB pinned-source allowance. A separate persistent decoded-channel cache is bounded to 128 stored columns and can be cleared from Settings.
+- **1,193,898,186 bytes**;
+- **320,458 records**;
+- **1,389 channels**;
+- MLVLG v2.
 
-### Authoritative low-spec cold baseline — 2026-10-03
+Important low-spec Web environment:
 
-Environment: Chromium 150 on Linux, 1,366×645 DPR 1, 2 logical threads, 4 GB RAM class. Browser history/cache and EpicScope decoded-channel cache were cleared before loading. No predecode parameter was used.
+- Chromium/Brave class browser on Linux;
+- 1,366×645 DPR 1;
+- 2 logical threads;
+- 4 GB RAM class machine.
 
-Initial load/index:
+Hardware/storage variance is significant; individual timings are evidence, not universal SLAs.
 
-- total: **4,885.7 ms**;
-- record read: **4,571.3 ms**;
-- record CPU: **135.7 ms**;
-- 36 physical reads / **1,193,898,186 bytes**.
+## Current Web large-log access architecture
 
-Workspace restore for 11 unique requested channels:
+The earlier row-oriented repeated-read problem is no longer the active architecture question.
 
-- total: **6,007.3 ms**;
-- shared batch: **5,213.5 ms**;
-- source-read await: **4,442.7 ms**;
-- decode/transform: **748.9 ms**;
-- 36 physical reads / **1,193,898,186 bytes**.
+Current access layers are:
 
-Deferred serial validation:
+1. **Session/RAM full-range cache** for channels already materialized in the page session.
+2. **Primary OPFS MLG column sidecar** storing transposed native-width stripes.
+3. **Sparse native per-channel OPFS cache** created only for channels the user actually selects.
+4. **Original row-reader fallback** for unsupported/missing/corrupt paths.
 
-- validation: **6,577.8 ms**;
-- validation read: **4,415.1 ms**;
-- checksum CPU: **2,114.0 ms**;
-- fully validated: **18,034.4 ms** from initial open start.
+### Primary sidecar
 
-The baseline confirms that cold low-spec performance is primarily source-I/O dominated. INI parsing/binding and UI population are secondary costs.
+Authoritative configuration on the canonical benchmark log:
 
-### Desktop class
+- 59 stripes;
+- target stripe width: **64 bytes**;
+- stored native payload: **1,191,462,844 bytes**.
 
-Desktop runs on the same 1.19 GB source remain dramatically faster (roughly ~1 s class for initial load and shared workspace restore in representative runs), demonstrating that the same architecture is highly sensitive to storage/hardware throughput. Desktop results remain a regression check, but low-spec hardware is the acceptance gate for changes that affect I/O, allocation or scheduling.
+A 16-byte stripe prototype was rejected because stripe count/transpose cost rose materially without enough end-to-end channel-selection benefit.
 
-### Opportunistic predecode experiment — rejected direction
+### Sparse native per-channel cache
 
-A/B experiments decoded total batches of 32, 64 and 128 channels during the existing workspace traversal. The physical traversal remained a single 36-read / ~1.194 GB pass, but extra CPU/memory-side work increased with batch size. More importantly, only the preselected channels became cheap afterward; arbitrary channels outside the set retained the original cost.
+The native-column path allows later sessions to read the selected field directly rather than reading a complete stripe. Missing/stale/corrupt entries fall back safely to the primary sidecar.
 
-The experiment therefore demonstrated a useful mechanism but a poor product trade: **startup work was shifted, not removed**. PR #130 removed the predecode experiment. Future work must not front-load arbitrary channel subsets merely to improve later selection latency.
+The native-column root is intentionally separate from the primary sidecar so ordinary sidecar rebuilds do not erase useful sparse columns. Explicit **Clear channel cache** remains the user-controlled reset path.
 
-### Current interpretation and optimization target
+## Current performance interpretation
 
-The active problem is not graph rendering. It is repeated access to a row-oriented 1.19 GB source when arbitrary full-history channels are requested.
+The optimization campaign is considered **good enough for the current product stage**.
 
-Current priority is to investigate methods that improve arbitrary first-use access without worsening the normal cold open path, especially:
+A recent post-audit low-spec run on the canonical log showed approximately:
 
-- reusing worker/index work or source knowledge produced during initial load;
-- reducing duplicate worker/main-thread physical traversal where possible;
-- building compact access/index information during already-required work rather than decoding speculative channels;
-- evaluating transient or persistent post-index representations only if their build/startup/memory cost is demonstrably better than the problem they solve;
-- avoiding extra validation reads if checksum/diagnostic work can safely consume bytes already read without extending time-to-usable.
+- initial MLG load: **8.47 s**;
+- workspace restore: **0.54 s**;
+- shared workspace data batch: only a few milliseconds with **zero original-log physical rereads**;
+- first native-cached arbitrary-channel activation: about **0.27 s** total;
+- repeated same-session channel activation: about **0.05 s** total, with effectively free data lookup.
 
-The persistent decoded-channel cache remains useful for channels already decoded once, but it is not considered a solution to first-use arbitrary-channel latency.
+Other runs have been faster/slower depending on I/O and browser scheduling. Do not reduce the project state to one timing number.
 
-The performance acceptance rule is explicit: **do not make startup slower merely to make selected channels faster later.**
+The architectural conclusions are more important:
+
+- workspace restore no longer needs repeated original-MLG traversal;
+- previously used arbitrary channels can reuse sparse native columns across sessions;
+- repeated same-session activation is RAM-resident;
+- first-use sidecar/native work is sufficiently fast to move product focus back to features/UI;
+- remaining render/envelope/layout cost is sub-second class and not an active optimization target.
+
+## Time-to-usable vs background completion
+
+Do not collapse these into one metric:
+
+- initial source open/index;
+- UI readiness;
+- workspace restore;
+- deferred CRC validation;
+- sidecar/native persistence completion.
+
+Background validation/storage work may continue after the user can interact with the recording.
+
+## Concluded/rejected experiments
+
+### Opportunistic startup predecode
+
+`predecode=32/64/128` proved that many columns can share one source traversal, but it simply moved arbitrary-channel work into startup and benefited only a chosen subset.
+
+The runtime path was fully removed. Do not restore speculative startup hot sets without a new architectural decision and evidence.
+
+### 16-byte sidecar stripes
+
+Rejected as the default because extra transpose/build cost outweighed practical channel-selection benefit. Keep 64-byte target stripes unless new evidence changes the trade.
+
+### Generic multilevel graph-envelope experiment
+
+A coarse multilevel envelope approach regressed the tested restore/render path and was reverted. Do not reintroduce it without new evidence.
+
+## Current optimization policy
+
+Do **not** continue storage/channel/render micro-optimization simply because further work is possible.
+
+Resume focused performance engineering when:
+
+- a meaningful new feature introduces a measurable regression;
+- representative logs/hardware expose a new bottleneck;
+- Web functional maturity requires a final profiling pass;
+- Linux production implementation begins.
+
+This keeps complexity proportional to user benefit.
 
 ## Benchmark categories
 
-Performance tests should eventually cover at least:
+Performance tests should eventually cover:
 
 - parser throughput;
-- initial metadata/channel discovery time;
+- metadata/channel discovery;
 - time to first usable graph;
-- indexing time;
+- indexing/sidecar build/reuse;
 - memory high-water mark;
+- arbitrary first-channel activation;
+- repeated channel activation;
 - viewport query latency;
-- histogram/heatmap calculation latency;
-- event-detection throughput;
+- histogram/heatmap calculation;
+- event detection;
 - analyzer throughput;
-- comparison throughput;
-- repeated-navigation responsiveness after indexing.
+- comparison throughput.
 
 Representative benchmark names may include:
 
@@ -138,6 +181,7 @@ Representative benchmark names may include:
 parse_100mb_mlg
 open_1gb_mlg
 index_1gb_log
+first_channel_large_log
 viewport_query_large_log
 histogram_large_log
 boost_analysis_large_log
@@ -146,46 +190,48 @@ memory_ceiling_1gb_log
 
 ## Benchmark discipline
 
-During Web development, benchmarks primarily detect regressions and obviously poor designs. They do not need to satisfy the final Linux target yet.
+A performance result should record where applicable:
 
-During Linux development, measurable targets should be established from real hardware and representative logs before optimization claims are accepted.
+- workload/log;
+- exact build SHA;
+- browser/hardware/OS and logical thread count;
+- cold/warm state;
+- browser/cache/sidecar/native-column state;
+- requested/unique channel count;
+- physical read bytes/time;
+- decode/transform CPU;
+- initial load time;
+- workspace restore breakdown;
+- arbitrary-channel breakdown;
+- subjective responsiveness;
+- memory/GC pressure where observable.
 
-## Optimization policy
-
-Optimization should be evidence-driven.
-
-A performance change should ideally record:
-
-- workload/log used;
-- hardware/OS used;
-- before measurement;
-- after measurement;
-- memory impact;
-- behavioural compatibility;
-- trade-offs introduced.
-
-Micro-optimizations that materially increase complexity without measurable user benefit should be rejected.
+Do not claim MegaLogViewer's internal strategy as fact. It remains only a behavioral comparison target.
 
 ## UI performance
 
-The UI should prefer clarity and responsiveness over decorative work.
+UI hierarchy work must preserve responsiveness while reducing clutter.
 
-Potentially expensive visual effects such as continuous animation, heavy blur, large DOM trees, or unnecessary redraws should not be introduced merely for appearance.
+Avoid:
 
-Graphs and timelines should support level-of-detail/downsample strategies so rendered point count does not scale directly with total log size.
+- continuous decorative animation;
+- heavy blur/effects;
+- large unbounded DOM trees;
+- inactive modes recomputing/redrawing;
+- permanent controls that create layout pressure without frequent value.
+
+Virtualized channel lists and bounded graph rendering remain appropriate.
 
 ## Future Linux implementation
 
-The Linux implementation may adopt native Rust or other performance-oriented components when justified by profiling and architecture.
-
-Potential techniques include:
+Potential native techniques include:
 
 - memory-mapped files;
-- channel-oriented columnar storage;
+- columnar/indexed storage;
 - chunk indexes;
 - parallel decoding/analysis;
-- SIMD where it provides meaningful gains;
-- persistent local index/cache files;
+- SIMD where useful;
+- persistent local indexes/caches;
 - multiresolution graph caches.
 
-No particular optimization technique is mandatory before evidence shows it is useful.
+No technique is mandatory before profiling justifies it.
