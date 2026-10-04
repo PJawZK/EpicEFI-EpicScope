@@ -65,7 +65,7 @@ export interface MlgCapturedPriorityColumn {
   readonly channelId: string;
   readonly values: Float64Array;
   readonly statistics: NumericChannelStatistics;
-  readonly envelopeBlocks: NumericChannelEnvelopeBlocks;
+  readonly envelopeBlocks: readonly NumericChannelEnvelopeBlocks[];
 }
 
 export interface MlgWorkerImportRequest {

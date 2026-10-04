@@ -100,6 +100,101 @@ export function buildEnvelopeBlockSummary(
   return { blockSize, validCount, invalidCount, first, firstTimeMs, min, minTimeMs, max, maxTimeMs, last, lastTimeMs };
 }
 
+function aggregateEnvelopeBlockSummary(
+  source: NumericChannelEnvelopeBlocks,
+  factor = 4,
+): NumericChannelEnvelopeBlocks {
+  if (!Number.isSafeInteger(factor) || factor <= 1) {
+    throw new RangeError(`Invalid envelope aggregation factor ${factor}.`);
+  }
+  const sourceCount = source.validCount.length;
+  const blockCount = Math.ceil(sourceCount / factor);
+  const blockSize = source.blockSize * factor;
+  if (blockSize > 65535) throw new RangeError(`Envelope block size ${blockSize} exceeds count capacity.`);
+
+  const validCount = new Uint16Array(blockCount);
+  const invalidCount = new Uint16Array(blockCount);
+  const first = new Float64Array(blockCount); first.fill(Number.NaN);
+  const firstTimeMs = new Float64Array(blockCount); firstTimeMs.fill(Number.NaN);
+  const min = new Float64Array(blockCount); min.fill(Number.NaN);
+  const minTimeMs = new Float64Array(blockCount); minTimeMs.fill(Number.NaN);
+  const max = new Float64Array(blockCount); max.fill(Number.NaN);
+  const maxTimeMs = new Float64Array(blockCount); maxTimeMs.fill(Number.NaN);
+  const last = new Float64Array(blockCount); last.fill(Number.NaN);
+  const lastTimeMs = new Float64Array(blockCount); lastTimeMs.fill(Number.NaN);
+
+  for (let block = 0; block < blockCount; block += 1) {
+    const childStart = block * factor;
+    const childEnd = Math.min(sourceCount, childStart + factor);
+    let totalValid = 0;
+    let totalInvalid = 0;
+    for (let child = childStart; child < childEnd; child += 1) {
+      const childValid = source.validCount[child] ?? 0;
+      totalInvalid += source.invalidCount[child] ?? 0;
+      if (childValid === 0) continue;
+
+      const childFirst = source.first[child];
+      const childFirstTime = source.firstTimeMs[child];
+      const childMin = source.min[child];
+      const childMinTime = source.minTimeMs[child];
+      const childMax = source.max[child];
+      const childMaxTime = source.maxTimeMs[child];
+      const childLast = source.last[child];
+      const childLastTime = source.lastTimeMs[child];
+      if (
+        childFirst === undefined || childFirstTime === undefined
+        || childMin === undefined || childMinTime === undefined
+        || childMax === undefined || childMaxTime === undefined
+        || childLast === undefined || childLastTime === undefined
+      ) continue;
+
+      if (totalValid === 0) {
+        first[block] = childFirst;
+        firstTimeMs[block] = childFirstTime;
+        min[block] = childMin;
+        minTimeMs[block] = childMinTime;
+        max[block] = childMax;
+        maxTimeMs[block] = childMaxTime;
+      } else {
+        if (childMin < (min[block] ?? Number.POSITIVE_INFINITY)) {
+          min[block] = childMin;
+          minTimeMs[block] = childMinTime;
+        }
+        if (childMax > (max[block] ?? Number.NEGATIVE_INFINITY)) {
+          max[block] = childMax;
+          maxTimeMs[block] = childMaxTime;
+        }
+      }
+      last[block] = childLast;
+      lastTimeMs[block] = childLastTime;
+      totalValid += childValid;
+    }
+    validCount[block] = totalValid;
+    invalidCount[block] = totalInvalid;
+  }
+
+  return { blockSize, validCount, invalidCount, first, firstTimeMs, min, minTimeMs, max, maxTimeMs, last, lastTimeMs };
+}
+
+export function buildEnvelopeBlockHierarchy(
+  values: Float64Array,
+  timeMs: Float64Array,
+  validity: Uint8Array,
+  baseBlockSize = 64,
+  levelCount = 3,
+): readonly NumericChannelEnvelopeBlocks[] {
+  if (!Number.isSafeInteger(levelCount) || levelCount <= 0) {
+    throw new RangeError(`Invalid envelope hierarchy level count ${levelCount}.`);
+  }
+  const levels: NumericChannelEnvelopeBlocks[] = [
+    buildEnvelopeBlockSummary(values, timeMs, validity, baseBlockSize),
+  ];
+  while (levels.length < levelCount) {
+    levels.push(aggregateEnvelopeBlockSummary(levels[levels.length - 1]!, 4));
+  }
+  return levels;
+}
+
 function viewportX(timeMs: number, startMs: number, span: number, pixelWidth: number): number {
   const normalized = (timeMs - startMs) / span;
   return Math.min(pixelWidth - 1, Math.max(0, Math.floor(normalized * pixelWidth)));
@@ -107,7 +202,7 @@ function viewportX(timeMs: number, startMs: number, span: number, pixelWidth: nu
 
 export function buildViewportEnvelopeFromBlocks(
   range: NumericChannelRange,
-  blocks: NumericChannelEnvelopeBlocks,
+  blocks: NumericChannelEnvelopeBlocks | readonly NumericChannelEnvelopeBlocks[],
   startMs: number,
   endMs: number,
   pixelWidth: number,
@@ -118,9 +213,10 @@ export function buildViewportEnvelopeFromBlocks(
   if (!Number.isSafeInteger(pixelWidth) || pixelWidth <= 0) {
     throw new RangeError(`Invalid viewport width ${pixelWidth}.`);
   }
-  if (!Number.isSafeInteger(blocks.blockSize) || blocks.blockSize <= 0) {
-    return buildViewportEnvelope(range, startMs, endMs, pixelWidth);
-  }
+  const levels = (Array.isArray(blocks) ? blocks : [blocks])
+    .filter((level) => Number.isSafeInteger(level.blockSize) && level.blockSize > 0)
+    .sort((left, right) => right.blockSize - left.blockSize);
+  if (levels.length === 0) return buildViewportEnvelope(range, startMs, endMs, pixelWidth);
 
   const span = Math.max(1e-9, endMs - startMs);
   const buckets: Array<BucketState | undefined> = new Array(pixelWidth);
@@ -151,23 +247,23 @@ export function buildViewportEnvelopeFromBlocks(
     mergePoint(time, value);
   };
 
-  const mergeBlock = (block: number): boolean => {
-    const count = blocks.validCount[block] ?? 0;
+  const mergeBlock = (level: NumericChannelEnvelopeBlocks, block: number): boolean => {
+    const count = level.validCount[block] ?? 0;
     if (count === 0) {
-      invalidSampleCount += blocks.invalidCount[block] ?? 0;
+      invalidSampleCount += level.invalidCount[block] ?? 0;
       return true;
     }
-    const firstTime = blocks.firstTimeMs[block];
-    const lastTime = blocks.lastTimeMs[block];
+    const firstTime = level.firstTimeMs[block];
+    const lastTime = level.lastTimeMs[block];
     if (firstTime === undefined || lastTime === undefined || !Number.isFinite(firstTime) || !Number.isFinite(lastTime)) return false;
     const x = viewportX(firstTime, startMs, span, pixelWidth);
     if (x !== viewportX(lastTime, startMs, span, pixelWidth)) return false;
-    const firstValue = blocks.first[block];
-    const minValue = blocks.min[block];
-    const maxValue = blocks.max[block];
-    const lastValue = blocks.last[block];
-    const minTime = blocks.minTimeMs[block];
-    const maxTime = blocks.maxTimeMs[block];
+    const firstValue = level.first[block];
+    const minValue = level.min[block];
+    const maxValue = level.max[block];
+    const lastValue = level.last[block];
+    const minTime = level.minTimeMs[block];
+    const maxTime = level.maxTimeMs[block];
     if ([firstValue, minValue, maxValue, lastValue, minTime, maxTime].some((value) => value === undefined || !Number.isFinite(value))) return false;
     const bucket = buckets[x];
     if (!bucket) {
@@ -183,25 +279,32 @@ export function buildViewportEnvelopeFromBlocks(
       bucket.last = lastValue!; bucket.lastTimeMs = lastTime;
     }
     validSampleCount += count;
-    invalidSampleCount += blocks.invalidCount[block] ?? 0;
+    invalidSampleCount += level.invalidCount[block] ?? 0;
     valueMin = Math.min(valueMin, minValue!); valueMax = Math.max(valueMax, maxValue!);
     return true;
   };
 
   const startIndex = lowerBound(range.timeMs, startMs);
   const endIndex = upperBound(range.timeMs, endMs);
-  const blockSize = blocks.blockSize;
   let index = startIndex;
   while (index < endIndex) {
-    const block = Math.floor(index / blockSize);
-    const blockStart = block * blockSize;
-    const blockEnd = Math.min(range.values.length, blockStart + blockSize);
-    const sliceEnd = Math.min(endIndex, blockEnd);
-    if (index === blockStart && sliceEnd === blockEnd && mergeBlock(block)) {
-      index = blockEnd;
-      continue;
+    let merged = false;
+    for (const level of levels) {
+      const blockSize = level.blockSize;
+      if (index % blockSize !== 0) continue;
+      const block = Math.floor(index / blockSize);
+      const blockStart = block * blockSize;
+      const blockEnd = Math.min(range.values.length, blockStart + blockSize);
+      if (blockStart !== index || blockEnd > endIndex) continue;
+      if (mergeBlock(level, block)) {
+        index = blockEnd;
+        merged = true;
+        break;
+      }
     }
-    while (index < sliceEnd) { scanSample(index); index += 1; }
+    if (merged) continue;
+    scanSample(index);
+    index += 1;
   }
 
   const columns: ViewportEnvelopeColumn[] = [];
