@@ -21,6 +21,7 @@ import {
 } from '../adapters/mlg-staged-import';
 import { createLoggerPage } from '../pages/logger-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
+import { evaluateBugReportHealth } from '../components/bug-report-health';
 import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/application-workspace-local-storage';
 import { createIniCatalogLocalStorageAdapter } from '../adapters/ini-catalog-local-storage';
 import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
@@ -404,38 +405,12 @@ export function mountAppShell(root: HTMLElement): void {
   const buildBugReport = (): { readonly text: string; readonly issueCount: number } => {
     const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();
     const workspaceState = loggerPage.getWorkspaceState();
-    const issues: string[] = [];
-    const warnings: string[] = [];
-
-    if (currentRawLog && !snapshot.hasChannelDataSource) {
-      issues.push('Log is loaded but Logger has no channel data source.');
-    }
-    if (currentRawLog && snapshot.channelDefinitionCount === 0) {
-      issues.push('Log is loaded but Logger has zero channel definitions.');
-    }
-    if (
-      snapshot.renderableAssignedChannelCount > 0
-      && snapshot.activeTraceCount < snapshot.renderableAssignedChannelCount
-    ) {
-      issues.push(
-        `${snapshot.renderableAssignedChannelCount - snapshot.activeTraceCount} of `
-        + `${snapshot.renderableAssignedChannelCount} renderable channels assigned to visible panes are not active.`,
-      );
-    }
-    if (snapshot.unavailableAssignedChannelCount > 0) {
-      warnings.push(
-        `${snapshot.unavailableAssignedChannelCount} assigned visible-pane channel(s) are unavailable in the current log.`,
-      );
-    }
-    if (snapshot.activeTraceCount > snapshot.renderableAssignedChannelCount) {
-      warnings.push('Active trace count exceeds renderable assigned visible-channel count.');
-    }
-    if (runtimeErrors.length > 0) {
-      issues.push(`${runtimeErrors.length} runtime error/unhandled rejection event(s) captured.`);
-    }
-    if (currentRawLog && activeIniCatalog && !activeIniBinding) {
-      warnings.push('INI catalog and log are loaded but no current INI/MLG binding is recorded.');
-    }
+    const { issues, warnings } = evaluateBugReportHealth(snapshot, {
+      logLoaded: currentRawLog !== undefined,
+      iniLoaded: activeIniCatalog !== undefined,
+      bindingActive: activeIniBinding !== undefined,
+      runtimeErrorCount: runtimeErrors.length,
+    });
 
     const source = currentRawLog?.summary.source;
     const bindingMetrics = activeIniBinding?.metrics;
