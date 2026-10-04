@@ -46,7 +46,38 @@
   font-size: 9px;
 }
 
-.histogram-controls {
+.histogram-head-actions {
+  display: grid;
+  gap: 7px;
+  justify-items: end;
+}
+
+.histogram-view-switch {
+  display: inline-flex;
+  gap: 3px;
+  padding: 2px;
+  border: 1px solid #29404f;
+  border-radius: 4px;
+  background: #09151d;
+}
+
+.histogram-view-choice {
+  min-height: 25px;
+  border: 0;
+  border-radius: 3px;
+  padding: 0 10px;
+  background: transparent;
+  color: #8297a5;
+  font-size: 9px;
+}
+
+.histogram-view-choice--active {
+  background: #153b59;
+  color: #edf7fc;
+}
+
+.histogram-controls,
+.heatmap-controls {
   display: flex;
   align-items: flex-end;
   gap: 7px;
@@ -54,12 +85,18 @@
   justify-content: flex-end;
 }
 
-.histogram-controls label {
+.histogram-controls[hidden] {
+  display: none;
+}
+
+.histogram-controls label,
+.heatmap-controls label {
   display: grid;
   gap: 4px;
 }
 
-.histogram-controls label > span {
+.histogram-controls label > span,
+.heatmap-controls label > span {
   color: #78909e;
   font-size: 8px;
   font-weight: 700;
@@ -68,7 +105,9 @@
 }
 
 .histogram-controls select,
-.histogram-refresh {
+.histogram-refresh,
+.heatmap-controls select,
+.heatmap-refresh {
   min-height: 29px;
   border: 1px solid #2f4b59;
   border-radius: 3px;
@@ -77,20 +116,25 @@
   font-size: 9px;
 }
 
-.histogram-controls select {
+.histogram-controls select,
+.heatmap-controls select {
   min-width: 170px;
   padding: 0 7px;
 }
 
-.histogram-bin-count {
+.histogram-bin-count,
+.heatmap-x-bins,
+.heatmap-y-bins {
   min-width: 72px !important;
 }
 
-.histogram-refresh {
+.histogram-refresh,
+.heatmap-refresh {
   padding: 0 11px;
 }
 
-.histogram-empty {
+.histogram-empty,
+.heatmap-empty {
   display: grid;
   place-items: center;
   gap: 5px;
@@ -101,51 +145,70 @@
   text-align: center;
 }
 
-.histogram-empty strong {
+.histogram-empty strong,
+.heatmap-empty strong {
   color: #dbe8ef;
   font-size: 12px;
 }
 
-.histogram-empty span {
+.histogram-empty span,
+.heatmap-empty span {
   max-width: 520px;
   color: #79909f;
   font-size: 9px;
   line-height: 1.5;
 }
 
-.histogram-content {
+.histogram-content,
+.heatmap-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
   gap: 10px;
 }
 
-.histogram-content[hidden] {
+.histogram-content {
+  grid-template-columns: minmax(0, 1fr) 290px;
+}
+
+.histogram-content[hidden],
+.heatmap-content[hidden],
+.histogram-view-hidden,
+.heatmap-view[hidden] {
   display: none;
 }
 
-.histogram-summary {
-  grid-column: 1 / -1;
+.histogram-summary,
+.heatmap-summary {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 5px;
 }
 
+.histogram-summary {
+  grid-column: 1 / -1;
+}
+
 .histogram-summary > div,
 .histogram-range-summary,
 .histogram-table-wrap,
-.histogram-chart-wrap {
+.histogram-chart-wrap,
+.heatmap-summary > div,
+.heatmap-axis-summary,
+.heatmap-chart-wrap {
   border: 1px solid #263b4c;
   border-radius: 4px;
   background: #0b171f;
 }
 
-.histogram-summary > div {
+.histogram-summary > div,
+.heatmap-summary > div {
   min-width: 0;
   padding: 7px 9px;
 }
 
 .histogram-summary span,
-.histogram-range-summary span {
+.histogram-range-summary span,
+.heatmap-summary span,
+.heatmap-axis-summary span {
   color: #78909e;
   font-size: 7px;
   font-weight: 700;
@@ -153,7 +216,8 @@
   letter-spacing: .04em;
 }
 
-.histogram-summary strong {
+.histogram-summary strong,
+.heatmap-summary strong {
   display: block;
   margin-top: 3px;
   overflow: hidden;
@@ -164,31 +228,41 @@
   white-space: nowrap;
 }
 
-.histogram-chart-wrap {
+.histogram-chart-wrap,
+.heatmap-chart-wrap {
   min-height: 340px;
   padding: 8px;
 }
 
-.histogram-chart {
+.histogram-chart,
+.heatmap-chart {
   width: 100%;
   height: 100%;
   min-height: 320px;
   display: block;
 }
 
-.histogram-range-summary {
-  grid-column: 1;
+.histogram-range-summary,
+.heatmap-axis-summary {
   display: flex;
   align-items: center;
   gap: 18px;
   padding: 7px 9px;
+  flex-wrap: wrap;
 }
 
-.histogram-range-summary strong {
+.histogram-range-summary {
+  grid-column: 1;
+}
+
+.histogram-range-summary strong,
+.heatmap-axis-summary strong {
   margin-left: 4px;
   color: #dceaf1;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .histogram-table-wrap {
@@ -232,13 +306,34 @@
   color: #cddce4;
 }
 
+.heatmap-view {
+  display: grid;
+  gap: 10px;
+}
+
+.heatmap-controls {
+  padding: 9px 10px;
+  border: 1px solid #273d4d;
+  border-radius: 4px;
+  background: #0b171f;
+}
+
+.heatmap-content {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 900px) {
   .histogram-surface-head {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .histogram-controls {
+  .histogram-head-actions {
+    justify-items: start;
+  }
+
+  .histogram-controls,
+  .heatmap-controls {
     justify-content: flex-start;
   }
 
@@ -246,7 +341,8 @@
     grid-template-columns: 1fr;
   }
 
-  .histogram-summary {
+  .histogram-summary,
+  .heatmap-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 

@@ -1,6 +1,7 @@
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import { buildNumericHistogram, type NumericHistogramResult } from '../../../../core/analysis/histogram';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
+import { createHeatmapView } from './heatmap-view';
 
 export interface HistogramTraceContext {
   readonly channel: ChannelDefinition;
@@ -30,6 +31,8 @@ function formatNumber(value: number | undefined, precision = 3): string {
 export function createHistogramPage(): HistogramPageController {
   let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHistogramResult | undefined;
+  let activeView: 'distribution' | 'heatmap' = 'distribution';
+  const heatmapView = createHeatmapView();
 
   const page = document.createElement('main');
   page.className = 'histogram-page';
@@ -38,32 +41,38 @@ export function createHistogramPage(): HistogramPageController {
     <section class="histogram-surface-head">
       <div>
         <span class="histogram-eyebrow">Histogram</span>
-        <h1>Selected range distribution</h1>
-        <p>Distribution of one active decoded channel inside the current Logger A/B range.</p>
+        <h1 class="histogram-title">Selected range distribution</h1>
+        <p class="histogram-description">Distribution of one active decoded channel inside the current Logger A/B range.</p>
       </div>
-      <div class="histogram-controls">
-        <label>
-          <span>Channel</span>
-          <select class="histogram-channel"></select>
-        </label>
-        <label>
-          <span>Bins</span>
-          <select class="histogram-bin-count">
-            <option value="10">10</option>
-            <option value="20" selected>20</option>
-            <option value="30">30</option>
-            <option value="40">40</option>
-            <option value="60">60</option>
-          </select>
-        </label>
-        <button type="button" class="histogram-refresh">Refresh</button>
+      <div class="histogram-head-actions">
+        <div class="histogram-view-switch" role="group" aria-label="Histogram analysis view">
+          <button type="button" class="histogram-view-choice histogram-view-choice--active" data-histogram-view="distribution" aria-pressed="true">Distribution</button>
+          <button type="button" class="histogram-view-choice" data-histogram-view="heatmap" aria-pressed="false">Heatmap</button>
+        </div>
+        <div class="histogram-controls">
+          <label>
+            <span>Channel</span>
+            <select class="histogram-channel"></select>
+          </label>
+          <label>
+            <span>Bins</span>
+            <select class="histogram-bin-count">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="60">60</option>
+            </select>
+          </label>
+          <button type="button" class="histogram-refresh">Refresh</button>
+        </div>
       </div>
     </section>
-    <section class="histogram-empty">
+    <section class="histogram-empty histogram-distribution-surface">
       <strong>Histogram needs a selected range.</strong>
       <span>Return to Logger, set A and B, and keep the channel you want to analyze active in the current graph pane.</span>
     </section>
-    <section class="histogram-content" hidden>
+    <section class="histogram-content histogram-distribution-surface" hidden>
       <div class="histogram-summary">
         <div><span>Scope</span><strong data-summary="scope">—</strong></div>
         <div><span>Coverage</span><strong data-summary="coverage">—</strong></div>
@@ -88,15 +97,20 @@ export function createHistogramPage(): HistogramPageController {
       </div>
     </section>
   `;
+  page.append(heatmapView.element);
 
+  const title = page.querySelector<HTMLElement>('.histogram-title');
+  const description = page.querySelector<HTMLElement>('.histogram-description');
   const channelSelect = page.querySelector<HTMLSelectElement>('.histogram-channel');
   const binCountSelect = page.querySelector<HTMLSelectElement>('.histogram-bin-count');
   const refreshButton = page.querySelector<HTMLButtonElement>('.histogram-refresh');
+  const controls = page.querySelector<HTMLElement>('.histogram-controls');
   const empty = page.querySelector<HTMLElement>('.histogram-empty');
   const content = page.querySelector<HTMLElement>('.histogram-content');
   const canvas = page.querySelector<HTMLCanvasElement>('.histogram-chart');
   const tableBody = page.querySelector<HTMLTableSectionElement>('.histogram-table tbody');
-  if (!channelSelect || !binCountSelect || !refreshButton || !empty || !content || !canvas || !tableBody) {
+  const viewChoices = [...page.querySelectorAll<HTMLButtonElement>('[data-histogram-view]')];
+  if (!title || !description || !channelSelect || !binCountSelect || !refreshButton || !controls || !empty || !content || !canvas || !tableBody) {
     throw new Error('Histogram surface structure is incomplete.');
   }
 
@@ -183,7 +197,7 @@ export function createHistogramPage(): HistogramPageController {
     tableBody.replaceChildren(...rows);
   };
 
-  const render = (): void => {
+  const renderDistribution = (): void => {
     const trace = selectedTrace();
     if (!trace || !hasValidRange()) {
       currentResult = undefined;
@@ -228,6 +242,30 @@ export function createHistogramPage(): HistogramPageController {
     renderTable(currentResult, trace.channel.unit);
   };
 
+  const renderActiveView = (): void => {
+    if (activeView === 'heatmap') heatmapView.refresh();
+    else renderDistribution();
+  };
+
+  const setActiveView = (nextView: 'distribution' | 'heatmap'): void => {
+    activeView = nextView;
+    const heatmapActive = activeView === 'heatmap';
+    controls.hidden = heatmapActive;
+    empty.classList.toggle('histogram-view-hidden', heatmapActive);
+    content.classList.toggle('histogram-view-hidden', heatmapActive);
+    heatmapView.element.hidden = !heatmapActive;
+    title.textContent = heatmapActive ? 'Selected range heatmap' : 'Selected range distribution';
+    description.textContent = heatmapActive
+      ? 'Two-dimensional sample density across two active decoded channels inside the current Logger A/B range.'
+      : 'Distribution of one active decoded channel inside the current Logger A/B range.';
+    for (const choice of viewChoices) {
+      const selected = choice.dataset.histogramView === activeView;
+      choice.classList.toggle('histogram-view-choice--active', selected);
+      choice.setAttribute('aria-pressed', String(selected));
+    }
+    renderActiveView();
+  };
+
   const setContext = (nextContext: HistogramPageContext): void => {
     const previousChannel = channelSelect.value;
     context = nextContext;
@@ -238,19 +276,29 @@ export function createHistogramPage(): HistogramPageController {
     if (previousChannel && context.traces.some((trace) => trace.channel.id === previousChannel)) {
       channelSelect.value = previousChannel;
     }
-    render();
+    heatmapView.setContext(nextContext);
+    renderActiveView();
   };
 
-  channelSelect.addEventListener('change', render);
-  binCountSelect.addEventListener('change', render);
-  refreshButton.addEventListener('click', render);
+  channelSelect.addEventListener('change', renderDistribution);
+  binCountSelect.addEventListener('change', renderDistribution);
+  refreshButton.addEventListener('click', renderDistribution);
+  viewChoices.forEach((choice) => {
+    choice.addEventListener('click', () => {
+      const view = choice.dataset.histogramView;
+      if (view === 'distribution' || view === 'heatmap') setActiveView(view);
+    });
+  });
   new ResizeObserver(() => {
-    if (currentResult && !content.hidden) render();
+    if (activeView === 'distribution' && currentResult && !content.hidden && !page.hidden) renderDistribution();
   }).observe(canvas);
+
+  heatmapView.setContext(context);
+  setActiveView('distribution');
 
   return {
     element: page,
     setContext,
-    refresh: render,
+    refresh: renderActiveView,
   };
 }
