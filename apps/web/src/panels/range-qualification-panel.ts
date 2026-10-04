@@ -240,9 +240,9 @@ export function createRangeQualificationPanel(): RangeQualificationPanelControll
   const setRange = (nextStartMs: number | undefined, nextEndMs: number | undefined): void => {
     startMs = nextStartMs;
     endMs = nextEndMs;
-    const valid = startMs !== undefined && endMs !== undefined && startMs !== endMs;
+    const valid = nextStartMs !== undefined && nextEndMs !== undefined && nextStartMs !== nextEndMs;
     rangeText.textContent = valid
-      ? `A/B span ${formatDurationMs(Math.abs(endMs - startMs))}`
+      ? `A/B span ${formatDurationMs(Math.abs(nextEndMs - nextStartMs))}`
       : 'Set A and B to define a range.';
     runButton.disabled = !valid || channels.length === 0;
     resetResult();

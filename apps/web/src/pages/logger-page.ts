@@ -26,6 +26,8 @@ import { createParserDiagnosticsIndicator } from '../components/parser-diagnosti
 import { createInspectorPanel } from '../panels/inspector-panel';
 import { formatInspectorChannelValue } from '../panels/inspector-channel-view';
 import { createChannelValueSearchPanel } from '../panels/channel-value-search-panel';
+import { createRangeQualificationPanel } from '../panels/range-qualification-panel';
+import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import {
   normalizeWorkspaceChannelIds,
   renderableWorkspaceChannelIds,
@@ -322,8 +324,11 @@ export function createLoggerPage(): LoggerPageController {
   const timeline = createTimelineShell();
   const diagnostics = createParserDiagnosticsIndicator();
   const valueSearch = createChannelValueSearchPanel();
+  const rangeQualification = createRangeQualificationPanel();
   const graphSelector = createGraphSelector();
   let viewport: TimelineViewport | undefined;
+  let analysisStartMs: number | undefined;
+  let analysisEndMs: number | undefined;
   let previousCursorTimeMs = 0;
   let workspaceCounter = 1;
   let workspaceGeneration = 0;
@@ -571,6 +576,59 @@ export function createLoggerPage(): LoggerPageController {
     const pane = activePaneState();
     return paneRuntimes.find((runtime) => runtime.id === pane?.id) ?? paneRuntimes[0];
   };
+
+  const activeDecodedChannels = (): readonly ChannelDefinition[] => {
+    const runtime = activePaneRuntime();
+    return runtime
+      ? [...runtime.activeChannelIds].flatMap((id) => {
+          const channel = channelDefinitions.get(id);
+          return channel ? [channel] : [];
+        })
+      : [];
+  };
+
+  rangeQualification.setEvaluator((referenceChannelId, conditions) => {
+    const runtime = activePaneRuntime();
+    if (!runtime || analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) {
+      return undefined;
+    }
+    const traces = runtime.graph.getOverviewTraces();
+    const channels = new Map(traces.map((trace) => [
+      trace.channelId,
+      { range: trace.range, complete: false },
+    ]));
+    try {
+      return qualifyNumericSamples({
+        referenceChannelId,
+        channels,
+        conditions,
+        timeRange: { startMs: analysisStartMs, endMs: analysisEndMs },
+      });
+    } catch {
+      return undefined;
+    }
+  });
+
+  const analysisTrigger = timeline.element.querySelector<HTMLElement>('.timeline-analysis-context');
+  if (analysisTrigger) {
+    analysisTrigger.setAttribute('role', 'button');
+    analysisTrigger.tabIndex = 0;
+    analysisTrigger.title = 'Analyze the selected A/B range';
+    const openRangeAnalysis = (): void => {
+      if (analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) return;
+      const channels = activeDecodedChannels();
+      if (channels.length === 0) return;
+      rangeQualification.setChannels(channels);
+      rangeQualification.setRange(analysisStartMs, analysisEndMs);
+      rangeQualification.open();
+    };
+    analysisTrigger.addEventListener('click', openRangeAnalysis);
+    analysisTrigger.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openRangeAnalysis();
+    });
+  }
 
   const refreshWorkspaceSelector = (): void => {
     graphSelector.setWorkspaces(
@@ -1483,7 +1541,10 @@ export function createLoggerPage(): LoggerPageController {
   });
   timeline.onViewportIntent(applyViewportIntent);
   timeline.onAnnotationChange(({ aTimeMs, bTimeMs }) => {
+    analysisStartMs = aTimeMs;
+    analysisEndMs = bTimeMs;
     paneRuntimes.forEach((runtime) => runtime.graph.setAnalysisRange(aTimeMs, bTimeMs));
+    rangeQualification.setRange(aTimeMs, bTimeMs);
     refreshSelectedChannelStatistics();
   });
 
@@ -1654,7 +1715,7 @@ export function createLoggerPage(): LoggerPageController {
   });
 
   timelineWrap.append(timeline.element, timelineToggle);
-  page.append(workspaceRow, timelineWrap);
+  page.append(workspaceRow, timelineWrap, rangeQualification.element);
 
   const setChannelCatalog = (
     channels: readonly ChannelDefinition[],
