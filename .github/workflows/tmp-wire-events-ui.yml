@@ -1,0 +1,39 @@
+name: Temporary Events UI wiring
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-wire-events-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: analysis/events-ui-v1
+          fetch-depth: 0
+      - name: Apply Events UI patch
+        run: |
+          git show origin/main:scripts/tmp-wire-events-ui.py > /tmp/patch.py
+          python /tmp/patch.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit Events UI wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/pages/logger-page.ts apps/web/src/styles/logger-ui.css
+          git commit -m "Wire generic Events into range analysis"
+          git push origin HEAD:analysis/events-ui-v1
