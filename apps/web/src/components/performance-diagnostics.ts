@@ -104,6 +104,12 @@ export interface ChannelBindingPerformanceRun {
 export interface WorkspaceRestorePerformanceRun {
   readonly totalMs: number;
   readonly prepareMs: number;
+  readonly prepareStateMs: number;
+  readonly prepareClearMs: number;
+  readonly prepareLayoutMs: number;
+  readonly prepareViewportMs: number;
+  readonly preparePaneRequestsMs: number;
+  readonly prepareBatchPlanMs: number;
   readonly sharedBatchMs: number;
   readonly activationMs: number;
   readonly activationGraphTotalMs: number;
@@ -115,6 +121,13 @@ export interface WorkspaceRestorePerformanceRun {
   readonly activationDrawMs: number;
   readonly activationEnvelopeMs: number;
   readonly finalSyncMs: number;
+  readonly finalSyncResolveMs: number;
+  readonly finalSyncAssignedNormalizeMs: number;
+  readonly finalSyncInspectorActiveMs: number;
+  readonly finalSyncInspectorQueuedMs: number;
+  readonly finalSyncValueSearchMs: number;
+  readonly finalSyncAssignedSyncMs: number;
+  readonly finalSyncOverviewMs: number;
   readonly visiblePaneCount: number;
   readonly assignedChannelCount: number;
   readonly requestedChannelCount: number;
@@ -449,6 +462,13 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         '[Workspace restore]',
         `total=${latestRestore.totalMs.toFixed(2)} ms`,
         `prepare=${latestRestore.prepareMs.toFixed(2)} ms`,
+        `prepareState=${latestRestore.prepareStateMs.toFixed(2)} ms`,
+        `prepareClear=${latestRestore.prepareClearMs.toFixed(2)} ms`,
+        `prepareLayout=${latestRestore.prepareLayoutMs.toFixed(2)} ms`,
+        `prepareViewport=${latestRestore.prepareViewportMs.toFixed(2)} ms`,
+        `preparePaneRequests=${latestRestore.preparePaneRequestsMs.toFixed(2)} ms`,
+        `prepareBatchPlan=${latestRestore.prepareBatchPlanMs.toFixed(2)} ms`,
+        `prepareRemainder=${Math.max(0, latestRestore.prepareMs - latestRestore.prepareStateMs - latestRestore.prepareClearMs - latestRestore.prepareLayoutMs - latestRestore.prepareViewportMs - latestRestore.preparePaneRequestsMs - latestRestore.prepareBatchPlanMs).toFixed(2)} ms`,
         `sharedBatch=${latestRestore.sharedBatchMs.toFixed(2)} ms`,
         `activation=${latestRestore.activationMs.toFixed(2)} ms`,
         `activationGraphTotal=${latestRestore.activationGraphTotalMs.toFixed(2)} ms`,
@@ -462,6 +482,14 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         `activationDrawOther=${Math.max(0, latestRestore.activationDrawMs - latestRestore.activationEnvelopeMs).toFixed(2)} ms`,
         `activationRemainder=${Math.max(0, latestRestore.activationMs - latestRestore.activationGraphTotalMs).toFixed(2)} ms`,
         `finalSync=${latestRestore.finalSyncMs.toFixed(2)} ms`,
+        `finalSyncResolve=${latestRestore.finalSyncResolveMs.toFixed(2)} ms`,
+        `finalSyncAssignedNormalize=${latestRestore.finalSyncAssignedNormalizeMs.toFixed(2)} ms`,
+        `finalSyncInspectorActive=${latestRestore.finalSyncInspectorActiveMs.toFixed(2)} ms`,
+        `finalSyncInspectorQueued=${latestRestore.finalSyncInspectorQueuedMs.toFixed(2)} ms`,
+        `finalSyncValueSearch=${latestRestore.finalSyncValueSearchMs.toFixed(2)} ms`,
+        `finalSyncAssignedSync=${latestRestore.finalSyncAssignedSyncMs.toFixed(2)} ms`,
+        `finalSyncOverview=${latestRestore.finalSyncOverviewMs.toFixed(2)} ms`,
+        `finalSyncRemainder=${Math.max(0, latestRestore.finalSyncMs - latestRestore.finalSyncResolveMs - latestRestore.finalSyncAssignedNormalizeMs - latestRestore.finalSyncInspectorActiveMs - latestRestore.finalSyncInspectorQueuedMs - latestRestore.finalSyncValueSearchMs - latestRestore.finalSyncAssignedSyncMs - latestRestore.finalSyncOverviewMs).toFixed(2)} ms`,
         `visiblePanes=${latestRestore.visiblePaneCount}`,
         `assignedChannels=${latestRestore.assignedChannelCount}`,
         `requestedChannels=${latestRestore.requestedChannelCount}`,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEnvelopeBlockHierarchy, buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../core/timeline/viewport-series';
+import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../core/timeline/viewport-series';
 
 describe('buildViewportEnvelope', () => {
   it('excludes invalid samples while preserving first/min/max/last raw samples', () => {
@@ -50,26 +50,6 @@ describe('buildViewportEnvelope', () => {
 
     for (const [startMs, endMs, width] of [[0, timeMs[sampleCount - 1]!, 23], [113, 1400, 37], [500, 900, 11]] as const) {
       expect(buildViewportEnvelopeFromBlocks(range, blocks, startMs, endMs, width))
-        .toEqual(buildViewportEnvelope(range, startMs, endMs, width));
-    }
-  });
-
-  it('matches the raw envelope exactly with a multilevel 64/256/1024 hierarchy', () => {
-    const sampleCount = 4099;
-    const timeMs = Float64Array.from({ length: sampleCount }, (_, index) => index * 7 + (index % 11));
-    const values = Float64Array.from({ length: sampleCount }, (_, index) => Math.sin(index / 13) * 30 + Math.cos(index / 41) * 9);
-    const validity = Uint8Array.from({ length: sampleCount }, (_, index) => index % 97 === 0 || index % 211 === 0 ? 0 : 1);
-    const range = { startSampleIndex: 0, timeMs, values, validity };
-    const hierarchy = buildEnvelopeBlockHierarchy(values, timeMs, validity, 64, 3);
-
-    expect(hierarchy.map((level) => level.blockSize)).toEqual([64, 256, 1024]);
-    for (const [startMs, endMs, width] of [
-      [timeMs[0]!, timeMs[sampleCount - 1]!, 23],
-      [timeMs[0]!, timeMs[sampleCount - 1]!, 137],
-      [timeMs[321]!, timeMs[3777]!, 51],
-      [timeMs[1000]!, timeMs[1800]!, 311],
-    ] as const) {
-      expect(buildViewportEnvelopeFromBlocks(range, hierarchy, startMs, endMs, width))
         .toEqual(buildViewportEnvelope(range, startMs, endMs, width));
     }
   });

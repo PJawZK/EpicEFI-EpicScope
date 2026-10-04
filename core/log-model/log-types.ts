@@ -61,7 +61,7 @@ export interface NumericChannelRange {
   /** Optional full-range statistics computed while source samples were already being decoded. */
   readonly fullStatistics?: NumericChannelStatistics;
   /** Optional exact fixed-block envelope summaries for acceleration before CRC validity is refreshed. */
-  readonly fullEnvelopeBlocks?: readonly NumericChannelEnvelopeBlocks[];
+  readonly fullEnvelopeBlocks?: NumericChannelEnvelopeBlocks;
 }
 
 export interface NumericChannelBatchPerformance {
