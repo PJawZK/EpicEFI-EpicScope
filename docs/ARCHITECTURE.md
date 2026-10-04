@@ -1,14 +1,14 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Architecture
 
 ## Architectural objective
 
-EpicScope must support rapid Web feature development without coupling product behaviour to a browser-only implementation. The long-term production target is a highly optimized Linux application, followed later by Android / EpicHub reuse.
+EpicScope must support rapid Web feature development without coupling product behavior to a browser-only implementation. The long-term production target is a highly optimized Linux application, followed later by Android / EpicHub reuse.
 
-The architecture therefore separates **what the application does** from **how each platform executes it**.
+The architecture separates **what the application does** from **how each platform executes it**.
 
 ## Primary layers
 
@@ -31,9 +31,7 @@ Source files / platform data sources
         Presentation / UI
 ```
 
-This diagram describes product flow, not a rule that every code dependency must point linearly downward.
-
-`core/log-model/` is a neutral contract boundary: parsers depend on those contracts to produce normalized data, while analysis/services depend on them to consume normalized data.
+`core/log-model/` is a neutral contract boundary: parsers produce normalized data through it and consumers query those contracts.
 
 ## Layer responsibilities
 
@@ -41,64 +39,53 @@ This diagram describes product flow, not a rule that every code dependency must 
 
 Responsibilities:
 
-- read supported file formats;
-- validate format structure;
-- decode source-specific metadata and samples;
-- report recoverable and fatal parse errors;
+- read supported source formats;
+- validate structure/untrusted fields;
+- decode source-specific metadata/samples;
+- report recoverable/fatal parse errors;
 - produce normalized data through approved contracts.
 
-Initial source-format ownership includes MLG and deferred CSV log decoding, plus INI/MSQ source-context decoding as their roadmap tasks land. Current roadmap priority intentionally places INI channel-catalog work before deferred CSV; this changes implementation order, not parser ownership.
+Initial ownership includes MLG and deferred CSV logs plus INI/MSQ source-context decoding as roadmap tasks land.
 
 Parsers must not:
 
-- implement UI behaviour;
-- contain boost/idle/AE-specific analysis;
+- implement UI behavior;
+- contain Boost/Idle/AE-specific conclusions;
 - own tune recommendations;
-- expose source-format quirks directly to presentation code unless explicitly represented in normalized metadata.
-
-All parser/importer inputs are untrusted and must be bounded/validated before using file-provided sizes, offsets, counts, or other allocation-driving values.
+- leak raw source quirks directly into presentation unless explicitly represented in normalized metadata.
 
 ### Normalized log model
 
 Responsibilities:
 
-- common representation of channels, units, sample timing, metadata, validity, and source provenance;
-- provide stable contracts to analysis layers;
-- isolate analyzers from individual import formats.
-
-All supported log formats must normalize into this model before general analysis.
-
-Parsers produce these contracts; consumers query them. The model itself should not contain source-specific parsing behavior.
+- common channels/units/time/metadata/validity/provenance;
+- stable consumer contracts;
+- source-format isolation.
 
 ### Channel catalog and source binding
 
 Responsibilities:
 
-- represent stable logical channel identity independently of one opened MLG file;
-- accept known runtime/output-channel definitions from normalized INI information;
-- bind those logical channels to matching MLG channel/data sources when a log is opened;
-- preserve channels that are known from INI but unavailable in the current log;
-- preserve usable log-only channels that have no matching INI definition;
-- keep MLG sample values and validity authoritative for recorded data.
+- stable logical channel identity independent of one MLG;
+- normalized INI-known runtime/output channels;
+- logical→MLG binding when recorded data exists;
+- explicit known/no-data state;
+- explicit log-only channels;
+- MLG remains authoritative for recorded sample values and validity.
 
-The catalog/binding layer belongs under approved channel/source-context services rather than presentation code. Workspace persistence may reference stable logical channel keys once available; source-format record ordinals such as an MLG field index are not sufficient long-term workspace identity by themselves.
-
-INI is not required for ordinary MLG analysis. It enriches identity, organization, and persistence. MSQ is not the primary runtime-channel catalog; it later enriches tune/calibration values and tables.
+INI enriches identity/organization/persistence but is optional for ordinary MLG analysis. MSQ later enriches tune/calibration values rather than replacing the runtime channel catalog.
 
 ### Generic analysis primitives
 
-Responsibilities include reusable operations such as:
+Reusable operations such as:
 
-- filtering;
-- windowing;
+- filtering/qualification;
+- range/window statistics;
 - aggregation;
-- statistics;
-- resampling;
-- interpolation where approved;
-- histogram / heatmap generation;
+- resampling/interpolation where approved;
+- histogram/heatmap/table preparation;
 - scatter preparation;
-- downsampling for visualization;
-- sample qualification.
+- visualization downsampling.
 
 Generic analysis must not contain ECU-system-specific conclusions.
 
@@ -106,148 +93,155 @@ Generic analysis must not contain ECU-system-specific conclusions.
 
 Responsibilities:
 
-- detect reusable events from normalized channels;
-- expose event time ranges, labels, confidence/quality metadata, and evidence;
-- allow analyzers and comparison tools to reuse the same event definitions.
+- reusable event detection;
+- event time ranges/labels/confidence/evidence;
+- shared event definitions for analyzers/comparison/navigation.
 
 ### Tune services
 
 Responsibilities:
 
-- represent normalized tune and firmware context;
-- map logged operating points to tune structures;
-- expose table axes, cells, current values, targets, and relevant metadata;
-- avoid embedding presentation assumptions.
+- normalized firmware/tune context;
+- tables/axes/cells/current values;
+- operating-point mapping and tune-aware correlations.
 
-Raw INI/MSQ syntax decoding belongs to the parser layer. Tune services consume normalized decoded information rather than becoming source-format parsers themselves.
+Raw INI/MSQ syntax remains parser ownership.
 
 ### Compare services
 
 Responsibilities:
 
-- align sessions/events;
-- calculate deltas;
-- normalize comparable metrics;
-- support before/after and revision analysis.
+- session/event/range alignment;
+- metric deltas;
+- normalized comparison primitives;
+- before/after support independent of one UI surface.
 
 ### Session services
 
 Responsibilities:
 
-- compose logs, tune context, events, comparisons, annotations, and analyzer state into a coherent analysis session;
-- expose stable session-level relationships independently of presentation layout;
-- avoid becoming a second UI state store.
+- compose logs, tune context, events, comparison, annotations and analyzer state;
+- expose domain relationships without becoming a UI-state store.
 
 ### Persistence services
 
 Responsibilities:
 
 - versioned serialization/deserialization;
-- schema migration;
-- storage-independent persisted-artifact contracts;
-- explicit compatibility errors for unsupported versions.
+- migration/compatibility;
+- storage-independent artifact contracts.
 
-Browser storage, Linux filesystem storage, cloud/share services, and future Android storage are platform adapters around these contracts rather than assumptions embedded into the session model.
+Browser/Linux/Android storage are adapters around these contracts.
 
-Persistence must distinguish long-lived application/workspace configuration from recording-specific analysis state. Named workspaces, pane layouts and stable channel assignments may exist before a log is loaded; viewport/cursor/A-B positions and log annotations remain associated with the relevant recording/session.
+Persistence must distinguish reusable application workspace from recording-specific analysis state.
 
 ### Specialized analyzers
 
-Responsibilities:
+Specialized analyzers compose generic primitives/events/tune/compare services into domain-specific evidence and findings.
 
-- compose generic primitives, events, tune context, and comparisons into domain-specific analysis;
-- expose evidence, metrics, and findings through stable analyzer contracts.
+Initial planned families: Boost, Idle/PID, AE/MAP Predict, Fueling, Ignition/Knock, Fuel Pressure/Injector, Trigger/Sync.
 
-Initial planned analyzers include boost, idle/PID, AE/MAP Predict, fueling, ignition/knock, fuel pressure/injector, and trigger/sync.
-
-Specialized analyzers must not parse source files directly.
+Specialized analyzers do not parse source files directly.
 
 ### Presentation / UI
 
 Responsibilities:
 
-- display data and findings;
-- manage user interaction, workspace layout, filters, selections, panels, and navigation;
-- request bounded data suitable for the current view;
+- display data/findings;
+- manage interaction, layout, panels, selections and navigation;
+- make workflow order clear;
+- request bounded data appropriate to the current view;
 - avoid owning duplicate authoritative analysis logic.
 
-The UI must not become a second analysis engine.
+Current UI workflow authority is:
 
-<!-- CURRENT_STATE:web-active-channel-data-path:START -->
+> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
+
+The EpicScope logo dropdown owns mode/surface switching. It is presentation navigation only and does not redefine analysis/service ownership.
+
 ## Current Web large-log data path
 
-The browser implementation currently distinguishes source indexing, workspace restore, and later arbitrary channel access:
+The current browser implementation uses a layered post-index architecture rather than repeated original-row traversal for normal restored/arbitrary channel use:
 
-- initial MLG loading/indexing performs the required source scan without speculative arbitrary-channel predecode;
-- saved/assigned visible workspace channels are decoded as one shared full-range multi-channel batch before pane activation, amortizing one row-oriented source traversal across the channels actually requested;
-- a bounded persistent decoded-channel cache may reuse channels that have already been decoded, but it is not allowed to redefine normal startup around a speculative hot set;
-- the cache is bounded and explicitly clearable so it does not become an unbounded hidden dependency for correctness or benchmarking;
-- known-but-unavailable logical channels remain part of workspace structure without fabricated samples.
+1. **Session/RAM full-range cache** for already materialized channels.
+2. **Primary OPFS MLG column sidecar** storing transposed native-width stripes.
+3. **Sparse native per-channel OPFS cache** for channels the user actually selects.
+4. **Original row-reader fallback** when the optimized representation is unavailable/invalid.
 
-The `predecode=32/64/128` experiment proved that extra columns can share the workspace source traversal, but it was rejected because it moves arbitrary-channel work into startup and benefits only a selected subset. That experiment was removed in PR #130.
+The primary canonical sidecar currently uses a 64-byte target stripe width (59 stripes on the 1.19 GB benchmark log). A 16-byte stripe experiment was rejected because it increased build/transpose cost without enough end-to-end gain.
 
-The active architectural question is now how to reduce repeated full-file row-oriented access for arbitrary first-use channels **without extending the normal initial open path**. Candidate solutions may reuse work/index information from the initial worker scan or introduce a better post-index access representation, but they must remain behind normalized data-source contracts and must be benchmarked for startup, memory, physical I/O and low-spec behavior.
+The sparse native-column cache is deliberately demand-driven rather than a startup hot set. It remains behind normalized channel/data-source contracts.
 
-This remains a Web implementation concern behind normalized contracts; Linux is free to use native mmap/indexed/columnar techniques later without changing product semantics.
-<!-- CURRENT_STATE:web-active-channel-data-path:END -->
+The opportunistic `predecode=32/64/128` path was fully removed and must not return without a new decision/evidence.
 
-<!-- CURRENT_STATE:web-active-channel-data-path:END -->
+Current performance posture:
+
+- workspace restore and arbitrary-channel access are no longer active architectural blockers;
+- performance remains a regression requirement;
+- feature/UI work has priority until a measurable regression or later maturity pass justifies new optimization.
+
+This sidecar/cache design is a **Web implementation strategy**, not a Linux architecture mandate. Linux remains free to use mmap/indexed/columnar/native approaches while preserving product semantics.
+
+## Current Web presentation composition
+
+The Web application currently separates responsibilities across:
+
+- `app-shell.ts` — application shell/global orchestration;
+- `logger-page.ts` — Logger/workspace orchestration;
+- `timeline-shell.ts` — timeline/range/marker presentation;
+- `graph-viewport.ts` — graph presentation lifecycle;
+- `inspector-panel.ts` — channel browser/detail interaction;
+- focused components/state helpers extracted during the repository audit for parser diagnostics, performance-report formatting, Bug report health/formatting and pane-layout state.
+
+The repository audit is complete for now. Large files may remain when responsibilities are still coherent; file size alone is not an architecture violation.
 
 ## Web and Linux relationship
 
-The Web application is the functional authority during early development. Its internal implementation may use lightweight TypeScript where appropriate.
+The Web application is the functional authority during current product discovery. Linux is expected to replace/harden performance-critical internals without changing established product semantics unnecessarily.
 
-The Linux application is expected to replace or harden performance-critical layers with native implementations, likely Rust where justified, without changing the established product semantics unnecessarily.
-
-The architecture must therefore preserve boundaries that allow:
+Conceptually:
 
 ```text
 Web UI → Web analysis/data implementation
 ```
 
-to later become:
+may later become:
 
 ```text
 Linux UI → Native optimized analysis/data implementation
 ```
 
-without redesigning every analyzer and workflow.
+without redesigning every workflow/analyzer.
 
-The exact Linux application/runtime directory structure is intentionally not invented before the Linux architecture is approved. Future platform areas require explicit architecture decisions rather than implicit additions.
+The exact Linux runtime directory structure remains intentionally undecided until Linux architecture is explicitly approved.
 
 ## Platform independence
 
-No core product concept should require a browser-specific API unless that concept is explicitly a Web-only adapter.
+No core product concept should require browser-specific APIs unless explicitly Web-only.
 
-Likewise, Linux-native features such as memory mapping or direct file watching must live behind platform-specific boundaries rather than leaking through the full product model.
+Likewise, Linux-native mmap/file-watching/etc must stay behind platform boundaries.
 
 ## Data ownership
 
-Authoritative channel/sample data should have one owner per session. UI components and analyzers should query or reference this data rather than making uncontrolled full copies.
-
-This rule is important even during Web prototyping because duplicated log data would make later performance work unnecessarily difficult.
+Authoritative channel/sample data should have one owner per session. UI/analyzers query/reference it rather than making uncontrolled full copies.
 
 ## Error propagation
 
-Errors should be classified by layer and severity:
+Errors should be classified by layer/severity:
 
 - recoverable source issue;
 - degraded capability;
-- analyzer unavailable due to missing channels/context;
+- analyzer unavailable due to missing context;
 - fatal parse/session failure.
 
-Missing data should disable or degrade only affected functions where possible.
-
-Malformed/untrusted input should not be allowed to turn a recoverable parser error into uncontrolled allocation, application-wide crash, or silent fabricated data.
+Missing data should degrade only affected functions where possible. Malformed input must not drive uncontrolled allocation or fabricated data.
 
 ## Network/privacy boundary
 
-Opening and analyzing local data does not imply permission to transmit it.
-
-Remote sharing, publishing, telemetry, or analytics are separate capabilities and must not silently transmit log contents, tune contents, filenames, derived values, or analysis results.
+Opening/analyzing local data does not imply permission to transmit it. Sharing/publishing/telemetry are separate explicit capabilities.
 
 ## Architectural change control
 
 Architecture may evolve, but implementation must not silently redefine it.
 
-A new top-level subsystem, dependency direction, or cross-layer responsibility requires project-owner approval, an explicit documented decision in `DECISIONS.md`, and corresponding updates to architecture/file-architecture documentation before code lands.
+A new top-level subsystem, dependency direction, or cross-layer responsibility requires project-owner approval plus corresponding decision/file-architecture updates before code lands.
