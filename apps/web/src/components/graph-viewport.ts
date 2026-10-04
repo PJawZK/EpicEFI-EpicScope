@@ -96,6 +96,9 @@ export interface GraphPreloadedActivationPerformance {
   readonly cursorMs: number;
   readonly drawMs: number;
   readonly envelopeMs: number;
+  readonly drawSetupMs: number;
+  readonly drawTraceMs: number;
+  readonly drawOverlayMs: number;
 }
 
 export interface GraphPreloadedActivationResult {
@@ -299,6 +302,9 @@ export function createGraphViewport(): GraphViewportController {
   let assignedChannels: readonly ChannelDefinition[] = [];
   let measureEnvelopeBuild = false;
   let measuredEnvelopeBuildMs = 0;
+  let measuredDrawSetupMs = 0;
+  let measuredDrawTraceMs = 0;
+  let measuredDrawOverlayMs = 0;
   let precomputedEnvelopeBlocksEnabled = true;
 
   const root = document.createElement('div');
@@ -439,6 +445,9 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const draw = (): void => {
+    const drawBreakdownStarted = measureEnvelopeBuild
+      ? (globalThis.performance?.now() ?? Date.now())
+      : 0;
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.round(rect.width));
@@ -542,6 +551,11 @@ export function createGraphViewport(): GraphViewportController {
     const xForTime = (timeMs: number): number => inset + ((timeMs - visibleStartMs) / duration) * plotWidth;
 
     const pixelWidth = Math.max(1, Math.floor(plotWidth));
+    const tracePhaseStarted = measureEnvelopeBuild
+      ? (globalThis.performance?.now() ?? Date.now())
+      : 0;
+    const envelopeBeforeTracePhase = measuredEnvelopeBuildMs;
+    if (measureEnvelopeBuild) measuredDrawSetupMs += tracePhaseStarted - drawBreakdownStarted;
     for (let traceIndex = 0; traceIndex < traceEntries.length; traceIndex += 1) {
       const entry = traceEntries[traceIndex];
       if (!entry) continue;
@@ -684,6 +698,16 @@ export function createGraphViewport(): GraphViewportController {
       }
     }
 
+    const overlayPhaseStarted = measureEnvelopeBuild
+      ? (globalThis.performance?.now() ?? Date.now())
+      : 0;
+    if (measureEnvelopeBuild) {
+      measuredDrawTraceMs += Math.max(
+        0,
+        overlayPhaseStarted - tracePhaseStarted - (measuredEnvelopeBuildMs - envelopeBeforeTracePhase),
+      );
+    }
+
     if (aTimeMs !== undefined || bTimeMs !== undefined) {
       const visibleA = aTimeMs !== undefined && aTimeMs >= visibleStartMs && aTimeMs <= visibleEndMs;
       const visibleB = bTimeMs !== undefined && bTimeMs >= visibleStartMs && bTimeMs <= visibleEndMs;
@@ -725,6 +749,10 @@ export function createGraphViewport(): GraphViewportController {
       context.moveTo(cursorX + 0.5, inset);
       context.lineTo(cursorX + 0.5, height - inset);
       context.stroke();
+    }
+
+    if (measureEnvelopeBuild) {
+      measuredDrawOverlayMs += (globalThis.performance?.now() ?? Date.now()) - overlayPhaseStarted;
     }
 
   };
@@ -1362,6 +1390,9 @@ export function createGraphViewport(): GraphViewportController {
           cursorMs: 0,
           drawMs: 0,
           envelopeMs: 0,
+          drawSetupMs: 0,
+          drawTraceMs: 0,
+          drawOverlayMs: 0,
         },
       };
     }
@@ -1409,6 +1440,9 @@ export function createGraphViewport(): GraphViewportController {
     emitCursorValues();
     const cursorMs = now() - cursorStarted;
     measuredEnvelopeBuildMs = 0;
+    measuredDrawSetupMs = 0;
+    measuredDrawTraceMs = 0;
+    measuredDrawOverlayMs = 0;
     measureEnvelopeBuild = true;
     const drawStarted = now();
     try {
@@ -1430,6 +1464,9 @@ export function createGraphViewport(): GraphViewportController {
         cursorMs,
         drawMs,
         envelopeMs,
+        drawSetupMs: measuredDrawSetupMs,
+        drawTraceMs: measuredDrawTraceMs,
+        drawOverlayMs: measuredDrawOverlayMs,
       },
     };
   };
