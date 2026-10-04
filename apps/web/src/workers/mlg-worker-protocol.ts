@@ -51,10 +51,24 @@ export interface MlgColumnSidecarBuildResult {
   readonly performance: MlgColumnSidecarBuildPerformance;
 }
 
+export interface MlgPriorityCaptureSelector {
+  readonly logicalChannelId: string;
+  readonly logicalKey?: string;
+  readonly displayName?: string;
+  readonly unit?: string;
+  readonly sourceChannelId?: string;
+}
+
+export interface MlgCapturedPriorityColumn {
+  readonly channelId: string;
+  readonly values: Float64Array;
+}
+
 export interface MlgWorkerImportRequest {
   readonly type: 'import';
   readonly file: File;
   readonly sourceIdentity: LogSourceIdentity;
+  readonly priorityCapture?: readonly MlgPriorityCaptureSelector[];
 }
 
 export interface MlgWorkerStartValidationRequest {
@@ -73,6 +87,7 @@ export interface MlgWorkerIndexedPayload {
   readonly sourceRuntime: BlobByteSourceRuntimeDiagnostics;
   readonly sourceCacheSeed: readonly BlobByteSourceCacheSeedPage[];
   readonly importTotalMs: number;
+  readonly capturedPriorityColumns?: readonly MlgCapturedPriorityColumn[];
 }
 
 export type MlgValidationMode = 'serial' | 'parallel';

@@ -12,6 +12,7 @@ import type {
   MlgRecordIndex,
 } from '../../../../core/parsers/mlg/mlg-records';
 import { BlobByteSource } from '../adapters/blob-byte-source';
+import { decodeMlgRawValue, displayMlgValue } from '../../../../core/parsers/mlg/mlg-channel-data';
 import {
   createMlgColumnSidecarBuilder,
   planMlgColumnStripes,
@@ -20,6 +21,7 @@ import {
 import { findCompleteMlgColumnSidecar } from '../adapters/mlg-column-sidecar-storage';
 import type {
   MlgColumnSidecarBuildResult,
+  MlgPriorityCaptureSelector,
   MlgWorkerRequest,
   MlgWorkerResponse,
 } from './mlg-worker-protocol';
@@ -67,6 +69,39 @@ const now = (): number => globalThis.performance?.now() ?? Date.now();
 const BLOCK_HEADER_LENGTH = 4;
 const SERIAL_VALIDATION_CHUNK_SIZE = 32 * 1024 * 1024;
 const PARALLEL_VALIDATION_CHUNK_SIZE = 32 * 1024 * 1024;
+
+function normalized(value: string | undefined): string { return value?.trim().toLowerCase() ?? ''; }
+
+function resolvePriorityFieldIndices(
+  selectors: readonly MlgPriorityCaptureSelector[] | undefined,
+  channels: readonly { readonly id: string; readonly sourceName: string; readonly unit?: string }[],
+): number[] {
+  if (!selectors || selectors.length === 0) return [];
+  const indices = new Set<number>();
+  for (const selector of selectors) {
+    if (selector.sourceChannelId?.startsWith('mlg:')) {
+      const index = Number(selector.sourceChannelId.slice(4));
+      if (Number.isSafeInteger(index) && index >= 0 && index < channels.length) indices.add(index);
+      continue;
+    }
+    const logicalKey = normalized(selector.logicalKey);
+    const displayName = normalized(selector.displayName);
+    let candidates = logicalKey
+      ? channels.map((channel, index) => ({ channel, index })).filter(({ channel }) => normalized(channel.sourceName) === logicalKey)
+      : [];
+    if (candidates.length !== 1 && displayName) {
+      candidates = channels.map((channel, index) => ({ channel, index })).filter(({ channel }) => normalized(channel.sourceName) === displayName);
+      if (candidates.length > 1 && selector.unit) {
+        const unit = normalized(selector.unit);
+        const unitMatches = candidates.filter(({ channel }) => normalized(channel.unit) === unit);
+        if (unitMatches.length === 1) candidates = unitMatches;
+      }
+    }
+    if (candidates.length === 1) indices.add(candidates[0]!.index);
+  }
+  return [...indices];
+}
+
 let validationStartResolver: (() => void) | undefined;
 let validationStartRequested = false;
 
@@ -406,11 +441,42 @@ scope.onmessage = (event): void => {
       );
       const headerCpuMs = Math.max(0, headerMs - headerReadMs);
 
+      const priorityFieldIndices = resolvePriorityFieldIndices(importRequest.priorityCapture, headerResult.channels);
+      const blockLength = BLOCK_HEADER_LENGTH + headerResult.header.recordLength + 1;
+      const fixedRecordCount = blockLength > 0 && (importRequest.file.size - headerResult.header.dataBeginIndex) % blockLength === 0
+        ? (importRequest.file.size - headerResult.header.dataBeginIndex) / blockLength
+        : 0;
+      const fieldOffsets = new Uint32Array(headerResult.fields.length);
+      let fieldOffset = 0;
+      headerResult.fields.forEach((field, index) => { fieldOffsets[index] = fieldOffset; fieldOffset += field.widthBytes; });
+      const capturedPriority = fixedRecordCount > 0 ? priorityFieldIndices.map((index) => ({
+        index,
+        channelId: `mlg:${index}`,
+        field: headerResult.fields[index]!,
+        fieldOffset: fieldOffsets[index] ?? 0,
+        values: new Float64Array(fixedRecordCount),
+      })) : [];
+
       const scanStart = now();
       const scanResult = await scanMlgRecords(
         source,
         headerResult.header,
-        { validateCrc: false },
+        {
+          validateCrc: false,
+          ...(capturedPriority.length > 0 ? {
+            onFixedRecordChunk: (bytes, firstRecordIndex, recordCount, fixedBlockLength) => {
+              const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+              for (let localIndex = 0; localIndex < recordCount; localIndex += 1) {
+                const recordStart = localIndex * fixedBlockLength + BLOCK_HEADER_LENGTH;
+                const sampleIndex = firstRecordIndex + localIndex;
+                for (const captured of capturedPriority) {
+                  const raw = decodeMlgRawValue(view, recordStart + captured.fieldOffset, captured.field);
+                  captured.values[sampleIndex] = displayMlgValue(raw, captured.field);
+                }
+              }
+            },
+          } : {}),
+        },
       );
       const recordScanMs = now() - scanStart;
 
@@ -438,6 +504,9 @@ scope.onmessage = (event): void => {
           sourceRuntime: indexedSourceRuntime,
           sourceCacheSeed,
           importTotalMs: now() - started,
+          ...(capturedPriority.length > 0 && scanResult.performance.scanMode === 'fixed' ? {
+            capturedPriorityColumns: capturedPriority.map(({ channelId, values }) => ({ channelId, values })),
+          } : {}),
           performance: {
             scanMode: scanResult.performance.scanMode,
             headerMs,
@@ -455,7 +524,10 @@ scope.onmessage = (event): void => {
             totalMs: now() - started,
           },
         },
-      }, sourceCacheSeed.map((page) => page.bytes.buffer as ArrayBuffer));
+      }, [
+        ...sourceCacheSeed.map((page) => page.bytes.buffer as ArrayBuffer),
+        ...capturedPriority.map((captured) => captured.values.buffer as ArrayBuffer),
+      ]);
 
       if (!validationStartRequested) {
         await new Promise<void>((resolve) => {
