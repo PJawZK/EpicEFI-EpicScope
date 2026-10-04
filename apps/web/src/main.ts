@@ -5,6 +5,7 @@ import './styles/timeline-graph.css';
 import './styles/logger-ui.css';
 import './styles/channel-value-search.css';
 import './styles/histogram.css';
+import './styles/analyzer.css';
 import './styles/performance-diagnostics.css';
 import { mountAppShell } from './app/app-shell';
 
