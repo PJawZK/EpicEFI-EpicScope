@@ -66,12 +66,18 @@ function compareMetric(
   };
 }
 
+function aggregateSide(side: NumericCompareSide): NumericAggregationResult {
+  return side.sampleIndices === undefined
+    ? aggregateNumericSamples(side.range)
+    : aggregateNumericSamples(side.range, { sampleIndices: side.sampleIndices });
+}
+
 export function compareNumericCohorts(
   leftSide: NumericCompareSide,
   rightSide: NumericCompareSide,
 ): NumericCompareResult {
-  const left = aggregateNumericSamples(leftSide.range, { sampleIndices: leftSide.sampleIndices });
-  const right = aggregateNumericSamples(rightSide.range, { sampleIndices: rightSide.sampleIndices });
+  const left = aggregateSide(leftSide);
+  const right = aggregateSide(rightSide);
 
   const metrics = Object.fromEntries(
     METHODS.map((method) => [method, compareMetric(method, left, right)]),
