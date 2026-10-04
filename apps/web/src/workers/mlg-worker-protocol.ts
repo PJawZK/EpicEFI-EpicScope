@@ -1,6 +1,7 @@
 import type {
   ImportedLogSummary,
   LogSourceIdentity,
+  NumericChannelStatistics,
   ParserDiagnostic,
 } from '../../../../core/log-model/log-types';
 import type { MlgFieldDescriptor, MlgHeader } from '../../../../core/parsers/mlg/mlg-format';
@@ -62,6 +63,7 @@ export interface MlgPriorityCaptureSelector {
 export interface MlgCapturedPriorityColumn {
   readonly channelId: string;
   readonly values: Float64Array;
+  readonly statistics: NumericChannelStatistics;
 }
 
 export interface MlgWorkerImportRequest {

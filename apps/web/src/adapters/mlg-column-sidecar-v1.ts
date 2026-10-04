@@ -2,6 +2,7 @@ import type {
   NumericChannelBatchResult,
   NumericChannelDataSource,
   NumericChannelRange,
+  NumericChannelStatistics,
 } from '../../../../core/log-model/log-types';
 import type { MlgFieldDescriptor } from '../../../../core/parsers/mlg/mlg-format';
 import type { MlgRecordIndex } from '../../../../core/parsers/mlg/mlg-records';
@@ -9,6 +10,7 @@ import type {
   MlgColumnSidecarBuildResult,
   MlgColumnSidecarManifest,
   MlgColumnSidecarStripeManifest,
+  MlgCapturedPriorityColumn,
 } from '../workers/mlg-worker-protocol';
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
@@ -396,17 +398,20 @@ function buildRange(
   startSampleIndex: number,
   sampleCount: number,
   values: Float64Array,
+  fullStatistics?: NumericChannelStatistics,
 ): NumericChannelRange {
   const end = startSampleIndex + sampleCount;
+  const isFullRange = startSampleIndex === 0 && sampleCount === recordIndex.timeMs.length;
   return {
     startSampleIndex,
-    timeMs: startSampleIndex === 0 && sampleCount === recordIndex.timeMs.length
+    timeMs: isFullRange
       ? recordIndex.timeMs
       : recordIndex.timeMs.slice(startSampleIndex, end),
     values,
     validity: startSampleIndex === 0 && sampleCount === recordIndex.crcValid.length
       ? recordIndex.crcValid
       : recordIndex.crcValid.slice(startSampleIndex, end),
+    ...(isFullRange && fullStatistics ? { fullStatistics } : {}),
   };
 }
 
@@ -421,7 +426,10 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private manifest: MlgColumnSidecarManifest | undefined;
   private readonly existingManifestPromise: Promise<void>;
   private prioritizedChannelIds = new Set<string>();
-  private readonly capturedPriorityColumns = new Map<string, Float64Array>();
+  private readonly capturedPriorityColumns = new Map<string, {
+    readonly values: Float64Array;
+    readonly statistics: NumericChannelStatistics;
+  }>();
   private priorityReadyPromise: Promise<void> | undefined;
   private resolvePriorityReady: (() => void) | undefined;
 
@@ -447,9 +455,14 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     });
   }
 
-  public seedCapturedPriorityColumns(columns: readonly { readonly channelId: string; readonly values: Float64Array }[]): void {
+  public seedCapturedPriorityColumns(columns: readonly MlgCapturedPriorityColumn[]): void {
     for (const column of columns) {
-      if (column.values.length === this.sampleCount && this.fieldByChannelId.has(column.channelId)) this.capturedPriorityColumns.set(column.channelId, column.values);
+      if (column.values.length === this.sampleCount && this.fieldByChannelId.has(column.channelId)) {
+        this.capturedPriorityColumns.set(column.channelId, {
+          values: column.values,
+          statistics: column.statistics,
+        });
+      }
     }
   }
 
@@ -536,9 +549,15 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   ): Promise<NumericChannelBatchResult | undefined> {
     if (startSampleIndex === 0 && sampleCount === this.sampleCount) {
       const captured = channelIds.map((channelId) => this.capturedPriorityColumns.get(channelId));
-      if (captured.every((values) => values !== undefined)) {
+      if (captured.every((column) => column !== undefined)) {
         const ranges = new Map<string, NumericChannelRange>();
-        for (let index = 0; index < channelIds.length; index += 1) ranges.set(channelIds[index]!, buildRange(this.recordIndex, 0, this.sampleCount, captured[index]!));
+        for (let index = 0; index < channelIds.length; index += 1) {
+          const column = captured[index]!;
+          ranges.set(
+            channelIds[index]!,
+            buildRange(this.recordIndex, 0, this.sampleCount, column.values, column.statistics),
+          );
+        }
         return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 } };
       }
     }
