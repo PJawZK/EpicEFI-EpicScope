@@ -139,6 +139,14 @@ export interface LoggerWorkspaceRestorePerformance {
   readonly prepareMs: number;
   readonly sharedBatchMs: number;
   readonly activationMs: number;
+  readonly activationGraphTotalMs: number;
+  readonly activationChannelLookupMs: number;
+  readonly activationStatisticsScaleMs: number;
+  readonly activationTraceRegistrationMs: number;
+  readonly activationReadoutMs: number;
+  readonly activationCursorMs: number;
+  readonly activationDrawMs: number;
+  readonly activationEnvelopeMs: number;
   readonly finalSyncMs: number;
   readonly visiblePaneCount: number;
   readonly assignedChannelCount: number;
@@ -1588,6 +1596,14 @@ export function createLoggerPage(): LoggerPageController {
     }
 
     const activationStarted = now();
+    let activationGraphTotalMs = 0;
+    let activationChannelLookupMs = 0;
+    let activationStatisticsScaleMs = 0;
+    let activationTraceRegistrationMs = 0;
+    let activationReadoutMs = 0;
+    let activationCursorMs = 0;
+    let activationDrawMs = 0;
+    let activationEnvelopeMs = 0;
     const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {
       if (!pane || requestedIds.length === 0) return;
 
@@ -1599,9 +1615,18 @@ export function createLoggerPage(): LoggerPageController {
         }
 
         if (preloaded.size === requestedIds.length) {
-          const activated = runtime.graph.activatePreloadedChannels(preloaded);
+          const activation = runtime.graph.activatePreloadedChannels(preloaded);
+          const graphPerformance = activation.performance;
+          activationGraphTotalMs += graphPerformance.totalMs;
+          activationChannelLookupMs += graphPerformance.channelLookupMs;
+          activationStatisticsScaleMs += graphPerformance.statisticsScaleMs;
+          activationTraceRegistrationMs += graphPerformance.traceRegistrationMs;
+          activationReadoutMs += graphPerformance.readoutMs;
+          activationCursorMs += graphPerformance.cursorMs;
+          activationDrawMs += graphPerformance.drawMs;
+          activationEnvelopeMs += graphPerformance.envelopeMs;
           runtime.activeChannelIds.clear();
-          activated.forEach((channelId) => runtime.activeChannelIds.add(channelId));
+          activation.activatedChannelIds.forEach((channelId) => runtime.activeChannelIds.add(channelId));
           pane.channelIds = [...assignedIds];
           return;
         }
@@ -1630,6 +1655,14 @@ export function createLoggerPage(): LoggerPageController {
       prepareMs,
       sharedBatchMs,
       activationMs,
+      activationGraphTotalMs,
+      activationChannelLookupMs,
+      activationStatisticsScaleMs,
+      activationTraceRegistrationMs,
+      activationReadoutMs,
+      activationCursorMs,
+      activationDrawMs,
+      activationEnvelopeMs,
       finalSyncMs,
       visiblePaneCount: visibleCount,
       assignedChannelCount: paneRequests.reduce(
