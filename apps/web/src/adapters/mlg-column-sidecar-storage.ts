@@ -46,7 +46,7 @@ export async function findCompleteMlgColumnSidecar(
     const manifestFile = await (await directory.getFileHandle(MANIFEST_FILE)).getFile();
     const manifest = JSON.parse(await manifestFile.text()) as MlgColumnSidecarManifest;
     if (
-      manifest.schemaVersion !== 1
+      manifest.schemaVersion !== 2
       || manifest.logKey !== logKey
       || manifest.sampleCount !== sampleCount
       || manifest.fieldCount !== fieldCount
@@ -55,9 +55,11 @@ export async function findCompleteMlgColumnSidecar(
       return undefined;
     }
 
+    const dataFile = await (await directory.getFileHandle(manifest.dataFileName)).getFile();
+    if (dataFile.size !== manifest.totalBytes) return undefined;
     for (const stripe of manifest.stripes) {
-      const file = await (await directory.getFileHandle(stripe.fileName)).getFile();
-      if (file.size !== sampleCount * stripe.widthBytes) return undefined;
+      if (stripe.storageOffset < 0) return undefined;
+      if (stripe.storageOffset + sampleCount * stripe.widthBytes > dataFile.size) return undefined;
     }
     return manifest;
   } catch {
