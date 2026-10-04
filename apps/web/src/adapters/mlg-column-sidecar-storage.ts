@@ -1,6 +1,7 @@
 import type { MlgColumnSidecarManifest } from '../workers/mlg-worker-protocol';
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
+const NATIVE_ROOT = 'epicscope-mlg-native-columns-v1';
 const MANIFEST_FILE = 'manifest.json';
 
 interface OpfsFileHandle {
@@ -70,10 +71,12 @@ export async function findCompleteMlgColumnSidecar(
 export async function clearMlgColumnSidecars(): Promise<void> {
   const storage = storageManager();
   if (!storage?.getDirectory) return;
-  try {
-    const root = await storage.getDirectory();
-    await root.removeEntry(SIDECAR_ROOT, { recursive: true });
-  } catch {
-    // Missing OPFS sidecar storage is already equivalent to a cleared cache.
+  const root = await storage.getDirectory();
+  for (const storageRoot of [SIDECAR_ROOT, NATIVE_ROOT]) {
+    try {
+      await root.removeEntry(storageRoot, { recursive: true });
+    } catch {
+      // Missing OPFS cache storage is already equivalent to a cleared cache.
+    }
   }
 }

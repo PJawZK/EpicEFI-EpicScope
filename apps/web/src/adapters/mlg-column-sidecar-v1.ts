@@ -15,6 +15,7 @@ import type {
 } from '../workers/mlg-worker-protocol';
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
+const NATIVE_ROOT = 'epicscope-mlg-native-columns-v1';
 const MANIFEST_FILE = 'manifest.json';
 const TARGET_STRIPE_BYTES = 64;
 const DATA_FILE = 'columns.bin';
@@ -174,6 +175,17 @@ async function openLogDirectory(
   return sidecars.getDirectoryHandle(sidecarStorageKey(logKey), { create });
 }
 
+async function openNativeLogDirectory(
+  logKey: string,
+  create: boolean,
+): Promise<OpfsDirectoryHandle | undefined> {
+  const storage = storageManager();
+  if (!storage?.getDirectory) return undefined;
+  const root = await storage.getDirectory();
+  const nativeColumns = await root.getDirectoryHandle(NATIVE_ROOT, { create });
+  return nativeColumns.getDirectoryHandle(sidecarStorageKey(logKey), { create });
+}
+
 async function resetLogDirectory(logKey: string): Promise<OpfsDirectoryHandle | undefined> {
   const storage = storageManager();
   if (!storage?.getDirectory) return undefined;
@@ -204,7 +216,7 @@ async function readNativeColumnIndex(
   sampleCount: number,
 ): Promise<MlgNativeColumnIndex | undefined> {
   try {
-    const directory = await openLogDirectory(logKey, false);
+    const directory = await openNativeLogDirectory(logKey, false);
     if (!directory) return undefined;
     const file = await (await directory.getFileHandle(NATIVE_INDEX_FILE)).getFile();
     const index = JSON.parse(await file.text()) as MlgNativeColumnIndex;
@@ -616,7 +628,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     if (!this.nativeFieldIndices.has(field.fieldIndex)) return undefined;
     try {
       const fileStarted = now();
-      const directory = await openLogDirectory(this.logKey, false);
+      const directory = await openNativeLogDirectory(this.logKey, false);
       if (!directory) return undefined;
       const file = await (await directory.getFileHandle(nativeColumnFileName(field.fieldIndex))).getFile();
       const fileOpenMs = now() - fileStarted;
@@ -653,7 +665,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     this.nativeWritePromise = this.nativeWritePromise.then(async () => {
       await this.nativeIndexPromise;
       if (this.nativeFieldIndices.has(field.fieldIndex)) return;
-      const directory = await openLogDirectory(this.logKey, true);
+      const directory = await openNativeLogDirectory(this.logKey, true);
       if (!directory) return;
       const stream = await (await directory.getFileHandle(nativeColumnFileName(field.fieldIndex), { create: true }))
         .createWritable({ keepExistingData: false });
