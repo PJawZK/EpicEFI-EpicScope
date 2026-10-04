@@ -22,6 +22,10 @@ import {
 import { createLoggerPage } from '../pages/logger-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
 import { evaluateBugReportHealth } from '../components/bug-report-health';
+import {
+  buildBugReportText,
+  type BugReportRuntimeErrorEntry,
+} from '../components/bug-report-formatter';
 import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/application-workspace-local-storage';
 import { createIniCatalogLocalStorageAdapter } from '../adapters/ini-catalog-local-storage';
 import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
@@ -53,18 +57,8 @@ export function mountAppShell(root: HTMLElement): void {
   const loggerPage = createLoggerPage();
   const performanceDiagnostics = createPerformanceDiagnostics();
 
-  interface RuntimeErrorEntry {
-    readonly time: number;
-    readonly kind: 'error' | 'unhandledrejection';
-    readonly message: string;
-    readonly source?: string;
-    readonly line?: number;
-    readonly column?: number;
-    readonly stack?: string;
-  }
-
-  const runtimeErrors: RuntimeErrorEntry[] = [];
-  const rememberRuntimeError = (entry: RuntimeErrorEntry): void => {
+  const runtimeErrors: BugReportRuntimeErrorEntry[] = [];
+  const rememberRuntimeError = (entry: BugReportRuntimeErrorEntry): void => {
     runtimeErrors.push(entry);
     if (runtimeErrors.length > 50) runtimeErrors.shift();
   };
@@ -411,83 +405,56 @@ export function mountAppShell(root: HTMLElement): void {
       bindingActive: activeIniBinding !== undefined,
       runtimeErrorCount: runtimeErrors.length,
     });
-
     const source = currentRawLog?.summary.source;
     const bindingMetrics = activeIniBinding?.metrics;
-    const lines = [
-      'EpicScope runtime bug report',
-      `Generated: ${new Date().toISOString()}`,
-      `URL: ${location.href}`,
-      `User agent: ${navigator.userAgent}`,
-      `Viewport: ${window.innerWidth}x${window.innerHeight} @ DPR ${window.devicePixelRatio}`,
-      `Document visibility: ${document.visibilityState}`,
-      `Online: ${navigator.onLine ? 'yes' : 'no'}`,
-      `CPU threads: ${navigator.hardwareConcurrency || 'unknown'}`,
-      '',
-      `[Health] ${issues.length} ISSUE / ${warnings.length} WARN`,
-      ...issues.map((item) => `ISSUE | ${item}`),
-      ...warnings.map((item) => `WARN | ${item}`),
-      ...(issues.length === 0 && warnings.length === 0 ? ['PASS | No obvious runtime-state inconsistency detected.'] : []),
-      '',
-      '[Source]',
-      `logLoaded=${currentRawLog ? 'yes' : 'no'}`,
-      `logName=${source?.displayName ?? '—'}`,
-      `logSize=${source?.sizeBytes ?? '—'}`,
-      `records=${currentRawLog?.recordCount ?? 0}`,
-      `logChannels=${currentRawLog?.summary.channels.length ?? 0}`,
-      `dataSourceSamples=${currentRawLog?.channelData.sampleCount ?? 0}`,
-      `iniLoaded=${activeIniCatalog ? 'yes' : 'no'}`,
-      `iniSource=${activeIniSourceName ?? '—'}`,
-      `iniCatalogEntries=${activeIniCatalog?.entries.length ?? 0}`,
-      `bindingActive=${activeIniBinding ? 'yes' : 'no'}`,
-      ...(bindingMetrics ? [
-        `bindingBound=${bindingMetrics.boundChannelCount}`,
-        `bindingKnownNoData=${bindingMetrics.knownNoDataCount}`,
-        `bindingLogOnly=${bindingMetrics.logOnlyCount}`,
-        `bindingAmbiguous=${bindingMetrics.ambiguousLogChannelCount}`,
-      ] : []),
-      '',
-      '[Logger runtime]',
-      `hasChannelDataSource=${snapshot.hasChannelDataSource}`,
-      `channelDefinitions=${snapshot.channelDefinitionCount}`,
-      `catalogChannels=${snapshot.catalogChannelCount}`,
-      `unavailableChannels=${snapshot.unavailableChannelCount}`,
-      `channelAliases=${snapshot.aliasCount}`,
-      `workspaceCount=${snapshot.workspaceCount}`,
-      `activeWorkspace=${snapshot.activeWorkspaceId}`,
-      `restoringWorkspace=${snapshot.restoringWorkspaceState}`,
-      `visiblePanes=${snapshot.visiblePaneCount}`,
-      `assignedVisibleChannels=${snapshot.assignedChannelCount}`,
-      `renderableAssignedVisibleChannels=${snapshot.renderableAssignedChannelCount}`,
-      `unavailableAssignedVisibleChannels=${snapshot.unavailableAssignedChannelCount}`,
-      `activeVisibleTraces=${snapshot.activeTraceCount}`,
-      ...snapshot.panes.map((pane) =>
-        `pane=${pane.id}; visible=${pane.visible}; assigned=[${pane.assignedChannelIds.join(',')}]; `
-        + `renderable=[${pane.renderableAssignedChannelIds.join(',')}]; `
-        + `unavailable=[${pane.unavailableAssignedChannelIds.join(',')}]; active=[${pane.activeChannelIds.join(',')}]`
-      ),
-      '',
-      '[Workspace state]',
-      JSON.stringify(workspaceState, null, 2),
-      '',
-      `[Runtime errors] ${runtimeErrors.length}`,
-      ...runtimeErrors.flatMap((item) => [
-        `${new Date(item.time).toISOString()} ${item.kind.toUpperCase()} ${item.message}${item.source ? ` · ${item.source}:${item.line ?? 0}:${item.column ?? 0}` : ''}`,
-        ...(item.stack ? [item.stack] : []),
-      ]),
-      '',
-      '[Application status]',
-      `appStatus=${appStatus.textContent ?? ''}`,
-      `parserStatus=${parserStatus.textContent ?? ''}`,
-      `openLogState=${openButton.dataset.loadState ?? '—'}`,
-      `openLogTitle=${openButton.title}`,
-      `loadIniState=${loadIniButton.dataset.loadState ?? '—'}`,
-      `loadIniTitle=${loadIniButton.title}`,
-      '',
-      performanceDiagnostics.reportText(),
-    ];
 
-    return { text: lines.join('\n'), issueCount: issues.length };
+    return buildBugReportText({
+      snapshot,
+      workspaceState,
+      issues,
+      warnings,
+      source: {
+        logLoaded: currentRawLog !== undefined,
+        ...(source ? {
+          logName: source.displayName,
+          logSizeBytes: source.sizeBytes,
+        } : {}),
+        recordCount: currentRawLog?.recordCount ?? 0,
+        logChannelCount: currentRawLog?.summary.channels.length ?? 0,
+        dataSourceSamples: currentRawLog?.channelData.sampleCount ?? 0,
+        iniLoaded: activeIniCatalog !== undefined,
+        ...(activeIniSourceName ? { iniSourceName: activeIniSourceName } : {}),
+        iniCatalogEntries: activeIniCatalog?.entries.length ?? 0,
+        bindingActive: activeIniBinding !== undefined,
+        ...(bindingMetrics ? {
+          bindingMetrics: {
+            boundChannelCount: bindingMetrics.boundChannelCount,
+            knownNoDataCount: bindingMetrics.knownNoDataCount,
+            logOnlyCount: bindingMetrics.logOnlyCount,
+            ambiguousLogChannelCount: bindingMetrics.ambiguousLogChannelCount,
+          },
+        } : {}),
+      },
+      runtimeErrors,
+      application: {
+        generatedAtIso: new Date().toISOString(),
+        url: location.href,
+        userAgent: navigator.userAgent,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        documentVisibility: document.visibilityState,
+        online: navigator.onLine,
+        ...(navigator.hardwareConcurrency ? { hardwareConcurrency: navigator.hardwareConcurrency } : {}),
+        appStatus: appStatus.textContent ?? '',
+        parserStatus: parserStatus.textContent ?? '',
+        openLogState: openButton.dataset.loadState ?? '—',
+        openLogTitle: openButton.title,
+        loadIniState: loadIniButton.dataset.loadState ?? '—',
+        loadIniTitle: loadIniButton.title,
+      },
+      performanceReport: performanceDiagnostics.reportText(),
+    });
   };
 
   const refreshBugReport = (): void => {
