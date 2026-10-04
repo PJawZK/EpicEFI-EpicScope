@@ -38,6 +38,20 @@ export interface NumericChannelStatistics {
   readonly standardDeviation: number | undefined;
 }
 
+export interface NumericChannelEnvelopeBlocks {
+  readonly blockSize: number;
+  readonly validCount: Uint16Array;
+  readonly invalidCount: Uint16Array;
+  readonly first: Float64Array;
+  readonly firstTimeMs: Float64Array;
+  readonly min: Float64Array;
+  readonly minTimeMs: Float64Array;
+  readonly max: Float64Array;
+  readonly maxTimeMs: Float64Array;
+  readonly last: Float64Array;
+  readonly lastTimeMs: Float64Array;
+}
+
 export interface NumericChannelRange {
   readonly startSampleIndex: number;
   readonly timeMs: Float64Array;
@@ -46,6 +60,8 @@ export interface NumericChannelRange {
   readonly validity: Uint8Array;
   /** Optional full-range statistics computed while source samples were already being decoded. */
   readonly fullStatistics?: NumericChannelStatistics;
+  /** Optional exact fixed-block envelope summaries for acceleration before CRC validity is refreshed. */
+  readonly fullEnvelopeBlocks?: NumericChannelEnvelopeBlocks;
 }
 
 export interface NumericChannelBatchPerformance {

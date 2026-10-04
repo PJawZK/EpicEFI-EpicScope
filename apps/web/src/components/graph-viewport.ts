@@ -9,6 +9,7 @@ import { buildStableValueScale, type StableValueScale } from '../../../../core/t
 import {
   buildRawViewportSeries,
   buildViewportEnvelope,
+  buildViewportEnvelopeFromBlocks,
   type ViewportEnvelopeColumn,
 } from '../../../../core/timeline/viewport-series';
 
@@ -298,6 +299,7 @@ export function createGraphViewport(): GraphViewportController {
   let assignedChannels: readonly ChannelDefinition[] = [];
   let measureEnvelopeBuild = false;
   let measuredEnvelopeBuildMs = 0;
+  let precomputedEnvelopeBlocksEnabled = true;
 
   const root = document.createElement('div');
   root.className = 'graph-viewport';
@@ -554,12 +556,20 @@ export function createGraphViewport(): GraphViewportController {
             const envelopeStarted = measureEnvelopeBuild
               ? (globalThis.performance?.now() ?? Date.now())
               : 0;
-            const built = buildViewportEnvelope(
-              trace.range,
-              visibleStartMs,
-              visibleEndMs,
-              pixelWidth,
-            );
+            const built = precomputedEnvelopeBlocksEnabled && trace.range.fullEnvelopeBlocks
+              ? buildViewportEnvelopeFromBlocks(
+                  trace.range,
+                  trace.range.fullEnvelopeBlocks,
+                  visibleStartMs,
+                  visibleEndMs,
+                  pixelWidth,
+                )
+              : buildViewportEnvelope(
+                  trace.range,
+                  visibleStartMs,
+                  visibleEndMs,
+                  pixelWidth,
+                );
             if (measureEnvelopeBuild) {
               measuredEnvelopeBuildMs += (globalThis.performance?.now() ?? Date.now()) - envelopeStarted;
             }
@@ -1298,6 +1308,7 @@ export function createGraphViewport(): GraphViewportController {
   ): void => {
     channels = nextChannels;
     channelData = nextChannelData;
+    precomputedEnvelopeBlocksEnabled = true;
     timeRange = nextTimeRange;
     viewport = nextTimeRange
       ? {
@@ -1554,6 +1565,9 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const refreshValidity = (): void => {
+    // Priority envelope blocks are computed before CRC validation; once source
+    // validity changes, fall back to authoritative raw samples for exact redraws.
+    precomputedEnvelopeBlocksEnabled = false;
     envelopeCache.clear();
     emitCursorValues();
     draw();

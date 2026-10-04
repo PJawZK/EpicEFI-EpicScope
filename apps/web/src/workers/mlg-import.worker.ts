@@ -12,6 +12,7 @@ import type {
   MlgRecordIndex,
 } from '../../../../core/parsers/mlg/mlg-records';
 import { BlobByteSource } from '../adapters/blob-byte-source';
+import { buildEnvelopeBlockSummary } from '../../../../core/timeline/viewport-series';
 import { decodeMlgRawValue, displayMlgValue } from '../../../../core/parsers/mlg/mlg-channel-data';
 import {
   createMlgColumnSidecarBuilder,
@@ -496,6 +497,12 @@ scope.onmessage = (event): void => {
         },
       );
       const recordScanMs = now() - scanStart;
+      const capturedEnvelopeBlocks = capturedPriority.map((captured) => buildEnvelopeBlockSummary(
+        captured.values,
+        scanResult.records.timeMs,
+        scanResult.records.crcValid,
+        64,
+      ));
 
       const finalizeStart = now();
       const range = timeRange(scanResult.records.timeMs);
@@ -522,9 +529,10 @@ scope.onmessage = (event): void => {
           sourceCacheSeed,
           importTotalMs: now() - started,
           ...(capturedPriority.length > 0 && scanResult.performance.scanMode === 'fixed' ? {
-            capturedPriorityColumns: capturedPriority.map((captured) => ({
+            capturedPriorityColumns: capturedPriority.map((captured, capturedIndex) => ({
               channelId: captured.channelId,
               values: captured.values,
+              envelopeBlocks: capturedEnvelopeBlocks[capturedIndex]!,
               statistics: {
                 validCount: captured.validCount,
                 invalidCount: captured.invalidCount,
@@ -557,6 +565,11 @@ scope.onmessage = (event): void => {
       }, [
         ...sourceCacheSeed.map((page) => page.bytes.buffer as ArrayBuffer),
         ...capturedPriority.map((captured) => captured.values.buffer as ArrayBuffer),
+        ...capturedEnvelopeBlocks.flatMap((blocks) => [
+          blocks.validCount.buffer, blocks.invalidCount.buffer,
+          blocks.first.buffer, blocks.firstTimeMs.buffer, blocks.min.buffer, blocks.minTimeMs.buffer,
+          blocks.max.buffer, blocks.maxTimeMs.buffer, blocks.last.buffer, blocks.lastTimeMs.buffer,
+        ] as ArrayBuffer[]),
       ]);
 
       if (!validationStartRequested) {

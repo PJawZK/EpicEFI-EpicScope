@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRawViewportSeries, buildViewportEnvelope } from '../../core/timeline/viewport-series';
+import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../core/timeline/viewport-series';
 
 describe('buildViewportEnvelope', () => {
   it('excludes invalid samples while preserving first/min/max/last raw samples', () => {
@@ -38,6 +38,20 @@ describe('buildViewportEnvelope', () => {
         lastTimeMs: 30,
       },
     ]);
+  });
+
+  it('matches the raw envelope exactly when fixed block summaries accelerate complete blocks', () => {
+    const sampleCount = 257;
+    const timeMs = Float64Array.from({ length: sampleCount }, (_, index) => index * 7 + (index % 9 === 0 ? 1 : 0));
+    const values = Float64Array.from({ length: sampleCount }, (_, index) => Math.sin(index / 8) * 20 + (index % 17));
+    const validity = Uint8Array.from({ length: sampleCount }, (_, index) => index % 41 === 0 ? 0 : 1);
+    const range = { startSampleIndex: 0, timeMs, values, validity };
+    const blocks = buildEnvelopeBlockSummary(values, timeMs, validity, 16);
+
+    for (const [startMs, endMs, width] of [[0, timeMs[sampleCount - 1]!, 23], [113, 1400, 37], [500, 900, 11]] as const) {
+      expect(buildViewportEnvelopeFromBlocks(range, blocks, startMs, endMs, width))
+        .toEqual(buildViewportEnvelope(range, startMs, endMs, width));
+    }
   });
 
   it('preserves extrema timing so a bucket can be rendered in raw chronological order', () => {
