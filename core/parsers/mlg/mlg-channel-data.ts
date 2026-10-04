@@ -3,7 +3,7 @@ import type {
   NumericChannelDataSource,
   NumericChannelRange,
 } from '../../log-model/log-types';
-import { recordChannelDecodePerformance } from '../../diagnostics/channel-decode-performance';
+import { recordChannelDecodePerformance } from './channel-decode-performance';
 import type { RandomAccessByteSource } from '../byte-source';
 import type { MlgFieldDescriptor } from './mlg-format';
 import type { MlgRecordIndex } from './mlg-records';

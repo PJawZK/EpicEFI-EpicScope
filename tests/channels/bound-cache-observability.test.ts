@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { BoundNumericChannelDataSource } from '../../core/channels/channel-binding';
 import {
   latestBoundCacheDiagnosticSnapshot,
-} from '../../core/diagnostics/bound-cache-observability';
+} from '../../core/channels/bound-cache-observability';
 import type {
   NumericChannelBatchResult,
   NumericChannelDataSource,

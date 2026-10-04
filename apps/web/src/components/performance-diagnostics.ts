@@ -1,7 +1,7 @@
 import {
   clearChannelDecodePerformance,
   latestChannelDecodePerformance,
-} from '../../../../core/diagnostics/channel-decode-performance';
+} from '../../../../core/parsers/mlg/channel-decode-performance';
 import {
   latestBlobByteSourceRuntimeDiagnostics,
   type BlobByteSourceRuntimeDiagnostics,
