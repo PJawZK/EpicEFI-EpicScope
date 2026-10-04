@@ -1,4 +1,9 @@
 import type { NumericChannelRange } from '../log-model/log-types';
+import {
+  aggregateNumericSamples,
+  numericAggregationValue,
+  type NumericAggregationMethod,
+} from './numeric-aggregation';
 
 export interface NumericHeatmapOptions {
   /** Optional source sample indices, for example qualification output. */
@@ -9,6 +14,10 @@ export interface NumericHeatmapOptions {
   readonly xMax?: number;
   readonly yMin?: number;
   readonly yMax?: number;
+  /** Cell statistic. Defaults to sample count/density. */
+  readonly aggregation?: NumericAggregationMethod;
+  /** Required for every aggregation other than count. */
+  readonly valueRange?: NumericChannelRange;
 }
 
 export interface NumericHeatmapAxisBin {
@@ -21,8 +30,15 @@ export interface NumericHeatmapAxisBin {
 export interface NumericHeatmapResult {
   readonly xBins: readonly NumericHeatmapAxisBin[];
   readonly yBins: readonly NumericHeatmapAxisBin[];
-  /** Row-major counts: index = yIndex * xBins.length + xIndex. */
+  /** Row-major X/Y pair counts: index = yIndex * xBins.length + xIndex. */
   readonly counts: Uint32Array;
+  /** Row-major selected aggregation value. Empty/non-computable cells are NaN. */
+  readonly cellValues: Float64Array;
+  /** Row-major valid value samples contributing to the cell aggregation. */
+  readonly cellValueSampleCounts: Uint32Array;
+  readonly aggregationMethod: NumericAggregationMethod;
+  readonly cellValueMin: number | undefined;
+  readonly cellValueMax: number | undefined;
   readonly xRangeMin: number | undefined;
   readonly xRangeMax: number | undefined;
   readonly yRangeMin: number | undefined;
@@ -39,10 +55,15 @@ export interface NumericHeatmapResult {
   readonly xAboveRangeSampleCount: number;
   readonly yBelowRangeSampleCount: number;
   readonly yAboveRangeSampleCount: number;
+  /** Value-channel evidence among X/Y pairs that landed inside a cell. */
+  readonly valueValidSampleCount: number;
+  readonly valueInvalidSampleCount: number;
+  readonly valueUnavailableSampleCount: number;
   readonly maxCellCount: number;
 }
 
 interface PairSample {
+  readonly sampleIndex: number;
   readonly x: number;
   readonly y: number;
 }
@@ -131,7 +152,7 @@ function scanPairs(
       return;
     }
 
-    validPairs.push({ x, y });
+    validPairs.push({ sampleIndex, x, y });
     xObservedMin = Math.min(xObservedMin, x);
     xObservedMax = Math.max(xObservedMax, x);
     yObservedMin = Math.min(yObservedMin, y);
@@ -180,11 +201,56 @@ function binIndex(value: number, min: number, max: number, width: number, binCou
   return Math.min(binCount - 1, Math.max(0, Math.floor((value - min) / width)));
 }
 
+function emptyResult(
+  scan: PairScan,
+  aggregationMethod: NumericAggregationMethod,
+  requestedXMin: number | undefined,
+  requestedXMax: number | undefined,
+  requestedYMin: number | undefined,
+  requestedYMax: number | undefined,
+): NumericHeatmapResult {
+  return {
+    xBins: [],
+    yBins: [],
+    counts: new Uint32Array(0),
+    cellValues: new Float64Array(0),
+    cellValueSampleCounts: new Uint32Array(0),
+    aggregationMethod,
+    cellValueMin: undefined,
+    cellValueMax: undefined,
+    xRangeMin: requestedXMin,
+    xRangeMax: requestedXMax,
+    yRangeMin: requestedYMin,
+    yRangeMax: requestedYMax,
+    xBinWidth: undefined,
+    yBinWidth: undefined,
+    inputSampleCount: scan.inputSampleCount,
+    validPairSampleCount: 0,
+    binnedSampleCount: 0,
+    invalidSampleCount: scan.invalidSampleCount,
+    unavailableSampleCount: scan.unavailableSampleCount,
+    outsideRangeSampleCount: 0,
+    xBelowRangeSampleCount: 0,
+    xAboveRangeSampleCount: 0,
+    yBelowRangeSampleCount: 0,
+    yAboveRangeSampleCount: 0,
+    valueValidSampleCount: 0,
+    valueInvalidSampleCount: 0,
+    valueUnavailableSampleCount: 0,
+    maxCellCount: 0,
+  };
+}
+
 export function buildNumericHeatmap(
   xRange: NumericChannelRange,
   yRange: NumericChannelRange,
   options: NumericHeatmapOptions = {},
 ): NumericHeatmapResult {
+  const aggregationMethod = options.aggregation ?? 'count';
+  if (aggregationMethod !== 'count' && !options.valueRange) {
+    throw new RangeError(`heatmap ${aggregationMethod} aggregation requires valueRange.`);
+  }
+
   const requestedXMin = requestedBound(options.xMin, 'xMin');
   const requestedXMax = requestedBound(options.xMax, 'xMax');
   const requestedYMin = requestedBound(options.yMin, 'yMin');
@@ -192,28 +258,14 @@ export function buildNumericHeatmap(
   const scan = scanPairs(xRange, yRange, options.sampleIndices);
 
   if (scan.validPairs.length === 0) {
-    return {
-      xBins: [],
-      yBins: [],
-      counts: new Uint32Array(0),
-      xRangeMin: requestedXMin,
-      xRangeMax: requestedXMax,
-      yRangeMin: requestedYMin,
-      yRangeMax: requestedYMax,
-      xBinWidth: undefined,
-      yBinWidth: undefined,
-      inputSampleCount: scan.inputSampleCount,
-      validPairSampleCount: 0,
-      binnedSampleCount: 0,
-      invalidSampleCount: scan.invalidSampleCount,
-      unavailableSampleCount: scan.unavailableSampleCount,
-      outsideRangeSampleCount: 0,
-      xBelowRangeSampleCount: 0,
-      xAboveRangeSampleCount: 0,
-      yBelowRangeSampleCount: 0,
-      yAboveRangeSampleCount: 0,
-      maxCellCount: 0,
-    };
+    return emptyResult(
+      scan,
+      aggregationMethod,
+      requestedXMin,
+      requestedXMax,
+      requestedYMin,
+      requestedYMax,
+    );
   }
 
   const xLower = requestedXMin ?? scan.xObservedMin!;
@@ -227,7 +279,9 @@ export function buildNumericHeatmap(
 
   const xAxis = buildAxisBins(xRangeMin, xRangeMax, normalizedBinCount(options.xBinCount, 'x'));
   const yAxis = buildAxisBins(yRangeMin, yRangeMax, normalizedBinCount(options.yBinCount, 'y'));
-  const counts = new Uint32Array(xAxis.bins.length * yAxis.bins.length);
+  const cellCount = xAxis.bins.length * yAxis.bins.length;
+  const counts = new Uint32Array(cellCount);
+  const cellSampleIndices: number[][] = Array.from({ length: cellCount }, () => []);
 
   let binnedSampleCount = 0;
   let outsideRangeSampleCount = 0;
@@ -255,14 +309,58 @@ export function buildNumericHeatmap(
     const yIndex = binIndex(pair.y, yRangeMin, yRangeMax, yAxis.width, yAxis.bins.length);
     const cellIndex = yIndex * xAxis.bins.length + xIndex;
     counts[cellIndex] = (counts[cellIndex] ?? 0) + 1;
+    cellSampleIndices[cellIndex]!.push(pair.sampleIndex);
     maxCellCount = Math.max(maxCellCount, counts[cellIndex] ?? 0);
     binnedSampleCount += 1;
+  }
+
+  const cellValues = new Float64Array(cellCount);
+  cellValues.fill(Number.NaN);
+  const cellValueSampleCounts = new Uint32Array(cellCount);
+  let valueValidSampleCount = 0;
+  let valueInvalidSampleCount = 0;
+  let valueUnavailableSampleCount = 0;
+  let cellValueMin = Number.POSITIVE_INFINITY;
+  let cellValueMax = Number.NEGATIVE_INFINITY;
+  let finiteCellValueCount = 0;
+
+  for (let cellIndex = 0; cellIndex < cellCount; cellIndex += 1) {
+    const sampleIndices = cellSampleIndices[cellIndex]!;
+    if (sampleIndices.length === 0) continue;
+
+    if (aggregationMethod === 'count') {
+      const count = counts[cellIndex] ?? 0;
+      cellValues[cellIndex] = count;
+      cellValueSampleCounts[cellIndex] = count;
+      valueValidSampleCount += count;
+      cellValueMin = Math.min(cellValueMin, count);
+      cellValueMax = Math.max(cellValueMax, count);
+      finiteCellValueCount += 1;
+      continue;
+    }
+
+    const aggregate = aggregateNumericSamples(options.valueRange!, { sampleIndices });
+    const value = numericAggregationValue(aggregate, aggregationMethod);
+    cellValueSampleCounts[cellIndex] = aggregate.validSampleCount;
+    valueValidSampleCount += aggregate.validSampleCount;
+    valueInvalidSampleCount += aggregate.invalidSampleCount;
+    valueUnavailableSampleCount += aggregate.unavailableSampleCount;
+    if (value === undefined || !Number.isFinite(value)) continue;
+    cellValues[cellIndex] = value;
+    cellValueMin = Math.min(cellValueMin, value);
+    cellValueMax = Math.max(cellValueMax, value);
+    finiteCellValueCount += 1;
   }
 
   return {
     xBins: xAxis.bins,
     yBins: yAxis.bins,
     counts,
+    cellValues,
+    cellValueSampleCounts,
+    aggregationMethod,
+    cellValueMin: finiteCellValueCount > 0 ? cellValueMin : undefined,
+    cellValueMax: finiteCellValueCount > 0 ? cellValueMax : undefined,
     xRangeMin,
     xRangeMax,
     yRangeMin,
@@ -279,6 +377,9 @@ export function buildNumericHeatmap(
     xAboveRangeSampleCount,
     yBelowRangeSampleCount,
     yAboveRangeSampleCount,
+    valueValidSampleCount,
+    valueInvalidSampleCount,
+    valueUnavailableSampleCount,
     maxCellCount,
   };
 }
