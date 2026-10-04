@@ -1,0 +1,258 @@
+.histogram-page {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 14px;
+  background: #081118;
+  color: #dbe7ee;
+}
+
+.histogram-page[hidden] {
+  display: none;
+}
+
+.histogram-surface-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid #273d4d;
+  border-radius: 5px;
+  background: #0b171f;
+}
+
+.histogram-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #6f91a8;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.histogram-surface-head h1 {
+  margin: 0;
+  color: #edf6fb;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.histogram-surface-head p {
+  margin: 5px 0 0;
+  color: #8095a3;
+  font-size: 9px;
+}
+
+.histogram-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.histogram-controls label {
+  display: grid;
+  gap: 4px;
+}
+
+.histogram-controls label > span {
+  color: #78909e;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.histogram-controls select,
+.histogram-refresh {
+  min-height: 29px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+  font-size: 9px;
+}
+
+.histogram-controls select {
+  min-width: 170px;
+  padding: 0 7px;
+}
+
+.histogram-bin-count {
+  min-width: 72px !important;
+}
+
+.histogram-refresh {
+  padding: 0 11px;
+}
+
+.histogram-empty {
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  min-height: 280px;
+  border: 1px dashed #304859;
+  border-radius: 5px;
+  background: #0a151d;
+  text-align: center;
+}
+
+.histogram-empty strong {
+  color: #dbe8ef;
+  font-size: 12px;
+}
+
+.histogram-empty span {
+  max-width: 520px;
+  color: #79909f;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.histogram-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 10px;
+}
+
+.histogram-content[hidden] {
+  display: none;
+}
+
+.histogram-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.histogram-summary > div,
+.histogram-range-summary,
+.histogram-table-wrap,
+.histogram-chart-wrap {
+  border: 1px solid #263b4c;
+  border-radius: 4px;
+  background: #0b171f;
+}
+
+.histogram-summary > div {
+  min-width: 0;
+  padding: 7px 9px;
+}
+
+.histogram-summary span,
+.histogram-range-summary span {
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.histogram-summary strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #e5f0f5;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.histogram-chart-wrap {
+  min-height: 340px;
+  padding: 8px;
+}
+
+.histogram-chart {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  display: block;
+}
+
+.histogram-range-summary {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 7px 9px;
+}
+
+.histogram-range-summary strong {
+  margin-left: 4px;
+  color: #dceaf1;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.histogram-table-wrap {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  overflow: auto;
+  max-height: 390px;
+}
+
+.histogram-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8px;
+}
+
+.histogram-table th,
+.histogram-table td {
+  padding: 6px 7px;
+  border-bottom: 1px solid #203340;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.histogram-table th:nth-child(2),
+.histogram-table td:nth-child(2) {
+  text-align: left;
+}
+
+.histogram-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #101d28;
+  color: #7f95a3;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.histogram-table td {
+  color: #cddce4;
+}
+
+@media (max-width: 900px) {
+  .histogram-surface-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .histogram-controls {
+    justify-content: flex-start;
+  }
+
+  .histogram-content {
+    grid-template-columns: 1fr;
+  }
+
+  .histogram-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .histogram-table-wrap,
+  .histogram-range-summary {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
