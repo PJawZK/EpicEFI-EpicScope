@@ -1,7 +1,11 @@
 import type { NumericChannelDataSource, NumericChannelRange } from '../log-model/log-types';
+import {
+  matchesNumericQualification,
+  type NumericQualificationOperator,
+} from './sample-qualification';
 
 export type ChannelValueSearchMode = 'max' | 'min' | 'closest';
-export type ChannelConstraintOperator = 'gt' | 'gte' | 'lt' | 'lte' | 'eq';
+export type ChannelConstraintOperator = NumericQualificationOperator;
 
 export interface ChannelValueConstraint {
   readonly channelId: string;
@@ -34,14 +38,6 @@ function validAt(range: NumericChannelRange, index: number): boolean {
   return range.validity[index] === 1
     && Number.isFinite(range.timeMs[index])
     && Number.isFinite(range.values[index]);
-}
-
-function constraintMatches(value: number, operator: ChannelConstraintOperator, target: number): boolean {
-  if (operator === 'gt') return value > target;
-  if (operator === 'gte') return value >= target;
-  if (operator === 'lt') return value < target;
-  if (operator === 'lte') return value <= target;
-  return value === target;
 }
 
 function score(mode: ChannelValueSearchMode, value: number, targetValue: number | undefined): number {
@@ -112,7 +108,7 @@ export async function searchChannelValues(
         const rawConstraintValue = constraint.values[index];
         if (rawConstraintValue === undefined) continue;
         constraintValue = rawConstraintValue;
-        if (!constraintMatches(constraintValue, request.constraint.operator, request.constraint.value)) continue;
+        if (!matchesNumericQualification(constraintValue, request.constraint.operator, request.constraint.value)) continue;
       }
 
       const value = primary.values[index];
@@ -131,7 +127,6 @@ export async function searchChannelValues(
 
   return results.map((result, index) => ({ ...result, rank: index + 1 }));
 }
-
 
 export function findSteppedSearchResultIndex(
   results: readonly ChannelValueSearchResult[],
