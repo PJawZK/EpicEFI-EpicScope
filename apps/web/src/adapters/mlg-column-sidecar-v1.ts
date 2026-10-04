@@ -16,7 +16,7 @@ import type {
 
 const SIDECAR_ROOT = 'epicscope-mlg-sidecars-v1';
 const MANIFEST_FILE = 'manifest.json';
-const TARGET_STRIPE_BYTES = 64;
+const TARGET_STRIPE_BYTES = 16;
 const DATA_FILE = 'columns.bin';
 const BLOCK_HEADER_LENGTH = 4;
 
