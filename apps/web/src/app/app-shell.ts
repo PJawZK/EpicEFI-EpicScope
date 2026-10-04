@@ -269,6 +269,14 @@ export function mountAppShell(root: HTMLElement): void {
       physicalReadCount: run.physicalReadCount,
       physicalBytesRead: run.physicalBytesRead,
       physicalReadMs: run.physicalReadMs,
+      persistentLookupMs: run.persistentLookupMs,
+      persistentRangeBuildMs: run.persistentRangeBuildMs,
+      delegatedSourceMs: run.delegatedSourceMs,
+      sidecarManifestMs: run.sidecarManifestMs,
+      sidecarFileOpenAggregateMs: run.sidecarFileOpenAggregateMs,
+      sidecarBlobReadAggregateMs: run.sidecarBlobReadAggregateMs,
+      sidecarDecodeAggregateMs: run.sidecarDecodeAggregateMs,
+      sidecarRangeBuildMs: run.sidecarRangeBuildMs,
     });
   });
 
