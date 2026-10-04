@@ -258,18 +258,14 @@ export async function createMlgColumnSidecarBuilder(
       transposeMs += now() - transposeStarted;
 
       const writeStarted = now();
-      for (let index = 0; index < outputs.length; index += 1) {
-        await streams[index]!.write(outputs[index]!);
-      }
+      await Promise.all(outputs.map((output, index) => streams[index]!.write(output)));
       writeMs += now() - writeStarted;
       bytesWritten += outputs.reduce((sum, output) => sum + output.byteLength, 0);
       completedSamples += sampleCount;
     },
     finish: async () => {
       if (aborted) throw new Error('MLG sidecar build was aborted.');
-      for (const stream of streams) {
-        await stream.close();
-      }
+      await Promise.all(streams.map((stream) => stream.close()));
       if (completedSamples !== recordIndex.offsets.length) {
         await removeManifest(directory);
         throw new Error(
