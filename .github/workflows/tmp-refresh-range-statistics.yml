@@ -1,0 +1,39 @@
+name: Temporary selected range refresh patch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-refresh-range-statistics.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: analysis/range-statistics-v1
+          fetch-depth: 0
+      - name: Apply patch
+        run: |
+          git show origin/main:scripts/tmp-refresh-range-statistics.py > /tmp/patch.py
+          python /tmp/patch.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit feature fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/panels/inspector-panel.ts apps/web/src/pages/logger-page.ts
+          git commit -m "Refresh selected statistics when A/B changes"
+          git push origin HEAD:analysis/range-statistics-v1
