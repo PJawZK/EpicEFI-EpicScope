@@ -20,6 +20,7 @@ import {
   type StagedMlgImportHandle,
 } from '../adapters/mlg-staged-import';
 import { createLoggerPage } from '../pages/logger-page';
+import { createAnalyzerPage } from '../pages/analyzer-page';
 import { createHistogramPage } from '../pages/histogram-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
 import { evaluateBugReportHealth } from '../components/bug-report-health';
@@ -56,6 +57,7 @@ export function mountAppShell(root: HTMLElement): void {
   app.className = 'epicscope-app';
 
   const loggerPage = createLoggerPage();
+  const analyzerPage = createAnalyzerPage();
   const histogramPage = createHistogramPage();
   const performanceDiagnostics = createPerformanceDiagnostics();
 
@@ -108,12 +110,12 @@ export function mountAppShell(root: HTMLElement): void {
             </span>
             <span class="module-state">Active</span>
           </button>
-          <button type="button" class="global-module-choice" role="menuitem" aria-disabled="true" disabled>
+          <button type="button" class="global-module-choice" data-epicscope-mode="analyzer" role="menuitem" aria-current="false">
             <span>
               <strong>Analyzer</strong>
-              <small>Range and channel analysis</small>
+              <small>Range comparison and channel analysis</small>
             </span>
-            <span class="module-state">Planned</span>
+            <span class="module-state">Available</span>
           </button>
           <button type="button" class="global-module-choice" data-epicscope-mode="histogram" role="menuitem" aria-current="false">
             <span>
@@ -832,18 +834,21 @@ export function mountAppShell(root: HTMLElement): void {
     brandButton.setAttribute('aria-expanded', 'false');
   };
 
-  type EpicScopeMode = 'logger' | 'histogram';
+  type EpicScopeMode = 'logger' | 'analyzer' | 'histogram';
   let activeMode: EpicScopeMode = 'logger';
   const setEpicScopeMode = (mode: EpicScopeMode): void => {
     activeMode = mode;
     const loggerActive = mode === 'logger';
+    const analyzerActive = mode === 'analyzer';
+    const histogramActive = mode === 'histogram';
     loggerPage.element.hidden = !loggerActive;
-    histogramPage.element.hidden = loggerActive;
+    analyzerPage.element.hidden = !analyzerActive;
+    histogramPage.element.hidden = !histogramActive;
     graphSelectorSlot.hidden = !loggerActive;
     loggerToolsSlot.hidden = !loggerActive;
     undoButton.hidden = !loggerActive;
     redoButton.hidden = !loggerActive;
-    modeChip.textContent = loggerActive ? 'RECORDED' : 'HISTOGRAM';
+    modeChip.textContent = loggerActive ? 'RECORDED' : analyzerActive ? 'ANALYZER' : 'HISTOGRAM';
 
     for (const choice of modeChoices) {
       const choiceMode = choice.dataset.epicscopeMode;
@@ -854,7 +859,10 @@ export function mountAppShell(root: HTMLElement): void {
       if (state) state.textContent = selected ? 'Active' : 'Available';
     }
 
-    if (!loggerActive) {
+    if (analyzerActive) {
+      analyzerPage.setContext(loggerPage.getAnalysisContext());
+      analyzerPage.refresh();
+    } else if (histogramActive) {
       histogramPage.setContext(loggerPage.getAnalysisContext());
       histogramPage.refresh();
     }
@@ -891,7 +899,7 @@ export function mountAppShell(root: HTMLElement): void {
     if (!(target instanceof Element)) return;
     const choice = target.closest<HTMLButtonElement>('[data-epicscope-mode]');
     const mode = choice?.dataset.epicscopeMode;
-    if (mode === 'logger' || mode === 'histogram') setEpicScopeMode(mode);
+    if (mode === 'logger' || mode === 'analyzer' || mode === 'histogram') setEpicScopeMode(mode);
   });
   document.addEventListener('click', () => {
     closeBrandMenu();
@@ -1531,6 +1539,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, histogramPage.element, footer, fileInput, iniInput, bugReportDialog);
+  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, bugReportDialog);
   root.append(app);
 }

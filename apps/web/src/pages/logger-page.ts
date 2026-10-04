@@ -145,6 +145,7 @@ export interface LoggerAnalysisContext {
   readonly traces: readonly LoggerAnalysisTraceContext[];
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
+  readonly savedRanges: readonly import('../state/workspace-state').SavedTimelineRangeState[];
 }
 
 export interface LoggerPageController {
@@ -2064,6 +2065,7 @@ export function createLoggerPage(): LoggerPageController {
       traces,
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
+      savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),
     };
   };
 
