@@ -12,7 +12,9 @@ const diagnostic = (
   severity: ParserDiagnostic['severity'],
   offset?: number,
   message = code,
-): ParserDiagnostic => ({ code, severity, offset, message, recoverable: true });
+): ParserDiagnostic => offset === undefined
+  ? { code, severity, message, recoverable: true }
+  : { code, severity, offset, message, recoverable: true };
 
 describe('parser diagnostics indicator data helpers', () => {
   it('filters unresolved warnings/errors while excluding summary diagnostics', () => {
