@@ -379,3 +379,5 @@ describe('numericRangeCoversTime', () => {
           fi
           git commit -m "chore: remove temporary range statistics workflow"
           git push origin main
+
+# Triggered after workflow registration.
