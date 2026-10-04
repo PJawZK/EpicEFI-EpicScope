@@ -190,9 +190,11 @@ export function createHeatmapView(): HeatmapViewController {
         const cellIndex = yIndex * result.xBins.length + xIndex;
         const value = result.cellValues[cellIndex];
         if (value === undefined || !Number.isFinite(value)) continue;
-        const normalized = valueSpan > 0 && valueMin !== undefined
-          ? Math.max(0, Math.min(1, (value - valueMin) / valueSpan))
-          : 1;
+        const normalized = result.aggregationMethod === 'count'
+          ? Math.max(0, Math.min(1, value / Math.max(1, result.maxCellCount)))
+          : valueSpan > 0 && valueMin !== undefined
+            ? Math.max(0, Math.min(1, (value - valueMin) / valueSpan))
+            : 1;
         const intensity = result.aggregationMethod === 'count' ? Math.sqrt(normalized) : normalized;
         const x = padLeft + xIndex * cellWidth;
         const y = padTop + chartHeight - (yIndex + 1) * cellHeight;
