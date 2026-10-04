@@ -426,6 +426,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private readonly plan: MlgColumnStripePlan;
   private readonly fieldByChannelId = new Map<string, PlannedField>();
   private dataFile: File | undefined;
+  private dataFilePromise: Promise<File> | undefined;
   private manifest: MlgColumnSidecarManifest | undefined;
   private readonly existingManifestPromise: Promise<void>;
   private prioritizedChannelIds = new Set<string>();
@@ -500,7 +501,9 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     }
     this.manifest = manifest;
     this.dataFile = undefined;
+    this.dataFilePromise = undefined;
     this.releasePrioritizedChannels();
+    void this.sidecarDataFile(manifest).catch(() => undefined);
     return true;
   }
 
@@ -540,11 +543,21 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
 
   private async sidecarDataFile(manifest: MlgColumnSidecarManifest): Promise<File> {
     if (this.dataFile) return this.dataFile;
-    const directory = await openLogDirectory(this.logKey, false);
-    if (!directory) throw new Error('MLG sidecar OPFS directory is unavailable.');
-    const file = await (await directory.getFileHandle(manifest.dataFileName)).getFile();
-    this.dataFile = file;
-    return file;
+    if (this.dataFilePromise) return this.dataFilePromise;
+    const opening = (async () => {
+      const directory = await openLogDirectory(this.logKey, false);
+      if (!directory) throw new Error('MLG sidecar OPFS directory is unavailable.');
+      const file = await (await directory.getFileHandle(manifest.dataFileName)).getFile();
+      this.dataFile = file;
+      return file;
+    })();
+    this.dataFilePromise = opening;
+    try {
+      return await opening;
+    } catch (error) {
+      if (this.dataFilePromise === opening) this.dataFilePromise = undefined;
+      throw error;
+    }
   }
 
   private async readFromSidecar(
