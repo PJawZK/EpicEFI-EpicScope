@@ -23,10 +23,15 @@ interface StoredColumnRecord {
 export interface PersistentChannelColumnStore {
   get(logKey: string, channelId: string, sampleCount: number): Promise<Float64Array | undefined>;
   put(logKey: string, channelId: string, values: Float64Array): Promise<void>;
+  listCachedChannelIds?(logKey: string, sampleCount: number): Promise<ReadonlySet<string>>;
+}
+
+function cacheKeyPrefix(logKey: string, sampleCount: number): string {
+  return `${CACHE_SCHEMA_VERSION}|${logKey}|${sampleCount}|`;
 }
 
 function cacheKey(logKey: string, channelId: string, sampleCount: number): string {
-  return `${CACHE_SCHEMA_VERSION}|${logKey}|${sampleCount}|${channelId}`;
+  return `${cacheKeyPrefix(logKey, sampleCount)}${channelId}`;
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -78,6 +83,27 @@ export class IndexedDbPersistentChannelColumnStore implements PersistentChannelC
     await transactionDone(transaction);
     if (!record || record.sampleCount !== sampleCount) return undefined;
     return new Float64Array(record.values);
+  }
+
+  public async listCachedChannelIds(
+    logKey: string,
+    sampleCount: number,
+  ): Promise<ReadonlySet<string>> {
+    const database = await this.databasePromise;
+    const transaction = database.transaction(COLUMN_STORE_NAME, 'readonly');
+    const store = transaction.objectStore(COLUMN_STORE_NAME);
+    const prefix = cacheKeyPrefix(logKey, sampleCount);
+    const keys = await requestResult(
+      store.getAllKeys(IDBKeyRange.bound(prefix, `${prefix}\uffff`)),
+    );
+    await transactionDone(transaction);
+    const channelIds = new Set<string>();
+    for (const key of keys) {
+      if (typeof key === 'string' && key.startsWith(prefix)) {
+        channelIds.add(key.slice(prefix.length));
+      }
+    }
+    return channelIds;
   }
 
   public async put(logKey: string, channelId: string, values: Float64Array): Promise<void> {
@@ -182,6 +208,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
   private readonly store: PersistentChannelColumnStore;
   private readonly missingColumns = new Set<string>();
   private readonly residentColumns = new Map<string, Float64Array>();
+  private cachedChannelIdIndex: Set<string> | undefined;
 
   public constructor(
     source: NumericChannelDataSource,
@@ -198,6 +225,13 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     this.sampleCount = source.sampleCount;
     this.preferredBatchWindowMs = source.preferredBatchWindowMs ?? 0;
     this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection ?? false;
+    if (store.listCachedChannelIds) {
+      void store.listCachedChannelIds(logKey, this.sampleCount).then((channelIds) => {
+        const warmed = new Set(channelIds);
+        for (const channelId of this.residentColumns.keys()) warmed.add(channelId);
+        this.cachedChannelIdIndex = warmed;
+      }).catch(() => undefined);
+    }
   }
 
   public sampleRangeForTime(
@@ -221,13 +255,19 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     const resident = this.residentColumns.get(channelId);
     if (resident) return resident;
     if (this.missingColumns.has(channelId)) return undefined;
+    if (this.cachedChannelIdIndex && !this.cachedChannelIdIndex.has(channelId)) {
+      this.missingColumns.add(channelId);
+      return undefined;
+    }
 
     try {
       const values = await this.store.get(this.logKey, channelId, this.sampleCount);
       if (!values || values.length !== this.sampleCount) {
         this.missingColumns.add(channelId);
+        this.cachedChannelIdIndex?.delete(channelId);
         return undefined;
       }
+      this.cachedChannelIdIndex?.add(channelId);
       this.residentColumns.set(channelId, values);
       return values;
     } catch {
@@ -240,6 +280,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     if (range.startSampleIndex !== 0 || range.values.length !== this.sampleCount) return false;
     this.residentColumns.set(channelId, range.values);
     this.missingColumns.delete(channelId);
+    this.cachedChannelIdIndex?.add(channelId);
     return true;
   }
 
