@@ -137,6 +137,12 @@ export interface LoggerUiPopulationPerformance {
 export interface LoggerWorkspaceRestorePerformance {
   readonly totalMs: number;
   readonly prepareMs: number;
+  readonly prepareStateMs: number;
+  readonly prepareClearMs: number;
+  readonly prepareLayoutMs: number;
+  readonly prepareViewportMs: number;
+  readonly preparePaneRequestsMs: number;
+  readonly prepareBatchPlanMs: number;
   readonly sharedBatchMs: number;
   readonly activationMs: number;
   readonly activationGraphTotalMs: number;
@@ -148,6 +154,13 @@ export interface LoggerWorkspaceRestorePerformance {
   readonly activationDrawMs: number;
   readonly activationEnvelopeMs: number;
   readonly finalSyncMs: number;
+  readonly finalSyncResolveMs: number;
+  readonly finalSyncAssignedNormalizeMs: number;
+  readonly finalSyncInspectorActiveMs: number;
+  readonly finalSyncInspectorQueuedMs: number;
+  readonly finalSyncValueSearchMs: number;
+  readonly finalSyncAssignedSyncMs: number;
+  readonly finalSyncOverviewMs: number;
   readonly visiblePaneCount: number;
   readonly assignedChannelCount: number;
   readonly requestedChannelCount: number;
