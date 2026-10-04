@@ -1,5 +1,5 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Roadmap
@@ -8,437 +8,340 @@
 
 The roadmap describes intended capability and implementation order. It does not authorize code to bypass `FILE_ARCHITECTURE.md`.
 
-Each implementation task should identify:
+Each implementation task should identify goal, architectural owner/location, dependencies, expected validation, and completion criteria. Large features should be split into reviewable tasks before coding.
 
-- goal;
-- architectural owner/location;
-- dependencies;
-- expected tests/validation;
-- completion criteria.
+## Current execution position — 2026-10-04
 
-Large features should be split into reviewable tasks before coding.
+EpicScope Web has moved beyond the original shell/log-foundation and the intensive large-log optimization campaign.
 
-<!-- CURRENT_STATE:current-execution-position:START -->
-## Current execution position — 2026-10-03
+Current established foundations include:
 
-EpicScope Web is beyond the original shell/log-foundation stage. The INI-backed channel catalog/binding, reusable application workspace foundation, exact-log persistence, multi-pane graph/timeline tooling, staged validation and large-log diagnostics are implemented. Active engineering remains focused on large-log performance before deeper generic analysis/analyzer work.
+- MLG v1/v2 import/index/staged validation;
+- OPFS sidecar/native-column post-index access;
+- INI-backed channel catalog/binding;
+- reusable application workspaces plus separate exact-log navigation persistence;
+- multi-pane graphs and timeline/range/marker tooling;
+- bounded diagnostics/performance observability;
+- repository/file-structure cleanup through PR #169.
 
-Current performance position:
+Performance and structural cleanup are **good enough for now**. Re-profile when features grow or a regression appears; do not keep optimizing/refactoring solely because further micro-work is possible.
 
-- shared full-range workspace restore is established and loads only channels actually requested by the visible workspace;
-- the independent persistent decoded-channel cache is retained, bounded to 128 stored columns, and can be cleared from Settings;
-- the `predecode=32/64/128` hot-set experiment is complete and **rejected as a product direction** because it shifts arbitrary-channel work into startup instead of removing it;
-- PR #130 removed the opportunistic predecode experiment;
-- the new low-spec cold baseline is the 1.19 GB log opening/indexing in ~4.89 s and restoring 11 unique workspace channels in ~6.01 s on the 2-thread / 4 GB laptop;
-- the next task is to investigate reuse of initial-load/index work or a better post-index access representation so arbitrary first-use channels stop requiring repeated expensive row-oriented source traversal **without worsening normal startup**.
+The active milestone is **UI hierarchy before generic analysis expansion**.
 
-After the replacement performance approach is proven and reasonably optimized, perform the planned whole-repository file/module audit for obsolete performance experiments, dead code, duplicated responsibilities and oversized files.
+Approved workflow:
 
-This hardening does not change the longer product order: generic analysis/events/compare still precede specialized analyzers, MSQ enrichment remains later than the INI/channel-catalog foundation, and Linux remains the eventual production-performance target.
-<!-- CURRENT_STATE:current-execution-position:END -->
+> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
-<!-- CURRENT_STATE:current-execution-position:END -->
+Completed UI passes:
+
+- PR #170 — Channels filter/value foundation;
+- PR #171 — header hierarchy, Load Data, Graphs context, EpicScope mode switcher;
+- PR #172 — Channel browser hierarchy.
+
+Next pass:
+
+- reorganize the timeline into **Navigate → Range/Markers → Analyze** while preserving existing behavior.
+
+After that, resume Phase 2 generic analysis work beginning with reusable range/statistics/filter primitives and Histogram rather than jumping directly to specialized analyzers.
 
 ## Phase 0 — Foundation
 
 Status: **Complete**
 
-Goals:
+Established:
 
-- establish product identity and scope;
-- establish file/system architecture;
-- establish normalized data model;
-- establish performance/platform requirements;
-- establish repository workflow and handoff system;
-- establish initial decisions and roadmap;
-- establish naming, approval, input-security, and privacy/network rules;
-- keep repository code-free until these authorities exist.
+- product identity/scope;
+- architecture/file ownership;
+- normalized data model;
+- performance/platform requirements;
+- workflow/handoff/decision process;
+- privacy/security/input rules.
 
-Exit criteria:
+## Phase 1 — Web log and navigation foundation
 
-- all foundation documents exist and agree;
-- approval authority and naming rules are explicit;
-- parser/tune/session/persistence ownership is unambiguous;
-- initial task/branch workflow is documented;
-- first Web implementation tasks have approved architectural homes.
-
-Phase 0 does **not** require the EpicHub UI reference itself to be inspected. That inspection is the first controlled task of Phase 1.
-
-## Phase 1 — Web log foundation
-
-Status: **Functional foundation implemented; current Web work has moved into source/workspace foundation and large-log performance hardening**
-
-Purpose: create the smallest useful EpicScope Web application and prove the import/data/navigation path.
-
-Planned task groups:
+Status: **Complete as a functional foundation; regression maintenance continues**
 
 ### WEB-REFERENCE — Complete
 
-Completed outcomes:
+Authority:
 
-- authoritative `EpicHub-Tablet-Landscape-0.0.45(2).html` inspected;
-- current EpicHub Logger/Analyzer semantic UI authority inspected;
-- inherited interaction rules recorded in `docs/UI_REFERENCE.md`;
-- deliberate EpicScope deviations recorded;
-- no application implementation code introduced during the reference task.
+- `EpicHub-Tablet-Landscape-0.0.45(2).html`;
+- `docs/UI_REFERENCE.md` contains the EpicScope interpretation and later project-owner refinements.
 
-`EpicHub-Tablet-Landscape-0.0.45(2).html` supersedes the older Tablet Landscape prototype for EpicScope reference purposes.
-
-Approved EpicScope refinements include a dedicated EpicScope shell, consistent right-side controls/details on wide layouts, offline/imported-log focus initially, Trigger Logger deferral, and performance taking priority over exact visual reproduction.
+Important current refinement: EpicScope remains a dedicated product, but the **EpicScope logo dropdown is the in-product mode/surface switcher**.
 
 ### WEB-BOOT — Complete
 
-Detailed historical authority: `docs/WEB_BOOT_PLAN.md`.
+Validated:
 
-Validated outcomes:
-
-- npm package management with committed lockfile;
+- npm lockfile;
 - Vite 8.x;
 - vanilla TypeScript 7.x;
-- no frontend framework;
-- Chromium/Brave-first target;
-- GitHub Actions branch/PR type-check and production-build validation;
-- GitHub Pages deployment from authoritative `main`;
-- no local clone/Node/npm required for project-owner testing;
-- dedicated EpicScope Logger/Analyzer shell;
-- right-side Full Sensor List / inspector responsibility;
-- bottom timeline/transport responsibility;
-- sensor-panel and timeline edge controls;
-- no parser/domain-analysis implementation leaked into the Web shell;
-- no graph/chart library selected during bootstrap.
+- Chromium/Brave-first;
+- GitHub Actions validation;
+- GitHub Pages deployment;
+- project-owner hosted testing without local tooling.
 
-Hosted Web application:
-
-`https://pjawzk.github.io/EpicEFI-EpicScope/`
-
-Hosted Brave validation exposed and then verified fixes for the sensor-panel hide behavior and narrow-width object preservation. WEB-BOOT has no remaining quality gate.
-
-### LOG-MLG — Core path complete; ongoing regression benchmarking only
-
-Detailed format/parser authority: `docs/LOG_MLG_PLAN.md`.
-
-Implemented and validated outcomes:
-
-- EFI Analytics MLVLG v1/v2 parsing with explicit unsupported-version handling for unverified newer formats;
-- bounded/random-access source reads rather than mandatory full-file `ArrayBuffer` materialization;
-- normalized log/channel/time contracts under `core/log-model/`;
-- metadata/channel discovery, standard records, markers and timestamp rollover handling;
-- bounded validation of file-provided sizes/counts/offsets and malformed/untrusted input handling;
-- Vitest 5.x parser/core automated test gate;
-- browser-local hosted MLG import;
-- real EpicEFI/TunerStudio MLG v2 validation;
-- CRC-invalid source samples retained as evidence and excluded from trusted graph/analysis use;
-- staged Worker import so large logs can become usable after indexing while CRC validation continues;
-- bounded Web source caching with a ~96 MiB ceiling;
-- batched MLG channel decoding with a bounded 32 MiB decoded-channel cache;
-- automatic large-log staged channel commit so several selected channels share one sequential row-oriented source pass.
-
-Large-log hosted evidence currently includes a 318,023,627-byte MLG with 72,158 records and 1,652 channels. A four-channel uncached selection has been validated as one `batch=4` traversal of the source rather than four independent decode passes.
-
-LOG-MLG completion/maintenance state:
-
-- retry/recovery diagnostic classification is hosted-validated without altering checksum semantics or repairing source data;
-- the 318 MB benchmark log separates recovered CRC retries and CRC-valid jump/repeat patterns from genuinely unresolved warnings;
-- benchmark capture continues as a regression discipline rather than an unfinished LOG-MLG feature;
-- MLVLG v3 remains deferred until authoritative format evidence exists.
-
-Hosted decoded-channel cache reuse is validated: removing and re-adding previously decoded channels returns from the bounded decoded cache with zero physical source reads.
-
-### LOG-CSV — Deferred by project owner
-
-CSV remains a supported future import path but is not on the immediate Phase 1 critical path.
-
-When resumed:
-
-- normalize through the same log model;
-- apply malformed/untrusted-input handling equivalent in principle to MLG;
-- do not let CSV work delay higher-priority analysis, persistence or tuning workflows.
-
-### TIMELINE
-
-Implemented/validated foundation:
-
-- synchronized timeline;
-- cursor;
-- zoom/pan and draggable/resizable focus window;
-- graph panes;
-- viewport-follow behaviour: cursor moves independently until reaching the center region, then the viewport follows;
-- whole-log overview populated from active decoded graph traces without extra source reads;
-- parsed source markers rendered in the overview;
-- Previous/Next source-marker navigation;
-- channel selection/search;
-- high-zoom raw-sample rendering with bounded zoomed-out envelope rendering;
-- user markers with edit/delete and shared marker navigation;
-- A/B boundaries with range shading in graph and overview;
-- saved ranges with rename/delete/restore;
-- per-workspace previous/next view history;
-- graph workspaces with independent channel/viewport/cursor state;
-- Web WorkspaceState consolidation and global Undo/Redo;
-- versioned browser-local per-log workspace persistence with explicit restore/forget behavior;
-- fixed multi-pane layouts (Single, 4, 5 and 6 graph panes) with an explicit active-pane context;
-- independent channel assignments per pane with shared cursor/viewport/A-B/timeline navigation;
-- freeform five-pane layout with Mosaic/Columns/Rows/Cascade arrangements, drag/resize/snap and minimize/maximize;
-- one shared multi-pane restore decode before pane activation;
-- compact fixed-pane labels and compact draggable freeform title chips instead of full-width pane bars;
-- Single layout stacked-channel rendering with one trace row per channel and compact per-row Now/Min/Max;
-- Logger keyboard shortcuts with the shortcut reference moved under Settings;
-- compact Compare header label.
-
-Final Phase 1 workspace validation is limited to hosted regression checks of the latest graph-density UI and persistence/performance behavior.
-
-### WORKSPACE / PERSISTENCE v1 — Implemented and hosted-validated
+### LOG-MLG — Core path complete
 
 Implemented:
 
-- Web-specific WorkspaceState under `apps/web/src/state/`, separate from domain Session;
-- bounded 80-state Undo/Redo history;
-- versioned `epicscope.web-workspace` v1 persisted artifact;
-- storage-independent versioned envelope and compatibility handling under `core/persistence/`;
-- browser-local storage adapter keyed by the existing source-log identity;
-- automatic save/restore for matching logs;
-- malformed/unsupported artifacts rejected rather than silently partially restored;
-- explicit **Forget saved workspace** control;
-- no raw MLG bytes or decoded channel arrays persisted.
+- MLVLG v1/v2 parsing;
+- bounded/random-access source access;
+- normalized log contracts;
+- source markers/timestamps/rollover handling;
+- malformed/untrusted-input protection;
+- Vitest parser/core coverage;
+- staged Worker import and deferred CRC validation;
+- bounded Blob caching;
+- multi-channel decoding;
+- OPFS column sidecar and sparse native per-channel persistence;
+- session/RAM reuse and fallback source path.
 
-Hosted validation confirmed exact-log restore across page reload/open and explicit Forget behavior. This v1 model remains active for recording-specific navigation/annotation state alongside the newer reusable application-workspace artifact; it has not been silently reinterpreted or replaced.
+MLVLG v3 remains deferred until authoritative evidence exists.
 
-Exit criteria:
+### LOG-CSV — Deferred
 
-- local MLG opens without upload;
-- channels can be inspected and graphed;
-- timeline navigation is usable for real tuning logs;
-- parser/UI boundaries conform to architecture;
-- invalid input does not cause unbounded allocation or whole-app failure where graceful handling is possible.
+CSV remains a future secondary import format but does not block higher-value analysis/product work.
 
-## Phase 2 — Channel catalog and generic analysis foundation
+### TIMELINE / GRAPH FOUNDATION — Complete
 
-Purpose: decouple the persistent analysis workspace from any one opened log, establish stable source/channel identity, then build reusable analysis primitives before specialized analyzers multiply.
+Implemented:
 
-Implementation order begins with source context because persistent graph/channel layouts should exist before a log supplies samples.
+- synchronized timeline/cursor;
+- zoom/pan/focus window;
+- cursor-follow behavior;
+- source and user markers;
+- A/B boundaries and shading;
+- saved ranges;
+- view history;
+- multi-pane fixed/freeform workspaces;
+- active-pane context;
+- Single stacked-trace layout;
+- high-zoom raw samples and zoomed-out exact-envelope rendering;
+- timeline overview;
+- keyboard shortcuts and persistence.
 
-Task groups:
+Current task is **presentation hierarchy**, not missing timeline capability.
 
-### TUNE-INI / CHANNEL-CATALOG — Foundation implemented; hosted validation in progress
+### WORKSPACE / PERSISTENCE v1 + reusable application workspace — Implemented
 
-- decode EpicEFI/TunerStudio INI source syntax under `core/parsers/ini/`;
-- normalize firmware identity and known runtime/output-channel metadata without requiring an MLG to be open;
-- establish stable logical channel keys suitable for persistence;
-- merge INI-known channels with channels discovered from an opened MLG;
-- bind each logical channel to the matching MLG channel/data source when present;
-- represent at least: **known + data**, **known but unavailable in this log**, and **log-only channel**;
-- never hide or discard a usable MLG-only channel simply because the loaded INI does not know it;
-- keep the MLG authoritative for recorded samples and sample validity.
+- exact-log artifact retains recording-specific viewport/cursor/A-B/markers/ranges;
+- reusable application workspace retains named workspaces/layouts/stable channel assignments independently of log identity;
+- normalized INI catalog persists separately;
+- incompatible artifacts are rejected rather than silently reinterpreted.
 
-### WORKSPACE-PERSISTENCE v2 — Implemented; hosted validation in progress
+## Phase 2 — Channel catalog, UI workflow, and generic analysis foundation
 
-- split persistent application workspace state from log-specific analysis state;
-- persist named workspaces, pane layouts/geometry, channel assignments, favorites and display preferences independently of a specific log identity;
-- allow EpicScope to reopen with its workspace/channel structure present before any log is loaded;
-- keep viewport/cursor/A-B/log annotations and other recording-specific state associated with the relevant log/session;
-- migrate/extend the current versioned Web persistence format without silently reinterpreting existing v1 artifacts.
+Status: **In progress**
 
-Current implemented v2 behavior:
+Purpose: establish stable channel/source context and generic analysis primitives before specialized analyzers multiply.
 
-- browser-local normalized INI channel catalog is restored across app restarts;
-- freshly loaded vs locally restored INI state is explicit in the UI;
-- Settings can unload the INI catalog and remove its persisted copy without clearing performance diagnostics, enabling repeatable fresh-load performance comparisons;
-- INI-only channels can be assigned to panes before any log is loaded;
-- pane assignments are separate from currently decoded traces;
-- reusable named workspaces/layouts/channel assignments persist independently of log identity;
-- known/no-data assignments remain visible while waiting for a matching log;
-- opening a previously unseen log preserves reusable pane structure;
-- matching bound channels activate through the existing MLG data source/cache;
-- recording-specific cursor/viewport/A-B/markers/ranges continue to use exact-log persistence v1.
+### TUNE-INI / CHANNEL-CATALOG — Foundation implemented
 
-### CHANNELS
+- raw INI decoding under `core/parsers/ini/`;
+- stable logical channel identity;
+- INI↔MLG binding;
+- known+data / known-no-data / log-only states;
+- MLG remains authoritative for samples and validity.
 
-- aliases/groups/favorites;
-- units;
-- stable logical/source bindings;
+### CHANNELS — Foundation partially implemented
+
+Implemented now:
+
+- stable logical/source binding;
+- group/search/Active/Favorites/Recent filter semantics with focused tests;
+- unit-aware current-value display;
+- channel statistics/detail foundation;
+- persistent assignments and source availability states.
+
+Still planned:
+
+- richer aliases/group management where needed;
 - derived/math channels;
-- channel statistics.
+- any further channel organization demanded by real analysis workflows.
 
-### ANALYSIS
+### UI-HIERARCHY — Active
+
+Approved flow:
+
+1. Load Data
+2. Channels
+3. Navigate
+4. Select / qualify range
+5. Analyze
+6. Compare / Export
+
+Completed:
+
+- Load Data menu;
+- Graphs workspace identity;
+- EpicScope mode switcher;
+- Channel browser simplification;
+- removal of empty Tools/Compare placeholders.
+
+Next:
+
+- timeline Navigate grouping;
+- Range/Markers grouping;
+- contextual Analyze entry point;
+- later diagnostics/settings consolidation where needed.
+
+### ANALYSIS — Next after UI hierarchy
+
+Build generic reusable analysis services before specialized analyzers:
 
 - filters and qualification;
 - range statistics;
 - histogram;
-- 2D histogram/heatmap;
+- 2D histogram/heatmap/table;
 - scatter;
 - selectable aggregation methods;
-- sample count/variance display;
+- sample count/variance/evidence display;
 - explicit X/Y/value/filter semantics.
+
+Preferred first implementation sequence:
+
+1. generic Analysis Result / range scope contract;
+2. Range Statistics;
+3. Histogram;
+4. 2D Histogram/Heatmap/Table;
+5. Scatter;
+6. reusable presets/filters as justified.
 
 ### EVENTS
 
 - event data contract;
 - detector framework;
 - initial generic detectors;
-- event rail and event navigation.
+- event rail/navigation;
+- analyzers reuse generic events rather than private copies.
 
 ### COMPARE-BASE
 
-- load/relate multiple logs;
+- multiple-log/session relation;
 - trace overlays;
-- range/event alignment primitives;
-- metric delta presentation.
+- range/event alignment;
+- metric deltas;
+- linked source context.
 
-Exit criteria:
+Compare should become visible in the UI when real comparison capability exists, not as a disabled top-level placeholder.
 
-- EpicScope can start with named workspace/pane/channel structure present before any log is loaded;
-- a supported INI can establish stable logical channels and bind them safely to supported MLG data when available;
-- known-but-unlogged and log-only channel states remain explicit;
-- generic tools can reproduce and improve common MLV-style analysis workflows;
-- analyzers can depend on stable generic services rather than implementing their own copies.
+Phase 2 exit criteria:
+
+- stable workspace/channel context exists before a log is opened;
+- supported INI binds safely to supported logs;
+- known-no-data/log-only states remain explicit;
+- generic analysis workflows are useful independently of specialized analyzers;
+- analyzer implementation can reuse stable generic services.
 
 ## Phase 3 — MSQ tune enrichment and table correlation
 
-Purpose: add actual tune/calibration values after the INI-backed channel/catalog foundation exists, then connect logged behaviour to tune tables and curves.
-
-Task groups:
-
 ### TUNE-MSQ
 
-- decode MSQ source syntax under `core/parsers/msq/`;
-- normalize tune values, tables, curves and scalar settings under `core/tune/`;
-- treat MSQ as optional tune-value enrichment rather than the primary runtime-channel catalog;
-- combine MSQ tune values with INI metadata/definitions through normalized tune context;
-- provide compatibility/validation reporting when INI/MSQ/log identities do not align.
+- raw MSQ decoding under `core/parsers/msq/`;
+- normalized tune values/tables/curves/scalars under `core/tune/`;
+- optional enrichment, not the runtime channel catalog;
+- explicit compatibility reporting with INI/log context.
 
 ### TABLE-MAP
 
-- map log samples into actual table coordinates/cells;
-- expose current table value, observed result, target/error, sample count, and stability metrics;
-- reusable table-overlay API.
-
-Exit criteria:
-
-- supported MSQ tune values can enrich the existing INI/log source context;
-- supported logs can be correlated with supported tune tables without UI-specific or source-format-specific interpretation leaking into analyzers.
+- map samples into tune coordinates/cells;
+- expose tune value, observed result, target/error, sample count and stability;
+- reusable table-overlay APIs.
 
 ## Phase 4 — Specialized analyzers
 
-Purpose: turn EpicScope from a generic viewer into a tuning-diagnostics system.
+Specialized analyzers use generic analysis/events/compare/tune services.
 
-Initial analyzer tracks:
+Initial tracks:
 
 ### BOOST
 
-Capability-driven boost analysis supporting, where available:
-
-- single duty/solenoid systems;
-- dual-solenoid systems;
-- upper/lower chamber control;
-- open-loop control;
-- closed-loop control;
-- target vs MAP error;
-- spool/steady-state segmentation;
-- overshoot/undershoot detection;
-- table-aware cell statistics;
-- comparable-pull analysis.
+Capability-driven support for single/dual solenoid, upper/lower chamber, open/closed loop, target/error, spool, steady-state and overshoot/undershoot analysis.
 
 ### IDLE
 
-- target/error;
-- idle valve duty and bias/feed-forward;
-- P/I/D term decomposition where logged;
-- load/clutch disturbance segmentation;
-- sag, overshoot, recovery, settling metrics.
+Target/error, valve duty/bias/feed-forward, PID terms where logged, disturbance/sag/recovery/settling.
 
 ### AE / MAP PREDICT
 
-- tip-in/decel event segmentation;
-- TPS/MAP timing;
-- predicted vs measured MAP;
-- AFR response;
-- lean/rich peak and recovery metrics;
-- before/after comparison.
+Tip-in/decel events, TPS/MAP timing, predicted/measured MAP, AFR response, lean/rich peak and recovery, before/after comparison.
 
 ### FUELING
 
-- VE/AFR error analysis;
-- target/actual error qualification;
-- tune-cell population and stability.
+VE/AFR target/actual error, qualification, tune-cell population/stability.
 
 ### IGNITION
 
-- ignition advance/retard/knock-oriented analysis based on available channels and evidence.
+Advance/retard/knock-oriented evidence where channels permit.
 
 ### FUEL PRESSURE / INJECTOR
 
-- rail/differential pressure behaviour;
-- injector PW/duty/deadtime-related analysis where supported.
+Rail/differential pressure, injector PW/duty/deadtime-oriented analysis where supported.
 
 ### TRIGGER / SYNC
 
-- synchronization/dropout/event analysis where logged channels permit.
+Synchronization/dropout/event analysis where available channels permit.
 
-Each analyzer begins as **Experimental**, advances to **Beta**, then **Stable** only after validation.
+Each analyzer begins Experimental, then Beta, then Stable only with validation evidence.
 
 ## Phase 5 — Sessions, sharing, and reporting
 
-- establish `core/session/` orchestration as required;
-- extend the already-established `core/persistence/` version/migration infrastructure from workspace artifacts into full session artifacts;
-- persist local session/workspace state with domain session and UI workspace state kept conceptually separate;
+- domain session orchestration as needed;
+- versioned full-session persistence;
 - annotations/bookmarks;
-- analysis snapshots/results;
-- optional publish/share flow inspired by EpicEFI Tune Viewer;
-- explicit local-vs-shared privacy boundary;
-- no silent transmission of log/tune/analysis content;
-- schema/version/migration support.
+- analysis results/snapshots;
+- optional explicit sharing/publishing;
+- no silent upload/telemetry of local log/tune content.
 
-Any backend/share service architecture must be approved before a new top-level service/backend area is created.
+Any backend/share architecture requires explicit approval before new top-level areas are created.
 
 ## Phase 6 — Web functional maturity review
 
-Before Linux implementation becomes the main focus:
+Before Linux becomes primary focus:
 
-- review feature completeness;
-- identify missing high-value workflows;
+- review feature completeness and workflow clarity;
 - consolidate duplicate concepts;
-- freeze or version key data/analyzer contracts;
+- freeze/version key contracts;
 - profile representative workloads;
-- define Linux performance benchmark suite and hardware baselines;
-- decide which Web internals are retained, replaced, or ported.
+- define Linux benchmark/hardware baselines;
+- decide which Web internals are retained/replaced/ported.
 
 ## Phase 7 — Linux production implementation
 
-Primary target: Debian 13 Stable.
+Primary baseline: Debian 13 Stable.
 
 Goals:
 
-- approve the Linux application/runtime file architecture before implementation;
+- approved Linux runtime architecture;
 - native high-performance data path;
 - low RAM;
-- large-log indexing;
-- fast bounded queries;
+- large-log indexing and bounded queries;
 - responsive graphs/tables;
 - preserve established EpicScope semantics;
-- meet or approach the 1 GiB log / 2 GiB RAM requirement on representative hardware.
+- target the 1 GiB log / 2 GiB RAM requirement.
 
-Likely areas for native implementation include parser/data storage/analysis hot paths. Rust is a preferred candidate but must still be justified by actual architecture and measurements.
+Rust remains a preferred candidate for native hot paths when justified by measurement and architecture.
 
 ## Phase 8 — Linux feature expansion
 
-After core production performance is stable:
+Potential later work:
 
-- native file watching/library features if useful;
+- persistent native indexes/caches;
 - very large logs;
-- persistent indexes/caches;
-- optional direct ECU logging/live analysis;
+- optional file-library/watching workflows;
+- direct ECU logging/live analysis if separately approved;
 - additional analyzers;
 - packaging/update strategy.
 
 ## Phase 9 — Android / EpicHub integration
 
 - identify reusable core components;
-- approve Android/EpicHub integration architecture before adding platform directories;
-- adapt proven analyzer workflows to EpicHub;
-- design tablet/mobile presentation separately where needed;
-- avoid importing Linux desktop assumptions unchanged.
+- approve Android integration architecture first;
+- adapt proven analyzers/workflows to EpicHub;
+- design tablet/mobile presentation independently where appropriate.
 
 ## Roadmap change control
 
-New major feature groups may be added, but they must be placed deliberately in the roadmap and architecture before implementation.
-
-A feature request is not itself approval for a new subsystem or architectural layer.
+New major feature groups may be added, but they must be placed deliberately in roadmap and architecture before implementation. A feature request alone does not authorize a new subsystem or architectural layer.
