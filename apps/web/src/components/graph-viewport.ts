@@ -85,6 +85,14 @@ export interface GraphChannelPerformance {
   readonly physicalReadCount: number;
   readonly physicalBytesRead: number;
   readonly physicalReadMs: number;
+  readonly persistentLookupMs?: number | undefined;
+  readonly persistentRangeBuildMs?: number | undefined;
+  readonly delegatedSourceMs?: number | undefined;
+  readonly sidecarManifestMs?: number | undefined;
+  readonly sidecarFileOpenAggregateMs?: number | undefined;
+  readonly sidecarBlobReadAggregateMs?: number | undefined;
+  readonly sidecarDecodeAggregateMs?: number | undefined;
+  readonly sidecarRangeBuildMs?: number | undefined;
 }
 
 export interface GraphPreloadedActivationPerformance {
@@ -964,6 +972,14 @@ export function createGraphViewport(): GraphViewportController {
           physicalReadCount: result.performance.physicalReadCount,
           physicalBytesRead: result.performance.physicalBytesRead,
           physicalReadMs: result.performance.physicalReadMs,
+          persistentLookupMs: result.performance.persistentLookupMs,
+          persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+          delegatedSourceMs: result.performance.delegatedSourceMs,
+          sidecarManifestMs: result.performance.sidecarManifestMs,
+          sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+          sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+          sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
+          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
         });
         pending.resolve(true);
         const activated = activeTraces.get(channelId);
@@ -1235,6 +1251,14 @@ export function createGraphViewport(): GraphViewportController {
             physicalReadCount: result.performance.physicalReadCount,
             physicalBytesRead: result.performance.physicalBytesRead,
             physicalReadMs: result.performance.physicalReadMs,
+          persistentLookupMs: result.performance.persistentLookupMs,
+          persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+          delegatedSourceMs: result.performance.delegatedSourceMs,
+          sidecarManifestMs: result.performance.sidecarManifestMs,
+          sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+          sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+          sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
+          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
           });
           completedSteps += 1;
         } catch {
@@ -1322,6 +1346,14 @@ export function createGraphViewport(): GraphViewportController {
         physicalReadCount: result.performance.physicalReadCount,
         physicalBytesRead: result.performance.physicalBytesRead,
         physicalReadMs: result.performance.physicalReadMs,
+        persistentLookupMs: result.performance.persistentLookupMs,
+        persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+        delegatedSourceMs: result.performance.delegatedSourceMs,
+        sidecarManifestMs: result.performance.sidecarManifestMs,
+        sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+        sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+        sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
+        sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
       });
       return true;
     } catch {
