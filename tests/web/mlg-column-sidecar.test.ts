@@ -40,27 +40,27 @@ describe('MLG column sidecar stripe planner', () => {
     expect(plan.stripes).toEqual([
       {
         index: 0,
-        fileName: 'stripe-0000.bin',
         startByte: 0,
         widthBytes: 8,
         firstFieldIndex: 0,
         lastFieldIndexExclusive: 2,
+        storageOffset: 0,
       },
       {
         index: 1,
-        fileName: 'stripe-0001.bin',
         startByte: 8,
         widthBytes: 10,
         firstFieldIndex: 2,
         lastFieldIndexExclusive: 4,
+        storageOffset: 0,
       },
       {
         index: 2,
-        fileName: 'stripe-0002.bin',
         startByte: 18,
         widthBytes: 2,
         firstFieldIndex: 4,
         lastFieldIndexExclusive: 5,
+        storageOffset: 0,
       },
     ]);
     expect(plan.fields.map((field) => ({
