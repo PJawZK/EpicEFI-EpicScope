@@ -4,6 +4,7 @@ import { BlobByteSource } from './blob-byte-source';
 import { MlgColumnSidecarDataSource } from './mlg-column-sidecar';
 import { createPersistentColumnCacheDataSource } from './persistent-channel-cache';
 import type {
+  MlgPriorityCaptureSelector,
   MlgWorkerIndexedPayload,
   MlgWorkerResponse,
   MlgWorkerValidatedPayload,
@@ -26,7 +27,7 @@ export function supportsStagedMlgWorker(): boolean {
   return typeof Worker !== 'undefined';
 }
 
-export function importMlgFileStaged(file: File): StagedMlgImportHandle {
+export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPriorityCaptureSelector[] = []): StagedMlgImportHandle {
   const worker = new Worker(
     new URL('../workers/mlg-import.worker.ts', import.meta.url),
     { type: 'module' },
@@ -74,6 +75,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
         message.payload.fields,
         message.payload.recordIndex,
       );
+      if (message.payload.capturedPriorityColumns) sidecarChannelData.seedCapturedPriorityColumns(message.payload.capturedPriorityColumns);
       const channelData = createPersistentColumnCacheDataSource(
         sidecarChannelData,
         message.payload.summary.source.id,
@@ -150,6 +152,7 @@ export function importMlgFileStaged(file: File): StagedMlgImportHandle {
       format: 'MLG',
       sizeBytes: file.size,
     },
+    ...(priorityCapture.length > 0 ? { priorityCapture } : {}),
   });
 
   return {

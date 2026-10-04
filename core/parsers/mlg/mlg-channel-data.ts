@@ -43,7 +43,7 @@ function nowMs(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
 
-function decodeRawValue(view: DataView, offset: number, field: MlgFieldDescriptor): number {
+export function decodeMlgRawValue(view: DataView, offset: number, field: MlgFieldDescriptor): number {
   switch (field.type) {
     case 0:
     case 10:
@@ -67,7 +67,7 @@ function decodeRawValue(view: DataView, offset: number, field: MlgFieldDescripto
   }
 }
 
-function displayValue(rawValue: number, field: MlgFieldDescriptor): number {
+export function displayMlgValue(rawValue: number, field: MlgFieldDescriptor): number {
   if (field.kind === 'bitfield') return rawValue;
   return (rawValue + field.transform) * field.scale;
 }
@@ -303,8 +303,8 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
               + BLOCK_HEADER_LENGTH
               + channel.fieldOffset
               - batchStartByte;
-            channel.values[sampleIndex - startSampleIndex] = displayValue(
-              decodeRawValue(view, valueOffset, channel.field),
+            channel.values[sampleIndex - startSampleIndex] = displayMlgValue(
+              decodeMlgRawValue(view, valueOffset, channel.field),
               channel.field,
             );
           }

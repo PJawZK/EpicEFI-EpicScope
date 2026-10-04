@@ -1138,6 +1138,27 @@ export function mountAppShell(root: HTMLElement): void {
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
+  const priorityCaptureSelectorsForWorkspace = (workspaceState: WebWorkspaceState) => {
+    const activeWorkspace = workspaceState.logger.workspaces.find((workspace) => workspace.id === workspaceState.logger.activeWorkspaceId);
+    if (!activeWorkspace) return [];
+    const ids = new Set<string>();
+    if (activeWorkspace.panes && activeWorkspace.panes.length > 0) {
+      for (const pane of activeWorkspace.panes) for (const id of pane.channelIds) ids.add(id);
+    } else {
+      for (const id of activeWorkspace.channelIds) ids.add(id);
+    }
+    const selectors: Array<{ logicalChannelId: string; logicalKey?: string; displayName?: string; unit?: string; sourceChannelId?: string }> = [];
+    for (const logicalChannelId of ids) {
+      if (logicalChannelId.startsWith('mlg:')) { selectors.push({ logicalChannelId, sourceChannelId: logicalChannelId }); continue; }
+      if (!logicalChannelId.startsWith('ini:') || !activeIniCatalog) continue;
+      const logicalKey = logicalChannelId.slice(4);
+      const entry = activeIniCatalog.byLogicalKey.get(logicalKey);
+      if (!entry) continue;
+      selectors.push({ logicalChannelId, logicalKey: entry.logicalKey, displayName: entry.displayName, ...(entry.unit ? { unit: entry.unit } : {}) });
+    }
+    return selectors;
+  };
+
   const prioritizedWorkspaceSourceChannelIds = (
     workspaceState: WebWorkspaceState,
     logicalToSourceChannelId: ReadonlyMap<string, string> | undefined,
@@ -1281,7 +1302,8 @@ export function mountAppShell(root: HTMLElement): void {
       return;
     }
 
-    const staged = importMlgFileStaged(file);
+    const priorityCapture = priorityCaptureSelectorsForWorkspace(captureWorkspaceState());
+    const staged = importMlgFileStaged(file, priorityCapture);
     activeStagedImport = staged;
 
     void staged.indexed

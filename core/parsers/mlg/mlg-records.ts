@@ -39,6 +39,7 @@ export interface MlgRecordScanResult {
 
 export interface MlgRecordScanOptions {
   readonly validateCrc?: boolean;
+  readonly onFixedRecordChunk?: (bytes: Uint8Array, firstRecordIndex: number, recordCount: number, blockLength: number) => void;
 }
 
 export interface MlgCrcValidationPerformance {
@@ -361,6 +362,7 @@ async function tryScanFixedRecords(
   source: RandomAccessByteSource,
   header: MlgHeader,
   validateCrc: boolean,
+  onFixedRecordChunk?: MlgRecordScanOptions['onFixedRecordChunk'],
 ): Promise<MlgRecordScanResult | undefined> {
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const recordLength = header.recordLength;
@@ -407,6 +409,7 @@ async function tryScanFixedRecords(
     }
 
     benchmarkChunk ??= chunk;
+    onFixedRecordChunk?.(chunk, batchFirst, batchCount, blockLength);
 
     for (let localIndex = 0; localIndex < batchCount; localIndex += 1) {
       const recordIndex = batchFirst + localIndex;
@@ -742,7 +745,7 @@ export async function scanMlgRecords(
   options: MlgRecordScanOptions = {},
 ): Promise<MlgRecordScanResult> {
   const validateCrc = options.validateCrc ?? true;
-  const fixed = await tryScanFixedRecords(source, header, validateCrc);
+  const fixed = await tryScanFixedRecords(source, header, validateCrc, options.onFixedRecordChunk);
   const result = fixed ?? await scanMlgRecordsGeneral(source, header, validateCrc);
 
   if (!validateCrc) return result;

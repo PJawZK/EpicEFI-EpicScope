@@ -421,6 +421,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private manifest: MlgColumnSidecarManifest | undefined;
   private readonly existingManifestPromise: Promise<void>;
   private prioritizedChannelIds = new Set<string>();
+  private readonly capturedPriorityColumns = new Map<string, Float64Array>();
   private priorityReadyPromise: Promise<void> | undefined;
   private resolvePriorityReady: (() => void) | undefined;
 
@@ -444,6 +445,12 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     this.existingManifestPromise = readStoredManifest(logKey).then((manifest) => {
       if (manifest) this.activate(manifest);
     });
+  }
+
+  public seedCapturedPriorityColumns(columns: readonly { readonly channelId: string; readonly values: Float64Array }[]): void {
+    for (const column of columns) {
+      if (column.values.length === this.sampleCount && this.fieldByChannelId.has(column.channelId)) this.capturedPriorityColumns.set(column.channelId, column.values);
+    }
   }
 
   public activate(manifest: MlgColumnSidecarManifest): boolean {
@@ -527,6 +534,14 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelBatchResult | undefined> {
+    if (startSampleIndex === 0 && sampleCount === this.sampleCount) {
+      const captured = channelIds.map((channelId) => this.capturedPriorityColumns.get(channelId));
+      if (captured.every((values) => values !== undefined)) {
+        const ranges = new Map<string, NumericChannelRange>();
+        for (let index = 0; index < channelIds.length; index += 1) ranges.set(channelIds[index]!, buildRange(this.recordIndex, 0, this.sampleCount, captured[index]!));
+        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 } };
+      }
+    }
     await this.waitForPrioritizedChannels(channelIds);
     const manifest = await this.ensureManifest();
     if (!manifest) return undefined;
