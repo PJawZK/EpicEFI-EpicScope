@@ -1,6 +1,7 @@
 import type {
   ImportedLogSummary,
   LogSourceIdentity,
+  NumericChannelEnvelopeBlocks,
   NumericChannelStatistics,
   ParserDiagnostic,
 } from '../../../../core/log-model/log-types';
@@ -64,6 +65,7 @@ export interface MlgCapturedPriorityColumn {
   readonly channelId: string;
   readonly values: Float64Array;
   readonly statistics: NumericChannelStatistics;
+  readonly envelopeBlocks: NumericChannelEnvelopeBlocks;
 }
 
 export interface MlgWorkerImportRequest {

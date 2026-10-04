@@ -1,6 +1,7 @@
 import type {
   NumericChannelBatchResult,
   NumericChannelDataSource,
+  NumericChannelEnvelopeBlocks,
   NumericChannelRange,
   NumericChannelStatistics,
 } from '../../../../core/log-model/log-types';
@@ -399,6 +400,7 @@ function buildRange(
   sampleCount: number,
   values: Float64Array,
   fullStatistics?: NumericChannelStatistics,
+  fullEnvelopeBlocks?: NumericChannelEnvelopeBlocks,
 ): NumericChannelRange {
   const end = startSampleIndex + sampleCount;
   const isFullRange = startSampleIndex === 0 && sampleCount === recordIndex.timeMs.length;
@@ -412,6 +414,7 @@ function buildRange(
       ? recordIndex.crcValid
       : recordIndex.crcValid.slice(startSampleIndex, end),
     ...(isFullRange && fullStatistics ? { fullStatistics } : {}),
+    ...(isFullRange && fullEnvelopeBlocks ? { fullEnvelopeBlocks } : {}),
   };
 }
 
@@ -429,6 +432,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
   private readonly capturedPriorityColumns = new Map<string, {
     readonly values: Float64Array;
     readonly statistics: NumericChannelStatistics;
+    readonly envelopeBlocks: NumericChannelEnvelopeBlocks;
   }>();
   private priorityReadyPromise: Promise<void> | undefined;
   private resolvePriorityReady: (() => void) | undefined;
@@ -461,6 +465,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
         this.capturedPriorityColumns.set(column.channelId, {
           values: column.values,
           statistics: column.statistics,
+          envelopeBlocks: column.envelopeBlocks,
         });
       }
     }
@@ -555,7 +560,14 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
           const column = captured[index]!;
           ranges.set(
             channelIds[index]!,
-            buildRange(this.recordIndex, 0, this.sampleCount, column.values, column.statistics),
+            buildRange(
+              this.recordIndex,
+              0,
+              this.sampleCount,
+              column.values,
+              column.statistics,
+              column.envelopeBlocks,
+            ),
           );
         }
         return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 } };
