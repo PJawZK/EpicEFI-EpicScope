@@ -37,3 +37,5 @@ jobs:
           git add apps/web/src/pages/heatmap-view.ts apps/web/src/styles/histogram.css
           git commit -m "Refine Heatmap aggregation presentation"
           git push origin HEAD:analysis/heatmap-aggregation-ui-v1
+
+# trigger
