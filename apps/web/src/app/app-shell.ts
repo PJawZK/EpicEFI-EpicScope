@@ -101,10 +101,24 @@ export function mountAppShell(root: HTMLElement): void {
           </div>
           <button type="button" class="global-module-choice global-module-choice--active" role="menuitem" aria-current="page">
             <span>
-              <strong>Logger / Analyzer</strong>
-              <small>Recorded log analysis</small>
+              <strong>Logger</strong>
+              <small>Recorded log viewing and navigation</small>
             </span>
             <span class="module-state">Active</span>
+          </button>
+          <button type="button" class="global-module-choice" role="menuitem" aria-disabled="true" disabled>
+            <span>
+              <strong>Analyzer</strong>
+              <small>Range and channel analysis</small>
+            </span>
+            <span class="module-state">Planned</span>
+          </button>
+          <button type="button" class="global-module-choice" role="menuitem" aria-disabled="true" disabled>
+            <span>
+              <strong>Histogram</strong>
+              <small>Distribution and binned analysis</small>
+            </span>
+            <span class="module-state">Planned</span>
           </button>
         </div>
       </div>
@@ -115,12 +129,24 @@ export function mountAppShell(root: HTMLElement): void {
       <span class="loaded-log" title="Loaded recorded log"><span>Log</span><strong>No log loaded</strong></span>
     </div>
     <div class="header-actions">
-      <button type="button" class="open-log source-load-button" data-load-state="idle">Open Log</button>
-      <button type="button" class="load-ini source-load-button" data-load-state="idle">Load INI</button>
+      <div class="load-data-wrap">
+        <button type="button" class="load-data-button" aria-haspopup="menu" aria-expanded="false">Load Data <span aria-hidden="true">▾</span></button>
+        <div class="load-data-menu" role="menu" hidden>
+          <div class="load-data-menu-head">
+            <strong>Load Data</strong>
+            <small>Choose the source to add to the current workspace.</small>
+          </div>
+          <button type="button" class="open-log source-load-button" data-load-state="idle" role="menuitem">
+            <strong>Open Log…</strong><small>MLG recorded log</small>
+          </button>
+          <button type="button" class="load-ini source-load-button" data-load-state="idle" role="menuitem">
+            <strong>Load INI…</strong><small>Firmware channel catalog</small>
+          </button>
+        </div>
+      </div>
       <div class="logger-tools-slot"></div>
       <button type="button" class="workspace-undo" disabled title="Undo workspace change">↶</button>
       <button type="button" class="workspace-redo" disabled title="Redo workspace change">↷</button>
-      <button type="button" disabled>Tools ▾</button>
       <div class="settings-wrap">
         <button type="button" class="settings-button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false">⚙</button>
         <div class="settings-popover" role="dialog" aria-label="EpicScope settings" hidden>
@@ -293,6 +319,8 @@ export function mountAppShell(root: HTMLElement): void {
 
   const brandButton = header.querySelector<HTMLButtonElement>('.brand-button');
   const brandMenu = header.querySelector<HTMLElement>('.global-switch-menu');
+  const loadDataButton = header.querySelector<HTMLButtonElement>('.load-data-button');
+  const loadDataMenu = header.querySelector<HTMLElement>('.load-data-menu');
   const openButton = header.querySelector<HTMLButtonElement>('.open-log');
   const loadIniButton = header.querySelector<HTMLButtonElement>('.load-ini');
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
@@ -313,7 +341,7 @@ export function mountAppShell(root: HTMLElement): void {
   const clearChannelCacheButton = header.querySelector<HTMLButtonElement>('.setting-clear-channel-cache');
   const channelCacheStatus = header.querySelector<HTMLElement>('.settings-channel-cache-status');
 
-  if (!brandButton || !brandMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
+  if (!brandButton || !brandMenu || !loadDataButton || !loadDataMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
 
@@ -800,6 +828,23 @@ export function mountAppShell(root: HTMLElement): void {
     brandButton.setAttribute('aria-expanded', 'false');
   };
 
+  const closeLoadDataMenu = (): void => {
+    loadDataMenu.hidden = true;
+    loadDataButton.setAttribute('aria-expanded', 'false');
+  };
+
+  loadDataButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = loadDataMenu.hidden;
+    loadDataMenu.hidden = !nextOpen;
+    loadDataButton.setAttribute('aria-expanded', String(nextOpen));
+    if (nextOpen) {
+      closeBrandMenu();
+      closeSettings();
+    }
+  });
+  loadDataMenu.addEventListener('click', (event) => event.stopPropagation());
+
   brandButton.addEventListener('click', (event) => {
     event.stopPropagation();
     const nextOpen = brandMenu.hidden === true;
@@ -810,11 +855,18 @@ export function mountAppShell(root: HTMLElement): void {
   brandMenu.addEventListener('click', (event) => event.stopPropagation());
   document.addEventListener('click', () => {
     closeBrandMenu();
+    closeLoadDataMenu();
     closeSettings();
   });
 
-  openButton.addEventListener('click', () => fileInput.click());
-  loadIniButton.addEventListener('click', () => iniInput.click());
+  openButton.addEventListener('click', () => {
+    closeLoadDataMenu();
+    fileInput.click();
+  });
+  loadIniButton.addEventListener('click', () => {
+    closeLoadDataMenu();
+    iniInput.click();
+  });
 
   unloadIniButton.addEventListener('click', () => {
     if (!activeIniCatalog) return;

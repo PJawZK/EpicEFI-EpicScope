@@ -947,3 +947,10 @@
 .channel-row--unavailable .channel-unit {
   color: #708695;
 }
+
+
+.global-module-choice:disabled {
+  opacity: .58;
+  cursor: default;
+}
+.global-module-choice:disabled .module-state { color: #718796; }

@@ -209,6 +209,7 @@ function createGraphSelector(): GraphSelectorController {
   const root = document.createElement('div');
   root.className = 'graph-selector-wrap';
   root.innerHTML = `
+    <span class="graph-selector-context">Graphs</span>
     <button type="button" class="graph-selector-button" aria-haspopup="menu" aria-expanded="false">
       <span>General</span>
       <span class="graph-selector-chevron" aria-hidden="true"></span>
@@ -433,17 +434,12 @@ export function createLoggerPage(): LoggerPageController {
 
   shortcutWrap.append(shortcutButton, shortcutPopover);
 
-  const compareButton = document.createElement('button');
-  compareButton.type = 'button';
-  compareButton.disabled = true;
-  compareButton.textContent = 'Compare';
   headerTools.append(
     valueSearch.element,
     layoutSelect,
     arrangeSelect,
     clearPaneButton,
     resetLayoutButton,
-    compareButton,
   );
 
   const setShortcutPopoverOpen = (open: boolean): void => {
