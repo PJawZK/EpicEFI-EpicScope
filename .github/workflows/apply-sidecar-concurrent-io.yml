@@ -1,0 +1,55 @@
+name: Apply sidecar concurrent IO
+
+on:
+  push:
+    branches:
+      - perf/mlg-sidecar-concurrent-io-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Perf: parallelize sidecar stripe IO'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/mlg-sidecar-concurrent-io-v1
+      - name: Apply focused patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/adapters/mlg-column-sidecar-v1.ts')
+          text = path.read_text()
+          old = '''      const writeStarted = now();
+      for (let index = 0; index < outputs.length; index += 1) {
+        await streams[index]!.write(outputs[index]!);
+      }
+      writeMs += now() - writeStarted;
+'''
+          new = '''      const writeStarted = now();
+      await Promise.all(outputs.map((output, index) => streams[index]!.write(output)));
+      writeMs += now() - writeStarted;
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'write loop match count={text.count(old)}')
+          text = text.replace(old, new, 1)
+          old = '''      for (const stream of streams) {
+        await stream.close();
+      }
+'''
+          new = '''      await Promise.all(streams.map((stream) => stream.close()));
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'close loop match count={text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "EpicScope Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/web/src/adapters/mlg-column-sidecar-v1.ts
+          git commit -m "Perf: parallelize sidecar stripe IO"
+          git push origin HEAD:perf/mlg-sidecar-concurrent-io-v1
