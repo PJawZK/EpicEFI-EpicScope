@@ -19,7 +19,7 @@ inspector.write_text(s)
 
 logger = Path('apps/web/src/pages/logger-page.ts')
 s = logger.read_text()
-anchor = "import { createInspectorPanel, type InspectorChannelStatistics } from '../panels/inspector-panel';\n"
+anchor = "import { createInspectorPanel } from '../panels/inspector-panel';\n"
 if anchor not in s:
     raise SystemExit('logger inspector import anchor missing')
 s = s.replace(
