@@ -38,13 +38,6 @@ import type {
 } from '../state/workspace-state';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
-const OPPORTUNISTIC_PREDECODE_OPTIONS = new Set([32, 64, 128]);
-
-function opportunisticPredecodeTarget(): number {
-  const raw = new URLSearchParams(globalThis.location?.search ?? '').get('predecode');
-  const parsed = Number(raw);
-  return OPPORTUNISTIC_PREDECODE_OPTIONS.has(parsed) ? parsed : 0;
-}
 const GRAPH_PANE_IDS = ['pane-1', 'pane-2', 'pane-3', 'pane-4', 'pane-5', 'pane-6'] as const;
 
 function paneCountForLayout(layout: GraphWorkspaceLayout): number {
