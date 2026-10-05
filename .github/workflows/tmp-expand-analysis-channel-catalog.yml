@@ -22,6 +22,8 @@ jobs:
         run: |
           git show origin/main:scripts/tmp-expand-analysis-channel-catalog.py > /tmp/patch.py
           python /tmp/patch.py
+          git show origin/main:scripts/tmp-fix-full-analysis-catalog.py > /tmp/fix.py
+          python /tmp/fix.py
       - uses: actions/setup-node@v6
         with:
           node-version: '22.12.0'
@@ -37,3 +39,5 @@ jobs:
           git add apps/web/src/pages/logger-page.ts apps/web/src/pages/histogram-page.ts apps/web/src/pages/heatmap-view.ts apps/web/src/pages/scatter-view.ts apps/web/src/pages/analyzer-page.ts apps/web/src/pages/tune-table-view.ts apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/specialized-analyzer-suite-view.ts
           git commit -m "Expose full channel catalog to analysis tools"
           git push origin HEAD:analysis/full-channel-catalog-v1
+
+# retry
