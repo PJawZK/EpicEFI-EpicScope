@@ -2,6 +2,7 @@ import type { ChannelDefinition, NumericChannelRange } from '../../../../core/lo
 import { buildNumericHistogram, type NumericHistogramResult } from '../../../../core/analysis/histogram';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { createHeatmapView } from './heatmap-view';
+import { createDualHeatmapView } from './dual-heatmap-view';
 import { createScatterView } from './scatter-view';
 
 export interface HistogramTraceContext {
@@ -23,6 +24,8 @@ export interface HistogramPageController {
   refresh(): void;
 }
 
+type HistogramView = 'distribution' | 'heatmap' | 'dual-heatmap' | 'scatter';
+
 function formatNumber(value: number | undefined, precision = 3): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
   if (Math.abs(value) >= 1000) return value.toFixed(0);
@@ -32,104 +35,72 @@ function formatNumber(value: number | undefined, precision = 3): string {
 export function createHistogramPage(): HistogramPageController {
   let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHistogramResult | undefined;
-  let activeView: 'distribution' | 'heatmap' | 'scatter' = 'distribution';
+  let currentTrace: HistogramTraceContext | undefined;
+  let activeView: HistogramView = 'heatmap';
   const heatmapView = createHeatmapView();
+  const dualHeatmapView = createDualHeatmapView();
   const scatterView = createScatterView();
 
   const page = document.createElement('main');
-  page.className = 'histogram-page';
+  page.className = 'histogram-page histogram-page--workspace';
   page.hidden = true;
   page.innerHTML = `
-    <section class="histogram-surface-head">
-      <div>
-        <span class="histogram-eyebrow">Histogram</span>
-        <h1 class="histogram-title">Selected range distribution</h1>
-        <p class="histogram-description">Distribution of one active decoded channel inside the current Logger A/B range.</p>
+    <div class="histogram-workspace-bar">
+      <label class="histogram-workspace-view"><span>View</span><select class="histogram-view-select">
+        <option value="distribution">Distribution</option>
+        <option value="heatmap" selected>Heatmap</option>
+        <option value="dual-heatmap">Dual Heatmap</option>
+        <option value="scatter">Scatter</option>
+      </select></label>
+      <div class="histogram-distribution-controls" hidden>
+        <label><span>Channel</span><select class="histogram-channel"></select></label>
+        <label><span>Bins</span><select class="histogram-bin-count"><option value="10">10</option><option value="20" selected>20</option><option value="30">30</option><option value="40">40</option><option value="60">60</option></select></label>
       </div>
-      <div class="histogram-head-actions">
-        <div class="histogram-view-switch" role="group" aria-label="Histogram analysis view">
-          <button type="button" class="histogram-view-choice histogram-view-choice--active" data-histogram-view="distribution" aria-pressed="true">Distribution</button>
-          <button type="button" class="histogram-view-choice" data-histogram-view="heatmap" aria-pressed="false">Heatmap</button>
-          <button type="button" class="histogram-view-choice" data-histogram-view="scatter" aria-pressed="false">Scatter</button>
+      <div class="histogram-workspace-hint">A/B range · active decoded Logger channels</div>
+    </div>
+    <div class="histogram-workspace-body">
+      <section class="histogram-distribution-stage" hidden>
+        <div class="histogram-empty">
+          <strong>Distribution needs a selected range.</strong>
+          <span>Set A and B in Logger and keep the channel active in the current graph pane.</span>
         </div>
-        <div class="histogram-controls">
-          <label>
-            <span>Channel</span>
-            <select class="histogram-channel"></select>
-          </label>
-          <label>
-            <span>Bins</span>
-            <select class="histogram-bin-count">
-              <option value="10">10</option>
-              <option value="20" selected>20</option>
-              <option value="30">30</option>
-              <option value="40">40</option>
-              <option value="60">60</option>
-            </select>
-          </label>
-          <button type="button" class="histogram-refresh">Refresh</button>
-        </div>
-      </div>
-    </section>
-    <section class="histogram-empty histogram-distribution-surface">
-      <strong>Histogram needs a selected range.</strong>
-      <span>Return to Logger, set A and B, and keep the channel you want to analyze active in the current graph pane.</span>
-    </section>
-    <section class="histogram-content histogram-distribution-surface" hidden>
-      <div class="histogram-summary">
-        <div><span>Scope</span><strong data-summary="scope">—</strong></div>
-        <div><span>Coverage</span><strong data-summary="coverage">—</strong></div>
-        <div><span>Input</span><strong data-summary="input">0</strong></div>
-        <div><span>Binned</span><strong data-summary="binned">0</strong></div>
-        <div><span>Invalid</span><strong data-summary="invalid">0</strong></div>
-        <div><span>Unavailable</span><strong data-summary="unavailable">0</strong></div>
-      </div>
-      <div class="histogram-chart-wrap">
         <canvas class="histogram-chart" aria-label="Histogram distribution chart"></canvas>
-      </div>
-      <div class="histogram-range-summary">
-        <span>Range <strong data-summary="range">—</strong></span>
-        <span>Bin width <strong data-summary="width">—</strong></span>
-        <span>Outside range <strong data-summary="outside">0</strong></span>
-      </div>
-      <div class="histogram-table-wrap">
-        <table class="histogram-table">
-          <thead><tr><th>Bin</th><th>Range</th><th>Samples</th><th>%</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+        <div class="histogram-stage-status" hidden>
+          <span data-summary="scope">—</span>
+          <span data-summary="coverage">—</span>
+          <span>Input <strong data-summary="input">0</strong></span>
+          <span>Binned <strong data-summary="binned">0</strong></span>
+          <span>Range <strong data-summary="range">—</strong></span>
+          <span>Bin <strong data-summary="width">—</strong></span>
+        </div>
+      </section>
+    </div>
   `;
-  page.append(heatmapView.element, scatterView.element);
 
-  const title = page.querySelector<HTMLElement>('.histogram-title');
-  const description = page.querySelector<HTMLElement>('.histogram-description');
+  const body = page.querySelector<HTMLElement>('.histogram-workspace-body');
+  const viewSelect = page.querySelector<HTMLSelectElement>('.histogram-view-select');
+  const distributionControls = page.querySelector<HTMLElement>('.histogram-distribution-controls');
+  const distributionStage = page.querySelector<HTMLElement>('.histogram-distribution-stage');
   const channelSelect = page.querySelector<HTMLSelectElement>('.histogram-channel');
   const binCountSelect = page.querySelector<HTMLSelectElement>('.histogram-bin-count');
-  const refreshButton = page.querySelector<HTMLButtonElement>('.histogram-refresh');
-  const controls = page.querySelector<HTMLElement>('.histogram-controls');
-  const empty = page.querySelector<HTMLElement>('.histogram-empty');
-  const content = page.querySelector<HTMLElement>('.histogram-content');
-  const canvas = page.querySelector<HTMLCanvasElement>('.histogram-chart');
-  const tableBody = page.querySelector<HTMLTableSectionElement>('.histogram-table tbody');
-  const viewChoices = [...page.querySelectorAll<HTMLButtonElement>('[data-histogram-view]')];
-  if (!title || !description || !channelSelect || !binCountSelect || !refreshButton || !controls || !empty || !content || !canvas || !tableBody) {
-    throw new Error('Histogram surface structure is incomplete.');
+  const empty = distributionStage?.querySelector<HTMLElement>('.histogram-empty');
+  const status = distributionStage?.querySelector<HTMLElement>('.histogram-stage-status');
+  const canvas = distributionStage?.querySelector<HTMLCanvasElement>('.histogram-chart');
+  if (!body || !viewSelect || !distributionControls || !distributionStage || !channelSelect || !binCountSelect || !empty || !status || !canvas) {
+    throw new Error('Histogram workspace structure is incomplete.');
   }
+  body.append(heatmapView.element, dualHeatmapView.element, scatterView.element);
 
   const summary = (name: string): HTMLElement => {
-    const node = page.querySelector<HTMLElement>(`[data-summary="${name}"]`);
+    const node = distributionStage.querySelector<HTMLElement>(`[data-summary="${name}"]`);
     if (!node) throw new Error(`Histogram summary field is missing: ${name}`);
     return node;
   };
 
-  const selectedTrace = (): HistogramTraceContext | undefined =>
-    context.traces.find((trace) => trace.channel.id === channelSelect.value) ?? context.traces[0];
+  const selectedTrace = (): HistogramTraceContext | undefined => context.traces.find((trace) => trace.channel.id === channelSelect.value) ?? context.traces[0];
+  const hasValidRange = (): boolean => context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
 
-  const hasValidRange = (): boolean =>
-    context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
-
-  const renderChart = (result: NumericHistogramResult, color: string): void => {
+  const renderChart = (result: NumericHistogramResult, trace: HistogramTraceContext): void => {
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
@@ -142,10 +113,10 @@ export function createHistogramPage(): HistogramPageController {
     ctx.clearRect(0, 0, width, height);
     if (result.bins.length === 0) return;
 
-    const padLeft = 48;
-    const padRight = 16;
+    const padLeft = 50;
+    const padRight = 14;
     const padTop = 18;
-    const padBottom = 28;
+    const padBottom = 38;
     const chartWidth = Math.max(1, width - padLeft - padRight);
     const chartHeight = Math.max(1, height - padTop - padBottom);
     const maxCount = Math.max(1, ...result.bins.map((bin) => bin.count));
@@ -159,163 +130,118 @@ export function createHistogramPage(): HistogramPageController {
     ctx.lineTo(padLeft + chartWidth, padTop + chartHeight);
     ctx.stroke();
 
+    result.bins.forEach((bin, index) => {
+      const ratio = bin.count / maxCount;
+      const barHeight = ratio * chartHeight;
+      const x = padLeft + slotWidth * index + Math.max(1, slotWidth * .06);
+      const barWidth = Math.max(1, slotWidth * .88);
+      const y = padTop + chartHeight - barHeight;
+      ctx.fillStyle = trace.color || '#58aef6';
+      ctx.globalAlpha = .86;
+      ctx.fillRect(x, y, barWidth, barHeight);
+      ctx.globalAlpha = 1;
+      if (barWidth >= 22 && bin.count > 0) {
+        ctx.fillStyle = '#eaf5fa';
+        ctx.font = '600 9px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(bin.count.toLocaleString(), x + barWidth / 2, Math.max(padTop + 10, y - 3), barWidth + 10);
+      }
+    });
+
     ctx.fillStyle = '#78909e';
     ctx.font = '9px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(maxCount), padLeft - 6, padTop + 4);
+    ctx.fillText(maxCount.toLocaleString(), padLeft - 6, padTop + 4);
     ctx.fillText('0', padLeft - 6, padTop + chartHeight);
-
-    ctx.fillStyle = color || '#58aef6';
-    result.bins.forEach((bin, index) => {
-      const ratio = bin.count / maxCount;
-      const barHeight = ratio * chartHeight;
-      const x = padLeft + slotWidth * index + Math.max(1, slotWidth * .08);
-      const barWidth = Math.max(1, slotWidth * .84);
-      const y = padTop + chartHeight - barHeight;
-      ctx.fillRect(x, y, barWidth, barHeight);
-    });
-
-    ctx.fillStyle = '#78909e';
-    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(formatNumber(result.rangeMin), padLeft, padTop + chartHeight + 7);
+    ctx.textAlign = 'left';
+    ctx.fillText(formatNumber(result.rangeMin), padLeft, padTop + chartHeight + 6);
     ctx.textAlign = 'right';
-    ctx.fillText(formatNumber(result.rangeMax), padLeft + chartWidth, padTop + chartHeight + 7);
-  };
-
-  const renderTable = (result: NumericHistogramResult, unit: string | undefined): void => {
-    const rows = result.bins.map((bin) => {
-      const row = document.createElement('tr');
-      const percent = result.binnedSampleCount > 0 ? (bin.count / result.binnedSampleCount) * 100 : 0;
-      const bracket = bin.includesUpperBound ? ']' : ')';
-      row.innerHTML = `
-        <td>${bin.index + 1}</td>
-        <td>${formatNumber(bin.lowerBound)} – ${formatNumber(bin.upperBound)}${unit ? ` ${unit}` : ''} ${bracket}</td>
-        <td>${bin.count.toLocaleString()}</td>
-        <td>${percent.toFixed(1)}%</td>
-      `;
-      return row;
-    });
-    tableBody.replaceChildren(...rows);
+    ctx.fillText(formatNumber(result.rangeMax), padLeft + chartWidth, padTop + chartHeight + 6);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${trace.channel.displayName || trace.channel.sourceName}${trace.channel.unit ? ` · ${trace.channel.unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 21);
   };
 
   const renderDistribution = (): void => {
     const trace = selectedTrace();
     if (!trace || !hasValidRange()) {
       currentResult = undefined;
+      currentTrace = undefined;
       empty.hidden = false;
-      content.hidden = true;
-      refreshButton.disabled = true;
+      canvas.hidden = true;
+      status.hidden = true;
       return;
     }
 
-    refreshButton.disabled = false;
     const startMs = Math.min(context.aTimeMs!, context.bTimeMs!);
     const endMs = Math.max(context.aTimeMs!, context.bTimeMs!);
     const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);
-    const qualified = qualifyNumericSamples({
-      referenceChannelId: trace.channel.id,
-      channels,
-      conditions: [],
-      timeRange: { startMs, endMs },
-    });
+    const qualified = qualifyNumericSamples({ referenceChannelId: trace.channel.id, channels, conditions: [], timeRange: { startMs, endMs } });
     const binCount = Number(binCountSelect.value);
-    currentResult = buildNumericHistogram(trace.range, {
-      sampleIndices: qualified.eligibleSampleIndices,
-      binCount: Number.isFinite(binCount) ? binCount : 20,
-    });
+    currentResult = buildNumericHistogram(trace.range, { sampleIndices: qualified.eligibleSampleIndices, binCount: Number.isFinite(binCount) ? binCount : 20 });
+    currentTrace = trace;
 
     empty.hidden = true;
-    content.hidden = false;
-    summary('scope').textContent = `${((endMs - startMs) / 1000).toFixed(3)} s`;
+    canvas.hidden = false;
+    status.hidden = false;
+    summary('scope').textContent = `A/B ${((endMs - startMs) / 1000).toFixed(3)} s`;
     summary('coverage').textContent = qualified.complete ? 'Complete' : 'Partial decoded';
     summary('input').textContent = qualified.inputSampleCount.toLocaleString();
     summary('binned').textContent = currentResult.binnedSampleCount.toLocaleString();
-    summary('invalid').textContent = (qualified.invalidSampleCount + currentResult.invalidSampleCount).toLocaleString();
-    summary('unavailable').textContent = (qualified.unavailableSampleCount + currentResult.unavailableSampleCount).toLocaleString();
     summary('range').textContent = currentResult.rangeMin === undefined || currentResult.rangeMax === undefined
       ? '—'
-      : `${formatNumber(currentResult.rangeMin)} – ${formatNumber(currentResult.rangeMax)}${trace.channel.unit ? ` ${trace.channel.unit}` : ''}`;
-    summary('width').textContent = currentResult.binWidth === undefined
-      ? '—'
-      : `${formatNumber(currentResult.binWidth)}${trace.channel.unit ? ` ${trace.channel.unit}` : ''}`;
-    summary('outside').textContent = (currentResult.belowRangeSampleCount + currentResult.aboveRangeSampleCount).toLocaleString();
-    renderChart(currentResult, trace.color);
-    renderTable(currentResult, trace.channel.unit);
+      : `${formatNumber(currentResult.rangeMin)}–${formatNumber(currentResult.rangeMax)}${trace.channel.unit ? ` ${trace.channel.unit}` : ''}`;
+    summary('width').textContent = currentResult.binWidth === undefined ? '—' : `${formatNumber(currentResult.binWidth)}${trace.channel.unit ? ` ${trace.channel.unit}` : ''}`;
+    renderChart(currentResult, trace);
   };
 
-  const renderActiveView = (): void => {
-    if (activeView === 'heatmap') heatmapView.refresh();
-    else if (activeView === 'scatter') scatterView.refresh();
-    else renderDistribution();
+  const refreshActive = (): void => {
+    if (activeView === 'distribution') renderDistribution();
+    else if (activeView === 'heatmap') heatmapView.refresh();
+    else if (activeView === 'dual-heatmap') dualHeatmapView.refresh();
+    else scatterView.refresh();
   };
 
-  const setActiveView = (nextView: 'distribution' | 'heatmap' | 'scatter'): void => {
-    activeView = nextView;
-    const distributionActive = activeView === 'distribution';
-    const heatmapActive = activeView === 'heatmap';
-    const scatterActive = activeView === 'scatter';
-    controls.hidden = !distributionActive;
-    empty.classList.toggle('histogram-view-hidden', !distributionActive);
-    content.classList.toggle('histogram-view-hidden', !distributionActive);
-    heatmapView.element.hidden = !heatmapActive;
-    scatterView.element.hidden = !scatterActive;
-
-    if (heatmapActive) {
-      title.textContent = 'Selected range heatmap';
-      description.textContent = 'Two-dimensional sample density across two active decoded channels inside the current Logger A/B range.';
-    } else if (scatterActive) {
-      title.textContent = 'Selected range scatter';
-      description.textContent = 'Aligned X/Y sample pairs across two active decoded channels inside the current Logger A/B range.';
-    } else {
-      title.textContent = 'Selected range distribution';
-      description.textContent = 'Distribution of one active decoded channel inside the current Logger A/B range.';
-    }
-
-    for (const choice of viewChoices) {
-      const selected = choice.dataset.histogramView === activeView;
-      choice.classList.toggle('histogram-view-choice--active', selected);
-      choice.setAttribute('aria-pressed', String(selected));
-    }
-    renderActiveView();
+  const setActiveView = (view: HistogramView): void => {
+    activeView = view;
+    viewSelect.value = view;
+    const distribution = view === 'distribution';
+    distributionControls.hidden = !distribution;
+    distributionStage.hidden = !distribution;
+    heatmapView.element.hidden = view !== 'heatmap';
+    dualHeatmapView.element.hidden = view !== 'dual-heatmap';
+    scatterView.element.hidden = view !== 'scatter';
+    refreshActive();
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
     const previousChannel = channelSelect.value;
     context = nextContext;
     channelSelect.replaceChildren();
-    for (const trace of context.traces) {
-      channelSelect.add(new Option(trace.channel.displayName || trace.channel.sourceName, trace.channel.id));
-    }
-    if (previousChannel && context.traces.some((trace) => trace.channel.id === previousChannel)) {
-      channelSelect.value = previousChannel;
-    }
+    for (const trace of context.traces) channelSelect.add(new Option(trace.channel.displayName || trace.channel.sourceName, trace.channel.id));
+    if (previousChannel && context.traces.some((trace) => trace.channel.id === previousChannel)) channelSelect.value = previousChannel;
     heatmapView.setContext(nextContext);
+    dualHeatmapView.setContext(nextContext);
     scatterView.setContext(nextContext);
-    renderActiveView();
+    refreshActive();
   };
 
+  viewSelect.addEventListener('change', () => {
+    const value = viewSelect.value;
+    if (value === 'distribution' || value === 'heatmap' || value === 'dual-heatmap' || value === 'scatter') setActiveView(value);
+  });
   channelSelect.addEventListener('change', renderDistribution);
   binCountSelect.addEventListener('change', renderDistribution);
-  refreshButton.addEventListener('click', renderDistribution);
-  viewChoices.forEach((choice) => {
-    choice.addEventListener('click', () => {
-      const view = choice.dataset.histogramView;
-      if (view === 'distribution' || view === 'heatmap' || view === 'scatter') setActiveView(view);
-    });
-  });
   new ResizeObserver(() => {
-    if (activeView === 'distribution' && currentResult && !content.hidden && !page.hidden) renderDistribution();
+    if (activeView === 'distribution' && currentResult && currentTrace && !canvas.hidden && !page.hidden) renderChart(currentResult, currentTrace);
   }).observe(canvas);
 
   heatmapView.setContext(context);
+  dualHeatmapView.setContext(context);
   scatterView.setContext(context);
-  setActiveView('distribution');
+  setActiveView('heatmap');
 
-  return {
-    element: page,
-    setContext,
-    refresh: renderActiveView,
-  };
+  return { element: page, setContext, refresh: refreshActive };
 }

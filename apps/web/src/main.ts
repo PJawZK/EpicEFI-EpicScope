@@ -5,6 +5,7 @@ import './styles/timeline-graph.css';
 import './styles/logger-ui.css';
 import './styles/channel-value-search.css';
 import './styles/histogram.css';
+import './styles/histogram-workspace.css';
 import './styles/analyzer.css';
 import './styles/boost-analyzer.css';
 import './styles/specialized-analyzer.css';
