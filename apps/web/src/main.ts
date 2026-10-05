@@ -7,6 +7,7 @@ import './styles/channel-value-search.css';
 import './styles/histogram.css';
 import './styles/histogram-workspace.css';
 import './styles/histogram-table-generator.css';
+import './styles/histogram-distribution.css';
 import './styles/scatter-mlv.css';
 import './styles/analyzer.css';
 import './styles/boost-analyzer.css';
