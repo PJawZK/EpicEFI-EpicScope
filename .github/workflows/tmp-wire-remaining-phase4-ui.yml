@@ -22,6 +22,8 @@ jobs:
         run: |
           git show origin/main:scripts/tmp-wire-remaining-phase4-ui.py > /tmp/patch.py
           python /tmp/patch.py
+          git show origin/main:scripts/tmp-fix-specialized-phase4-ui.py > /tmp/fix.py
+          python /tmp/fix.py
       - uses: actions/setup-node@v6
         with:
           node-version: '22.12.0'
@@ -34,8 +36,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/src/pages/analyzer-page.ts apps/web/src/main.ts
+          git add apps/web/src/pages/analyzer-page.ts apps/web/src/pages/specialized-analyzer-suite-view.ts apps/web/src/main.ts
           git commit -m "Activate remaining Experimental analyzers"
           git push origin HEAD:phase4/remaining-analyzers-ui-v1
 
-# trigger
+# trigger 2
