@@ -37,3 +37,5 @@ jobs:
           git add apps/web/src/pages/analyzer-page.ts
           git commit -m "Activate Experimental Boost Analyzer view"
           git push origin HEAD:phase4/boost-ui-v1
+
+# trigger
