@@ -1520,10 +1520,27 @@ export function mountAppShell(root: HTMLElement): void {
           workerSourceRuntime: indexed.sourceRuntime,
         });
 
-        const prioritizedSourceChannelIds = prioritizedWorkspaceSourceChannelIds(
+        const reusablePriorities = prioritizedWorkspaceSourceChannelIds(
           reusableWorkspaceBeforeLog,
           prepared.binding?.logicalToSourceChannelId,
         );
+        let persistedPriorities: string[] = [];
+        try {
+          const persistedForPriority = workspaceStorage.load(indexed.summary.source);
+          if (persistedForPriority) {
+            persistedPriorities = prioritizedWorkspaceSourceChannelIds(
+              persistedForPriority.workspace,
+              prepared.binding?.logicalToSourceChannelId,
+            );
+          }
+        } catch {
+          // The normal workspace restore path will report persistence failures.
+          // Priority planning should never prevent the log itself from loading.
+        }
+        const prioritizedSourceChannelIds = [...new Set([
+          ...reusablePriorities,
+          ...persistedPriorities,
+        ])];
         staged.startValidation(prioritizedSourceChannelIds);
 
         const workspaceRestore = loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
@@ -1548,7 +1565,7 @@ export function mountAppShell(root: HTMLElement): void {
         openButton.disabled = false;
 
         void staged.validated
-          .then((validated) => {
+          .then(async (validated) => {
             if (activeStagedImport !== staged) return;
             if (currentRawLog?.channelData === indexed.channelData) {
               currentRawLog = {
@@ -1561,6 +1578,29 @@ export function mountAppShell(root: HTMLElement): void {
             }
             loggerPage.setDiagnostics(validated.diagnostics);
             loggerPage.refreshValidity();
+
+            await workspaceRestore.catch(() => undefined);
+            if (activeStagedImport !== staged) return;
+            const postValidationRuntime = loggerPage.getRuntimeDiagnosticSnapshot();
+            if (
+              postValidationRuntime.activeTraceCount
+              < postValidationRuntime.renderableAssignedChannelCount
+            ) {
+              try {
+                await loggerPage.restoreActiveWorkspace();
+              } catch (error) {
+                rememberRuntimeError({
+                  time: Date.now(),
+                  kind: 'unhandledrejection',
+                  message: error instanceof Error
+                    ? `Post-validation workspace reconcile failed: ${error.message}`
+                    : 'Post-validation workspace reconcile failed.',
+                  ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
+                });
+              }
+              if (activeStagedImport !== staged) return;
+            }
+
             performanceDiagnostics.recordValidation({
               fileName: indexed.summary.source.displayName,
               fullyValidatedMs: validated.completedMs,
