@@ -24,6 +24,10 @@
   background: #0a151d;
 }
 
+.histogram-workspace-bar[hidden] {
+  display: none;
+}
+
 .histogram-workspace-bar label,
 .heatmap-toolbar label {
   display: flex;
@@ -349,13 +353,6 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-.histogram-header-view > span {
-  color: #8298a6;
-  font-size:10px;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
 }
 .histogram-header-view select {
   min-width: 148px;

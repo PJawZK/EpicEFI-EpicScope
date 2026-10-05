@@ -585,3 +585,35 @@
 .histogram-table-weighting p {
   grid-column: 1 / -1;
 }
+
+
+/* Compact Table Generator filter manager and explicit grid-size control. */
+.histogram-table-size { position: relative; }
+.histogram-table-size-popover {
+  position: absolute; z-index: 30; top: 31px; right: 0; width: 250px; padding: 9px;
+  border: 1px solid #355164; border-radius: 4px; background: #0b171f;
+  box-shadow: 0 10px 30px rgba(0,0,0,.38);
+}
+.histogram-table-size-popover > strong { display:block; margin-bottom:7px; color:#e2edf2; font-size:10px; }
+.histogram-table-size-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+.histogram-table-size-grid button { min-height:29px; border:1px solid #2b4554; background:#0f1d27; color:#dce9ef; border-radius:3px; font-size:10px; font-weight:700; }
+.histogram-table-size-grid button:hover { background:#173047; border-color:#3c6178; }
+.histogram-table-size-popover small { display:block; margin-top:7px; color:#8298a6; font-size:9px; line-height:1.4; }
+.histogram-filter-manager {
+  width:min(700px, calc(100vw - 32px)) !important; padding:0 !important;
+  grid-template-columns:220px minmax(360px,1fr) !important; gap:0 !important; overflow:hidden;
+}
+.histogram-filter-library { min-width:0; border-right:1px solid #243846; background:#09141c; display:grid; grid-template-rows:38px minmax(150px,1fr) 36px; }
+.histogram-filter-library header,.histogram-filter-editor > header { display:flex; align-items:center; gap:7px; padding:0 8px; border-bottom:1px solid #203341; background:#0d1922; }
+.histogram-filter-library header strong,.histogram-filter-editor > header strong { color:#e4edf2; font-size:10px; }
+.histogram-filter-library header button { margin-left:auto; min-height:25px; padding:0 7px; }
+.histogram-filter-library select { width:100%; min-height:150px; border:0 !important; border-radius:0 !important; background:#09141c !important; padding:4px !important; }
+.histogram-filter-library option { padding:5px 6px; }
+.histogram-filter-library footer { display:flex; gap:5px; align-items:center; padding:5px 7px; border-top:1px solid #203341; }
+.histogram-filter-editor { min-width:0; display:grid; grid-template-rows:38px auto minmax(120px,1fr) 30px; background:#0b171f; }
+.histogram-filter-editor > header > div { min-width:0; }
+.histogram-filter-editor > header small { display:block; color:#8197a5; font-size:9px; margin-top:1px; }
+.histogram-filter-editor > header button { margin-left:auto; min-height:26px; padding:0 8px; border-color:#2078cc; background:#1668be; font-weight:750; }
+.histogram-filter-manager .histogram-filter-logic-bar { margin:0; padding:6px 7px; border-bottom:1px solid #203341; }
+.histogram-filter-manager .histogram-filter-list { max-height:260px; overflow:auto; padding:5px 7px; }
+.histogram-filter-manager .histogram-filter-actions { min-height:30px; padding:0 8px; border-top:1px solid #203341; color:#8298a6; }
