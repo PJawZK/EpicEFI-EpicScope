@@ -6,6 +6,10 @@ import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualific
 import { createHistogramTableGeneratorView } from './histogram-table-generator-view';
 import { createScatterView } from './scatter-view';
 import { createHistogramMathChannelsView } from './histogram-math-channels-view';
+import {
+  INI_TABLE_DEFINITIONS_CHANGED_EVENT,
+  loadIniTableEditorDefinitions,
+} from '../state/ini-table-editor-storage';
 
 export interface HistogramTraceContext {
   readonly channel: ChannelDefinition;
@@ -51,6 +55,7 @@ export function createHistogramPage(): HistogramPageController {
   let currentResult: NumericHistogramResult | undefined;
   let currentTrace: HistogramTraceContext | undefined;
   let activeView: HistogramView = 'table';
+  let lastIniMappedTable = '';
   const tableGeneratorView = createHistogramTableGeneratorView();
   const scatterView = createScatterView();
   const mathChannelsView = createHistogramMathChannelsView();
@@ -118,6 +123,52 @@ export function createHistogramPage(): HistogramPageController {
   };
 
   const hasValidRange = (): boolean => context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
+
+  const setSelectValueCaseInsensitive = (select: HTMLSelectElement, wanted: string): boolean => {
+    const lowered = wanted.toLocaleLowerCase();
+    const option = [...select.options].find((candidate) => candidate.value.toLocaleLowerCase() === lowered);
+    if (!option) return false;
+    select.value = option.value;
+    return true;
+  };
+
+  const applyIniTableAxisAuthority = (force = false): void => {
+    if (!context.tuneModel || !context.channels.some((channel) => channel.id.startsWith('ini:'))) return;
+    const tableSelect = page.querySelector<HTMLSelectElement>('.histogram-table-msq-table');
+    const xAxisSelect = page.querySelector<HTMLSelectElement>('.histogram-table-msq-x-axis');
+    const yAxisSelect = page.querySelector<HTMLSelectElement>('.histogram-table-msq-y-axis');
+    const xDataSelect = page.querySelector<HTMLSelectElement>('.histogram-table-x');
+    const yDataSelect = page.querySelector<HTMLSelectElement>('.histogram-table-y');
+    if (!tableSelect?.value || !xAxisSelect || !yAxisSelect || !xDataSelect || !yDataSelect) return;
+    if (!force && lastIniMappedTable === tableSelect.value) return;
+
+    const definitions = context.tuneTableDefinitions ?? loadIniTableEditorDefinitions();
+    const tableName = tableSelect.value;
+    const loweredTable = tableName.toLocaleLowerCase();
+    const definition = definitions.find((candidate) => candidate.zBins === tableName)
+      ?? definitions.find((candidate) => candidate.zBins.toLocaleLowerCase() === loweredTable);
+    if (!definition) {
+      lastIniMappedTable = tableName;
+      return;
+    }
+
+    const xResolved = setSelectValueCaseInsensitive(xAxisSelect, definition.xBins);
+    const yResolved = setSelectValueCaseInsensitive(yAxisSelect, definition.yBins);
+
+    const selectRuntimeChannel = (select: HTMLSelectElement, iniName: string | undefined): void => {
+      if (!iniName) return;
+      const lowered = iniName.toLocaleLowerCase();
+      const channel = context.channels.find((candidate) => candidate.sourceName.toLocaleLowerCase() === lowered)
+        ?? context.channels.find((candidate) => candidate.displayName.toLocaleLowerCase() === lowered);
+      if (channel) select.value = channel.id;
+    };
+    selectRuntimeChannel(xDataSelect, definition.xChannel);
+    selectRuntimeChannel(yDataSelect, definition.yChannel);
+
+    lastIniMappedTable = tableName;
+    if (xResolved) xAxisSelect.dispatchEvent(new Event('change'));
+    if (yResolved) yAxisSelect.dispatchEvent(new Event('change'));
+  };
 
   const renderChart = (result: NumericHistogramResult, trace: HistogramTraceContext): void => {
     const rect = canvas.getBoundingClientRect();
@@ -253,12 +304,23 @@ export function createHistogramPage(): HistogramPageController {
     tableGeneratorView.setContext(nextContext);
     scatterView.setContext(nextContext);
     mathChannelsView.setContext(nextContext);
+    applyIniTableAxisAuthority(false);
     refreshActive();
   };
 
   viewSelect.addEventListener('change', () => {
     const value = viewSelect.value;
     if (value === 'table' || value === 'distribution' || value === 'scatter' || value === 'math-channels') setActiveView(value);
+  });
+  page.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    if (target.matches('.histogram-table-msq-table')) applyIniTableAxisAuthority(true);
+    else if (target.matches('.histogram-table-axis-source') && target.value === 'msq') applyIniTableAxisAuthority(true);
+  });
+  window.addEventListener(INI_TABLE_DEFINITIONS_CHANGED_EVENT, () => {
+    lastIniMappedTable = '';
+    applyIniTableAxisAuthority(true);
   });
   channelSelect.addEventListener('change', () => { void renderDistribution(); });
   binCountSelect.addEventListener('change', () => { void renderDistribution(); });
