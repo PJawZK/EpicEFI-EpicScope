@@ -12,6 +12,7 @@ import './styles/boost-analyzer.css';
 import './styles/specialized-analyzer.css';
 import './styles/performance-diagnostics.css';
 import { mountAppShell } from './app/app-shell';
+import { applyUiRefinements } from './app/ui-refinements';
 
 const root = document.querySelector<HTMLElement>('#app');
 
@@ -20,6 +21,7 @@ if (!root) {
 }
 
 mountAppShell(root);
+applyUiRefinements(root);
 
 root.querySelector<HTMLElement>('.histogram-table-size')?.remove();
 const tableSizeSummary = root.querySelector<HTMLElement>('.histogram-table-options > summary');
