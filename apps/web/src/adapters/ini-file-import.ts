@@ -3,6 +3,10 @@ import {
   type ChannelCatalog,
 } from '../../../../core/channels/channel-catalog';
 import { parseIniChannelSections } from '../../../../core/parsers/ini/ini-channel-parser';
+import {
+  parseIniTableEditorDefinitions,
+  type IniTableEditorDefinition,
+} from '../../../../core/parsers/ini/ini-table-editor-parser';
 import type {
   IniChannelParseResult,
   IniParserDiagnostic,
@@ -30,6 +34,7 @@ export interface ImportedIniFile {
   readonly fileName: string;
   readonly parsed: IniChannelParseResult;
   readonly catalog: ChannelCatalog;
+  readonly tableDefinitions: readonly IniTableEditorDefinition[];
   readonly diagnostics: readonly IniParserDiagnostic[];
   readonly performance: IniImportPerformance;
 }
@@ -44,6 +49,7 @@ export async function importIniFile(file: File): Promise<ImportedIniFile> {
 
   const parseStart = now();
   const parsed = parseIniChannelSections(text);
+  const tableDefinitions = parseIniTableEditorDefinitions(text);
   const parseMs = now() - parseStart;
 
   const catalogStart = now();
@@ -72,6 +78,7 @@ export async function importIniFile(file: File): Promise<ImportedIniFile> {
     fileName: file.name,
     parsed,
     catalog,
+    tableDefinitions,
     diagnostics: parsed.diagnostics,
     performance: {
       fileSizeBytes: file.size,
