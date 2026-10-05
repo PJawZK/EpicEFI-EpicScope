@@ -50,15 +50,15 @@ function placeLayoutAfterGraph(root: HTMLElement): void {
   new MutationObserver(sync).observe(loggerPage, { attributes: true, attributeFilter: ['hidden'] });
 }
 
-function dockLoggerTimelineInScatter(root: HTMLElement): void {
+function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
   const timeline = root.querySelector<HTMLElement>('.logger-page .timeline-shell');
   const timelineToggle = root.querySelector<HTMLButtonElement>('.logger-page .edge-toggle--timeline');
   const histogramPage = root.querySelector<HTMLElement>('.histogram-page');
   const histogramSelect = root.querySelector<HTMLSelectElement>('.histogram-view-select');
-  const scatterView = root.querySelector<HTMLElement>('.scatter-view--mlv');
   const scatterSlot = root.querySelector<HTMLElement>('.scatter-shared-timeline-slot');
+  const distributionSlot = root.querySelector<HTMLElement>('.distribution-shared-timeline-slot');
   if (!timeline || !timeline.parentNode || !timelineToggle || !timelineToggle.parentNode
-    || !histogramPage || !histogramSelect || !scatterView || !scatterSlot) return;
+    || !histogramPage || !histogramSelect || !scatterSlot || !distributionSlot) return;
 
   const timelineHomeMarker = document.createComment('EpicScope Logger timeline home');
   const toggleHomeMarker = document.createComment('EpicScope Logger timeline toggle home');
@@ -75,21 +75,25 @@ function dockLoggerTimelineInScatter(root: HTMLElement): void {
     timeline.classList.remove('timeline-shell--analysis-docked');
   };
 
+  const dock = (slot: HTMLElement): void => {
+    if (timeline.parentNode !== slot) slot.append(timeline);
+    if (timelineToggle.parentNode !== slot) slot.append(timelineToggle);
+    timeline.classList.add('timeline-shell--analysis-docked');
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  };
+
   const sync = (): void => {
-    const useInScatter = !histogramPage.hidden && histogramSelect.value === 'scatter' && !scatterView.hidden;
-    if (useInScatter) {
-      if (timeline.parentNode !== scatterSlot) scatterSlot.append(timeline);
-      if (timelineToggle.parentNode !== scatterSlot) scatterSlot.append(timelineToggle);
-      timeline.classList.add('timeline-shell--analysis-docked');
-      requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-    } else {
+    if (histogramPage.hidden) {
       restore();
+      return;
     }
+    if (histogramSelect.value === 'scatter') dock(scatterSlot);
+    else if (histogramSelect.value === 'distribution') dock(distributionSlot);
+    else restore();
   };
 
   histogramSelect.addEventListener('change', sync);
   new MutationObserver(sync).observe(histogramPage, { attributes: true, attributeFilter: ['hidden'] });
-  new MutationObserver(sync).observe(scatterView, { attributes: true, attributeFilter: ['hidden'] });
   sync();
 }
 
@@ -97,5 +101,5 @@ export function applyNavigationRefinements(root: HTMLElement): void {
   refineValueSearch(root);
   normalizeGraphWorkspaceLabels(root);
   placeLayoutAfterGraph(root);
-  dockLoggerTimelineInScatter(root);
+  dockLoggerTimelineInHistogramAnalysis(root);
 }
