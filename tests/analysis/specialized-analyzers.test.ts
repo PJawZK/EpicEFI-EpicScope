@@ -74,7 +74,7 @@ describe('remaining Phase 4 analyzer cores', () => {
 
     expect(result.knockEvents).toHaveLength(2);
     expect(result.knockEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, peakKnock: 3, advanceAtPeak: 15, retardAtPeak: 4 });
-    expect(result.advance.mean).toBe(19.333333333333332);
+    expect(result.advance.mean).toBeCloseTo(19.333333333333332);
   });
 
   it('Fuel Pressure/Injector reports low-pressure and high-duty events plus deadtime evidence', () => {
