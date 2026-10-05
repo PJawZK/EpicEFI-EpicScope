@@ -1,0 +1,302 @@
+.histogram-distribution-view {
+  position: relative;
+  display: grid !important;
+  grid-template-rows: 36px auto minmax(0, 1fr) auto auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #050b10;
+}
+
+.histogram-distribution-view[hidden] { display: none !important; }
+
+.distribution-controls,
+.distribution-compare-controls {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 7px;
+  border-bottom: 1px solid #263b4c;
+  background: #0a151d;
+}
+
+.distribution-compare-controls {
+  min-height: 34px;
+  background: #0b1822;
+}
+
+.distribution-controls label,
+.distribution-compare-controls label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.distribution-controls label > span,
+.distribution-compare-controls label > span {
+  color: #7f95a2;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.distribution-controls select,
+.distribution-controls input,
+.distribution-controls button,
+.distribution-compare-controls select {
+  height: 27px;
+  border: 1px solid #2b4554;
+  border-radius: 3px;
+  background: #0f1d27;
+  color: #dce9ef;
+  font-size: 10px;
+}
+
+.distribution-controls select,
+.distribution-compare-controls select { padding: 0 22px 0 6px; }
+.distribution-controls button { padding: 0 9px; }
+.distribution-controls button:hover { background: #142938; }
+
+.distribution-channel { width: clamp(150px, 22vw, 240px); }
+.distribution-scope { width: 108px; }
+.distribution-metric { width: 104px; }
+.distribution-bin-mode { width: 80px; }
+.distribution-bin-count { width: 58px; padding: 0 6px; }
+.distribution-display { width: 102px; }
+.distribution-range-a,
+.distribution-range-b { width: clamp(150px, 22vw, 230px); }
+
+.distribution-compare-toggle {
+  min-height: 27px;
+  padding-left: 7px;
+  border-left: 1px solid #263b4c;
+}
+.distribution-compare-toggle input { margin: 0; }
+
+.distribution-compare-note {
+  margin-left: auto;
+  color: #748b98;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.distribution-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 238px;
+  overflow: hidden;
+  background: #020608;
+}
+
+.distribution-chart-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.distribution-chart {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.distribution-legend {
+  position: absolute;
+  top: 7px;
+  left: 66px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.distribution-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 5px;
+  border-radius: 2px;
+  background: rgba(2, 7, 11, .72);
+  color: #c9d8df;
+  font-size: 9px;
+}
+
+.distribution-legend i,
+.distribution-stat-series header i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 2px;
+  background: var(--series-color);
+}
+
+.distribution-stats {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid #243946;
+  background: #071119;
+}
+
+.distribution-stat-series + .distribution-stat-series {
+  border-top: 1px solid #253946;
+}
+
+.distribution-stat-series header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #1e313d;
+  background: #0c1821;
+}
+
+.distribution-stat-series header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #dce8ef;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.distribution-stat-series header small {
+  color: #78909c;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.distribution-stat-series dl {
+  margin: 0;
+  padding: 5px 8px 8px;
+}
+
+.distribution-stat-series dl div {
+  min-height: 24px;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid rgba(34, 52, 63, .65);
+}
+
+.distribution-stat-series dt {
+  color: #738a98;
+  font-size: 9px;
+}
+
+.distribution-stat-series dd {
+  margin: 0;
+  overflow: hidden;
+  color: #c9d7df;
+  font: 700 9px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.distribution-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-content: center;
+  gap: 5px;
+  padding: 20px;
+  background: #071119;
+  color: #8da1ad;
+  text-align: center;
+  pointer-events: none;
+}
+.distribution-empty strong { color: #d4e4ec; font-size: 12px; }
+.distribution-empty span { font-size: 10px; }
+
+.distribution-bin-detail {
+  min-width: 0;
+  min-height: 31px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 7px;
+  border-top: 1px solid #203441;
+  background: #09141d;
+  color: #8fa4af;
+  font-size: 9px;
+}
+
+.distribution-bin-label {
+  color: #d7e6ed;
+  font-weight: 750;
+}
+
+.distribution-bin-count-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.distribution-bin-detail button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #304d60;
+  border-radius: 3px;
+  background: #0d1b25;
+  color: #c6d5dd;
+  font-size: 9px;
+}
+
+.distribution-bin-detail button:hover:not(:disabled) { background: #142936; color: #fff; }
+.distribution-bin-detail button:disabled { opacity: .4; }
+
+.distribution-shared-timeline-slot {
+  position: relative;
+  z-index: 5;
+  min-width: 0;
+  min-height: 0;
+  max-height: 194px;
+  overflow: hidden;
+  border-top: 1px solid #29414f;
+  background: #071119;
+}
+
+.distribution-shared-timeline-slot:empty {
+  height: 0;
+  border-top: 0;
+}
+
+.distribution-shared-timeline-slot > .timeline-shell {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+@media (max-width: 1050px) {
+  .distribution-controls { gap: 4px; }
+  .distribution-controls label > span,
+  .distribution-compare-controls label > span { display: none; }
+  .distribution-channel { width: 130px; }
+  .distribution-compare-note { display: none; }
+  .distribution-main { grid-template-columns: minmax(0, 1fr) 210px; }
+}
+
+@media (max-width: 760px) {
+  .distribution-main { grid-template-columns: minmax(0, 1fr); }
+  .distribution-stats { display: none; }
+  .distribution-controls { overflow-x: auto; }
+}
