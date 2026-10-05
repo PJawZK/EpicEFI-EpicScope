@@ -191,6 +191,7 @@ export interface LoggerPageController {
   focusAnalysisTimes(timeMs: readonly number[]): void;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
+  reconcileAssignedChannels(): void;
 }
 
 interface GraphWorkspaceSummary {
@@ -1485,6 +1486,15 @@ export function createLoggerPage(): LoggerPageController {
     });
   };
 
+  const reconcileAssignedVisiblePaneChannels = (): void => {
+    const workspace = activeWorkspace();
+    if (!workspace || !channelDataSource) return;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    for (const runtime of paneRuntimes.slice(0, visibleCount)) {
+      reconcileAssignedPaneChannels(runtime);
+    }
+  };
+
   const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
     const workspace = activeWorkspace();
     const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
@@ -2115,6 +2125,7 @@ export function createLoggerPage(): LoggerPageController {
       activeWorkspaceId = '';
       refreshWorkspaceSelector();
       await restoreWorkspace(targetId);
+      reconcileAssignedVisiblePaneChannels();
       refreshWorkspaceSelector();
       refreshViewHistoryState();
     } finally {
@@ -2307,5 +2318,6 @@ export function createLoggerPage(): LoggerPageController {
       const workspaceId = activeWorkspaceId;
       if (workspaceId) await restoreWorkspace(workspaceId, true);
     },
+    reconcileAssignedChannels: reconcileAssignedVisiblePaneChannels,
   };
 }

@@ -1586,19 +1586,7 @@ export function mountAppShell(root: HTMLElement): void {
               postValidationRuntime.activeTraceCount
               < postValidationRuntime.renderableAssignedChannelCount
             ) {
-              try {
-                await loggerPage.restoreActiveWorkspace();
-              } catch (error) {
-                rememberRuntimeError({
-                  time: Date.now(),
-                  kind: 'unhandledrejection',
-                  message: error instanceof Error
-                    ? `Post-validation workspace reconcile failed: ${error.message}`
-                    : 'Post-validation workspace reconcile failed.',
-                  ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
-                });
-              }
-              if (activeStagedImport !== staged) return;
+              loggerPage.reconcileAssignedChannels();
             }
 
             performanceDiagnostics.recordValidation({
