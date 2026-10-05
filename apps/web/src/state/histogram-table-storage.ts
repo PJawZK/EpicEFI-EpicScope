@@ -1,6 +1,9 @@
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import type { NumericQualificationLogic, NumericQualificationOperator } from '../../../../core/analysis/sample-qualification';
 
+export type HistogramTableAggregation = NumericAggregationMethod | 'weighted-mean';
+export type HistogramTableColorMode = 'value' | 'weight';
+
 export interface HistogramCalculatedFieldDefinition {
   readonly id: string;
   readonly name: string;
@@ -32,7 +35,7 @@ export interface HistogramTablePresetState {
   readonly yChannelId: string;
   readonly zChannelId: string;
   readonly deltaChannelId: string;
-  readonly aggregation: NumericAggregationMethod;
+  readonly aggregation: HistogramTableAggregation;
   readonly axisSource: 'auto' | 'custom' | 'msq';
   readonly xBins: string;
   readonly yBins: string;
@@ -46,6 +49,9 @@ export interface HistogramTablePresetState {
   readonly msqXAxis: string;
   readonly msqYAxis: string;
   readonly showHits: boolean;
+  readonly minimumIndividualWeight?: number;
+  readonly minimumTotalWeight?: number;
+  readonly colorMode?: HistogramTableColorMode;
   readonly groupLogic: NumericQualificationLogic;
   readonly groupConditionLogic: NumericQualificationLogic;
   readonly filters: readonly HistogramFilterConditionState[];
