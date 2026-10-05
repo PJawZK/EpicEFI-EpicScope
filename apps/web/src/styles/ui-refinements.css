@@ -367,3 +367,10 @@
     min-width: 132px;
   }
 }
+
+
+/* Live Report health indicator. */
+.bug-report-button .bug-report-status { min-width:15px; height:15px; display:inline-grid; place-items:center; margin-left:2px; padding:0 3px; border:1px solid #3a5364; border-radius:8px; color:#91a5b2; font-size:8px; font-weight:850; line-height:1; }
+.bug-report-button[data-report-state="ok"] .bug-report-status { border-color:#315f4c; color:#76d6a8; }
+.bug-report-button[data-report-state="warning"] .bug-report-status { border-color:#7b682d; color:#f1c84b; }
+.bug-report-button[data-report-state="issue"] .bug-report-status { border-color:#8c5344; color:#ff8c78; }
