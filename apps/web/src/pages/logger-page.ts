@@ -188,6 +188,7 @@ export interface LoggerPageController {
   getWorkspaceState(): LoggerWorkspaceState;
   getRuntimeDiagnosticSnapshot(): LoggerRuntimeDiagnosticSnapshot;
   getAnalysisContext(): LoggerAnalysisContext;
+  focusAnalysisTimes(timeMs: readonly number[]): void;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
 }
@@ -952,6 +953,39 @@ export function createLoggerPage(): LoggerPageController {
       syncViewport(next, historyMode);
     }
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
+  };
+
+  const focusAnalysisTimes = (times: readonly number[]): void => {
+    if (!viewport) return;
+    const finite = [...new Set(times.filter((time) => Number.isFinite(time)))].sort((left, right) => left - right);
+    if (finite.length === 0) return;
+    const first = finite[0]!;
+    const last = finite[finite.length - 1]!;
+    const fullSpan = Math.max(1, viewport.fullEndMs - viewport.fullStartMs);
+    const hitSpan = Math.max(0, last - first);
+    const minimumSpan = Math.min(fullSpan, Math.max(500, fullSpan * 0.002));
+    const desiredSpan = Math.min(fullSpan, Math.max(minimumSpan, hitSpan * 1.16));
+    const midpoint = (first + last) / 2;
+    let visibleStartMs = midpoint - desiredSpan / 2;
+    let visibleEndMs = midpoint + desiredSpan / 2;
+    if (visibleStartMs < viewport.fullStartMs) {
+      visibleEndMs += viewport.fullStartMs - visibleStartMs;
+      visibleStartMs = viewport.fullStartMs;
+    }
+    if (visibleEndMs > viewport.fullEndMs) {
+      visibleStartMs -= visibleEndMs - viewport.fullEndMs;
+      visibleEndMs = viewport.fullEndMs;
+    }
+    visibleStartMs = Math.max(viewport.fullStartMs, visibleStartMs);
+    visibleEndMs = Math.min(viewport.fullEndMs, visibleEndMs);
+    const nextViewport: TimelineViewport = {
+      ...viewport,
+      visibleStartMs,
+      visibleEndMs,
+    };
+    if (!viewportEquals(viewport, nextViewport)) syncViewport(nextViewport, 'record');
+    setCursorWithoutFollow(first);
+    emitWorkspaceMutation();
   };
 
   const setActivePane = (paneId: string, emit = true): void => {
@@ -2234,6 +2268,7 @@ export function createLoggerPage(): LoggerPageController {
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
     getAnalysisContext,
+    focusAnalysisTimes,
     restoreWorkspaceState,
     restoreActiveWorkspace: async () => {
       const workspaceId = activeWorkspaceId;

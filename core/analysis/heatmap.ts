@@ -41,6 +41,8 @@ export interface NumericHeatmapResult {
   readonly cellValues: Float64Array;
   /** Row-major valid value samples contributing to the cell aggregation. */
   readonly cellValueSampleCounts: Uint32Array;
+  /** Exact source sample indices contributing X/Y pairs to each row-major cell. */
+  readonly cellSampleIndices: readonly Uint32Array[];
   readonly aggregationMethod: NumericAggregationMethod;
   readonly cellValueMin: number | undefined;
   readonly cellValueMax: number | undefined;
@@ -289,6 +291,7 @@ function emptyResult(
     counts: new Uint32Array(0),
     cellValues: new Float64Array(0),
     cellValueSampleCounts: new Uint32Array(0),
+    cellSampleIndices: [],
     aggregationMethod,
     cellValueMin: undefined,
     cellValueMax: undefined,
@@ -439,6 +442,7 @@ export function buildNumericHeatmap(
     counts,
     cellValues,
     cellValueSampleCounts,
+    cellSampleIndices: cellSampleIndices.map((indices) => Uint32Array.from(indices)),
     aggregationMethod,
     cellValueMin: finiteCellValueCount > 0 ? cellValueMin : undefined,
     cellValueMax: finiteCellValueCount > 0 ? cellValueMax : undefined,

@@ -144,6 +144,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   let currentScope: ResolvedScope | undefined;
   let currentFilterDescription = 'None';
   let layout: ChartLayout | undefined;
+  let selectedCell: { readonly cellIndex: number; readonly xIndex: number; readonly yIndex: number; readonly sampleIndices: readonly number[]; readonly timeMs: readonly number[]; readonly label: string } | undefined;
   let calculatedFields = loadHistogramCalculatedFields();
   let filterSets = loadHistogramFilterSets();
   let tablePresets = loadHistogramTablePresets();
@@ -229,6 +230,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       </div>
       <canvas class="histogram-table-canvas" aria-label="Histogram table generator"></canvas>
       <div class="histogram-table-tooltip" hidden></div>
+      <aside class="histogram-cell-inspector" hidden>
+        <header><div><strong class="histogram-cell-inspector-title">Cell samples</strong><small class="histogram-cell-inspector-subtitle">—</small></div><button type="button" class="histogram-cell-inspector-close" aria-label="Close cell inspector">×</button></header>
+        <div class="histogram-cell-inspector-summary"></div>
+        <div class="histogram-cell-sample-list"></div>
+        <footer><span class="histogram-cell-list-note"></span><button type="button" class="histogram-cell-copy">Copy</button><button type="button" class="histogram-cell-open-logger">Open in Logger</button></footer>
+      </aside>
       <div class="histogram-table-status" hidden>
         <span data-hist-table-summary="scope">—</span>
         <span data-hist-table-summary="coverage">—</span>
@@ -291,6 +298,15 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const status = root.querySelector<HTMLElement>('.histogram-table-status');
   const canvas = root.querySelector<HTMLCanvasElement>('.histogram-table-canvas');
   const tooltip = root.querySelector<HTMLElement>('.histogram-table-tooltip');
+  const cellInspector = root.querySelector<HTMLElement>('.histogram-cell-inspector');
+  const cellInspectorTitle = root.querySelector<HTMLElement>('.histogram-cell-inspector-title');
+  const cellInspectorSubtitle = root.querySelector<HTMLElement>('.histogram-cell-inspector-subtitle');
+  const cellInspectorSummary = root.querySelector<HTMLElement>('.histogram-cell-inspector-summary');
+  const cellSampleList = root.querySelector<HTMLElement>('.histogram-cell-sample-list');
+  const cellListNote = root.querySelector<HTMLElement>('.histogram-cell-list-note');
+  const cellInspectorClose = root.querySelector<HTMLButtonElement>('.histogram-cell-inspector-close');
+  const cellCopyButton = root.querySelector<HTMLButtonElement>('.histogram-cell-copy');
+  const cellOpenLoggerButton = root.querySelector<HTMLButtonElement>('.histogram-cell-open-logger');
   if (
     !scopeSelect || !xSelect || !ySelect || !zField || !zSelect || !aggregationSelect || !deltaField || !deltaSelect
     || !presetSelect || !presetApplyButton || !presetSaveButton || !presetDeleteButton || !formulaCount || !formulaSelect || !formulaNameInput
@@ -299,6 +315,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     || !filterList || !addFilterButton || !axisSourceSelect || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
     || !msqAxisFields || !msqTableSelect || !msqXAxisSelect || !msqYAxisSelect || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
     || !yMinInput || !yMaxInput || !showHitsInput || !exportButton || !empty || !status || !canvas || !tooltip
+    || !cellInspector || !cellInspectorTitle || !cellInspectorSubtitle || !cellInspectorSummary || !cellSampleList || !cellListNote
+    || !cellInspectorClose || !cellCopyButton || !cellOpenLoggerButton
   ) {
     throw new Error('Histogram table generator structure is incomplete.');
   }
@@ -1172,6 +1190,67 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     URL.revokeObjectURL(url);
   };
 
+  const cellAtPointer = (event: MouseEvent): { xIndex: number; yIndex: number; cellIndex: number } | undefined => {
+    const result = currentResult;
+    const currentLayout = layout;
+    if (!result || !currentLayout || result.xBins.length === 0 || result.yBins.length === 0) return undefined;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (x < currentLayout.left || x >= currentLayout.left + currentLayout.width || y < currentLayout.top || y >= currentLayout.top + currentLayout.height) return undefined;
+    const xIndex = Math.min(result.xBins.length - 1, Math.max(0, Math.floor((x - currentLayout.left) / currentLayout.cellWidth)));
+    const yFromTop = Math.min(result.yBins.length - 1, Math.max(0, Math.floor((y - currentLayout.top) / currentLayout.cellHeight)));
+    const yIndex = result.yBins.length - 1 - yFromTop;
+    return { xIndex, yIndex, cellIndex: yIndex * result.xBins.length + xIndex };
+  };
+
+  const timeForSourceIndex = (sampleIndex: number): number | undefined => {
+    const trace = currentXTrace;
+    if (!trace) return undefined;
+    const localIndex = sampleIndex - trace.range.startSampleIndex;
+    if (!Number.isSafeInteger(localIndex) || localIndex < 0 || localIndex >= trace.range.timeMs.length) return undefined;
+    const time = trace.range.timeMs[localIndex];
+    return time !== undefined && Number.isFinite(time) ? time : undefined;
+  };
+
+  const closeCellInspector = (): void => {
+    selectedCell = undefined;
+    cellInspector.hidden = true;
+  };
+
+  const openCellInspector = (event: MouseEvent): void => {
+    const result = currentResult;
+    const xTrace = currentXTrace;
+    const yTrace = currentYTrace;
+    const cell = cellAtPointer(event);
+    if (!result || !xTrace || !yTrace || !cell) return;
+    const sourceIndices = [...(result.cellSampleIndices[cell.cellIndex] ?? new Uint32Array(0))];
+    const times = sourceIndices.flatMap((sampleIndex) => {
+      const time = timeForSourceIndex(sampleIndex);
+      return time === undefined ? [] : [time];
+    });
+    const xBin = result.xBins[cell.xIndex]!;
+    const yBin = result.yBins[cell.yIndex]!;
+    const value = result.cellValues[cell.cellIndex];
+    const count = result.counts[cell.cellIndex] ?? 0;
+    const label = `${traceLabel(xTrace)} ${formatNumber(xBin.centerValue)} × ${traceLabel(yTrace)} ${formatNumber(yBin.centerValue)}`;
+    selectedCell = { cellIndex: cell.cellIndex, xIndex: cell.xIndex, yIndex: cell.yIndex, sampleIndices: sourceIndices, timeMs: times, label };
+    cellInspectorTitle.textContent = label;
+    cellInspectorSubtitle.textContent = `${aggregationLabel(result.aggregationMethod)} ${formatCellValue(value, result.aggregationMethod, 120)} · ${count.toLocaleString()} hits`;
+    cellInspectorSummary.innerHTML = `<span>${traceLabel(xTrace)} ${formatNumber(xBin.lowerBound)}–${formatNumber(xBin.upperBound)}</span><span>${traceLabel(yTrace)} ${formatNumber(yBin.lowerBound)}–${formatNumber(yBin.upperBound)}</span>`;
+    const shown = sourceIndices.slice(0, 200);
+    cellSampleList.replaceChildren(...shown.map((sampleIndex, index) => {
+      const row = document.createElement('div');
+      const time = times[index];
+      row.innerHTML = `<span>#${sampleIndex.toLocaleString()}</span><strong>${time === undefined ? '—' : `${(time / 1000).toFixed(3)} s`}</strong>`;
+      return row;
+    }));
+    cellListNote.textContent = sourceIndices.length > 200 ? `Showing 200 of ${sourceIndices.length.toLocaleString()} exact hits` : `${sourceIndices.length.toLocaleString()} exact hits`;
+    cellOpenLoggerButton.disabled = times.length === 0 || !context.openSamplesInLogger;
+    cellCopyButton.disabled = sourceIndices.length === 0;
+    cellInspector.hidden = false;
+  };
+
   const updateTooltip = (event: MouseEvent): void => {
     const result = currentResult;
     const currentLayout = layout;
@@ -1184,17 +1263,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    if (
-      x < currentLayout.left || x >= currentLayout.left + currentLayout.width
-      || y < currentLayout.top || y >= currentLayout.top + currentLayout.height
-    ) {
+    const cell = cellAtPointer(event);
+    if (!cell) {
       tooltip.hidden = true;
       return;
     }
-    const xIndex = Math.min(result.xBins.length - 1, Math.max(0, Math.floor((x - currentLayout.left) / currentLayout.cellWidth)));
-    const yFromTop = Math.min(result.yBins.length - 1, Math.max(0, Math.floor((y - currentLayout.top) / currentLayout.cellHeight)));
-    const yIndex = result.yBins.length - 1 - yFromTop;
-    const cellIndex = yIndex * result.xBins.length + xIndex;
+    const { xIndex, yIndex, cellIndex } = cell;
     const xBin = result.xBins[xIndex]!;
     const yBin = result.yBins[yIndex]!;
     const value = result.cellValues[cellIndex];
@@ -1222,6 +1296,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const previousZ = zSelect.value;
     const previousDelta = deltaSelect.value;
     context = nextContext;
+    closeCellInspector();
     refillChannelSelect(xSelect, previousX);
     refillChannelSelect(ySelect, previousY);
     refillChannelSelect(zSelect, previousZ);
@@ -1283,6 +1358,17 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   yMaxInput.addEventListener('input', () => scheduleRender(160));
   showHitsInput.addEventListener('change', renderChart);
   exportButton.addEventListener('click', exportCsv);
+  cellInspectorClose.addEventListener('click', closeCellInspector);
+  cellCopyButton.addEventListener('click', () => {
+    if (!selectedCell) return;
+    const lines = selectedCell.sampleIndices.map((sampleIndex, index) => `${sampleIndex}\t${selectedCell!.timeMs[index] ?? ''}`);
+    void navigator.clipboard.writeText(['sampleIndex\ttimeMs', ...lines].join('\n'));
+  });
+  cellOpenLoggerButton.addEventListener('click', () => {
+    if (!selectedCell || !context.openSamplesInLogger || selectedCell.timeMs.length === 0) return;
+    void context.openSamplesInLogger({ sampleIndices: selectedCell.sampleIndices, timeMs: selectedCell.timeMs, label: selectedCell.label });
+  });
+  canvas.addEventListener('click', openCellInspector);
   canvas.addEventListener('mousemove', updateTooltip);
   canvas.addEventListener('mouseleave', () => { tooltip.hidden = true; });
   new ResizeObserver(() => {

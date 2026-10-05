@@ -882,6 +882,11 @@ export function mountAppShell(root: HTMLElement): void {
         ...loggerPage.getAnalysisContext(),
         ...(activeTuneModel ? { tuneModel: activeTuneModel } : {}),
         ...(activeTuneSourceName ? { tuneSourceName: activeTuneSourceName } : {}),
+        openSamplesInLogger: (request) => {
+          loggerPage.focusAnalysisTimes(request.timeMs);
+          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} hits`;
+          setEpicScopeMode('logger');
+        },
       });
       histogramPage.refresh();
     }
