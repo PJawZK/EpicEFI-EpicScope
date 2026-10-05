@@ -272,3 +272,8 @@ This does **not** adopt EpicHub's broader Dashboard/Tuner/Diagnostics applicatio
 ## Superseding/refining decisions
 
 Decisions are not silently deleted when refined. A later numbered decision should state what it changes and why. D-045 currently refines the mode-switcher interpretation inside D-033 while preserving the rest of the EpicHub-reference boundary.
+
+
+### Table Generator MLV weighted-mean parity note
+
+The MLV-style weighted-mean implementation is considered sufficiently matched for current use. On the 2026-10-02_13.27.46.mlg comparison, representative cells matched MLV values and total hit weights effectively exactly; the large RPM 1800 / TPS 0 reference cell differed by only 19 contributing hits (EpicScope about 50,767 vs MLV 50,748, roughly 0.037%) while the weighted result remained 38.53 and total hit weight differed by about 0.97. This is retained as a compatibility footnote, not an active investigation. If revisited later, examine record-validity/retry handling before changing the established weighting geometry.

@@ -63,7 +63,6 @@ export function createHistogramPage(): HistogramPageController {
   const headerControl = document.createElement('label');
   headerControl.className = 'histogram-header-view';
   headerControl.innerHTML = `
-    <span>Analysis</span>
     <select class="histogram-view-select" aria-label="Histogram analysis view">
       <option value="table" selected>Table Generator</option>
       <option value="distribution">Distribution</option>
@@ -76,12 +75,11 @@ export function createHistogramPage(): HistogramPageController {
   page.className = 'histogram-page histogram-page--workspace';
   page.hidden = true;
   page.innerHTML = `
-    <div class="histogram-workspace-bar">
+    <div class="histogram-workspace-bar" hidden>
       <div class="histogram-distribution-controls" hidden>
         <label><span>Channel</span><select class="histogram-channel"></select></label>
         <label><span>Bins</span><select class="histogram-bin-count"><option>10</option><option selected>20</option><option>30</option><option>40</option><option>60</option></select></label>
       </div>
-      <div class="histogram-workspace-hint">MLV-style table generation · all available log channels · selected channels decode on demand</div>
     </div>
     <div class="histogram-workspace-body">
       <section class="histogram-distribution-stage" hidden>
@@ -275,6 +273,8 @@ export function createHistogramPage(): HistogramPageController {
     activeView = view;
     viewSelect.value = view;
     const distribution = view === 'distribution';
+    const workspaceBar = page.querySelector<HTMLElement>('.histogram-workspace-bar');
+    if (workspaceBar) workspaceBar.hidden = !distribution;
     distributionControls.hidden = !distribution;
     distributionStage.hidden = !distribution;
     tableGeneratorView.element.hidden = view !== 'table';

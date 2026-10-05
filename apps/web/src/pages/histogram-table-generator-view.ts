@@ -141,7 +141,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   let renderGeneration = 0;
   let renderTimer: number | undefined;
   let currentResult: NumericHeatmapResult | undefined;
-  let currentAggregation: HistogramTableAggregation = 'mean';
+  let currentAggregation: HistogramTableAggregation = 'weighted-mean';
   let currentCellTotalWeights: Float64Array | undefined;
   let currentWeightedContributingCounts: Uint32Array | undefined;
   let currentXTrace: HistogramTraceContext | undefined;
@@ -166,8 +166,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       <label><span>Y</span><select class="histogram-table-y"></select></label>
       <label class="histogram-table-z-field"><span>Z</span><select class="histogram-table-z"></select></label>
       <label><span>Cell</span><select class="histogram-table-aggregation">
-        <option value="mean" selected>Mean</option>
-        <option value="weighted-mean">MLV weighted mean</option>
+        <option value="weighted-mean" selected>MLV weighted mean</option>
+        <option value="mean">Mean</option>
         <option value="count">Count</option>
         <option value="min">Minimum</option>
         <option value="max">Maximum</option>
@@ -177,11 +177,11 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       </select></label>
       <label class="histogram-table-delta-field"><span>Z delta</span><select class="histogram-table-delta"><option value="">(none)</option></select></label>
       <details class="histogram-table-presets">
-        <summary>Presets</summary>
+        <summary title="Saved Table Generator setups">Presets</summary>
         <div class="histogram-table-preset-popover">
-          <select class="histogram-preset-select" aria-label="Saved table preset"></select>
-          <div><button type="button" class="histogram-preset-apply">Apply</button><button type="button" class="histogram-preset-save">Save current…</button><button type="button" class="histogram-preset-delete">Delete</button></div>
-          <small>Presets retain channels, formulas by ID, filters, statistic, scope and axis configuration.</small>
+          <select class="histogram-preset-select" aria-label="Saved table setup"></select>
+          <div><button type="button" class="histogram-preset-apply">Apply</button><button type="button" class="histogram-preset-save">Save setup…</button><button type="button" class="histogram-preset-delete">Delete</button></div>
+          <small>Saved setups retain scope, X/Y/Z, statistic, filters, axis/grid configuration and weighting options.</small>
         </div>
       </details>
       <details class="histogram-table-formulas">
@@ -196,14 +196,33 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       </details>
       <details class="histogram-table-filters">
         <summary>Filters <span class="histogram-filter-count">0</span></summary>
-        <div class="histogram-table-filter-popover">
-          <div class="histogram-filter-set-bar"><select class="histogram-filter-set-select" aria-label="Saved filter set"></select><button type="button" class="histogram-filter-set-apply">Apply</button><button type="button" class="histogram-filter-set-save">Save set…</button><button type="button" class="histogram-filter-set-delete">Delete</button></div>
-          <div class="histogram-filter-logic-bar"><label><span>Within group</span><select class="histogram-filter-within-logic"><option value="and">ALL</option><option value="or">ANY</option></select></label><label><span>Between groups</span><select class="histogram-filter-between-logic"><option value="and">ALL</option><option value="or">ANY</option></select></label><small>Assign rows to A/B/C. ALL/ANY controls conditions inside and between groups.</small></div>
-          <div class="histogram-filter-list"></div>
-          <div class="histogram-filter-actions">
-            <button type="button" class="histogram-add-filter">+ Add filter</button>
-            <span>Filters can use physical or calculated channels.</span>
+        <div class="histogram-table-filter-popover histogram-filter-manager">
+          <aside class="histogram-filter-library">
+            <header><strong>Saved filters</strong><button type="button" class="histogram-filter-set-save">Save current…</button></header>
+            <select class="histogram-filter-set-select" aria-label="Saved filter set" size="7"></select>
+            <footer><button type="button" class="histogram-filter-set-apply">Apply</button><button type="button" class="histogram-filter-set-delete">Delete</button></footer>
+          </aside>
+          <section class="histogram-filter-editor">
+            <header><div><strong>Filter conditions</strong><small>Qualify samples before they enter the table.</small></div><button type="button" class="histogram-add-filter">+ Condition</button></header>
+            <div class="histogram-filter-logic-bar"><label><span>Within group</span><select class="histogram-filter-within-logic"><option value="and">ALL</option><option value="or">ANY</option></select></label><label><span>Between groups</span><select class="histogram-filter-between-logic"><option value="and">ALL</option><option value="or">ANY</option></select></label><small>Rows may be grouped A/B/C. ALL/ANY controls conditions inside and between groups.</small></div>
+            <div class="histogram-filter-list"></div>
+            <footer class="histogram-filter-actions"><span>Physical and Math/Calculated channels are available.</span></footer>
+          </section>
+        </div>
+      </details>
+      <details class="histogram-table-size">
+        <summary title="Choose the visible auto-bin table grid">Size</summary>
+        <div class="histogram-table-size-popover">
+          <strong>Table grid</strong>
+          <div class="histogram-table-size-grid" role="group" aria-label="Table grid size">
+            <button type="button" data-grid="8x8">8×8</button>
+            <button type="button" data-grid="12x12">12×12</button>
+            <button type="button" data-grid="16x16">16×16</button>
+            <button type="button" data-grid="8x16">8×16</button>
+            <button type="button" data-grid="16x8">16×8</button>
+            <button type="button" data-grid="1x16">16×1</button>
           </div>
+          <small>Grid size applies to Auto bins. Custom breakpoints and loaded MSQ tables keep their own dimensions.</small>
         </div>
       </details>
       <details class="histogram-table-options">
@@ -232,7 +251,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
             <label><span>Min individual weight</span><input class="histogram-table-min-individual-weight" type="number" min="0" max="1" step="0.01" value="0" /></label>
             <label><span>Min total hit weight</span><input class="histogram-table-min-total-weight" type="number" min="0" step="0.1" value="0" /></label>
             <label><span>Cell color</span><select class="histogram-table-color-mode"><option value="value">Cell value</option><option value="weight">Hit weight</option></select></label>
-            <p>Experimental MLV-style weighting: 1.0 at the X/Y cell center, falling toward 0.0 at the cell boundary. The two thresholds mirror MLV's hit-weight controls.</p>
+            <p>MLV-style weighting: 1.0 at the X/Y cell center, falling toward 0.0 at the cell boundary. The two thresholds mirror MLV's hit-weight controls.</p>
           </div>
           <p>Set Y rows to 1 for an MLV-style single-row bar graph. Blank limits use observed data range.</p>
         </div>
@@ -303,6 +322,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const filterBetweenLogicSelect = root.querySelector<HTMLSelectElement>('.histogram-filter-between-logic');
   const filterList = root.querySelector<HTMLElement>('.histogram-filter-list');
   const addFilterButton = root.querySelector<HTMLButtonElement>('.histogram-add-filter');
+  const sizeButtons = [...root.querySelectorAll<HTMLButtonElement>('.histogram-table-size-grid [data-grid]')];
   const axisSourceSelect = root.querySelector<HTMLSelectElement>('.histogram-table-axis-source');
   const autoAxisFields = root.querySelector<HTMLElement>('.histogram-table-axis-auto');
   const customAxisFields = root.querySelector<HTMLElement>('.histogram-table-axis-custom');
@@ -1447,6 +1467,20 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   filterWithinLogicSelect.addEventListener('change', () => scheduleRender());
   filterBetweenLogicSelect.addEventListener('change', () => scheduleRender());
   addFilterButton.addEventListener('click', () => addFilter());
+  for (const button of sizeButtons) {
+    button.addEventListener('click', () => {
+      const raw = button.dataset.grid ?? '';
+      const [columnsRaw, rowsRaw] = raw.split('x');
+      const columns = Number(columnsRaw);
+      const rows = Number(rowsRaw);
+      if (!Number.isFinite(columns) || !Number.isFinite(rows)) return;
+      axisSourceSelect.value = 'auto';
+      xBinsInput.value = String(columns);
+      yBinsInput.value = String(rows);
+      axisSourceSelect.dispatchEvent(new Event('change'));
+      scheduleRender();
+    });
+  }
   scopeSelect.addEventListener('change', () => scheduleRender());
   xSelect.addEventListener('change', () => scheduleRender());
   ySelect.addEventListener('change', () => scheduleRender());
