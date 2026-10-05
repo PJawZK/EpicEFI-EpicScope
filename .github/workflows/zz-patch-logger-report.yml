@@ -2,14 +2,14 @@ name: Patch logger render reconciliation and report status
 
 on:
   push:
-    branches: [fix/logger-render-reconcile-report-status]
+    branches:
+      - fix/logger-render-reconcile-report-status
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -25,8 +25,6 @@ jobs:
               if old not in s: raise SystemExit(f'missing patch anchor in {path}: {old[:80]!r}')
               p.write_text(s.replace(old,new,1))
 
-          # Expose graph in-flight channel IDs so Logger can distinguish a genuinely missing trace
-          # from one that is already queued/loading.
           path='apps/web/src/components/graph-viewport.ts'
           replace_once(path,
           "  toggleChannel(channelId: string): Promise<boolean>;\n  activatePreloadedChannels(\n",
@@ -35,9 +33,6 @@ jobs:
           "    toggleChannel,\n    activatePreloadedChannels,\n",
           "    toggleChannel,\n    getInFlightChannelIds: () => [...new Set([...pendingTraces.keys(), ...loadingTraceIds])],\n    activatePreloadedChannels,\n")
 
-          # Reconcile assigned/renderable pane channels after every channel completion. This repairs
-          # any selection that was assigned but lost from the pending/active pipeline without
-          # disturbing channels that are still queued/loading.
           path='apps/web/src/pages/logger-page.ts'
           anchor="  inspector.onChannelToggled((channelId) => {\n"
           helper="""  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
@@ -71,7 +66,6 @@ jobs:
           "  inspector.onLoadSelected(() => {\n    activePaneRuntime()?.graph.loadPendingChannels();\n  });\n",
           "  inspector.onLoadSelected(() => {\n    const runtime = activePaneRuntime();\n    if (!runtime) return;\n    runtime.graph.loadPendingChannels();\n    window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);\n  });\n")
 
-          # Add live Report health status (issue / warning / OK) without opening the dialog.
           path='apps/web/src/app/app-shell.ts'
           replace_once(path,
           "  bugReportButton.innerHTML = '<span class=\"utility-action-symbol\" aria-hidden=\"true\">⚑</span><span>Report</span>';\n",
@@ -101,7 +95,6 @@ jobs:
 """
           replace_once(path, anchor, status+anchor)
 
-          # Keep Report status compact and consistent with the existing footer controls.
           path='apps/web/src/styles/ui-refinements.css'
           p=Path(path); s=p.read_text()
           css="""
