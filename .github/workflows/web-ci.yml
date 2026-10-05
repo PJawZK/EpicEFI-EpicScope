@@ -8,77 +8,32 @@ on:
     branches:
       - main
       - phase1/**
-      - fix/reconcile-all-visible-pane-traces
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-visible-pane-reconcile:
-    if: ${{ github.ref == 'refs/heads/fix/reconcile-all-visible-pane-traces' && github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: fix/reconcile-all-visible-pane-traces
-      - name: Apply visible-pane reconciliation
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          p = Path('apps/web/src/pages/logger-page.ts')
-          s = p.read_text()
-          old = "  restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;\n  restoreActiveWorkspace(): Promise<void>;\n}"
-          new = "  restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;\n  restoreActiveWorkspace(): Promise<void>;\n  reconcileAssignedChannels(): void;\n}"
-          if old not in s: raise SystemExit('controller interface anchor missing')
-          s = s.replace(old, new, 1)
-          old = "  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {"
-          new = "  const reconcileAssignedVisiblePaneChannels = (): void => {\n    const workspace = activeWorkspace();\n    if (!workspace || !channelDataSource) return;\n    const visibleCount = paneCountForLayout(workspace.layout);\n    for (const runtime of paneRuntimes.slice(0, visibleCount)) {\n      reconcileAssignedPaneChannels(runtime);\n    }\n  };\n\n  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {"
-          if old not in s: raise SystemExit('pane reconcile anchor missing')
-          s = s.replace(old, new, 1)
-          old = "      await restoreWorkspace(targetId);\n      refreshWorkspaceSelector();\n      refreshViewHistoryState();"
-          new = "      await restoreWorkspace(targetId);\n      reconcileAssignedVisiblePaneChannels();\n      refreshWorkspaceSelector();\n      refreshViewHistoryState();"
-          if old not in s: raise SystemExit('restore state anchor missing')
-          s = s.replace(old, new, 1)
-          old = "    restoreActiveWorkspace: async () => {\n      const workspaceId = activeWorkspaceId;\n      if (workspaceId) await restoreWorkspace(workspaceId, true);\n    },\n  };"
-          new = "    restoreActiveWorkspace: async () => {\n      const workspaceId = activeWorkspaceId;\n      if (workspaceId) await restoreWorkspace(workspaceId, true);\n    },\n    reconcileAssignedChannels: reconcileAssignedVisiblePaneChannels,\n  };"
-          if old not in s: raise SystemExit('controller return anchor missing')
-          p.write_text(s.replace(old, new, 1))
-          p = Path('apps/web/src/app/app-shell.ts')
-          s = p.read_text()
-          start = "            await workspaceRestore.catch(() => undefined);\n            if (activeStagedImport !== staged) return;\n            const postValidationRuntime = loggerPage.getRuntimeDiagnosticSnapshot();\n            if (\n              postValidationRuntime.activeTraceCount\n              < postValidationRuntime.renderableAssignedChannelCount\n            ) {"
-          end = "              if (activeStagedImport !== staged) return;\n            }\n"
-          i = s.find(start)
-          if i < 0: raise SystemExit('post-validation reconcile start missing')
-          j = s.find(end, i)
-          if j < 0: raise SystemExit('post-validation reconcile end missing')
-          j += len(end)
-          replacement = "            await workspaceRestore.catch(() => undefined);\n            if (activeStagedImport !== staged) return;\n            const postValidationRuntime = loggerPage.getRuntimeDiagnosticSnapshot();\n            if (\n              postValidationRuntime.activeTraceCount\n              < postValidationRuntime.renderableAssignedChannelCount\n            ) {\n              loggerPage.reconcileAssignedChannels();\n            }\n"
-          p.write_text(s[:i] + replacement + s[j:])
-          PY
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/web/src/pages/logger-page.ts apps/web/src/app/app-shell.ts
-          git commit -m 'Reconcile all visible pane assignments'
-          git push origin HEAD:fix/reconcile-all-visible-pane-traces
-
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: '22.12.0'
           cache: npm
+
       - name: Install dependencies
         run: npm ci
+
       - name: Type-check
         run: npm run typecheck
+
       - name: Test
         run: npm test
+
       - name: Build
         run: npm run build
