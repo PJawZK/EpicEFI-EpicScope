@@ -11,6 +11,7 @@ import type {
   IniChannelParseResult,
   IniParserDiagnostic,
 } from '../../../../core/parsers/ini/ini-types';
+import { saveIniTableEditorDefinitions } from '../state/ini-table-editor-storage';
 
 export interface IniImportPerformance {
   readonly fileSizeBytes: number;
@@ -55,6 +56,7 @@ export async function importIniFile(file: File): Promise<ImportedIniFile> {
   const catalogStart = now();
   const catalog = buildIniChannelCatalog(parsed);
   const catalogBuildMs = now() - catalogStart;
+  saveIniTableEditorDefinitions(tableDefinitions);
 
   const outputKeys = new Set(parsed.outputChannels.map((channel) => channel.key));
   const datalogKeys = new Set(parsed.datalogEntries.map((entry) => entry.channelKey));
