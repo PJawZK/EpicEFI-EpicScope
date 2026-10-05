@@ -22,7 +22,6 @@ interface FilterRowControls {
   readonly channel: HTMLSelectElement;
   readonly operator: HTMLSelectElement;
   readonly value: HTMLInputElement;
-  readonly remove: HTMLButtonElement;
 }
 
 interface ResolvedScope {
@@ -32,10 +31,10 @@ interface ResolvedScope {
 }
 
 interface ChartLayout {
-  readonly padLeft: number;
-  readonly padTop: number;
-  readonly chartWidth: number;
-  readonly chartHeight: number;
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
   readonly cellWidth: number;
   readonly cellHeight: number;
 }
@@ -56,11 +55,10 @@ function formatNumber(value: number | undefined, precision = 3): string {
   return value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
 
-function formatCellValue(value: number | undefined, method: NumericAggregationMethod, availableWidth: number): string {
+function formatCellValue(value: number | undefined, method: NumericAggregationMethod, width: number): string {
   if (value === undefined || !Number.isFinite(value)) return method === 'count' ? '0' : '—';
   if (method === 'count') return Math.round(value).toLocaleString();
-  const abs = Math.abs(value);
-  const precision = availableWidth < 30 ? 0 : availableWidth < 48 ? 1 : abs >= 100 ? 1 : 2;
+  const precision = width < 30 ? 0 : width < 48 ? 1 : Math.abs(value) >= 100 ? 1 : 2;
   return value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
 
@@ -82,14 +80,14 @@ function operatorLabel(operator: NumericQualificationOperator): string {
   return '=';
 }
 
-function parseOptionalFinite(input: HTMLInputElement): number | undefined {
+function optionalFinite(input: HTMLInputElement): number | undefined {
   const raw = input.value.trim();
   if (!raw) return undefined;
   const value = Number(raw);
   return Number.isFinite(value) ? value : undefined;
 }
 
-function normalizedBinCount(input: HTMLInputElement, fallback: number): number {
+function binCount(input: HTMLInputElement, fallback: number): number {
   const value = Number(input.value);
   if (!Number.isFinite(value)) return fallback;
   return Math.max(1, Math.min(64, Math.floor(value)));
@@ -127,7 +125,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   let currentDeltaTrace: HistogramTraceContext | undefined;
   let currentScope: ResolvedScope | undefined;
   let currentFilterDescription = 'None';
-  let chartLayout: ChartLayout | undefined;
+  let layout: ChartLayout | undefined;
 
   const root = document.createElement('section');
   root.className = 'histogram-table-generator-view';
@@ -225,31 +223,18 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   }
 
   const filters: FilterRowControls[] = [];
-
   const summary = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-hist-table-summary="${name}"]`);
     if (!node) throw new Error(`Histogram table summary field is missing: ${name}`);
     return node;
   };
-
   const selectedAggregation = (): NumericAggregationMethod => aggregationSelect.value as NumericAggregationMethod;
 
-  const refillChannelSelect = (
-    select: HTMLSelectElement,
-    previousValue: string,
-    includeNone = false,
-  ): void => {
+  const refillChannelSelect = (select: HTMLSelectElement, previous: string, includeNone = false): void => {
     select.replaceChildren();
     if (includeNone) select.add(new Option('(none)', ''));
     for (const channel of context.channels) select.add(new Option(channelLabel(channel), channel.id));
-    if (previousValue && context.channels.some((channel) => channel.id === previousValue)) select.value = previousValue;
-  };
-
-  const updateFilterCount = (): void => {
-    const enabled = filters.filter((filter) => filter.enabled.checked).length;
-    filterCount.textContent = String(enabled);
-    filterCount.dataset.active = enabled > 0 ? 'true' : 'false';
-    addFilterButton.disabled = filters.length >= MAX_FILTERS;
+    if (previous && context.channels.some((channel) => channel.id === previous)) select.value = previous;
   };
 
   const scheduleRender = (delay = 0): void => {
@@ -260,7 +245,14 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     }, delay);
   };
 
-  const addFilter = (seed?: Partial<NumericQualificationCondition>): void => {
+  const updateFilterCount = (): void => {
+    const enabledCount = filters.filter((filter) => filter.enabled.checked).length;
+    filterCount.textContent = String(enabledCount);
+    filterCount.dataset.active = enabledCount > 0 ? 'true' : 'false';
+    addFilterButton.disabled = filters.length >= MAX_FILTERS;
+  };
+
+  const addFilter = (): void => {
     if (filters.length >= MAX_FILTERS) return;
     const row = document.createElement('div');
     row.className = 'histogram-filter-row';
@@ -279,16 +271,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const value = row.querySelector<HTMLInputElement>('.histogram-filter-value');
     const remove = row.querySelector<HTMLButtonElement>('.histogram-filter-remove');
     if (!enabled || !channel || !operator || !value || !remove) throw new Error('Histogram filter row is incomplete.');
-
     for (const definition of context.channels) channel.add(new Option(channelLabel(definition), definition.id));
-    if (seed?.channelId && context.channels.some((definition) => definition.id === seed.channelId)) channel.value = seed.channelId;
-    if (seed?.operator) operator.value = seed.operator;
-    if (seed?.value !== undefined && Number.isFinite(seed.value)) value.value = String(seed.value);
-
-    const controls: FilterRowControls = { row, enabled, channel, operator, value, remove };
+    const controls: FilterRowControls = { row, enabled, channel, operator, value };
     filters.push(controls);
     filterList.append(row);
-
     enabled.addEventListener('change', () => { updateFilterCount(); scheduleRender(); });
     channel.addEventListener('change', () => scheduleRender());
     operator.addEventListener('change', () => scheduleRender());
@@ -304,7 +290,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     scheduleRender();
   };
 
-  const enabledFilterConditions = (): readonly NumericQualificationCondition[] => filters.flatMap((filter) => {
+  const enabledConditions = (): readonly NumericQualificationCondition[] => filters.flatMap((filter) => {
     if (!filter.enabled.checked || !filter.channel.value) return [];
     const value = Number(filter.value.value);
     if (!Number.isFinite(value)) return [];
@@ -315,10 +301,21 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     }];
   });
 
+  const populateScopeOptions = (): void => {
+    const previous = scopeSelect.value || 'ab';
+    scopeSelect.replaceChildren(new Option('A/B selection', 'ab'), new Option('Whole log', 'full'));
+    (context.savedRanges ?? []).forEach((saved, index) => {
+      const seconds = Math.abs(saved.endMs - saved.startMs) / 1000;
+      scopeSelect.add(new Option(`${saved.label || `Range ${index + 1}`} · ${seconds.toFixed(seconds >= 10 ? 1 : 3)} s`, `saved:${index}`));
+    });
+    if ([...scopeSelect.options].some((option) => option.value === previous)) scopeSelect.value = previous;
+    else scopeSelect.value = context.aTimeMs !== undefined && context.bTimeMs !== undefined ? 'ab' : 'full';
+  };
+
   const resolveScope = (): ResolvedScope | undefined => {
     if (scopeSelect.value === 'full') return { label: 'Full log' };
     if (scopeSelect.value.startsWith('saved:')) {
-      const index = Number(scopeSelect.value.slice('saved:'.length));
+      const index = Number(scopeSelect.value.slice(6));
       const saved = context.savedRanges?.[index];
       if (!saved) return undefined;
       return {
@@ -335,24 +332,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     };
   };
 
-  const populateScopeOptions = (): void => {
-    const previous = scopeSelect.value || 'ab';
-    scopeSelect.replaceChildren(
-      new Option('A/B selection', 'ab'),
-      new Option('Whole log', 'full'),
-    );
-    (context.savedRanges ?? []).forEach((saved, index) => {
-      const duration = Math.abs(saved.endMs - saved.startMs) / 1000;
-      scopeSelect.add(new Option(`${saved.label || `Range ${index + 1}`} · ${duration.toFixed(duration >= 10 ? 1 : 3)} s`, `saved:${index}`));
-    });
-    if ([...scopeSelect.options].some((option) => option.value === previous)) scopeSelect.value = previous;
-    else scopeSelect.value = context.aTimeMs !== undefined && context.bTimeMs !== undefined ? 'ab' : 'full';
-  };
-
-  const aggregationUsesValue = (): boolean => selectedAggregation() !== 'count';
-
   const updateValueControls = (): void => {
-    const usesValue = aggregationUsesValue();
+    const usesValue = selectedAggregation() !== 'count';
     zField.hidden = !usesValue;
     deltaField.hidden = !usesValue;
   };
@@ -363,22 +344,15 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     return numericRangeCoversTime(trace.range, scope.startMs, scope.endMs);
   };
 
-  const cellValueUnit = (
-    method: NumericAggregationMethod,
-    zTrace: HistogramTraceContext | undefined,
-  ): string => {
-    if (method === 'count') return '';
-    if (method === 'variance') return zTrace?.channel.unit ? `${zTrace.channel.unit}²` : '';
-    return zTrace?.channel.unit ?? '';
-  };
+  const renderChart = (): void => {
+    const result = currentResult;
+    const xTrace = currentXTrace;
+    const yTrace = currentYTrace;
+    if (!result || !xTrace || !yTrace || result.xBins.length === 0 || result.yBins.length === 0) {
+      layout = undefined;
+      return;
+    }
 
-  const renderGridChart = (
-    result: NumericHeatmapResult,
-    xTrace: HistogramTraceContext,
-    yTrace: HistogramTraceContext,
-    zTrace: HistogramTraceContext | undefined,
-    deltaTrace: HistogramTraceContext | undefined,
-  ): void => {
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
@@ -389,220 +363,140 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    if (result.xBins.length === 0 || result.yBins.length === 0) {
-      chartLayout = undefined;
-      return;
-    }
 
-    const padLeft = 68;
-    const padRight = 12;
-    const padTop = 12;
-    const padBottom = 46;
-    const chartWidth = Math.max(1, width - padLeft - padRight);
-    const chartHeight = Math.max(1, height - padTop - padBottom);
+    const left = 68;
+    const right = 12;
+    const top = 20;
+    const bottom = 46;
+    const chartWidth = Math.max(1, width - left - right);
+    const chartHeight = Math.max(1, height - top - bottom);
     const cellWidth = chartWidth / result.xBins.length;
     const cellHeight = chartHeight / result.yBins.length;
-    chartLayout = { padLeft, padTop, chartWidth, chartHeight, cellWidth, cellHeight };
+    layout = { left, top, width: chartWidth, height: chartHeight, cellWidth, cellHeight };
 
     const valueMin = result.cellValueMin;
     const valueMax = result.cellValueMax;
     const valueSpan = valueMin === undefined || valueMax === undefined ? 0 : valueMax - valueMin;
-    const showHits = showHitsInput.checked;
+    const isBar = result.yBins.length === 1;
 
-    ctx.fillStyle = '#071119';
-    ctx.fillRect(padLeft, padTop, chartWidth, chartHeight);
-
-    for (let yIndex = 0; yIndex < result.yBins.length; yIndex += 1) {
-      for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
-        const cellIndex = yIndex * result.xBins.length + xIndex;
-        const rawValue = result.cellValues[cellIndex];
-        const count = result.counts[cellIndex] ?? 0;
-        const finite = rawValue !== undefined && Number.isFinite(rawValue);
-        const normalized = !finite
-          ? 0
-          : valueSpan > 0 && valueMin !== undefined
-            ? Math.max(0, Math.min(1, (Number(rawValue) - valueMin) / valueSpan))
-            : count > 0 ? 1 : 0;
-        const x = padLeft + xIndex * cellWidth;
-        const y = padTop + chartHeight - (yIndex + 1) * cellHeight;
-
-        if (count > 0) {
-          ctx.globalAlpha = 0.16 + normalized * 0.84;
-          ctx.fillStyle = xTrace.color || '#58aef6';
-          ctx.fillRect(x, y, cellWidth, cellHeight);
-          ctx.globalAlpha = 1;
+    if (isBar) {
+      const finite = [...result.cellValues].filter((value) => Number.isFinite(value));
+      const min = finite.length > 0 ? Math.min(0, ...finite) : 0;
+      const max = finite.length > 0 ? Math.max(0, ...finite) : 1;
+      const span = Math.max(1e-12, max - min);
+      const zeroY = top + chartHeight - ((0 - min) / span) * chartHeight;
+      ctx.strokeStyle = 'rgba(91,118,136,.48)';
+      ctx.beginPath();
+      ctx.moveTo(left, zeroY);
+      ctx.lineTo(left + chartWidth, zeroY);
+      ctx.stroke();
+      result.xBins.forEach((_bin, xIndex) => {
+        const value = result.cellValues[xIndex];
+        if (value === undefined || !Number.isFinite(value)) return;
+        const valueY = top + chartHeight - ((Number(value) - min) / span) * chartHeight;
+        const x = left + xIndex * cellWidth + Math.max(1, cellWidth * 0.08);
+        const barWidth = Math.max(1, cellWidth * 0.84);
+        ctx.globalAlpha = .82;
+        ctx.fillStyle = xTrace.color || '#58aef6';
+        ctx.fillRect(x, Math.min(valueY, zeroY), barWidth, Math.max(1, Math.abs(zeroY - valueY)));
+        ctx.globalAlpha = 1;
+        if (barWidth >= 25) {
+          ctx.fillStyle = '#eaf5fa';
+          ctx.font = '600 9px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = valueY <= zeroY ? 'bottom' : 'top';
+          ctx.fillText(formatCellValue(Number(value), result.aggregationMethod, barWidth), x + barWidth / 2, valueY + (valueY <= zeroY ? -3 : 3), barWidth + 8);
         }
-        ctx.strokeStyle = 'rgba(73, 103, 122, .46)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, cellWidth - 1), Math.max(0, cellHeight - 1));
-
-        const valueText = formatCellValue(finite ? Number(rawValue) : undefined, result.aggregationMethod, cellWidth);
-        const fontSize = Math.max(6, Math.min(11, Math.floor(cellHeight * (showHits ? 0.31 : 0.42)), Math.floor(cellWidth / Math.max(3, valueText.length) * 1.4)));
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = normalized > 0.62 ? '#061018' : count > 0 ? '#eef8fc' : '#66808f';
-        ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
-        ctx.fillText(valueText, x + cellWidth / 2, y + cellHeight / 2 - (showHits && count > 0 ? fontSize * 0.38 : 0), Math.max(1, cellWidth - 4));
-        if (showHits && count > 0 && cellHeight >= 18) {
-          ctx.font = `500 ${Math.max(6, fontSize - 2)}px system-ui, sans-serif`;
-          ctx.fillStyle = normalized > 0.62 ? 'rgba(6,16,24,.78)' : 'rgba(220,233,239,.72)';
-          ctx.fillText(`n=${count.toLocaleString()}`, x + cellWidth / 2, y + cellHeight / 2 + fontSize * 0.65, Math.max(1, cellWidth - 4));
-        }
-      }
-    }
-    ctx.globalAlpha = 1;
-
-    ctx.fillStyle = '#7f96a5';
-    ctx.font = '9px system-ui, sans-serif';
-    ctx.textBaseline = 'top';
-    const xStep = Math.max(1, Math.ceil(result.xBins.length / Math.max(4, Math.floor(chartWidth / 72))));
-    result.xBins.forEach((bin, index) => {
-      if (index % xStep !== 0 && index !== result.xBins.length - 1) return;
-      ctx.textAlign = 'center';
-      ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), padLeft + (index + 0.5) * cellWidth, padTop + chartHeight + 6);
-    });
-    ctx.textAlign = 'center';
-    ctx.fillText(`${traceLabel(xTrace)}${xTrace.channel.unit ? ` · ${xTrace.channel.unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 23);
-
-    ctx.textBaseline = 'middle';
-    const yStep = Math.max(1, Math.ceil(result.yBins.length / Math.max(4, Math.floor(chartHeight / 34))));
-    result.yBins.forEach((bin, index) => {
-      if (index % yStep !== 0 && index !== result.yBins.length - 1) return;
-      ctx.textAlign = 'right';
-      ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), padLeft - 6, padTop + chartHeight - (index + 0.5) * cellHeight);
-    });
-    ctx.save();
-    ctx.translate(12, padTop + chartHeight / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.fillText(`${traceLabel(yTrace)}${yTrace.channel.unit ? ` · ${yTrace.channel.unit}` : ''}`, 0, 0);
-    ctx.restore();
-
-    const statistic = aggregationLabel(result.aggregationMethod);
-    const valueName = result.aggregationMethod === 'count'
-      ? 'Samples'
-      : deltaTrace && zTrace ? `${traceLabel(zTrace)} − ${traceLabel(deltaTrace)}` : zTrace ? traceLabel(zTrace) : 'Value';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#93a9b6';
-    ctx.font = '600 9px system-ui, sans-serif';
-    ctx.fillText(`${statistic} · ${valueName}`, padLeft, 1);
-  };
-
-  const renderSingleRowBarChart = (
-    result: NumericHeatmapResult,
-    xTrace: HistogramTraceContext,
-    zTrace: HistogramTraceContext | undefined,
-    deltaTrace: HistogramTraceContext | undefined,
-  ): void => {
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(1, Math.floor(rect.width));
-    const height = Math.max(1, Math.floor(rect.height));
-    const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    if (result.xBins.length === 0) {
-      chartLayout = undefined;
-      return;
-    }
-
-    const padLeft = 58;
-    const padRight = 12;
-    const padTop = 24;
-    const padBottom = 46;
-    const chartWidth = Math.max(1, width - padLeft - padRight);
-    const chartHeight = Math.max(1, height - padTop - padBottom);
-    const cellWidth = chartWidth / result.xBins.length;
-    chartLayout = { padLeft, padTop, chartWidth, chartHeight, cellWidth, cellHeight: chartHeight };
-
-    const finiteValues = [...result.cellValues].filter((value) => Number.isFinite(value));
-    const minValue = finiteValues.length > 0 ? Math.min(0, ...finiteValues) : 0;
-    const maxValue = finiteValues.length > 0 ? Math.max(0, ...finiteValues) : 1;
-    const span = Math.max(1e-12, maxValue - minValue);
-    const zeroY = padTop + chartHeight - ((0 - minValue) / span) * chartHeight;
-
-    ctx.strokeStyle = 'rgba(91,118,136,.48)';
-    ctx.beginPath();
-    ctx.moveTo(padLeft, zeroY);
-    ctx.lineTo(padLeft + chartWidth, zeroY);
-    ctx.stroke();
-
-    result.xBins.forEach((bin, xIndex) => {
-      const value = result.cellValues[xIndex];
-      const count = result.counts[xIndex] ?? 0;
-      const finite = value !== undefined && Number.isFinite(value);
-      if (!finite) return;
-      const valueY = padTop + chartHeight - ((Number(value) - minValue) / span) * chartHeight;
-      const x = padLeft + xIndex * cellWidth + Math.max(1, cellWidth * 0.08);
-      const barWidth = Math.max(1, cellWidth * 0.84);
-      const y = Math.min(valueY, zeroY);
-      const barHeight = Math.max(1, Math.abs(zeroY - valueY));
-      ctx.fillStyle = xTrace.color || '#58aef6';
-      ctx.globalAlpha = 0.82;
-      ctx.fillRect(x, y, barWidth, barHeight);
-      ctx.globalAlpha = 1;
-      if (barWidth >= 25) {
-        ctx.fillStyle = '#eaf5fa';
-        ctx.font = '600 9px system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = valueY <= zeroY ? 'bottom' : 'top';
-        ctx.fillText(formatCellValue(Number(value), result.aggregationMethod, barWidth), x + barWidth / 2, valueY + (valueY <= zeroY ? -3 : 3), barWidth + 8);
-        if (showHitsInput.checked && count > 0 && barWidth >= 34) {
-          ctx.font = '500 7px system-ui, sans-serif';
-          ctx.fillStyle = '#8fa6b3';
-          ctx.textBaseline = 'top';
-          ctx.fillText(`n=${count.toLocaleString()}`, x + barWidth / 2, padTop + chartHeight + 4, barWidth + 8);
-        }
-      }
-    });
-
-    ctx.fillStyle = '#7f96a5';
-    ctx.font = '9px system-ui, sans-serif';
-    ctx.textBaseline = 'top';
-    const xStep = Math.max(1, Math.ceil(result.xBins.length / Math.max(4, Math.floor(chartWidth / 72))));
-    result.xBins.forEach((bin, index) => {
-      if (index % xStep !== 0 && index !== result.xBins.length - 1) return;
-      ctx.textAlign = 'center';
-      ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), padLeft + (index + 0.5) * cellWidth, padTop + chartHeight + 18);
-    });
-    ctx.textAlign = 'center';
-    ctx.fillText(`${traceLabel(xTrace)}${xTrace.channel.unit ? ` · ${xTrace.channel.unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 33);
-
-    const valueName = result.aggregationMethod === 'count'
-      ? 'Samples'
-      : deltaTrace && zTrace ? `${traceLabel(zTrace)} − ${traceLabel(deltaTrace)}` : zTrace ? traceLabel(zTrace) : 'Value';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#93a9b6';
-    ctx.font = '600 9px system-ui, sans-serif';
-    ctx.fillText(`${aggregationLabel(result.aggregationMethod)} · ${valueName}`, padLeft, 6);
-  };
-
-  const renderChart = (): void => {
-    if (!currentResult || !currentXTrace || !currentYTrace) return;
-    if (currentResult.yBins.length === 1) {
-      renderSingleRowBarChart(currentResult, currentXTrace, currentZTrace, currentDeltaTrace);
+      });
     } else {
-      renderGridChart(currentResult, currentXTrace, currentYTrace, currentZTrace, currentDeltaTrace);
+      for (let yIndex = 0; yIndex < result.yBins.length; yIndex += 1) {
+        for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
+          const cellIndex = yIndex * result.xBins.length + xIndex;
+          const value = result.cellValues[cellIndex];
+          const count = result.counts[cellIndex] ?? 0;
+          const finite = value !== undefined && Number.isFinite(value);
+          const normalized = !finite
+            ? 0
+            : valueSpan > 0 && valueMin !== undefined
+              ? Math.max(0, Math.min(1, (Number(value) - valueMin) / valueSpan))
+              : count > 0 ? 1 : 0;
+          const x = left + xIndex * cellWidth;
+          const y = top + chartHeight - (yIndex + 1) * cellHeight;
+          if (count > 0) {
+            ctx.globalAlpha = .16 + normalized * .84;
+            ctx.fillStyle = xTrace.color || '#58aef6';
+            ctx.fillRect(x, y, cellWidth, cellHeight);
+            ctx.globalAlpha = 1;
+          }
+          ctx.strokeStyle = 'rgba(73,103,122,.46)';
+          ctx.strokeRect(x + .5, y + .5, Math.max(0, cellWidth - 1), Math.max(0, cellHeight - 1));
+          const text = formatCellValue(finite ? Number(value) : undefined, result.aggregationMethod, cellWidth);
+          const fontSize = Math.max(6, Math.min(11, Math.floor(cellHeight * (showHitsInput.checked ? .31 : .42)), Math.floor(cellWidth / Math.max(3, text.length) * 1.4)));
+          ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = normalized > .62 ? '#061018' : count > 0 ? '#eef8fc' : '#66808f';
+          ctx.fillText(text, x + cellWidth / 2, y + cellHeight / 2 - (showHitsInput.checked && count > 0 ? fontSize * .35 : 0), Math.max(1, cellWidth - 4));
+          if (showHitsInput.checked && count > 0 && cellHeight >= 18) {
+            ctx.font = `500 ${Math.max(6, fontSize - 2)}px system-ui, sans-serif`;
+            ctx.fillText(`n=${count.toLocaleString()}`, x + cellWidth / 2, y + cellHeight / 2 + fontSize * .65, Math.max(1, cellWidth - 4));
+          }
+        }
+      }
     }
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#7f96a5';
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    const xStep = Math.max(1, Math.ceil(result.xBins.length / Math.max(4, Math.floor(chartWidth / 72))));
+    result.xBins.forEach((bin, index) => {
+      if (index % xStep !== 0 && index !== result.xBins.length - 1) return;
+      ctx.textAlign = 'center';
+      ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), left + (index + .5) * cellWidth, top + chartHeight + 6);
+    });
+    ctx.textAlign = 'center';
+    ctx.fillText(`${traceLabel(xTrace)}${xTrace.channel.unit ? ` · ${xTrace.channel.unit}` : ''}`, left + chartWidth / 2, top + chartHeight + 23);
+
+    if (!isBar) {
+      ctx.textBaseline = 'middle';
+      const yStep = Math.max(1, Math.ceil(result.yBins.length / Math.max(4, Math.floor(chartHeight / 34))));
+      result.yBins.forEach((bin, index) => {
+        if (index % yStep !== 0 && index !== result.yBins.length - 1) return;
+        ctx.textAlign = 'right';
+        ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), left - 6, top + chartHeight - (index + .5) * cellHeight);
+      });
+      ctx.save();
+      ctx.translate(12, top + chartHeight / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.fillText(`${traceLabel(yTrace)}${yTrace.channel.unit ? ` · ${yTrace.channel.unit}` : ''}`, 0, 0);
+      ctx.restore();
+    }
+
+    const valueName = result.aggregationMethod === 'count'
+      ? 'Samples'
+      : currentDeltaTrace && currentZTrace
+        ? `${traceLabel(currentZTrace)} − ${traceLabel(currentDeltaTrace)}`
+        : currentZTrace ? traceLabel(currentZTrace) : 'Value';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#93a9b6';
+    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.fillText(`${aggregationLabel(result.aggregationMethod)} · ${valueName}`, left, 5);
   };
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
     updateValueControls();
     tooltip.hidden = true;
-
     const scope = resolveScope();
     const xId = xSelect.value || context.channels[0]?.id;
     const yId = ySelect.value || context.channels[1]?.id || context.channels[0]?.id;
     const aggregation = selectedAggregation();
     const zId = aggregation === 'count' ? undefined : (zSelect.value || context.channels[0]?.id);
     const deltaId = aggregation === 'count' ? undefined : (deltaSelect.value || undefined);
-    const conditions = enabledFilterConditions();
-    const filterChannelIds = conditions.map((condition) => condition.channelId);
+    const conditions = enabledConditions();
 
     if (!scope || !xId || !yId || (aggregation !== 'count' && !zId)) {
       currentResult = undefined;
@@ -611,7 +505,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       currentZTrace = undefined;
       currentDeltaTrace = undefined;
       currentScope = scope;
-      chartLayout = undefined;
+      layout = undefined;
       empty.hidden = false;
       canvas.hidden = true;
       status.hidden = true;
@@ -619,13 +513,15 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       return;
     }
 
-    empty.hidden = true;
-    empty.querySelector('strong')!.textContent = 'Loading selected histogram channels…';
-    empty.querySelector('span')!.textContent = 'Only channels required by this table and its enabled filters are decoded.';
-    const requestedIds = [...new Set([xId, yId, ...(zId ? [zId] : []), ...(deltaId ? [deltaId] : []), ...filterChannelIds])];
+    const requestedIds = [...new Set([
+      xId,
+      yId,
+      ...(zId ? [zId] : []),
+      ...(deltaId ? [deltaId] : []),
+      ...conditions.map((condition) => condition.channelId),
+    ])];
     const loaded = await context.loadTraces(requestedIds, scope.startMs, scope.endMs);
     if (generation !== renderGeneration) return;
-
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
@@ -638,7 +534,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       currentZTrace = undefined;
       currentDeltaTrace = undefined;
       currentScope = scope;
-      chartLayout = undefined;
+      layout = undefined;
       empty.hidden = false;
       empty.querySelector('strong')!.textContent = 'One or more selected channels could not be decoded.';
       empty.querySelector('span')!.textContent = 'Choose another channel or scope and try again.';
@@ -666,26 +562,26 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const valueRange = aggregation === 'count'
       ? undefined
       : deltaTrace && zTrace ? subtractNumericRanges(zTrace.range, deltaTrace.range) : zTrace!.range;
-
+    const xMin = optionalFinite(xMinInput);
+    const xMax = optionalFinite(xMaxInput);
+    const yMin = optionalFinite(yMinInput);
+    const yMax = optionalFinite(yMaxInput);
     const result = buildNumericHeatmap(xTrace.range, yTrace.range, {
       sampleIndices: qualified.eligibleSampleIndices,
-      xBinCount: normalizedBinCount(xBinsInput, 16),
-      yBinCount: normalizedBinCount(yBinsInput, 16),
-      ...(parseOptionalFinite(xMinInput) !== undefined ? { xMin: parseOptionalFinite(xMinInput) } : {}),
-      ...(parseOptionalFinite(xMaxInput) !== undefined ? { xMax: parseOptionalFinite(xMaxInput) } : {}),
-      ...(parseOptionalFinite(yMinInput) !== undefined ? { yMin: parseOptionalFinite(yMinInput) } : {}),
-      ...(parseOptionalFinite(yMaxInput) !== undefined ? { yMax: parseOptionalFinite(yMaxInput) } : {}),
+      xBinCount: binCount(xBinsInput, 16),
+      yBinCount: binCount(yBinsInput, 16),
+      ...(xMin !== undefined ? { xMin } : {}),
+      ...(xMax !== undefined ? { xMax } : {}),
+      ...(yMin !== undefined ? { yMin } : {}),
+      ...(yMax !== undefined ? { yMax } : {}),
       aggregation,
       ...(valueRange ? { valueRange } : {}),
     });
 
-    const yComplete = traceCoversScope(yTrace, scope);
-    const zComplete = !zTrace || traceCoversScope(zTrace, scope);
-    const deltaComplete = !deltaTrace || traceCoversScope(deltaTrace, scope);
     const complete = qualified.complete
-      && yComplete
-      && zComplete
-      && deltaComplete
+      && traceCoversScope(yTrace, scope)
+      && (!zTrace || traceCoversScope(zTrace, scope))
+      && (!deltaTrace || traceCoversScope(deltaTrace, scope))
       && result.unavailableSampleCount === 0
       && result.valueUnavailableSampleCount === 0;
 
@@ -710,7 +606,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       ? `${scope.label} · ${((scope.endMs - scope.startMs) / 1000).toFixed(3)} s`
       : scope.label;
     summary('coverage').textContent = complete ? 'Complete' : 'Partial decoded';
-    const cellUnit = cellValueUnit(aggregation, zTrace);
+    const cellUnit = aggregation === 'count' ? '' : zTrace?.channel.unit ?? '';
     const cellName = aggregation === 'count'
       ? 'Count'
       : deltaTrace && zTrace
@@ -730,7 +626,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const xTrace = currentXTrace;
     const yTrace = currentYTrace;
     if (!result || !xTrace || !yTrace || !currentScope) return;
-
     const zDescription = result.aggregationMethod === 'count'
       ? 'Samples'
       : currentDeltaTrace && currentZTrace
@@ -742,7 +637,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     };
     const xCenters = result.xBins.map((bin) => (bin.lowerBound + bin.upperBound) / 2);
     const rows: string[] = [
-      ['EpicScope Histogram Table Generator'].map(quote).join(','),
+      quote('EpicScope Histogram Table Generator'),
       ['Scope', currentScope.label].map(quote).join(','),
       ['X', traceLabel(xTrace), xTrace.channel.unit ?? ''].map(quote).join(','),
       ['Y', traceLabel(yTrace), yTrace.channel.unit ?? ''].map(quote).join(','),
@@ -751,18 +646,15 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       '',
       [traceLabel(yTrace) + ' \\ ' + traceLabel(xTrace), ...xCenters.map((value) => formatNumber(value, 6))].map(quote).join(','),
     ];
-
     for (let yIndex = result.yBins.length - 1; yIndex >= 0; yIndex -= 1) {
       const yBin = result.yBins[yIndex]!;
       const values: (string | number)[] = [formatNumber((yBin.lowerBound + yBin.upperBound) / 2, 6)];
       for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
-        const cellIndex = yIndex * result.xBins.length + xIndex;
-        const value = result.cellValues[cellIndex];
+        const value = result.cellValues[yIndex * result.xBins.length + xIndex];
         values.push(value !== undefined && Number.isFinite(value) ? Number(value) : '');
       }
       rows.push(values.map(quote).join(','));
     }
-
     rows.push('', 'Hit counts', [traceLabel(yTrace) + ' \\ ' + traceLabel(xTrace), ...xCenters.map((value) => formatNumber(value, 6))].map(quote).join(','));
     for (let yIndex = result.yBins.length - 1; yIndex >= 0; yIndex -= 1) {
       const yBin = result.yBins[yIndex]!;
@@ -772,7 +664,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       }
       rows.push(values.map(quote).join(','));
     }
-
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -786,10 +677,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
 
   const updateTooltip = (event: MouseEvent): void => {
     const result = currentResult;
-    const layout = chartLayout;
+    const currentLayout = layout;
     const xTrace = currentXTrace;
     const yTrace = currentYTrace;
-    if (!result || !layout || !xTrace || !yTrace || result.xBins.length === 0 || result.yBins.length === 0) {
+    if (!result || !currentLayout || !xTrace || !yTrace) {
       tooltip.hidden = true;
       return;
     }
@@ -797,14 +688,14 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     if (
-      x < layout.padLeft || x >= layout.padLeft + layout.chartWidth
-      || y < layout.padTop || y >= layout.padTop + layout.chartHeight
+      x < currentLayout.left || x >= currentLayout.left + currentLayout.width
+      || y < currentLayout.top || y >= currentLayout.top + currentLayout.height
     ) {
       tooltip.hidden = true;
       return;
     }
-    const xIndex = Math.min(result.xBins.length - 1, Math.max(0, Math.floor((x - layout.padLeft) / layout.cellWidth)));
-    const yFromTop = Math.min(result.yBins.length - 1, Math.max(0, Math.floor((y - layout.padTop) / layout.cellHeight)));
+    const xIndex = Math.min(result.xBins.length - 1, Math.max(0, Math.floor((x - currentLayout.left) / currentLayout.cellWidth)));
+    const yFromTop = Math.min(result.yBins.length - 1, Math.max(0, Math.floor((y - currentLayout.top) / currentLayout.cellHeight)));
     const yIndex = result.yBins.length - 1 - yFromTop;
     const cellIndex = yIndex * result.xBins.length + xIndex;
     const xBin = result.xBins[xIndex]!;
@@ -812,22 +703,19 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const value = result.cellValues[cellIndex];
     const count = result.counts[cellIndex] ?? 0;
     const validValues = result.cellValueSampleCounts[cellIndex] ?? 0;
-    const valueText = value !== undefined && Number.isFinite(value) ? formatNumber(Number(value), 5) : '—';
     const zName = result.aggregationMethod === 'count'
       ? 'Count'
       : currentDeltaTrace && currentZTrace
         ? `${traceLabel(currentZTrace)} − ${traceLabel(currentDeltaTrace)}`
         : currentZTrace ? traceLabel(currentZTrace) : 'Value';
     tooltip.innerHTML = `
-      <strong>${aggregationLabel(result.aggregationMethod)} · ${zName}: ${valueText}</strong>
+      <strong>${aggregationLabel(result.aggregationMethod)} · ${zName}: ${formatCellValue(value, result.aggregationMethod, 100)}</strong>
       <span>${traceLabel(xTrace)}: ${formatNumber(xBin.lowerBound)} to ${formatNumber(xBin.upperBound)}</span>
       <span>${traceLabel(yTrace)}: ${formatNumber(yBin.lowerBound)} to ${formatNumber(yBin.upperBound)}</span>
       <span>Hits: ${count.toLocaleString()}${result.aggregationMethod === 'count' ? '' : ` · valid Z: ${validValues.toLocaleString()}`}</span>
     `;
-    const left = Math.min(rect.width - 230, Math.max(8, x + 14));
-    const top = Math.min(rect.height - 96, Math.max(8, y + 14));
-    tooltip.style.left = `${left}px`;
-    tooltip.style.top = `${top}px`;
+    tooltip.style.left = `${Math.min(rect.width - 230, Math.max(8, x + 14))}px`;
+    tooltip.style.top = `${Math.min(rect.height - 96, Math.max(8, y + 14))}px`;
     tooltip.hidden = false;
   };
 
@@ -837,12 +725,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const previousZ = zSelect.value;
     const previousDelta = deltaSelect.value;
     context = nextContext;
-
     refillChannelSelect(xSelect, previousX);
     refillChannelSelect(ySelect, previousY);
     refillChannelSelect(zSelect, previousZ);
     refillChannelSelect(deltaSelect, previousDelta, true);
-
     if (!previousX || !context.channels.some((channel) => channel.id === previousX)) {
       xSelect.value = preferredChannel(context.channels, [/\brpm\b/i, /engine.*speed/i], 0)?.id ?? '';
     }
@@ -852,7 +738,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!previousZ || !context.channels.some((channel) => channel.id === previousZ)) {
       zSelect.value = preferredChannel(context.channels, [/\bafr\b/i, /lambda/i, /spark.*adv/i], 2)?.id ?? xSelect.value;
     }
-
     for (const filter of filters) {
       const previous = filter.channel.value;
       filter.channel.replaceChildren();
@@ -864,7 +749,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     scheduleRender();
   };
 
-  addFilterButton.addEventListener('click', () => addFilter());
+  addFilterButton.addEventListener('click', addFilter);
   scopeSelect.addEventListener('change', () => scheduleRender());
   xSelect.addEventListener('change', () => scheduleRender());
   ySelect.addEventListener('change', () => scheduleRender());
@@ -889,9 +774,5 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   updateFilterCount();
   updateValueControls();
 
-  return {
-    element: root,
-    setContext,
-    refresh: () => scheduleRender(),
-  };
+  return { element: root, setContext, refresh: () => scheduleRender() };
 }
