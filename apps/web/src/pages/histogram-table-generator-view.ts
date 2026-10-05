@@ -83,7 +83,7 @@ function formatCellValue(value: number | undefined, method: HistogramTableAggreg
 }
 
 function aggregationLabel(method: HistogramTableAggregation): string {
-  if (method === 'weighted-mean') return 'Weighted mean';
+  if (method === 'weighted-mean') return 'MLV weighted mean';
   if (method === 'count') return 'Count';
   if (method === 'mean') return 'Mean';
   if (method === 'min') return 'Minimum';
@@ -167,7 +167,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       <label class="histogram-table-z-field"><span>Z</span><select class="histogram-table-z"></select></label>
       <label><span>Cell</span><select class="histogram-table-aggregation">
         <option value="mean" selected>Mean</option>
-        <option value="weighted-mean">Weighted mean · MLV experimental</option>
+        <option value="weighted-mean">MLV weighted mean</option>
         <option value="count">Count</option>
         <option value="min">Minimum</option>
         <option value="max">Maximum</option>
@@ -1173,10 +1173,13 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       currentWeightedContributingCounts = weighted.cellContributingSampleCounts;
       displayResult = {
         ...result,
+        counts: weighted.cellContributingSampleCounts,
         cellValues: weighted.cellValues,
         cellValueSampleCounts: weighted.cellContributingSampleCounts,
+        cellSampleIndices: weighted.cellSampleIndices,
         cellValueMin: weighted.cellValueMin,
         cellValueMax: weighted.cellValueMax,
+        maxCellCount: Math.max(0, ...weighted.cellContributingSampleCounts),
         valueValidSampleCount: weighted.contributingSampleCount,
         valueInvalidSampleCount: weighted.invalidValueSampleCount,
         valueUnavailableSampleCount: weighted.unavailableValueSampleCount,
