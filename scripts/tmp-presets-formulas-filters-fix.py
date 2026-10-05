@@ -90,6 +90,9 @@ s = s.replace(old, new, 1)
 
 '''
 s = s[:start] + section + s[end:]
-s = s.replace("marker = \"  addFilterButton.addEventListener('click', addFilter);\"", "marker = \"  addFilterButton.addEventListener('click', () => addFilter());\"")
+s = s.replace(
+    "s = s.replace(marker, listeners + marker, 1)",
+    "s = s.replace(marker, listeners + \"  addFilterButton.addEventListener('click', () => addFilter());\", 1)",
+)
 p.write_text(s, encoding='utf-8')
 Path('scripts/tmp-presets-formulas-filters-fix.py').unlink(missing_ok=True)
