@@ -1,15 +1,15 @@
 from pathlib import Path
-import re
 
 p = Path('scripts/tmp-presets-formulas-filters.py')
 s = p.read_text(encoding='utf-8')
-pattern = re.compile(r"# Render: replace conditions/request loading and qualification with logical/grouped\.[\s\S]*?# Filter description grouped\.", re.M)
-replacement = r"""# Render: replace conditions/request loading and qualification with logical/grouped.
+start = s.index('# Render: replace conditions/request loading and qualification with logical/grouped.')
+end = s.index('# Filter description grouped.', start)
+section = r'''# Render: replace conditions/request loading and qualification with logical/grouped.
 s = rep(s,
-"    const conditions = enabledConditions();",
-"    const groups = qualificationGroups();\n    const filterChannelIds = groups.flatMap((group) => group.conditions.map((condition) => condition.channelId));",
-'render groups')
-old = '''    const requestedIds = [...new Set([
+    "    const conditions = enabledConditions();",
+    "    const groups = qualificationGroups();\n    const filterChannelIds = groups.flatMap((group) => group.conditions.map((condition) => condition.channelId));",
+    'render groups')
+old = """    const requestedIds = [...new Set([
       xId,
       yId,
       ...(zId ? [zId] : []),
@@ -23,8 +23,8 @@ old = '''    const requestedIds = [...new Set([
     const yTrace = byId.get(yId);
     const zTrace = zId ? byId.get(zId) : undefined;
     const deltaTrace = deltaId ? byId.get(deltaId) : undefined;
-'''
-new = '''    const requestedIds = [...new Set([
+"""
+new = """    const requestedIds = [...new Set([
       xId,
       yId,
       ...(zId ? [zId] : []),
@@ -50,11 +50,11 @@ new = '''    const requestedIds = [...new Set([
     const yTrace = byId.get(yId);
     const zTrace = zId ? byId.get(zId) : undefined;
     const deltaTrace = deltaId ? byId.get(deltaId) : undefined;
-'''
+"""
 if old not in s: raise SystemExit('missing render loading block')
 s = s.replace(old, new, 1)
 
-old = '''    const qualificationChannels = new Map<string, { range: HistogramTraceContext['range']; complete: boolean }>();
+old = """    const qualificationChannels = new Map<string, { range: HistogramTraceContext['range']; complete: boolean }>();
     qualificationChannels.set(xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete });
     for (const condition of conditions) {
       const trace = byId.get(condition.channelId);
@@ -68,8 +68,8 @@ old = '''    const qualificationChannels = new Map<string, { range: HistogramTra
         ? { timeRange: { startMs: scope.startMs, endMs: scope.endMs } }
         : {}),
     });
-'''
-new = '''    const qualificationChannels = new Map<string, { range: HistogramTraceContext['range']; complete: boolean }>();
+"""
+new = """    const qualificationChannels = new Map<string, { range: HistogramTraceContext['range']; complete: boolean }>();
     qualificationChannels.set(xId, { range: xTrace.range, complete: xTrace.complete });
     for (const channelId of filterChannelIds) {
       const trace = byId.get(channelId);
@@ -84,13 +84,11 @@ new = '''    const qualificationChannels = new Map<string, { range: HistogramTra
         ? { timeRange: { startMs: scope.startMs, endMs: scope.endMs } }
         : {}),
     });
-'''
+"""
 if old not in s: raise SystemExit('missing qualification block')
 s = s.replace(old, new, 1)
 
-# Filter description grouped."""
-s, count = pattern.subn(replacement, s, count=1)
-if count != 1:
-    raise SystemExit('failed to replace reusable render patch section')
+'''
+s = s[:start] + section + s[end:]
 p.write_text(s, encoding='utf-8')
 Path('scripts/tmp-presets-formulas-filters-fix.py').unlink(missing_ok=True)
