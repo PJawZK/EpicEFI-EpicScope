@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
 import {
   matchesNumericQualification,
+  qualifyNumericSampleGroups,
   qualifyNumericSamples,
   type NumericQualificationChannelRange,
 } from '../../core/analysis/sample-qualification';
@@ -31,6 +32,8 @@ describe('matchesNumericQualification', () => {
     expect(matchesNumericQualification(9, 'lt', 10)).toBe(true);
     expect(matchesNumericQualification(10, 'lte', 10)).toBe(true);
     expect(matchesNumericQualification(10, 'eq', 10)).toBe(true);
+    expect(matchesNumericQualification(11, 'neq', 10)).toBe(true);
+    expect(matchesNumericQualification(10, 'neq', 10)).toBe(false);
   });
 });
 
@@ -145,5 +148,47 @@ describe('qualifyNumericSamples', () => {
 
     expect(result.eligibleSampleCount).toBe(2);
     expect(result.complete).toBe(false);
+  });
+});
+
+describe('qualifyNumericSampleGroups', () => {
+  it('supports OR inside a group and AND between groups', () => {
+    const channels = new Map([
+      ['rpm', channel(range(0, [0, 10, 20, 30], [1000, 3000, 5000, 7000], [1, 1, 1, 1]))],
+      ['tps', channel(range(0, [0, 10, 20, 30], [5, 20, 80, 95], [1, 1, 1, 1]))],
+      ['clt', channel(range(0, [0, 10, 20, 30], [70, 85, 90, 60], [1, 1, 1, 1]))],
+    ]);
+    const result = qualifyNumericSampleGroups({
+      referenceChannelId: 'rpm',
+      channels,
+      groupLogic: 'and',
+      groups: [
+        { logic: 'or', conditions: [
+          { channelId: 'rpm', operator: 'gte', value: 5000 },
+          { channelId: 'tps', operator: 'gte', value: 90 },
+        ] },
+        { logic: 'and', conditions: [{ channelId: 'clt', operator: 'gte', value: 80 }] },
+      ],
+    });
+    expect([...result.eligibleSampleIndices]).toEqual([2]);
+    expect(result.valueRejectedSampleCount).toBe(3);
+  });
+
+  it('supports OR between groups and determinable true/false despite unknown siblings', () => {
+    const channels = new Map([
+      ['rpm', channel(range(0, [0, 10, 20], [1000, 4000, 7000], [1, 1, 1]))],
+      ['short', channel(range(1, [10], [50], [1]), false)],
+    ]);
+    const result = qualifyNumericSampleGroups({
+      referenceChannelId: 'rpm',
+      channels,
+      groupLogic: 'or',
+      groups: [
+        { logic: 'and', conditions: [{ channelId: 'rpm', operator: 'gte', value: 6000 }] },
+        { logic: 'and', conditions: [{ channelId: 'short', operator: 'eq', value: 50 }] },
+      ],
+    });
+    expect([...result.eligibleSampleIndices]).toEqual([1, 2]);
+    expect(result.unavailableSampleCount).toBe(1);
   });
 });
