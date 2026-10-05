@@ -1,11 +1,13 @@
 from pathlib import Path
 
-for path in [
+paths = [
     'apps/web/src/pages/analyzer-page.ts',
     'apps/web/src/pages/boost-analyzer-view.ts',
     'apps/web/src/pages/specialized-analyzer-suite-view.ts',
     'apps/web/src/pages/tune-table-view.ts',
-]:
+]
+
+for path in paths:
     p = Path(path)
     s = p.read_text(encoding='utf-8')
     marker = 'function channelLabel('
@@ -25,5 +27,6 @@ for path in [
             raise SystemExit(f'unclosed channelLabel in {path}')
         while end < len(s) and s[end] in '\r\n': end += 1
         s = s[:start] + s[end:]
-    s = s.replace(', LoggerAnalysisTraceContext', '')
+    if path.endswith('analyzer-page.ts') or path.endswith('tune-table-view.ts'):
+        s = s.replace(', LoggerAnalysisTraceContext', '')
     p.write_text(s, encoding='utf-8')
