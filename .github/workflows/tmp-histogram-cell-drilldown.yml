@@ -20,6 +20,16 @@ jobs:
         with:
           node-version: 22.12.0
           cache: npm
+      - name: Align patch to current tooltip bounds
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/tmp-cell-drilldown.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('x > currentLayout.left + currentLayout.width', 'x >= currentLayout.left + currentLayout.width')
+          text = text.replace('y > currentLayout.top + currentLayout.height', 'y >= currentLayout.top + currentLayout.height')
+          path.write_text(text, encoding='utf-8')
+          PY
       - name: Apply cell drilldown patch
         run: python scripts/tmp-cell-drilldown.py
       - name: Install dependencies
