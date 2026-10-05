@@ -37,3 +37,5 @@ jobs:
           git add apps/web/src/pages/analyzer-page.ts apps/web/src/main.ts
           git commit -m "Activate remaining Experimental analyzers"
           git push origin HEAD:phase4/remaining-analyzers-ui-v1
+
+# trigger
