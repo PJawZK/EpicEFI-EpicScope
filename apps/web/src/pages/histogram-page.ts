@@ -137,9 +137,7 @@ export function createHistogramPage(): HistogramPageController {
     const tableSelect = page.querySelector<HTMLSelectElement>('.histogram-table-msq-table');
     const xAxisSelect = page.querySelector<HTMLSelectElement>('.histogram-table-msq-x-axis');
     const yAxisSelect = page.querySelector<HTMLSelectElement>('.histogram-table-msq-y-axis');
-    const xDataSelect = page.querySelector<HTMLSelectElement>('.histogram-table-x');
-    const yDataSelect = page.querySelector<HTMLSelectElement>('.histogram-table-y');
-    if (!tableSelect?.value || !xAxisSelect || !yAxisSelect || !xDataSelect || !yDataSelect) return;
+    if (!tableSelect?.value || !xAxisSelect || !yAxisSelect) return;
     if (!force && lastIniMappedTable === tableSelect.value) return;
 
     const definitions = context.tuneTableDefinitions ?? loadIniTableEditorDefinitions();
@@ -154,16 +152,6 @@ export function createHistogramPage(): HistogramPageController {
 
     const xResolved = setSelectValueCaseInsensitive(xAxisSelect, definition.xBins);
     const yResolved = setSelectValueCaseInsensitive(yAxisSelect, definition.yBins);
-
-    const selectRuntimeChannel = (select: HTMLSelectElement, iniName: string | undefined): void => {
-      if (!iniName) return;
-      const lowered = iniName.toLocaleLowerCase();
-      const channel = context.channels.find((candidate) => candidate.sourceName.toLocaleLowerCase() === lowered)
-        ?? context.channels.find((candidate) => candidate.displayName.toLocaleLowerCase() === lowered);
-      if (channel) select.value = channel.id;
-    };
-    selectRuntimeChannel(xDataSelect, definition.xChannel);
-    selectRuntimeChannel(yDataSelect, definition.yChannel);
 
     lastIniMappedTable = tableName;
     if (xResolved) xAxisSelect.dispatchEvent(new Event('change'));
