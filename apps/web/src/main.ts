@@ -20,3 +20,7 @@ if (!root) {
 }
 
 mountAppShell(root);
+
+root.querySelector<HTMLElement>('.histogram-table-size')?.remove();
+const tableSizeSummary = root.querySelector<HTMLElement>('.histogram-table-options > summary');
+if (tableSizeSummary) tableSizeSummary.textContent = 'Table Size';
