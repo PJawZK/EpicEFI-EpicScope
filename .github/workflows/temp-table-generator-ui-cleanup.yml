@@ -32,3 +32,5 @@ jobs:
           git add apps/web/src/pages/histogram-page.ts apps/web/src/pages/histogram-table-generator-view.ts apps/web/src/styles/histogram-workspace.css apps/web/src/styles/histogram-table-generator.css docs/DECISIONS.md
           git commit -m "Refine Table Generator controls and filters"
           git push origin HEAD:ui/table-generator-cleanup-v1
+
+# retrigger after feature branch creation
