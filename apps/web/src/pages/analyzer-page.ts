@@ -4,6 +4,7 @@ import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { createTuneTableView } from './tune-table-view';
+import { createBoostAnalyzerView } from './boost-analyzer-view';
 
 export interface AnalyzerPageController {
   readonly element: HTMLElement;
@@ -36,8 +37,9 @@ function formatDuration(range: SavedTimelineRangeState): string {
 export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
-  let currentView: 'compare' | 'tune-table' = 'compare';
+  let currentView: 'compare' | 'tune-table' | 'boost' = 'compare';
   const tuneTableView = createTuneTableView();
+  const boostView = createBoostAnalyzerView();
 
   const root = document.createElement('main');
   root.className = 'analyzer-page';
@@ -53,6 +55,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
         <div class="analyzer-view-switch" role="group" aria-label="Analyzer view">
           <button type="button" class="analyzer-view-choice analyzer-view-choice--active" data-analyzer-view="compare">Range Compare</button>
           <button type="button" class="analyzer-view-choice" data-analyzer-view="tune-table">Tune Table</button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="boost">Boost <span class="analyzer-experimental-tag">EXP</span></button>
         </div>
         <div class="analyzer-controls">
         <label><span>Channel</span><select class="analyzer-channel"></select></label>
@@ -99,7 +102,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
   `;
-  root.append(tuneTableView.element);
+  root.append(tuneTableView.element, boostView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
@@ -216,25 +219,31 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (context.savedRanges[chosen]) select.value = String(chosen);
   };
 
-  const setView = (view: 'compare' | 'tune-table'): void => {
+  const setView = (view: 'compare' | 'tune-table' | 'boost'): void => {
     currentView = view;
     const compareActive = view === 'compare';
+    const tuneActive = view === 'tune-table';
+    const boostActive = view === 'boost';
     compareControls.hidden = !compareActive;
-    tuneTableView.element.hidden = compareActive;
+    tuneTableView.element.hidden = !tuneActive;
+    boostView.element.hidden = !boostActive;
     for (const choice of viewChoices) {
       const selected = choice.dataset.analyzerView === view;
       choice.classList.toggle('analyzer-view-choice--active', selected);
       choice.setAttribute('aria-pressed', String(selected));
     }
-    heading.textContent = compareActive ? 'Saved range comparison' : 'Tune table correlation';
+    heading.textContent = compareActive ? 'Saved range comparison' : tuneActive ? 'Tune table correlation' : 'Boost analysis';
     description.textContent = compareActive
       ? 'Compare one active decoded channel across two saved Logger ranges.'
-      : 'Map decoded operating points and observed values into an explicitly selected MSQ table.';
+      : tuneActive
+        ? 'Map decoded operating points and observed values into an explicitly selected MSQ table.'
+        : 'Analyze boost tracking, spool and steady-state behavior from active decoded channels.';
     if (compareActive) render();
     else {
       empty.hidden = true;
       content.hidden = true;
-      tuneTableView.refresh();
+      if (tuneActive) tuneTableView.refresh();
+      else boostView.refresh();
     }
   };
 
@@ -244,6 +253,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const previousRight = Number(rightSelect.value);
     context = nextContext;
     tuneTableView.setContext(nextContext);
+    boostView.setContext(nextContext);
     fillChannelSelect(previousChannel);
     fillRangeSelect(leftSelect, previousLeft, 0);
     fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
@@ -257,7 +267,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   for (const choice of viewChoices) {
     choice.addEventListener('click', () => {
       const view = choice.dataset.analyzerView;
-      if (view === 'compare' || view === 'tune-table') setView(view);
+      if (view === 'compare' || view === 'tune-table' || view === 'boost') setView(view);
     });
   }
 
@@ -265,6 +275,6 @@ export function createAnalyzerPage(): AnalyzerPageController {
     element: root,
     setContext,
     setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
-    refresh: () => currentView === 'compare' ? render() : tuneTableView.refresh(),
+    refresh: () => currentView === 'compare' ? render() : currentView === 'tune-table' ? tuneTableView.refresh() : boostView.refresh(),
   };
 }
