@@ -199,6 +199,31 @@ describe('buildNumericHeatmap', () => {
     expect(result.valueValidSampleCount).toBe(0);
   });
 
+  it('uses explicit irregular axis centers with midpoint cell boundaries', () => {
+    const result = buildNumericHeatmap(
+      range(0, [900, 1100, 1900, 2500, 3900, 4100]),
+      range(0, [45, 55, 70, 95, 105, 120]),
+      { xAxisValues: [4000, 1000, 2000], yAxisValues: [50, 100] },
+    );
+
+    expect(result.xBins.map((bin) => bin.centerValue)).toEqual([1000, 2000, 4000]);
+    expect(result.yBins.map((bin) => bin.centerValue)).toEqual([50, 100]);
+    expect(result.xBins[0]).toMatchObject({ lowerBound: 500, upperBound: 1500 });
+    expect(result.xBins[1]).toMatchObject({ lowerBound: 1500, upperBound: 3000 });
+    expect(result.xBins[2]).toMatchObject({ lowerBound: 3000, upperBound: 5000, includesUpperBound: true });
+    expect([...result.counts].reduce((sum, value) => sum + value, 0)).toBe(6);
+    expect(result.xBinWidth).toBeUndefined();
+    expect(result.yBinWidth).toBeUndefined();
+  });
+
+  it('rejects duplicate explicit axis centers', () => {
+    expect(() => buildNumericHeatmap(
+      range(0, [1, 2]),
+      range(0, [3, 4]),
+      { xAxisValues: [1, 1] },
+    )).toThrow(/must be unique/);
+  });
+
   it('rejects non-finite configuration values', () => {
     expect(() => buildNumericHeatmap(range(0, [1]), range(0, [2]), { xBinCount: Number.NaN })).toThrow(RangeError);
     expect(() => buildNumericHeatmap(range(0, [1]), range(0, [2]), { yMax: Number.POSITIVE_INFINITY })).toThrow(RangeError);

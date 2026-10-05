@@ -7,6 +7,7 @@ import {
   type NumericQualificationOperator,
 } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
+import { createTuneTable2D } from '../../../../core/tune/table-correlation';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 
@@ -159,6 +160,16 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       <details class="histogram-table-options">
         <summary>Table</summary>
         <div class="histogram-table-options-popover">
+          <label><span>Axis source</span><select class="histogram-table-axis-source"><option value="auto">Auto bins</option><option value="custom">Custom breakpoints</option><option value="msq">Loaded MSQ table</option></select></label>
+          <div class="histogram-table-axis-custom" hidden>
+            <label><span>X breakpoints</span><input class="histogram-table-x-breakpoints" type="text" placeholder="800, 1200, 1600, …" /></label>
+            <label><span>Y breakpoints</span><input class="histogram-table-y-breakpoints" type="text" placeholder="30, 50, 70, …" /></label>
+          </div>
+          <div class="histogram-table-axis-msq" hidden>
+            <label><span>MSQ table</span><select class="histogram-table-msq-table"></select></label>
+            <label><span>X axis</span><select class="histogram-table-msq-x-axis"></select></label>
+            <label><span>Y axis</span><select class="histogram-table-msq-y-axis"></select></label>
+          </div>
           <label><span>X columns</span><input class="histogram-table-x-bins" type="number" min="1" max="64" step="1" value="16" /></label>
           <label><span>Y rows</span><input class="histogram-table-y-bins" type="number" min="1" max="64" step="1" value="16" /></label>
           <label><span>X min</span><input class="histogram-table-x-min" type="number" step="any" placeholder="Auto" /></label>
@@ -202,6 +213,14 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const filterCount = root.querySelector<HTMLElement>('.histogram-filter-count');
   const filterList = root.querySelector<HTMLElement>('.histogram-filter-list');
   const addFilterButton = root.querySelector<HTMLButtonElement>('.histogram-add-filter');
+  const axisSourceSelect = root.querySelector<HTMLSelectElement>('.histogram-table-axis-source');
+  const customAxisFields = root.querySelector<HTMLElement>('.histogram-table-axis-custom');
+  const xBreakpointsInput = root.querySelector<HTMLInputElement>('.histogram-table-x-breakpoints');
+  const yBreakpointsInput = root.querySelector<HTMLInputElement>('.histogram-table-y-breakpoints');
+  const msqAxisFields = root.querySelector<HTMLElement>('.histogram-table-axis-msq');
+  const msqTableSelect = root.querySelector<HTMLSelectElement>('.histogram-table-msq-table');
+  const msqXAxisSelect = root.querySelector<HTMLSelectElement>('.histogram-table-msq-x-axis');
+  const msqYAxisSelect = root.querySelector<HTMLSelectElement>('.histogram-table-msq-y-axis');
   const xBinsInput = root.querySelector<HTMLInputElement>('.histogram-table-x-bins');
   const yBinsInput = root.querySelector<HTMLInputElement>('.histogram-table-y-bins');
   const xMinInput = root.querySelector<HTMLInputElement>('.histogram-table-x-min');
@@ -216,7 +235,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const tooltip = root.querySelector<HTMLElement>('.histogram-table-tooltip');
   if (
     !scopeSelect || !xSelect || !ySelect || !zField || !zSelect || !aggregationSelect || !deltaField || !deltaSelect
-    || !filterCount || !filterList || !addFilterButton || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
+    || !filterCount || !filterList || !addFilterButton || !axisSourceSelect || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
+    || !msqAxisFields || !msqTableSelect || !msqXAxisSelect || !msqYAxisSelect || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
     || !yMinInput || !yMaxInput || !showHitsInput || !exportButton || !empty || !status || !canvas || !tooltip
   ) {
     throw new Error('Histogram table generator structure is incomplete.');
@@ -243,6 +263,78 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       renderTimer = undefined;
       void render();
     }, delay);
+  };
+
+  const parseBreakpointList = (input: HTMLInputElement): readonly number[] | undefined => {
+    const raw = input.value.trim();
+    if (!raw) return undefined;
+    const values = raw.split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (values.length === 0 || values.some((value) => !Number.isFinite(value))) return undefined;
+    return values;
+  };
+
+  const populateMsqAxisSelectors = (): void => {
+    const previousTable = msqTableSelect.value;
+    const previousX = msqXAxisSelect.value;
+    const previousY = msqYAxisSelect.value;
+    msqTableSelect.replaceChildren();
+    msqXAxisSelect.replaceChildren();
+    msqYAxisSelect.replaceChildren();
+    const model = context.tuneModel;
+    if (!model) {
+      msqTableSelect.add(new Option('No MSQ loaded', ''));
+      msqXAxisSelect.add(new Option('—', ''));
+      msqYAxisSelect.add(new Option('—', ''));
+      return;
+    }
+    const tables = model.entries.filter((entry) => entry.kind === 'table' && entry.numericValues);
+    for (const table of tables) msqTableSelect.add(new Option(table.name, table.name));
+    if (previousTable && tables.some((table) => table.name === previousTable)) msqTableSelect.value = previousTable;
+    const table = model.byName.get(msqTableSelect.value) ?? tables[0];
+    if (!table) return;
+    const numeric = model.entries.filter((entry) => entry.numericValues);
+    const xCandidates = numeric.filter((entry) => entry.numericValues?.length === table.cols);
+    const yCandidates = numeric.filter((entry) => entry.numericValues?.length === table.rows);
+    for (const entry of xCandidates) msqXAxisSelect.add(new Option(entry.name, entry.name));
+    for (const entry of yCandidates) msqYAxisSelect.add(new Option(entry.name, entry.name));
+    if (previousX && xCandidates.some((entry) => entry.name === previousX)) msqXAxisSelect.value = previousX;
+    if (previousY && yCandidates.some((entry) => entry.name === previousY)) msqYAxisSelect.value = previousY;
+  };
+
+  const updateAxisControls = (): void => {
+    const mode = axisSourceSelect.value;
+    customAxisFields.hidden = mode !== 'custom';
+    msqAxisFields.hidden = mode !== 'msq';
+    const fixed = mode !== 'auto';
+    xBinsInput.disabled = fixed;
+    yBinsInput.disabled = fixed;
+    xMinInput.disabled = fixed;
+    xMaxInput.disabled = fixed;
+    yMinInput.disabled = fixed;
+    yMaxInput.disabled = fixed;
+  };
+
+  const resolveExplicitAxes = (): { xAxisValues?: readonly number[]; yAxisValues?: readonly number[]; error?: string } => {
+    if (axisSourceSelect.value === 'auto') return {};
+    if (axisSourceSelect.value === 'custom') {
+      const xAxisValues = parseBreakpointList(xBreakpointsInput);
+      const yAxisValues = parseBreakpointList(yBreakpointsInput);
+      if (!xAxisValues || !yAxisValues) return { error: 'Custom X and Y breakpoints must both contain finite numeric values.' };
+      return { xAxisValues, yAxisValues };
+    }
+    const model = context.tuneModel;
+    if (!model) return { error: 'Load an MSQ file before using MSQ table axes.' };
+    if (!msqTableSelect.value || !msqXAxisSelect.value || !msqYAxisSelect.value) return { error: 'Choose an MSQ table and matching X/Y axes.' };
+    try {
+      const table = createTuneTable2D(model, {
+        tableName: msqTableSelect.value,
+        xAxisName: msqXAxisSelect.value,
+        yAxisName: msqYAxisSelect.value,
+      });
+      return { xAxisValues: table.xAxis, yAxisValues: table.yAxis };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Unable to resolve MSQ table axes.' };
+    }
   };
 
   const updateFilterCount = (): void => {
@@ -453,7 +545,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     result.xBins.forEach((bin, index) => {
       if (index % xStep !== 0 && index !== result.xBins.length - 1) return;
       ctx.textAlign = 'center';
-      ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), left + (index + .5) * cellWidth, top + chartHeight + 6);
+      ctx.fillText(formatNumber(bin.centerValue, 1), left + (index + .5) * cellWidth, top + chartHeight + 6);
     });
     ctx.textAlign = 'center';
     ctx.fillText(`${traceLabel(xTrace)}${xTrace.channel.unit ? ` · ${xTrace.channel.unit}` : ''}`, left + chartWidth / 2, top + chartHeight + 23);
@@ -464,7 +556,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       result.yBins.forEach((bin, index) => {
         if (index % yStep !== 0 && index !== result.yBins.length - 1) return;
         ctx.textAlign = 'right';
-        ctx.fillText(formatNumber((bin.lowerBound + bin.upperBound) / 2, 1), left - 6, top + chartHeight - (index + .5) * cellHeight);
+        ctx.fillText(formatNumber(bin.centerValue, 1), left - 6, top + chartHeight - (index + .5) * cellHeight);
       });
       ctx.save();
       ctx.translate(12, top + chartHeight / 2);
@@ -562,18 +654,35 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const valueRange = aggregation === 'count'
       ? undefined
       : deltaTrace && zTrace ? subtractNumericRanges(zTrace.range, deltaTrace.range) : zTrace!.range;
+    const explicitAxes = resolveExplicitAxes();
+    if (explicitAxes.error) {
+      currentResult = undefined;
+      currentXTrace = xTrace;
+      currentYTrace = yTrace;
+      currentZTrace = zTrace;
+      currentDeltaTrace = deltaTrace;
+      currentScope = scope;
+      layout = undefined;
+      empty.hidden = false;
+      empty.querySelector('strong')!.textContent = 'Table axis configuration is incomplete.';
+      empty.querySelector('span')!.textContent = explicitAxes.error;
+      canvas.hidden = true;
+      status.hidden = true;
+      exportButton.disabled = true;
+      return;
+    }
     const xMin = optionalFinite(xMinInput);
     const xMax = optionalFinite(xMaxInput);
     const yMin = optionalFinite(yMinInput);
     const yMax = optionalFinite(yMaxInput);
     const result = buildNumericHeatmap(xTrace.range, yTrace.range, {
       sampleIndices: qualified.eligibleSampleIndices,
-      xBinCount: binCount(xBinsInput, 16),
-      yBinCount: binCount(yBinsInput, 16),
-      ...(xMin !== undefined ? { xMin } : {}),
-      ...(xMax !== undefined ? { xMax } : {}),
-      ...(yMin !== undefined ? { yMin } : {}),
-      ...(yMax !== undefined ? { yMax } : {}),
+      ...(explicitAxes.xAxisValues ? { xAxisValues: explicitAxes.xAxisValues } : { xBinCount: binCount(xBinsInput, 16) }),
+      ...(explicitAxes.yAxisValues ? { yAxisValues: explicitAxes.yAxisValues } : { yBinCount: binCount(yBinsInput, 16) }),
+      ...(!explicitAxes.xAxisValues && xMin !== undefined ? { xMin } : {}),
+      ...(!explicitAxes.xAxisValues && xMax !== undefined ? { xMax } : {}),
+      ...(!explicitAxes.yAxisValues && yMin !== undefined ? { yMin } : {}),
+      ...(!explicitAxes.yAxisValues && yMax !== undefined ? { yMax } : {}),
       aggregation,
       ...(valueRange ? { valueRange } : {}),
     });
@@ -635,7 +744,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       const text = String(value);
       return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
     };
-    const xCenters = result.xBins.map((bin) => (bin.lowerBound + bin.upperBound) / 2);
+    const xCenters = result.xBins.map((bin) => bin.centerValue);
     const rows: string[] = [
       quote('EpicScope Histogram Table Generator'),
       ['Scope', currentScope.label].map(quote).join(','),
@@ -648,7 +757,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     ];
     for (let yIndex = result.yBins.length - 1; yIndex >= 0; yIndex -= 1) {
       const yBin = result.yBins[yIndex]!;
-      const values: (string | number)[] = [formatNumber((yBin.lowerBound + yBin.upperBound) / 2, 6)];
+      const values: (string | number)[] = [formatNumber(yBin.centerValue, 6)];
       for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
         const value = result.cellValues[yIndex * result.xBins.length + xIndex];
         values.push(value !== undefined && Number.isFinite(value) ? Number(value) : '');
@@ -658,7 +767,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     rows.push('', 'Hit counts', [traceLabel(yTrace) + ' \\ ' + traceLabel(xTrace), ...xCenters.map((value) => formatNumber(value, 6))].map(quote).join(','));
     for (let yIndex = result.yBins.length - 1; yIndex >= 0; yIndex -= 1) {
       const yBin = result.yBins[yIndex]!;
-      const values: (string | number)[] = [formatNumber((yBin.lowerBound + yBin.upperBound) / 2, 6)];
+      const values: (string | number)[] = [formatNumber(yBin.centerValue, 6)];
       for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
         values.push(result.counts[yIndex * result.xBins.length + xIndex] ?? 0);
       }
@@ -745,6 +854,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       if (previous && context.channels.some((channel) => channel.id === previous)) filter.channel.value = previous;
     }
     populateScopeOptions();
+    populateMsqAxisSelectors();
+    updateAxisControls();
     updateValueControls();
     scheduleRender();
   };
@@ -756,6 +867,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   zSelect.addEventListener('change', () => scheduleRender());
   deltaSelect.addEventListener('change', () => scheduleRender());
   aggregationSelect.addEventListener('change', () => { updateValueControls(); scheduleRender(); });
+  axisSourceSelect.addEventListener('change', () => { updateAxisControls(); scheduleRender(); });
+  xBreakpointsInput.addEventListener('input', () => scheduleRender(180));
+  yBreakpointsInput.addEventListener('input', () => scheduleRender(180));
+  msqTableSelect.addEventListener('change', () => { populateMsqAxisSelectors(); scheduleRender(); });
+  msqXAxisSelect.addEventListener('change', () => scheduleRender());
+  msqYAxisSelect.addEventListener('change', () => scheduleRender());
   xBinsInput.addEventListener('input', () => scheduleRender(120));
   yBinsInput.addEventListener('input', () => scheduleRender(120));
   xMinInput.addEventListener('input', () => scheduleRender(160));
@@ -771,6 +888,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   }).observe(canvas);
 
   populateScopeOptions();
+  populateMsqAxisSelectors();
+  updateAxisControls();
   updateFilterCount();
   updateValueControls();
 
