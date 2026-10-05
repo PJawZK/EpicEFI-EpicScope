@@ -1,0 +1,40 @@
+name: Temporary Histogram UI data consistency
+
+on:
+  push:
+    paths:
+      - .github/workflows/tmp-ui-data-consistency.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: histogram/ui-data-consistency-v1
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - name: Apply UI/data consistency patch
+        run: python scripts/tmp-ui-data-consistency.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Commit validated feature tree
+        run: |
+          rm -f scripts/tmp-ui-data-consistency.py .github/workflows/tmp-ui-data-consistency.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: refine Histogram table workflow and Math Channels"
+          git push origin HEAD:histogram/ui-data-consistency-v1
