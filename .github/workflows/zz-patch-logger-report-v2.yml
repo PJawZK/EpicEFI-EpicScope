@@ -1,0 +1,46 @@
+name: Apply logger and report source patch
+on:
+  push:
+    branches:
+      - fix/logger-render-reconcile-report-status
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/logger-render-reconcile-report-status
+      - shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          def rep(path,a,b):
+              p=Path(path); s=p.read_text()
+              if a not in s: raise SystemExit('anchor missing '+path)
+              p.write_text(s.replace(a,b,1))
+
+          p='apps/web/src/pages/logger-page.ts'
+          anchor='  inspector.onChannelToggled((channelId) => {\n'
+          helper='''  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {\n    const workspace = activeWorkspace();\n    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);\n    if (!pane || !channelDataSource) return;\n    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(\n      (channelId) => channelDefinitions.has(channelId)\n        && !unavailableChannelIds.has(channelId)\n        && !runtime.activeChannelIds.has(channelId),\n    );\n    if (missingIds.length === 0) return;\n    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n    runtime.graph.loadPendingChannels();\n    void Promise.all(activations).then((results) => {\n      missingIds.forEach((channelId, index) => {\n        if (results[index]) runtime.activeChannelIds.add(channelId);\n      });\n      syncActivePaneContext();\n    });\n  };\n\n'''
+          rep(p,anchor,helper+anchor)
+          rep(p,"      if (runtime.id === activeWorkspace()?.activePaneId) {\n        timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);\n      }\n","      if (runtime.id === activeWorkspace()?.activePaneId) {\n        timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);\n      }\n      window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);\n")
+          rep(p,"  inspector.onLoadSelected(() => {\n    activePaneRuntime()?.graph.loadPendingChannels();\n  });\n","  inspector.onLoadSelected(() => {\n    const runtime = activePaneRuntime();\n    if (!runtime) return;\n    runtime.graph.loadPendingChannels();\n    window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);\n  });\n")
+
+          p='apps/web/src/app/app-shell.ts'
+          rep(p,"  bugReportButton.innerHTML = '<span class=\"utility-action-symbol\" aria-hidden=\"true\">⚑</span><span>Report</span>';\n","  bugReportButton.innerHTML = '<span class=\"utility-action-symbol\" aria-hidden=\"true\">⚑</span><span>Report</span><span class=\"bug-report-status\" aria-hidden=\"true\">—</span>';\n")
+          anchor='  const setPersistenceStatus = (message: string): void => {\n'
+          block='''  const refreshBugReportButtonStatus = (): void => {\n    const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();\n    const { issues, warnings } = evaluateBugReportHealth(snapshot, {\n      logLoaded: currentRawLog !== undefined,\n      iniLoaded: activeIniCatalog !== undefined,\n      bindingActive: activeIniBinding !== undefined,\n      runtimeErrorCount: runtimeErrors.length,\n    });\n    const status = bugReportButton.querySelector<HTMLElement>('.bug-report-status');\n    const state = issues.length > 0 ? 'issue' : warnings.length > 0 ? 'warning' : 'ok';\n    bugReportButton.dataset.reportState = state;\n    if (status) status.textContent = issues.length > 0 ? String(issues.length) : warnings.length > 0 ? String(warnings.length) : '✓';\n    bugReportButton.title = issues.length > 0\n      ? `Report · ${issues.length} issue${issues.length === 1 ? '' : 's'}${warnings.length ? ` · ${warnings.length} warning${warnings.length === 1 ? '' : 's'}` : ''}`\n      : warnings.length > 0\n        ? `Report · ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`\n        : 'Report · runtime health OK';\n  };\n  refreshBugReportButtonStatus();\n  window.setInterval(refreshBugReportButtonStatus, 750);\n\n'''
+          rep(p,anchor,block+anchor)
+
+          p=Path('apps/web/src/styles/ui-refinements.css'); s=p.read_text()
+          if 'bug-report-status {' not in s:
+              s += '''\n\n/* Live Report health indicator. */\n.bug-report-button .bug-report-status { min-width:15px; height:15px; display:inline-grid; place-items:center; margin-left:2px; padding:0 3px; border:1px solid #3a5364; border-radius:8px; color:#91a5b2; font-size:8px; font-weight:850; line-height:1; }\n.bug-report-button[data-report-state="ok"] .bug-report-status { border-color:#315f4c; color:#76d6a8; }\n.bug-report-button[data-report-state="warning"] .bug-report-status { border-color:#7b682d; color:#f1c84b; }\n.bug-report-button[data-report-state="issue"] .bug-report-status { border-color:#8c5344; color:#ff8c78; }\n'''
+              p.write_text(s)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/logger-page.ts apps/web/src/app/app-shell.ts apps/web/src/styles/ui-refinements.css
+          git commit -m 'Repair logger trace reconciliation and report health status'
+          git push origin HEAD:fix/logger-render-reconcile-report-status
