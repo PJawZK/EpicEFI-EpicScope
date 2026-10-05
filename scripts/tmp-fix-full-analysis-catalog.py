@@ -1,0 +1,28 @@
+from pathlib import Path
+
+for path in [
+    'apps/web/src/pages/analyzer-page.ts',
+    'apps/web/src/pages/boost-analyzer-view.ts',
+    'apps/web/src/pages/specialized-analyzer-suite-view.ts',
+    'apps/web/src/pages/tune-table-view.ts',
+]:
+    p = Path(path)
+    s = p.read_text(encoding='utf-8')
+    marker = 'function channelLabel('
+    start = s.find(marker)
+    if start < 0:
+        continue
+    brace = s.find('{', start)
+    depth = 0
+    end = None
+    for i in range(brace, len(s)):
+        if s[i] == '{': depth += 1
+        elif s[i] == '}':
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    if end is None:
+        raise SystemExit(f'unclosed channelLabel in {path}')
+    while end < len(s) and s[end] in '\r\n': end += 1
+    p.write_text(s[:start] + s[end:], encoding='utf-8')
