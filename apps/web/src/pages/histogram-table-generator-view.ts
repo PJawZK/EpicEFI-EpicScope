@@ -1173,8 +1173,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       currentWeightedContributingCounts = weighted.cellContributingSampleCounts;
       displayResult = {
         ...result,
-        counts: weighted.cellContributingSampleCounts,
-        cellSampleIndices: weighted.cellSampleIndices,
         cellValues: weighted.cellValues,
         cellValueSampleCounts: weighted.cellContributingSampleCounts,
         cellValueMin: weighted.cellValueMin,
@@ -1182,7 +1180,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
         valueValidSampleCount: weighted.contributingSampleCount,
         valueInvalidSampleCount: weighted.invalidValueSampleCount,
         valueUnavailableSampleCount: weighted.unavailableValueSampleCount,
-        maxCellCount: Math.max(0, ...weighted.cellContributingSampleCounts),
       };
     }
 
