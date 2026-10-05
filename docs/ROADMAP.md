@@ -10,39 +10,32 @@ The roadmap describes intended capability and implementation order. It does not 
 
 Each implementation task should identify goal, architectural owner/location, dependencies, expected validation, and completion criteria. Large features should be split into reviewable tasks before coding.
 
-## Current execution position — 2026-10-04
+## Current execution position — 2026-10-05
 
-EpicScope Web has moved beyond the original shell/log-foundation and the intensive large-log optimization campaign.
+EpicScope Web has completed the currently approved implementation scope through **Phase 4**.
 
-Current established foundations include:
+Established foundations now include:
 
 - MLG v1/v2 import/index/staged validation;
 - OPFS sidecar/native-column post-index access;
-- INI-backed channel catalog/binding;
+- INI-backed channel catalog/binding and optional MSQ tune enrichment;
 - reusable application workspaces plus separate exact-log navigation persistence;
 - multi-pane graphs and timeline/range/marker tooling;
-- bounded diagnostics/performance observability;
-- repository/file-structure cleanup through PR #169.
+- generic range statistics, qualification, Histogram/Table Generator, Scatter, Events and Compare foundations;
+- Analyzer Range Compare and Tune Table;
+- Experimental Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel Pressure / Injector and Trigger / Sync analyzers;
+- full analysis channel catalog with on-demand decode;
+- MLV-style weighted Table Generator, presets, grouped filters, Math Channels and cell-to-Logger traceability.
 
-Performance and structural cleanup are **good enough for now**. Re-profile when features grow or a regression appears; do not keep optimizing/refactoring solely because further micro-work is possible.
+Performance and structural cleanup are **good enough for now**. Re-profile when features grow or a regression appears; do not keep optimizing/refactoring solely because more micro-work is possible.
 
-The active milestone is **UI hierarchy before generic analysis expansion**.
+The active work is **UI refinement of already-implemented analysis surfaces**, currently centered on Histogram/Table Generator after PR #215. This is not a new phase.
 
 Approved workflow:
 
 > **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
-Completed UI passes:
-
-- PR #170 — Channels filter/value foundation;
-- PR #171 — header hierarchy, Load Data, Graphs context, EpicScope mode switcher;
-- PR #172 — Channel browser hierarchy.
-
-Next pass:
-
-- reorganize the timeline into **Navigate → Range/Markers → Analyze** while preserving existing behavior.
-
-After that, resume Phase 2 generic analysis work beginning with reusable range/statistics/filter primitives and Histogram rather than jumping directly to specialized analyzers.
+Do **not** begin Phase 5 unless the project owner explicitly requests it.
 
 ## Phase 0 — Foundation
 
@@ -68,7 +61,7 @@ Authority:
 - `EpicHub-Tablet-Landscape-0.0.45(2).html`;
 - `docs/UI_REFERENCE.md` contains the EpicScope interpretation and later project-owner refinements.
 
-Important current refinement: EpicScope remains a dedicated product, but the **EpicScope logo dropdown is the in-product mode/surface switcher**.
+EpicScope remains a dedicated product; the EpicScope logo dropdown is the in-product mode/surface switcher.
 
 ### WEB-BOOT — Complete
 
@@ -102,7 +95,7 @@ MLVLG v3 remains deferred until authoritative evidence exists.
 
 ### LOG-CSV — Deferred
 
-CSV remains a future secondary import format but does not block higher-value analysis/product work.
+CSV remains a future secondary import format and does not block current product work.
 
 ### TIMELINE / GRAPH FOUNDATION — Complete
 
@@ -122,9 +115,7 @@ Implemented:
 - timeline overview;
 - keyboard shortcuts and persistence.
 
-Current task is **presentation hierarchy**, not missing timeline capability.
-
-### WORKSPACE / PERSISTENCE v1 + reusable application workspace — Implemented
+### WORKSPACE / PERSISTENCE — Implemented
 
 - exact-log artifact retains recording-specific viewport/cursor/A-B/markers/ranges;
 - reusable application workspace retains named workspaces/layouts/stable channel assignments independently of log identity;
@@ -133,11 +124,9 @@ Current task is **presentation hierarchy**, not missing timeline capability.
 
 ## Phase 2 — Channel catalog, UI workflow, and generic analysis foundation
 
-Status: **In progress**
+Status: **Complete for the currently approved scope**
 
-Purpose: establish stable channel/source context and generic analysis primitives before specialized analyzers multiply.
-
-### TUNE-INI / CHANNEL-CATALOG — Foundation implemented
+### TUNE-INI / CHANNEL-CATALOG — Implemented
 
 - raw INI decoding under `core/parsers/ini/`;
 - stable logical channel identity;
@@ -145,23 +134,16 @@ Purpose: establish stable channel/source context and generic analysis primitives
 - known+data / known-no-data / log-only states;
 - MLG remains authoritative for samples and validity.
 
-### CHANNELS — Foundation partially implemented
-
-Implemented now:
+### CHANNELS — Implemented foundation
 
 - stable logical/source binding;
-- group/search/Active/Favorites/Recent filter semantics with focused tests;
+- group/search/Active/Favorites/Recent filter semantics;
 - unit-aware current-value display;
 - channel statistics/detail foundation;
-- persistent assignments and source availability states.
+- persistent assignments and source availability states;
+- full available-log analysis catalog with on-demand decode.
 
-Still planned:
-
-- richer aliases/group management where needed;
-- derived/math channels;
-- any further channel organization demanded by real analysis workflows.
-
-### UI-HIERARCHY — Active
+### UI-HIERARCHY — Implemented foundation, refinement continues
 
 Approved flow:
 
@@ -172,121 +154,120 @@ Approved flow:
 5. Analyze
 6. Compare / Export
 
-Completed:
+Current cleanup work is refinement, not missing architecture.
 
-- Load Data menu;
-- Graphs workspace identity;
-- EpicScope mode switcher;
-- Channel browser simplification;
-- removal of empty Tools/Compare placeholders.
+### GENERIC ANALYSIS — Implemented
 
-Next:
-
-- timeline Navigate grouping;
-- Range/Markers grouping;
-- contextual Analyze entry point;
-- later diagnostics/settings consolidation where needed.
-
-### ANALYSIS — Next after UI hierarchy
-
-Build generic reusable analysis services before specialized analyzers:
-
-- filters and qualification;
 - range statistics;
-- histogram;
-- 2D histogram/heatmap/table;
-- scatter;
-- selectable aggregation methods;
-- sample count/variance/evidence display;
-- explicit X/Y/value/filter semantics.
+- qualification/filters;
+- Histogram/Distribution;
+- Table Generator;
+- Scatter;
+- selectable aggregations;
+- sample/coverage/evidence display;
+- reusable presets/filters;
+- Math Channels/calculated fields;
+- linked cell evidence back to Logger.
 
-Preferred first implementation sequence:
+Table Generator is now the user-facing binned/table surface; separate Heatmap/Dual Heatmap Histogram modes are not part of the current UI.
 
-1. generic Analysis Result / range scope contract;
-2. Range Statistics;
-3. Histogram;
-4. 2D Histogram/Heatmap/Table;
-5. Scatter;
-6. reusable presets/filters as justified.
-
-### EVENTS
+### EVENTS — Implemented foundation
 
 - event data contract;
-- detector framework;
-- initial generic detectors;
-- event rail/navigation;
-- analyzers reuse generic events rather than private copies.
+- contiguous qualification-run detection;
+- merge/minimum-duration semantics;
+- explicit source evidence;
+- reusable event presentation.
 
-### COMPARE-BASE
+### COMPARE-BASE — Implemented foundation
 
-- multiple-log/session relation;
-- trace overlays;
-- range/event alignment;
-- metric deltas;
-- linked source context.
-
-Compare should become visible in the UI when real comparison capability exists, not as a disabled top-level placeholder.
-
-Phase 2 exit criteria:
-
-- stable workspace/channel context exists before a log is opened;
-- supported INI binds safely to supported logs;
-- known-no-data/log-only states remain explicit;
-- generic analysis workflows are useful independently of specialized analyzers;
-- analyzer implementation can reuse stable generic services.
+- generic left/right numeric cohort comparison;
+- evidence/coverage;
+- absolute and relative deltas;
+- first Analyzer Range Compare surface.
 
 ## Phase 3 — MSQ tune enrichment and table correlation
 
-### TUNE-MSQ
+Status: **Complete for the currently approved scope**
+
+### TUNE-MSQ — Implemented
 
 - raw MSQ decoding under `core/parsers/msq/`;
 - normalized tune values/tables/curves/scalars under `core/tune/`;
 - optional enrichment, not the runtime channel catalog;
-- explicit compatibility reporting with INI/log context.
+- explicit tune context in Analyzer/Histogram workflows.
 
-### TABLE-MAP
+### TABLE-MAP — Implemented
 
-- map samples into tune coordinates/cells;
-- expose tune value, observed result, target/error, sample count and stability;
-- reusable table-overlay APIs.
+- explicit table + X axis + Y axis relationships;
+- ascending/descending axes;
+- tune table interpolation/correlation;
+- observed/tune evidence and sample population;
+- explicit opt-in error/delta semantics.
+
+For Histogram Table Generator, **Loaded MSQ table is geometry-only**: it supplies the table X/Y breakpoint vectors and dimensions, while the user-selected analysis X/Y/Z channels remain unchanged.
 
 ## Phase 4 — Specialized analyzers
 
-Specialized analyzers use generic analysis/events/compare/tune services.
+Status: **Complete for the currently approved scope; analyzers remain Experimental unless separately promoted**
 
-Initial tracks:
+Implemented tracks:
 
 ### BOOST
 
-Capability-driven support for single/dual solenoid, upper/lower chamber, open/closed loop, target/error, spool, steady-state and overshoot/undershoot analysis.
+Capability-driven support for measured/target pressure, RPM, upper/lower wastegate duty, spool, steady-state and overshoot/undershoot analysis.
 
 ### IDLE
 
-Target/error, valve duty/bias/feed-forward, PID terms where logged, disturbance/sag/recovery/settling.
+Target/error, valve duty/bias/feed-forward, PID terms where logged, sag/recovery behavior.
 
 ### AE / MAP PREDICT
 
-Tip-in/decel events, TPS/MAP timing, predicted/measured MAP, AFR response, lean/rich peak and recovery, before/after comparison.
+Tip-in/decel events, TPS/MAP timing, predicted/measured MAP and AFR response evidence.
 
 ### FUELING
 
-VE/AFR target/actual error, qualification, tune-cell population/stability.
+AFR target/actual error, qualification and optional VE/fuel-value context.
 
 ### IGNITION
 
-Advance/retard/knock-oriented evidence where channels permit.
+Advance/retard/knock-oriented aggregates and events where channels permit.
 
 ### FUEL PRESSURE / INJECTOR
 
-Rail/differential pressure, injector PW/duty/deadtime-oriented analysis where supported.
+Pressure, rail differential, injector PW/duty/deadtime analysis and threshold events.
 
 ### TRIGGER / SYNC
 
-Synchronization/dropout/event analysis where available channels permit.
+Sync state, trigger error and sync-loss-counter evidence/events.
 
-Each analyzer begins Experimental, then Beta, then Stable only with validation evidence.
+All specialized analyzers remain capability-driven, use supplied decoded data, preserve provenance/coverage and perform no hidden source reads or ECU writes.
+
+## Current refinement track — Histogram / Table Generator
+
+This is the current active product work after Phase 4, not Phase 5.
+
+Established through PR #215:
+
+- visualization-first/no-scroll Histogram workspace;
+- Table Generator, Distribution, Scatter and Math Channels surfaces;
+- full-channel on-demand analysis;
+- custom/MSQ table geometry;
+- MLV breakpoint weighted mean as first/default statistic;
+- saved complete Table Generator presets;
+- saved grouped filters with ALL/ANY logic;
+- dedicated Math Channels editor;
+- Size presets for Auto bins;
+- cell source-sample drill-down and Logger navigation;
+- compact cleanup of redundant labels/rows and improved readability.
+
+MLV weighted parity is considered sufficiently matched for current use. The tiny remaining hit-count discrepancy is recorded in `docs/DECISIONS.md` as a compatibility footnote, not a current roadmap task.
 
 ## Phase 5 — Sessions, sharing, and reporting
+
+Status: **Not started — explicit owner approval required**
+
+Potential scope:
 
 - domain session orchestration as needed;
 - versioned full-session persistence;
@@ -345,3 +326,5 @@ Potential later work:
 ## Roadmap change control
 
 New major feature groups may be added, but they must be placed deliberately in roadmap and architecture before implementation. A feature request alone does not authorize a new subsystem or architectural layer.
+
+For exact present-tense continuation, always defer to `docs/HANDOFF.md`.
