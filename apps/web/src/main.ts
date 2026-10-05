@@ -11,6 +11,7 @@ import './styles/analyzer.css';
 import './styles/boost-analyzer.css';
 import './styles/specialized-analyzer.css';
 import './styles/performance-diagnostics.css';
+import './styles/ui-refinements.css';
 import { mountAppShell } from './app/app-shell';
 import { applyUiRefinements } from './app/ui-refinements';
 
