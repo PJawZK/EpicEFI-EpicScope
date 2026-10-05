@@ -142,7 +142,16 @@ export interface LoggerAnalysisTraceContext {
 }
 
 export interface LoggerAnalysisContext {
+  /** Already-decoded traces from the active Logger pane, retained as a fast-path/fallback. */
   readonly traces: readonly LoggerAnalysisTraceContext[];
+  /** Every numeric/bitfield channel that is actually available from the loaded log/binding. */
+  readonly channels: readonly ChannelDefinition[];
+  /** Decode only the channels an analysis task requests, scoped to the requested time window when possible. */
+  readonly loadTraces: (
+    channelIds: readonly string[],
+    startMs?: number,
+    endMs?: number,
+  ) => Promise<readonly LoggerAnalysisTraceContext[]>;
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
   readonly savedRanges: readonly import('../state/workspace-state').SavedTimelineRangeState[];
@@ -2052,17 +2061,89 @@ export function createLoggerPage(): LoggerPageController {
       ? runtime.graph.getOverviewTraces().flatMap((trace) => {
           const channel = channelDefinitions.get(trace.channelId);
           if (!channel) return [];
-          const statistics = runtime.graph.getChannelStatistics(trace.channelId);
           return [{
             channel,
             range: trace.range,
-            complete: statistics?.full.complete ?? false,
+            complete: channelDataSource !== undefined
+              && trace.range.startSampleIndex === 0
+              && trace.range.values.length >= channelDataSource.sampleCount,
             color: trace.color,
           }];
         })
       : [];
+
+    const channels = [...channelDefinitions.values()]
+      .filter((channel) => !unavailableChannelIds.has(channel.id))
+      .sort((left, right) => (left.displayName || left.sourceName).localeCompare(
+        right.displayName || right.sourceName,
+        undefined,
+        { numeric: true, sensitivity: 'base' },
+      ));
+    const activeColors = new Map(traces.map((trace) => [trace.channel.id, trace.color]));
+    const palette = ['#58aef6', '#ffb15a', '#7ddf8a', '#df7dcb', '#ffd45a', '#67d8d2', '#ff7f7f', '#9ca7ff'];
+    const colorFor = (channelId: string): string => {
+      const active = activeColors.get(channelId);
+      if (active) return active;
+      let hash = 0;
+      for (let index = 0; index < channelId.length; index += 1) hash = ((hash * 31) + channelId.charCodeAt(index)) | 0;
+      return palette[Math.abs(hash) % palette.length]!;
+    };
+
+    const loadTraces = async (
+      channelIds: readonly string[],
+      startMs?: number,
+      endMs?: number,
+    ): Promise<readonly LoggerAnalysisTraceContext[]> => {
+      const source = channelDataSource;
+      if (!source) return [];
+      const requestedIds = [...new Set(channelIds)].filter((channelId) =>
+        channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId));
+      if (requestedIds.length === 0) return [];
+
+      let startSampleIndex = 0;
+      let sampleCount = source.sampleCount;
+      if (
+        startMs !== undefined
+        && endMs !== undefined
+        && Number.isFinite(startMs)
+        && Number.isFinite(endMs)
+        && source.sampleRangeForTime
+      ) {
+        const scoped = source.sampleRangeForTime(Math.min(startMs, endMs), Math.max(startMs, endMs));
+        startSampleIndex = Math.max(0, Math.min(source.sampleCount, scoped.startSampleIndex));
+        sampleCount = Math.max(0, Math.min(source.sampleCount - startSampleIndex, scoped.sampleCount));
+      }
+      if (sampleCount <= 0) return [];
+
+      const ranges = new Map<string, NumericChannelRange>();
+      if (source.readChannelsRange && requestedIds.length > 1) {
+        const batch = await source.readChannelsRange(requestedIds, startSampleIndex, sampleCount);
+        for (const [channelId, range] of batch.ranges) ranges.set(channelId, range);
+      } else {
+        const resolved = await Promise.all(requestedIds.map(async (channelId) => [
+          channelId,
+          await source.readChannelRange(channelId, startSampleIndex, sampleCount),
+        ] as const));
+        for (const [channelId, range] of resolved) ranges.set(channelId, range);
+      }
+
+      return requestedIds.flatMap((channelId) => {
+        const channel = channelDefinitions.get(channelId);
+        const range = ranges.get(channelId);
+        if (!channel || !range) return [];
+        return [{
+          channel,
+          range,
+          complete: range.startSampleIndex <= startSampleIndex && range.values.length >= sampleCount,
+          color: colorFor(channelId),
+        }];
+      });
+    };
+
     return {
       traces,
+      channels,
+      loadTraces,
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
       savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),

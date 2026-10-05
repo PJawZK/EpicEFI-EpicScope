@@ -132,10 +132,6 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   },
 };
 
-function channelLabel(trace: LoggerAnalysisTraceContext): string {
-  return trace.channel.displayName || trace.channel.sourceName;
-}
-
 function numberText(value: number | undefined, precision = 3): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
   if (Math.abs(value) >= 1000) return value.toFixed(0);
@@ -147,7 +143,7 @@ function timeText(ms: number | undefined): string {
 }
 
 export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteController {
-  let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+  let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let domain: SpecializedAnalyzerDomain = 'idle';
   const rememberedSelections = new Map<string, string>();
 
@@ -165,8 +161,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       <div class="specialized-analyzer-options-grid"></div>
     </details>
     <div class="specialized-analyzer-empty">
-      <strong>Select the required active channel and a valid scope.</strong>
-      <span>Only already-decoded active Logger traces are used. Optional channels can remain unselected.</span>
+      <strong>Select the required available channel and a valid scope.</strong>
+      <span>All channels present in the loaded log are available; selected roles decode on demand. Optional roles can remain unselected.</span>
     </div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary"></div>
@@ -193,9 +189,6 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     if (!node) throw new Error(`Specialized Analyzer field missing: ${name}`);
     return node;
   };
-
-  const traceFor = (id: string | undefined): LoggerAnalysisTraceContext | undefined =>
-    id ? context.traces.find((trace) => trace.channel.id === id) : undefined;
 
   const roleSelect = (key: string): HTMLSelectElement | undefined =>
     controls.querySelector<HTMLSelectElement>(`select[data-role="${key}"]`) ?? undefined;
@@ -274,25 +267,28 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     return { scope, startMs, endMs, sampleIndices: qualified.eligibleSampleIndices, complete };
   };
 
-  const analyzeCurrent = (): void => {
+  const analyzeCurrent = async (): Promise<void> => {
     const spec = SPECS[domain];
-    const traces = new Map<string, LoggerAnalysisTraceContext>();
+    const selected = new Map<string, string>();
     for (const role of spec.roles) {
-      const select = roleSelect(role.key);
-      const trace = traceFor(select?.value);
-      if (trace) traces.set(role.key, trace);
-      if (role.required && !trace) {
-        empty.hidden = false;
-        content.hidden = true;
-        return;
-      }
+      const id = roleSelect(role.key)?.value;
+      if (id) selected.set(role.key, id);
+      if (role.required && !id) { empty.hidden = false; content.hidden = true; return; }
     }
-    const primary = traces.get(spec.roles.find((role) => role.required)?.key ?? '');
-    if (!primary) {
-      empty.hidden = false;
-      content.hidden = true;
-      return;
+    const scope = selectedScope();
+    if (!scope) { empty.hidden = false; content.hidden = true; return; }
+    const startMs = Math.min(scope.startMs, scope.endMs);
+    const endMs = Math.max(scope.startMs, scope.endMs);
+    const loaded = await context.loadTraces([...selected.values()], startMs, endMs);
+    const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
+    const traces = new Map<string, LoggerAnalysisTraceContext>();
+    for (const [key, id] of selected) {
+      const trace = byId.get(id);
+      if (trace) traces.set(key, trace);
     }
+    const primaryKey = spec.roles.find((role) => role.required)?.key ?? '';
+    const primary = traces.get(primaryKey);
+    if (!primary) { empty.hidden = false; content.hidden = true; return; }
     const scoped = scopeForPrimary(primary, [...traces.values()]);
     if (!scoped) {
       empty.hidden = false;
@@ -432,11 +428,11 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       const select = document.createElement('select');
       select.dataset.role = role.key;
       if (!role.required) select.add(new Option('(none)', ''));
-      for (const trace of context.traces) select.add(new Option(channelLabel(trace), trace.channel.id));
+      for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
       const remembered = rememberedSelections.get(`${domain}:${role.key}`);
       if (remembered && [...select.options].some((option) => option.value === remembered)) select.value = remembered;
-      else if (role.required && context.traces[0]) select.value = context.traces[0].channel.id;
-      select.addEventListener('change', () => { rememberedSelections.set(`${domain}:${role.key}`, select.value); analyzeCurrent(); });
+      else if (role.required && context.channels[0]) select.value = context.channels[0].id;
+      select.addEventListener('change', () => { rememberedSelections.set(`${domain}:${role.key}`, select.value); void analyzeCurrent(); });
       label.append(span, select);
       controls.append(label);
     }
@@ -449,13 +445,13 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     context.savedRanges.forEach((saved, index) => scopeSelect.add(new Option(saved.label, `saved:${index}`)));
     const rememberedScope = rememberedSelections.get(`${domain}:scope`);
     if (rememberedScope && [...scopeSelect.options].some((option) => option.value === rememberedScope)) scopeSelect.value = rememberedScope;
-    scopeSelect.addEventListener('change', () => { rememberedSelections.set(`${domain}:scope`, scopeSelect.value); analyzeCurrent(); });
+    scopeSelect.addEventListener('change', () => { rememberedSelections.set(`${domain}:scope`, scopeSelect.value); void analyzeCurrent(); });
     scopeLabel.append(scopeCaption, scopeSelect);
     controls.append(scopeLabel);
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'Analyze';
-    button.addEventListener('click', analyzeCurrent);
+    button.addEventListener('click', () => { void analyzeCurrent(); });
     controls.append(button);
 
     optionsGrid.replaceChildren();
@@ -469,17 +465,17 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       if (option.value !== undefined) input.value = option.value;
       if (option.placeholder) input.placeholder = option.placeholder;
       input.step = option.step ?? 'any';
-      input.addEventListener('change', analyzeCurrent);
+      input.addEventListener('change', () => { void analyzeCurrent(); });
       label.append(span, input);
       optionsGrid.append(label);
     }
-    analyzeCurrent();
+    void analyzeCurrent();
   };
 
   return {
     element: root,
     setContext(nextContext) { context = nextContext; rebuild(); },
     setDomain(nextDomain) { domain = nextDomain; rebuild(); },
-    refresh: analyzeCurrent,
+    refresh: () => { void analyzeCurrent(); },
   };
 }

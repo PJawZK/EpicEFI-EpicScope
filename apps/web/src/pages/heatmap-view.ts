@@ -44,7 +44,7 @@ function aggregationLabel(method: NumericAggregationMethod): string {
 }
 
 export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapViewController {
-  let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
+  let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHeatmapResult | undefined;
   let currentXTrace: HistogramTraceContext | undefined;
   let currentYTrace: HistogramTraceContext | undefined;
@@ -76,8 +76,8 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     </div>
     <div class="heatmap-stage">
       <div class="heatmap-empty">
-        <strong>Heatmap needs a selected range and two active channels.</strong>
-        <span>Set A/B in Logger and keep the required channels active in the current graph pane.</span>
+        <strong>Heatmap needs a selected range and two available channels.</strong>
+        <span>Set A/B in Logger, then choose any X/Y/value channels present in the loaded log.</span>
       </div>
       <canvas class="heatmap-chart" aria-label="Two-dimensional histogram heatmap table"></canvas>
       <div class="heatmap-stage-status" hidden>
@@ -111,7 +111,6 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     return node;
   };
 
-  const traceFor = (channelId: string): HistogramTraceContext | undefined => context.traces.find((trace) => trace.channel.id === channelId);
   const selectedAggregation = (): NumericAggregationMethod => aggregationSelect.value as NumericAggregationMethod;
   const hasValidRange = (): boolean => context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
 
@@ -218,14 +217,14 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     ctx.restore();
   };
 
-  const render = (): void => {
-    const xTrace = traceFor(xSelect.value) ?? context.traces[0];
-    const yTrace = traceFor(ySelect.value) ?? context.traces[1] ?? context.traces[0];
+  const render = async (): Promise<void> => {
+    const xId = xSelect.value || context.channels[0]?.id;
+    const yId = ySelect.value || context.channels[1]?.id || context.channels[0]?.id;
     const aggregation = selectedAggregation();
-    const valueTrace = aggregation === 'count' ? undefined : traceFor(valueSelect.value) ?? context.traces[0];
+    const valueId = aggregation === 'count' ? undefined : (valueSelect.value || context.channels[0]?.id);
     valueField.hidden = aggregation === 'count';
 
-    if (!xTrace || !yTrace || context.traces.length < 2 || !hasValidRange() || (aggregation !== 'count' && !valueTrace)) {
+    if (!xId || !yId || context.channels.length < 2 || !hasValidRange() || (aggregation !== 'count' && !valueId)) {
       currentResult = undefined;
       currentXTrace = undefined;
       currentYTrace = undefined;
@@ -237,6 +236,21 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
 
     const startMs = Math.min(context.aTimeMs!, context.bTimeMs!);
     const endMs = Math.max(context.aTimeMs!, context.bTimeMs!);
+    const loaded = await context.loadTraces([xId, yId, ...(valueId ? [valueId] : [])], startMs, endMs);
+    const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
+    const xTrace = byId.get(xId);
+    const yTrace = byId.get(yId);
+    const valueTrace = valueId ? byId.get(valueId) : undefined;
+    if (!xTrace || !yTrace || (aggregation !== 'count' && !valueTrace)) {
+      currentResult = undefined;
+      currentXTrace = undefined;
+      currentYTrace = undefined;
+      empty.hidden = false;
+      canvas.hidden = true;
+      status.hidden = true;
+      return;
+    }
+
     const channels = new Map([[xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete }]]);
     const scoped = qualifyNumericSamples({ referenceChannelId: xTrace.channel.id, channels, conditions: [], timeRange: { startMs, endMs } });
 
@@ -274,16 +288,16 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     xSelect.replaceChildren();
     ySelect.replaceChildren();
     valueSelect.replaceChildren();
-    for (const trace of context.traces) {
-      const label = channelLabel(trace);
-      xSelect.add(new Option(label, trace.channel.id));
-      ySelect.add(new Option(label, trace.channel.id));
-      valueSelect.add(new Option(label, trace.channel.id));
+    for (const channel of context.channels) {
+      const label = channel.displayName || channel.sourceName;
+      xSelect.add(new Option(label, channel.id));
+      ySelect.add(new Option(label, channel.id));
+      valueSelect.add(new Option(label, channel.id));
     }
-    if (context.traces.some((trace) => trace.channel.id === previousX)) xSelect.value = previousX;
-    if (context.traces.some((trace) => trace.channel.id === previousY)) ySelect.value = previousY;
-    else if (context.traces[1]) ySelect.value = context.traces[1].channel.id;
-    if (context.traces.some((trace) => trace.channel.id === previousValue)) valueSelect.value = previousValue;
+    if (context.channels.some((channel) => channel.id === previousX)) xSelect.value = previousX;
+    if (context.channels.some((channel) => channel.id === previousY)) ySelect.value = previousY;
+    else if (context.channels[1]) ySelect.value = context.channels[1].id;
+    if (context.channels.some((channel) => channel.id === previousValue)) valueSelect.value = previousValue;
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
@@ -292,13 +306,13 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     const previousValue = valueSelect.value;
     context = nextContext;
     fillSelects(previousX, previousY, previousValue);
-    render();
+    void render();
   };
 
-  [xSelect, ySelect, aggregationSelect, valueSelect, xBinsSelect, yBinsSelect].forEach((control) => control.addEventListener('change', render));
+  [xSelect, ySelect, aggregationSelect, valueSelect, xBinsSelect, yBinsSelect].forEach((control) => control.addEventListener('change', () => { void render(); }));
   new ResizeObserver(() => {
     if (currentResult && currentXTrace && currentYTrace && !canvas.hidden && !root.hidden) renderChart(currentResult, currentXTrace, currentYTrace);
   }).observe(canvas);
 
-  return { element: root, setContext, refresh: render };
+  return { element: root, setContext, refresh: () => { void render(); } };
 }

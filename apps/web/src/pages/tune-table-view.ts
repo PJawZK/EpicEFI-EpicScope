@@ -6,17 +6,13 @@ import {
   createTuneTable2D,
   type TuneTableCorrelationResult,
 } from '../../../../core/tune/table-correlation';
-import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
+import type { LoggerAnalysisContext } from './logger-page';
 
 export interface TuneTableViewController {
   readonly element: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
-}
-
-function channelLabel(trace: LoggerAnalysisTraceContext): string {
-  return trace.channel.displayName || trace.channel.sourceName;
 }
 
 function formatNumber(value: number | undefined, precision = 3): string {
@@ -34,7 +30,7 @@ function tableCandidates(model: TuneModel | undefined): readonly TuneEntry[] {
 }
 
 export function createTuneTableView(): TuneTableViewController {
-  let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+  let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
   let currentResult: TuneTableCorrelationResult | undefined;
@@ -61,8 +57,8 @@ export function createTuneTableView(): TuneTableViewController {
     </div>
     <div class="tune-table-note">Table-to-axis relationships are explicit in this first pass. Select the MSQ table and its X/Y axis entries rather than relying on name guessing.</div>
     <div class="tune-table-empty">
-      <strong>Tune Table needs an MSQ tune, active decoded traces, and a valid scope.</strong>
-      <span>Load an MSQ from Load Data, keep the required X/Y/observed channels active in Logger, and select A/B or a saved range.</span>
+      <strong>Tune Table needs an MSQ tune, available log channels, and a valid scope.</strong>
+      <span>Load an MSQ, select any available X/Y/observed channels, and choose A/B or a saved range.</span>
     </div>
     <div class="tune-table-content" hidden>
       <div class="tune-table-summary">
@@ -107,9 +103,6 @@ export function createTuneTableView(): TuneTableViewController {
     return node;
   };
 
-  const traceFor = (channelId: string): LoggerAnalysisTraceContext | undefined =>
-    context.traces.find((trace) => trace.channel.id === channelId);
-
   const selectedScope = (): { label: string; startMs: number; endMs: number } | undefined => {
     if (scopeSelect.value === 'ab') {
       if (context.aTimeMs === undefined || context.bTimeMs === undefined || context.aTimeMs === context.bTimeMs) return undefined;
@@ -123,9 +116,9 @@ export function createTuneTableView(): TuneTableViewController {
 
   const fillTraceSelect = (select: HTMLSelectElement, preferred: string, fallbackIndex: number): void => {
     select.replaceChildren();
-    for (const trace of context.traces) select.add(new Option(channelLabel(trace), trace.channel.id));
-    if (context.traces.some((trace) => trace.channel.id === preferred)) select.value = preferred;
-    else if (context.traces[fallbackIndex]) select.value = context.traces[fallbackIndex]!.channel.id;
+    for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    if (context.channels.some((channel) => channel.id === preferred)) select.value = preferred;
+    else if (context.channels[fallbackIndex]) select.value = context.channels[fallbackIndex]!.id;
   };
 
   const fillScopeSelect = (preferred: string): void => {
@@ -166,15 +159,15 @@ export function createTuneTableView(): TuneTableViewController {
     if (yCandidates.some((entry) => entry.name === previousY)) yAxisSelect.value = previousY;
   };
 
-  const render = (): void => {
+  const render = async (): Promise<void> => {
     field('source').textContent = tuneSourceName ?? 'No MSQ loaded';
     field('signature').textContent = tuneModel?.identity.signature ?? tuneModel?.identity.firmwareInfo ?? '—';
 
     const scope = selectedScope();
-    const xTrace = traceFor(xChannelSelect.value) ?? context.traces[0];
-    const yTrace = traceFor(yChannelSelect.value) ?? context.traces[1] ?? context.traces[0];
-    const observedTrace = traceFor(observedSelect.value) ?? context.traces[2] ?? context.traces[0];
-    if (!tuneModel || !scope || !xTrace || !yTrace || !observedTrace || !tableSelect.value || !xAxisSelect.value || !yAxisSelect.value) {
+    const xId = xChannelSelect.value || context.channels[0]?.id;
+    const yId = yChannelSelect.value || context.channels[1]?.id || context.channels[0]?.id;
+    const observedId = observedSelect.value || context.channels[2]?.id || context.channels[0]?.id;
+    if (!tuneModel || !scope || !xId || !yId || !observedId || !tableSelect.value || !xAxisSelect.value || !yAxisSelect.value) {
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -200,6 +193,12 @@ export function createTuneTableView(): TuneTableViewController {
 
     const startMs = Math.min(scope.startMs, scope.endMs);
     const endMs = Math.max(scope.startMs, scope.endMs);
+    const loaded = await context.loadTraces([xId, yId, observedId], startMs, endMs);
+    const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
+    const xTrace = byId.get(xId);
+    const yTrace = byId.get(yId);
+    const observedTrace = byId.get(observedId);
+    if (!xTrace || !yTrace || !observedTrace) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map([[xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete }]]);
     const scoped = qualifyNumericSamples({
       referenceChannelId: xTrace.channel.id,
@@ -260,7 +259,7 @@ export function createTuneTableView(): TuneTableViewController {
     fillTraceSelect(yChannelSelect, previousY, 1);
     fillTraceSelect(observedSelect, previousObserved, 2);
     fillScopeSelect(previousScope);
-    render();
+    void render();
   };
 
   const setTuneModel = (model: TuneModel | undefined, sourceName?: string): void => {
@@ -270,18 +269,18 @@ export function createTuneTableView(): TuneTableViewController {
     tuneModel = model;
     tuneSourceName = sourceName;
     fillTuneSelectors(previousTable, previousX, previousY);
-    render();
+    void render();
   };
 
-  tableSelect.addEventListener('change', () => { syncAxisCandidates(); render(); });
-  xAxisSelect.addEventListener('change', render);
-  yAxisSelect.addEventListener('change', render);
-  xChannelSelect.addEventListener('change', render);
-  yChannelSelect.addEventListener('change', render);
-  observedSelect.addEventListener('change', render);
-  scopeSelect.addEventListener('change', render);
-  errorToggle.addEventListener('change', render);
-  refreshButton.addEventListener('click', render);
+  tableSelect.addEventListener('change', () => { syncAxisCandidates(); void render(); });
+  xAxisSelect.addEventListener('change', () => { void render(); });
+  yAxisSelect.addEventListener('change', () => { void render(); });
+  xChannelSelect.addEventListener('change', () => { void render(); });
+  yChannelSelect.addEventListener('change', () => { void render(); });
+  observedSelect.addEventListener('change', () => { void render(); });
+  scopeSelect.addEventListener('change', () => { void render(); });
+  errorToggle.addEventListener('change', () => { void render(); });
+  refreshButton.addEventListener('click', () => { void render(); });
 
-  return { element: root, setContext, setTuneModel, refresh: render };
+  return { element: root, setContext, setTuneModel, refresh: () => { void render(); } };
 }
