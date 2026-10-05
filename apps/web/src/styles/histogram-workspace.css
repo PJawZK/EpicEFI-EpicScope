@@ -1,0 +1,343 @@
+.histogram-page--workspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  flex-direction: column;
+  background: #071119;
+}
+
+.histogram-page--workspace[hidden] {
+  display: none;
+}
+
+.histogram-workspace-bar {
+  flex: 0 0 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-bottom: 1px solid #233746;
+  background: #0a151d;
+}
+
+.histogram-workspace-bar label,
+.heatmap-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.histogram-workspace-bar label > span,
+.heatmap-toolbar label > span {
+  color: #6f8796;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.histogram-workspace-bar select,
+.heatmap-toolbar select,
+.heatmap-options summary,
+.heatmap-options-popover select {
+  min-height: 27px;
+  border: 1px solid #2b4554;
+  border-radius: 3px;
+  background: #0f1d27;
+  color: #dce9ef;
+  font-size: 9px;
+}
+
+.histogram-workspace-bar select,
+.heatmap-toolbar select,
+.heatmap-options-popover select {
+  padding: 0 6px;
+}
+
+.histogram-view-select {
+  min-width: 118px;
+}
+
+.histogram-channel {
+  width: clamp(150px, 20vw, 260px);
+}
+
+.histogram-bin-count {
+  width: 64px;
+}
+
+.histogram-distribution-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.histogram-distribution-controls[hidden] {
+  display: none;
+}
+
+.histogram-workspace-hint {
+  margin-left: auto;
+  color: #637c8b;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.histogram-workspace-body {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.histogram-distribution-stage,
+.heatmap-view,
+.dual-heatmap-view,
+.histogram-page--workspace .scatter-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.histogram-distribution-stage[hidden],
+.heatmap-view[hidden],
+.dual-heatmap-view[hidden],
+.histogram-page--workspace .scatter-view[hidden] {
+  display: none;
+}
+
+.histogram-distribution-stage .histogram-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.histogram-distribution-stage .histogram-empty,
+.heatmap-stage .heatmap-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: #071119;
+}
+
+.histogram-stage-status,
+.heatmap-stage-status {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  bottom: 6px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 22px;
+  padding: 3px 7px;
+  overflow: hidden;
+  border: 1px solid rgba(49, 76, 92, .78);
+  border-radius: 3px;
+  background: rgba(7, 17, 25, .88);
+  color: #7d95a4;
+  font-size: 8px;
+  white-space: nowrap;
+  backdrop-filter: blur(3px);
+}
+
+.histogram-stage-status[hidden],
+.heatmap-stage-status[hidden] {
+  display: none;
+}
+
+.histogram-stage-status strong,
+.heatmap-stage-status strong {
+  color: #dce9ef;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #071119;
+}
+
+.heatmap-toolbar {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  flex: 0 0 34px;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 7px;
+  border-bottom: 1px solid #233746;
+  background: #0a151d;
+  overflow: visible;
+}
+
+.heatmap-inline-field select {
+  width: clamp(112px, 14vw, 205px);
+}
+
+.heatmap-aggregation {
+  width: 92px !important;
+}
+
+.heatmap-pane-label {
+  color: #b9ccd6;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.heatmap-value-channel-field[hidden] {
+  display: none;
+}
+
+.heatmap-options {
+  position: relative;
+  margin-left: auto;
+}
+
+.heatmap-options summary {
+  display: grid;
+  min-width: 60px;
+  padding: 0 8px;
+  place-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.heatmap-options summary::-webkit-details-marker {
+  display: none;
+}
+
+.heatmap-options-popover {
+  position: absolute;
+  z-index: 20;
+  top: 31px;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 260px;
+  padding: 10px;
+  border: 1px solid #355164;
+  border-radius: 4px;
+  background: #0b171f;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .38);
+}
+
+.heatmap-options-popover label {
+  display: grid;
+  gap: 4px;
+}
+
+.heatmap-options-popover p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: #6f8796;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.heatmap-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.heatmap-stage .heatmap-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.dual-heatmap-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  background: #243846;
+}
+
+.dual-heatmap-view > .heatmap-view {
+  min-width: 0;
+  background: #071119;
+}
+
+.dual-heatmap-view .heatmap-toolbar {
+  gap: 5px;
+  padding-inline: 5px;
+}
+
+.dual-heatmap-view .heatmap-inline-field select {
+  width: clamp(92px, 10vw, 145px);
+}
+
+.dual-heatmap-view .heatmap-aggregation {
+  width: 78px !important;
+}
+
+.dual-heatmap-view .heatmap-stage-status {
+  gap: 8px;
+  font-size: 7px;
+}
+
+.histogram-page--workspace .scatter-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+}
+
+.histogram-page--workspace .scatter-controls {
+  min-height: 34px;
+  padding: 3px 7px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  flex-wrap: nowrap;
+}
+
+.histogram-page--workspace .scatter-content {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.histogram-page--workspace .scatter-chart-wrap {
+  min-height: 0;
+  height: 100%;
+}
+
+.histogram-page--workspace .scatter-chart {
+  min-height: 0;
+  height: 100%;
+}
+
+@media (max-width: 1050px) {
+  .histogram-workspace-hint {
+    display: none;
+  }
+
+  .heatmap-inline-field select {
+    width: 120px;
+  }
+
+  .dual-heatmap-view .heatmap-inline-field select {
+    width: 96px;
+  }
+}
