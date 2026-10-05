@@ -1,5 +1,5 @@
 name: Temporary histogram reusable analysis
-# trigger: corrected-render-boundary-v2
+# trigger: listener-wrapper-v3
 
 on:
   push:
