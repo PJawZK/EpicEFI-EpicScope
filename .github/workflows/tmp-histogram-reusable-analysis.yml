@@ -1,0 +1,43 @@
+name: Temporary histogram reusable analysis
+
+on:
+  push:
+    paths:
+      - .github/workflows/tmp-histogram-reusable-analysis.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: histogram/mlv-presets-formulas-filters-v1
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - name: Apply reusable analysis patch
+        run: python scripts/tmp-presets-formulas-filters.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Commit validated patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat: add histogram presets formulas and grouped filters"
+          git push origin HEAD:histogram/mlv-presets-formulas-filters-v1
