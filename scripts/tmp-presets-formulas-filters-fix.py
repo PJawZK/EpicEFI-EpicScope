@@ -4,7 +4,7 @@ import re
 p = Path('scripts/tmp-presets-formulas-filters.py')
 s = p.read_text(encoding='utf-8')
 pattern = re.compile(r"# Render: replace conditions/request loading and qualification with logical/grouped\.[\s\S]*?# Filter description grouped\.", re.M)
-replacement = r'''# Render: replace conditions/request loading and qualification with logical/grouped.
+replacement = r"""# Render: replace conditions/request loading and qualification with logical/grouped.
 s = rep(s,
 "    const conditions = enabledConditions();",
 "    const groups = qualificationGroups();\n    const filterChannelIds = groups.flatMap((group) => group.conditions.map((condition) => condition.channelId));",
@@ -88,7 +88,7 @@ new = '''    const qualificationChannels = new Map<string, { range: HistogramTra
 if old not in s: raise SystemExit('missing qualification block')
 s = s.replace(old, new, 1)
 
-# Filter description grouped.'''
+# Filter description grouped."""
 s, count = pattern.subn(replacement, s, count=1)
 if count != 1:
     raise SystemExit('failed to replace reusable render patch section')
