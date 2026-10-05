@@ -349,6 +349,13 @@
   font-size: 10px;
 }
 
+/* Keep the existing centered edge-tab style, but give the longer Hide/Show controls wording enough room. */
+.edge-toggle--timeline {
+  width: 88px;
+  min-width: 88px;
+  white-space: nowrap;
+}
+
 @media (max-width: 1050px) {
   .logger-layout-menu-button {
     min-width: 62px;
