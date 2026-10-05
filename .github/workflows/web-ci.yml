@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   patch-post-validation-reconcile:
-    if: github.ref == 'refs/heads/fix/post-validation-workspace-reconcile' && github.actor != 'github-actions[bot]'
+    if: ${{ github.ref == 'refs/heads/fix/post-validation-workspace-reconcile' && github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
