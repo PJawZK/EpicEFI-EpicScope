@@ -1,5 +1,6 @@
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TuneModel } from '../../../../core/tune/tune-model';
+import type { IniTableEditorDefinition } from '../../../../core/parsers/ini/ini-table-editor-parser';
 import { buildNumericHistogram, type NumericHistogramResult } from '../../../../core/analysis/histogram';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { createHistogramTableGeneratorView } from './histogram-table-generator-view';
@@ -22,6 +23,7 @@ export interface HistogramPageContext {
   readonly savedRanges?: readonly import('../state/workspace-state').SavedTimelineRangeState[];
   readonly tuneModel?: TuneModel;
   readonly tuneSourceName?: string;
+  readonly tuneTableDefinitions?: readonly IniTableEditorDefinition[];
   readonly openSamplesInLogger?: (request: {
     readonly sampleIndices: readonly number[];
     readonly timeMs: readonly number[];
@@ -71,8 +73,8 @@ export function createHistogramPage(): HistogramPageController {
   page.innerHTML = `
     <div class="histogram-workspace-bar">
       <div class="histogram-distribution-controls" hidden>
-        <label><span>Channel</span><select class="histogram-channel" aria-label="Distribution channel"></select></label>
-        <label><span>Bins</span><select class="histogram-bin-count" aria-label="Distribution bin count"><option value="10">10</option><option value="20" selected>20</option><option value="30">30</option><option value="40">40</option><option value="60">60</option></select></label>
+        <label><span>Channel</span><select class="histogram-channel"></select></label>
+        <label><span>Bins</span><select class="histogram-bin-count"><option>10</option><option selected>20</option><option>30</option><option>40</option><option>60</option></select></label>
       </div>
       <div class="histogram-workspace-hint">MLV-style table generation · all available log channels · selected channels decode on demand</div>
     </div>
