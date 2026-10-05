@@ -35,7 +35,7 @@
 .histogram-workspace-bar label > span,
 .heatmap-toolbar label > span {
   color: #6f8796;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -50,7 +50,7 @@
   border-radius: 3px;
   background: #0f1d27;
   color: #dce9ef;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .histogram-workspace-bar select,
@@ -84,7 +84,7 @@
 .histogram-workspace-hint {
   margin-left: auto;
   color: #637c8b;
-  font-size: 8px;
+  font-size:9px;
   white-space: nowrap;
 }
 
@@ -149,7 +149,7 @@
   border-radius: 3px;
   background: rgba(7, 17, 25, .88);
   color: #7d95a4;
-  font-size: 8px;
+  font-size:9px;
   white-space: nowrap;
   backdrop-filter: blur(3px);
 }
@@ -197,7 +197,7 @@
 
 .heatmap-pane-label {
   color: #b9ccd6;
-  font-size: 9px;
+  font-size:10px;
   text-transform: uppercase;
   letter-spacing: .05em;
 }
@@ -249,7 +249,7 @@
   grid-column: 1 / -1;
   margin: 2px 0 0;
   color: #6f8796;
-  font-size: 8px;
+  font-size:9px;
   line-height: 1.4;
 }
 
@@ -294,7 +294,7 @@
 
 .dual-heatmap-view .heatmap-stage-status {
   gap: 8px;
-  font-size: 7px;
+  font-size:8px;
 }
 
 .histogram-page--workspace .scatter-view {
@@ -341,3 +341,98 @@
     width: 96px;
   }
 }
+
+
+/* Histogram top-row analysis selector and 0.0.45-style Math Channels page. */
+.histogram-header-view {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.histogram-header-view > span {
+  color: #8298a6;
+  font-size:10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.histogram-header-view select {
+  min-width: 148px;
+  height: 34px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #e0eaf0;
+  padding: 0 9px;
+  font-size: 10px;
+  font-weight: 750;
+}
+.histogram-math-channels-view {
+  width: 100%; height: 100%; min-height: 0;
+  display: grid;
+  grid-template-columns: 330px minmax(0,1fr);
+  gap: 7px;
+  padding: 7px;
+  background: #071119;
+}
+.histogram-math-channels-view[hidden] { display:none; }
+.math-channel-manager,.math-channel-editor {
+  min-width:0; min-height:0;
+  border:1px solid #263b4c; border-radius:4px;
+  background:#0b151e; overflow:hidden;
+}
+.math-channel-manager { display:grid; grid-template-rows:44px 44px minmax(0,1fr) 34px; }
+.math-channel-manager > header,.math-channel-editor > header {
+  display:flex; align-items:center; gap:8px; padding:0 10px;
+  border-bottom:1px solid #1b2a36; background:#0e1923;
+}
+.math-channel-manager > header strong,.math-channel-editor > header strong { color:#f1f6f8; font-size:12px; }
+.math-channel-manager > header button { margin-left:auto; min-height:29px; padding:0 9px; border-color:#2078cc; background:#1668be; font-weight:750; }
+.math-channel-search-wrap { padding:7px; }
+.math-channel-search,.math-channel-source-search,.math-channel-form input,.math-channel-form textarea {
+  width:100%; border:1px solid #2a4051; border-radius:3px; background:#0e1a24; color:#dce7ef;
+}
+.math-channel-search,.math-channel-source-search,.math-channel-form input { height:30px; padding:0 8px; }
+.math-channel-list { min-height:0; overflow:auto; }
+.math-channel-row { width:100%; min-height:54px; display:grid; gap:3px; padding:7px 9px; border:0; border-bottom:1px solid #1b2a36; border-radius:0; background:transparent; text-align:left; }
+.math-channel-row:hover { background:#10202c; }
+.math-channel-row--active { background:#11283a; box-shadow:inset 3px 0 0 #2788ff; }
+.math-channel-row strong { color:#d8e4ea; font-size:11px; }
+.math-channel-row small { color:#91a5b1; font:10px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.math-channel-empty { padding:20px 12px; color:#8ca0ad; font-size:10px; line-height:1.5; text-align:center; }
+.math-channel-manager > footer { display:flex; align-items:center; padding:0 9px; border-top:1px solid #1b2a36; color:#8fa2af; font-size:10px; }
+.math-channel-editor { display:grid; grid-template-rows:44px minmax(0,1fr); }
+.math-channel-editor > header > div { min-width:0; }
+.math-channel-editor > header small { display:block; margin-top:2px; color:#91a4b0; font-size:10px; }
+.math-channel-editor-body { min-height:0; overflow:auto; display:grid; grid-template-columns:minmax(330px,.9fr) minmax(320px,1.1fr); gap:14px; padding:12px; }
+.math-channel-form { min-width:0; display:flex; flex-direction:column; gap:10px; }
+.math-channel-field-grid { display:grid; grid-template-columns:1fr 110px; gap:8px; }
+.math-channel-form label > span { display:block; margin-bottom:5px; color:#9cafbd; font-size:10px; font-weight:700; }
+.math-channel-form textarea { min-height:112px; padding:8px; resize:vertical; font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.math-channel-helper-row { display:flex; flex-wrap:wrap; gap:4px; }
+.math-channel-helper-row button,.math-channel-source-chip { min-height:27px; border:1px solid #294154; background:#101e29; color:#c0cdd5; border-radius:3px; font-size:10px; }
+.math-channel-helper-row button:hover,.math-channel-source-chip:hover { background:#173047; color:#fff; }
+.math-channel-help { margin:0; color:#91a5b1; font-size:10px; line-height:1.5; }
+.math-channel-help code { color:#c9d7df; }
+.math-channel-validation { padding:8px; border:1px solid #294154; border-radius:3px; background:#09131c; color:#aebdc7; font:10px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.math-channel-validation--good { color:#62d99b; border-color:#2f7557; }
+.math-channel-validation--warning { color:#edc65c; border-color:#796128; }
+.math-channel-validation--error { color:#ff858e; border-color:#814149; }
+.math-channel-actions { display:grid; grid-template-columns:auto auto 1fr auto; gap:6px; }
+.math-channel-actions button { min-height:29px; padding:0 9px; }
+.math-channel-save { background:#1668be; border-color:#2078cc; }
+.math-channel-delete { color:#ff8990; border-color:#6b3137; }
+.math-channel-preview { min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(240px,1fr); gap:9px; }
+.math-channel-preview-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.math-channel-preview-stats > div { min-width:0; padding:8px; border:1px solid #263b4c; border-radius:3px; background:#0a141d; }
+.math-channel-preview-stats span { display:block; color:#8da0ac; font-size:10px; margin-bottom:4px; }
+.math-channel-preview-stats strong { color:#e5eef3; font-size:15px; font-variant-numeric:tabular-nums; }
+.math-channel-source-browser { min-height:0; display:grid; grid-template-rows:38px minmax(0,1fr); border:1px solid #263b4c; background:#09131c; }
+.math-channel-source-browser > header { display:grid; grid-template-columns:auto minmax(160px,1fr); gap:8px; align-items:center; padding:4px 7px; border-bottom:1px solid #1b2a36; }
+.math-channel-source-browser > header strong { font-size:11px; color:#d8e4ea; }
+.math-channel-source-list { min-height:0; overflow:auto; padding:6px; display:flex; align-content:flex-start; flex-wrap:wrap; gap:5px; }
+.math-channel-source-chip { display:grid; justify-items:start; gap:1px; height:auto; padding:5px 7px; }
+.math-channel-source-chip strong { font-size:10px; }
+.math-channel-source-chip small { color:#8196a3; font-size:9px; }
+@media(max-width:1000px){.histogram-math-channels-view{grid-template-columns:260px minmax(0,1fr)}.math-channel-editor-body{grid-template-columns:1fr}.math-channel-preview{min-height:300px}}

@@ -3,9 +3,8 @@ import type { TuneModel } from '../../../../core/tune/tune-model';
 import { buildNumericHistogram, type NumericHistogramResult } from '../../../../core/analysis/histogram';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { createHistogramTableGeneratorView } from './histogram-table-generator-view';
-import { createHeatmapView } from './heatmap-view';
-import { createDualHeatmapView } from './dual-heatmap-view';
 import { createScatterView } from './scatter-view';
+import { createHistogramMathChannelsView } from './histogram-math-channels-view';
 
 export interface HistogramTraceContext {
   readonly channel: ChannelDefinition;
@@ -32,11 +31,12 @@ export interface HistogramPageContext {
 
 export interface HistogramPageController {
   readonly element: HTMLElement;
+  readonly headerControl: HTMLElement;
   setContext(context: HistogramPageContext): void;
   refresh(): void;
 }
 
-type HistogramView = 'table' | 'distribution' | 'heatmap' | 'dual-heatmap' | 'scatter';
+type HistogramView = 'table' | 'distribution' | 'scatter' | 'math-channels';
 
 function formatNumber(value: number | undefined, precision = 3): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
@@ -50,26 +50,26 @@ export function createHistogramPage(): HistogramPageController {
   let currentTrace: HistogramTraceContext | undefined;
   let activeView: HistogramView = 'table';
   const tableGeneratorView = createHistogramTableGeneratorView();
-  const heatmapView = createHeatmapView();
-  const dualHeatmapView = createDualHeatmapView();
   const scatterView = createScatterView();
+  const mathChannelsView = createHistogramMathChannelsView();
+
+  const headerControl = document.createElement('label');
+  headerControl.className = 'histogram-header-view';
+  headerControl.innerHTML = `
+    <span>Analysis</span>
+    <select class="histogram-view-select" aria-label="Histogram analysis view">
+      <option value="table" selected>Table Generator</option>
+      <option value="distribution">Distribution</option>
+      <option value="scatter">Scatter</option>
+      <option value="math-channels">Math Channels</option>
+    </select>
+  `;
 
   const page = document.createElement('main');
   page.className = 'histogram-page histogram-page--workspace';
   page.hidden = true;
   page.innerHTML = `
     <div class="histogram-workspace-bar">
-      <label class="histogram-workspace-view"><span>View</span><select class="histogram-view-select">
-        <option value="table" selected>Table Generator</option>
-        <option value="distribution">Distribution</option>
-        <option value="heatmap">Heatmap</option>
-        <option value="dual-heatmap">Dual Heatmap</option>
-        <option value="scatter">Scatter</option>
-      </select></label>
-      <div class="histogram-distribution-controls" hidden>
-        <label><span>Channel</span><select class="histogram-channel"></select></label>
-        <label><span>Bins</span><select class="histogram-bin-count"><option value="10">10</option><option value="20" selected>20</option><option value="30">30</option><option value="40">40</option><option value="60">60</option></select></label>
-      </div>
       <div class="histogram-workspace-hint">MLV-style table generation · all available log channels · selected channels decode on demand</div>
     </div>
     <div class="histogram-workspace-body">
@@ -92,7 +92,7 @@ export function createHistogramPage(): HistogramPageController {
   `;
 
   const body = page.querySelector<HTMLElement>('.histogram-workspace-body');
-  const viewSelect = page.querySelector<HTMLSelectElement>('.histogram-view-select');
+  const viewSelect = headerControl.querySelector<HTMLSelectElement>('.histogram-view-select');
   const distributionControls = page.querySelector<HTMLElement>('.histogram-distribution-controls');
   const distributionStage = page.querySelector<HTMLElement>('.histogram-distribution-stage');
   const channelSelect = page.querySelector<HTMLSelectElement>('.histogram-channel');
@@ -103,7 +103,7 @@ export function createHistogramPage(): HistogramPageController {
   if (!body || !viewSelect || !distributionControls || !distributionStage || !channelSelect || !binCountSelect || !empty || !status || !canvas) {
     throw new Error('Histogram workspace structure is incomplete.');
   }
-  body.append(tableGeneratorView.element, heatmapView.element, dualHeatmapView.element, scatterView.element);
+  body.append(tableGeneratorView.element, scatterView.element, mathChannelsView.element);
 
   const summary = (name: string): HTMLElement => {
     const node = distributionStage.querySelector<HTMLElement>(`[data-summary="${name}"]`);
@@ -222,9 +222,8 @@ export function createHistogramPage(): HistogramPageController {
   const refreshActive = (): void => {
     if (activeView === 'table') tableGeneratorView.refresh();
     else if (activeView === 'distribution') void renderDistribution();
-    else if (activeView === 'heatmap') heatmapView.refresh();
-    else if (activeView === 'dual-heatmap') dualHeatmapView.refresh();
-    else scatterView.refresh();
+    else if (activeView === 'scatter') scatterView.refresh();
+    else mathChannelsView.refresh();
   };
 
   const setActiveView = (view: HistogramView): void => {
@@ -234,9 +233,8 @@ export function createHistogramPage(): HistogramPageController {
     distributionControls.hidden = !distribution;
     distributionStage.hidden = !distribution;
     tableGeneratorView.element.hidden = view !== 'table';
-    heatmapView.element.hidden = view !== 'heatmap';
-    dualHeatmapView.element.hidden = view !== 'dual-heatmap';
     scatterView.element.hidden = view !== 'scatter';
+    mathChannelsView.element.hidden = view !== 'math-channels';
     refreshActive();
   };
 
@@ -247,15 +245,14 @@ export function createHistogramPage(): HistogramPageController {
     for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
     if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
     tableGeneratorView.setContext(nextContext);
-    heatmapView.setContext(nextContext);
-    dualHeatmapView.setContext(nextContext);
     scatterView.setContext(nextContext);
+    mathChannelsView.setContext(nextContext);
     refreshActive();
   };
 
   viewSelect.addEventListener('change', () => {
     const value = viewSelect.value;
-    if (value === 'table' || value === 'distribution' || value === 'heatmap' || value === 'dual-heatmap' || value === 'scatter') setActiveView(value);
+    if (value === 'table' || value === 'distribution' || value === 'scatter' || value === 'math-channels') setActiveView(value);
   });
   channelSelect.addEventListener('change', () => { void renderDistribution(); });
   binCountSelect.addEventListener('change', () => { void renderDistribution(); });
@@ -264,10 +261,9 @@ export function createHistogramPage(): HistogramPageController {
   }).observe(canvas);
 
   tableGeneratorView.setContext(context);
-  heatmapView.setContext(context);
-  dualHeatmapView.setContext(context);
   scatterView.setContext(context);
+  mathChannelsView.setContext(context);
   setActiveView('table');
 
-  return { element: page, setContext, refresh: refreshActive };
+  return { element: page, headerControl, setContext, refresh: refreshActive };
 }

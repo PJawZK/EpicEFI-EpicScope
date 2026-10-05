@@ -238,10 +238,17 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
         resetPreviewStats();
         return;
       }
-      const sum = values.reduce((total, value) => total + value, 0);
+      let sum = 0;
+      let minimum = Number.POSITIVE_INFINITY;
+      let maximum = Number.NEGATIVE_INFINITY;
+      for (const value of values) {
+        sum += value;
+        minimum = Math.min(minimum, value);
+        maximum = Math.max(maximum, value);
+      }
       stat('count').textContent = values.length.toLocaleString();
-      stat('min').textContent = formatNumber(Math.min(...values));
-      stat('max').textContent = formatNumber(Math.max(...values));
+      stat('min').textContent = formatNumber(minimum);
+      stat('max').textContent = formatNumber(maximum);
       stat('mean').textContent = formatNumber(sum / values.length);
       validation.className = 'math-channel-validation math-channel-validation--good';
       validation.textContent = `Formula valid · preview uses ${startMs === undefined ? 'available log data' : 'the current A/B range'}.`;

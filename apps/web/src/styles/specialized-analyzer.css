@@ -34,7 +34,7 @@
   display: block;
   margin-top: 3px;
   color: #7c929f;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .specialized-analyzer-badge {
@@ -44,7 +44,7 @@
   border-radius: 3px;
   background: #2a2410;
   color: #e5c75a;
-  font-size: 7px;
+  font-size:8px;
   font-weight: 800;
   letter-spacing: .08em;
 }
@@ -67,7 +67,7 @@
 .specialized-analyzer-options-grid label > span,
 .specialized-analyzer-summary span {
   color: #78909e;
-  font-size: 7px;
+  font-size:8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -81,7 +81,7 @@
   border-radius: 3px;
   background: #101d28;
   color: #dbe8ef;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .specialized-analyzer-controls select {
@@ -95,7 +95,7 @@
   cursor: pointer;
   padding: 7px 10px;
   color: #93a8b5;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 700;
 }
 
@@ -123,7 +123,7 @@
 }
 
 .specialized-analyzer-empty strong { color: #dbe8ef; font-size: 12px; }
-.specialized-analyzer-empty span { max-width: 620px; color: #79909f; font-size: 9px; line-height: 1.5; }
+.specialized-analyzer-empty span { max-width: 620px; color: #79909f; font-size:10px; line-height: 1.5; }
 
 .specialized-analyzer-content { display: grid; gap: 8px; }
 
@@ -158,8 +158,8 @@
   border-bottom: 1px solid #203340;
 }
 
-.specialized-analyzer-events > header strong { color: #a6b8c3; font-size: 9px; }
-.specialized-analyzer-events > header span { color: #6f8795; font-size: 8px; }
+.specialized-analyzer-events > header strong { color: #a6b8c3; font-size:10px; }
+.specialized-analyzer-events > header span { color: #6f8795; font-size:9px; }
 
 .specialized-analyzer-table-wrap {
   max-height: 420px;
@@ -169,7 +169,7 @@
 .specialized-analyzer-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .specialized-analyzer-table th,

@@ -55,7 +55,7 @@
   background: rgba(0, 0, 0, 0.82);
   pointer-events: none;
   color: #d9edf7;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 650;
   line-height: 1.05;
 }
@@ -94,7 +94,7 @@
   content: attr(data-label);
   margin-bottom: 1px;
   color: #6f8795;
-  font-size: 6px;
+  font-size:8px;
   font-weight: 750;
   letter-spacing: .08em;
 }
@@ -403,7 +403,7 @@
 
 .channel-row--virtual .channel-identity span {
   color: #6f8795;
-  font-size: 8px;
+  font-size:9px;
 }
 
 

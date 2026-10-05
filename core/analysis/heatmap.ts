@@ -17,6 +17,8 @@ export interface NumericHeatmapOptions {
   /** Optional explicit cell-center values. When supplied, irregular midpoint boundaries are used. */
   readonly xAxisValues?: readonly number[];
   readonly yAxisValues?: readonly number[];
+  /** Clamp values beyond explicit-axis midpoint bounds into the nearest edge cell. */
+  readonly clampExplicitAxisEdges?: boolean;
   /** Cell statistic. Defaults to sample count/density. */
   readonly aggregation?: NumericAggregationMethod;
   /** Required for every aggregation other than count. */
@@ -268,7 +270,14 @@ function buildAxisBins(
     : buildUniformAxisBins(min, max, requestedCount);
 }
 
-function binIndexForBins(value: number, bins: readonly NumericHeatmapAxisBin[]): number | undefined {
+function binIndexForBins(
+  value: number,
+  bins: readonly NumericHeatmapAxisBin[],
+  clampEdges = false,
+): number | undefined {
+  if (bins.length === 0) return undefined;
+  if (clampEdges && value < bins[0]!.lowerBound) return 0;
+  if (clampEdges && value > bins[bins.length - 1]!.upperBound) return bins.length - 1;
   for (let index = 0; index < bins.length; index += 1) {
     const bin = bins[index]!;
     if (value < bin.lowerBound) continue;
@@ -334,6 +343,8 @@ export function buildNumericHeatmap(
   const requestedYMax = requestedBound(options.yMax, 'yMax');
   const explicitXAxisValues = normalizedAxisValues(options.xAxisValues, 'x');
   const explicitYAxisValues = normalizedAxisValues(options.yAxisValues, 'y');
+  const clampXAxisEdges = options.clampExplicitAxisEdges === true && explicitXAxisValues !== undefined;
+  const clampYAxisEdges = options.clampExplicitAxisEdges === true && explicitYAxisValues !== undefined;
   const scan = scanPairs(xRange, yRange, options.sampleIndices);
 
   if (scan.validPairs.length === 0) {
@@ -375,10 +386,10 @@ export function buildNumericHeatmap(
   let maxCellCount = 0;
 
   for (const pair of scan.validPairs) {
-    const xBelow = pair.x < xRangeMin;
-    const xAbove = pair.x > xRangeMax;
-    const yBelow = pair.y < yRangeMin;
-    const yAbove = pair.y > yRangeMax;
+    const xBelow = !clampXAxisEdges && pair.x < xRangeMin;
+    const xAbove = !clampXAxisEdges && pair.x > xRangeMax;
+    const yBelow = !clampYAxisEdges && pair.y < yRangeMin;
+    const yAbove = !clampYAxisEdges && pair.y > yRangeMax;
     if (xBelow) xBelowRangeSampleCount += 1;
     if (xAbove) xAboveRangeSampleCount += 1;
     if (yBelow) yBelowRangeSampleCount += 1;
@@ -388,8 +399,8 @@ export function buildNumericHeatmap(
       continue;
     }
 
-    const xIndex = binIndexForBins(pair.x, xAxis.bins);
-    const yIndex = binIndexForBins(pair.y, yAxis.bins);
+    const xIndex = binIndexForBins(pair.x, xAxis.bins, clampXAxisEdges);
+    const yIndex = binIndexForBins(pair.y, yAxis.bins, clampYAxisEdges);
     if (xIndex === undefined || yIndex === undefined) { outsideRangeSampleCount += 1; continue; }
     const cellIndex = yIndex * xAxis.bins.length + xIndex;
     counts[cellIndex] = (counts[cellIndex] ?? 0) + 1;

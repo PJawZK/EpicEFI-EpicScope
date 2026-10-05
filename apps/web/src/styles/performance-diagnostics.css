@@ -15,7 +15,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: #aebdc7;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 750;
 }
 
@@ -64,7 +64,7 @@
 .performance-empty,
 .performance-channel-card span {
   color: #7895a6;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .performance-diagnostics-actions {
@@ -97,7 +97,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   padding: 2px 0;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .performance-row span {
@@ -123,7 +123,7 @@
 }
 
 .performance-channel-card strong {
-  font-size: 9px;
+  font-size:10px;
 }
 
 @media (max-width: 760px) {
@@ -131,3 +131,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+.performance-diagnostics-button.utility-action-button { min-width:0; }
+.performance-diagnostics-button.utility-action-button > span:first-child { font-size:12px; }
+.performance-row { font-size:10px; }
+.performance-channel-card strong { font-size:10px; }
+.performance-diagnostics-head small,.performance-empty,.performance-channel-card span { font-size:10px; }
