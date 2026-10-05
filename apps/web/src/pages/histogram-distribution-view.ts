@@ -1,6 +1,4 @@
-import { buildNumericHistogram } from '../../../../core/analysis/histogram';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
-import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
 
@@ -25,14 +23,10 @@ interface DistributionStats {
 interface DistributionSeries {
   readonly label: string;
   readonly trace: HistogramTraceContext;
-  readonly sampleIndices: readonly number[];
   readonly localIndices: readonly number[];
   readonly stats: DistributionStats;
   readonly binValues: readonly number[];
-  readonly totalMetric: number;
   readonly color: string;
-  readonly startMs?: number;
-  readonly endMs?: number;
 }
 
 interface SelectedBin {
@@ -61,14 +55,13 @@ function formatNumber(value: number | undefined, precision = 3): string {
 function percentile(sorted: readonly number[], ratio: number): number | undefined {
   if (sorted.length === 0) return undefined;
   if (sorted.length === 1) return sorted[0];
-  const index = (sorted.length - 1) * Math.max(0, Math.min(1, ratio));
-  const lower = Math.floor(index);
-  const upper = Math.ceil(index);
-  const fraction = index - lower;
+  const position = (sorted.length - 1) * Math.max(0, Math.min(1, ratio));
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
   const a = sorted[lower];
   const b = sorted[upper];
   if (a === undefined || b === undefined) return undefined;
-  return a + (b - a) * fraction;
+  return a + (b - a) * (position - lower);
 }
 
 function statsFor(range: NumericChannelRange, localIndices: readonly number[]): DistributionStats {
@@ -124,7 +117,7 @@ function autoBinCount(range: NumericChannelRange, localIndices: readonly number[
 }
 
 function matchingLocalIndices(trace: HistogramTraceContext, startMs?: number, endMs?: number): number[] {
-  const localIndices: number[] = [];
+  const indices: number[] = [];
   const minTime = startMs === undefined || endMs === undefined ? undefined : Math.min(startMs, endMs);
   const maxTime = startMs === undefined || endMs === undefined ? undefined : Math.max(startMs, endMs);
   for (let index = 0; index < trace.range.values.length; index += 1) {
@@ -132,24 +125,16 @@ function matchingLocalIndices(trace: HistogramTraceContext, startMs?: number, en
     const time = trace.range.timeMs[index];
     if (trace.range.validity[index] !== 1 || value === undefined || time === undefined || !Number.isFinite(value) || !Number.isFinite(time)) continue;
     if (minTime !== undefined && maxTime !== undefined && (time < minTime || time > maxTime)) continue;
-    localIndices.push(index);
+    indices.push(index);
   }
-  return localIndices;
+  return indices;
 }
 
-function metricBins(
-  trace: HistogramTraceContext,
-  localIndices: readonly number[],
-  binCount: number,
-  rangeMin: number,
-  rangeMax: number,
-  metric: DistributionMetric,
-): { values: number[]; total: number } {
+function metricBins(trace: HistogramTraceContext, localIndices: readonly number[], binCount: number, rangeMin: number, rangeMax: number, metric: DistributionMetric): number[] {
   const counts = new Array<number>(binCount).fill(0);
   const durations = new Array<number>(binCount).fill(0);
   const span = Math.max(Number.EPSILON, rangeMax - rangeMin);
   let validCount = 0;
-  let totalDuration = 0;
 
   for (let position = 0; position < localIndices.length; position += 1) {
     const localIndex = localIndices[position]!;
@@ -164,17 +149,13 @@ function metricBins(
     const nextLocalIndex = localIndices[position + 1];
     const nextTime = nextLocalIndex === undefined ? undefined : trace.range.timeMs[nextLocalIndex];
     if (nextTime !== undefined && Number.isFinite(nextTime)) {
-      const duration = Math.max(0, nextTime - time);
-      durations[binIndex] = (durations[binIndex] ?? 0) + duration;
-      totalDuration += duration;
+      durations[binIndex] = (durations[binIndex] ?? 0) + Math.max(0, nextTime - time);
     }
   }
 
-  if (metric === 'count') return { values: counts, total: validCount };
-  if (metric === 'percent') {
-    return { values: counts.map((count) => validCount > 0 ? (count / validCount) * 100 : 0), total: 100 };
-  }
-  return { values: durations.map((duration) => duration / 1000), total: totalDuration / 1000 };
+  if (metric === 'count') return counts;
+  if (metric === 'percent') return counts.map((count) => validCount > 0 ? (count / validCount) * 100 : 0);
+  return durations.map((duration) => duration / 1000);
 }
 
 function savedRangeOption(range: SavedTimelineRangeState, index: number): HTMLOptionElement {
@@ -415,30 +396,15 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     return Number.isInteger(index) ? context.savedRanges?.[index] : undefined;
   };
 
-  const buildSeries = async (
-    trace: HistogramTraceContext,
-    label: string,
-    startMs: number | undefined,
-    endMs: number | undefined,
-    binCount: number,
-    rangeMin: number,
-    rangeMax: number,
-    color: string,
-  ): Promise<DistributionSeries> => {
+  const buildSeries = (trace: HistogramTraceContext, label: string, startMs: number | undefined, endMs: number | undefined, binCount: number, rangeMin: number, rangeMax: number, color: string): DistributionSeries => {
     const localIndices = matchingLocalIndices(trace, startMs, endMs);
-    const sampleIndices = localIndices.map((index) => trace.range.startSampleIndex + index);
-    const metricResult = metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric);
     return {
       label,
       trace,
-      sampleIndices,
       localIndices,
       stats: statsFor(trace.range, localIndices),
-      binValues: metricResult.values,
-      totalMetric: metricResult.total,
+      binValues: metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric),
       color,
-      ...(startMs !== undefined ? { startMs } : {}),
-      ...(endMs !== undefined ? { endMs } : {}),
     };
   };
 
@@ -457,8 +423,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
     const ranges = context.savedRanges ?? [];
     const compareReady = compare && ranges.length >= 2;
-    const currentRangeReady = hasValidCurrentRange();
-    if (!compareReady && scope === 'range' && !currentRangeReady) {
+    if (!compareReady && scope === 'range' && !hasValidCurrentRange()) {
       empty.hidden = false;
       canvas.hidden = true;
       statsPanel.replaceChildren();
@@ -498,10 +463,10 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     }
 
     const allValues: number[] = [];
-    const allLocalIndices: { trace: HistogramTraceContext; indices: number[] }[] = [];
+    const indexSets: { trace: HistogramTraceContext; indices: number[] }[] = [];
     for (const item of available) {
       const indices = matchingLocalIndices(item.trace, item.request.startMs, item.request.endMs);
-      allLocalIndices.push({ trace: item.trace, indices });
+      indexSets.push({ trace: item.trace, indices });
       for (const index of indices) {
         const value = item.trace.range.values[index];
         if (value !== undefined && Number.isFinite(value)) allValues.push(value);
@@ -512,18 +477,16 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       canvas.hidden = true;
       return;
     }
+
     const rangeMin = Math.min(...allValues);
     const rangeMax = Math.max(...allValues);
-    const reference = allLocalIndices[0]!;
+    const reference = indexSets[0]!;
     const resolvedBinCount = binMode === 'manual'
       ? Math.max(1, Math.min(512, Math.floor(Number(binCountInput.value) || 20)))
       : autoBinCount(reference.trace.range, reference.indices);
     binCountInput.value = String(resolvedBinCount);
 
-    const series: DistributionSeries[] = [];
-    for (const item of available) {
-      series.push(await buildSeries(item.trace, item.request.label, item.request.startMs, item.request.endMs, resolvedBinCount, rangeMin, rangeMax, item.request.color));
-    }
+    const series = available.map((item) => buildSeries(item.trace, item.request.label, item.request.startMs, item.request.endMs, resolvedBinCount, rangeMin, rangeMax, item.request.color));
     if (generation !== renderGeneration) return;
 
     lastSeries = series;
@@ -543,12 +506,11 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     }
     const unit = lastSeries[0]?.trace.channel.unit ?? '';
     binLabel.textContent = `${formatNumber(selectedBin.lower)}–${formatNumber(selectedBin.upper)}${unit ? ` ${unit}` : ''}`;
-    const parts = lastSeries.map((series) => {
+    binCountLabel.textContent = lastSeries.map((series) => {
       const value = series.binValues[selectedBin!.index] ?? 0;
       const formatted = metric === 'count' ? Math.round(value).toLocaleString() : metric === 'percent' ? `${formatNumber(value, 2)}%` : `${formatNumber(value, 3)} s`;
       return `${series.label}: ${formatted}`;
-    });
-    binCountLabel.textContent = parts.join(' · ');
+    }).join(' · ');
     openLoggerButton.disabled = !context.openSamplesInLogger;
     binDetail.hidden = false;
   };
@@ -590,11 +552,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
         timeMs.push(time);
       }
     }
-    void context.openSamplesInLogger({
-      sampleIndices,
-      timeMs,
-      label: `${channelLabel(lastSeries[0]!.trace)} ${formatNumber(selectedBin.lower)}–${formatNumber(selectedBin.upper)}`,
-    });
+    void context.openSamplesInLogger({ sampleIndices, timeMs, label: `${channelLabel(lastSeries[0]!.trace)} ${formatNumber(selectedBin.lower)}–${formatNumber(selectedBin.upper)}` });
   });
 
   clearBinButton.addEventListener('click', () => {
@@ -640,9 +598,5 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     void render();
   };
 
-  return {
-    element: root,
-    setContext,
-    refresh: () => { void render(); },
-  };
+  return { element: root, setContext, refresh: () => { void render(); } };
 }
