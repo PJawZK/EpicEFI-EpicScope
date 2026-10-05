@@ -41,15 +41,29 @@ function csvFields(value: string): string[] {
 }
 
 interface MutableTable {
-  tableId?: string;
-  mapId?: string;
-  title?: string;
-  page?: number;
-  xBins?: string;
-  xChannel?: string;
-  yBins?: string;
-  yChannel?: string;
-  zBins?: string;
+  tableId: string | undefined;
+  mapId: string | undefined;
+  title: string | undefined;
+  page: number | undefined;
+  xBins: string | undefined;
+  xChannel: string | undefined;
+  yBins: string | undefined;
+  yChannel: string | undefined;
+  zBins: string | undefined;
+}
+
+function emptyMutableTable(): MutableTable {
+  return {
+    tableId: undefined,
+    mapId: undefined,
+    title: undefined,
+    page: undefined,
+    xBins: undefined,
+    xChannel: undefined,
+    yBins: undefined,
+    yChannel: undefined,
+    zBins: undefined,
+  };
 }
 
 export function parseIniTableEditorDefinitions(source: string): readonly IniTableEditorDefinition[] {
@@ -93,12 +107,11 @@ export function parseIniTableEditorDefinitions(source: string): readonly IniTabl
     if (key === 'table') {
       finish();
       const page = Number(fields[3]);
-      current = {
-        tableId: fields[0] || undefined,
-        mapId: fields[1] || undefined,
-        title: fields[2] || undefined,
-        page: Number.isFinite(page) ? page : undefined,
-      };
+      current = emptyMutableTable();
+      current.tableId = fields[0] || undefined;
+      current.mapId = fields[1] || undefined;
+      current.title = fields[2] || undefined;
+      current.page = Number.isFinite(page) ? page : undefined;
       continue;
     }
     if (!current) continue;
