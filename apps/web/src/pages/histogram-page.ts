@@ -23,6 +23,11 @@ export interface HistogramPageContext {
   readonly savedRanges?: readonly import('../state/workspace-state').SavedTimelineRangeState[];
   readonly tuneModel?: TuneModel;
   readonly tuneSourceName?: string;
+  readonly openSamplesInLogger?: (request: {
+    readonly sampleIndices: readonly number[];
+    readonly timeMs: readonly number[];
+    readonly label: string;
+  }) => void | Promise<void>;
 }
 
 export interface HistogramPageController {

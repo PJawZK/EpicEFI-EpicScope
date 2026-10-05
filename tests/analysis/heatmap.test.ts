@@ -34,6 +34,20 @@ describe('buildNumericHeatmap', () => {
     expect(result.maxCellCount).toBe(2);
   });
 
+  it('retains exact source sample indices for every populated cell', () => {
+    const result = buildNumericHeatmap(
+      range(100, [0, 0, 10, 10]),
+      range(100, [0, 0, 10, 10]),
+      { xBinCount: 2, yBinCount: 2 },
+    );
+
+    expect(result.cellSampleIndices).toHaveLength(4);
+    expect([...result.cellSampleIndices[0]!]).toEqual([100, 101]);
+    expect([...result.cellSampleIndices[1]!]).toEqual([]);
+    expect([...result.cellSampleIndices[2]!]).toEqual([]);
+    expect([...result.cellSampleIndices[3]!]).toEqual([102, 103]);
+  });
+
   it('aligns qualified sample indices across ranges with different local offsets', () => {
     const result = buildNumericHeatmap(
       range(100, [1, 2, 3, 4]),
