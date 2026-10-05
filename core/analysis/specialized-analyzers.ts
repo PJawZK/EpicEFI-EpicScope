@@ -34,9 +34,6 @@ function selectedIndices(reference: NumericChannelRange, scope: SpecializedAnaly
   return Array.from({ length: reference.values.length }, (_, i) => reference.startSampleIndex + i);
 }
 
-function aggregate(range: NumericChannelRange | undefined, indices: readonly number[]): NumericAggregationResult | undefined {
-  return range ? aggregateNumericSamples(range, { sampleIndices: indices }) : undefined;
-}
 
 export interface TrackingSummary {
   readonly sampleCount: number;
