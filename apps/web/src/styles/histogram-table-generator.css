@@ -1,0 +1,380 @@
+.histogram-table-generator-view {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  background: #071119;
+}
+
+.histogram-table-generator-view[hidden] {
+  display: none;
+}
+
+.histogram-table-toolbar {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  flex: 0 0 36px;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  overflow: visible;
+  border-bottom: 1px solid #233746;
+  background: #0a151d;
+}
+
+.histogram-table-toolbar label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.histogram-table-toolbar label > span,
+.histogram-table-options-popover label > span {
+  color: #6f8796;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.histogram-table-toolbar select,
+.histogram-table-toolbar input[type="number"],
+.histogram-table-toolbar button,
+.histogram-table-filters summary,
+.histogram-table-options summary,
+.histogram-table-filter-popover select,
+.histogram-table-filter-popover input[type="number"],
+.histogram-table-filter-popover button,
+.histogram-table-options-popover input[type="number"] {
+  min-height: 27px;
+  border: 1px solid #2b4554;
+  border-radius: 3px;
+  background: #0f1d27;
+  color: #dce9ef;
+  font: 9px system-ui, sans-serif;
+}
+
+.histogram-table-toolbar select,
+.histogram-table-toolbar input[type="number"],
+.histogram-table-filter-popover select,
+.histogram-table-filter-popover input[type="number"],
+.histogram-table-options-popover input[type="number"] {
+  padding: 0 6px;
+}
+
+.histogram-table-scope {
+  width: clamp(92px, 10vw, 150px);
+}
+
+.histogram-table-x,
+.histogram-table-y,
+.histogram-table-z,
+.histogram-table-delta {
+  width: clamp(105px, 11vw, 172px);
+}
+
+.histogram-table-aggregation {
+  width: 86px;
+}
+
+.histogram-table-z-field[hidden],
+.histogram-table-delta-field[hidden] {
+  display: none;
+}
+
+.histogram-table-filters,
+.histogram-table-options {
+  position: relative;
+}
+
+.histogram-table-filters summary,
+.histogram-table-options summary {
+  display: flex;
+  min-width: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 7px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.histogram-table-filters summary::-webkit-details-marker,
+.histogram-table-options summary::-webkit-details-marker {
+  display: none;
+}
+
+.histogram-filter-count {
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  place-items: center;
+  border-radius: 8px;
+  background: #1b2c38;
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.histogram-filter-count[data-active="true"] {
+  background: #24465a;
+  color: #dce9ef;
+}
+
+.histogram-table-filter-popover,
+.histogram-table-options-popover {
+  position: absolute;
+  z-index: 30;
+  top: 31px;
+  right: 0;
+  border: 1px solid #355164;
+  border-radius: 4px;
+  background: #0b171f;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+}
+
+.histogram-table-filter-popover {
+  width: min(660px, 78vw);
+  padding: 9px;
+}
+
+.histogram-filter-list {
+  display: grid;
+  gap: 5px;
+}
+
+.histogram-filter-row {
+  display: grid;
+  grid-template-columns: 22px minmax(150px, 1fr) 58px minmax(85px, 110px) 28px;
+  align-items: center;
+  gap: 5px;
+}
+
+.histogram-filter-enabled {
+  width: 14px;
+  height: 14px;
+  margin: auto;
+}
+
+.histogram-filter-channel,
+.histogram-filter-operator,
+.histogram-filter-value {
+  width: 100%;
+  min-width: 0;
+}
+
+.histogram-filter-remove {
+  width: 28px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.histogram-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #233746;
+}
+
+.histogram-filter-actions span {
+  color: #6f8796;
+  font-size: 8px;
+}
+
+.histogram-add-filter {
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.histogram-add-filter:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.histogram-table-options-popover {
+  display: grid;
+  width: 360px;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px;
+}
+
+.histogram-table-options-popover label {
+  display: grid;
+  gap: 4px;
+}
+
+.histogram-table-options-popover input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.histogram-table-options-popover .histogram-table-toggle {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 7px;
+}
+
+.histogram-table-options-popover .histogram-table-toggle > span {
+  color: #b7c8d1;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.histogram-table-options-popover p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #6f8796;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.histogram-table-export {
+  min-width: 72px;
+  margin-left: auto;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.histogram-table-export:disabled {
+  cursor: default;
+  opacity: .42;
+}
+
+.histogram-table-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: #071119;
+}
+
+.histogram-table-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.histogram-table-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  padding: 24px;
+  background: #071119;
+  color: #78909e;
+  text-align: center;
+}
+
+.histogram-table-empty[hidden] {
+  display: none;
+}
+
+.histogram-table-empty strong {
+  color: #dce9ef;
+  font-size: 12px;
+}
+
+.histogram-table-empty span {
+  font-size: 9px;
+}
+
+.histogram-table-status {
+  position: absolute;
+  z-index: 5;
+  right: 8px;
+  bottom: 6px;
+  left: 8px;
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 7px;
+  overflow: hidden;
+  border: 1px solid rgba(49, 76, 92, .78);
+  border-radius: 3px;
+  background: rgba(7, 17, 25, .88);
+  color: #7d95a4;
+  font-size: 8px;
+  white-space: nowrap;
+  backdrop-filter: blur(3px);
+}
+
+.histogram-table-status[hidden] {
+  display: none;
+}
+
+.histogram-table-status strong {
+  color: #dce9ef;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.histogram-table-tooltip {
+  position: absolute;
+  z-index: 10;
+  display: grid;
+  gap: 3px;
+  width: 220px;
+  padding: 7px 8px;
+  pointer-events: none;
+  border: 1px solid #355164;
+  border-radius: 3px;
+  background: rgba(9, 22, 30, .96);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .38);
+  color: #9bb0bc;
+  font-size: 8px;
+}
+
+.histogram-table-tooltip[hidden] {
+  display: none;
+}
+
+.histogram-table-tooltip strong {
+  color: #edf6fa;
+  font-size: 9px;
+}
+
+.histogram-table-tooltip span {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1180px) {
+  .histogram-table-toolbar {
+    gap: 4px;
+  }
+
+  .histogram-table-x,
+  .histogram-table-y,
+  .histogram-table-z,
+  .histogram-table-delta {
+    width: 112px;
+  }
+
+  .histogram-table-scope {
+    width: 102px;
+  }
+}
+
+@media (max-width: 980px) {
+  .histogram-table-delta-field {
+    display: none;
+  }
+
+  .histogram-table-toolbar label > span {
+    display: none;
+  }
+}
