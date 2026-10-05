@@ -12,8 +12,8 @@ const ANALYZER_VIEWS = [
 
 function renameWeightedMean(root: HTMLElement): void {
   const rewrite = (node: Node): void => {
-    if (node.nodeType === Node.TEXT_NODE && node.textContent?.includes('MLV weighted mean')) {
-      node.textContent = node.textContent.replaceAll('MLV weighted mean', 'Weighted Mean');
+    if (node.nodeType === Node.TEXT_NODE && /MLV weighted mean/i.test(node.textContent ?? '')) {
+      node.textContent = (node.textContent ?? '').replace(/MLV weighted mean/gi, 'Weighted Mean');
       return;
     }
     for (const child of node.childNodes) rewrite(child);
@@ -34,7 +34,8 @@ function createAnalyzerHeaderSelector(root: HTMLElement): void {
   const headerLeft = root.querySelector<HTMLElement>('.header-left');
   const histogramSlot = root.querySelector<HTMLElement>('.histogram-selector-slot');
   const analyzerSwitch = root.querySelector<HTMLElement>('.analyzer-view-switch');
-  if (!headerLeft || !analyzerSwitch) return;
+  const analyzerPage = root.querySelector<HTMLElement>('.analyzer-page');
+  if (!headerLeft || !analyzerSwitch || !analyzerPage) return;
 
   analyzerSwitch.style.display = 'none';
 
@@ -69,16 +70,11 @@ function createAnalyzerHeaderSelector(root: HTMLElement): void {
     });
   }
 
-  const setMode = (mode: string | undefined): void => {
-    selector.style.display = mode === 'analyzer' ? 'inline-flex' : 'none';
+  const syncVisibility = (): void => {
+    selector.style.display = analyzerPage.hidden ? 'none' : 'inline-flex';
   };
-
-  const modeChoices = [...root.querySelectorAll<HTMLButtonElement>('[data-epicscope-mode]')];
-  const activeMode = modeChoices.find((choice) => choice.classList.contains('global-module-choice--active'))?.dataset.epicscopeMode;
-  setMode(activeMode);
-  for (const choice of modeChoices) {
-    choice.addEventListener('click', () => setMode(choice.dataset.epicscopeMode));
-  }
+  syncVisibility();
+  new MutationObserver(syncVisibility).observe(analyzerPage, { attributes: true, attributeFilter: ['hidden'] });
 }
 
 function streamlineGlobalNavigation(root: HTMLElement): void {
