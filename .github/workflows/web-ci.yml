@@ -8,11 +8,10 @@ on:
     branches:
       - main
       - phase1/**
-      - fix/graph-preset-trace-invariant-v2
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -20,62 +19,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: fix/graph-preset-trace-invariant-v2
-      - name: Apply graph preset invariant
-        if: ${{ github.ref == 'refs/heads/fix/graph-preset-trace-invariant-v2' && github.actor != 'github-actions[bot]' }}
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          gp = Path('apps/web/src/components/graph-viewport.ts')
-          g = gp.read_text()
-          reps = [
-            ("  toggleChannel(channelId: string): Promise<boolean>;\n  activatePreloadedChannels(", "  toggleChannel(channelId: string): Promise<boolean>;\n  hasActiveChannel(channelId: string): boolean;\n  hasPendingChannel(channelId: string): boolean;\n  activatePreloadedChannels("),
-            ("    if (cacheReady) {\n      overlay.hidden = false;\n      overlayTitle.textContent = `Loading ${channel.sourceName}…`;\n      overlayDetail.textContent = 'Using decoded channel cache.';\n      void activateCachedChannel(channelId, pending).then(resolveSelection);\n      return result;\n    }", "    if (cacheReady) {\n      loadingTraceIds.add(channelId);\n      overlay.hidden = false;\n      overlayTitle.textContent = `Loading ${channel.sourceName}…`;\n      overlayDetail.textContent = 'Using decoded channel cache.';\n      void activateCachedChannel(channelId, pending)\n        .then(resolveSelection)\n        .finally(() => { loadingTraceIds.delete(channelId); });\n      return result;\n    }"),
-            ("    setLog,\n    toggleChannel,\n    activatePreloadedChannels,", "    setLog,\n    toggleChannel,\n    hasActiveChannel: (channelId) => activeTraces.has(channelId),\n    hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),\n    activatePreloadedChannels,"),
-          ]
-          for old, new in reps:
-            if old not in g: raise SystemExit('graph anchor missing: ' + old[:80])
-            g = g.replace(old, new, 1)
-          gp.write_text(g)
 
-          lp = Path('apps/web/src/pages/logger-page.ts')
-          s = lp.read_text()
-          old = "  const reconcileAssignedVisiblePaneChannels = (): void => {\n    const workspace = activeWorkspace();\n    if (!workspace || !channelDataSource) return;\n    const visibleCount = paneCountForLayout(workspace.layout);\n    for (const runtime of paneRuntimes.slice(0, visibleCount)) {\n      reconcileAssignedPaneChannels(runtime);\n    }\n  };\n\n  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {\n    const workspace = activeWorkspace();\n    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);\n    if (!pane || !channelDataSource) return;\n    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(\n      (channelId) => channelDefinitions.has(channelId)\n        && !unavailableChannelIds.has(channelId)\n        && !runtime.activeChannelIds.has(channelId),\n    );\n    if (missingIds.length === 0) return;\n    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n    runtime.graph.loadPendingChannels();\n    void Promise.all(activations).then((results) => {\n      missingIds.forEach((channelId, index) => {\n        if (results[index]) runtime.activeChannelIds.add(channelId);\n      });\n      syncActivePaneContext();\n    });\n  };"
-          new = "  const reconcileAssignedVisiblePaneChannels = (): void => {\n    const workspace = activeWorkspace();\n    if (!workspace || !channelDataSource) return;\n    const visibleCount = paneCountForLayout(workspace.layout);\n    for (const runtime of paneRuntimes.slice(0, visibleCount)) {\n      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);\n    }\n  };\n\n  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {\n    const workspace = activeWorkspace();\n    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);\n    if (!pane || !channelDataSource) return;\n\n    const assignedIds = renderablePersistentChannelIds(pane.channelIds).filter(\n      (channelId) => channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId),\n    );\n    const missingIds: string[] = [];\n    for (const channelId of assignedIds) {\n      if (runtime.graph.hasActiveChannel(channelId)) {\n        runtime.activeChannelIds.add(channelId);\n        continue;\n      }\n      runtime.activeChannelIds.delete(channelId);\n      if (!runtime.graph.hasPendingChannel(channelId)) missingIds.push(channelId);\n    }\n\n    if (missingIds.length === 0) {\n      syncActivePaneContext();\n      return;\n    }\n    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n    runtime.graph.loadPendingChannels();\n    void Promise.all(activations).then((results) => {\n      missingIds.forEach((channelId, index) => {\n        if (results[index] || runtime.graph.hasActiveChannel(channelId)) {\n          runtime.activeChannelIds.add(channelId);\n        }\n      });\n      syncActivePaneContext();\n    });\n  };"
-          if old not in s: raise SystemExit('logger reconciliation anchor missing')
-          s = s.replace(old, new, 1)
-          reps = [
-            ("    if (!target || (target.id === activeWorkspaceId && !force)) {\n      renderGraphLayout();\n      syncActivePaneContext();\n      return;\n    }", "    if (!target || (target.id === activeWorkspaceId && !force)) {\n      renderGraphLayout();\n      syncActivePaneContext();\n      reconcileAssignedVisiblePaneChannels();\n      return;\n    }"),
-            ("    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });\n    const finalSyncMs = now() - finalSyncStarted;", "    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });\n    reconcileAssignedVisiblePaneChannels();\n    const finalSyncMs = now() - finalSyncStarted;"),
-            ("      renderGraphLayout();\n      emitWorkspaceMutation();\n    });\n\n    runtime.maximizeButton.addEventListener('click', (event) => {", "      renderGraphLayout();\n      reconcileAssignedVisiblePaneChannels();\n      emitWorkspaceMutation();\n    });\n\n    runtime.maximizeButton.addEventListener('click', (event) => {"),
-            ("      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;\n      renderGraphLayout();\n      emitWorkspaceMutation();\n    });", "      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;\n      renderGraphLayout();\n      reconcileAssignedVisiblePaneChannels();\n      emitWorkspaceMutation();\n    });"),
-          ]
-          for old, new in reps:
-            if old not in s: raise SystemExit('logger transition anchor missing: ' + old[:80])
-            s = s.replace(old, new, 1)
-          lp.write_text(s)
-          PY
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: '22.12.0'
           cache: npm
+
       - name: Install dependencies
         run: npm ci
+
       - name: Type-check
         run: npm run typecheck
+
       - name: Test
         run: npm test
+
       - name: Build
         run: npm run build
-      - name: Commit validated preset invariant
-        if: ${{ github.ref == 'refs/heads/fix/graph-preset-trace-invariant-v2' && github.actor != 'github-actions[bot]' }}
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/web/src/components/graph-viewport.ts apps/web/src/pages/logger-page.ts
-          git commit -m 'Enforce visible assigned traces across graph presets'
-          git push origin HEAD:fix/graph-preset-trace-invariant-v2
