@@ -1,11 +1,14 @@
 import { compareNumericCohorts, type NumericCompareResult } from '../../../../core/analysis/numeric-compare';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
+import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
+import { createTuneTableView } from './tune-table-view';
 
 export interface AnalyzerPageController {
   readonly element: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
+  setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
 }
 
@@ -33,6 +36,8 @@ function formatDuration(range: SavedTimelineRangeState): string {
 export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
+  let currentView: 'compare' | 'tune-table' = 'compare';
+  const tuneTableView = createTuneTableView();
 
   const root = document.createElement('main');
   root.className = 'analyzer-page';
@@ -44,11 +49,17 @@ export function createAnalyzerPage(): AnalyzerPageController {
         <h1>Saved range comparison</h1>
         <p>Compare one active decoded channel across two saved Logger ranges.</p>
       </div>
-      <div class="analyzer-controls">
+      <div class="analyzer-head-actions">
+        <div class="analyzer-view-switch" role="group" aria-label="Analyzer view">
+          <button type="button" class="analyzer-view-choice analyzer-view-choice--active" data-analyzer-view="compare">Range Compare</button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="tune-table">Tune Table</button>
+        </div>
+        <div class="analyzer-controls">
         <label><span>Channel</span><select class="analyzer-channel"></select></label>
         <label><span>Left range</span><select class="analyzer-left-range"></select></label>
         <label><span>Right range</span><select class="analyzer-right-range"></select></label>
         <button type="button" class="analyzer-refresh">Refresh</button>
+        </div>
       </div>
     </section>
     <section class="analyzer-empty">
@@ -88,6 +99,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
   `;
+  root.append(tuneTableView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
@@ -96,7 +108,11 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const empty = root.querySelector<HTMLElement>('.analyzer-empty');
   const content = root.querySelector<HTMLElement>('.analyzer-content');
   const tableBody = root.querySelector<HTMLTableSectionElement>('.analyzer-table tbody');
-  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody) {
+  const compareControls = root.querySelector<HTMLElement>('.analyzer-controls');
+  const heading = root.querySelector<HTMLElement>('.analyzer-head h1');
+  const description = root.querySelector<HTMLElement>('.analyzer-head p');
+  const viewChoices = [...root.querySelectorAll<HTMLButtonElement>('[data-analyzer-view]')];
+  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description) {
     throw new Error('Analyzer page structure is incomplete.');
   }
 
@@ -115,6 +131,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   };
 
   const render = (): void => {
+    if (currentView !== 'compare') return;
     const trace = selectedTrace();
     const leftRange = selectedRange(leftSelect);
     const rightRange = selectedRange(rightSelect);
@@ -199,11 +216,34 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (context.savedRanges[chosen]) select.value = String(chosen);
   };
 
+  const setView = (view: 'compare' | 'tune-table'): void => {
+    currentView = view;
+    const compareActive = view === 'compare';
+    compareControls.hidden = !compareActive;
+    tuneTableView.element.hidden = compareActive;
+    for (const choice of viewChoices) {
+      const selected = choice.dataset.analyzerView === view;
+      choice.classList.toggle('analyzer-view-choice--active', selected);
+      choice.setAttribute('aria-pressed', String(selected));
+    }
+    heading.textContent = compareActive ? 'Saved range comparison' : 'Tune table correlation';
+    description.textContent = compareActive
+      ? 'Compare one active decoded channel across two saved Logger ranges.'
+      : 'Map decoded operating points and observed values into an explicitly selected MSQ table.';
+    if (compareActive) render();
+    else {
+      empty.hidden = true;
+      content.hidden = true;
+      tuneTableView.refresh();
+    }
+  };
+
   const setContext = (nextContext: LoggerAnalysisContext): void => {
     const previousChannel = channelSelect.value;
     const previousLeft = Number(leftSelect.value);
     const previousRight = Number(rightSelect.value);
     context = nextContext;
+    tuneTableView.setContext(nextContext);
     fillChannelSelect(previousChannel);
     fillRangeSelect(leftSelect, previousLeft, 0);
     fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
@@ -214,6 +254,17 @@ export function createAnalyzerPage(): AnalyzerPageController {
   leftSelect.addEventListener('change', render);
   rightSelect.addEventListener('change', render);
   refreshButton.addEventListener('click', render);
+  for (const choice of viewChoices) {
+    choice.addEventListener('click', () => {
+      const view = choice.dataset.analyzerView;
+      if (view === 'compare' || view === 'tune-table') setView(view);
+    });
+  }
 
-  return { element: root, setContext, refresh: render };
+  return {
+    element: root,
+    setContext,
+    setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
+    refresh: () => currentView === 'compare' ? render() : tuneTableView.refresh(),
+  };
 }
