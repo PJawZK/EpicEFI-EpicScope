@@ -1,0 +1,362 @@
+/* Cross-page UI hierarchy refinements. Keep major mode navigation global,
+   secondary function selection in the header, and contextual controls local. */
+
+.ui-refinement-source-control {
+  display: none !important;
+}
+
+/* Logger layout menu: compact EpicHub-style workspace-layout popover. */
+.logger-layout-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.logger-layout-menu-button {
+  min-width: 70px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 9px;
+  border-color: #2d4859;
+  background: #0d1b25;
+  color: #dce8ef;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.logger-layout-menu-button:hover,
+.logger-layout-menu-button[aria-expanded="true"] {
+  border-color: #3d6781;
+  background: #122735;
+}
+
+.logger-layout-chevron {
+  width: 7px;
+  height: 7px;
+  margin-bottom: 3px;
+  border-right: 1px solid #8fb3c8;
+  border-bottom: 1px solid #8fb3c8;
+  transform: rotate(45deg);
+}
+
+.logger-layout-menu {
+  position: absolute;
+  z-index: 310;
+  top: 35px;
+  right: 0;
+  width: 260px;
+  padding: 7px;
+  border: 1px solid #385064;
+  border-radius: 5px;
+  background: #0d1822;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .52);
+}
+
+.logger-layout-section {
+  display: grid;
+  gap: 2px;
+  padding: 3px 0 7px;
+}
+
+.logger-layout-section + .logger-layout-section {
+  border-top: 1px solid #253946;
+  padding-top: 8px;
+}
+
+.logger-layout-section header {
+  padding: 0 7px 5px;
+  color: #738a98;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.logger-layout-choice,
+.logger-arrange-choice {
+  width: 100%;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #b9c9d2;
+  font-size: 10px;
+  text-align: left;
+}
+
+.logger-layout-choice:hover:not(:disabled),
+.logger-arrange-choice:hover:not(:disabled) {
+  background: #112431;
+  color: #eef7fb;
+}
+
+.logger-layout-choice--active {
+  color: #f2f8fb;
+}
+
+.layout-radio {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border: 1px solid #587184;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 3px #0d1822;
+}
+
+.logger-layout-choice--active .layout-radio {
+  border-color: #61aee2;
+  background: #2d98dd;
+}
+
+.logger-arrange-choice {
+  padding-left: 29px;
+}
+
+.logger-arrange-choice--active {
+  color: #79c6f2;
+}
+
+.logger-arrange-choice:disabled {
+  opacity: .35;
+}
+
+.logger-layout-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid #253946;
+}
+
+.logger-layout-actions button {
+  min-height: 29px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-color: #304d60;
+  background: #0d1b25;
+  color: #c6d5dd;
+  font-size: 10px;
+}
+
+.logger-layout-actions button:hover:not(:disabled) {
+  background: #142936;
+  color: #fff;
+}
+
+.logger-layout-actions button > span:first-child {
+  color: #7fc1e9;
+  font-size: 12px;
+}
+
+/* Undo + redo share one compact rectangular footprint with a diagonal split. */
+.history-split-control {
+  position: relative;
+  width: 48px;
+  height: 30px;
+  flex: 0 0 48px;
+  overflow: hidden;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+}
+
+.history-split-control::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: -5px;
+  left: 24px;
+  width: 1px;
+  height: 40px;
+  pointer-events: none;
+  background: #365365;
+  transform: rotate(27deg);
+  transform-origin: center;
+}
+
+.history-split-control .workspace-undo,
+.history-split-control .workspace-redo {
+  position: absolute;
+  top: 0;
+  width: 31px;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #b8c8d1;
+  font-size: 14px;
+}
+
+.history-split-control .workspace-undo {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 7px;
+  clip-path: polygon(0 0, 100% 0, 58% 100%, 0 100%);
+}
+
+.history-split-control .workspace-redo {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 7px;
+  clip-path: polygon(42% 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.history-split-control .workspace-undo:hover:not(:disabled),
+.history-split-control .workspace-redo:hover:not(:disabled) {
+  background: #173044;
+  color: #eff8fc;
+}
+
+/* Settings are grouped by scope instead of presenting one undifferentiated list. */
+.settings-popover {
+  width: min(360px, calc(100vw - 18px));
+  max-height: min(680px, calc(100vh - 62px));
+  overflow: auto;
+}
+
+.settings-section {
+  margin-top: 8px;
+  border: 1px solid #233846;
+  border-radius: 4px;
+  background: #09141d;
+  overflow: hidden;
+}
+
+.settings-section > header {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #20323f;
+  background: #0e1a24;
+}
+
+.settings-section > header strong,
+.settings-section > header small {
+  display: block;
+}
+
+.settings-section > header strong {
+  color: #dce7ee;
+  font-size: 10px;
+}
+
+.settings-section > header small {
+  margin-top: 1px;
+  color: #6f8492;
+  font-size: 8px;
+}
+
+.settings-section-body,
+.settings-mode-body {
+  padding: 0 8px;
+}
+
+.settings-mode-body--analyzer,
+.settings-mode-body--histogram {
+  padding: 9px;
+}
+
+.settings-mode-body--analyzer p,
+.settings-mode-body--histogram p {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.settings-mode-body--analyzer p strong,
+.settings-mode-body--histogram p strong {
+  color: #dce7ee;
+  font-size: 10px;
+}
+
+.settings-mode-body--analyzer p span,
+.settings-mode-body--histogram p span {
+  color: #76bce7;
+  font-size: 9px;
+  text-align: right;
+}
+
+.settings-mode-body--analyzer > small,
+.settings-mode-body--histogram > small {
+  display: block;
+  color: #8095a3;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.settings-section .settings-field,
+.settings-section .settings-toggle {
+  border-bottom-color: #1f303c;
+}
+
+.settings-section .settings-shortcuts,
+.settings-section .settings-ini-source,
+.settings-section .settings-persistence {
+  border-top-color: #1f303c;
+}
+
+/* Analyzer should read as another workspace, not a separate oversized landing page. */
+.analyzer-head {
+  align-items: center;
+  min-height: 48px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  gap: 12px;
+}
+
+.analyzer-eyebrow {
+  display: none;
+}
+
+.analyzer-head h1 {
+  font-size: 12px;
+}
+
+.analyzer-head p {
+  margin-top: 2px;
+  font-size: 9px;
+}
+
+.analyzer-head-actions {
+  gap: 4px;
+}
+
+/* Header secondary selectors share the same footprint between modes. */
+.analyzer-header-view select,
+.histogram-header-view select,
+.graph-selector-button {
+  height: 30px;
+}
+
+.analyzer-header-view select,
+.histogram-header-view select {
+  min-width: 154px;
+  border-color: #2f4b59;
+  background: #0d1b25;
+  font-size: 10px;
+}
+
+@media (max-width: 1050px) {
+  .logger-layout-menu-button {
+    min-width: 62px;
+    padding-inline: 7px;
+  }
+
+  .analyzer-header-view select,
+  .histogram-header-view select {
+    min-width: 132px;
+  }
+}
