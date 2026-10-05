@@ -2,7 +2,7 @@ import { compareNumericCohorts, type NumericCompareResult } from '../../../../co
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
-import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
+import type { LoggerAnalysisContext } from './logger-page';
 import { createTuneTableView } from './tune-table-view';
 import { createBoostAnalyzerView } from './boost-analyzer-view';
 import {
@@ -15,10 +15,6 @@ export interface AnalyzerPageController {
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
-}
-
-function channelLabel(trace: LoggerAnalysisTraceContext): string {
-  return trace.channel.displayName || trace.channel.sourceName;
 }
 
 function formatNumber(value: number | undefined, precision = 3): string {
@@ -39,7 +35,7 @@ function formatDuration(range: SavedTimelineRangeState): string {
 }
 
 export function createAnalyzerPage(): AnalyzerPageController {
-  let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+  let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
   type AnalyzerView = 'compare' | 'tune-table' | 'boost' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
@@ -55,7 +51,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       <div>
         <span class="analyzer-eyebrow">Analyzer</span>
         <h1>Saved range comparison</h1>
-        <p>Compare one active decoded channel across two saved Logger ranges.</p>
+        <p>Compare one available log channel across two saved Logger ranges.</p>
       </div>
       <div class="analyzer-head-actions">
         <div class="analyzer-view-switch" role="group" aria-label="Analyzer view">
@@ -78,8 +74,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
     <section class="analyzer-empty">
-      <strong>Analyzer needs one active channel and two saved ranges.</strong>
-      <span>Return to Logger, keep the channel active in the current pane, and save at least two A/B ranges.</span>
+      <strong>Analyzer needs one available channel and two saved ranges.</strong>
+      <span>Save at least two A/B ranges in Logger, then choose any channel present in the loaded log.</span>
     </section>
     <section class="analyzer-content" hidden>
       <div class="analyzer-side analyzer-side--left">
@@ -137,20 +133,17 @@ export function createAnalyzerPage(): AnalyzerPageController {
     return element;
   };
 
-  const selectedTrace = (): LoggerAnalysisTraceContext | undefined =>
-    context.traces.find((trace) => trace.channel.id === channelSelect.value) ?? context.traces[0];
-
   const selectedRange = (select: HTMLSelectElement): SavedTimelineRangeState | undefined => {
     const index = Number(select.value);
     return Number.isInteger(index) ? context.savedRanges[index] : undefined;
   };
 
-  const render = (): void => {
+  const render = async (): Promise<void> => {
     if (currentView !== 'compare') return;
-    const trace = selectedTrace();
+    const channelId = channelSelect.value || context.channels[0]?.id;
     const leftRange = selectedRange(leftSelect);
     const rightRange = selectedRange(rightSelect);
-    if (!trace || !leftRange || !rightRange || context.savedRanges.length < 2) {
+    if (!channelId || !leftRange || !rightRange || context.savedRanges.length < 2) {
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -159,6 +152,10 @@ export function createAnalyzerPage(): AnalyzerPageController {
     }
 
     refreshButton.disabled = false;
+    const loadStartMs = Math.min(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);
+    const loadEndMs = Math.max(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);
+    const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);
+    if (!trace) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);
     const leftScope = qualifyNumericSamples({
       referenceChannelId: trace.channel.id,
@@ -220,8 +217,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
 
   const fillChannelSelect = (preferred: string): void => {
     channelSelect.replaceChildren();
-    for (const trace of context.traces) channelSelect.add(new Option(channelLabel(trace), trace.channel.id));
-    if (context.traces.some((trace) => trace.channel.id === preferred)) channelSelect.value = preferred;
+    for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    if (context.channels.some((channel) => channel.id === preferred)) channelSelect.value = preferred;
   };
 
   const fillRangeSelect = (select: HTMLSelectElement, preferredIndex: number, fallbackIndex: number): void => {
@@ -257,8 +254,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
     }
     if (compareActive) {
       heading.textContent = 'Saved range comparison';
-      description.textContent = 'Compare one active decoded channel across two saved Logger ranges.';
-      render();
+      description.textContent = 'Compare any available log channel across two saved Logger ranges.';
+      void render();
       return;
     }
     empty.hidden = true;
@@ -271,7 +268,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     }
     if (boostActive) {
       heading.textContent = 'Boost analysis';
-      description.textContent = 'Analyze boost tracking, spool and steady-state behavior from active decoded channels.';
+      description.textContent = 'Analyze boost tracking, spool and steady-state behavior using any channels available in the loaded log.';
       boostView.refresh();
       return;
     }
@@ -293,13 +290,13 @@ export function createAnalyzerPage(): AnalyzerPageController {
     fillChannelSelect(previousChannel);
     fillRangeSelect(leftSelect, previousLeft, 0);
     fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
-    render();
+    void render();
   };
 
-  channelSelect.addEventListener('change', render);
-  leftSelect.addEventListener('change', render);
-  rightSelect.addEventListener('change', render);
-  refreshButton.addEventListener('click', render);
+  channelSelect.addEventListener('change', () => { void render(); });
+  leftSelect.addEventListener('change', () => { void render(); });
+  rightSelect.addEventListener('change', () => { void render(); });
+  refreshButton.addEventListener('click', () => { void render(); });
   for (const choice of viewChoices) {
     choice.addEventListener('click', () => {
       const view = choice.dataset.analyzerView;
@@ -312,7 +309,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     setContext,
     setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
     refresh: () => {
-      if (currentView === 'compare') render();
+      if (currentView === 'compare') void render();
       else if (currentView === 'tune-table') tuneTableView.refresh();
       else if (currentView === 'boost') boostView.refresh();
       else specializedView.refresh();

@@ -22,7 +22,7 @@ function channelLabel(trace: HistogramTraceContext): string {
 }
 
 export function createScatterView(): ScatterViewController {
-  let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
+  let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericScatterResult | undefined;
   let renderedPointCount = 0;
 
@@ -42,8 +42,8 @@ export function createScatterView(): ScatterViewController {
       <button type="button" class="scatter-refresh">Refresh</button>
     </div>
     <div class="scatter-empty">
-      <strong>Scatter needs a selected range and two active channels.</strong>
-      <span>Return to Logger, set A and B, and keep both X and Y channels active in the current graph pane.</span>
+      <strong>Scatter needs a selected range and two available channels.</strong>
+      <span>Set A/B in Logger, then choose any X and Y channels present in the loaded log.</span>
     </div>
     <div class="scatter-content" hidden>
       <div class="scatter-summary">
@@ -80,9 +80,6 @@ export function createScatterView(): ScatterViewController {
     if (!node) throw new Error(`Scatter summary field is missing: ${name}`);
     return node;
   };
-
-  const traceFor = (channelId: string): HistogramTraceContext | undefined =>
-    context.traces.find((trace) => trace.channel.id === channelId);
 
   const hasValidRange = (): boolean =>
     context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
@@ -167,10 +164,10 @@ export function createScatterView(): ScatterViewController {
     ctx.restore();
   };
 
-  const render = (): void => {
-    const xTrace = traceFor(xSelect.value) ?? context.traces[0];
-    const yTrace = traceFor(ySelect.value) ?? context.traces[1] ?? context.traces[0];
-    if (!xTrace || !yTrace || context.traces.length < 2 || !hasValidRange()) {
+  const render = async (): Promise<void> => {
+    const xId = xSelect.value || context.channels[0]?.id;
+    const yId = ySelect.value || context.channels[1]?.id || context.channels[0]?.id;
+    if (!xId || !yId || context.channels.length < 2 || !hasValidRange()) {
       currentResult = undefined;
       renderedPointCount = 0;
       empty.hidden = false;
@@ -182,6 +179,17 @@ export function createScatterView(): ScatterViewController {
     refreshButton.disabled = false;
     const startMs = Math.min(context.aTimeMs!, context.bTimeMs!);
     const endMs = Math.max(context.aTimeMs!, context.bTimeMs!);
+    const loaded = await context.loadTraces([xId, yId], startMs, endMs);
+    const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
+    const xTrace = byId.get(xId);
+    const yTrace = byId.get(yId);
+    if (!xTrace || !yTrace) {
+      currentResult = undefined;
+      renderedPointCount = 0;
+      empty.hidden = false;
+      content.hidden = true;
+      return;
+    }
     const channels = new Map([[xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete }]]);
     const scoped = qualifyNumericSamples({
       referenceChannelId: xTrace.channel.id,
@@ -189,9 +197,7 @@ export function createScatterView(): ScatterViewController {
       conditions: [],
       timeRange: { startMs, endMs },
     });
-    currentResult = buildNumericScatter(xTrace.range, yTrace.range, {
-      sampleIndices: scoped.eligibleSampleIndices,
-    });
+    currentResult = buildNumericScatter(xTrace.range, yTrace.range, { sampleIndices: scoped.eligibleSampleIndices });
 
     const yComplete = yTrace.complete || numericRangeCoversTime(yTrace.range, startMs, endMs);
     const complete = scoped.complete && yComplete && currentResult.unavailableSampleCount === 0;
@@ -215,9 +221,9 @@ export function createScatterView(): ScatterViewController {
 
   const fillSelect = (select: HTMLSelectElement, preferred: string, fallbackIndex: number): void => {
     select.replaceChildren();
-    for (const trace of context.traces) select.add(new Option(channelLabel(trace), trace.channel.id));
-    if (context.traces.some((trace) => trace.channel.id === preferred)) select.value = preferred;
-    else if (context.traces[fallbackIndex]) select.value = context.traces[fallbackIndex]!.channel.id;
+    for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    if (context.channels.some((channel) => channel.id === preferred)) select.value = preferred;
+    else if (context.channels[fallbackIndex]) select.value = context.channels[fallbackIndex]!.id;
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
@@ -226,12 +232,12 @@ export function createScatterView(): ScatterViewController {
     context = nextContext;
     fillSelect(xSelect, previousX, 0);
     fillSelect(ySelect, previousY, 1);
-    render();
+    void render();
   };
 
-  xSelect.addEventListener('change', render);
-  ySelect.addEventListener('change', render);
-  refreshButton.addEventListener('click', render);
+  xSelect.addEventListener('change', () => { void render(); });
+  ySelect.addEventListener('change', () => { void render(); });
+  refreshButton.addEventListener('click', () => { void render(); });
   new ResizeObserver(() => {
     if (currentResult && !content.hidden && !root.hidden) render();
   }).observe(canvas);
@@ -239,6 +245,6 @@ export function createScatterView(): ScatterViewController {
   return {
     element: root,
     setContext,
-    refresh: render,
+    refresh: () => { void render(); },
   };
 }

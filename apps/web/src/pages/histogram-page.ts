@@ -14,6 +14,8 @@ export interface HistogramTraceContext {
 
 export interface HistogramPageContext {
   readonly traces: readonly HistogramTraceContext[];
+  readonly channels: readonly ChannelDefinition[];
+  readonly loadTraces: (channelIds: readonly string[], startMs?: number, endMs?: number) => Promise<readonly HistogramTraceContext[]>;
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
 }
@@ -33,7 +35,7 @@ function formatNumber(value: number | undefined, precision = 3): string {
 }
 
 export function createHistogramPage(): HistogramPageController {
-  let context: HistogramPageContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined };
+  let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHistogramResult | undefined;
   let currentTrace: HistogramTraceContext | undefined;
   let activeView: HistogramView = 'heatmap';
@@ -56,13 +58,13 @@ export function createHistogramPage(): HistogramPageController {
         <label><span>Channel</span><select class="histogram-channel"></select></label>
         <label><span>Bins</span><select class="histogram-bin-count"><option value="10">10</option><option value="20" selected>20</option><option value="30">30</option><option value="40">40</option><option value="60">60</option></select></label>
       </div>
-      <div class="histogram-workspace-hint">A/B range · active decoded Logger channels</div>
+      <div class="histogram-workspace-hint">A/B range · all available log channels · selected channels decode on demand</div>
     </div>
     <div class="histogram-workspace-body">
       <section class="histogram-distribution-stage" hidden>
         <div class="histogram-empty">
           <strong>Distribution needs a selected range.</strong>
-          <span>Set A and B in Logger and keep the channel active in the current graph pane.</span>
+          <span>Set A and B in Logger, then select any available log channel here.</span>
         </div>
         <canvas class="histogram-chart" aria-label="Histogram distribution chart"></canvas>
         <div class="histogram-stage-status" hidden>
@@ -97,7 +99,6 @@ export function createHistogramPage(): HistogramPageController {
     return node;
   };
 
-  const selectedTrace = (): HistogramTraceContext | undefined => context.traces.find((trace) => trace.channel.id === channelSelect.value) ?? context.traces[0];
   const hasValidRange = (): boolean => context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
 
   const renderChart = (result: NumericHistogramResult, trace: HistogramTraceContext): void => {
@@ -164,9 +165,9 @@ export function createHistogramPage(): HistogramPageController {
     ctx.fillText(`${trace.channel.displayName || trace.channel.sourceName}${trace.channel.unit ? ` · ${trace.channel.unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 21);
   };
 
-  const renderDistribution = (): void => {
-    const trace = selectedTrace();
-    if (!trace || !hasValidRange()) {
+  const renderDistribution = async (): Promise<void> => {
+    const channelId = channelSelect.value || context.channels[0]?.id;
+    if (!channelId || !hasValidRange()) {
       currentResult = undefined;
       currentTrace = undefined;
       empty.hidden = false;
@@ -177,6 +178,15 @@ export function createHistogramPage(): HistogramPageController {
 
     const startMs = Math.min(context.aTimeMs!, context.bTimeMs!);
     const endMs = Math.max(context.aTimeMs!, context.bTimeMs!);
+    const [trace] = await context.loadTraces([channelId], startMs, endMs);
+    if (!trace) {
+      currentResult = undefined;
+      currentTrace = undefined;
+      empty.hidden = false;
+      canvas.hidden = true;
+      status.hidden = true;
+      return;
+    }
     const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);
     const qualified = qualifyNumericSamples({ referenceChannelId: trace.channel.id, channels, conditions: [], timeRange: { startMs, endMs } });
     const binCount = Number(binCountSelect.value);
@@ -198,7 +208,7 @@ export function createHistogramPage(): HistogramPageController {
   };
 
   const refreshActive = (): void => {
-    if (activeView === 'distribution') renderDistribution();
+    if (activeView === 'distribution') void renderDistribution();
     else if (activeView === 'heatmap') heatmapView.refresh();
     else if (activeView === 'dual-heatmap') dualHeatmapView.refresh();
     else scatterView.refresh();
@@ -220,8 +230,8 @@ export function createHistogramPage(): HistogramPageController {
     const previousChannel = channelSelect.value;
     context = nextContext;
     channelSelect.replaceChildren();
-    for (const trace of context.traces) channelSelect.add(new Option(trace.channel.displayName || trace.channel.sourceName, trace.channel.id));
-    if (previousChannel && context.traces.some((trace) => trace.channel.id === previousChannel)) channelSelect.value = previousChannel;
+    for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
     heatmapView.setContext(nextContext);
     dualHeatmapView.setContext(nextContext);
     scatterView.setContext(nextContext);
@@ -232,8 +242,8 @@ export function createHistogramPage(): HistogramPageController {
     const value = viewSelect.value;
     if (value === 'distribution' || value === 'heatmap' || value === 'dual-heatmap' || value === 'scatter') setActiveView(value);
   });
-  channelSelect.addEventListener('change', renderDistribution);
-  binCountSelect.addEventListener('change', renderDistribution);
+  channelSelect.addEventListener('change', () => { void renderDistribution(); });
+  binCountSelect.addEventListener('change', () => { void renderDistribution(); });
   new ResizeObserver(() => {
     if (activeView === 'distribution' && currentResult && currentTrace && !canvas.hidden && !page.hidden) renderChart(currentResult, currentTrace);
   }).observe(canvas);

@@ -9,10 +9,6 @@ export interface BoostAnalyzerViewController {
   refresh(): void;
 }
 
-function channelLabel(trace: LoggerAnalysisTraceContext): string {
-  return trace.channel.displayName || trace.channel.sourceName;
-}
-
 function formatNumber(value: number | undefined, precision = 3): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
   if (Math.abs(value) >= 1000) return value.toFixed(0);
@@ -26,7 +22,7 @@ function optionalNumber(input: HTMLInputElement): number | undefined {
 }
 
 export function createBoostAnalyzerView(): BoostAnalyzerViewController {
-  let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+  let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: BoostAnalyzerResult | undefined;
 
   const root = document.createElement('section');
@@ -58,7 +54,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       </div>
     </details>
     <div class="boost-analyzer-empty">
-      <strong>Boost analysis needs an active measured-pressure channel and a valid scope.</strong>
+      <strong>Boost analysis needs a measured-pressure channel available in the log and a valid scope.</strong>
       <span>Target/RPM/wastegate duty channels are optional. Spool and steady-state detection require a target channel and explicit thresholds.</span>
     </div>
     <div class="boost-analyzer-content" hidden>
@@ -123,9 +119,6 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     return node;
   };
 
-  const traceFor = (id: string): LoggerAnalysisTraceContext | undefined =>
-    id ? context.traces.find((trace) => trace.channel.id === id) : undefined;
-
   const selectedScope = (): { label: string; startMs: number; endMs: number } | undefined => {
     if (scopeSelect.value === 'ab') {
       if (context.aTimeMs === undefined || context.bTimeMs === undefined || context.aTimeMs === context.bTimeMs) return undefined;
@@ -139,7 +132,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   const addOptionalTraceOptions = (select: HTMLSelectElement, preferred: string): void => {
     select.replaceChildren(new Option('(none)', ''));
-    for (const trace of context.traces) select.add(new Option(channelLabel(trace), trace.channel.id));
+    for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
     if ([...select.options].some((option) => option.value === preferred)) select.value = preferred;
   };
 
@@ -150,14 +143,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     if ([...scopeSelect.options].some((option) => option.value === preferred)) scopeSelect.value = preferred;
   };
 
-  const render = (): void => {
-    const measured = traceFor(measuredSelect.value) ?? context.traces[0];
-    const target = traceFor(targetSelect.value);
-    const rpm = traceFor(rpmSelect.value);
-    const upper = traceFor(upperSelect.value);
-    const lower = traceFor(lowerSelect.value);
+  const render = async (): Promise<void> => {
+    const measuredId = measuredSelect.value || context.channels[0]?.id;
+    const targetId = targetSelect.value || undefined;
+    const rpmId = rpmSelect.value || undefined;
+    const upperId = upperSelect.value || undefined;
+    const lowerId = lowerSelect.value || undefined;
     const scope = selectedScope();
-    if (!measured || !scope) {
+    if (!measuredId || !scope) {
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -167,6 +160,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
     const startMs = Math.min(scope.startMs, scope.endMs);
     const endMs = Math.max(scope.startMs, scope.endMs);
+    const loaded = await context.loadTraces([measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined), startMs, endMs);
+    const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
+    const measured = byId.get(measuredId);
+    const target = targetId ? byId.get(targetId) : undefined;
+    const rpm = rpmId ? byId.get(rpmId) : undefined;
+    const upper = upperId ? byId.get(upperId) : undefined;
+    const lower = lowerId ? byId.get(lowerId) : undefined;
+    if (!measured) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map([[measured.channel.id, { range: measured.range, complete: measured.complete }]]);
     const scoped = qualifyNumericSamples({
       referenceChannelId: measured.channel.id,
@@ -263,19 +264,19 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const previousLower = lowerSelect.value;
     const previousScope = scopeSelect.value;
     context = nextContext;
-    measuredSelect.replaceChildren(...context.traces.map((trace) => new Option(channelLabel(trace), trace.channel.id)));
-    if (context.traces.some((trace) => trace.channel.id === previousMeasured)) measuredSelect.value = previousMeasured;
+    measuredSelect.replaceChildren(...context.channels.map((channel) => new Option(channel.displayName || channel.sourceName, channel.id)));
+    if (context.channels.some((channel) => channel.id === previousMeasured)) measuredSelect.value = previousMeasured;
     addOptionalTraceOptions(targetSelect, previousTarget);
     addOptionalTraceOptions(rpmSelect, previousRpm);
     addOptionalTraceOptions(upperSelect, previousUpper);
     addOptionalTraceOptions(lowerSelect, previousLower);
     fillScope(previousScope);
-    render();
+    void render();
   };
 
-  for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect]) select.addEventListener('change', render);
-  for (const input of [spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', render);
-  refreshButton.addEventListener('click', render);
+  for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect]) select.addEventListener('change', () => { void render(); });
+  for (const input of [spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
+  refreshButton.addEventListener('click', () => { void render(); });
 
-  return { element: root, setContext, refresh: render };
+  return { element: root, setContext, refresh: () => { void render(); } };
 }
