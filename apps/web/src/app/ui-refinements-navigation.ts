@@ -52,18 +52,25 @@ function placeLayoutAfterGraph(root: HTMLElement): void {
 
 function dockLoggerTimelineInScatter(root: HTMLElement): void {
   const timeline = root.querySelector<HTMLElement>('.logger-page .timeline-shell');
+  const timelineToggle = root.querySelector<HTMLButtonElement>('.logger-page .edge-toggle--timeline');
   const histogramPage = root.querySelector<HTMLElement>('.histogram-page');
   const histogramSelect = root.querySelector<HTMLSelectElement>('.histogram-view-select');
   const scatterView = root.querySelector<HTMLElement>('.scatter-view--mlv');
   const scatterSlot = root.querySelector<HTMLElement>('.scatter-shared-timeline-slot');
-  if (!timeline || !timeline.parentNode || !histogramPage || !histogramSelect || !scatterView || !scatterSlot) return;
+  if (!timeline || !timeline.parentNode || !timelineToggle || !timelineToggle.parentNode
+    || !histogramPage || !histogramSelect || !scatterView || !scatterSlot) return;
 
-  const homeMarker = document.createComment('EpicScope Logger timeline home');
-  timeline.parentNode.insertBefore(homeMarker, timeline);
+  const timelineHomeMarker = document.createComment('EpicScope Logger timeline home');
+  const toggleHomeMarker = document.createComment('EpicScope Logger timeline toggle home');
+  timeline.parentNode.insertBefore(timelineHomeMarker, timeline);
+  timelineToggle.parentNode.insertBefore(toggleHomeMarker, timelineToggle);
 
   const restore = (): void => {
-    if (homeMarker.parentNode && timeline.parentNode !== homeMarker.parentNode) {
-      homeMarker.parentNode.insertBefore(timeline, homeMarker.nextSibling);
+    if (timelineHomeMarker.parentNode && timeline.parentNode !== timelineHomeMarker.parentNode) {
+      timelineHomeMarker.parentNode.insertBefore(timeline, timelineHomeMarker.nextSibling);
+    }
+    if (toggleHomeMarker.parentNode && timelineToggle.parentNode !== toggleHomeMarker.parentNode) {
+      toggleHomeMarker.parentNode.insertBefore(timelineToggle, toggleHomeMarker.nextSibling);
     }
     timeline.classList.remove('timeline-shell--analysis-docked');
   };
@@ -72,6 +79,7 @@ function dockLoggerTimelineInScatter(root: HTMLElement): void {
     const useInScatter = !histogramPage.hidden && histogramSelect.value === 'scatter' && !scatterView.hidden;
     if (useInScatter) {
       if (timeline.parentNode !== scatterSlot) scatterSlot.append(timeline);
+      if (timelineToggle.parentNode !== scatterSlot) scatterSlot.append(timelineToggle);
       timeline.classList.add('timeline-shell--analysis-docked');
       requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     } else {
