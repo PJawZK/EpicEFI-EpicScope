@@ -8,39 +8,12 @@ on:
     branches:
       - main
       - phase1/**
-      - fix/multipane-restore-fallback
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-multipane-restore:
-    if: github.ref == 'refs/heads/fix/multipane-restore-fallback' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: fix/multipane-restore-fallback
-      - name: Apply restore fallback
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-          p=Path('apps/web/src/pages/logger-page.ts')
-          s=p.read_text()
-          a='''      const batchStarted = globalThis.performance?.now() ?? Date.now();\n      const batch = await channelDataSource.readChannelsRange(\n        batchRequestedIds,\n        0,\n        channelDataSource.sampleCount,\n      );\n      const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;\n      sharedBatchMs = batchElapsed;\n      sharedBatchRanges = batch.ranges;\n      sharedBatchCacheHit =\n        batch.performance.cacheHitChannelIds.length === batchRequestedIds.length;\n      sharedPhysicalReadCount = batch.performance.physicalReadCount;\n      sharedPhysicalBytesRead = batch.performance.physicalBytesRead;\n      sharedPhysicalReadMs = batch.performance.physicalReadMs;\n      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;\n\n      channelPerformanceListener?.({\n        channelId: '__multi-pane-restore__',\n        channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,\n        phase: 'full',\n        startSampleIndex: 0,\n        requestedSampleCount: channelDataSource.sampleCount,\n        totalMs: batchElapsed,\n        readDecodeMs: batchElapsed,\n        scaleMs: 0,\n        renderMs: 0,\n        sampleCount: channelDataSource.sampleCount,\n        batchSize: batchRequestedIds.length,\n        cacheHit: batch.performance.cacheHitChannelIds.length === batchRequestedIds.length,\n        physicalReadCount: batch.performance.physicalReadCount,\n        physicalBytesRead: batch.performance.physicalBytesRead,\n        physicalReadMs: batch.performance.physicalReadMs,\n      });\n'''
-          b='''      const batchStarted = globalThis.performance?.now() ?? Date.now();\n      try {\n        const batch = await channelDataSource.readChannelsRange(\n          batchRequestedIds,\n          0,\n          channelDataSource.sampleCount,\n        );\n        const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;\n        sharedBatchMs = batchElapsed;\n        sharedBatchRanges = batch.ranges;\n        sharedBatchCacheHit =\n          batch.performance.cacheHitChannelIds.length === batchRequestedIds.length;\n        sharedPhysicalReadCount = batch.performance.physicalReadCount;\n        sharedPhysicalBytesRead = batch.performance.physicalBytesRead;\n        sharedPhysicalReadMs = batch.performance.physicalReadMs;\n        if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;\n\n        channelPerformanceListener?.({\n          channelId: '__multi-pane-restore__',\n          channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,\n          phase: 'full',\n          startSampleIndex: 0,\n          requestedSampleCount: channelDataSource.sampleCount,\n          totalMs: batchElapsed,\n          readDecodeMs: batchElapsed,\n          scaleMs: 0,\n          renderMs: 0,\n          sampleCount: channelDataSource.sampleCount,\n          batchSize: batchRequestedIds.length,\n          cacheHit: batch.performance.cacheHitChannelIds.length === batchRequestedIds.length,\n          physicalReadCount: batch.performance.physicalReadCount,\n          physicalBytesRead: batch.performance.physicalBytesRead,\n          physicalReadMs: batch.performance.physicalReadMs,\n        });\n      } catch {\n        // Shared multi-pane decode is an optimization. If it fails, each pane\n        // still restores through the normal per-pane activation path below.\n        sharedBatchMs = (globalThis.performance?.now() ?? Date.now()) - batchStarted;\n        sharedBatchRanges = undefined;\n        sharedBatchCacheHit = false;\n        sharedPhysicalReadCount = 0;\n        sharedPhysicalBytesRead = 0;\n        sharedPhysicalReadMs = 0;\n      }\n'''
-          if a not in s: raise SystemExit('restore batch anchor missing')
-          p.write_text(s.replace(a,b,1))
-          PY
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/web/src/pages/logger-page.ts
-          git commit -m 'Make multi-pane restore batch failure non-fatal'
-          git push origin HEAD:fix/multipane-restore-fallback
-
   validate:
     runs-on: ubuntu-latest
     steps:
