@@ -1,0 +1,30 @@
+name: Temporary blank page hotfix
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: hotfix/histogram-startup-v1
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply startup hotfix
+        run: python3 scripts/tmp-blank-page-hotfix.py
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit validated hotfix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/pages/histogram-page.ts tests/web/histogram-page.test.ts
+          git diff --cached --quiet || git commit -m 'fix: restore Histogram startup controls'
+          git push origin HEAD:hotfix/histogram-startup-v1
