@@ -1,0 +1,198 @@
+.analyzer-experimental-tag {
+  margin-left: 4px;
+  color: #d6a85d;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.boost-analyzer-view {
+  display: grid;
+  gap: 10px;
+}
+
+.boost-analyzer-view[hidden],
+.boost-analyzer-content[hidden] { display: none; }
+
+.boost-analyzer-banner,
+.boost-analyzer-controls,
+.boost-analysis-options,
+.boost-analyzer-summary > div,
+.boost-evidence,
+.boost-result-section {
+  border: 1px solid #263b4c;
+  border-radius: 4px;
+  background: #0b171f;
+}
+
+.boost-analyzer-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.boost-analyzer-banner strong { color: #e7c17b; font-size: 10px; }
+.boost-analyzer-banner span { color: #79909f; font-size: 8px; }
+
+.boost-analyzer-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 9px 10px;
+}
+
+.boost-analyzer-controls label,
+.boost-analysis-options-grid label {
+  display: grid;
+  gap: 4px;
+}
+
+.boost-analyzer-controls label > span,
+.boost-analysis-options-grid label > span,
+.boost-analyzer-summary span,
+.boost-evidence > span {
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.boost-analyzer-controls select,
+.boost-refresh,
+.boost-analysis-options-grid input[type='number'] {
+  min-height: 29px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+  font-size: 9px;
+}
+
+.boost-analyzer-controls select { min-width: 145px; padding: 0 7px; }
+.boost-refresh { padding: 0 11px; }
+
+.boost-analysis-options { padding: 0; }
+.boost-analysis-options summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  color: #8ea5b3;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.boost-analysis-options-grid {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 0 10px 10px;
+}
+
+.boost-analysis-options-grid input[type='number'] { width: 130px; padding: 0 7px; }
+
+.boost-option-toggle {
+  display: flex !important;
+  min-height: 29px;
+  align-items: center;
+  gap: 6px !important;
+  padding: 0 8px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+}
+
+.boost-option-toggle span {
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.boost-analyzer-empty {
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  min-height: 260px;
+  border: 1px dashed #304859;
+  border-radius: 5px;
+  background: #0a151d;
+  text-align: center;
+}
+
+.boost-analyzer-empty strong { color: #dbe8ef; font-size: 12px; }
+.boost-analyzer-empty span { max-width: 620px; color: #79909f; font-size: 9px; line-height: 1.5; }
+
+.boost-analyzer-content { display: grid; gap: 8px; }
+
+.boost-analyzer-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.boost-analyzer-summary > div { min-width: 0; padding: 7px 9px; }
+.boost-analyzer-summary strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #e5f0f5;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boost-evidence {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 7px 9px;
+  flex-wrap: wrap;
+}
+
+.boost-evidence strong {
+  margin-left: 4px;
+  color: #dceaf1;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.boost-result-section { overflow: hidden; }
+.boost-result-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border-bottom: 1px solid #203340;
+}
+.boost-result-section > header strong { color: #cddde6; font-size: 9px; }
+.boost-result-section > header span { color: #78909e; font-size: 9px; font-variant-numeric: tabular-nums; }
+
+.boost-table-wrap { overflow: auto; max-height: 300px; }
+.boost-table { width: 100%; border-collapse: collapse; font-size: 8px; }
+.boost-table th,
+.boost-table td {
+  padding: 6px 7px;
+  border-bottom: 1px solid #203340;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.boost-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #101d28;
+  color: #7f95a3;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.boost-table td { color: #d9e7ee; }
+
+@media (max-width: 900px) {
+  .boost-analyzer-banner { align-items: flex-start; flex-direction: column; }
+  .boost-analyzer-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
