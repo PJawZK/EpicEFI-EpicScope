@@ -178,8 +178,8 @@ export function buildCellCenteredWeightedMean(
           continue;
         }
         const cellIndex = yContribution.index * heatmap.xBins.length + xContribution.index;
-        weightedSums[cellIndex] += value * weight;
-        cellTotalWeights[cellIndex] += weight;
+        weightedSums[cellIndex] = (weightedSums[cellIndex] ?? 0) + value * weight;
+        cellTotalWeights[cellIndex] = (cellTotalWeights[cellIndex] ?? 0) + weight;
         cellContributingSampleCounts[cellIndex] = (cellContributingSampleCounts[cellIndex] ?? 0) + 1;
         cellSampleIndices[cellIndex]!.push(sampleIndex);
         contributingHitCount += 1;
