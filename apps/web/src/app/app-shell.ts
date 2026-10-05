@@ -10,6 +10,8 @@ import {
 } from '../../../../core/channels/channel-binding';
 import type { ChannelCatalog } from '../../../../core/channels/channel-catalog';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
+import { parseMsq } from '../../../../core/parsers/msq/msq-parser';
+import { normalizeMsqTune, type TuneModel } from '../../../../core/tune/tune-model';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
 import { importMlgFile } from '../adapters/mlg-file-import';
@@ -145,6 +147,9 @@ export function mountAppShell(root: HTMLElement): void {
           </button>
           <button type="button" class="load-ini source-load-button" data-load-state="idle" role="menuitem">
             <strong>Load INI…</strong><small>Firmware channel catalog</small>
+          </button>
+          <button type="button" class="load-msq source-load-button" data-load-state="idle" role="menuitem">
+            <strong>Load MSQ…</strong><small>Tune values and tables</small>
           </button>
         </div>
       </div>
@@ -321,12 +326,19 @@ export function mountAppShell(root: HTMLElement): void {
   iniInput.hidden = true;
   iniInput.setAttribute('aria-label', 'Load TunerStudio INI');
 
+  const msqInput = document.createElement('input');
+  msqInput.type = 'file';
+  msqInput.accept = '.msq,.xml,text/xml,application/xml,text/plain';
+  msqInput.hidden = true;
+  msqInput.setAttribute('aria-label', 'Load TunerStudio MSQ');
+
   const brandButton = header.querySelector<HTMLButtonElement>('.brand-button');
   const brandMenu = header.querySelector<HTMLElement>('.global-switch-menu');
   const loadDataButton = header.querySelector<HTMLButtonElement>('.load-data-button');
   const loadDataMenu = header.querySelector<HTMLElement>('.load-data-menu');
   const openButton = header.querySelector<HTMLButtonElement>('.open-log');
   const loadIniButton = header.querySelector<HTMLButtonElement>('.load-ini');
+  const loadMsqButton = header.querySelector<HTMLButtonElement>('.load-msq');
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
@@ -347,7 +359,7 @@ export function mountAppShell(root: HTMLElement): void {
   const clearChannelCacheButton = header.querySelector<HTMLButtonElement>('.setting-clear-channel-cache');
   const channelCacheStatus = header.querySelector<HTMLElement>('.settings-channel-cache-status');
 
-  if (!brandButton || !brandMenu || !loadDataButton || !loadDataMenu || !openButton || !loadIniButton || !loadedLog || !appStatus || !parserStatus || !modeChip || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
+  if (!brandButton || !brandMenu || !loadDataButton || !loadDataMenu || !openButton || !loadIniButton || !loadMsqButton || !loadedLog || !appStatus || !parserStatus || !modeChip || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
 
@@ -419,6 +431,8 @@ export function mountAppShell(root: HTMLElement): void {
   let activeIniCatalog: ChannelCatalog | undefined;
   let activeIniSourceName: string | undefined;
   let activeIniBinding: BoundChannelCatalog | undefined;
+  let activeTuneModel: TuneModel | undefined;
+  let activeTuneSourceName: string | undefined;
   let currentRawLog: {
     summary: ImportedLogSummary;
     recordCount: number;
@@ -861,6 +875,7 @@ export function mountAppShell(root: HTMLElement): void {
 
     if (analyzerActive) {
       analyzerPage.setContext(loggerPage.getAnalysisContext());
+      analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
       analyzerPage.refresh();
     } else if (histogramActive) {
       histogramPage.setContext(loggerPage.getAnalysisContext());
@@ -915,6 +930,10 @@ export function mountAppShell(root: HTMLElement): void {
   loadIniButton.addEventListener('click', () => {
     closeLoadDataMenu();
     iniInput.click();
+  });
+  loadMsqButton.addEventListener('click', () => {
+    closeLoadDataMenu();
+    msqInput.click();
   });
 
   unloadIniButton.addEventListener('click', () => {
@@ -984,6 +1003,38 @@ export function mountAppShell(root: HTMLElement): void {
       parserStatus.textContent = 'TUNE-INI · no catalog loaded';
       appStatus.textContent = `${unloadedSourceName} unloaded`;
     }
+  });
+
+  msqInput.addEventListener('change', () => {
+    const file = msqInput.files?.item(0);
+    msqInput.value = '';
+    if (!file) return;
+
+    loadMsqButton.disabled = true;
+    setSourceLoadState(loadMsqButton, 'loading', `Loading ${file.name}`);
+    appStatus.textContent = 'Loading MSQ…';
+    parserStatus.textContent = 'TUNE-MSQ · reading local file';
+
+    void file.text().then((source) => {
+      const model = normalizeMsqTune(parseMsq(source));
+      activeTuneModel = model;
+      activeTuneSourceName = file.name;
+      analyzerPage.setTuneModel(model, file.name);
+      const tableCount = model.entries.filter((entry) => entry.kind === 'table').length;
+      setSourceLoadState(loadMsqButton, 'success', `${file.name} · ${model.entries.length.toLocaleString()} tune entries · ${tableCount.toLocaleString()} table(s)`);
+      appStatus.textContent = `${file.name} loaded · ${model.entries.length.toLocaleString()} tune entries`;
+      parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only`;
+      if (activeMode === 'analyzer') analyzerPage.refresh();
+    }).catch((error: unknown) => {
+      activeTuneModel = undefined;
+      activeTuneSourceName = undefined;
+      analyzerPage.setTuneModel(undefined);
+      setSourceLoadState(loadMsqButton, 'issue', error instanceof Error ? error.message : 'MSQ load failed');
+      appStatus.textContent = 'MSQ load failed';
+      parserStatus.textContent = 'TUNE-MSQ · parser error';
+    }).finally(() => {
+      loadMsqButton.disabled = false;
+    });
   });
 
   iniInput.addEventListener('change', () => {
@@ -1539,6 +1590,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, bugReportDialog);
+  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput, bugReportDialog);
   root.append(app);
 }
