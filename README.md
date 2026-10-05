@@ -36,34 +36,48 @@ The Web implementation establishes **what EpicScope should do**. The Linux imple
 
 ## Current Web state
 
-EpicScope Web is a hosted, usable large-log analysis foundation with:
+EpicScope Web now has functional foundations through **Phases 1–4**. Current work is refinement/usability rather than another architecture phase.
+
+Implemented foundations include:
 
 - MLG v1/v2 import, indexing, staged CRC validation and source-integrity diagnostics;
-- INI-backed channel catalog and conservative INI↔MLG binding;
+- INI-backed channel catalog/binding plus optional MSQ tune enrichment;
 - reusable named graph workspaces and exact-log navigation persistence;
 - multi-pane graphs, timeline/cursor, A/B ranges, markers and saved ranges;
 - bounded session/persistent channel reuse plus the OPFS MLG column-sidecar/native-column path;
-- large-log performance diagnostics and tested report/health formatting;
-- a simplified channel browser with tested search/group/Active/Favorites/Recent semantics and live unit-aware values.
+- full available-log channel catalog exposed to analysis with on-demand decode;
+- generic range statistics, qualification/filters, Histogram, Scatter, Events and Compare foundations;
+- Analyzer surfaces for Range Compare, Tune Table and the Experimental Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel Pressure / Injector and Trigger / Sync analyzers;
+- Histogram surfaces for **Table Generator**, Distribution, Scatter and **Math Channels**;
+- MLV-inspired Table Generator with weighted mean, custom/MSQ geometry, presets, grouped filters, calculated channels, CSV export and cell-to-Logger traceability.
 
-The structural/file audit and the earlier large-log optimization campaign are **done for now**. Performance remains a regression requirement, but the active product focus has moved to UI hierarchy and then generic analysis capability.
+The structural/file audit and intensive large-log optimization campaign are **done for now**. Performance remains a regression requirement. Do not reopen generic performance work without measured evidence.
+
+## Current Histogram / Table Generator direction
+
+Table Generator is the primary binned/table analysis surface. The former separate Heatmap and Dual Heatmap user-facing modes have been removed.
+
+Important current behavior:
+
+- **MLV weighted mean** is the first/default Cell statistic;
+- plain Mean and the other numeric aggregations remain available;
+- analysis X/Y/Z choices remain explicit user choices;
+- Loaded MSQ tables provide **geometry only** — X/Y breakpoint vectors and dimensions — and do not rewrite selected analysis channels;
+- common Auto-bin table sizes are available through **Size**;
+- **Presets** are saved complete Table Generator setups;
+- Filters use a compact saved-filter library plus grouped condition editor;
+- Math Channels is a dedicated calculated-channel editor with source insertion, formula helpers, validation and preview;
+- generated cells retain source sample evidence and can navigate back to Logger.
+
+MLV weighted-mean parity is considered sufficiently matched for current use. A tiny remaining hit-count difference on one large reference cell is recorded as a compatibility footnote in `docs/DECISIONS.md`, not an active pursuit.
 
 ## Current UI workflow
 
-The approved user-facing progression is:
+The approved user-facing progression remains:
 
 **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
 
-Implemented UI hierarchy work through PR #172 includes:
-
-- **Load Data ▾** replacing separate Open Log / Load INI top-level buttons;
-- **Graphs · <workspace> ▾** making workspace meaning explicit;
-- the **EpicScope logo dropdown** acting as the in-product mode switcher, currently exposing Logger and planned Analyzer / Histogram modes;
-- removal of empty top-level Tools / Compare placeholders;
-- a clearer **Channels / Channel browser** hierarchy with compact sort controls, a primary **Load now** action, and secondary actions under `⋯`;
-- standardized channel readouts such as `848 rpm`, `2.1 %`, `λ 0.987`, and `82.2 °C` without value bars.
-
-The next planned UI pass is the larger timeline restructuring: **Navigate → Range/Markers → Analyze**, ordered by normal frequency and importance while preserving existing timeline/range functionality.
+Current cleanup work favors a dense, visualization-first interface: remove redundant labels/rows, keep contextual controls compact, expose help where meaning is not obvious, and avoid letting development/diagnostic chrome compete with the analysis surface.
 
 ## Documentation authority
 
@@ -73,13 +87,15 @@ The project is defined by the documentation under [`docs/`](docs/):
 - [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and dependency boundaries.
 - [`FILE_ARCHITECTURE.md`](docs/FILE_ARCHITECTURE.md) — approved repository and source layout.
 - [`DATA_MODEL.md`](docs/DATA_MODEL.md) — normalized log, channel, event, session, and analyzer concepts.
-- [`UI_REFERENCE.md`](docs/UI_REFERENCE.md) — EpicHub-derived interaction reference plus current EpicScope workflow/hierarchy rules.
+- [`UI_REFERENCE.md`](docs/UI_REFERENCE.md) — EpicHub-derived interaction reference plus EpicScope workflow/hierarchy rules.
 - [`PERFORMANCE.md`](docs/PERFORMANCE.md) — performance and memory requirements and current large-log evidence.
 - [`PLATFORMS.md`](docs/PLATFORMS.md) — Web, Linux, and Android platform policy.
-- [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation plan and current execution position.
+- [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation plan.
 - [`WORKFLOW.md`](docs/WORKFLOW.md) — branching, task, review, handoff, and release workflow.
-- [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions.
-- [`HANDOFF.md`](docs/HANDOFF.md) — exact current continuation state.
+- [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions and compatibility footnotes.
+- [`HANDOFF.md`](docs/HANDOFF.md) — **exact current continuation state and authority for a new chat/session**.
+
+When historical/current-state wording elsewhere conflicts with `HANDOFF.md`, use the handoff plus current `main`/CI state.
 
 ## Web delivery
 
