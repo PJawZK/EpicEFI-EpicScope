@@ -6,6 +6,25 @@
   white-space: nowrap;
 }
 
+.value-search-trigger--icon {
+  width: 34px;
+  min-width: 34px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.value-search-trigger--icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .value-search-popover {
   position: absolute;
   top: calc(100% + 6px);
