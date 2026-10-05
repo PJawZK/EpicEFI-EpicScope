@@ -28,179 +28,34 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
-
-          graph_path = Path('apps/web/src/components/graph-viewport.ts')
-          graph = graph_path.read_text()
-
-          replacements = [
-            (
-              "  toggleChannel(channelId: string): Promise<boolean>;\n  activatePreloadedChannels(",
-              "  toggleChannel(channelId: string): Promise<boolean>;\n  hasActiveChannel(channelId: string): boolean;\n  hasPendingChannel(channelId: string): boolean;\n  activatePreloadedChannels("
-            ),
-            (
-              """    if (cacheReady) {
-      overlay.hidden = false;
-      overlayTitle.textContent = `Loading ${channel.sourceName}…`;
-      overlayDetail.textContent = 'Using decoded channel cache.';
-      void activateCachedChannel(channelId, pending).then(resolveSelection);
-      return result;
-    }""",
-              """    if (cacheReady) {
-      loadingTraceIds.add(channelId);
-      overlay.hidden = false;
-      overlayTitle.textContent = `Loading ${channel.sourceName}…`;
-      overlayDetail.textContent = 'Using decoded channel cache.';
-      void activateCachedChannel(channelId, pending)
-        .then(resolveSelection)
-        .finally(() => { loadingTraceIds.delete(channelId); });
-      return result;
-    }"""
-            ),
-            (
-              """    setLog,
-    toggleChannel,
-    activatePreloadedChannels,""",
-              """    setLog,
-    toggleChannel,
-    hasActiveChannel: (channelId) => activeTraces.has(channelId),
-    hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),
-    activatePreloadedChannels,"""
-            ),
+          gp = Path('apps/web/src/components/graph-viewport.ts')
+          g = gp.read_text()
+          reps = [
+            ("  toggleChannel(channelId: string): Promise<boolean>;\n  activatePreloadedChannels(", "  toggleChannel(channelId: string): Promise<boolean>;\n  hasActiveChannel(channelId: string): boolean;\n  hasPendingChannel(channelId: string): boolean;\n  activatePreloadedChannels("),
+            ("    if (cacheReady) {\n      overlay.hidden = false;\n      overlayTitle.textContent = `Loading ${channel.sourceName}…`;\n      overlayDetail.textContent = 'Using decoded channel cache.';\n      void activateCachedChannel(channelId, pending).then(resolveSelection);\n      return result;\n    }", "    if (cacheReady) {\n      loadingTraceIds.add(channelId);\n      overlay.hidden = false;\n      overlayTitle.textContent = `Loading ${channel.sourceName}…`;\n      overlayDetail.textContent = 'Using decoded channel cache.';\n      void activateCachedChannel(channelId, pending)\n        .then(resolveSelection)\n        .finally(() => { loadingTraceIds.delete(channelId); });\n      return result;\n    }"),
+            ("    setLog,\n    toggleChannel,\n    activatePreloadedChannels,", "    setLog,\n    toggleChannel,\n    hasActiveChannel: (channelId) => activeTraces.has(channelId),\n    hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),\n    activatePreloadedChannels,"),
           ]
-          for old, new in replacements:
-            if old not in graph:
-              raise SystemExit('graph anchor missing: ' + old[:100])
-            graph = graph.replace(old, new, 1)
-          graph_path.write_text(graph)
+          for old, new in reps:
+            if old not in g: raise SystemExit('graph anchor missing: ' + old[:80])
+            g = g.replace(old, new, 1)
+          gp.write_text(g)
 
-          logger_path = Path('apps/web/src/pages/logger-page.ts')
-          logger = logger_path.read_text()
-
-          old = """  const reconcileAssignedVisiblePaneChannels = (): void => {
-    const workspace = activeWorkspace();
-    if (!workspace || !channelDataSource) return;
-    const visibleCount = paneCountForLayout(workspace.layout);
-    for (const runtime of paneRuntimes.slice(0, visibleCount)) {
-      reconcileAssignedPaneChannels(runtime);
-    }
-  };
-
-  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
-    const workspace = activeWorkspace();
-    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
-    if (!pane || !channelDataSource) return;
-    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(
-      (channelId) => channelDefinitions.has(channelId)
-        && !unavailableChannelIds.has(channelId)
-        && !runtime.activeChannelIds.has(channelId),
-    );
-    if (missingIds.length === 0) return;
-    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
-    runtime.graph.loadPendingChannels();
-    void Promise.all(activations).then((results) => {
-      missingIds.forEach((channelId, index) => {
-        if (results[index]) runtime.activeChannelIds.add(channelId);
-      });
-      syncActivePaneContext();
-    });
-  };"""
-          new = """  const reconcileAssignedVisiblePaneChannels = (): void => {
-    const workspace = activeWorkspace();
-    if (!workspace || !channelDataSource) return;
-    const visibleCount = paneCountForLayout(workspace.layout);
-    for (const runtime of paneRuntimes.slice(0, visibleCount)) {
-      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);
-    }
-  };
-
-  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
-    const workspace = activeWorkspace();
-    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
-    if (!pane || !channelDataSource) return;
-
-    const assignedIds = renderablePersistentChannelIds(pane.channelIds).filter(
-      (channelId) => channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId),
-    );
-    const missingIds: string[] = [];
-    for (const channelId of assignedIds) {
-      if (runtime.graph.hasActiveChannel(channelId)) {
-        runtime.activeChannelIds.add(channelId);
-        continue;
-      }
-      runtime.activeChannelIds.delete(channelId);
-      if (!runtime.graph.hasPendingChannel(channelId)) missingIds.push(channelId);
-    }
-
-    if (missingIds.length === 0) {
-      syncActivePaneContext();
-      return;
-    }
-    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
-    runtime.graph.loadPendingChannels();
-    void Promise.all(activations).then((results) => {
-      missingIds.forEach((channelId, index) => {
-        if (results[index] || runtime.graph.hasActiveChannel(channelId)) {
-          runtime.activeChannelIds.add(channelId);
-        }
-      });
-      syncActivePaneContext();
-    });
-  };"""
-          if old not in logger:
-            raise SystemExit('logger reconciliation anchor missing')
-          logger = logger.replace(old, new, 1)
-
-          replacements = [
-            (
-              """    if (!target || (target.id === activeWorkspaceId && !force)) {
-      renderGraphLayout();
-      syncActivePaneContext();
-      return;
-    }""",
-              """    if (!target || (target.id === activeWorkspaceId && !force)) {
-      renderGraphLayout();
-      syncActivePaneContext();
-      reconcileAssignedVisiblePaneChannels();
-      return;
-    }"""
-            ),
-            (
-              """    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
-    const finalSyncMs = now() - finalSyncStarted;""",
-              """    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
-    reconcileAssignedVisiblePaneChannels();
-    const finalSyncMs = now() - finalSyncStarted;"""
-            ),
-            (
-              """      renderGraphLayout();
-      emitWorkspaceMutation();
-    });
-
-    runtime.maximizeButton.addEventListener('click', (event) => {""",
-              """      renderGraphLayout();
-      reconcileAssignedVisiblePaneChannels();
-      emitWorkspaceMutation();
-    });
-
-    runtime.maximizeButton.addEventListener('click', (event) => {"""
-            ),
-            (
-              """      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
-      renderGraphLayout();
-      emitWorkspaceMutation();
-    });""",
-              """      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
-      renderGraphLayout();
-      reconcileAssignedVisiblePaneChannels();
-      emitWorkspaceMutation();
-    });"""
-            ),
+          lp = Path('apps/web/src/pages/logger-page.ts')
+          s = lp.read_text()
+          old = "  const reconcileAssignedVisiblePaneChannels = (): void => {\n    const workspace = activeWorkspace();\n    if (!workspace || !channelDataSource) return;\n    const visibleCount = paneCountForLayout(workspace.layout);\n    for (const runtime of paneRuntimes.slice(0, visibleCount)) {\n      reconcileAssignedPaneChannels(runtime);\n    }\n  };\n\n  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {\n    const workspace = activeWorkspace();\n    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);\n    if (!pane || !channelDataSource) return;\n    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(\n      (channelId) => channelDefinitions.has(channelId)\n        && !unavailableChannelIds.has(channelId)\n        && !runtime.activeChannelIds.has(channelId),\n    );\n    if (missingIds.length === 0) return;\n    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n    runtime.graph.loadPendingChannels();\n    void Promise.all(activations).then((results) => {\n      missingIds.forEach((channelId, index) => {\n        if (results[index]) runtime.activeChannelIds.add(channelId);\n      });\n      syncActivePaneContext();\n    });\n  };"
+          new = "  const reconcileAssignedVisiblePaneChannels = (): void => {\n    const workspace = activeWorkspace();\n    if (!workspace || !channelDataSource) return;\n    const visibleCount = paneCountForLayout(workspace.layout);\n    for (const runtime of paneRuntimes.slice(0, visibleCount)) {\n      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);\n    }\n  };\n\n  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {\n    const workspace = activeWorkspace();\n    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);\n    if (!pane || !channelDataSource) return;\n\n    const assignedIds = renderablePersistentChannelIds(pane.channelIds).filter(\n      (channelId) => channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId),\n    );\n    const missingIds: string[] = [];\n    for (const channelId of assignedIds) {\n      if (runtime.graph.hasActiveChannel(channelId)) {\n        runtime.activeChannelIds.add(channelId);\n        continue;\n      }\n      runtime.activeChannelIds.delete(channelId);\n      if (!runtime.graph.hasPendingChannel(channelId)) missingIds.push(channelId);\n    }\n\n    if (missingIds.length === 0) {\n      syncActivePaneContext();\n      return;\n    }\n    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n    runtime.graph.loadPendingChannels();\n    void Promise.all(activations).then((results) => {\n      missingIds.forEach((channelId, index) => {\n        if (results[index] || runtime.graph.hasActiveChannel(channelId)) {\n          runtime.activeChannelIds.add(channelId);\n        }\n      });\n      syncActivePaneContext();\n    });\n  };"
+          if old not in s: raise SystemExit('logger reconciliation anchor missing')
+          s = s.replace(old, new, 1)
+          reps = [
+            ("    if (!target || (target.id === activeWorkspaceId && !force)) {\n      renderGraphLayout();\n      syncActivePaneContext();\n      return;\n    }", "    if (!target || (target.id === activeWorkspaceId && !force)) {\n      renderGraphLayout();\n      syncActivePaneContext();\n      reconcileAssignedVisiblePaneChannels();\n      return;\n    }"),
+            ("    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });\n    const finalSyncMs = now() - finalSyncStarted;", "    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });\n    reconcileAssignedVisiblePaneChannels();\n    const finalSyncMs = now() - finalSyncStarted;"),
+            ("      renderGraphLayout();\n      emitWorkspaceMutation();\n    });\n\n    runtime.maximizeButton.addEventListener('click', (event) => {", "      renderGraphLayout();\n      reconcileAssignedVisiblePaneChannels();\n      emitWorkspaceMutation();\n    });\n\n    runtime.maximizeButton.addEventListener('click', (event) => {"),
+            ("      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;\n      renderGraphLayout();\n      emitWorkspaceMutation();\n    });", "      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;\n      renderGraphLayout();\n      reconcileAssignedVisiblePaneChannels();\n      emitWorkspaceMutation();\n    });"),
           ]
-          for old, new in replacements:
-            if old not in logger:
-              raise SystemExit('logger transition anchor missing: ' + old[:100])
-            logger = logger.replace(old, new, 1)
-          logger_path.write_text(logger)
+          for old, new in reps:
+            if old not in s: raise SystemExit('logger transition anchor missing: ' + old[:80])
+            s = s.replace(old, new, 1)
+          lp.write_text(s)
           PY
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
