@@ -1334,38 +1334,47 @@ export function createLoggerPage(): LoggerPageController {
       && channelDataSource?.readChannelsRange
     ) {
       const batchStarted = globalThis.performance?.now() ?? Date.now();
-      const batch = await channelDataSource.readChannelsRange(
-        batchRequestedIds,
-        0,
-        channelDataSource.sampleCount,
-      );
-      const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;
-      sharedBatchMs = batchElapsed;
-      sharedBatchRanges = batch.ranges;
-      sharedBatchCacheHit =
-        batch.performance.cacheHitChannelIds.length === batchRequestedIds.length;
-      sharedPhysicalReadCount = batch.performance.physicalReadCount;
-      sharedPhysicalBytesRead = batch.performance.physicalBytesRead;
-      sharedPhysicalReadMs = batch.performance.physicalReadMs;
-      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
+      try {
+        const batch = await channelDataSource.readChannelsRange(
+          batchRequestedIds,
+          0,
+          channelDataSource.sampleCount,
+        );
+        const batchElapsed = (globalThis.performance?.now() ?? Date.now()) - batchStarted;
+        sharedBatchMs = batchElapsed;
+        sharedBatchRanges = batch.ranges;
+        sharedBatchCacheHit =
+          batch.performance.cacheHitChannelIds.length === batchRequestedIds.length;
+        sharedPhysicalReadCount = batch.performance.physicalReadCount;
+        sharedPhysicalBytesRead = batch.performance.physicalBytesRead;
+        sharedPhysicalReadMs = batch.performance.physicalReadMs;
+        if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
 
-      channelPerformanceListener?.({
-        channelId: '__multi-pane-restore__',
-        channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
-        phase: 'full',
-        startSampleIndex: 0,
-        requestedSampleCount: channelDataSource.sampleCount,
-        totalMs: batchElapsed,
-        readDecodeMs: batchElapsed,
-        scaleMs: 0,
-        renderMs: 0,
-        sampleCount: channelDataSource.sampleCount,
-        batchSize: batchRequestedIds.length,
-        cacheHit: batch.performance.cacheHitChannelIds.length === batchRequestedIds.length,
-        physicalReadCount: batch.performance.physicalReadCount,
-        physicalBytesRead: batch.performance.physicalBytesRead,
-        physicalReadMs: batch.performance.physicalReadMs,
-      });
+        channelPerformanceListener?.({
+          channelId: '__multi-pane-restore__',
+          channelName: `Multi-pane restore (${uniqueRequestedIds.length} channels)`,
+          phase: 'full',
+          startSampleIndex: 0,
+          requestedSampleCount: channelDataSource.sampleCount,
+          totalMs: batchElapsed,
+          readDecodeMs: batchElapsed,
+          scaleMs: 0,
+          renderMs: 0,
+          sampleCount: channelDataSource.sampleCount,
+          batchSize: batchRequestedIds.length,
+          cacheHit: batch.performance.cacheHitChannelIds.length === batchRequestedIds.length,
+          physicalReadCount: batch.performance.physicalReadCount,
+          physicalBytesRead: batch.performance.physicalBytesRead,
+          physicalReadMs: batch.performance.physicalReadMs,
+        });
+      } catch {
+        sharedBatchMs = (globalThis.performance?.now() ?? Date.now()) - batchStarted;
+        sharedBatchRanges = undefined;
+        sharedBatchCacheHit = false;
+        sharedPhysicalReadCount = 0;
+        sharedPhysicalBytesRead = 0;
+        sharedPhysicalReadMs = 0;
+      }
     }
 
     const activationStarted = now();
