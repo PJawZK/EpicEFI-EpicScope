@@ -1,15 +1,30 @@
 import { buildNumericHeatmap, type NumericHeatmapResult } from '../../../../core/analysis/heatmap';
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import { subtractNumericRanges } from '../../../../core/analysis/numeric-range-arithmetic';
+import { compileCalculatedField, evaluateCalculatedFieldRange } from '../../../../core/analysis/calculated-field';
 import {
-  qualifyNumericSamples,
+  qualifyNumericSampleGroups,
   type NumericQualificationCondition,
+  type NumericQualificationGroup,
+  type NumericQualificationLogic,
   type NumericQualificationOperator,
 } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import { createTuneTable2D } from '../../../../core/tune/table-correlation';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
+import {
+  createHistogramLocalId,
+  loadHistogramCalculatedFields,
+  loadHistogramFilterSets,
+  loadHistogramTablePresets,
+  saveHistogramCalculatedFields,
+  saveHistogramFilterSets,
+  saveHistogramTablePresets,
+  type HistogramCalculatedFieldDefinition,
+  type HistogramFilterConditionState,
+  type HistogramTablePresetState,
+} from '../state/histogram-table-storage';
 
 export interface HistogramTableGeneratorController {
   readonly element: HTMLElement;
@@ -20,6 +35,7 @@ export interface HistogramTableGeneratorController {
 interface FilterRowControls {
   readonly row: HTMLElement;
   readonly enabled: HTMLInputElement;
+  readonly group: HTMLSelectElement;
   readonly channel: HTMLSelectElement;
   readonly operator: HTMLSelectElement;
   readonly value: HTMLInputElement;
@@ -78,6 +94,7 @@ function operatorLabel(operator: NumericQualificationOperator): string {
   if (operator === 'gte') return '≥';
   if (operator === 'lt') return '<';
   if (operator === 'lte') return '≤';
+  if (operator === 'neq') return '≠';
   return '=';
 }
 
@@ -127,6 +144,9 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   let currentScope: ResolvedScope | undefined;
   let currentFilterDescription = 'None';
   let layout: ChartLayout | undefined;
+  let calculatedFields = loadHistogramCalculatedFields();
+  let filterSets = loadHistogramFilterSets();
+  let tablePresets = loadHistogramTablePresets();
 
   const root = document.createElement('section');
   root.className = 'histogram-table-generator-view';
@@ -147,13 +167,33 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
         <option value="variance">Variance</option>
       </select></label>
       <label class="histogram-table-delta-field"><span>Z delta</span><select class="histogram-table-delta"><option value="">(none)</option></select></label>
+      <details class="histogram-table-presets">
+        <summary>Presets</summary>
+        <div class="histogram-table-preset-popover">
+          <select class="histogram-preset-select" aria-label="Saved table preset"></select>
+          <div><button type="button" class="histogram-preset-apply">Apply</button><button type="button" class="histogram-preset-save">Save current…</button><button type="button" class="histogram-preset-delete">Delete</button></div>
+          <small>Presets retain channels, formulas by ID, filters, statistic, scope and axis configuration.</small>
+        </div>
+      </details>
+      <details class="histogram-table-formulas">
+        <summary>ƒ <span class="histogram-formula-count">0</span></summary>
+        <div class="histogram-formula-popover">
+          <label><span>Calculated field</span><select class="histogram-formula-select"></select></label>
+          <label><span>Name</span><input class="histogram-formula-name" type="text" placeholder="AFR Error" /></label>
+          <label><span>Formula</span><input class="histogram-formula-expression" type="text" placeholder="[AFR] - [AFR Target]" /></label>
+          <label><span>Unit</span><input class="histogram-formula-unit" type="text" placeholder="optional" /></label>
+          <div class="histogram-formula-actions"><button type="button" class="histogram-formula-save">Save</button><button type="button" class="histogram-formula-delete">Delete</button><span class="histogram-formula-status">Use [Channel Name] references. Functions: abs/min/max/sqrt/pow/clamp/round/floor/ceil/log/exp.</span></div>
+        </div>
+      </details>
       <details class="histogram-table-filters">
         <summary>Filters <span class="histogram-filter-count">0</span></summary>
         <div class="histogram-table-filter-popover">
+          <div class="histogram-filter-set-bar"><select class="histogram-filter-set-select" aria-label="Saved filter set"></select><button type="button" class="histogram-filter-set-apply">Apply</button><button type="button" class="histogram-filter-set-save">Save set…</button><button type="button" class="histogram-filter-set-delete">Delete</button></div>
+          <div class="histogram-filter-logic-bar"><label><span>Within group</span><select class="histogram-filter-within-logic"><option value="and">ALL</option><option value="or">ANY</option></select></label><label><span>Between groups</span><select class="histogram-filter-between-logic"><option value="and">ALL</option><option value="or">ANY</option></select></label><small>Assign rows to A/B/C. ALL/ANY controls conditions inside and between groups.</small></div>
           <div class="histogram-filter-list"></div>
           <div class="histogram-filter-actions">
             <button type="button" class="histogram-add-filter">+ Add filter</button>
-            <span>Enabled filters use AND semantics.</span>
+            <span>Filters can use physical or calculated channels.</span>
           </div>
         </div>
       </details>
@@ -210,7 +250,25 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const aggregationSelect = root.querySelector<HTMLSelectElement>('.histogram-table-aggregation');
   const deltaField = root.querySelector<HTMLElement>('.histogram-table-delta-field');
   const deltaSelect = root.querySelector<HTMLSelectElement>('.histogram-table-delta');
+  const presetSelect = root.querySelector<HTMLSelectElement>('.histogram-preset-select');
+  const presetApplyButton = root.querySelector<HTMLButtonElement>('.histogram-preset-apply');
+  const presetSaveButton = root.querySelector<HTMLButtonElement>('.histogram-preset-save');
+  const presetDeleteButton = root.querySelector<HTMLButtonElement>('.histogram-preset-delete');
+  const formulaCount = root.querySelector<HTMLElement>('.histogram-formula-count');
+  const formulaSelect = root.querySelector<HTMLSelectElement>('.histogram-formula-select');
+  const formulaNameInput = root.querySelector<HTMLInputElement>('.histogram-formula-name');
+  const formulaExpressionInput = root.querySelector<HTMLInputElement>('.histogram-formula-expression');
+  const formulaUnitInput = root.querySelector<HTMLInputElement>('.histogram-formula-unit');
+  const formulaSaveButton = root.querySelector<HTMLButtonElement>('.histogram-formula-save');
+  const formulaDeleteButton = root.querySelector<HTMLButtonElement>('.histogram-formula-delete');
+  const formulaStatus = root.querySelector<HTMLElement>('.histogram-formula-status');
   const filterCount = root.querySelector<HTMLElement>('.histogram-filter-count');
+  const filterSetSelect = root.querySelector<HTMLSelectElement>('.histogram-filter-set-select');
+  const filterSetApplyButton = root.querySelector<HTMLButtonElement>('.histogram-filter-set-apply');
+  const filterSetSaveButton = root.querySelector<HTMLButtonElement>('.histogram-filter-set-save');
+  const filterSetDeleteButton = root.querySelector<HTMLButtonElement>('.histogram-filter-set-delete');
+  const filterWithinLogicSelect = root.querySelector<HTMLSelectElement>('.histogram-filter-within-logic');
+  const filterBetweenLogicSelect = root.querySelector<HTMLSelectElement>('.histogram-filter-between-logic');
   const filterList = root.querySelector<HTMLElement>('.histogram-filter-list');
   const addFilterButton = root.querySelector<HTMLButtonElement>('.histogram-add-filter');
   const axisSourceSelect = root.querySelector<HTMLSelectElement>('.histogram-table-axis-source');
@@ -235,7 +293,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const tooltip = root.querySelector<HTMLElement>('.histogram-table-tooltip');
   if (
     !scopeSelect || !xSelect || !ySelect || !zField || !zSelect || !aggregationSelect || !deltaField || !deltaSelect
-    || !filterCount || !filterList || !addFilterButton || !axisSourceSelect || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
+    || !presetSelect || !presetApplyButton || !presetSaveButton || !presetDeleteButton || !formulaCount || !formulaSelect || !formulaNameInput
+    || !formulaExpressionInput || !formulaUnitInput || !formulaSaveButton || !formulaDeleteButton || !formulaStatus || !filterCount
+    || !filterSetSelect || !filterSetApplyButton || !filterSetSaveButton || !filterSetDeleteButton || !filterWithinLogicSelect || !filterBetweenLogicSelect
+    || !filterList || !addFilterButton || !axisSourceSelect || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
     || !msqAxisFields || !msqTableSelect || !msqXAxisSelect || !msqYAxisSelect || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
     || !yMinInput || !yMaxInput || !showHitsInput || !exportButton || !empty || !status || !canvas || !tooltip
   ) {
@@ -250,11 +311,104 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   };
   const selectedAggregation = (): NumericAggregationMethod => aggregationSelect.value as NumericAggregationMethod;
 
+  const formulaChannelId = (id: string): string => `formula:${id}`;
+  const formulaForChannelId = (id: string): HistogramCalculatedFieldDefinition | undefined =>
+    id.startsWith('formula:') ? calculatedFields.find((field) => field.id === id.slice(8)) : undefined;
+  const logicalChannelExists = (id: string): boolean => context.channels.some((channel) => channel.id === id) || formulaForChannelId(id) !== undefined;
+  const virtualDefinition = (field: HistogramCalculatedFieldDefinition): ChannelDefinition => ({
+    id: formulaChannelId(field.id),
+    sourceName: field.name,
+    displayName: `ƒ ${field.name}`,
+    valueType: 'number',
+    category: 'Calculated',
+    ...(field.unit ? { unit: field.unit } : {}),
+  });
+
   const refillChannelSelect = (select: HTMLSelectElement, previous: string, includeNone = false): void => {
     select.replaceChildren();
     if (includeNone) select.add(new Option('(none)', ''));
     for (const channel of context.channels) select.add(new Option(channelLabel(channel), channel.id));
-    if (previous && context.channels.some((channel) => channel.id === previous)) select.value = previous;
+    for (const field of calculatedFields) select.add(new Option(`ƒ ${field.name}`, formulaChannelId(field.id)));
+    if (previous && logicalChannelExists(previous)) select.value = previous;
+  };
+
+  const refreshLogicalSelectors = (): void => {
+    const values = new Map<HTMLSelectElement, string>([[xSelect, xSelect.value], [ySelect, ySelect.value], [zSelect, zSelect.value], [deltaSelect, deltaSelect.value]]);
+    refillChannelSelect(xSelect, values.get(xSelect) ?? '');
+    refillChannelSelect(ySelect, values.get(ySelect) ?? '');
+    refillChannelSelect(zSelect, values.get(zSelect) ?? '');
+    refillChannelSelect(deltaSelect, values.get(deltaSelect) ?? '', true);
+    for (const filter of filters) {
+      const previous = filter.channel.value;
+      refillChannelSelect(filter.channel, previous);
+    }
+  };
+
+  const resolvePhysicalReference = (reference: string): ChannelDefinition => {
+    const normalized = reference.trim().toLocaleLowerCase();
+    const matches = context.channels.filter((channel) =>
+      channel.id === reference || channel.displayName.toLocaleLowerCase() === normalized || channel.sourceName.toLocaleLowerCase() === normalized,
+    );
+    if (matches.length === 0) throw new RangeError(`Formula channel not found: [${reference}]`);
+    if (matches.length > 1) throw new RangeError(`Formula channel reference is ambiguous: [${reference}]`);
+    return matches[0]!;
+  };
+
+  const populateFormulaManager = (): void => {
+    const previous = formulaSelect.value;
+    formulaSelect.replaceChildren(new Option('(new calculated field)', ''));
+    for (const field of calculatedFields) formulaSelect.add(new Option(field.name, field.id));
+    if (previous && calculatedFields.some((field) => field.id === previous)) formulaSelect.value = previous;
+    formulaCount.textContent = String(calculatedFields.length);
+    formulaDeleteButton.disabled = !formulaSelect.value;
+  };
+
+  const loadSelectedFormulaEditor = (): void => {
+    const field = calculatedFields.find((candidate) => candidate.id === formulaSelect.value);
+    formulaNameInput.value = field?.name ?? '';
+    formulaExpressionInput.value = field?.expression ?? '';
+    formulaUnitInput.value = field?.unit ?? '';
+    formulaDeleteButton.disabled = !field;
+    formulaStatus.textContent = field ? 'Editing saved calculated field.' : 'Use [Channel Name] references. No JavaScript is executed.';
+  };
+
+  const saveFormula = (): void => {
+    const name = formulaNameInput.value.trim();
+    const expression = formulaExpressionInput.value.trim();
+    if (!name || !expression) { formulaStatus.textContent = 'Name and formula are required.'; return; }
+    try {
+      const program = compileCalculatedField(expression);
+      for (const reference of program.references) resolvePhysicalReference(reference);
+      const existing = calculatedFields.find((field) => field.id === formulaSelect.value);
+      const field: HistogramCalculatedFieldDefinition = {
+        id: existing?.id ?? createHistogramLocalId('formula'),
+        name,
+        expression,
+        ...(formulaUnitInput.value.trim() ? { unit: formulaUnitInput.value.trim() } : {}),
+      };
+      calculatedFields = existing
+        ? calculatedFields.map((candidate) => candidate.id === existing.id ? field : candidate)
+        : [...calculatedFields, field];
+      saveHistogramCalculatedFields(calculatedFields);
+      populateFormulaManager();
+      formulaSelect.value = field.id;
+      refreshLogicalSelectors();
+      formulaStatus.textContent = `Saved ${field.name}.`;
+      scheduleRender();
+    } catch (error) {
+      formulaStatus.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
+    }
+  };
+
+  const deleteFormula = (): void => {
+    if (!formulaSelect.value) return;
+    calculatedFields = calculatedFields.filter((field) => field.id !== formulaSelect.value);
+    saveHistogramCalculatedFields(calculatedFields);
+    formulaSelect.value = '';
+    populateFormulaManager();
+    loadSelectedFormulaEditor();
+    refreshLogicalSelectors();
+    scheduleRender();
   };
 
   const scheduleRender = (delay = 0): void => {
@@ -344,30 +498,38 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     addFilterButton.disabled = filters.length >= MAX_FILTERS;
   };
 
-  const addFilter = (): void => {
+  const addFilter = (seed?: Partial<HistogramFilterConditionState>): void => {
     if (filters.length >= MAX_FILTERS) return;
     const row = document.createElement('div');
     row.className = 'histogram-filter-row';
     row.innerHTML = `
       <input class="histogram-filter-enabled" type="checkbox" checked aria-label="Enable filter" />
+      <select class="histogram-filter-group" aria-label="Filter group"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
       <select class="histogram-filter-channel" aria-label="Filter channel"></select>
       <select class="histogram-filter-operator" aria-label="Filter operator">
-        <option value="gt">&gt;</option><option value="gte">≥</option><option value="lt">&lt;</option><option value="lte">≤</option><option value="eq">=</option>
+        <option value="gt">&gt;</option><option value="gte">≥</option><option value="lt">&lt;</option><option value="lte">≤</option><option value="eq">=</option><option value="neq">≠</option>
       </select>
       <input class="histogram-filter-value" type="number" step="any" value="0" aria-label="Filter value" />
       <button type="button" class="histogram-filter-remove" aria-label="Remove filter">×</button>
     `;
     const enabled = row.querySelector<HTMLInputElement>('.histogram-filter-enabled');
+    const group = row.querySelector<HTMLSelectElement>('.histogram-filter-group');
     const channel = row.querySelector<HTMLSelectElement>('.histogram-filter-channel');
     const operator = row.querySelector<HTMLSelectElement>('.histogram-filter-operator');
     const value = row.querySelector<HTMLInputElement>('.histogram-filter-value');
     const remove = row.querySelector<HTMLButtonElement>('.histogram-filter-remove');
-    if (!enabled || !channel || !operator || !value || !remove) throw new Error('Histogram filter row is incomplete.');
-    for (const definition of context.channels) channel.add(new Option(channelLabel(definition), definition.id));
-    const controls: FilterRowControls = { row, enabled, channel, operator, value };
+    if (!enabled || !group || !channel || !operator || !value || !remove) throw new Error('Histogram filter row is incomplete.');
+    refillChannelSelect(channel, seed?.channelId ?? '');
+    enabled.checked = seed?.enabled ?? true;
+    group.value = seed?.group ?? 'A';
+    if (seed?.channelId && logicalChannelExists(seed.channelId)) channel.value = seed.channelId;
+    if (seed?.operator) operator.value = seed.operator;
+    if (seed?.value !== undefined) value.value = String(seed.value);
+    const controls: FilterRowControls = { row, enabled, group, channel, operator, value };
     filters.push(controls);
     filterList.append(row);
     enabled.addEventListener('change', () => { updateFilterCount(); scheduleRender(); });
+    group.addEventListener('change', () => scheduleRender());
     channel.addEventListener('change', () => scheduleRender());
     operator.addEventListener('change', () => scheduleRender());
     value.addEventListener('input', () => scheduleRender(140));
@@ -379,19 +541,179 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       scheduleRender();
     });
     updateFilterCount();
+  };
+
+  const filterStates = (): HistogramFilterConditionState[] => filters.map((filter) => ({
+    channelId: filter.channel.value,
+    operator: filter.operator.value as NumericQualificationOperator,
+    value: Number(filter.value.value),
+    group: filter.group.value || 'A',
+    enabled: filter.enabled.checked,
+  })).filter((filter) => filter.channelId && Number.isFinite(filter.value));
+
+  const clearFilters = (): void => {
+    filters.splice(0, filters.length);
+    filterList.replaceChildren();
+    updateFilterCount();
+  };
+
+  const applyFilterStates = (states: readonly HistogramFilterConditionState[]): void => {
+    clearFilters();
+    for (const state of states.slice(0, MAX_FILTERS)) addFilter(state);
+    updateFilterCount();
+  };
+
+  const qualificationGroups = (): readonly NumericQualificationGroup[] => {
+    const grouped = new Map<string, NumericQualificationCondition[]>();
+    for (const filter of filterStates().filter((state) => state.enabled)) {
+      const conditions = grouped.get(filter.group) ?? [];
+      conditions.push({ channelId: filter.channelId, operator: filter.operator, value: filter.value });
+      grouped.set(filter.group, conditions);
+    }
+    return [...grouped.entries()].map(([id, conditions]) => ({
+      id,
+      logic: filterWithinLogicSelect.value as NumericQualificationLogic,
+      conditions,
+    }));
+  };
+
+  const populateFilterSets = (): void => {
+    const previous = filterSetSelect.value;
+    filterSetSelect.replaceChildren(new Option('(current filters)', ''));
+    for (const set of filterSets) filterSetSelect.add(new Option(set.name, set.id));
+    if (previous && filterSets.some((set) => set.id === previous)) filterSetSelect.value = previous;
+    filterSetApplyButton.disabled = !filterSetSelect.value;
+    filterSetDeleteButton.disabled = !filterSetSelect.value;
+  };
+
+  const applySelectedFilterSet = (): void => {
+    const set = filterSets.find((candidate) => candidate.id === filterSetSelect.value);
+    if (!set) return;
+    filterBetweenLogicSelect.value = set.groupLogic;
+    filterWithinLogicSelect.value = set.groupConditionLogic;
+    applyFilterStates(set.conditions);
     scheduleRender();
   };
 
-  const enabledConditions = (): readonly NumericQualificationCondition[] => filters.flatMap((filter) => {
-    if (!filter.enabled.checked || !filter.channel.value) return [];
-    const value = Number(filter.value.value);
-    if (!Number.isFinite(value)) return [];
-    return [{
-      channelId: filter.channel.value,
-      operator: filter.operator.value as NumericQualificationOperator,
-      value,
-    }];
+  const saveCurrentFilterSet = (): void => {
+    const suggested = filterSets.find((candidate) => candidate.id === filterSetSelect.value)?.name ?? 'Histogram filters';
+    const name = window.prompt('Filter set name', suggested)?.trim();
+    if (!name) return;
+    const existing = filterSets.find((candidate) => candidate.id === filterSetSelect.value);
+    const set = {
+      id: existing?.id ?? createHistogramLocalId('filters'),
+      name,
+      groupLogic: filterBetweenLogicSelect.value as NumericQualificationLogic,
+      groupConditionLogic: filterWithinLogicSelect.value as NumericQualificationLogic,
+      conditions: filterStates(),
+    };
+    filterSets = existing ? filterSets.map((candidate) => candidate.id === existing.id ? set : candidate) : [...filterSets, set];
+    saveHistogramFilterSets(filterSets);
+    populateFilterSets();
+    filterSetSelect.value = set.id;
+  };
+
+  const deleteSelectedFilterSet = (): void => {
+    if (!filterSetSelect.value) return;
+    filterSets = filterSets.filter((set) => set.id !== filterSetSelect.value);
+    saveHistogramFilterSets(filterSets);
+    filterSetSelect.value = '';
+    populateFilterSets();
+  };
+
+  const populatePresets = (): void => {
+    const previous = presetSelect.value;
+    presetSelect.replaceChildren(new Option('(no preset)', ''));
+    for (const preset of tablePresets) presetSelect.add(new Option(preset.name, preset.id));
+    if (previous && tablePresets.some((preset) => preset.id === previous)) presetSelect.value = previous;
+    presetApplyButton.disabled = !presetSelect.value;
+    presetDeleteButton.disabled = !presetSelect.value;
+  };
+
+  const capturePreset = (id: string, name: string): HistogramTablePresetState => ({
+    id,
+    name,
+    scope: scopeSelect.value,
+    xChannelId: xSelect.value,
+    yChannelId: ySelect.value,
+    zChannelId: zSelect.value,
+    deltaChannelId: deltaSelect.value,
+    aggregation: aggregationSelect.value as NumericAggregationMethod,
+    axisSource: axisSourceSelect.value as 'auto' | 'custom' | 'msq',
+    xBins: xBinsInput.value,
+    yBins: yBinsInput.value,
+    xMin: xMinInput.value,
+    xMax: xMaxInput.value,
+    yMin: yMinInput.value,
+    yMax: yMaxInput.value,
+    xBreakpoints: xBreakpointsInput.value,
+    yBreakpoints: yBreakpointsInput.value,
+    msqTable: msqTableSelect.value,
+    msqXAxis: msqXAxisSelect.value,
+    msqYAxis: msqYAxisSelect.value,
+    showHits: showHitsInput.checked,
+    groupLogic: filterBetweenLogicSelect.value as NumericQualificationLogic,
+    groupConditionLogic: filterWithinLogicSelect.value as NumericQualificationLogic,
+    filters: filterStates(),
   });
+
+  const saveCurrentPreset = (): void => {
+    const selected = tablePresets.find((preset) => preset.id === presetSelect.value);
+    const name = window.prompt('Table preset name', selected?.name ?? 'Histogram table')?.trim();
+    if (!name) return;
+    const preset = capturePreset(selected?.id ?? createHistogramLocalId('preset'), name);
+    tablePresets = selected ? tablePresets.map((candidate) => candidate.id === selected.id ? preset : candidate) : [...tablePresets, preset];
+    saveHistogramTablePresets(tablePresets);
+    populatePresets();
+    presetSelect.value = preset.id;
+  };
+
+  const setIfPresent = (select: HTMLSelectElement, value: string): void => {
+    if ([...select.options].some((option) => option.value === value)) select.value = value;
+  };
+
+  const applyPreset = (preset: HistogramTablePresetState): void => {
+    refreshLogicalSelectors();
+    setIfPresent(scopeSelect, preset.scope);
+    setIfPresent(xSelect, preset.xChannelId);
+    setIfPresent(ySelect, preset.yChannelId);
+    setIfPresent(zSelect, preset.zChannelId);
+    setIfPresent(deltaSelect, preset.deltaChannelId);
+    aggregationSelect.value = preset.aggregation;
+    axisSourceSelect.value = preset.axisSource;
+    xBinsInput.value = preset.xBins;
+    yBinsInput.value = preset.yBins;
+    xMinInput.value = preset.xMin;
+    xMaxInput.value = preset.xMax;
+    yMinInput.value = preset.yMin;
+    yMaxInput.value = preset.yMax;
+    xBreakpointsInput.value = preset.xBreakpoints;
+    yBreakpointsInput.value = preset.yBreakpoints;
+    setIfPresent(msqTableSelect, preset.msqTable);
+    populateMsqAxisSelectors();
+    setIfPresent(msqXAxisSelect, preset.msqXAxis);
+    setIfPresent(msqYAxisSelect, preset.msqYAxis);
+    showHitsInput.checked = preset.showHits;
+    filterBetweenLogicSelect.value = preset.groupLogic;
+    filterWithinLogicSelect.value = preset.groupConditionLogic;
+    applyFilterStates(preset.filters);
+    updateAxisControls();
+    updateValueControls();
+    scheduleRender();
+  };
+
+  const applySelectedPreset = (): void => {
+    const preset = tablePresets.find((candidate) => candidate.id === presetSelect.value);
+    if (preset) applyPreset(preset);
+  };
+
+  const deleteSelectedPreset = (): void => {
+    if (!presetSelect.value) return;
+    tablePresets = tablePresets.filter((preset) => preset.id !== presetSelect.value);
+    saveHistogramTablePresets(tablePresets);
+    presetSelect.value = '';
+    populatePresets();
+  };
 
   const populateScopeOptions = (): void => {
     const previous = scopeSelect.value || 'ab';
@@ -428,6 +750,58 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const usesValue = selectedAggregation() !== 'count';
     zField.hidden = !usesValue;
     deltaField.hidden = !usesValue;
+  };
+
+  const materializeLogicalTraces = async (
+    logicalIds: readonly string[],
+    scope: ResolvedScope,
+  ): Promise<ReadonlyMap<string, HistogramTraceContext>> => {
+    const uniqueLogicalIds = [...new Set(logicalIds.filter(Boolean))];
+    const formulaPrograms = new Map<string, ReturnType<typeof compileCalculatedField>>();
+    const formulaReferenceChannels = new Map<string, ReadonlyMap<string, ChannelDefinition>>();
+    const physicalIds = new Set<string>();
+    for (const logicalId of uniqueLogicalIds) {
+      const field = formulaForChannelId(logicalId);
+      if (!field) { physicalIds.add(logicalId); continue; }
+      const program = compileCalculatedField(field.expression);
+      const references = new Map<string, ChannelDefinition>();
+      for (const reference of program.references) {
+        const channel = resolvePhysicalReference(reference);
+        references.set(reference, channel);
+        physicalIds.add(channel.id);
+      }
+      formulaPrograms.set(logicalId, program);
+      formulaReferenceChannels.set(logicalId, references);
+    }
+    const loaded = await context.loadTraces([...physicalIds], scope.startMs, scope.endMs);
+    const physical = new Map(loaded.map((trace) => [trace.channel.id, trace]));
+    const result = new Map<string, HistogramTraceContext>();
+    for (const logicalId of uniqueLogicalIds) {
+      const direct = physical.get(logicalId);
+      if (direct) { result.set(logicalId, direct); continue; }
+      const field = formulaForChannelId(logicalId);
+      const program = formulaPrograms.get(logicalId);
+      const references = formulaReferenceChannels.get(logicalId);
+      if (!field || !program || !references) continue;
+      const ranges = new Map<string, HistogramTraceContext['range']>();
+      let complete = true;
+      let firstTrace: HistogramTraceContext | undefined;
+      for (const [reference, channel] of references) {
+        const trace = physical.get(channel.id);
+        if (!trace) { complete = false; continue; }
+        firstTrace ??= trace;
+        ranges.set(reference, trace.range);
+        complete &&= traceCoversScope(trace, scope);
+      }
+      if (ranges.size !== references.size) continue;
+      result.set(logicalId, {
+        channel: virtualDefinition(field),
+        range: evaluateCalculatedFieldRange(program, ranges),
+        complete,
+        color: firstTrace?.color ?? '#58aef6',
+      });
+    }
+    return result;
   };
 
   const traceCoversScope = (trace: HistogramTraceContext, scope: ResolvedScope): boolean => {
@@ -588,7 +962,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const aggregation = selectedAggregation();
     const zId = aggregation === 'count' ? undefined : (zSelect.value || context.channels[0]?.id);
     const deltaId = aggregation === 'count' ? undefined : (deltaSelect.value || undefined);
-    const conditions = enabledConditions();
+    const groups = qualificationGroups();
+    const filterChannelIds = groups.flatMap((group) => group.conditions.map((condition) => condition.channelId));
 
     if (!scope || !xId || !yId || (aggregation !== 'count' && !zId)) {
       currentResult = undefined;
@@ -610,11 +985,23 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       yId,
       ...(zId ? [zId] : []),
       ...(deltaId ? [deltaId] : []),
-      ...conditions.map((condition) => condition.channelId),
+      ...filterChannelIds,
     ])];
-    const loaded = await context.loadTraces(requestedIds, scope.startMs, scope.endMs);
+    let byId: ReadonlyMap<string, HistogramTraceContext>;
+    try {
+      byId = await materializeLogicalTraces(requestedIds, scope);
+    } catch (error) {
+      if (generation !== renderGeneration) return;
+      currentResult = undefined;
+      empty.hidden = false;
+      empty.querySelector('strong')!.textContent = 'Calculated field could not be evaluated.';
+      empty.querySelector('span')!.textContent = error instanceof Error ? error.message : 'Check the saved formula.';
+      canvas.hidden = true;
+      status.hidden = true;
+      exportButton.disabled = true;
+      return;
+    }
     if (generation !== renderGeneration) return;
-    const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
     const zTrace = zId ? byId.get(zId) : undefined;
@@ -637,15 +1024,16 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     }
 
     const qualificationChannels = new Map<string, { range: HistogramTraceContext['range']; complete: boolean }>();
-    qualificationChannels.set(xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete });
-    for (const condition of conditions) {
-      const trace = byId.get(condition.channelId);
-      if (trace) qualificationChannels.set(trace.channel.id, { range: trace.range, complete: trace.complete });
+    qualificationChannels.set(xId, { range: xTrace.range, complete: xTrace.complete });
+    for (const channelId of filterChannelIds) {
+      const trace = byId.get(channelId);
+      if (trace) qualificationChannels.set(channelId, { range: trace.range, complete: trace.complete });
     }
-    const qualified = qualifyNumericSamples({
-      referenceChannelId: xTrace.channel.id,
+    const qualified = qualifyNumericSampleGroups({
+      referenceChannelId: xId,
       channels: qualificationChannels,
-      conditions,
+      groupLogic: filterBetweenLogicSelect.value as NumericQualificationLogic,
+      groups,
       ...(scope.startMs !== undefined && scope.endMs !== undefined
         ? { timeRange: { startMs: scope.startMs, endMs: scope.endMs } }
         : {}),
@@ -700,12 +1088,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     currentZTrace = zTrace;
     currentDeltaTrace = deltaTrace;
     currentScope = scope;
-    currentFilterDescription = conditions.length === 0
+    currentFilterDescription = groups.length === 0
       ? 'None'
-      : conditions.map((condition) => {
-          const channel = context.channels.find((definition) => definition.id === condition.channelId);
-          return `${channel ? channelLabel(channel) : condition.channelId} ${operatorLabel(condition.operator)} ${condition.value}`;
-        }).join(' AND ');
+      : groups.map((group) => `(${group.conditions.map((condition) => {
+          const trace = byId.get(condition.channelId);
+          return `${trace ? traceLabel(trace) : condition.channelId} ${operatorLabel(condition.operator)} ${condition.value}`;
+        }).join(group.logic === 'and' ? ' AND ' : ' OR ')})`).join(filterBetweenLogicSelect.value === 'and' ? ' AND ' : ' OR ');
 
     empty.hidden = true;
     canvas.hidden = false;
@@ -838,21 +1226,22 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     refillChannelSelect(ySelect, previousY);
     refillChannelSelect(zSelect, previousZ);
     refillChannelSelect(deltaSelect, previousDelta, true);
-    if (!previousX || !context.channels.some((channel) => channel.id === previousX)) {
+    if (!previousX || !logicalChannelExists(previousX)) {
       xSelect.value = preferredChannel(context.channels, [/\brpm\b/i, /engine.*speed/i], 0)?.id ?? '';
     }
-    if (!previousY || !context.channels.some((channel) => channel.id === previousY)) {
+    if (!previousY || !logicalChannelExists(previousY)) {
       ySelect.value = preferredChannel(context.channels, [/\bmap\b/i, /manifold.*pressure/i, /\bload\b/i], 1)?.id ?? xSelect.value;
     }
-    if (!previousZ || !context.channels.some((channel) => channel.id === previousZ)) {
+    if (!previousZ || !logicalChannelExists(previousZ)) {
       zSelect.value = preferredChannel(context.channels, [/\bafr\b/i, /lambda/i, /spark.*adv/i], 2)?.id ?? xSelect.value;
     }
     for (const filter of filters) {
       const previous = filter.channel.value;
-      filter.channel.replaceChildren();
-      for (const channel of context.channels) filter.channel.add(new Option(channelLabel(channel), channel.id));
-      if (previous && context.channels.some((channel) => channel.id === previous)) filter.channel.value = previous;
+      refillChannelSelect(filter.channel, previous);
     }
+    populateFormulaManager();
+    populateFilterSets();
+    populatePresets();
     populateScopeOptions();
     populateMsqAxisSelectors();
     updateAxisControls();
@@ -860,7 +1249,20 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     scheduleRender();
   };
 
-  addFilterButton.addEventListener('click', addFilter);
+  formulaSelect.addEventListener('change', loadSelectedFormulaEditor);
+  formulaSaveButton.addEventListener('click', saveFormula);
+  formulaDeleteButton.addEventListener('click', deleteFormula);
+  presetSelect.addEventListener('change', () => { presetApplyButton.disabled = !presetSelect.value; presetDeleteButton.disabled = !presetSelect.value; });
+  presetApplyButton.addEventListener('click', applySelectedPreset);
+  presetSaveButton.addEventListener('click', saveCurrentPreset);
+  presetDeleteButton.addEventListener('click', deleteSelectedPreset);
+  filterSetSelect.addEventListener('change', () => { filterSetApplyButton.disabled = !filterSetSelect.value; filterSetDeleteButton.disabled = !filterSetSelect.value; });
+  filterSetApplyButton.addEventListener('click', applySelectedFilterSet);
+  filterSetSaveButton.addEventListener('click', saveCurrentFilterSet);
+  filterSetDeleteButton.addEventListener('click', deleteSelectedFilterSet);
+  filterWithinLogicSelect.addEventListener('change', () => scheduleRender());
+  filterBetweenLogicSelect.addEventListener('change', () => scheduleRender());
+  addFilterButton.addEventListener('click', () => addFilter());
   scopeSelect.addEventListener('change', () => scheduleRender());
   xSelect.addEventListener('change', () => scheduleRender());
   ySelect.addEventListener('change', () => scheduleRender());
@@ -887,6 +1289,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!root.hidden && currentResult && !canvas.hidden) renderChart();
   }).observe(canvas);
 
+  populateFormulaManager();
+  loadSelectedFormulaEditor();
+  populateFilterSets();
+  populatePresets();
   populateScopeOptions();
   populateMsqAxisSelectors();
   updateAxisControls();

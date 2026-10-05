@@ -406,3 +406,97 @@
   width: 100%;
   min-width: 0;
 }
+
+
+.histogram-table-presets,
+.histogram-table-formulas {
+  position: relative;
+}
+
+.histogram-table-presets summary,
+.histogram-table-formulas summary {
+  display: flex;
+  min-width: 54px;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid #2b4554;
+  border-radius: 3px;
+  background: #0f1d27;
+  color: #dce9ef;
+  font: 9px system-ui, sans-serif;
+}
+
+.histogram-table-presets summary::-webkit-details-marker,
+.histogram-table-formulas summary::-webkit-details-marker { display: none; }
+
+.histogram-formula-count {
+  min-width: 14px;
+  padding: 1px 3px;
+  border-radius: 8px;
+  background: #1b2c38;
+  color: #8fa6b3;
+  font-size: 7px;
+  text-align: center;
+}
+
+.histogram-table-preset-popover,
+.histogram-formula-popover {
+  position: absolute;
+  z-index: 35;
+  top: 31px;
+  right: 0;
+  padding: 9px;
+  border: 1px solid #355164;
+  border-radius: 4px;
+  background: #0b171f;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+
+.histogram-table-preset-popover { width: 330px; }
+.histogram-table-preset-popover > select { width: 100%; }
+.histogram-table-preset-popover > div,
+.histogram-formula-actions { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+.histogram-table-preset-popover small,
+.histogram-formula-status,
+.histogram-filter-logic-bar small { color: #718a99; font-size: 8px; line-height: 1.35; }
+
+.histogram-formula-popover {
+  display: grid;
+  width: min(520px, 72vw);
+  grid-template-columns: minmax(120px,.7fr) minmax(180px,1.3fr);
+  gap: 7px;
+}
+.histogram-formula-popover label { display: grid; gap: 3px; }
+.histogram-formula-popover label:nth-of-type(3) { grid-column: 1 / -1; }
+.histogram-formula-popover input,
+.histogram-formula-popover select,
+.histogram-table-preset-popover select,
+.histogram-table-preset-popover button,
+.histogram-formula-popover button {
+  min-height: 27px; border: 1px solid #2b4554; border-radius: 3px; background: #0f1d27; color: #dce9ef; font: 9px system-ui,sans-serif; padding: 0 6px;
+}
+.histogram-formula-actions { grid-column: 1 / -1; }
+.histogram-formula-status { flex: 1; }
+
+.histogram-filter-set-bar,
+.histogram-filter-logic-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #233746;
+}
+.histogram-filter-set-bar select { flex: 1; min-width: 140px; }
+.histogram-filter-logic-bar label { display: flex; align-items: center; gap: 4px; }
+.histogram-filter-logic-bar small { margin-left: auto; }
+
+.histogram-filter-row {
+  grid-template-columns: 22px 46px minmax(140px,1fr) 58px minmax(80px,105px) 28px;
+}
+.histogram-filter-group { width: 46px; }
