@@ -18,9 +18,9 @@ interface ScatterPaneState {
   readonly canvas: HTMLCanvasElement;
   readonly title: HTMLElement;
   readonly status: HTMLElement;
-  result?: NumericScatterResult;
-  xTrace?: HistogramTraceContext;
-  yTrace?: HistogramTraceContext;
+  result: NumericScatterResult | undefined;
+  xTrace: HistogramTraceContext | undefined;
+  yTrace: HistogramTraceContext | undefined;
   renderedPointCount: number;
 }
 
@@ -40,32 +40,31 @@ function channelLabel(trace: HistogramTraceContext): string {
   return trace.channel.displayName || trace.channel.sourceName;
 }
 
+function heatColor(ratio: number): string {
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const hue = 235 - clamped * 235;
+  return `hsl(${hue} 100% ${clamped > 0.82 ? 52 : 48}%)`;
+}
+
 function finiteTimeBounds(trace: HistogramTraceContext): { startMs: number; endMs: number } | undefined {
   const times = trace.range.timeMs;
-  if (times.length === 0) return undefined;
   let startMs: number | undefined;
   let endMs: number | undefined;
   for (let index = 0; index < times.length; index += 1) {
     const value = times[index];
-    if (!Number.isFinite(value)) continue;
-    startMs = value;
-    break;
+    if (value !== undefined && Number.isFinite(value)) {
+      startMs = value;
+      break;
+    }
   }
   for (let index = times.length - 1; index >= 0; index -= 1) {
     const value = times[index];
-    if (!Number.isFinite(value)) continue;
-    endMs = value;
-    break;
+    if (value !== undefined && Number.isFinite(value)) {
+      endMs = value;
+      break;
+    }
   }
-  if (startMs === undefined || endMs === undefined) return undefined;
-  return { startMs, endMs };
-}
-
-function heatColor(ratio: number): string {
-  const clamped = Math.max(0, Math.min(1, ratio));
-  const hue = 235 - clamped * 235;
-  const lightness = clamped > 0.82 ? 52 : 48;
-  return `hsl(${hue} 100% ${lightness}%)`;
+  return startMs === undefined || endMs === undefined ? undefined : { startMs, endMs };
 }
 
 function createPane(label: string): ScatterPaneState {
@@ -90,11 +89,28 @@ function createPane(label: string): ScatterPaneState {
   const title = root.querySelector<HTMLElement>('.scatter-pane-title');
   const status = root.querySelector<HTMLElement>('.scatter-pane-status');
   if (!xSelect || !ySelect || !canvas || !title || !status) throw new Error('Scatter pane structure is incomplete.');
-  return { root, xSelect, ySelect, canvas, title, status, renderedPointCount: 0 };
+  return {
+    root,
+    xSelect,
+    ySelect,
+    canvas,
+    title,
+    status,
+    result: undefined,
+    xTrace: undefined,
+    yTrace: undefined,
+    renderedPointCount: 0,
+  };
 }
 
 export function createScatterView(): ScatterViewController {
-  let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
+  let context: HistogramPageContext = {
+    traces: [],
+    channels: [],
+    loadTraces: async () => [],
+    aTimeMs: undefined,
+    bTimeMs: undefined,
+  };
   let scope: ScatterScope = 'range';
   let layout: ScatterLayout = 'single';
   let traceMode: ScatterTraceMode = 'dots';
@@ -138,15 +154,21 @@ export function createScatterView(): ScatterViewController {
   const overview = root.querySelector<HTMLElement>('.scatter-overview');
   const overviewCanvas = root.querySelector<HTMLCanvasElement>('.scatter-overview-canvas');
   const overviewRange = root.querySelector<HTMLElement>('.scatter-overview-range');
-  if (!scopeSelect || !layoutSelect || !traceModeSelect || !timelineToggle || !refreshButton || !scopeNote || !empty || !content || !paneHost || !overview || !overviewCanvas || !overviewRange) {
+  if (!scopeSelect || !layoutSelect || !traceModeSelect || !timelineToggle || !refreshButton || !scopeNote
+    || !empty || !content || !paneHost || !overview || !overviewCanvas || !overviewRange) {
     throw new Error('Scatter view structure is incomplete.');
   }
 
-  const panes = [createPane('A'), createPane('B')];
+  const panes: ScatterPaneState[] = [createPane('A'), createPane('B')];
   paneHost.append(panes[0]!.root, panes[1]!.root);
 
   const hasValidRange = (): boolean =>
     context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
+
+  const scopeBounds = (): { startMs?: number; endMs?: number } => {
+    if (scope !== 'range' || !hasValidRange()) return {};
+    return { startMs: Math.min(context.aTimeMs!, context.bTimeMs!), endMs: Math.max(context.aTimeMs!, context.bTimeMs!) };
+  };
 
   const fillSelect = (select: HTMLSelectElement, preferred: string, fallbackIndex: number): void => {
     select.replaceChildren();
@@ -161,21 +183,7 @@ export function createScatterView(): ScatterViewController {
     overview.hidden = !timelineVisible;
   };
 
-  const scopeBounds = (): { startMs?: number; endMs?: number } => {
-    if (scope !== 'range' || !hasValidRange()) return {};
-    return {
-      startMs: Math.min(context.aTimeMs!, context.bTimeMs!),
-      endMs: Math.max(context.aTimeMs!, context.bTimeMs!),
-    };
-  };
-
-  const renderPane = (
-    pane: ScatterPaneState,
-    result: NumericScatterResult,
-    xTrace: HistogramTraceContext,
-    yTrace: HistogramTraceContext,
-  ): void => {
-    const canvas = pane.canvas;
+  const configureCanvas = (canvas: HTMLCanvasElement): { ctx: CanvasRenderingContext2D; width: number; height: number } | undefined => {
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
@@ -183,10 +191,16 @@ export function createScatterView(): ScatterViewController {
     canvas.width = Math.max(1, Math.round(width * dpr));
     canvas.height = Math.max(1, Math.round(height * dpr));
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return undefined;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
+    return { ctx, width, height };
+  };
 
+  const renderPane = (pane: ScatterPaneState, result: NumericScatterResult, xTrace: HistogramTraceContext, yTrace: HistogramTraceContext): void => {
+    const configured = configureCanvas(pane.canvas);
+    if (!configured) return;
+    const { ctx, width, height } = configured;
     const padLeft = 58;
     const padRight = 42;
     const padTop = 32;
@@ -196,62 +210,49 @@ export function createScatterView(): ScatterViewController {
 
     ctx.fillStyle = '#030608';
     ctx.fillRect(padLeft, padTop, chartWidth, chartHeight);
-    ctx.strokeStyle = 'rgba(128, 145, 154, .72)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(128,145,154,.72)';
     ctx.strokeRect(padLeft, padTop, chartWidth, chartHeight);
 
-    if (
-      result.validPairSampleCount === 0
-      || result.xMin === undefined
-      || result.xMax === undefined
-      || result.yMin === undefined
-      || result.yMax === undefined
-    ) {
+    pane.title.textContent = `${channelLabel(yTrace)} vs ${channelLabel(xTrace)} vs Hits`;
+    if (result.validPairSampleCount === 0 || result.xMin === undefined || result.xMax === undefined
+      || result.yMin === undefined || result.yMax === undefined) {
       pane.renderedPointCount = 0;
-      pane.title.textContent = `${channelLabel(yTrace)} vs ${channelLabel(xTrace)} vs Hits`;
       pane.status.textContent = 'No valid paired samples';
       return;
     }
 
-    const xSpan = Math.max(Number.EPSILON, result.xMax - result.xMin);
-    const ySpan = Math.max(Number.EPSILON, result.yMax - result.yMin);
+    const xMin = result.xMin;
+    const xMax = result.xMax;
+    const yMin = result.yMin;
+    const yMax = result.yMax;
+    const xSpan = Math.max(Number.EPSILON, xMax - xMin);
+    const ySpan = Math.max(Number.EPSILON, yMax - yMin);
     const stride = Math.max(1, Math.ceil(result.validPairSampleCount / MAX_RENDERED_POINTS));
     pane.renderedPointCount = Math.ceil(result.validPairSampleCount / stride);
 
-    ctx.strokeStyle = 'rgba(54, 75, 87, .58)';
+    ctx.strokeStyle = 'rgba(54,75,87,.58)';
     ctx.setLineDash([2, 5]);
     for (let index = 1; index < 4; index += 1) {
-      const x = padLeft + (chartWidth * index) / 4;
-      const y = padTop + (chartHeight * index) / 4;
-      ctx.beginPath();
-      ctx.moveTo(x, padTop);
-      ctx.lineTo(x, padTop + chartHeight);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(padLeft, y);
-      ctx.lineTo(padLeft + chartWidth, y);
-      ctx.stroke();
+      const gx = padLeft + (chartWidth * index) / 4;
+      const gy = padTop + (chartHeight * index) / 4;
+      ctx.beginPath(); ctx.moveTo(gx, padTop); ctx.lineTo(gx, padTop + chartHeight); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(padLeft, gy); ctx.lineTo(padLeft + chartWidth, gy); ctx.stroke();
     }
     ctx.setLineDash([]);
 
     if (traceMode === 'lines') {
       ctx.strokeStyle = xTrace.color || '#2584ff';
-      ctx.globalAlpha = 0.62;
+      ctx.globalAlpha = .62;
       ctx.lineWidth = 1;
       ctx.beginPath();
       let started = false;
       for (let index = 0; index < result.validPairSampleCount; index += stride) {
         const xValue = result.xValues[index];
         const yValue = result.yValues[index];
-        if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
-        const x = padLeft + ((xValue - result.xMin) / xSpan) * chartWidth;
-        const y = padTop + chartHeight - ((yValue - result.yMin) / ySpan) * chartHeight;
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
-        }
+        if (xValue === undefined || yValue === undefined || !Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
+        const x = padLeft + ((xValue - xMin) / xSpan) * chartWidth;
+        const y = padTop + chartHeight - ((yValue - yMin) / ySpan) * chartHeight;
+        if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; }
       }
       ctx.stroke();
       ctx.globalAlpha = 1;
@@ -261,28 +262,27 @@ export function createScatterView(): ScatterViewController {
       for (let index = 0; index < result.validPairSampleCount; index += stride) {
         const xValue = result.xValues[index];
         const yValue = result.yValues[index];
-        if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
-        const bx = Math.max(0, Math.min(DENSITY_BINS_X - 1, Math.floor(((xValue - result.xMin) / xSpan) * DENSITY_BINS_X)));
-        const by = Math.max(0, Math.min(DENSITY_BINS_Y - 1, Math.floor(((yValue - result.yMin) / ySpan) * DENSITY_BINS_Y)));
+        if (xValue === undefined || yValue === undefined || !Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
+        const bx = Math.max(0, Math.min(DENSITY_BINS_X - 1, Math.floor(((xValue - xMin) / xSpan) * DENSITY_BINS_X)));
+        const by = Math.max(0, Math.min(DENSITY_BINS_Y - 1, Math.floor(((yValue - yMin) / ySpan) * DENSITY_BINS_Y)));
         const densityIndex = by * DENSITY_BINS_X + bx;
         const next = (density[densityIndex] ?? 0) + 1;
         density[densityIndex] = next;
-        if (next > maxDensity) maxDensity = next;
+        maxDensity = Math.max(maxDensity, next);
       }
       for (let index = 0; index < result.validPairSampleCount; index += stride) {
         const xValue = result.xValues[index];
         const yValue = result.yValues[index];
-        if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
-        const xNorm = (xValue - result.xMin) / xSpan;
-        const yNorm = (yValue - result.yMin) / ySpan;
+        if (xValue === undefined || yValue === undefined || !Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
+        const xNorm = (xValue - xMin) / xSpan;
+        const yNorm = (yValue - yMin) / ySpan;
         const bx = Math.max(0, Math.min(DENSITY_BINS_X - 1, Math.floor(xNorm * DENSITY_BINS_X)));
         const by = Math.max(0, Math.min(DENSITY_BINS_Y - 1, Math.floor(yNorm * DENSITY_BINS_Y)));
-        const hits = density[by * DENSITY_BINS_X + bx] ?? 1;
-        const ratio = Math.log1p(hits) / Math.log1p(maxDensity);
+        const ratio = Math.log1p(density[by * DENSITY_BINS_X + bx] ?? 1) / Math.log1p(maxDensity);
         const x = padLeft + xNorm * chartWidth;
         const y = padTop + chartHeight - yNorm * chartHeight;
         ctx.fillStyle = heatColor(ratio);
-        ctx.globalAlpha = 0.74;
+        ctx.globalAlpha = .74;
         const size = 1.25 + ratio * 1.75;
         ctx.fillRect(x - size / 2, y - size / 2, size, size);
       }
@@ -296,7 +296,7 @@ export function createScatterView(): ScatterViewController {
       ctx.fillStyle = gradient;
       ctx.fillRect(legendX, legendY, 8, legendHeight);
       ctx.fillStyle = '#8da1ad';
-      ctx.font = '8px system-ui, sans-serif';
+      ctx.font = '8px system-ui,sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText('Hits', legendX - 2, legendY - 9);
@@ -305,43 +305,30 @@ export function createScatterView(): ScatterViewController {
     }
 
     ctx.fillStyle = '#8ca1ad';
-    ctx.font = '9px system-ui, sans-serif';
+    ctx.font = '9px system-ui,sans-serif';
     ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.fillText(formatNumber(result.xMin), padLeft, padTop + chartHeight + 7);
-    ctx.textAlign = 'right';
-    ctx.fillText(formatNumber(result.xMax), padLeft + chartWidth, padTop + chartHeight + 7);
-    ctx.textAlign = 'center';
-    ctx.fillText(`${channelLabel(xTrace)}${xTrace.channel.unit ? ` · ${xTrace.channel.unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 24);
-
+    ctx.textAlign = 'left'; ctx.fillText(formatNumber(xMin), padLeft, padTop + chartHeight + 7);
+    ctx.textAlign = 'right'; ctx.fillText(formatNumber(xMax), padLeft + chartWidth, padTop + chartHeight + 7);
+    ctx.textAlign = 'center'; ctx.fillText(`${channelLabel(xTrace)}${xTrace.channel.unit ? ` · ${xTrace.channel.unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 24);
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'right';
-    ctx.fillText(formatNumber(result.yMax), padLeft - 7, padTop + 3);
-    ctx.fillText(formatNumber(result.yMin), padLeft - 7, padTop + chartHeight - 3);
+    ctx.fillText(formatNumber(yMax), padLeft - 7, padTop + 3);
+    ctx.fillText(formatNumber(yMin), padLeft - 7, padTop + chartHeight - 3);
     ctx.save();
     ctx.translate(14, padTop + chartHeight / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.fillText(`${channelLabel(yTrace)}${yTrace.channel.unit ? ` · ${yTrace.channel.unit}` : ''}`, 0, 0);
     ctx.restore();
-
-    pane.title.textContent = `${channelLabel(yTrace)} vs ${channelLabel(xTrace)} vs Hits`;
     pane.status.textContent = `${result.validPairSampleCount.toLocaleString()} pairs · ${pane.renderedPointCount.toLocaleString()} rendered`;
   };
 
   const renderOverview = (trace: HistogramTraceContext): void => {
     if (!timelineVisible) return;
     const bounds = finiteTimeBounds(trace);
-    const rect = overviewCanvas.getBoundingClientRect();
-    const width = Math.max(1, Math.floor(rect.width));
-    const height = Math.max(1, Math.floor(rect.height));
-    const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-    overviewCanvas.width = Math.max(1, Math.round(width * dpr));
-    overviewCanvas.height = Math.max(1, Math.round(height * dpr));
-    const ctx = overviewCanvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
+    const configured = configureCanvas(overviewCanvas);
+    if (!configured) return;
+    const { ctx, width, height } = configured;
     ctx.fillStyle = '#050b10';
     ctx.fillRect(0, 0, width, height);
     if (!bounds || trace.range.values.length === 0) return;
@@ -349,9 +336,7 @@ export function createScatterView(): ScatterViewController {
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
     for (const value of trace.range.values) {
-      if (!Number.isFinite(value)) continue;
-      min = Math.min(min, value);
-      max = Math.max(max, value);
+      if (Number.isFinite(value)) { min = Math.min(min, value); max = Math.max(max, value); }
     }
     if (!Number.isFinite(min) || !Number.isFinite(max)) return;
     const span = Math.max(Number.EPSILON, max - min);
@@ -360,21 +345,15 @@ export function createScatterView(): ScatterViewController {
 
     ctx.strokeStyle = trace.color || '#37a2ff';
     ctx.globalAlpha = .75;
-    ctx.lineWidth = 1;
     ctx.beginPath();
     let started = false;
     for (let index = 0; index < trace.range.values.length; index += stride) {
       const value = trace.range.values[index];
       const time = trace.range.timeMs[index];
-      if (!Number.isFinite(value) || !Number.isFinite(time)) continue;
+      if (value === undefined || time === undefined || !Number.isFinite(value) || !Number.isFinite(time)) continue;
       const x = ((time - bounds.startMs) / timeSpan) * width;
       const y = height - 4 - ((value - min) / span) * Math.max(1, height - 8);
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
-      }
+      if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; }
     }
     ctx.stroke();
     ctx.globalAlpha = 1;
@@ -384,10 +363,12 @@ export function createScatterView(): ScatterViewController {
       const endMs = Math.max(context.aTimeMs!, context.bTimeMs!);
       const x1 = Math.max(0, Math.min(width, ((startMs - bounds.startMs) / timeSpan) * width));
       const x2 = Math.max(0, Math.min(width, ((endMs - bounds.startMs) / timeSpan) * width));
-      ctx.fillStyle = 'rgba(72, 167, 231, .16)';
-      ctx.fillRect(Math.min(x1, x2), 0, Math.max(1, Math.abs(x2 - x1)), height);
-      ctx.strokeStyle = 'rgba(115, 202, 255, .9)';
-      ctx.strokeRect(Math.min(x1, x2) + .5, .5, Math.max(1, Math.abs(x2 - x1) - 1), height - 1);
+      const left = Math.min(x1, x2);
+      const rangeWidth = Math.max(1, Math.abs(x2 - x1));
+      ctx.fillStyle = 'rgba(72,167,231,.16)';
+      ctx.fillRect(left, 0, rangeWidth, height);
+      ctx.strokeStyle = 'rgba(115,202,255,.9)';
+      ctx.strokeRect(left + .5, .5, Math.max(1, rangeWidth - 1), height - 1);
     }
     overviewRange.textContent = `${(bounds.startMs / 1000).toFixed(2)}–${(bounds.endMs / 1000).toFixed(2)} s`;
   };
@@ -413,9 +394,7 @@ export function createScatterView(): ScatterViewController {
     content.hidden = false;
     syncLayout();
     const bounds = scopeBounds();
-    scopeNote.textContent = scope === 'full'
-      ? 'Whole recorded log'
-      : `${((bounds.endMs! - bounds.startMs!) / 1000).toFixed(3)} s A/B range`;
+    scopeNote.textContent = scope === 'full' ? 'Whole recorded log' : `${((bounds.endMs! - bounds.startMs!) / 1000).toFixed(3)} s A/B range`;
 
     await Promise.all(visiblePanes.map(async (pane) => {
       const xId = pane.xSelect.value;
@@ -432,7 +411,7 @@ export function createScatterView(): ScatterViewController {
       }
 
       let result: NumericScatterResult;
-      let complete = xTrace.complete && yTrace.complete;
+      let complete: boolean;
       if (scope === 'range') {
         const channels = new Map([[xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete }]]);
         const qualified = qualifyNumericSamples({
@@ -458,11 +437,10 @@ export function createScatterView(): ScatterViewController {
     }));
 
     if (generation !== renderGeneration || !timelineVisible) return;
-    const xId = panes[0]!.xSelect.value;
-    if (!xId) return;
-    const [overviewTrace] = await context.loadTraces([xId]);
-    if (generation !== renderGeneration || !overviewTrace) return;
-    renderOverview(overviewTrace);
+    const overviewId = panes[0]!.xSelect.value;
+    if (!overviewId) return;
+    const [overviewTrace] = await context.loadTraces([overviewId]);
+    if (generation === renderGeneration && overviewTrace) renderOverview(overviewTrace);
   };
 
   const refreshCanvasOnly = (): void => {
@@ -485,30 +463,16 @@ export function createScatterView(): ScatterViewController {
     pane.xSelect.addEventListener('change', () => { void render(); });
     pane.ySelect.addEventListener('change', () => { void render(); });
   }
-  scopeSelect.addEventListener('change', () => {
-    scope = scopeSelect.value === 'full' ? 'full' : 'range';
-    void render();
-  });
-  layoutSelect.addEventListener('change', () => {
-    layout = layoutSelect.value === 'dual' ? 'dual' : 'single';
-    syncLayout();
-    void render();
-  });
-  traceModeSelect.addEventListener('change', () => {
-    traceMode = traceModeSelect.value === 'lines' ? 'lines' : 'dots';
-    refreshCanvasOnly();
-  });
-  timelineToggle.addEventListener('change', () => {
-    timelineVisible = timelineToggle.checked;
-    syncLayout();
-    if (timelineVisible) void render();
-  });
+  scopeSelect.addEventListener('change', () => { scope = scopeSelect.value === 'full' ? 'full' : 'range'; void render(); });
+  layoutSelect.addEventListener('change', () => { layout = layoutSelect.value === 'dual' ? 'dual' : 'single'; syncLayout(); void render(); });
+  traceModeSelect.addEventListener('change', () => { traceMode = traceModeSelect.value === 'lines' ? 'lines' : 'dots'; refreshCanvasOnly(); });
+  timelineToggle.addEventListener('change', () => { timelineVisible = timelineToggle.checked; syncLayout(); if (timelineVisible) void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
 
   new ResizeObserver(() => {
     if (root.hidden || content.hidden) return;
     refreshCanvasOnly();
-    if (timelineVisible && panes[0]!.xTrace) {
+    if (timelineVisible && panes[0]!.xSelect.value) {
       void context.loadTraces([panes[0]!.xSelect.value]).then(([trace]) => {
         if (trace && !root.hidden && timelineVisible) renderOverview(trace);
       });
@@ -516,9 +480,5 @@ export function createScatterView(): ScatterViewController {
   }).observe(root);
 
   syncLayout();
-  return {
-    element: root,
-    setContext,
-    refresh: () => { void render(); },
-  };
+  return { element: root, setContext, refresh: () => { void render(); } };
 }
