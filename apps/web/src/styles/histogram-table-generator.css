@@ -558,3 +558,30 @@
 .histogram-table-status { font-size:10px; min-height:24px; }
 .histogram-table-tooltip { font-size:10px; }
 .histogram-table-tooltip strong { font-size:10px; }
+
+.histogram-table-weighting {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #233746;
+}
+
+.histogram-table-weighting[hidden] {
+  display: none;
+}
+
+.histogram-table-weighting label {
+  min-width: 0;
+}
+
+.histogram-table-weighting select,
+.histogram-table-weighting input {
+  width: 100%;
+  min-width: 0;
+}
+
+.histogram-table-weighting p {
+  grid-column: 1 / -1;
+}

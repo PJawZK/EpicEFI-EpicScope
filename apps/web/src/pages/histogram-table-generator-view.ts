@@ -1,4 +1,5 @@
 import { buildNumericHeatmap, type NumericHeatmapResult } from '../../../../core/analysis/heatmap';
+import { buildCellCenteredWeightedMean } from '../../../../core/analysis/weighted-cell-mean';
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import { subtractNumericRanges } from '../../../../core/analysis/numeric-range-arithmetic';
 import { compileCalculatedField, evaluateCalculatedFieldRange } from '../../../../core/analysis/calculated-field';
@@ -23,6 +24,8 @@ import {
   saveHistogramTablePresets,
   type HistogramCalculatedFieldDefinition,
   type HistogramFilterConditionState,
+  type HistogramTableAggregation,
+  type HistogramTableColorMode,
   type HistogramTablePresetState,
 } from '../state/histogram-table-storage';
 
@@ -72,14 +75,15 @@ function formatNumber(value: number | undefined, precision = 3): string {
   return value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
 
-function formatCellValue(value: number | undefined, method: NumericAggregationMethod, width: number): string {
+function formatCellValue(value: number | undefined, method: HistogramTableAggregation, width: number): string {
   if (value === undefined || !Number.isFinite(value)) return method === 'count' ? '0' : '—';
   if (method === 'count') return Math.round(value).toLocaleString();
   const precision = width < 30 ? 0 : width < 48 ? 1 : Math.abs(value) >= 100 ? 1 : 2;
   return value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
 
-function aggregationLabel(method: NumericAggregationMethod): string {
+function aggregationLabel(method: HistogramTableAggregation): string {
+  if (method === 'weighted-mean') return 'Weighted mean';
   if (method === 'count') return 'Count';
   if (method === 'mean') return 'Mean';
   if (method === 'min') return 'Minimum';
@@ -137,6 +141,9 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   let renderGeneration = 0;
   let renderTimer: number | undefined;
   let currentResult: NumericHeatmapResult | undefined;
+  let currentAggregation: HistogramTableAggregation = 'mean';
+  let currentCellTotalWeights: Float64Array | undefined;
+  let currentWeightedContributingCounts: Uint32Array | undefined;
   let currentXTrace: HistogramTraceContext | undefined;
   let currentYTrace: HistogramTraceContext | undefined;
   let currentZTrace: HistogramTraceContext | undefined;
@@ -160,6 +167,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       <label class="histogram-table-z-field"><span>Z</span><select class="histogram-table-z"></select></label>
       <label><span>Cell</span><select class="histogram-table-aggregation">
         <option value="mean" selected>Mean</option>
+        <option value="weighted-mean">Weighted mean · MLV experimental</option>
         <option value="count">Count</option>
         <option value="min">Minimum</option>
         <option value="max">Maximum</option>
@@ -220,6 +228,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
             <label><span>Y max</span><input class="histogram-table-y-max" type="number" step="any" placeholder="Auto" /></label>
           </div>
           <label class="histogram-table-toggle"><input class="histogram-table-show-hits" type="checkbox" checked /><span>Show hit count in cells</span></label>
+          <div class="histogram-table-weighting" hidden>
+            <label><span>Min individual weight</span><input class="histogram-table-min-individual-weight" type="number" min="0" max="1" step="0.01" value="0" /></label>
+            <label><span>Min total hit weight</span><input class="histogram-table-min-total-weight" type="number" min="0" step="0.1" value="0" /></label>
+            <label><span>Cell color</span><select class="histogram-table-color-mode"><option value="value">Cell value</option><option value="weight">Hit weight</option></select></label>
+            <p>Experimental MLV-style weighting: 1.0 at the X/Y cell center, falling toward 0.0 at the cell boundary. The two thresholds mirror MLV's hit-weight controls.</p>
+          </div>
           <p>Set Y rows to 1 for an MLV-style single-row bar graph. Blank limits use observed data range.</p>
         </div>
       </details>
@@ -305,6 +319,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const yMinInput = root.querySelector<HTMLInputElement>('.histogram-table-y-min');
   const yMaxInput = root.querySelector<HTMLInputElement>('.histogram-table-y-max');
   const showHitsInput = root.querySelector<HTMLInputElement>('.histogram-table-show-hits');
+  const weightingFields = root.querySelector<HTMLElement>('.histogram-table-weighting');
+  const minimumIndividualWeightInput = root.querySelector<HTMLInputElement>('.histogram-table-min-individual-weight');
+  const minimumTotalWeightInput = root.querySelector<HTMLInputElement>('.histogram-table-min-total-weight');
+  const colorModeSelect = root.querySelector<HTMLSelectElement>('.histogram-table-color-mode');
   const exportButton = root.querySelector<HTMLButtonElement>('.histogram-table-export');
   const empty = root.querySelector<HTMLElement>('.histogram-table-empty');
   const status = root.querySelector<HTMLElement>('.histogram-table-status');
@@ -326,7 +344,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     || !filterSetSelect || !filterSetApplyButton || !filterSetSaveButton || !filterSetDeleteButton || !filterWithinLogicSelect || !filterBetweenLogicSelect
     || !filterList || !addFilterButton || !axisSourceSelect || !autoAxisFields || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
     || !msqAxisFields || !msqTableSelect || !msqXAxisSelect || !msqYAxisSelect || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
-    || !yMinInput || !yMaxInput || !showHitsInput || !exportButton || !empty || !status || !canvas || !tooltip
+    || !yMinInput || !yMaxInput || !showHitsInput || !weightingFields || !minimumIndividualWeightInput || !minimumTotalWeightInput || !colorModeSelect
+    || !exportButton || !empty || !status || !canvas || !tooltip
     || !cellInspector || !cellInspectorTitle || !cellInspectorSubtitle || !cellInspectorSummary || !cellSampleList || !cellListNote
     || !cellInspectorClose || !cellCopyButton || !cellOpenLoggerButton
   ) {
@@ -339,7 +358,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!node) throw new Error(`Histogram table summary field is missing: ${name}`);
     return node;
   };
-  const selectedAggregation = (): NumericAggregationMethod => aggregationSelect.value as NumericAggregationMethod;
+  const selectedAggregation = (): HistogramTableAggregation => aggregationSelect.value as HistogramTableAggregation;
 
   const formulaChannelId = (id: string): string => `formula:${id}`;
   const formulaForChannelId = (id: string): HistogramCalculatedFieldDefinition | undefined =>
@@ -691,7 +710,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     yChannelId: ySelect.value,
     zChannelId: zSelect.value,
     deltaChannelId: deltaSelect.value,
-    aggregation: aggregationSelect.value as NumericAggregationMethod,
+    aggregation: aggregationSelect.value as HistogramTableAggregation,
     axisSource: axisSourceSelect.value as 'auto' | 'custom' | 'msq',
     xBins: xBinsInput.value,
     yBins: yBinsInput.value,
@@ -705,6 +724,9 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     msqXAxis: msqXAxisSelect.value,
     msqYAxis: msqYAxisSelect.value,
     showHits: showHitsInput.checked,
+    minimumIndividualWeight: Number(minimumIndividualWeightInput.value) || 0,
+    minimumTotalWeight: Number(minimumTotalWeightInput.value) || 0,
+    colorMode: colorModeSelect.value as HistogramTableColorMode,
     groupLogic: filterBetweenLogicSelect.value as NumericQualificationLogic,
     groupConditionLogic: filterWithinLogicSelect.value as NumericQualificationLogic,
     filters: filterStates(),
@@ -747,6 +769,9 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     setIfPresent(msqXAxisSelect, preset.msqXAxis);
     setIfPresent(msqYAxisSelect, preset.msqYAxis);
     showHitsInput.checked = preset.showHits;
+    minimumIndividualWeightInput.value = String(preset.minimumIndividualWeight ?? 0);
+    minimumTotalWeightInput.value = String(preset.minimumTotalWeight ?? 0);
+    colorModeSelect.value = preset.colorMode ?? 'value';
     filterBetweenLogicSelect.value = preset.groupLogic;
     filterWithinLogicSelect.value = preset.groupConditionLogic;
     applyFilterStates(preset.filters);
@@ -800,9 +825,11 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   };
 
   const updateValueControls = (): void => {
-    const usesValue = selectedAggregation() !== 'count';
+    const aggregation = selectedAggregation();
+    const usesValue = aggregation !== 'count';
     zField.hidden = !usesValue;
     deltaField.hidden = !usesValue;
+    weightingFields.hidden = aggregation !== 'weighted-mean';
   };
 
   const materializeLogicalTraces = async (
@@ -934,11 +961,15 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
           const value = result.cellValues[cellIndex];
           const count = result.counts[cellIndex] ?? 0;
           const finite = value !== undefined && Number.isFinite(value);
-          const normalized = !finite
-            ? 0
-            : valueSpan > 0 && valueMin !== undefined
-              ? Math.max(0, Math.min(1, (Number(value) - valueMin) / valueSpan))
-              : count > 0 ? 1 : 0;
+          const cellWeight = currentCellTotalWeights?.[cellIndex] ?? 0;
+          const maxWeight = currentCellTotalWeights ? Math.max(0, ...currentCellTotalWeights) : 0;
+          const normalized = currentAggregation === 'weighted-mean' && colorModeSelect.value === 'weight'
+            ? maxWeight > 0 ? Math.max(0, Math.min(1, cellWeight / maxWeight)) : 0
+            : !finite
+              ? 0
+              : valueSpan > 0 && valueMin !== undefined
+                ? Math.max(0, Math.min(1, (Number(value) - valueMin) / valueSpan))
+                : count > 0 ? 1 : 0;
           const x = left + xIndex * cellWidth;
           const y = top + chartHeight - (yIndex + 1) * cellHeight;
           if (count > 0) {
@@ -949,7 +980,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
           }
           ctx.strokeStyle = 'rgba(73,103,122,.46)';
           ctx.strokeRect(x + .5, y + .5, Math.max(0, cellWidth - 1), Math.max(0, cellHeight - 1));
-          const text = formatCellValue(finite ? Number(value) : undefined, result.aggregationMethod, cellWidth);
+          const text = formatCellValue(finite ? Number(value) : undefined, currentAggregation, cellWidth);
           const fontSize = Math.max(6, Math.min(11, Math.floor(cellHeight * (showHitsInput.checked ? .31 : .42)), Math.floor(cellWidth / Math.max(3, text.length) * 1.4)));
           ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
           ctx.textAlign = 'center';
@@ -1002,7 +1033,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#93a9b6';
     ctx.font = '600 10px system-ui, sans-serif';
-    ctx.fillText(`${aggregationLabel(result.aggregationMethod)} · ${valueName}`, left, 5);
+    ctx.fillText(`${aggregationLabel(currentAggregation)} · ${valueName}`, left, 5);
   };
 
   const render = async (): Promise<void> => {
@@ -1013,6 +1044,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const xId = xSelect.value || context.channels[0]?.id;
     const yId = ySelect.value || context.channels[1]?.id || context.channels[0]?.id;
     const aggregation = selectedAggregation();
+    const baseAggregation: NumericAggregationMethod = aggregation === 'weighted-mean' ? 'mean' : aggregation;
     const zId = aggregation === 'count' ? undefined : (zSelect.value || context.channels[0]?.id);
     const deltaId = aggregation === 'count' ? undefined : (deltaSelect.value || undefined);
     const groups = qualificationGroups();
@@ -1125,18 +1157,41 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       ...(!explicitAxes.xAxisValues && xMax !== undefined ? { xMax } : {}),
       ...(!explicitAxes.yAxisValues && yMin !== undefined ? { yMin } : {}),
       ...(!explicitAxes.yAxisValues && yMax !== undefined ? { yMax } : {}),
-      aggregation,
+      aggregation: baseAggregation,
       ...(valueRange ? { valueRange } : {}),
     });
+
+    let displayResult = result;
+    currentCellTotalWeights = undefined;
+    currentWeightedContributingCounts = undefined;
+    if (aggregation === 'weighted-mean' && valueRange) {
+      const weighted = buildCellCenteredWeightedMean(xTrace.range, yTrace.range, valueRange, result, {
+        minimumIndividualWeight: Math.max(0, Math.min(1, Number(minimumIndividualWeightInput.value) || 0)),
+        minimumTotalWeight: Math.max(0, Number(minimumTotalWeightInput.value) || 0),
+      });
+      currentCellTotalWeights = weighted.cellTotalWeights;
+      currentWeightedContributingCounts = weighted.cellContributingSampleCounts;
+      displayResult = {
+        ...result,
+        cellValues: weighted.cellValues,
+        cellValueSampleCounts: weighted.cellContributingSampleCounts,
+        cellValueMin: weighted.cellValueMin,
+        cellValueMax: weighted.cellValueMax,
+        valueValidSampleCount: weighted.contributingSampleCount,
+        valueInvalidSampleCount: weighted.invalidValueSampleCount,
+        valueUnavailableSampleCount: weighted.unavailableValueSampleCount,
+      };
+    }
 
     const complete = qualified.complete
       && traceCoversScope(yTrace, scope)
       && (!zTrace || traceCoversScope(zTrace, scope))
       && (!deltaTrace || traceCoversScope(deltaTrace, scope))
-      && result.unavailableSampleCount === 0
-      && result.valueUnavailableSampleCount === 0;
+      && displayResult.unavailableSampleCount === 0
+      && displayResult.valueUnavailableSampleCount === 0;
 
-    currentResult = result;
+    currentResult = displayResult;
+    currentAggregation = aggregation;
     currentXTrace = xTrace;
     currentYTrace = yTrace;
     currentZTrace = zTrace;
@@ -1167,8 +1222,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     summary('input').textContent = qualified.inputSampleCount.toLocaleString();
     summary('eligible').textContent = qualified.eligibleSampleCount.toLocaleString();
     summary('filtered').textContent = qualified.valueRejectedSampleCount.toLocaleString();
-    summary('binned').textContent = result.binnedSampleCount.toLocaleString();
-    summary('outside').textContent = result.outsideRangeSampleCount.toLocaleString();
+    summary('binned').textContent = displayResult.binnedSampleCount.toLocaleString();
+    summary('outside').textContent = displayResult.outsideRangeSampleCount.toLocaleString();
     renderChart();
   };
 
@@ -1192,7 +1247,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       ['Scope', currentScope.label].map(quote).join(','),
       ['X', traceLabel(xTrace), xTrace.channel.unit ?? ''].map(quote).join(','),
       ['Y', traceLabel(yTrace), yTrace.channel.unit ?? ''].map(quote).join(','),
-      ['Cell', aggregationLabel(result.aggregationMethod), zDescription, currentZTrace?.channel.unit ?? ''].map(quote).join(','),
+      ['Cell', aggregationLabel(currentAggregation), zDescription, currentZTrace?.channel.unit ?? ''].map(quote).join(','),
       ['Filters', currentFilterDescription].map(quote).join(','),
       '',
       [traceLabel(yTrace) + ' \\ ' + traceLabel(xTrace), ...xCenters.map((value) => formatNumber(value, 6))].map(quote).join(','),
@@ -1214,6 +1269,17 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
         values.push(result.counts[yIndex * result.xBins.length + xIndex] ?? 0);
       }
       rows.push(values.map(quote).join(','));
+    }
+    if (currentAggregation === 'weighted-mean' && currentCellTotalWeights) {
+      rows.push('', 'Total hit weights', [traceLabel(yTrace) + ' \\ ' + traceLabel(xTrace), ...xCenters.map((value) => formatNumber(value, 6))].map(quote).join(','));
+      for (let yIndex = result.yBins.length - 1; yIndex >= 0; yIndex -= 1) {
+        const yBin = result.yBins[yIndex]!;
+        const values: (string | number)[] = [formatNumber(yBin.centerValue, 6)];
+        for (let xIndex = 0; xIndex < result.xBins.length; xIndex += 1) {
+          values.push(currentCellTotalWeights[yIndex * result.xBins.length + xIndex] ?? 0);
+        }
+        rows.push(values.map(quote).join(','));
+      }
     }
     const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1272,7 +1338,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const label = `${traceLabel(xTrace)} ${formatNumber(xBin.centerValue)} × ${traceLabel(yTrace)} ${formatNumber(yBin.centerValue)}`;
     selectedCell = { cellIndex: cell.cellIndex, xIndex: cell.xIndex, yIndex: cell.yIndex, sampleIndices: sourceIndices, timeMs: times, label };
     cellInspectorTitle.textContent = label;
-    cellInspectorSubtitle.textContent = `${aggregationLabel(result.aggregationMethod)} ${formatCellValue(value, result.aggregationMethod, 120)} · ${count.toLocaleString()} hits`;
+    const totalWeight = currentCellTotalWeights?.[cell.cellIndex];
+    cellInspectorSubtitle.textContent = `${aggregationLabel(currentAggregation)} ${formatCellValue(value, currentAggregation, 120)} · ${count.toLocaleString()} hits${currentAggregation === 'weighted-mean' ? ` · weight ${formatNumber(totalWeight, 3)}` : ''}`;
     cellInspectorSummary.innerHTML = `<span>${traceLabel(xTrace)} ${formatNumber(xBin.lowerBound)}–${formatNumber(xBin.upperBound)}</span><span>${traceLabel(yTrace)} ${formatNumber(yBin.lowerBound)}–${formatNumber(yBin.upperBound)}</span>`;
     const shown = sourceIndices.slice(0, 200);
     cellSampleList.replaceChildren(...shown.map((sampleIndex, index) => {
@@ -1310,16 +1377,19 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const value = result.cellValues[cellIndex];
     const count = result.counts[cellIndex] ?? 0;
     const validValues = result.cellValueSampleCounts[cellIndex] ?? 0;
+    const totalWeight = currentCellTotalWeights?.[cellIndex];
+    const weightedHits = currentWeightedContributingCounts?.[cellIndex];
     const zName = result.aggregationMethod === 'count'
       ? 'Count'
       : currentDeltaTrace && currentZTrace
         ? `${traceLabel(currentZTrace)} − ${traceLabel(currentDeltaTrace)}`
         : currentZTrace ? traceLabel(currentZTrace) : 'Value';
     tooltip.innerHTML = `
-      <strong>${aggregationLabel(result.aggregationMethod)} · ${zName}: ${formatCellValue(value, result.aggregationMethod, 100)}</strong>
+      <strong>${aggregationLabel(currentAggregation)} · ${zName}: ${formatCellValue(value, currentAggregation, 100)}</strong>
       <span>${traceLabel(xTrace)}: ${formatNumber(xBin.lowerBound)} to ${formatNumber(xBin.upperBound)}</span>
       <span>${traceLabel(yTrace)}: ${formatNumber(yBin.lowerBound)} to ${formatNumber(yBin.upperBound)}</span>
       <span>Hits: ${count.toLocaleString()}${result.aggregationMethod === 'count' ? '' : ` · valid Z: ${validValues.toLocaleString()}`}</span>
+      ${currentAggregation === 'weighted-mean' ? `<span>Total hit weight: ${formatNumber(totalWeight, 3)} · weighted hits: ${(weightedHits ?? 0).toLocaleString()}</span>` : ''}
     `;
     tooltip.style.left = `${Math.min(rect.width - 230, Math.max(8, x + 14))}px`;
     tooltip.style.top = `${Math.min(rect.height - 96, Math.max(8, y + 14))}px`;
@@ -1393,6 +1463,9 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   yMinInput.addEventListener('input', () => scheduleRender(160));
   yMaxInput.addEventListener('input', () => scheduleRender(160));
   showHitsInput.addEventListener('change', renderChart);
+  minimumIndividualWeightInput.addEventListener('input', () => scheduleRender(120));
+  minimumTotalWeightInput.addEventListener('input', () => scheduleRender(120));
+  colorModeSelect.addEventListener('change', renderChart);
   window.addEventListener('epicscope-histogram-calculated-fields-changed', () => {
     calculatedFields = loadHistogramCalculatedFields();
     populateFormulaManager();
