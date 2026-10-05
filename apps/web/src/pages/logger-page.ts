@@ -1014,6 +1014,7 @@ export function createLoggerPage(): LoggerPageController {
     if (activeIndex < 0 || activeIndex >= visibleCount) workspace.activePaneId = 'pane-1';
     renderGraphLayout();
     syncActivePaneContext();
+    reconcileAssignedVisiblePaneChannels();
     emitWorkspaceMutation();
   });
 
@@ -1027,6 +1028,7 @@ export function createLoggerPage(): LoggerPageController {
     workspace.maximizedPaneId = undefined;
     renderGraphLayout();
     syncActivePaneContext();
+    reconcileAssignedVisiblePaneChannels();
     emitWorkspaceMutation();
   });
 
