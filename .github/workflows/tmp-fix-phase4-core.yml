@@ -37,3 +37,5 @@ jobs:
           git add core/analysis/specialized-analyzers.ts
           git commit -m "Fix Phase 4 analyzer core validation"
           git push origin HEAD:phase4/remaining-analyzers-core-v1
+
+# trigger
