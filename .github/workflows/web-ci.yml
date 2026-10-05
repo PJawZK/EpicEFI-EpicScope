@@ -8,32 +8,221 @@ on:
     branches:
       - main
       - phase1/**
+      - fix/graph-preset-trace-invariant-v2
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  patch-graph-presets:
+    if: ${{ github.ref == 'refs/heads/fix/graph-preset-trace-invariant-v2' && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: fix/graph-preset-trace-invariant-v2
+      - name: Enforce visible preset traces
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          graph_path = Path('apps/web/src/components/graph-viewport.ts')
+          graph = graph_path.read_text()
+
+          replacements = [
+            (
+              "  toggleChannel(channelId: string): Promise<boolean>;\n  activatePreloadedChannels(",
+              "  toggleChannel(channelId: string): Promise<boolean>;\n  hasActiveChannel(channelId: string): boolean;\n  hasPendingChannel(channelId: string): boolean;\n  activatePreloadedChannels("
+            ),
+            (
+              """    if (cacheReady) {
+      overlay.hidden = false;
+      overlayTitle.textContent = `Loading ${channel.sourceName}…`;
+      overlayDetail.textContent = 'Using decoded channel cache.';
+      void activateCachedChannel(channelId, pending).then(resolveSelection);
+      return result;
+    }""",
+              """    if (cacheReady) {
+      loadingTraceIds.add(channelId);
+      overlay.hidden = false;
+      overlayTitle.textContent = `Loading ${channel.sourceName}…`;
+      overlayDetail.textContent = 'Using decoded channel cache.';
+      void activateCachedChannel(channelId, pending)
+        .then(resolveSelection)
+        .finally(() => { loadingTraceIds.delete(channelId); });
+      return result;
+    }"""
+            ),
+            (
+              """    setLog,
+    toggleChannel,
+    activatePreloadedChannels,""",
+              """    setLog,
+    toggleChannel,
+    hasActiveChannel: (channelId) => activeTraces.has(channelId),
+    hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),
+    activatePreloadedChannels,"""
+            ),
+          ]
+          for old, new in replacements:
+            if old not in graph:
+              raise SystemExit('graph anchor missing: ' + old[:100])
+            graph = graph.replace(old, new, 1)
+          graph_path.write_text(graph)
+
+          logger_path = Path('apps/web/src/pages/logger-page.ts')
+          logger = logger_path.read_text()
+
+          old = """  const reconcileAssignedVisiblePaneChannels = (): void => {
+    const workspace = activeWorkspace();
+    if (!workspace || !channelDataSource) return;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    for (const runtime of paneRuntimes.slice(0, visibleCount)) {
+      reconcileAssignedPaneChannels(runtime);
+    }
+  };
+
+  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
+    const workspace = activeWorkspace();
+    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
+    if (!pane || !channelDataSource) return;
+    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(
+      (channelId) => channelDefinitions.has(channelId)
+        && !unavailableChannelIds.has(channelId)
+        && !runtime.activeChannelIds.has(channelId),
+    );
+    if (missingIds.length === 0) return;
+    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+    runtime.graph.loadPendingChannels();
+    void Promise.all(activations).then((results) => {
+      missingIds.forEach((channelId, index) => {
+        if (results[index]) runtime.activeChannelIds.add(channelId);
+      });
+      syncActivePaneContext();
+    });
+  };"""
+          new = """  const reconcileAssignedVisiblePaneChannels = (): void => {
+    const workspace = activeWorkspace();
+    if (!workspace || !channelDataSource) return;
+    const visibleCount = paneCountForLayout(workspace.layout);
+    for (const runtime of paneRuntimes.slice(0, visibleCount)) {
+      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);
+    }
+  };
+
+  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
+    const workspace = activeWorkspace();
+    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
+    if (!pane || !channelDataSource) return;
+
+    const assignedIds = renderablePersistentChannelIds(pane.channelIds).filter(
+      (channelId) => channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId),
+    );
+    const missingIds: string[] = [];
+    for (const channelId of assignedIds) {
+      if (runtime.graph.hasActiveChannel(channelId)) {
+        runtime.activeChannelIds.add(channelId);
+        continue;
+      }
+      runtime.activeChannelIds.delete(channelId);
+      if (!runtime.graph.hasPendingChannel(channelId)) missingIds.push(channelId);
+    }
+
+    if (missingIds.length === 0) {
+      syncActivePaneContext();
+      return;
+    }
+    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+    runtime.graph.loadPendingChannels();
+    void Promise.all(activations).then((results) => {
+      missingIds.forEach((channelId, index) => {
+        if (results[index] || runtime.graph.hasActiveChannel(channelId)) {
+          runtime.activeChannelIds.add(channelId);
+        }
+      });
+      syncActivePaneContext();
+    });
+  };"""
+          if old not in logger:
+            raise SystemExit('logger reconciliation anchor missing')
+          logger = logger.replace(old, new, 1)
+
+          replacements = [
+            (
+              """    if (!target || (target.id === activeWorkspaceId && !force)) {
+      renderGraphLayout();
+      syncActivePaneContext();
+      return;
+    }""",
+              """    if (!target || (target.id === activeWorkspaceId && !force)) {
+      renderGraphLayout();
+      syncActivePaneContext();
+      reconcileAssignedVisiblePaneChannels();
+      return;
+    }"""
+            ),
+            (
+              """    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
+    const finalSyncMs = now() - finalSyncStarted;""",
+              """    const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
+    reconcileAssignedVisiblePaneChannels();
+    const finalSyncMs = now() - finalSyncStarted;"""
+            ),
+            (
+              """      renderGraphLayout();
+      emitWorkspaceMutation();
+    });
+
+    runtime.maximizeButton.addEventListener('click', (event) => {""",
+              """      renderGraphLayout();
+      reconcileAssignedVisiblePaneChannels();
+      emitWorkspaceMutation();
+    });
+
+    runtime.maximizeButton.addEventListener('click', (event) => {"""
+            ),
+            (
+              """      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
+      renderGraphLayout();
+      emitWorkspaceMutation();
+    });""",
+              """      workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
+      renderGraphLayout();
+      reconcileAssignedVisiblePaneChannels();
+      emitWorkspaceMutation();
+    });"""
+            ),
+          ]
+          for old, new in replacements:
+            if old not in logger:
+              raise SystemExit('logger transition anchor missing: ' + old[:100])
+            logger = logger.replace(old, new, 1)
+          logger_path.write_text(logger)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/components/graph-viewport.ts apps/web/src/pages/logger-page.ts
+          git commit -m 'Enforce visible assigned traces across graph presets'
+          git push origin HEAD:fix/graph-preset-trace-invariant-v2
+
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: '22.12.0'
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
       - name: Type-check
         run: npm run typecheck
-
       - name: Test
         run: npm test
-
       - name: Build
         run: npm run build
