@@ -5,6 +5,10 @@ import type { SavedTimelineRangeState } from '../state/workspace-state';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { createTuneTableView } from './tune-table-view';
 import { createBoostAnalyzerView } from './boost-analyzer-view';
+import {
+  createSpecializedAnalyzerSuiteView,
+  type SpecializedAnalyzerDomain,
+} from './specialized-analyzer-suite-view';
 
 export interface AnalyzerPageController {
   readonly element: HTMLElement;
@@ -37,9 +41,11 @@ function formatDuration(range: SavedTimelineRangeState): string {
 export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
-  let currentView: 'compare' | 'tune-table' | 'boost' = 'compare';
+  type AnalyzerView = 'compare' | 'tune-table' | 'boost' | SpecializedAnalyzerDomain;
+  let currentView: AnalyzerView = 'compare';
   const tuneTableView = createTuneTableView();
   const boostView = createBoostAnalyzerView();
+  const specializedView = createSpecializedAnalyzerSuiteView();
 
   const root = document.createElement('main');
   root.className = 'analyzer-page';
@@ -56,6 +62,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
           <button type="button" class="analyzer-view-choice analyzer-view-choice--active" data-analyzer-view="compare">Range Compare</button>
           <button type="button" class="analyzer-view-choice" data-analyzer-view="tune-table">Tune Table</button>
           <button type="button" class="analyzer-view-choice" data-analyzer-view="boost">Boost <span class="analyzer-experimental-tag">EXP</span></button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="idle">Idle <span class="analyzer-experimental-tag">EXP</span></button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="ae-map">AE / MAP <span class="analyzer-experimental-tag">EXP</span></button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="fueling">Fueling <span class="analyzer-experimental-tag">EXP</span></button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="ignition">Ignition <span class="analyzer-experimental-tag">EXP</span></button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="fuel-injector">Fuel / Injector <span class="analyzer-experimental-tag">EXP</span></button>
+          <button type="button" class="analyzer-view-choice" data-analyzer-view="trigger-sync">Trigger / Sync <span class="analyzer-experimental-tag">EXP</span></button>
         </div>
         <div class="analyzer-controls">
         <label><span>Channel</span><select class="analyzer-channel"></select></label>
@@ -102,7 +114,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
   `;
-  root.append(tuneTableView.element, boostView.element);
+  root.append(tuneTableView.element, boostView.element, specializedView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
@@ -219,32 +231,55 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (context.savedRanges[chosen]) select.value = String(chosen);
   };
 
-  const setView = (view: 'compare' | 'tune-table' | 'boost'): void => {
+  const specializedTitles: Record<SpecializedAnalyzerDomain, [string, string]> = {
+    idle: ['Idle analysis', 'Target/error, valve duty/bias/feed-forward, PID terms and sag/recovery behavior.'],
+    'ae-map': ['AE / MAP Predict analysis', 'Tip-in/decel events, measured/predicted MAP response and AFR excursion.'],
+    fueling: ['Fueling analysis', 'AFR target/actual error, lean/rich evidence and optional VE context.'],
+    ignition: ['Ignition analysis', 'Advance, retard and knock-oriented evidence with grouped knock events.'],
+    'fuel-injector': ['Fuel pressure / injector analysis', 'Rail pressure, injector PW/duty/deadtime and threshold-event evidence.'],
+    'trigger-sync': ['Trigger / sync analysis', 'Synchronization dropouts, trigger errors and sync-loss counter events.'],
+  };
+
+  const setView = (view: AnalyzerView): void => {
     currentView = view;
     const compareActive = view === 'compare';
     const tuneActive = view === 'tune-table';
     const boostActive = view === 'boost';
+    const specializedActive = !compareActive && !tuneActive && !boostActive;
     compareControls.hidden = !compareActive;
     tuneTableView.element.hidden = !tuneActive;
     boostView.element.hidden = !boostActive;
+    specializedView.element.hidden = !specializedActive;
     for (const choice of viewChoices) {
       const selected = choice.dataset.analyzerView === view;
       choice.classList.toggle('analyzer-view-choice--active', selected);
       choice.setAttribute('aria-pressed', String(selected));
     }
-    heading.textContent = compareActive ? 'Saved range comparison' : tuneActive ? 'Tune table correlation' : 'Boost analysis';
-    description.textContent = compareActive
-      ? 'Compare one active decoded channel across two saved Logger ranges.'
-      : tuneActive
-        ? 'Map decoded operating points and observed values into an explicitly selected MSQ table.'
-        : 'Analyze boost tracking, spool and steady-state behavior from active decoded channels.';
-    if (compareActive) render();
-    else {
-      empty.hidden = true;
-      content.hidden = true;
-      if (tuneActive) tuneTableView.refresh();
-      else boostView.refresh();
+    if (compareActive) {
+      heading.textContent = 'Saved range comparison';
+      description.textContent = 'Compare one active decoded channel across two saved Logger ranges.';
+      render();
+      return;
     }
+    empty.hidden = true;
+    content.hidden = true;
+    if (tuneActive) {
+      heading.textContent = 'Tune table correlation';
+      description.textContent = 'Map decoded operating points and observed values into an explicitly selected MSQ table.';
+      tuneTableView.refresh();
+      return;
+    }
+    if (boostActive) {
+      heading.textContent = 'Boost analysis';
+      description.textContent = 'Analyze boost tracking, spool and steady-state behavior from active decoded channels.';
+      boostView.refresh();
+      return;
+    }
+    const [title, detail] = specializedTitles[view];
+    heading.textContent = title;
+    description.textContent = detail;
+    specializedView.setDomain(view);
+    specializedView.refresh();
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
@@ -254,6 +289,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     context = nextContext;
     tuneTableView.setContext(nextContext);
     boostView.setContext(nextContext);
+    specializedView.setContext(nextContext);
     fillChannelSelect(previousChannel);
     fillRangeSelect(leftSelect, previousLeft, 0);
     fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
@@ -267,7 +303,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   for (const choice of viewChoices) {
     choice.addEventListener('click', () => {
       const view = choice.dataset.analyzerView;
-      if (view === 'compare' || view === 'tune-table' || view === 'boost') setView(view);
+      if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
     });
   }
 
@@ -275,6 +311,11 @@ export function createAnalyzerPage(): AnalyzerPageController {
     element: root,
     setContext,
     setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
-    refresh: () => currentView === 'compare' ? render() : currentView === 'tune-table' ? tuneTableView.refresh() : boostView.refresh(),
+    refresh: () => {
+      if (currentView === 'compare') render();
+      else if (currentView === 'tune-table') tuneTableView.refresh();
+      else if (currentView === 'boost') boostView.refresh();
+      else specializedView.refresh();
+    },
   };
 }

@@ -203,12 +203,14 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const optionInput = (key: string): HTMLInputElement | undefined =>
     optionsGrid.querySelector<HTMLInputElement>(`input[data-option="${key}"]`) ?? undefined;
 
-  const optionNumber = (key: string, fallback?: number): number | undefined => {
+  function optionNumber(key: string): number | undefined;
+  function optionNumber(key: string, fallback: number): number;
+  function optionNumber(key: string, fallback?: number): number | undefined {
     const input = optionInput(key);
     if (!input || input.value.trim() === '') return fallback;
     const value = Number(input.value);
     return Number.isFinite(value) ? value : fallback;
-  };
+  }
 
   const selectedScope = (): { label: string; startMs: number; endMs: number } | undefined => {
     const scope = controls.querySelector<HTMLSelectElement>('select[data-role="scope"]');
