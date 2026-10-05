@@ -1,0 +1,39 @@
+name: Temporary Phase 4 core fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-fix-phase4-core.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: phase4/remaining-analyzers-core-v1
+          fetch-depth: 0
+      - name: Apply fix
+        run: |
+          git show origin/main:scripts/tmp-fix-phase4-core.py > /tmp/patch.py
+          python /tmp/patch.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit validated fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/analysis/specialized-analyzers.ts
+          git commit -m "Fix Phase 4 analyzer core validation"
+          git push origin HEAD:phase4/remaining-analyzers-core-v1
