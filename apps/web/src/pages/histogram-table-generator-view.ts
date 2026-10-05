@@ -211,14 +211,25 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
             <label><span>X axis</span><select class="histogram-table-msq-x-axis"></select></label>
             <label><span>Y axis</span><select class="histogram-table-msq-y-axis"></select></label>
           </div>
-          <label><span>X columns</span><input class="histogram-table-x-bins" type="number" min="1" max="64" step="1" value="16" /></label>
-          <label><span>Y rows</span><input class="histogram-table-y-bins" type="number" min="1" max="64" step="1" value="16" /></label>
-          <label><span>X min</span><input class="histogram-table-x-min" type="number" step="any" placeholder="Auto" /></label>
-          <label><span>X max</span><input class="histogram-table-x-max" type="number" step="any" placeholder="Auto" /></label>
-          <label><span>Y min</span><input class="histogram-table-y-min" type="number" step="any" placeholder="Auto" /></label>
-          <label><span>Y max</span><input class="histogram-table-y-max" type="number" step="any" placeholder="Auto" /></label>
+          <div class="histogram-table-axis-auto">
+            <label><span>X columns</span><input class="histogram-table-x-bins" type="number" min="1" max="64" step="1" value="16" /></label>
+            <label><span>Y rows</span><input class="histogram-table-y-bins" type="number" min="1" max="64" step="1" value="16" /></label>
+            <label><span>X min</span><input class="histogram-table-x-min" type="number" step="any" placeholder="Auto" /></label>
+            <label><span>X max</span><input class="histogram-table-x-max" type="number" step="any" placeholder="Auto" /></label>
+            <label><span>Y min</span><input class="histogram-table-y-min" type="number" step="any" placeholder="Auto" /></label>
+            <label><span>Y max</span><input class="histogram-table-y-max" type="number" step="any" placeholder="Auto" /></label>
+          </div>
           <label class="histogram-table-toggle"><input class="histogram-table-show-hits" type="checkbox" checked /><span>Show hit count in cells</span></label>
           <p>Set Y rows to 1 for an MLV-style single-row bar graph. Blank limits use observed data range.</p>
+        </div>
+      </details>
+      <details class="histogram-table-help">
+        <summary aria-label="Table Generator information" title="How Table Generator works">i</summary>
+        <div class="histogram-table-help-popover">
+          <strong>Table Generator</strong>
+          <p>Choose X and Y to define the table cells, then choose the Cell statistic and Z value to calculate inside each cell.</p>
+          <p><b>Auto bins</b> divides the observed/requested range. <b>Custom breakpoints</b> uses your cell centers. <b>Loaded MSQ table</b> uses the tune-table grid and suggests matching X/Y axes, which remain editable.</p>
+          <p>Filters qualify samples before binning. Custom/MSQ values beyond the outer breakpoints are assigned to the nearest edge cell so table results do not lose edge samples.</p>
         </div>
       </details>
       <button type="button" class="histogram-table-export" disabled>Export CSV</button>
@@ -279,6 +290,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const filterList = root.querySelector<HTMLElement>('.histogram-filter-list');
   const addFilterButton = root.querySelector<HTMLButtonElement>('.histogram-add-filter');
   const axisSourceSelect = root.querySelector<HTMLSelectElement>('.histogram-table-axis-source');
+  const autoAxisFields = root.querySelector<HTMLElement>('.histogram-table-axis-auto');
   const customAxisFields = root.querySelector<HTMLElement>('.histogram-table-axis-custom');
   const xBreakpointsInput = root.querySelector<HTMLInputElement>('.histogram-table-x-breakpoints');
   const yBreakpointsInput = root.querySelector<HTMLInputElement>('.histogram-table-y-breakpoints');
@@ -312,7 +324,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     || !presetSelect || !presetApplyButton || !presetSaveButton || !presetDeleteButton || !formulaCount || !formulaSelect || !formulaNameInput
     || !formulaExpressionInput || !formulaUnitInput || !formulaSaveButton || !formulaDeleteButton || !formulaStatus || !filterCount
     || !filterSetSelect || !filterSetApplyButton || !filterSetSaveButton || !filterSetDeleteButton || !filterWithinLogicSelect || !filterBetweenLogicSelect
-    || !filterList || !addFilterButton || !axisSourceSelect || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
+    || !filterList || !addFilterButton || !axisSourceSelect || !autoAxisFields || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
     || !msqAxisFields || !msqTableSelect || !msqXAxisSelect || !msqYAxisSelect || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
     || !yMinInput || !yMaxInput || !showHitsInput || !exportButton || !empty || !status || !canvas || !tooltip
     || !cellInspector || !cellInspectorTitle || !cellInspectorSubtitle || !cellInspectorSummary || !cellSampleList || !cellListNote
@@ -445,7 +457,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     return values;
   };
 
-  const populateMsqAxisSelectors = (): void => {
+  const populateMsqAxisSelectors = (preferSuggested = false): void => {
     const previousTable = msqTableSelect.value;
     const previousX = msqXAxisSelect.value;
     const previousY = msqYAxisSelect.value;
@@ -460,21 +472,44 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       return;
     }
     const tables = model.entries.filter((entry) => entry.kind === 'table' && entry.numericValues);
-    for (const table of tables) msqTableSelect.add(new Option(table.name, table.name));
-    if (previousTable && tables.some((table) => table.name === previousTable)) msqTableSelect.value = previousTable;
-    const table = model.byName.get(msqTableSelect.value) ?? tables[0];
-    if (!table) return;
+    for (const tableEntry of tables) msqTableSelect.add(new Option(tableEntry.name, tableEntry.name));
+    if (previousTable && tables.some((tableEntry) => tableEntry.name === previousTable)) msqTableSelect.value = previousTable;
+    const selectedTable = model.byName.get(msqTableSelect.value) ?? tables[0];
+    if (!selectedTable) return;
+    if (!msqTableSelect.value) msqTableSelect.value = selectedTable.name;
     const numeric = model.entries.filter((entry) => entry.numericValues);
-    const xCandidates = numeric.filter((entry) => entry.numericValues?.length === table.cols);
-    const yCandidates = numeric.filter((entry) => entry.numericValues?.length === table.rows);
-    for (const entry of xCandidates) msqXAxisSelect.add(new Option(entry.name, entry.name));
-    for (const entry of yCandidates) msqYAxisSelect.add(new Option(entry.name, entry.name));
-    if (previousX && xCandidates.some((entry) => entry.name === previousX)) msqXAxisSelect.value = previousX;
-    if (previousY && yCandidates.some((entry) => entry.name === previousY)) msqYAxisSelect.value = previousY;
+    const xCandidates = numeric.filter((entry) => entry.numericValues?.length === selectedTable.cols && entry.name !== selectedTable.name);
+    const yCandidates = numeric.filter((entry) => entry.numericValues?.length === selectedTable.rows && entry.name !== selectedTable.name);
+    const tableIndex = model.entries.indexOf(selectedTable);
+    const score = (entry: (typeof model.entries)[number], axis: 'x' | 'y'): number => {
+      const entryIndex = model.entries.indexOf(entry);
+      const name = entry.name.toLocaleLowerCase();
+      let value = entry.kind === 'vector' ? 1000 : 0;
+      if (entry.pageNumber !== undefined && entry.pageNumber === selectedTable.pageNumber) value += 500;
+      value += Math.max(0, 240 - Math.abs(entryIndex - tableIndex) * 12);
+      if (entryIndex < tableIndex) value += 50;
+      if (axis === 'x' && /(rpm|speed|x.?axis|x.?bin|column)/i.test(name)) value += 140;
+      if (axis === 'y' && /(map|load|tps|pressure|y.?axis|y.?bin|row)/i.test(name)) value += 140;
+      return value;
+    };
+    const rankedX = [...xCandidates].sort((left, right) => score(right, 'x') - score(left, 'x'));
+    const rankedY = [...yCandidates].sort((left, right) => score(right, 'y') - score(left, 'y'));
+    for (const entry of rankedX) msqXAxisSelect.add(new Option(entry.name, entry.name));
+    for (const entry of rankedY) msqYAxisSelect.add(new Option(entry.name, entry.name));
+    const tableChanged = previousTable !== selectedTable.name;
+    const keepX = !preferSuggested && !tableChanged && previousX && xCandidates.some((entry) => entry.name === previousX);
+    const suggestedX = keepX ? previousX : rankedX[0]?.name ?? '';
+    if (suggestedX) msqXAxisSelect.value = suggestedX;
+    const keepY = !preferSuggested && !tableChanged && previousY && yCandidates.some((entry) => entry.name === previousY);
+    const suggestedY = keepY
+      ? previousY
+      : rankedY.find((entry) => entry.name !== suggestedX)?.name ?? rankedY[0]?.name ?? '';
+    if (suggestedY) msqYAxisSelect.value = suggestedY;
   };
 
   const updateAxisControls = (): void => {
     const mode = axisSourceSelect.value;
+    autoAxisFields.hidden = mode !== 'auto';
     customAxisFields.hidden = mode !== 'custom';
     msqAxisFields.hidden = mode !== 'msq';
     const fixed = mode !== 'auto';
@@ -886,7 +921,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
         ctx.globalAlpha = 1;
         if (barWidth >= 25) {
           ctx.fillStyle = '#eaf5fa';
-          ctx.font = '600 9px system-ui, sans-serif';
+          ctx.font = '600 10px system-ui, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = valueY <= zeroY ? 'bottom' : 'top';
           ctx.fillText(formatCellValue(Number(value), result.aggregationMethod, barWidth), x + barWidth / 2, valueY + (valueY <= zeroY ? -3 : 3), barWidth + 8);
@@ -931,7 +966,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
 
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#7f96a5';
-    ctx.font = '9px system-ui, sans-serif';
+    ctx.font = '10px system-ui, sans-serif';
     ctx.textBaseline = 'top';
     const xStep = Math.max(1, Math.ceil(result.xBins.length / Math.max(4, Math.floor(chartWidth / 72))));
     result.xBins.forEach((bin, index) => {
@@ -966,7 +1001,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#93a9b6';
-    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.font = '600 10px system-ui, sans-serif';
     ctx.fillText(`${aggregationLabel(result.aggregationMethod)} · ${valueName}`, left, 5);
   };
 
@@ -1085,6 +1120,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       sampleIndices: qualified.eligibleSampleIndices,
       ...(explicitAxes.xAxisValues ? { xAxisValues: explicitAxes.xAxisValues } : { xBinCount: binCount(xBinsInput, 16) }),
       ...(explicitAxes.yAxisValues ? { yAxisValues: explicitAxes.yAxisValues } : { yBinCount: binCount(yBinsInput, 16) }),
+      ...(explicitAxes.xAxisValues || explicitAxes.yAxisValues ? { clampExplicitAxisEdges: true } : {}),
       ...(!explicitAxes.xAxisValues && xMin !== undefined ? { xMin } : {}),
       ...(!explicitAxes.xAxisValues && xMax !== undefined ? { xMax } : {}),
       ...(!explicitAxes.yAxisValues && yMin !== undefined ? { yMin } : {}),
@@ -1347,7 +1383,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   axisSourceSelect.addEventListener('change', () => { updateAxisControls(); scheduleRender(); });
   xBreakpointsInput.addEventListener('input', () => scheduleRender(180));
   yBreakpointsInput.addEventListener('input', () => scheduleRender(180));
-  msqTableSelect.addEventListener('change', () => { populateMsqAxisSelectors(); scheduleRender(); });
+  msqTableSelect.addEventListener('change', () => { populateMsqAxisSelectors(true); scheduleRender(); });
   msqXAxisSelect.addEventListener('change', () => scheduleRender());
   msqYAxisSelect.addEventListener('change', () => scheduleRender());
   xBinsInput.addEventListener('input', () => scheduleRender(120));
@@ -1357,6 +1393,13 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   yMinInput.addEventListener('input', () => scheduleRender(160));
   yMaxInput.addEventListener('input', () => scheduleRender(160));
   showHitsInput.addEventListener('change', renderChart);
+  window.addEventListener('epicscope-histogram-calculated-fields-changed', () => {
+    calculatedFields = loadHistogramCalculatedFields();
+    populateFormulaManager();
+    loadSelectedFormulaEditor();
+    refreshLogicalSelectors();
+    scheduleRender();
+  });
   exportButton.addEventListener('click', exportCsv);
   cellInspectorClose.addEventListener('click', closeCellInspector);
   cellCopyButton.addEventListener('click', () => {

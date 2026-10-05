@@ -230,6 +230,26 @@ describe('buildNumericHeatmap', () => {
     expect(result.yBinWidth).toBeUndefined();
   });
 
+  it('can clamp samples beyond explicit table axes into the nearest edge cells', () => {
+    const result = buildNumericHeatmap(
+      range(0, [0, 1000, 2000, 8000]),
+      range(0, [0, 50, 100, 500]),
+      {
+        xAxisValues: [1000, 2000],
+        yAxisValues: [50, 100],
+        clampExplicitAxisEdges: true,
+      },
+    );
+
+    expect(result.binnedSampleCount).toBe(4);
+    expect(result.outsideRangeSampleCount).toBe(0);
+    expect(result.xBelowRangeSampleCount).toBe(0);
+    expect(result.xAboveRangeSampleCount).toBe(0);
+    expect(result.yBelowRangeSampleCount).toBe(0);
+    expect(result.yAboveRangeSampleCount).toBe(0);
+    expect([...result.counts]).toEqual([2, 0, 0, 2]);
+  });
+
   it('rejects duplicate explicit axis centers', () => {
     expect(() => buildNumericHeatmap(
       range(0, [1, 2]),

@@ -129,6 +129,7 @@ export function mountAppShell(root: HTMLElement): void {
         </div>
       </div>
       <div class="graph-selector-slot"></div>
+      <div class="histogram-selector-slot" hidden></div>
     </div>
     <div class="header-context">
       <span class="mode-chip">RECORDED</span>
@@ -231,9 +232,11 @@ export function mountAppShell(root: HTMLElement): void {
   const footer = document.createElement('footer');
   footer.className = 'status-bar';
   footer.innerHTML = `
-    <div class="diagnostics-slot"></div>
-    <div class="performance-diagnostics-slot"></div>
-    <div class="bug-report-slot"></div>
+    <div class="footer-utility-actions">
+      <div class="diagnostics-slot"></div>
+      <div class="performance-diagnostics-slot"></div>
+      <div class="bug-report-slot"></div>
+    </div>
     <span class="app-status">Ready</span>
     <span>Local analysis</span>
     <span class="grow"></span>
@@ -241,15 +244,17 @@ export function mountAppShell(root: HTMLElement): void {
   `;
 
   const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');
+  const histogramSelectorSlot = header.querySelector<HTMLElement>('.histogram-selector-slot');
   const loggerToolsSlot = header.querySelector<HTMLElement>('.logger-tools-slot');
   const settingsShortcutsSlot = header.querySelector<HTMLElement>('.settings-shortcuts-slot');
   const diagnosticsSlot = footer.querySelector<HTMLElement>('.diagnostics-slot');
   const performanceDiagnosticsSlot = footer.querySelector<HTMLElement>('.performance-diagnostics-slot');
   const bugReportSlot = footer.querySelector<HTMLElement>('.bug-report-slot');
-  if (!graphSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {
+  if (!graphSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {
     throw new Error('EpicScope application shell control slots are incomplete.');
   }
   graphSelectorSlot.append(loggerPage.graphSelector);
+  histogramSelectorSlot.append(histogramPage.headerControl);
   loggerToolsSlot.append(loggerPage.headerTools);
   settingsShortcutsSlot.append(loggerPage.keyboardShortcutsControl);
   diagnosticsSlot.append(loggerPage.diagnosticsControl);
@@ -257,8 +262,8 @@ export function mountAppShell(root: HTMLElement): void {
 
   const bugReportButton = document.createElement('button');
   bugReportButton.type = 'button';
-  bugReportButton.className = 'bug-report-button';
-  bugReportButton.textContent = 'Bug report';
+  bugReportButton.className = 'bug-report-button utility-action-button';
+  bugReportButton.innerHTML = '<span class="utility-action-symbol" aria-hidden="true">⚑</span><span>Report</span>';
   bugReportButton.title = 'Capture EpicScope runtime diagnostics';
 
   const bugReportDialog = document.createElement('dialog');
@@ -859,6 +864,7 @@ export function mountAppShell(root: HTMLElement): void {
     analyzerPage.element.hidden = !analyzerActive;
     histogramPage.element.hidden = !histogramActive;
     graphSelectorSlot.hidden = !loggerActive;
+    histogramSelectorSlot.hidden = !histogramActive;
     loggerToolsSlot.hidden = !loggerActive;
     undoButton.hidden = !loggerActive;
     redoButton.hidden = !loggerActive;

@@ -220,7 +220,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const root = document.createElement('div');
   root.className = 'performance-diagnostics-wrap';
   root.innerHTML = `
-    <button type="button" class="performance-diagnostics-button" aria-haspopup="dialog" aria-expanded="false" title="Performance diagnostics">
+    <button type="button" class="performance-diagnostics-button utility-action-button" aria-haspopup="dialog" aria-expanded="false" title="Performance diagnostics">
       <span aria-hidden="true">⏱</span>
       <span>Perf</span>
     </button>

@@ -200,8 +200,9 @@ export function createParserDiagnosticsIndicator(): ParserDiagnosticsIndicatorCo
   const root = document.createElement('div');
   root.className = 'parser-indicator-wrap';
   root.innerHTML = `
-    <button type="button" class="parser-indicator parser-indicator--good" aria-haspopup="dialog" aria-expanded="false" title="No parser diagnostics">
+    <button type="button" class="parser-indicator parser-indicator--good utility-action-button" aria-haspopup="dialog" aria-expanded="false" title="No parser diagnostics">
       <span class="parser-indicator-light" aria-hidden="true"></span>
+      <span>Diag</span>
       <span class="parser-indicator-count" hidden></span>
       <span class="sr-only">Parser diagnostics</span>
     </button>

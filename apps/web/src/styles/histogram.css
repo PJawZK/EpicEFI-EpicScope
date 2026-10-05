@@ -27,7 +27,7 @@
   display: block;
   margin-bottom: 3px;
   color: #6f91a8;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .08em;
@@ -43,7 +43,7 @@
 .histogram-surface-head p {
   margin: 5px 0 0;
   color: #8095a3;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .histogram-head-actions {
@@ -68,7 +68,7 @@
   padding: 0 10px;
   background: transparent;
   color: #8297a5;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .histogram-view-choice--active {
@@ -105,7 +105,7 @@
 .heatmap-controls label > span,
 .scatter-controls label > span {
   color: #78909e;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -122,7 +122,7 @@
   border-radius: 3px;
   background: #101d28;
   color: #dbe8ef;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .histogram-controls select,
@@ -169,7 +169,7 @@
 .scatter-empty span {
   max-width: 520px;
   color: #79909f;
-  font-size: 9px;
+  font-size:10px;
   line-height: 1.5;
 }
 
@@ -234,7 +234,7 @@
 .scatter-summary span,
 .scatter-axis-summary span {
   color: #78909e;
-  font-size: 7px;
+  font-size:8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -288,7 +288,7 @@
 .scatter-axis-summary strong {
   margin-left: 4px;
   color: #dceaf1;
-  font-size: 9px;
+  font-size:10px;
   font-variant-numeric: tabular-nums;
   text-transform: none;
   letter-spacing: normal;
@@ -304,7 +304,7 @@
 .histogram-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .histogram-table th,
@@ -404,7 +404,7 @@
 
 .heatmap-value-evidence span {
   color: #78909e;
-  font-size: 7px;
+  font-size:8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -413,7 +413,7 @@
 .heatmap-value-evidence strong {
   margin-left: 4px;
   color: #dceaf1;
-  font-size: 9px;
+  font-size:10px;
   font-variant-numeric: tabular-nums;
   text-transform: none;
   letter-spacing: normal;

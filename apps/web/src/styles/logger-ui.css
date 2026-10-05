@@ -67,7 +67,7 @@
   display: block;
   margin-top: 3px;
   color: #708493;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .global-module-choice {
@@ -98,7 +98,7 @@
   display: block;
   margin-top: 2px;
   color: #718796;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .module-icon {
@@ -115,7 +115,7 @@
 
 .module-state {
   color: #a8d8f7;
-  font-size: 8px;
+  font-size:9px;
   white-space: nowrap;
 }
 
@@ -163,7 +163,7 @@
 
 .parser-indicator-count {
   color: #aebdc7;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -227,7 +227,7 @@
 
 .parser-popover-heading span {
   color: #7f94a4;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .parser-popover-heading-actions {
@@ -243,7 +243,7 @@
   border-radius: 3px;
   background: #122431;
   color: #d9e8f0;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 700;
 }
 
@@ -266,7 +266,7 @@
   border: 1px solid #263b4c;
   border-radius: 3px;
   background: #0b151e;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .parser-popover-severity {
@@ -283,7 +283,7 @@
 .parser-popover-occurrences {
   padding: 4px 10px 10px;
   border-top: 1px solid #223641;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .parser-popover-occurrences > strong {
@@ -306,7 +306,7 @@
 .parser-popover-empty {
   padding: 10px;
   color: #7f94a4;
-  font-size: 9px;
+  font-size:10px;
 }
 
 /* EpicHub 0.0.45-style edge tabs: narrow tabs that sit on the panel boundary
@@ -318,7 +318,7 @@
   background: #0b151e;
   color: #a9bac4;
   box-shadow: none;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 800;
   letter-spacing: .02em;
   transition: color .1s ease, background .1s ease, border-color .1s ease;
@@ -455,7 +455,7 @@
 
 .logger-shortcut-head small {
   color: #748995;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .logger-shortcut-list {
@@ -488,7 +488,7 @@
 
 .logger-shortcut-list em {
   color: #aebfca;
-  font-size: 8px;
+  font-size:9px;
   font-style: normal;
 }
 
@@ -510,13 +510,13 @@
 
 .settings-shortcuts strong {
   color: #dce7ee;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .settings-shortcuts small {
   margin-top: 2px;
   color: #748995;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .settings-shortcuts-slot .logger-shortcut-button {
@@ -624,7 +624,7 @@
 
 .graph-selector-choice small {
   color: #718796;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .logger-page {
@@ -653,7 +653,7 @@
   border-radius: 4px;
   background: #0b1b24;
   color: #c7d8e1;
-  font-size: 9px;
+  font-size:10px;
   font-weight: 700;
 }
 
@@ -769,7 +769,7 @@
 .graph-pane-action {
   height: 28px;
   padding: 0 7px;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .graph-window {
@@ -800,7 +800,7 @@
   min-width: 0;
   overflow: hidden;
   color: #a9becb;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -846,7 +846,7 @@
 }
 
 .graph-workspace:not(.graph-workspace--single) .graph-corner-readout {
-  font-size: 7px;
+  font-size:8px;
 }
 
 .graph-workspace:not(.graph-workspace--single) .graph-corner-readout--now,
@@ -906,7 +906,7 @@
 }
 
 .status-bar .parser-indicator-count {
-  font-size: 8px;
+  font-size:9px;
 }
 
 .status-bar .parser-diagnostic-popover {
@@ -1003,7 +1003,7 @@
 .range-qualification-head small {
   margin-top: 3px;
   color: #7f94a4;
-  font-size: 9px;
+  font-size:10px;
 }
 .range-qualification-close {
   width: 28px;
@@ -1025,7 +1025,7 @@
 .range-qualification-field span,
 .range-qualification-condition::before {
   color: #78909e;
-  font-size: 8px;
+  font-size:9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -1039,11 +1039,11 @@
   padding: 0 7px;
   background: #101d28;
   color: #dbe8ef;
-  font-size: 9px;
+  font-size:10px;
 }
 .range-qualification-note {
   color: #7f94a4;
-  font-size: 9px;
+  font-size:10px;
   line-height: 1.45;
 }
 .range-qualification-conditions {
@@ -1082,7 +1082,7 @@
 .range-qualification-status {
   min-height: 18px;
   color: #93a8b5;
-  font-size: 9px;
+  font-size:10px;
 }
 .range-qualification-result {
   display: grid;
@@ -1105,7 +1105,7 @@
 }
 .range-qualification-result span {
   color: #78909e;
-  font-size: 7px;
+  font-size:8px;
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -1145,7 +1145,7 @@
   list-style: none;
   padding: 7px 9px;
   color: #8da2af;
-  font-size: 9px;
+  font-size:10px;
   font-weight: 700;
 }
 
@@ -1187,13 +1187,13 @@
   padding: 0 7px;
   background: transparent;
   color: #dbe8ef;
-  font-size: 9px;
+  font-size:10px;
 }
 
 .range-events-input-unit em {
   padding-right: 7px;
   color: #6f8796;
-  font-size: 8px;
+  font-size:9px;
   font-style: normal;
 }
 
@@ -1234,7 +1234,7 @@
 
 .range-events-summary span {
   color: #78909e;
-  font-size: 7px;
+  font-size:8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -1258,7 +1258,7 @@
 .range-events-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 8px;
+  font-size:9px;
 }
 
 .range-events-table th,
@@ -1292,7 +1292,7 @@
 
 .range-events-render-status {
   color: #718896;
-  font-size: 8px;
+  font-size:9px;
 }
 
 @media (max-width: 720px) {
@@ -1308,3 +1308,9 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.status-bar .parser-indicator.utility-action-button { min-width:0; padding:0 8px!important; }
+.status-bar .parser-indicator.utility-action-button .parser-indicator-light { width:10px; height:10px; flex-basis:10px; }
+.status-bar .parser-indicator--warning.utility-action-button { border-color:#80652c!important; background:#2a220e!important; }
+.status-bar .parser-indicator--error.utility-action-button { border-color:#87424a!important; background:#2b1418!important; }
+.status-bar .parser-indicator--info.utility-action-button { border-color:#35677f!important; background:#102735!important; }
