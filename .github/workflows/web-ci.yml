@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   patch-visible-pane-reconcile:
-    if: github.ref == 'refs/heads/fix/reconcile-all-visible-pane-traces' && github.actor != 'github-actions[bot]'
+    if: ${{ github.ref == 'refs/heads/fix/reconcile-all-visible-pane-traces' && github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
