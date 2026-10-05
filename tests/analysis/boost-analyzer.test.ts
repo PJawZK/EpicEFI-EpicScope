@@ -104,7 +104,7 @@ describe('analyzeBoost', () => {
       meanTargetPressure: 200,
       meanMeasuredPressure: 191.5,
       meanError: -8.5,
-      maxUndershoot: -7,
+      maxUndershoot: -10,
     });
   });
 
