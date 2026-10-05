@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22.12.0
           cache: npm
-      - name: Align patch to current tooltip bounds
+      - name: Align patch to current source
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -28,6 +28,8 @@ jobs:
           text = path.read_text(encoding='utf-8')
           text = text.replace('x > currentLayout.left + currentLayout.width', 'x >= currentLayout.left + currentLayout.width')
           text = text.replace('y > currentLayout.top + currentLayout.height', 'y >= currentLayout.top + currentLayout.height')
+          text = text.replace("`${sampleIndex}\\t${selectedCell!.timeMs[index] ?? ''}`", "`${sampleIndex}\\\\t${selectedCell!.timeMs[index] ?? ''}`")
+          text = text.replace("['sampleIndex\\ttimeMs', ...lines].join('\\n')", "['sampleIndex\\\\ttimeMs', ...lines].join('\\\\n')")
           path.write_text(text, encoding='utf-8')
           PY
       - name: Apply cell drilldown patch
