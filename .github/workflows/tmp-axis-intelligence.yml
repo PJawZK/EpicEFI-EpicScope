@@ -20,6 +20,8 @@ jobs:
         with:
           node-version: 22.12.0
           cache: npm
+      - name: Apply patch correction
+        run: python scripts/tmp-axis-intelligence-fix.py
       - name: Apply axis intelligence patch
         run: python scripts/tmp-axis-intelligence.py
       - name: Install dependencies
