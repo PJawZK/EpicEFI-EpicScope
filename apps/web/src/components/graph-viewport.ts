@@ -140,6 +140,8 @@ export interface GraphViewportController {
     timeRange: LogTimeRange | undefined,
   ): void;
   toggleChannel(channelId: string): Promise<boolean>;
+  hasActiveChannel(channelId: string): boolean;
+  hasPendingChannel(channelId: string): boolean;
   activatePreloadedChannels(
     ranges: ReadonlyMap<string, NumericChannelRange>,
   ): GraphPreloadedActivationResult;
@@ -1534,10 +1536,13 @@ export function createGraphViewport(): GraphViewportController {
     ) ?? false;
 
     if (cacheReady) {
+      loadingTraceIds.add(channelId);
       overlay.hidden = false;
       overlayTitle.textContent = `Loading ${channel.sourceName}…`;
       overlayDetail.textContent = 'Using decoded channel cache.';
-      void activateCachedChannel(channelId, pending).then(resolveSelection);
+      void activateCachedChannel(channelId, pending)
+        .then(resolveSelection)
+        .finally(() => { loadingTraceIds.delete(channelId); });
       return result;
     }
 
@@ -1638,6 +1643,8 @@ export function createGraphViewport(): GraphViewportController {
     element: root,
     setLog,
     toggleChannel,
+    hasActiveChannel: (channelId) => activeTraces.has(channelId),
+    hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),
     activatePreloadedChannels,
     clearChannels,
     getOverviewTraces: () => [...activeTraces.entries()].map(([channelId, trace]) => ({
