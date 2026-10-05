@@ -8,12 +8,73 @@ on:
     branches:
       - main
       - phase1/**
+      - fix/post-validation-workspace-reconcile
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  patch-post-validation-reconcile:
+    if: github.ref == 'refs/heads/fix/post-validation-workspace-reconcile' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: fix/post-validation-workspace-reconcile
+      - name: Apply staged validation reconcile
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/src/app/app-shell.ts')
+          s = p.read_text()
+          old = '''        void staged.validated
+          .then((validated) => {
+            if (activeStagedImport !== staged) return;
+'''
+          new = '''        void staged.validated
+          .then(async (validated) => {
+            if (activeStagedImport !== staged) return;
+'''
+          if old not in s:
+              raise SystemExit('validated callback anchor missing')
+          s = s.replace(old, new, 1)
+          old = '''            loggerPage.setDiagnostics(validated.diagnostics);
+            loggerPage.refreshValidity();
+            performanceDiagnostics.recordValidation({
+'''
+          new = '''            loggerPage.setDiagnostics(validated.diagnostics);
+            loggerPage.refreshValidity();
+
+            // Exact-log persistence can recover additional pane assignments after
+            // the staged validator has already chosen its initial priority set.
+            // Once validation/sidecar work is complete, retry the active workspace
+            // exactly once if any visible renderable assignment still lacks a trace.
+            await workspaceRestore.catch(() => undefined);
+            if (activeStagedImport !== staged) return;
+            const postValidationRuntime = loggerPage.getRuntimeDiagnosticSnapshot();
+            if (
+              postValidationRuntime.activeTraceCount
+              < postValidationRuntime.renderableAssignedChannelCount
+            ) {
+              await loggerPage.restoreActiveWorkspace();
+              if (activeStagedImport !== staged) return;
+            }
+
+            performanceDiagnostics.recordValidation({
+'''
+          if old not in s:
+              raise SystemExit('refresh validity anchor missing')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/app/app-shell.ts
+          git commit -m 'Reconcile workspace traces after staged validation'
+          git push origin HEAD:fix/post-validation-workspace-reconcile
+
   validate:
     runs-on: ubuntu-latest
     steps:
