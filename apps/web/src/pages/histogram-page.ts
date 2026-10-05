@@ -70,6 +70,10 @@ export function createHistogramPage(): HistogramPageController {
   page.hidden = true;
   page.innerHTML = `
     <div class="histogram-workspace-bar">
+      <div class="histogram-distribution-controls" hidden>
+        <label><span>Channel</span><select class="histogram-channel" aria-label="Distribution channel"></select></label>
+        <label><span>Bins</span><select class="histogram-bin-count" aria-label="Distribution bin count"><option value="10">10</option><option value="20" selected>20</option><option value="30">30</option><option value="40">40</option><option value="60">60</option></select></label>
+      </div>
       <div class="histogram-workspace-hint">MLV-style table generation · all available log channels · selected channels decode on demand</div>
     </div>
     <div class="histogram-workspace-body">
