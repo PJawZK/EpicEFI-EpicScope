@@ -1476,6 +1476,26 @@ export function createLoggerPage(): LoggerPageController {
     });
   };
 
+  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
+    const workspace = activeWorkspace();
+    const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
+    if (!pane || !channelDataSource) return;
+    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(
+      (channelId) => channelDefinitions.has(channelId)
+        && !unavailableChannelIds.has(channelId)
+        && !runtime.activeChannelIds.has(channelId),
+    );
+    if (missingIds.length === 0) return;
+    const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+    runtime.graph.loadPendingChannels();
+    void Promise.all(activations).then((results) => {
+      missingIds.forEach((channelId, index) => {
+        if (results[index]) runtime.activeChannelIds.add(channelId);
+      });
+      syncActivePaneContext();
+    });
+  };
+
   inspector.onChannelToggled((channelId) => {
     const runtime = activePaneRuntime();
     const pane = activePaneState();
@@ -1515,7 +1535,10 @@ export function createLoggerPage(): LoggerPageController {
   });
 
   inspector.onLoadSelected(() => {
-    activePaneRuntime()?.graph.loadPendingChannels();
+    const runtime = activePaneRuntime();
+    if (!runtime) return;
+    runtime.graph.loadPendingChannels();
+    window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
   });
 
   inspector.onAddFiltered((channelIds) => {
@@ -1593,6 +1616,7 @@ export function createLoggerPage(): LoggerPageController {
       if (runtime.id === activeWorkspace()?.activePaneId) {
         timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);
       }
+      window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
     });
 
     runtime.graph.onCursorValues((values) => {

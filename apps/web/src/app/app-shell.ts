@@ -263,7 +263,7 @@ export function mountAppShell(root: HTMLElement): void {
   const bugReportButton = document.createElement('button');
   bugReportButton.type = 'button';
   bugReportButton.className = 'bug-report-button utility-action-button';
-  bugReportButton.innerHTML = '<span class="utility-action-symbol" aria-hidden="true">⚑</span><span>Report</span>';
+  bugReportButton.innerHTML = '<span class="utility-action-symbol" aria-hidden="true">⚑</span><span>Report</span><span class="bug-report-status" aria-hidden="true">—</span>';
   bugReportButton.title = 'Capture EpicScope runtime diagnostics';
 
   const bugReportDialog = document.createElement('dialog');
@@ -522,6 +522,27 @@ export function mountAppShell(root: HTMLElement): void {
       health.dataset.state = report.issueCount > 0 ? 'issue' : 'ok';
     }
   };
+
+  const refreshBugReportButtonStatus = (): void => {
+    const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();
+    const { issues, warnings } = evaluateBugReportHealth(snapshot, {
+      logLoaded: currentRawLog !== undefined,
+      iniLoaded: activeIniCatalog !== undefined,
+      bindingActive: activeIniBinding !== undefined,
+      runtimeErrorCount: runtimeErrors.length,
+    });
+    const status = bugReportButton.querySelector<HTMLElement>('.bug-report-status');
+    const state = issues.length > 0 ? 'issue' : warnings.length > 0 ? 'warning' : 'ok';
+    bugReportButton.dataset.reportState = state;
+    if (status) status.textContent = issues.length > 0 ? String(issues.length) : warnings.length > 0 ? String(warnings.length) : '✓';
+    bugReportButton.title = issues.length > 0
+      ? `Report · ${issues.length} issue${issues.length === 1 ? '' : 's'}${warnings.length ? ` · ${warnings.length} warning${warnings.length === 1 ? '' : 's'}` : ''}`
+      : warnings.length > 0
+        ? `Report · ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`
+        : 'Report · runtime health OK';
+  };
+  refreshBugReportButtonStatus();
+  window.setInterval(refreshBugReportButtonStatus, 750);
 
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
