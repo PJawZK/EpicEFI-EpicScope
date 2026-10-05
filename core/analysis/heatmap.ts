@@ -14,6 +14,9 @@ export interface NumericHeatmapOptions {
   readonly xMax?: number;
   readonly yMin?: number;
   readonly yMax?: number;
+  /** Optional explicit cell-center values. When supplied, irregular midpoint boundaries are used. */
+  readonly xAxisValues?: readonly number[];
+  readonly yAxisValues?: readonly number[];
   /** Cell statistic. Defaults to sample count/density. */
   readonly aggregation?: NumericAggregationMethod;
   /** Required for every aggregation other than count. */
@@ -24,6 +27,8 @@ export interface NumericHeatmapAxisBin {
   readonly index: number;
   readonly lowerBound: number;
   readonly upperBound: number;
+  /** Display/table center. Equals the midpoint for uniform bins and the requested breakpoint for explicit axes. */
+  readonly centerValue: number;
   readonly includesUpperBound: boolean;
 }
 
@@ -171,13 +176,27 @@ function scanPairs(
   };
 }
 
-function buildAxisBins(min: number, max: number, requestedCount: number): {
+function normalizedAxisValues(values: readonly number[] | undefined, axis: 'x' | 'y'): readonly number[] | undefined {
+  if (values === undefined) return undefined;
+  if (values.length === 0) throw new RangeError(`heatmap ${axis}AxisValues must not be empty.`);
+  const sorted = [...values];
+  for (const value of sorted) {
+    if (!Number.isFinite(value)) throw new RangeError(`heatmap ${axis}AxisValues must contain only finite values.`);
+  }
+  sorted.sort((left, right) => left - right);
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index] === sorted[index - 1]) throw new RangeError(`heatmap ${axis}AxisValues must be unique.`);
+  }
+  return sorted;
+}
+
+function buildUniformAxisBins(min: number, max: number, requestedCount: number): {
   readonly bins: readonly NumericHeatmapAxisBin[];
   readonly width: number;
 } {
   if (min === max) {
     return {
-      bins: [{ index: 0, lowerBound: min, upperBound: max, includesUpperBound: true }],
+      bins: [{ index: 0, lowerBound: min, upperBound: max, centerValue: min, includesUpperBound: true }],
       width: 0,
     };
   }
@@ -185,20 +204,75 @@ function buildAxisBins(min: number, max: number, requestedCount: number): {
   const width = (max - min) / requestedCount;
   const bins: NumericHeatmapAxisBin[] = [];
   for (let index = 0; index < requestedCount; index += 1) {
+    const lowerBound = min + width * index;
+    const upperBound = index === requestedCount - 1 ? max : min + width * (index + 1);
     bins.push({
       index,
-      lowerBound: min + width * index,
-      upperBound: index === requestedCount - 1 ? max : min + width * (index + 1),
+      lowerBound,
+      upperBound,
+      centerValue: (lowerBound + upperBound) / 2,
       includesUpperBound: index === requestedCount - 1,
     });
   }
   return { bins, width };
 }
 
-function binIndex(value: number, min: number, max: number, width: number, binCount: number): number {
-  if (binCount === 1 || min === max || width === 0) return 0;
-  if (value === max) return binCount - 1;
-  return Math.min(binCount - 1, Math.max(0, Math.floor((value - min) / width)));
+function buildExplicitAxisBins(
+  centers: readonly number[],
+  observedMin: number,
+  observedMax: number,
+): { readonly bins: readonly NumericHeatmapAxisBin[]; readonly width: undefined } {
+  if (centers.length === 1) {
+    const center = centers[0]!;
+    return {
+      bins: [{
+        index: 0,
+        lowerBound: Math.min(center, observedMin),
+        upperBound: Math.max(center, observedMax),
+        centerValue: center,
+        includesUpperBound: true,
+      }],
+      width: undefined,
+    };
+  }
+
+  const boundaries: number[] = [];
+  boundaries.push(centers[0]! - (centers[1]! - centers[0]!) / 2);
+  for (let index = 1; index < centers.length; index += 1) {
+    boundaries.push((centers[index - 1]! + centers[index]!) / 2);
+  }
+  boundaries.push(centers[centers.length - 1]! + (centers[centers.length - 1]! - centers[centers.length - 2]!) / 2);
+
+  return {
+    bins: centers.map((centerValue, index) => ({
+      index,
+      lowerBound: boundaries[index]!,
+      upperBound: boundaries[index + 1]!,
+      centerValue,
+      includesUpperBound: index === centers.length - 1,
+    })),
+    width: undefined,
+  };
+}
+
+function buildAxisBins(
+  min: number,
+  max: number,
+  requestedCount: number,
+  explicitCenters: readonly number[] | undefined,
+): { readonly bins: readonly NumericHeatmapAxisBin[]; readonly width: number | undefined } {
+  return explicitCenters
+    ? buildExplicitAxisBins(explicitCenters, min, max)
+    : buildUniformAxisBins(min, max, requestedCount);
+}
+
+function binIndexForBins(value: number, bins: readonly NumericHeatmapAxisBin[]): number | undefined {
+  for (let index = 0; index < bins.length; index += 1) {
+    const bin = bins[index]!;
+    if (value < bin.lowerBound) continue;
+    if (value < bin.upperBound || (bin.includesUpperBound && value <= bin.upperBound)) return index;
+  }
+  return undefined;
 }
 
 function emptyResult(
@@ -255,6 +329,8 @@ export function buildNumericHeatmap(
   const requestedXMax = requestedBound(options.xMax, 'xMax');
   const requestedYMin = requestedBound(options.yMin, 'yMin');
   const requestedYMax = requestedBound(options.yMax, 'yMax');
+  const explicitXAxisValues = normalizedAxisValues(options.xAxisValues, 'x');
+  const explicitYAxisValues = normalizedAxisValues(options.yAxisValues, 'y');
   const scan = scanPairs(xRange, yRange, options.sampleIndices);
 
   if (scan.validPairs.length === 0) {
@@ -272,13 +348,17 @@ export function buildNumericHeatmap(
   const xUpper = requestedXMax ?? scan.xObservedMax!;
   const yLower = requestedYMin ?? scan.yObservedMin!;
   const yUpper = requestedYMax ?? scan.yObservedMax!;
-  const xRangeMin = Math.min(xLower, xUpper);
-  const xRangeMax = Math.max(xLower, xUpper);
-  const yRangeMin = Math.min(yLower, yUpper);
-  const yRangeMax = Math.max(yLower, yUpper);
+  const xObservedRangeMin = Math.min(xLower, xUpper);
+  const xObservedRangeMax = Math.max(xLower, xUpper);
+  const yObservedRangeMin = Math.min(yLower, yUpper);
+  const yObservedRangeMax = Math.max(yLower, yUpper);
 
-  const xAxis = buildAxisBins(xRangeMin, xRangeMax, normalizedBinCount(options.xBinCount, 'x'));
-  const yAxis = buildAxisBins(yRangeMin, yRangeMax, normalizedBinCount(options.yBinCount, 'y'));
+  const xAxis = buildAxisBins(xObservedRangeMin, xObservedRangeMax, normalizedBinCount(options.xBinCount, 'x'), explicitXAxisValues);
+  const yAxis = buildAxisBins(yObservedRangeMin, yObservedRangeMax, normalizedBinCount(options.yBinCount, 'y'), explicitYAxisValues);
+  const xRangeMin = xAxis.bins[0]!.lowerBound;
+  const xRangeMax = xAxis.bins[xAxis.bins.length - 1]!.upperBound;
+  const yRangeMin = yAxis.bins[0]!.lowerBound;
+  const yRangeMax = yAxis.bins[yAxis.bins.length - 1]!.upperBound;
   const cellCount = xAxis.bins.length * yAxis.bins.length;
   const counts = new Uint32Array(cellCount);
   const cellSampleIndices: number[][] = Array.from({ length: cellCount }, () => []);
@@ -305,8 +385,9 @@ export function buildNumericHeatmap(
       continue;
     }
 
-    const xIndex = binIndex(pair.x, xRangeMin, xRangeMax, xAxis.width, xAxis.bins.length);
-    const yIndex = binIndex(pair.y, yRangeMin, yRangeMax, yAxis.width, yAxis.bins.length);
+    const xIndex = binIndexForBins(pair.x, xAxis.bins);
+    const yIndex = binIndexForBins(pair.y, yAxis.bins);
+    if (xIndex === undefined || yIndex === undefined) { outsideRangeSampleCount += 1; continue; }
     const cellIndex = yIndex * xAxis.bins.length + xIndex;
     counts[cellIndex] = (counts[cellIndex] ?? 0) + 1;
     cellSampleIndices[cellIndex]!.push(pair.sampleIndex);

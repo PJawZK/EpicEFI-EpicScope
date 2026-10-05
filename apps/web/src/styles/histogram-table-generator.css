@@ -378,3 +378,31 @@
     display: none;
   }
 }
+
+
+.histogram-table-axis-custom,
+.histogram-table-axis-msq {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid rgba(52, 78, 94, .7);
+  border-radius: 3px;
+  background: rgba(7, 17, 25, .58);
+}
+
+.histogram-table-axis-msq {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.histogram-table-axis-custom[hidden],
+.histogram-table-axis-msq[hidden] {
+  display: none;
+}
+
+.histogram-table-axis-custom input,
+.histogram-table-axis-msq select {
+  width: 100%;
+  min-width: 0;
+}

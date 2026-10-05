@@ -1,4 +1,5 @@
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
+import type { TuneModel } from '../../../../core/tune/tune-model';
 import { buildNumericHistogram, type NumericHistogramResult } from '../../../../core/analysis/histogram';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { createHistogramTableGeneratorView } from './histogram-table-generator-view';
@@ -20,6 +21,8 @@ export interface HistogramPageContext {
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
   readonly savedRanges?: readonly import('../state/workspace-state').SavedTimelineRangeState[];
+  readonly tuneModel?: TuneModel;
+  readonly tuneSourceName?: string;
 }
 
 export interface HistogramPageController {

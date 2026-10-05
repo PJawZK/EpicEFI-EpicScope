@@ -878,7 +878,11 @@ export function mountAppShell(root: HTMLElement): void {
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
       analyzerPage.refresh();
     } else if (histogramActive) {
-      histogramPage.setContext(loggerPage.getAnalysisContext());
+      histogramPage.setContext({
+        ...loggerPage.getAnalysisContext(),
+        ...(activeTuneModel ? { tuneModel: activeTuneModel } : {}),
+        ...(activeTuneSourceName ? { tuneSourceName: activeTuneSourceName } : {}),
+      });
       histogramPage.refresh();
     }
     closeBrandMenu();
