@@ -1257,6 +1257,7 @@ export function createGraphViewport(): GraphViewportController {
   const activateCachedChannel = async (
     channelId: string,
     pending: PendingTrace,
+    generation: number,
   ): Promise<boolean> => {
     if (!channelData) return false;
     const now = (): number => globalThis.performance?.now() ?? Date.now();
@@ -1280,7 +1281,7 @@ export function createGraphViewport(): GraphViewportController {
           };
       const readDecodeMs = now() - readStart;
       const range = result.ranges.get(channelId);
-      if (!range) return false;
+      if (generation !== decodeGeneration || !range) return false;
 
       const scaleStart = now();
       const fullStatistics = summarizeNumericRange(range);
@@ -1536,11 +1537,12 @@ export function createGraphViewport(): GraphViewportController {
     ) ?? false;
 
     if (cacheReady) {
+      const generation = decodeGeneration;
       loadingTraceIds.add(channelId);
       overlay.hidden = false;
       overlayTitle.textContent = `Loading ${channel.sourceName}…`;
       overlayDetail.textContent = 'Using decoded channel cache.';
-      void activateCachedChannel(channelId, pending)
+      void activateCachedChannel(channelId, pending, generation)
         .then(resolveSelection)
         .finally(() => { loadingTraceIds.delete(channelId); });
       return result;
