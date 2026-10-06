@@ -17,6 +17,7 @@ const cleanSnapshot = (): LoggerRuntimeDiagnosticSnapshot => ({
   renderableAssignedChannelCount: 1,
   unavailableAssignedChannelCount: 0,
   activeTraceCount: 1,
+  activeTraceRangeBytes: 0,
   panes: [],
 });
 

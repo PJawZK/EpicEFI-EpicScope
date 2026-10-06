@@ -62,6 +62,9 @@ export function mountAppShell(root: HTMLElement): void {
   const analyzerPage = createAnalyzerPage();
   const histogramPage = createHistogramPage();
   const performanceDiagnostics = createPerformanceDiagnostics();
+  performanceDiagnostics.setRuntimeMemoryProvider(() => ({
+    activeTraceRangeBytes: loggerPage.getRuntimeDiagnosticSnapshot().activeTraceRangeBytes,
+  }));
 
   const runtimeErrors: BugReportRuntimeErrorEntry[] = [];
   const rememberRuntimeError = (entry: BugReportRuntimeErrorEntry): void => {

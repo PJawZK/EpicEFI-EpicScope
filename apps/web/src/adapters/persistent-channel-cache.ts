@@ -13,6 +13,24 @@ const MAX_PERSISTED_COLUMNS = 128;
 const CACHE_SCHEMA_VERSION = 1;
 const MAX_PERSISTED_SELECTION_BATCH = 4;
 
+export interface PersistentColumnMemoryDiagnostics {
+  readonly residentColumnCount: number;
+  readonly residentBytes: number;
+  readonly peakResidentColumnCount: number;
+  readonly peakResidentBytes: number;
+  readonly residentHitCount: number;
+  readonly diskLoadCount: number;
+  readonly retainedColumnCount: number;
+  readonly storeMissCount: number;
+}
+
+let latestPersistentColumnMemory: PersistentColumnMemoryDiagnostics | undefined;
+let persistentMemorySourceSequence = 0;
+
+export function latestPersistentColumnMemoryDiagnostics(): PersistentColumnMemoryDiagnostics | undefined {
+  return latestPersistentColumnMemory ? { ...latestPersistentColumnMemory } : undefined;
+}
+
 interface StoredColumnRecord {
   readonly key: string;
   readonly sampleCount: number;
@@ -209,6 +227,13 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
   private readonly missingColumns = new Set<string>();
   private readonly residentColumns = new Map<string, Float64Array>();
   private cachedChannelIdIndex: Set<string> | undefined;
+  private readonly memorySourceId = ++persistentMemorySourceSequence;
+  private peakResidentColumnCount = 0;
+  private peakResidentBytes = 0;
+  private residentHitCount = 0;
+  private diskLoadCount = 0;
+  private retainedColumnCount = 0;
+  private storeMissCount = 0;
 
   public constructor(
     source: NumericChannelDataSource,
@@ -225,6 +250,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     this.sampleCount = source.sampleCount;
     this.preferredBatchWindowMs = source.preferredBatchWindowMs ?? 0;
     this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection ?? false;
+    this.updateMemoryDiagnostics();
     if (!source.managesPersistentColumns && store.listCachedChannelIds) {
       void store.listCachedChannelIds(logKey, this.sampleCount).then((channelIds) => {
         const warmed = new Set(channelIds);
@@ -232,6 +258,24 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
         this.cachedChannelIdIndex = warmed;
       }).catch(() => undefined);
     }
+  }
+
+  private updateMemoryDiagnostics(): void {
+    const residentBytes = [...this.residentColumns.values()]
+      .reduce((sum, values) => sum + values.byteLength, 0);
+    this.peakResidentColumnCount = Math.max(this.peakResidentColumnCount, this.residentColumns.size);
+    this.peakResidentBytes = Math.max(this.peakResidentBytes, residentBytes);
+    if (this.memorySourceId !== persistentMemorySourceSequence) return;
+    latestPersistentColumnMemory = {
+      residentColumnCount: this.residentColumns.size,
+      residentBytes,
+      peakResidentColumnCount: this.peakResidentColumnCount,
+      peakResidentBytes: this.peakResidentBytes,
+      residentHitCount: this.residentHitCount,
+      diskLoadCount: this.diskLoadCount,
+      retainedColumnCount: this.retainedColumnCount,
+      storeMissCount: this.storeMissCount,
+    };
   }
 
   public sampleRangeForTime(
@@ -254,7 +298,11 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
   private async persistedColumn(channelId: string): Promise<Float64Array | undefined> {
     const resident = this.residentColumns.get(channelId);
     if (this.source.managesPersistentColumns) return undefined;
-    if (resident) return resident;
+    if (resident) {
+      this.residentHitCount += 1;
+      this.updateMemoryDiagnostics();
+      return resident;
+    }
     if (this.missingColumns.has(channelId)) return undefined;
     if (this.cachedChannelIdIndex && !this.cachedChannelIdIndex.has(channelId)) {
       this.missingColumns.add(channelId);
@@ -264,12 +312,16 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     try {
       const values = await this.store.get(this.logKey, channelId, this.sampleCount);
       if (!values || values.length !== this.sampleCount) {
+        this.storeMissCount += 1;
         this.missingColumns.add(channelId);
         this.cachedChannelIdIndex?.delete(channelId);
+        this.updateMemoryDiagnostics();
         return undefined;
       }
       this.cachedChannelIdIndex?.add(channelId);
       this.residentColumns.set(channelId, values);
+      this.diskLoadCount += 1;
+      this.updateMemoryDiagnostics();
       return values;
     } catch {
       this.missingColumns.add(channelId);
@@ -279,9 +331,12 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
 
   private retainFullColumn(channelId: string, range: NumericChannelRange): boolean {
     if (range.startSampleIndex !== 0 || range.values.length !== this.sampleCount) return false;
+    const wasResident = this.residentColumns.has(channelId);
     this.residentColumns.set(channelId, range.values);
+    if (!wasResident) this.retainedColumnCount += 1;
     this.missingColumns.delete(channelId);
     this.cachedChannelIdIndex?.add(channelId);
+    this.updateMemoryDiagnostics();
     return true;
   }
 

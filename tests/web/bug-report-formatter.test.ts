@@ -18,6 +18,7 @@ const snapshot: LoggerRuntimeDiagnosticSnapshot = {
   renderableAssignedChannelCount: 1,
   unavailableAssignedChannelCount: 1,
   activeTraceCount: 1,
+  activeTraceRangeBytes: 0,
   panes: [{
     id: 'pane-1',
     visible: true,

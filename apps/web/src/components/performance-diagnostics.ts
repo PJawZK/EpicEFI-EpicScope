@@ -3,6 +3,8 @@ import {
   latestChannelDecodePerformance,
 } from '../../../../core/parsers/mlg/channel-decode-performance';
 import type { BlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
+import { latestPersistentColumnMemoryDiagnostics } from '../adapters/persistent-channel-cache';
+import { latestBoundChannelMemoryDiagnostics } from '../../../../core/channels/channel-binding';
 import {
   buildPerformanceDiagnosticsReport,
   decodeMeasuredMs,
@@ -187,8 +189,13 @@ export interface ValidationPerformanceRun {
 }
 
 
+export interface PerformanceRuntimeMemorySnapshot {
+  readonly activeTraceRangeBytes: number;
+}
+
 export interface PerformanceDiagnosticsController {
   readonly element: HTMLElement;
+  setRuntimeMemoryProvider(provider: () => PerformanceRuntimeMemorySnapshot): void;
   recordLoad(run: LoadPerformanceRun): void;
   recordIniLoad(run: IniLoadPerformanceRun): void;
   recordBinding(run: ChannelBindingPerformanceRun): void;
@@ -216,6 +223,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const bindingRuns: ChannelBindingPerformanceRun[] = [];
   const workspaceRestoreRuns: WorkspaceRestorePerformanceRun[] = [];
   const channelRuns: ChannelPerformanceRun[] = [];
+  let runtimeMemoryProvider: (() => PerformanceRuntimeMemorySnapshot) | undefined;
 
   const root = document.createElement('div');
   root.className = 'performance-diagnostics-wrap';
@@ -255,6 +263,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
           <div class="performance-workspace-restore"></div>
         </section>
         <section>
+          <strong>Retained memory</strong>
+          <div class="performance-memory"></div>
+        </section>
+        <section>
           <strong>Recent channel selections</strong>
           <div class="performance-channels"></div>
         </section>
@@ -273,9 +285,10 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   const iniLoadHost = root.querySelector<HTMLElement>('.performance-ini-load');
   const bindingHost = root.querySelector<HTMLElement>('.performance-binding');
   const workspaceRestoreHost = root.querySelector<HTMLElement>('.performance-workspace-restore');
+  const memoryHost = root.querySelector<HTMLElement>('.performance-memory');
   const channelsHost = root.querySelector<HTMLElement>('.performance-channels');
 
-  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !bindingHost || !workspaceRestoreHost || !channelsHost) {
+  if (!button || !popover || !copyButton || !clearButton || !closeButton || !empty || !content || !loadHost || !iniLoadHost || !bindingHost || !workspaceRestoreHost || !memoryHost || !channelsHost) {
     throw new Error('Performance diagnostics structure is incomplete.');
   }
 
@@ -294,13 +307,46 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   closeButton.addEventListener('click', close);
   document.addEventListener('click', close);
 
-  const reportText = (): string => buildPerformanceDiagnosticsReport(
-    loadRuns,
-    iniLoadRuns,
-    bindingRuns,
-    workspaceRestoreRuns,
-    channelRuns,
-  );
+  const retainedMemoryReport = (): string[] => {
+    const persistent = latestPersistentColumnMemoryDiagnostics();
+    const bound = latestBoundChannelMemoryDiagnostics();
+    const runtime = runtimeMemoryProvider?.();
+    if (!persistent && !bound && !runtime) return [];
+    return [
+      '',
+      '[Retained memory]',
+      `graphActiveRangeBytes=${runtime?.activeTraceRangeBytes ?? 0}`,
+      `persistentResidentColumns=${persistent?.residentColumnCount ?? 0}`,
+      `persistentResidentBytes=${persistent?.residentBytes ?? 0}`,
+      `persistentPeakResidentColumns=${persistent?.peakResidentColumnCount ?? 0}`,
+      `persistentPeakResidentBytes=${persistent?.peakResidentBytes ?? 0}`,
+      `persistentResidentHits=${persistent?.residentHitCount ?? 0}`,
+      `persistentDiskLoads=${persistent?.diskLoadCount ?? 0}`,
+      `persistentRetainedColumns=${persistent?.retainedColumnCount ?? 0}`,
+      `persistentStoreMisses=${persistent?.storeMissCount ?? 0}`,
+      `persistentEvictions=0`,
+      `boundResidentRanges=${bound?.residentRangeCount ?? 0}`,
+      `boundResidentBytes=${bound?.residentBytes ?? 0}`,
+      `boundPeakResidentRanges=${bound?.peakResidentRangeCount ?? 0}`,
+      `boundPeakResidentBytes=${bound?.peakResidentBytes ?? 0}`,
+      `boundResidentHits=${bound?.residentHitCount ?? 0}`,
+      `boundResidentMisses=${bound?.residentMissCount ?? 0}`,
+      `boundRetainedRanges=${bound?.retainedRangeCount ?? 0}`,
+      `boundEvictions=0`,
+      'note=Layer byte counts are retained payload estimates and may overlap; do not sum them as unique process memory.',
+    ];
+  };
+
+  const reportText = (): string => {
+    const base = buildPerformanceDiagnosticsReport(
+      loadRuns,
+      iniLoadRuns,
+      bindingRuns,
+      workspaceRestoreRuns,
+      channelRuns,
+    );
+    return `${base}${retainedMemoryReport().join('\n')}`;
+  };
 
   const render = (): void => {
     const hasData = loadRuns.length > 0
@@ -507,6 +553,30 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       workspaceRestoreHost.textContent = 'No workspace restore captured.';
     }
 
+    memoryHost.replaceChildren();
+    const persistentMemory = latestPersistentColumnMemoryDiagnostics();
+    const boundMemory = latestBoundChannelMemoryDiagnostics();
+    const graphMemory = runtimeMemoryProvider?.();
+    const memoryRows: [string, string][] = [
+      ['Graph active ranges', bytes(graphMemory?.activeTraceRangeBytes ?? 0)],
+      ['Persistent resident', `${bytes(persistentMemory?.residentBytes ?? 0)} · ${persistentMemory?.residentColumnCount ?? 0} columns`],
+      ['Persistent peak', `${bytes(persistentMemory?.peakResidentBytes ?? 0)} · ${persistentMemory?.peakResidentColumnCount ?? 0} columns`],
+      ['Persistent disk reloads', (persistentMemory?.diskLoadCount ?? 0).toLocaleString()],
+      ['Bound resident', `${bytes(boundMemory?.residentBytes ?? 0)} · ${boundMemory?.residentRangeCount ?? 0} ranges`],
+      ['Bound peak', `${bytes(boundMemory?.peakResidentBytes ?? 0)} · ${boundMemory?.peakResidentRangeCount ?? 0} ranges`],
+      ['Evictions', '0 · not budgeted yet'],
+    ];
+    for (const [label, value] of memoryRows) {
+      const row = document.createElement('div');
+      row.className = 'performance-row';
+      const left = document.createElement('span');
+      left.textContent = label;
+      const right = document.createElement('strong');
+      right.textContent = value;
+      row.append(left, right);
+      memoryHost.append(row);
+    }
+
     channelsHost.replaceChildren();
     if (channelRuns.length === 0) {
       channelsHost.textContent = 'No channel selections captured.';
@@ -549,6 +619,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
 
   return {
     element: root,
+    setRuntimeMemoryProvider: (provider) => { runtimeMemoryProvider = provider; render(); },
     recordLoad: (run) => {
       loadRuns.push(run);
       if (loadRuns.length > 20) loadRuns.shift();
