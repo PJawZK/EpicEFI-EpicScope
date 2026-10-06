@@ -1,3 +1,4 @@
+import { aggregateNumericSamples } from '../../../../core/analysis/numeric-aggregation';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import {
@@ -28,10 +29,14 @@ export interface SpecializedAnalyzerSuiteController {
   refresh(): void;
 }
 
+type IdleSystem = 'combined' | 'dc-idle' | 'iac' | 'etb' | 'ignition';
+
 interface RoleSpec {
   readonly key: string;
   readonly label: string;
   readonly required?: boolean;
+  readonly systems?: readonly IdleSystem[];
+  readonly group?: string;
 }
 
 interface OptionSpec {
@@ -49,19 +54,32 @@ interface DomainSpec {
   readonly options: readonly OptionSpec[];
 }
 
+const IDLE_SYSTEMS: readonly { value: IdleSystem; label: string; description: string }[] = [
+  { value: 'combined', label: 'Combined', description: 'Inspect how the available idle-control systems respond together.' },
+  { value: 'dc-idle', label: 'DC Idle', description: 'Focus on the RPM controller, feed-forward and PID contributions.' },
+  { value: 'iac', label: 'IAC Valve', description: 'Focus on the idle-air valve command and available actuator headroom evidence.' },
+  { value: 'etb', label: 'ETB', description: 'Focus on electronic-throttle idle target, position and idle contribution.' },
+  { value: 'ignition', label: 'Ignition', description: 'Focus on idle spark advance and ignition correction.' },
+];
+
 const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   idle: {
     title: 'Idle',
-    description: 'Target/error, valve duty/bias/feed-forward, PID terms and sag/recovery evidence.',
+    description: 'Sag/recovery analysis separated by DC Idle, IAC valve, ETB and ignition control evidence.',
     roles: [
-      { key: 'rpm', label: 'RPM', required: true },
-      { key: 'target', label: 'Idle target' },
-      { key: 'valve', label: 'Idle valve duty' },
-      { key: 'bias', label: 'DC bias' },
-      { key: 'feedForward', label: 'Feed-forward' },
-      { key: 'p', label: 'P term' },
-      { key: 'i', label: 'I term' },
-      { key: 'd', label: 'D term' },
+      { key: 'rpm', label: 'RPM', required: true, group: 'Engine' },
+      { key: 'target', label: 'Idle target', required: true, group: 'Engine' },
+      { key: 'dcBiasOutput', label: 'DC Bias output (runtime)', systems: ['dc-idle'], group: 'DC Idle' },
+      { key: 'feedForward', label: 'Feed-forward', systems: ['dc-idle'], group: 'DC Idle' },
+      { key: 'p', label: 'P term', systems: ['dc-idle'], group: 'DC Idle' },
+      { key: 'i', label: 'I term', systems: ['dc-idle'], group: 'DC Idle' },
+      { key: 'd', label: 'D term', systems: ['dc-idle'], group: 'DC Idle' },
+      { key: 'valve', label: 'IAC valve duty', systems: ['iac'], group: 'IAC Valve' },
+      { key: 'etbTarget', label: 'ETB idle target', systems: ['etb'], group: 'ETB' },
+      { key: 'etbPosition', label: 'ETB position', systems: ['etb'], group: 'ETB' },
+      { key: 'etbContribution', label: 'ETB idle contribution', systems: ['etb'], group: 'ETB' },
+      { key: 'ignitionAdvance', label: 'Ignition advance', systems: ['ignition'], group: 'Ignition' },
+      { key: 'ignitionCorrection', label: 'Idle ignition correction', systems: ['ignition'], group: 'Ignition' },
     ],
     options: [
       { key: 'sag', label: 'Sag threshold RPM', value: '100', step: '1' },
@@ -159,6 +177,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       <span class="specialized-analyzer-badge">EXP</span>
     </div>
     <div class="specialized-analyzer-controls"></div>
+    <div class="specialized-analyzer-guidance" hidden><strong data-specialized="guidance-title">What Analyze does</strong><span data-specialized="guidance-text"></span></div>
     <details class="specialized-analyzer-options" open>
       <summary>Analysis thresholds</summary>
       <div class="specialized-analyzer-options-grid"></div>
@@ -183,6 +202,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   `;
 
   const controls = root.querySelector<HTMLElement>('.specialized-analyzer-controls');
+  const guidance = root.querySelector<HTMLElement>('.specialized-analyzer-guidance');
   const optionsGrid = root.querySelector<HTMLElement>('.specialized-analyzer-options-grid');
   const empty = root.querySelector<HTMLElement>('.specialized-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.specialized-analyzer-content');
@@ -192,7 +212,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const evidenceAll = root.querySelector<HTMLButtonElement>('[data-specialized="evidence-all"]');
   const tableHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table thead');
   const tableBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table tbody');
-  if (!controls || !optionsGrid || !empty || !content || !summary || !evidence || !evidenceCanvas || !evidenceAll || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
+  if (!controls || !guidance || !optionsGrid || !empty || !content || !summary || !evidence || !evidenceCanvas || !evidenceAll || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
 
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-specialized="${name}"]`);
@@ -214,6 +234,28 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     const value = Number(input.value);
     return Number.isFinite(value) ? value : fallback;
   }
+
+  const currentIdleSystem = (): IdleSystem => {
+    const value = controls.querySelector<HTMLSelectElement>('select[data-role="idle-system"]')?.value as IdleSystem | undefined;
+    return IDLE_SYSTEMS.some((entry) => entry.value === value) ? value! : 'combined';
+  };
+
+  const idleRoleRelevant = (role: RoleSpec, system: IdleSystem): boolean =>
+    !role.systems?.length || system === 'combined' || role.systems.includes(system);
+
+  const updateIdleGuidance = (): void => {
+    if (domain !== 'idle') { guidance.hidden = true; return; }
+    guidance.hidden = false;
+    const system = currentIdleSystem();
+    const systemInfo = IDLE_SYSTEMS.find((entry) => entry.value === system) ?? IDLE_SYSTEMS[0]!;
+    const sag = optionNumber('sag', 100);
+    const settled = optionNumber('settled', 40);
+    field('guidance-title').textContent = `What Analyze does · ${systemInfo.label}`;
+    const biasNote = system === 'combined' || system === 'dc-idle'
+      ? ' DC Bias itself is a calibration curve/table; only a separately logged runtime bias output belongs in the channel selector.'
+      : '';
+    field('guidance-text').textContent = `${systemInfo.description} A sag starts when RPM is at least ${sag} RPM below Idle target; recovery ends when RPM returns inside ±${settled} RPM of target.${biasNote}`;
+  };
 
   const selectedScope = () => {
     const scope = controls.querySelector<HTMLSelectElement>('select[data-role="scope"]');
@@ -349,10 +391,17 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const analyzeCurrent = async (): Promise<void> => {
     const spec = SPECS[domain];
     const selected = new Map<string, string>();
+    const idleSystem = domain === 'idle' ? currentIdleSystem() : 'combined';
     for (const role of spec.roles) {
+      if (domain === 'idle' && !idleRoleRelevant(role, idleSystem)) continue;
       const id = roleSelect(role.key)?.value;
       if (id) selected.set(role.key, id);
-      if (role.required && !id) { empty.hidden = false; content.hidden = true; return; }
+      if (role.required && !id) {
+        empty.hidden = false; content.hidden = true;
+        const strong = empty.querySelector('strong');
+        if (strong) strong.textContent = `Select ${role.label} before analyzing ${domain === 'idle' ? 'idle events' : 'this analyzer'}.`;
+        return;
+      }
     }
     const scope = selectedScope();
     if (!scope) { empty.hidden = false; content.hidden = true; return; }
@@ -381,7 +430,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const rpm = traces.get('rpm')!;
         const target = traces.get('target');
         const valve = traces.get('valve');
-        const bias = traces.get('bias');
+        const dcBiasOutput = traces.get('dcBiasOutput');
+        const etbTarget = traces.get('etbTarget');
+        const etbPosition = traces.get('etbPosition');
+        const etbContribution = traces.get('etbContribution');
+        const ignitionAdvance = traces.get('ignitionAdvance');
+        const ignitionCorrection = traces.get('ignitionCorrection');
         const feedForward = traces.get('feedForward');
         const p = traces.get('p');
         const i = traces.get('i');
@@ -390,7 +444,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           rpm: rpm.range,
           ...(target ? { target: target.range } : {}),
           ...(valve ? { valveDuty: valve.range } : {}),
-          ...(bias ? { bias: bias.range } : {}),
+          ...(dcBiasOutput ? { bias: dcBiasOutput.range } : {}),
           ...(feedForward ? { feedForward: feedForward.range } : {}),
           ...(p ? { pTerm: p.range } : {}),
           ...(i ? { iTerm: i.range } : {}),
@@ -399,20 +453,32 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const idleSeries: AnalyzerEvidenceSeries[] = [
           { label: 'RPM', range: rpm.range },
           ...(target ? [{ label: 'Target', range: target.range }] : []),
-          ...(valve ? [{ label: 'Idle valve', range: valve.range }] : []),
+          ...(dcBiasOutput ? [{ label: 'DC Bias output', range: dcBiasOutput.range }] : []),
+          ...(feedForward ? [{ label: 'Feed-forward', range: feedForward.range }] : []),
           ...(p ? [{ label: 'P term', range: p.range }] : []),
           ...(i ? [{ label: 'I term', range: i.range }] : []),
+          ...(d ? [{ label: 'D term', range: d.range }] : []),
+          ...(valve ? [{ label: 'IAC valve duty', range: valve.range }] : []),
+          ...(etbTarget ? [{ label: 'ETB target', range: etbTarget.range }] : []),
+          ...(etbPosition ? [{ label: 'ETB position', range: etbPosition.range }] : []),
+          ...(etbContribution ? [{ label: 'ETB idle contribution', range: etbContribution.range }] : []),
+          ...(ignitionAdvance ? [{ label: 'Ignition advance', range: ignitionAdvance.range }] : []),
+          ...(ignitionCorrection ? [{ label: 'Idle ignition correction', range: ignitionCorrection.range }] : []),
         ];
         const idleAfterMs = Math.min(4000, Math.max(1200, ...result.sagEvents.map((event) => event.durationMs + (event.recoveryMs ?? 0) + 300)));
         showAlignedEvidence('Idle sag / recovery · aligned evidence', idleSeries, result.sagEvents, 500, idleAfterMs);
         renderSummary([
+          ['Idle system', IDLE_SYSTEMS.find((entry) => entry.value === idleSystem)?.label ?? 'Combined'],
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['RPM mean', numberText(result.rpm.mean)], ['Target mean', numberText(result.target?.mean)],
           ['Mean error', numberText(result.tracking?.meanError)], ['MAE', numberText(result.tracking?.meanAbsoluteError)],
           ['Worst sag', numberText(result.sagEvents.length ? Math.min(...result.sagEvents.map((event) => event.minimumErrorRpm)) : undefined)],
           ['Median recovery', result.sagEvents.length ? `${numberText(finiteMedian(result.sagEvents.map((event) => event.recoveryMs)), 0)} ms` : '—'],
-          ['Valve mean', numberText(result.valveDuty?.mean)], ['Bias mean', numberText(result.bias?.mean)],
+          ['IAC valve mean', numberText(result.valveDuty?.mean)], ['DC Bias output mean', numberText(result.bias?.mean)],
           ['Feed-forward mean', numberText(result.feedForward?.mean)], ['P / I / D mean', `${numberText(result.pTerm?.mean)} / ${numberText(result.iTerm?.mean)} / ${numberText(result.dTerm?.mean)}`],
+          ['ETB target / position', `${numberText(etbTarget ? aggregateNumericSamples(etbTarget.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)} / ${numberText(etbPosition ? aggregateNumericSamples(etbPosition.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)}`],
+          ['ETB contribution', numberText(etbContribution ? aggregateNumericSamples(etbContribution.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)],
+          ['Ign advance / correction', `${numberText(ignitionAdvance ? aggregateNumericSamples(ignitionAdvance.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)} / ${numberText(ignitionCorrection ? aggregateNumericSamples(ignitionCorrection.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)}`],
           ['Sag events', String(result.sagEvents.length)], ['Input samples', result.rpm.inputSampleCount.toLocaleString()],
         ]);
         renderTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`]), eventNavigation(result.sagEvents, 'Idle sag'), (index) => {
@@ -536,10 +602,24 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     field('title').textContent = `${spec.title} · Experimental`;
     field('description').textContent = spec.description;
     controls.replaceChildren();
+    if (domain === 'idle') {
+      const systemLabel = document.createElement('label');
+      const systemCaption = document.createElement('span');
+      systemCaption.textContent = 'Idle system';
+      const systemSelect = document.createElement('select');
+      systemSelect.dataset.role = 'idle-system';
+      for (const entry of IDLE_SYSTEMS) systemSelect.add(new Option(entry.label, entry.value));
+      systemSelect.value = rememberedSelections.get('idle:system') ?? 'combined';
+      systemSelect.addEventListener('change', () => { rememberedSelections.set('idle:system', systemSelect.value); rebuild(); });
+      systemLabel.append(systemCaption, systemSelect);
+      controls.append(systemLabel);
+    }
+    const idleSystem = domain === 'idle' ? currentIdleSystem() : 'combined';
     for (const role of spec.roles) {
+      if (domain === 'idle' && !idleRoleRelevant(role, idleSystem)) continue;
       const label = document.createElement('label');
       const span = document.createElement('span');
-      span.textContent = role.label;
+      span.textContent = role.group ? `${role.label} · ${role.group}` : role.label;
       const select = document.createElement('select');
       select.dataset.role = role.key;
       select.add(new Option(role.required ? '(select channel)' : '(none)', ''));
@@ -591,10 +671,11 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       if (option.value !== undefined) input.value = option.value;
       if (option.placeholder) input.placeholder = option.placeholder;
       input.step = option.step ?? 'any';
-      input.addEventListener('change', () => { void analyzeCurrent(); });
+      input.addEventListener('change', () => { updateIdleGuidance(); void analyzeCurrent(); });
       label.append(span, input);
       optionsGrid.append(label);
     }
+    updateIdleGuidance();
     void analyzeCurrent();
   };
 
