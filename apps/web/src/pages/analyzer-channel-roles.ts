@@ -10,20 +10,27 @@ export type AnalyzerRoleDomain =
   | 'boost';
 
 interface RoleRule {
+  readonly exact?: readonly string[];
   readonly include: readonly RegExp[];
   readonly exclude?: readonly RegExp[];
 }
 
 // Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
+// Canonical runtime channels are preferred where EpicEFI has an established name; fuzzy matching is fallback only.
 const RULES: Readonly<Record<string, RoleRule>> = {
-  'idle:rpm': { include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
+  'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
   'idle:target': { include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i] },
   'idle:valve': { include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /dc.*idle.*valve/i] },
-  'idle:bias': { include: [/idle.*bias/i, /dc.*bias/i] },
+  'idle:dcBiasOutput': { include: [/idle.*bias.*(output|current|contribution|value)/i, /dc.*bias.*(output|current|contribution|value)/i, /(output|current|contribution).*dc.*bias/i], exclude: [/curve/i, /table/i, /axis/i] },
   'idle:feedForward': { include: [/feed.?forward/i, /idle.*\bff\b/i] },
   'idle:p': { include: [/idle.*p.*term/i, /pid.*p.*idle/i, /idle.*proportional/i] },
   'idle:i': { include: [/idle.*i.*term/i, /pid.*i.*idle/i, /idle.*integral/i] },
   'idle:d': { include: [/idle.*d.*term/i, /pid.*d.*idle/i, /idle.*derivative/i] },
+  'idle:etbTarget': { include: [/idle.*etb.*target/i, /etb.*idle.*target/i, /idle.*throttle.*target/i] },
+  'idle:etbPosition': { include: [/etb.*position/i, /electronic.*throttle.*position/i, /throttle.*position/i], exclude: [/target/i, /pedal/i] },
+  'idle:etbContribution': { include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
+  'idle:ignitionAdvance': { include: [/idle.*ignition.*advance/i, /idle.*spark.*advance/i, /ignition.*advance/i, /spark.*advance/i] },
+  'idle:ignitionCorrection': { include: [/idle.*ignition.*(correction|trim|delta)/i, /idle.*spark.*(correction|trim|delta)/i] },
 
   'ae-map:tps': { include: [/^tps(value)?$/i, /throttle.*position/i, /(^|\b)tps(\b|$)/i] },
   'ae-map:map': { include: [/^map(value)?$/i, /manifold.*pressure/i, /(^|\b)map(\b|$)/i], exclude: [/predict/i, /estimate/i] },
@@ -38,22 +45,22 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'ignition:retard': { include: [/ignition.*retard/i, /spark.*retard/i, /knock.*retard/i, /(^|\b)retard(\b|$)/i] },
   'ignition:knock': { include: [/knock/i], exclude: [/retard/i] },
 
-  'fuel-injector:reference': { include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
+  'fuel-injector:reference': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
   'fuel-injector:fuelPressure': { include: [/fuel.*pressure/i, /rail.*pressure/i], exclude: [/diff/i, /differential/i] },
   'fuel-injector:railDiff': { include: [/rail.*diff/i, /fuel.*pressure.*diff/i, /differential.*pressure/i] },
   'fuel-injector:pw': { include: [/injector.*(pw|pulse)/i, /pulse.*width/i, /inj.*pw/i] },
   'fuel-injector:duty': { include: [/injector.*duty/i, /inj.*duty/i] },
   'fuel-injector:deadtime': { include: [/injector.*dead.*time/i, /inj.*dead.*time/i, /deadtime/i] },
 
-  'trigger-sync:reference': { include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
+  'trigger-sync:reference': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
   'trigger-sync:syncState': { include: [/sync.*state/i, /engine.*sync/i, /(^|\b)synced(\b|$)/i] },
   'trigger-sync:triggerError': { include: [/trigger.*error/i, /trigger.*err/i] },
   'trigger-sync:lossCounter': { include: [/sync.*loss.*count/i, /lost.*sync.*count/i, /sync.*counter/i] },
-  'trigger-sync:rpm': { include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
+  'trigger-sync:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
 
   'boost:measured': { include: [/boost.*pressure/i, /^map(value)?$/i, /manifold.*pressure/i, /(^|\b)map(\b|$)/i], exclude: [/target/i] },
   'boost:target': { include: [/boost.*target/i, /target.*boost/i, /target.*pressure/i] },
-  'boost:rpm': { include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
+  'boost:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
   'boost:upper': { include: [/upper.*(wastegate|wg).*duty/i, /boost.*open.*loop.*duty/i, /upper.*duty/i] },
   'boost:lower': { include: [/lower.*(wastegate|wg).*duty/i, /lower.*duty/i] },
 };
@@ -66,6 +73,10 @@ function normalizedIdentity(channel: ChannelDefinition): string {
 }
 
 function scoreChannel(channel: ChannelDefinition, rule: RoleRule): number {
+  const exactIdentities = [channel.id, channel.sourceName, channel.displayName].map((value) => value.toLowerCase());
+  const exactIndex = rule.exact?.findIndex((candidate) => exactIdentities.includes(candidate.toLowerCase())) ?? -1;
+  if (exactIndex >= 0) return 1000 - exactIndex;
+
   const identity = normalizedIdentity(channel);
   if (rule.exclude?.some((pattern) => pattern.test(identity))) return Number.NEGATIVE_INFINITY;
   let best = Number.NEGATIVE_INFINITY;
