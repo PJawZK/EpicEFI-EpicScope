@@ -143,6 +143,7 @@ export interface GraphViewportController {
   deactivateChannel(channelId: string): void;
   hasActiveChannel(channelId: string): boolean;
   hasPendingChannel(channelId: string): boolean;
+  getRetainedRangeMemory(): { readonly traceCount: number; readonly bytes: number };
   activatePreloadedChannels(
     ranges: ReadonlyMap<string, NumericChannelRange>,
   ): GraphPreloadedActivationResult;
@@ -1673,6 +1674,13 @@ export function createGraphViewport(): GraphViewportController {
     deactivateChannel,
     hasActiveChannel: (channelId) => activeTraces.has(channelId),
     hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),
+    getRetainedRangeMemory: () => ({
+      traceCount: activeTraces.size,
+      bytes: [...activeTraces.values()].reduce(
+        (sum, trace) => sum + trace.range.timeMs.byteLength + trace.range.values.byteLength + trace.range.validity.byteLength,
+        0,
+      ),
+    }),
     activatePreloadedChannels,
     clearChannels,
     getOverviewTraces: () => [...activeTraces.entries()].map(([channelId, trace]) => ({

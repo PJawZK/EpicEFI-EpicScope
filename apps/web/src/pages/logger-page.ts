@@ -124,6 +124,7 @@ export interface LoggerRuntimeDiagnosticSnapshot {
   readonly renderableAssignedChannelCount: number;
   readonly unavailableAssignedChannelCount: number;
   readonly activeTraceCount: number;
+  readonly activeTraceRangeBytes: number;
   readonly panes: readonly {
     readonly id: string;
     readonly visible: boolean;
@@ -2270,6 +2271,7 @@ export function createLoggerPage(): LoggerPageController {
         renderableAssignedChannelIds,
         unavailableAssignedChannelIds: assignedChannelIds.filter((channelId) => !renderableSet.has(channelId)),
         activeChannelIds: [...runtime.activeChannelIds],
+        activeTraceRangeBytes: runtime.graph.getRetainedRangeMemory().bytes,
       };
     });
 
@@ -2295,6 +2297,9 @@ export function createLoggerPage(): LoggerPageController {
       activeTraceCount: panes
         .filter((pane) => pane.visible)
         .reduce((sum, pane) => sum + pane.activeChannelIds.length, 0),
+      activeTraceRangeBytes: panes
+        .filter((pane) => pane.visible)
+        .reduce((sum, pane) => sum + pane.activeTraceRangeBytes, 0),
       panes,
     };
   };

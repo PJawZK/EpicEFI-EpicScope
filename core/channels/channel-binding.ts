@@ -275,6 +275,23 @@ export function bindChannelCatalogToLog(
   };
 }
 
+export interface BoundChannelMemoryDiagnostics {
+  readonly residentRangeCount: number;
+  readonly residentBytes: number;
+  readonly peakResidentRangeCount: number;
+  readonly peakResidentBytes: number;
+  readonly residentHitCount: number;
+  readonly residentMissCount: number;
+  readonly retainedRangeCount: number;
+}
+
+let latestBoundChannelMemory: BoundChannelMemoryDiagnostics | undefined;
+let boundMemorySourceSequence = 0;
+
+export function latestBoundChannelMemoryDiagnostics(): BoundChannelMemoryDiagnostics | undefined {
+  return latestBoundChannelMemory ? { ...latestBoundChannelMemory } : undefined;
+}
+
 const residentFullRangesBySource = new WeakMap<
   NumericChannelDataSource,
   Map<string, NumericChannelRange>
@@ -296,6 +313,12 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
   readonly requiresExplicitBatchSelection?: boolean;
 
   private readonly residentFullRanges: Map<string, NumericChannelRange>;
+  private readonly memorySourceId = ++boundMemorySourceSequence;
+  private peakResidentRangeCount = 0;
+  private peakResidentBytes = 0;
+  private residentHitCount = 0;
+  private residentMissCount = 0;
+  private retainedRangeCount = 0;
 
   public constructor(
     private readonly source: NumericChannelDataSource,
@@ -303,12 +326,32 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
   ) {
     this.sampleCount = source.sampleCount;
     this.residentFullRanges = residentFullRangesForSource(source);
+    this.updateMemoryDiagnostics();
     if (source.preferredBatchWindowMs !== undefined) {
       this.preferredBatchWindowMs = source.preferredBatchWindowMs;
     }
     if (source.requiresExplicitBatchSelection !== undefined) {
       this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection;
     }
+  }
+
+  private updateMemoryDiagnostics(): void {
+    const residentBytes = [...this.residentFullRanges.values()].reduce(
+      (sum, range) => sum + range.timeMs.byteLength + range.values.byteLength + range.validity.byteLength,
+      0,
+    );
+    this.peakResidentRangeCount = Math.max(this.peakResidentRangeCount, this.residentFullRanges.size);
+    this.peakResidentBytes = Math.max(this.peakResidentBytes, residentBytes);
+    if (this.memorySourceId !== boundMemorySourceSequence) return;
+    latestBoundChannelMemory = {
+      residentRangeCount: this.residentFullRanges.size,
+      residentBytes,
+      peakResidentRangeCount: this.peakResidentRangeCount,
+      peakResidentBytes: this.peakResidentBytes,
+      residentHitCount: this.residentHitCount,
+      residentMissCount: this.residentMissCount,
+      retainedRangeCount: this.retainedRangeCount,
+    };
   }
 
   private sourceId(channelId: string): string {
@@ -321,7 +364,11 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
 
   private retainFullRange(channelId: string, range: NumericChannelRange): void {
     if (range.startSampleIndex === 0 && range.values.length === this.sampleCount) {
-      this.residentFullRanges.set(this.sourceId(channelId), range);
+      const sourceId = this.sourceId(channelId);
+      const wasResident = this.residentFullRanges.has(sourceId);
+      this.residentFullRanges.set(sourceId, range);
+      if (!wasResident) this.retainedRangeCount += 1;
+      this.updateMemoryDiagnostics();
     }
   }
 
@@ -333,7 +380,13 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     const sourceId = this.sourceChannelIdByBoundId.get(channelId);
     if (!sourceId) return undefined;
     const full = this.residentFullRanges.get(sourceId);
-    if (!full) return undefined;
+    if (!full) {
+      this.residentMissCount += 1;
+      this.updateMemoryDiagnostics();
+      return undefined;
+    }
+    this.residentHitCount += 1;
+    this.updateMemoryDiagnostics();
     if (startSampleIndex === 0 && sampleCount === this.sampleCount) return full;
     const end = startSampleIndex + sampleCount;
     return {
