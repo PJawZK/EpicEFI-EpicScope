@@ -1,0 +1,37 @@
+name: Temp freeform geometry validation
+
+on:
+  push:
+    branches:
+      - fix/freeform-hidden-pane-geometry
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/freeform-hidden-pane-geometry
+      - name: Apply fix
+        if: ${{ github.actor != 'github-actions[bot]' }}
+        run: python3 tools/patch-freeform-hidden-pane.py
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit validated fix
+        if: ${{ github.actor != 'github-actions[bot]' }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/logger-page.ts
+          git commit -m 'Guard freeform geometry for hidden panes'
+          git push origin HEAD:fix/freeform-hidden-pane-geometry
