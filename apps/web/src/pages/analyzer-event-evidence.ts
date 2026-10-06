@@ -1,4 +1,5 @@
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
+import { ensureIdleAnalyzerHelp } from './idle-analyzer-help';
 
 export interface AnalyzerEvidenceSeries {
   readonly label: string;
@@ -279,6 +280,7 @@ export function renderAlignedAnalyzerEvidence(
   afterMs: number,
 ): void {
   const idleSplit = isIdleEvidence(series);
+  if (idleSplit) ensureIdleAnalyzerHelp(canvas);
   canvas.style.height = idleSplit ? '460px' : '';
   const width = Math.max(320, canvas.clientWidth || 900);
   const height = Math.max(idleSplit ? 460 : 180, canvas.clientHeight || (idleSplit ? 460 : 260));
