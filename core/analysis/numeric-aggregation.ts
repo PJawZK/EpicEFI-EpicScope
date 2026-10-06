@@ -6,6 +6,8 @@ export type NumericAggregationMethod =
   | 'min'
   | 'max'
   | 'mean'
+  | 'mean-absolute'
+  | 'root-mean-square'
   | 'variance'
   | 'standard-deviation';
 
@@ -23,6 +25,10 @@ export interface NumericAggregationResult {
   readonly min: number | undefined;
   readonly max: number | undefined;
   readonly mean: number | undefined;
+  /** Mean magnitude around zero, useful for signed correction/control signals. */
+  readonly meanAbsolute: number | undefined;
+  /** Root-mean-square magnitude around zero, emphasizing larger excursions. */
+  readonly rootMeanSquare: number | undefined;
   /** Sample variance (n - 1), matching the existing Range Statistics convention. */
   readonly variance: number | undefined;
   /** Sample standard deviation (n - 1), matching the existing Range Statistics convention. */
@@ -61,6 +67,8 @@ export function aggregateNumericSamples(
   let invalidSampleCount = 0;
   let unavailableSampleCount = 0;
   let sum = 0;
+  let sumAbsolute = 0;
+  let sumSquares = 0;
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
   let mean = 0;
@@ -79,6 +87,8 @@ export function aggregateNumericSamples(
 
     validSampleCount += 1;
     sum += value;
+    sumAbsolute += Math.abs(value);
+    sumSquares += value * value;
     min = Math.min(min, value);
     max = Math.max(max, value);
     const delta = value - mean;
@@ -99,6 +109,8 @@ export function aggregateNumericSamples(
     min: validSampleCount > 0 ? min : undefined,
     max: validSampleCount > 0 ? max : undefined,
     mean: validSampleCount > 0 ? mean : undefined,
+    meanAbsolute: validSampleCount > 0 ? sumAbsolute / validSampleCount : undefined,
+    rootMeanSquare: validSampleCount > 0 ? Math.sqrt(sumSquares / validSampleCount) : undefined,
     variance,
     standardDeviation: variance === undefined ? undefined : Math.sqrt(variance),
   };
@@ -113,6 +125,8 @@ export function numericAggregationValue(
   if (method === 'min') return result.min;
   if (method === 'max') return result.max;
   if (method === 'mean') return result.mean;
+  if (method === 'mean-absolute') return result.meanAbsolute;
+  if (method === 'root-mean-square') return result.rootMeanSquare;
   if (method === 'variance') return result.variance;
   return result.standardDeviation;
 }
