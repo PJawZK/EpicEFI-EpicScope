@@ -17,19 +17,21 @@ function range(startSampleIndex: number, values: readonly number[], validity?: r
 }
 
 describe('aggregateNumericSamples', () => {
-  it('computes count, sum, extrema, mean, sample variance and sample standard deviation', () => {
-    const result = aggregateNumericSamples(range(0, [1, 2, 3, 4]));
+  it('computes count, sum, extrema, mean, magnitude metrics, sample variance and deviation', () => {
+    const result = aggregateNumericSamples(range(0, [-2, -1, 1, 2]));
 
     expect(result.inputSampleCount).toBe(4);
     expect(result.validSampleCount).toBe(4);
     expect(result.invalidSampleCount).toBe(0);
     expect(result.unavailableSampleCount).toBe(0);
-    expect(result.sum).toBe(10);
-    expect(result.min).toBe(1);
-    expect(result.max).toBe(4);
-    expect(result.mean).toBe(2.5);
-    expect(result.variance).toBeCloseTo(5 / 3);
-    expect(result.standardDeviation).toBeCloseTo(Math.sqrt(5 / 3));
+    expect(result.sum).toBe(0);
+    expect(result.min).toBe(-2);
+    expect(result.max).toBe(2);
+    expect(result.mean).toBe(0);
+    expect(result.meanAbsolute).toBe(1.5);
+    expect(result.rootMeanSquare).toBeCloseTo(Math.sqrt(2.5));
+    expect(result.variance).toBeCloseTo(10 / 3);
+    expect(result.standardDeviation).toBeCloseTo(Math.sqrt(10 / 3));
   });
 
   it('matches the established range-statistics standard deviation convention', () => {
@@ -54,12 +56,16 @@ describe('aggregateNumericSamples', () => {
     expect(result.invalidSampleCount).toBe(1);
     expect(result.unavailableSampleCount).toBe(2);
     expect(result.sum).toBe(40);
+    expect(result.meanAbsolute).toBe(20);
+    expect(result.rootMeanSquare).toBeCloseTo(Math.sqrt(500));
   });
 
   it('defines a single valid sample as zero sample variance and deviation', () => {
     const result = aggregateNumericSamples(range(0, [42]));
     expect(result.variance).toBe(0);
     expect(result.standardDeviation).toBe(0);
+    expect(result.meanAbsolute).toBe(42);
+    expect(result.rootMeanSquare).toBe(42);
   });
 
   it('returns undefined numeric statistics when no valid sample exists', () => {
@@ -69,24 +75,26 @@ describe('aggregateNumericSamples', () => {
     expect(result.min).toBeUndefined();
     expect(result.max).toBeUndefined();
     expect(result.mean).toBeUndefined();
+    expect(result.meanAbsolute).toBeUndefined();
+    expect(result.rootMeanSquare).toBeUndefined();
     expect(result.variance).toBeUndefined();
     expect(result.standardDeviation).toBeUndefined();
   });
 
-  it('maps aggregation methods to their explicit result values', () => {
-    const result = aggregateNumericSamples(range(0, [1, 2, 3]));
+  it('maps selectable aggregation methods to their explicit result values', () => {
+    const result = aggregateNumericSamples(range(0, [-1, 2, 3]));
     const expected: Record<NumericAggregationMethod, number | undefined> = {
       count: 3,
-      sum: 6,
-      min: 1,
+      sum: 4,
+      min: -1,
       max: 3,
-      mean: 2,
-      variance: 1,
-      'standard-deviation': 1,
+      mean: 4 / 3,
+      variance: 13 / 3,
+      'standard-deviation': Math.sqrt(13 / 3),
     };
 
     for (const [method, value] of Object.entries(expected) as [NumericAggregationMethod, number | undefined][]) {
-      expect(numericAggregationValue(result, method)).toBe(value);
+      expect(numericAggregationValue(result, method)).toBeCloseTo(value ?? Number.NaN);
     }
   });
 });
