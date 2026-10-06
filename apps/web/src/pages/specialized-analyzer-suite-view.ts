@@ -9,6 +9,8 @@ import {
   analyzeTriggerSync,
 } from '../../../../core/analysis/specialized-analyzers';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
+import { suggestAnalyzerChannel } from './analyzer-channel-roles';
+import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 
 export type SpecializedAnalyzerDomain =
   | 'idle'
@@ -205,17 +207,9 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     return Number.isFinite(value) ? value : fallback;
   }
 
-  const selectedScope = (): { label: string; startMs: number; endMs: number } | undefined => {
+  const selectedScope = () => {
     const scope = controls.querySelector<HTMLSelectElement>('select[data-role="scope"]');
-    if (!scope) return undefined;
-    if (scope.value === 'ab') {
-      if (context.aTimeMs === undefined || context.bTimeMs === undefined || context.aTimeMs === context.bTimeMs) return undefined;
-      return { label: 'Current A/B', startMs: context.aTimeMs, endMs: context.bTimeMs };
-    }
-    if (!scope.value.startsWith('saved:')) return undefined;
-    const index = Number(scope.value.slice(6));
-    const saved = Number.isInteger(index) ? context.savedRanges[index] : undefined;
-    return saved ? { label: saved.label, startMs: saved.startMs, endMs: saved.endMs } : undefined;
+    return scope ? selectedAnalyzerScope(scope, context) : undefined;
   };
 
   const renderSummary = (items: readonly [string, string][]): void => {
@@ -230,7 +224,18 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }));
   };
 
-  const renderTable = (title: string, headers: readonly string[], rows: readonly (readonly string[])[]): void => {
+  interface EvidenceNavigation {
+    readonly sampleIndices: readonly number[];
+    readonly timeMs: readonly number[];
+    readonly label: string;
+  }
+
+  const renderTable = (
+    title: string,
+    headers: readonly string[],
+    rows: readonly (readonly string[])[],
+    navigation: readonly EvidenceNavigation[] = [],
+  ): void => {
     field('events-title').textContent = title;
     field('events-count').textContent = rows.length.toLocaleString();
     const headerRow = document.createElement('tr');
@@ -240,30 +245,59 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       headerRow.append(th);
     }
     tableHead.replaceChildren(headerRow);
-    tableBody.replaceChildren(...rows.slice(0, 200).map((values) => {
+    tableBody.replaceChildren(...rows.slice(0, 200).map((values, index) => {
       const tr = document.createElement('tr');
       for (const value of values) {
         const td = document.createElement('td');
         td.textContent = value;
         tr.append(td);
       }
+      const target = navigation[index];
+      if (target && context.openSamplesInLogger) {
+        tr.classList.add('specialized-analyzer-event-row--navigable');
+        tr.tabIndex = 0;
+        tr.title = 'Open this event in Logger';
+        const open = (): void => context.openSamplesInLogger?.(target);
+        tr.addEventListener('click', open);
+        tr.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            open();
+          }
+        });
+      }
       return tr;
     }));
   };
 
+  const eventNavigation = (
+    events: readonly { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number }[],
+    label: string,
+  ): readonly EvidenceNavigation[] => events.map((event, index) => ({
+    sampleIndices: event.startSampleIndex === event.endSampleIndex
+      ? [event.startSampleIndex]
+      : [event.startSampleIndex, event.endSampleIndex],
+    timeMs: event.startTimeMs === event.endTimeMs
+      ? [event.startTimeMs]
+      : [event.startTimeMs, event.endTimeMs],
+    label: `${label} ${index + 1}`,
+  }));
+
   const scopeForPrimary = (primary: LoggerAnalysisTraceContext, selected: readonly LoggerAnalysisTraceContext[]) => {
     const scope = selectedScope();
     if (!scope) return undefined;
-    const startMs = Math.min(scope.startMs, scope.endMs);
-    const endMs = Math.max(scope.startMs, scope.endMs);
+    const { startMs, endMs } = analyzerScopeBounds(scope);
     const channels = new Map([[primary.channel.id, { range: primary.range, complete: primary.complete }]]);
     const qualified = qualifyNumericSamples({
       referenceChannelId: primary.channel.id,
       channels,
       conditions: [],
-      timeRange: { startMs, endMs },
+      ...(startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),
     });
-    const complete = qualified.complete && selected.every((trace) => trace.complete || numericRangeCoversTime(trace.range, startMs, endMs));
+    const complete = qualified.complete && selected.every((trace) => {
+      if (startMs === undefined || endMs === undefined) return trace.complete;
+      return trace.complete || numericRangeCoversTime(trace.range, startMs, endMs);
+    });
     return { scope, startMs, endMs, sampleIndices: qualified.eligibleSampleIndices, complete };
   };
 
@@ -277,8 +311,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }
     const scope = selectedScope();
     if (!scope) { empty.hidden = false; content.hidden = true; return; }
-    const startMs = Math.min(scope.startMs, scope.endMs);
-    const endMs = Math.max(scope.startMs, scope.endMs);
+    const { startMs, endMs } = analyzerScopeBounds(scope);
     const loaded = await context.loadTraces([...selected.values()], startMs, endMs);
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<string, LoggerAnalysisTraceContext>();
@@ -324,7 +357,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Feed-forward mean', numberText(result.feedForward?.mean)], ['P / I / D mean', `${numberText(result.pTerm?.mean)} / ${numberText(result.iTerm?.mean)} / ${numberText(result.dTerm?.mean)}`],
           ['Sag events', String(result.sagEvents.length)], ['Input samples', result.rpm.inputSampleCount.toLocaleString()],
         ]);
-        renderTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`]));
+        renderTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`]), eventNavigation(result.sagEvents, 'Idle sag'));
       } else if (domain === 'ae-map') {
         const tps = traces.get('tps')!;
         const map = traces.get('map');
@@ -338,7 +371,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['TPS mean', numberText(result.tps.mean)], ['MAP mean', numberText(result.map?.mean)],
           ['Predicted MAP mean', numberText(result.predictedMap?.mean)], ['AFR mean', numberText(result.afr?.mean)],
         ]);
-        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'AFR lean', 'AFR rich'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]));
+        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'AFR lean', 'AFR rich'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]), eventNavigation(result.events, 'AE / MAP transient'));
       } else if (domain === 'fueling') {
         const actual = traces.get('actual')!;
         const target = traces.get('target');
@@ -369,7 +402,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Retard mean', numberText(result.retard?.mean)], ['Knock mean / max', `${numberText(result.knock?.mean)} / ${numberText(result.knock?.max)}`],
           ['Knock events', String(result.knockEvents.length)], ['Valid advance', result.advance.validSampleCount.toLocaleString()],
         ]);
-        renderTable('Knock events', ['#', 'Start', 'End', 'Duration', 'Peak knock', 'Advance @ peak', 'Retard @ peak'], result.knockEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakKnock), numberText(event.advanceAtPeak), numberText(event.retardAtPeak)]));
+        renderTable('Knock events', ['#', 'Start', 'End', 'Duration', 'Peak knock', 'Advance @ peak', 'Retard @ peak'], result.knockEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakKnock), numberText(event.advanceAtPeak), numberText(event.retardAtPeak)]), eventNavigation(result.knockEvents, 'Knock event'));
       } else if (domain === 'fuel-injector') {
         const reference = traces.get('reference')!;
         const fuelPressure = traces.get('fuelPressure');
@@ -386,11 +419,17 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Deadtime mean', numberText(result.injectorDeadtime?.mean)], ['Low pressure events', String(result.lowPressureEvents.length)],
           ['High duty events', String(result.highDutyEvents.length)],
         ]);
-        const rows = [
-          ...result.lowPressureEvents.map((event, index) => [String(index + 1), 'Low pressure', timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.extremeValue)]),
-          ...result.highDutyEvents.map((event, index) => [String(index + 1), 'High duty', timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.extremeValue)]),
+        const pressureEvents = [
+          ...result.lowPressureEvents.map((event) => ({ type: 'Low pressure', event })),
+          ...result.highDutyEvents.map((event) => ({ type: 'High duty', event })),
         ];
-        renderTable('Pressure / injector threshold events', ['#', 'Type', 'Start', 'End', 'Duration', 'Extreme'], rows);
+        const rows = pressureEvents.map(({ type, event }, index) => [String(index + 1), type, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.extremeValue)]);
+        renderTable(
+          'Pressure / injector threshold events',
+          ['#', 'Type', 'Start', 'End', 'Duration', 'Extreme'],
+          rows,
+          eventNavigation(pressureEvents.map(({ event }) => event), 'Fuel / injector event'),
+        );
       } else {
         const reference = traces.get('reference')!;
         const syncState = traces.get('syncState');
@@ -404,7 +443,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Trigger error max', numberText(result.triggerError?.max)], ['Loss counter max', numberText(result.syncLossCounter?.max)],
           ['RPM mean / max', `${numberText(result.rpm?.mean)} / ${numberText(result.rpm?.max)}`],
         ]);
-        renderTable('Sync / trigger events', ['#', 'Reason', 'Start', 'End', 'Duration', 'Peak error', 'Loss Δ'], result.events.map((event, index) => [String(index + 1), event.reason, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakError), numberText(event.lossCountDelta)]));
+        renderTable('Sync / trigger events', ['#', 'Reason', 'Start', 'End', 'Duration', 'Peak error', 'Loss Δ'], result.events.map((event, index) => [String(index + 1), event.reason, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakError), numberText(event.lossCountDelta)]), eventNavigation(result.events, 'Trigger / sync event'));
       }
       empty.hidden = true;
       content.hidden = false;
@@ -427,12 +466,25 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       span.textContent = role.label;
       const select = document.createElement('select');
       select.dataset.role = role.key;
-      if (!role.required) select.add(new Option('(none)', ''));
+      select.add(new Option(role.required ? '(select channel)' : '(none)', ''));
       for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
       const remembered = rememberedSelections.get(`${domain}:${role.key}`);
-      if (remembered && [...select.options].some((option) => option.value === remembered)) select.value = remembered;
-      else if (role.required && context.channels[0]) select.value = context.channels[0].id;
-      select.addEventListener('change', () => { rememberedSelections.set(`${domain}:${role.key}`, select.value); void analyzeCurrent(); });
+      if (remembered && [...select.options].some((option) => option.value === remembered)) {
+        select.value = remembered;
+      } else {
+        const suggested = suggestAnalyzerChannel(domain, role.key, context.channels);
+        if (suggested) {
+          select.value = suggested.id;
+          select.dataset.autoSelected = 'true';
+          select.title = `Auto-selected ${suggested.displayName || suggested.sourceName}; choose another channel to override.`;
+        }
+      }
+      select.addEventListener('change', () => {
+        delete select.dataset.autoSelected;
+        select.removeAttribute('title');
+        rememberedSelections.set(`${domain}:${role.key}`, select.value);
+        void analyzeCurrent();
+      });
       label.append(span, select);
       controls.append(label);
     }
@@ -441,10 +493,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     scopeCaption.textContent = 'Scope';
     const scopeSelect = document.createElement('select');
     scopeSelect.dataset.role = 'scope';
-    if (context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs) scopeSelect.add(new Option('Current A/B', 'ab'));
-    context.savedRanges.forEach((saved, index) => scopeSelect.add(new Option(saved.label, `saved:${index}`)));
-    const rememberedScope = rememberedSelections.get(`${domain}:scope`);
-    if (rememberedScope && [...scopeSelect.options].some((option) => option.value === rememberedScope)) scopeSelect.value = rememberedScope;
+    const rememberedScope = rememberedSelections.get(`${domain}:scope`) ?? 'full';
+    populateAnalyzerScopeSelect(scopeSelect, context, rememberedScope);
     scopeSelect.addEventListener('change', () => { rememberedSelections.set(`${domain}:scope`, scopeSelect.value); void analyzeCurrent(); });
     scopeLabel.append(scopeCaption, scopeSelect);
     controls.append(scopeLabel);

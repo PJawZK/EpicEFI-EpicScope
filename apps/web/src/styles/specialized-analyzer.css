@@ -211,3 +211,22 @@
   .specialized-analyzer-controls select { min-width: 130px; }
   .analyzer-view-switch { justify-content: flex-start; }
 }
+
+.specialized-analyzer-controls select[data-auto-selected='true'] {
+  border-color: #3f687a;
+  box-shadow: inset 0 0 0 1px rgba(95, 160, 186, .12);
+}
+
+.specialized-analyzer-event-row--navigable {
+  cursor: pointer;
+}
+
+.specialized-analyzer-event-row--navigable:hover,
+.specialized-analyzer-event-row--navigable:focus {
+  outline: none;
+  background: #102431;
+}
+
+.specialized-analyzer-event-row--navigable:focus-visible {
+  box-shadow: inset 0 0 0 1px #47788e;
+}
