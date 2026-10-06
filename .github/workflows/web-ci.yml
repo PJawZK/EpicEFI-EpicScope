@@ -8,11 +8,10 @@ on:
     branches:
       - main
       - phase1/**
-      - fix/codex-audit-correctness
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -20,12 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: fix/codex-audit-correctness
-
-      - name: Apply Codex audit fixes
-        if: ${{ github.ref == 'refs/heads/fix/codex-audit-correctness' && github.actor != 'github-actions[bot]' }}
-        run: python3 tools/patch-codex-audit-correctness.py
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -44,13 +37,3 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Commit validated fixes
-        if: ${{ github.ref == 'refs/heads/fix/codex-audit-correctness' && github.actor != 'github-actions[bot]' }}
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/web/src/components/graph-viewport.ts apps/web/src/pages/logger-page.ts apps/web/src/pages/histogram-math-channels-view.ts apps/web/src/pages/histogram-table-generator-view.ts apps/web/src/pages/scatter-view.ts
-          git commit -m 'Fix Codex audit correctness issues'
-          git push origin HEAD:fix/codex-audit-correctness
