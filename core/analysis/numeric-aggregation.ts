@@ -6,8 +6,6 @@ export type NumericAggregationMethod =
   | 'min'
   | 'max'
   | 'mean'
-  | 'mean-absolute'
-  | 'root-mean-square'
   | 'variance'
   | 'standard-deviation';
 
@@ -125,8 +123,6 @@ export function numericAggregationValue(
   if (method === 'min') return result.min;
   if (method === 'max') return result.max;
   if (method === 'mean') return result.mean;
-  if (method === 'mean-absolute') return result.meanAbsolute;
-  if (method === 'root-mean-square') return result.rootMeanSquare;
   if (method === 'variance') return result.variance;
   return result.standardDeviation;
 }
