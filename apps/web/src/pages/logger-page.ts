@@ -153,6 +153,12 @@ export interface LoggerAnalysisContext {
     startMs?: number,
     endMs?: number,
   ) => Promise<readonly LoggerAnalysisTraceContext[]>;
+  /** Optional analysis-to-evidence navigation supplied by the application shell. */
+  readonly openSamplesInLogger?: (request: {
+    readonly sampleIndices: readonly number[];
+    readonly timeMs: readonly number[];
+    readonly label: string;
+  }) => void;
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
   readonly savedRanges: readonly import('../state/workspace-state').SavedTimelineRangeState[];

@@ -904,7 +904,14 @@ export function mountAppShell(root: HTMLElement): void {
     }
 
     if (analyzerActive) {
-      analyzerPage.setContext(loggerPage.getAnalysisContext());
+      analyzerPage.setContext({
+        ...loggerPage.getAnalysisContext(),
+        openSamplesInLogger: (request) => {
+          loggerPage.focusAnalysisTimes(request.timeMs);
+          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
+          setEpicScopeMode('logger');
+        },
+      });
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
       analyzerPage.refresh();
     } else if (histogramActive) {
