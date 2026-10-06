@@ -19,16 +19,32 @@ interface RoleRule {
 // Canonical runtime channels are preferred where EpicEFI has an established name; fuzzy matching is fallback only.
 const RULES: Readonly<Record<string, RoleRule>> = {
   'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
-  'idle:target': { include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i] },
-  'idle:valve': { include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /dc.*idle.*valve/i] },
-  'idle:dcBiasOutput': { include: [/idle.*bias.*(output|current|contribution|value)/i, /dc.*bias.*(output|current|contribution|value)/i, /(output|current|contribution).*dc.*bias/i], exclude: [/curve/i, /table/i, /axis/i] },
-  'idle:feedForward': { include: [/feed.?forward/i, /idle.*\bff\b/i] },
-  'idle:p': { include: [/idle.*p.*term/i, /pid.*p.*idle/i, /idle.*proportional/i] },
-  'idle:i': { include: [/idle.*i.*term/i, /pid.*i.*idle/i, /idle.*integral/i] },
-  'idle:d': { include: [/idle.*d.*term/i, /pid.*d.*idle/i, /idle.*derivative/i] },
-  'idle:etbTarget': { include: [/idle.*etb.*target/i, /etb.*idle.*target/i, /idle.*throttle.*target/i] },
+  'idle:target': { exact: ['ini:idleTarget', 'idleTarget'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i] },
+
+  // Outer idle RPM controller. These values decide the requested idle-air position.
+  'idle:basePosition': { exact: ['ini:baseIdlePosition', 'baseIdlePosition'], include: [/base.*idle.*position/i, /idle.*base.*value/i] },
+  'idle:closedLoop': { exact: ['ini:idleClosedLoop', 'idleClosedLoop'], include: [/idle.*closed.*loop/i], exclude: [/active/i, /state/i] },
+  'idle:finalPosition': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/current.*idle.*position/i, /idle.*final.*position/i] },
+  'idle:p': { exact: ['ini:idleStatus_pTerm', 'idleStatus_pTerm'], include: [/idle.*p.*term/i, /pid.*p.*idle/i, /idle.*proportional/i], exclude: [/dc.*idle.*position/i] },
+  'idle:i': { exact: ['ini:idleStatus_iTerm', 'idleStatus_iTerm'], include: [/idle.*i.*term/i, /pid.*i.*idle/i, /idle.*integral/i], exclude: [/dc.*idle.*position/i] },
+  'idle:d': { exact: ['ini:idleStatus_dTerm', 'idleStatus_dTerm'], include: [/idle.*d.*term/i, /pid.*d.*idle/i, /idle.*derivative/i], exclude: [/dc.*idle.*position/i] },
+
+  // Feedback DC idle-valve position controller. The firmware evaluates dcIdleBias* at dcIdleTarget
+  // and exposes that runtime bias/feed-forward value through etbFeedForward while in DC_IdleValve mode.
+  'idle:dcTarget': { exact: ['ini:dcIdleTarget', 'dcIdleTarget'], include: [/dc.*idle.*target/i, /idle.*valve.*target/i] },
+  'idle:dcPosition': { exact: ['ini:IdlePosition', 'IdlePosition'], include: [/idle.*position/i, /dc.*idle.*position/i], exclude: [/target/i, /status/i, /term/i] },
+  'idle:dcBiasOutput': { exact: ['ini:etbFeedForward', 'etbFeedForward'], include: [/etb.*feed.?forward/i, /dc.*idle.*bias/i, /idle.*bias.*(output|value)/i], exclude: [/curve/i, /table/i, /axis/i, /bin/i] },
+  'idle:dcP': { exact: ['ini:dcIdlePositionStatus_pTerm', 'dcIdlePositionStatus_pTerm'], include: [/dc.*idle.*position.*p.*term/i] },
+  'idle:dcI': { exact: ['ini:dcIdlePositionStatus_iTerm', 'dcIdlePositionStatus_iTerm'], include: [/dc.*idle.*position.*i.*term/i] },
+  'idle:dcD': { exact: ['ini:dcIdlePositionStatus_dTerm', 'dcIdlePositionStatus_dTerm'], include: [/dc.*idle.*position.*d.*term/i] },
+  'idle:dcOutput': { exact: ['ini:dcIdlePositionStatus_output', 'dcIdlePositionStatus_output'], include: [/dc.*idle.*position.*output/i] },
+
+  // Generic IAC/stepper/solenoid evidence uses the outer controller's final requested position.
+  'idle:valve': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /current.*idle.*position/i] },
+
+  'idle:etbTarget': { exact: ['ini:targetWithIdlePosition', 'targetWithIdlePosition'], include: [/etb.*target.*with.*idle/i, /idle.*etb.*target/i, /etb.*idle.*target/i, /idle.*throttle.*target/i] },
   'idle:etbPosition': { include: [/etb.*position/i, /electronic.*throttle.*position/i, /throttle.*position/i], exclude: [/target/i, /pedal/i] },
-  'idle:etbContribution': { include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
+  'idle:etbContribution': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
   'idle:ignitionAdvance': { include: [/idle.*ignition.*advance/i, /idle.*spark.*advance/i, /ignition.*advance/i, /spark.*advance/i] },
   'idle:ignitionCorrection': { include: [/idle.*ignition.*(correction|trim|delta)/i, /idle.*spark.*(correction|trim|delta)/i] },
 
