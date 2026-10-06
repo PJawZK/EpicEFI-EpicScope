@@ -14,6 +14,7 @@ interface RoleRule {
   readonly exclude?: readonly RegExp[];
 }
 
+// Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
 const RULES: Readonly<Record<string, RoleRule>> = {
   'idle:rpm': { include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
   'idle:target': { include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i] },
