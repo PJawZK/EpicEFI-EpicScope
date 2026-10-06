@@ -11,6 +11,7 @@ import {
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { suggestAnalyzerChannel } from './analyzer-channel-roles';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
+import { renderAlignedAnalyzerEvidence, type AnalyzerEvidenceSeries } from './analyzer-event-evidence';
 
 export type SpecializedAnalyzerDomain =
   | 'idle'
@@ -168,6 +169,10 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     </div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary"></div>
+      <section class="specialized-analyzer-evidence" hidden>
+        <header><div><strong data-specialized="evidence-title">Event evidence</strong><span data-specialized="evidence-note">Median with 10–90% envelope · t=0 at event onset</span></div><button type="button" data-specialized="evidence-all">All events</button></header>
+        <canvas class="specialized-analyzer-evidence-canvas" aria-label="Analyzer event-aligned evidence graph"></canvas>
+      </section>
       <section class="specialized-analyzer-events">
         <header><strong data-specialized="events-title">Events</strong><span data-specialized="events-count">0</span></header>
         <div class="specialized-analyzer-table-wrap">
@@ -182,9 +187,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const empty = root.querySelector<HTMLElement>('.specialized-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.specialized-analyzer-content');
   const summary = root.querySelector<HTMLElement>('.specialized-analyzer-summary');
+  const evidence = root.querySelector<HTMLElement>('.specialized-analyzer-evidence');
+  const evidenceCanvas = root.querySelector<HTMLCanvasElement>('.specialized-analyzer-evidence-canvas');
+  const evidenceAll = root.querySelector<HTMLButtonElement>('[data-specialized="evidence-all"]');
   const tableHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table thead');
   const tableBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table tbody');
-  if (!controls || !optionsGrid || !empty || !content || !summary || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
+  if (!controls || !optionsGrid || !empty || !content || !summary || !evidence || !evidenceCanvas || !evidenceAll || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
 
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-specialized="${name}"]`);
@@ -224,6 +232,38 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }));
   };
 
+  let restoreAllEvidence: (() => void) | undefined;
+
+  const finiteMean = (values: readonly (number | undefined)[]): number | undefined => {
+    const finite = values.filter((value): value is number => value !== undefined && Number.isFinite(value));
+    return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : undefined;
+  };
+
+  const finiteMedian = (values: readonly (number | undefined)[]): number | undefined => {
+    const finite = values.filter((value): value is number => value !== undefined && Number.isFinite(value)).sort((a, b) => a - b);
+    if (!finite.length) return undefined;
+    const middle = Math.floor(finite.length / 2);
+    return finite.length % 2 ? finite[middle] : ((finite[middle - 1] ?? 0) + (finite[middle] ?? 0)) / 2;
+  };
+
+  const showAlignedEvidence = (
+    title: string,
+    series: readonly AnalyzerEvidenceSeries[],
+    events: readonly { startTimeMs: number; endTimeMs: number }[],
+    beforeMs: number,
+    afterMs: number,
+  ): void => {
+    evidence.hidden = events.length === 0 || series.length === 0;
+    if (evidence.hidden) { restoreAllEvidence = undefined; return; }
+    field('evidence-title').textContent = title;
+    field('evidence-note').textContent = `${events.length.toLocaleString()} event${events.length === 1 ? '' : 's'} · median + 10–90% envelope · t=0 onset`;
+    const renderAll = (): void => renderAlignedAnalyzerEvidence(evidenceCanvas, series, events, beforeMs, afterMs);
+    restoreAllEvidence = renderAll;
+    renderAll();
+  };
+
+  evidenceAll.addEventListener('click', () => restoreAllEvidence?.());
+
   interface EvidenceNavigation {
     readonly sampleIndices: readonly number[];
     readonly timeMs: readonly number[];
@@ -235,6 +275,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     headers: readonly string[],
     rows: readonly (readonly string[])[],
     navigation: readonly EvidenceNavigation[] = [],
+    onSelect?: (index: number) => void,
   ): void => {
     field('events-title').textContent = title;
     field('events-count').textContent = rows.length.toLocaleString();
@@ -253,17 +294,21 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         tr.append(td);
       }
       const target = navigation[index];
-      if (target && context.openSamplesInLogger) {
+      if (target) {
         tr.classList.add('specialized-analyzer-event-row--navigable');
         tr.tabIndex = 0;
-        tr.title = 'Open this event in Logger';
+        tr.title = context.openSamplesInLogger ? 'Click to inspect · double-click or Enter to open in Logger' : 'Click to inspect';
+        const select = (): void => {
+          tableBody.querySelectorAll('tr').forEach((row) => row.classList.remove('specialized-analyzer-event-row--selected'));
+          tr.classList.add('specialized-analyzer-event-row--selected');
+          onSelect?.(index);
+        };
         const open = (): void => context.openSamplesInLogger?.(target);
-        tr.addEventListener('click', open);
+        tr.addEventListener('click', select);
+        if (context.openSamplesInLogger) tr.addEventListener('dblclick', open);
         tr.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            open();
-          }
+          if (event.key === 'Enter' && context.openSamplesInLogger) { event.preventDefault(); open(); }
+          else if (event.key === ' ') { event.preventDefault(); select(); }
         });
       }
       return tr;
@@ -330,6 +375,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }
 
     try {
+      evidence.hidden = true;
+      restoreAllEvidence = undefined;
       if (domain === 'idle') {
         const rpm = traces.get('rpm')!;
         const target = traces.get('target');
@@ -349,15 +396,29 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ...(i ? { iTerm: i.range } : {}),
           ...(d ? { dTerm: d.range } : {}),
         }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, sagThresholdRpm: optionNumber('sag', 100), settledBandRpm: optionNumber('settled', 40) });
+        const idleSeries: AnalyzerEvidenceSeries[] = [
+          { label: 'RPM', range: rpm.range },
+          ...(target ? [{ label: 'Target', range: target.range }] : []),
+          ...(valve ? [{ label: 'Idle valve', range: valve.range }] : []),
+          ...(p ? [{ label: 'P term', range: p.range }] : []),
+          ...(i ? [{ label: 'I term', range: i.range }] : []),
+        ];
+        const idleAfterMs = Math.min(4000, Math.max(1200, ...result.sagEvents.map((event) => event.durationMs + (event.recoveryMs ?? 0) + 300)));
+        showAlignedEvidence('Idle sag / recovery · aligned evidence', idleSeries, result.sagEvents, 500, idleAfterMs);
         renderSummary([
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['RPM mean', numberText(result.rpm.mean)], ['Target mean', numberText(result.target?.mean)],
           ['Mean error', numberText(result.tracking?.meanError)], ['MAE', numberText(result.tracking?.meanAbsoluteError)],
+          ['Worst sag', numberText(result.sagEvents.length ? Math.min(...result.sagEvents.map((event) => event.minimumErrorRpm)) : undefined)],
+          ['Median recovery', result.sagEvents.length ? `${numberText(finiteMedian(result.sagEvents.map((event) => event.recoveryMs)), 0)} ms` : '—'],
           ['Valve mean', numberText(result.valveDuty?.mean)], ['Bias mean', numberText(result.bias?.mean)],
           ['Feed-forward mean', numberText(result.feedForward?.mean)], ['P / I / D mean', `${numberText(result.pTerm?.mean)} / ${numberText(result.iTerm?.mean)} / ${numberText(result.dTerm?.mean)}`],
           ['Sag events', String(result.sagEvents.length)], ['Input samples', result.rpm.inputSampleCount.toLocaleString()],
         ]);
-        renderTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`]), eventNavigation(result.sagEvents, 'Idle sag'));
+        renderTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`]), eventNavigation(result.sagEvents, 'Idle sag'), (index) => {
+          const event = result.sagEvents[index];
+          if (event) { field('evidence-note').textContent = `Event ${index + 1} · ${event.minimumErrorRpm.toFixed(0)} RPM minimum error · t=0 onset`; renderAlignedAnalyzerEvidence(evidenceCanvas, idleSeries, [event], 500, idleAfterMs); }
+        });
       } else if (domain === 'ae-map') {
         const tps = traces.get('tps')!;
         const map = traces.get('map');
@@ -365,13 +426,28 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const afr = traces.get('afr');
         const result = analyzeAeMapPredict({ tps: tps.range, ...(map ? { map: map.range } : {}), ...(predicted ? { predictedMap: predicted.range } : {}), ...(afr ? { afr: afr.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, tpsDeltaThreshold: optionNumber('tpsThreshold', 2), eventWindowMs: optionNumber('window', 500) });
         const tipIns = result.events.filter((event) => event.direction === 'tip-in').length;
+        const transientSeries: AnalyzerEvidenceSeries[] = [
+          { label: 'TPS', range: tps.range },
+          ...(map ? [{ label: 'MAP', range: map.range }] : []),
+          ...(predicted ? [{ label: 'Predicted MAP', range: predicted.range }] : []),
+          ...(afr ? [{ label: 'AFR', range: afr.range }] : []),
+        ];
+        const eventWindow = optionNumber('window', 500);
+        showAlignedEvidence('AE / MAP Predict · aligned transients', transientSeries, result.events, 200, Math.max(300, eventWindow));
         renderSummary([
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['Events', String(result.events.length)], ['Tip-in / decel', `${tipIns} / ${result.events.length - tipIns}`],
           ['TPS mean', numberText(result.tps.mean)], ['MAP mean', numberText(result.map?.mean)],
+          ['Predict error mean', numberText(finiteMean(result.events.map((event) => event.predictionErrorAtEnd)))],
+          ['Predict error MAE', numberText(finiteMean(result.events.map((event) => event.predictionErrorAtEnd === undefined ? undefined : Math.abs(event.predictionErrorAtEnd))))],
+          ['Peak lean excursion', numberText(result.events.length ? Math.max(...result.events.map((event) => event.afrLeanExcursion ?? 0)) : undefined)],
+          ['Peak rich excursion', numberText(result.events.length ? Math.min(...result.events.map((event) => event.afrRichExcursion ?? 0)) : undefined)],
           ['Predicted MAP mean', numberText(result.predictedMap?.mean)], ['AFR mean', numberText(result.afr?.mean)],
         ]);
-        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'AFR lean', 'AFR rich'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]), eventNavigation(result.events, 'AE / MAP transient'));
+        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'AFR lean', 'AFR rich'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]), eventNavigation(result.events, 'AE / MAP transient'), (index) => {
+          const event = result.events[index];
+          if (event) { field('evidence-note').textContent = `Event ${index + 1} · ${event.direction} · TPS Δ ${numberText(event.tpsDelta)} · t=0 onset`; renderAlignedAnalyzerEvidence(evidenceCanvas, transientSeries, [event], 200, Math.max(300, eventWindow)); }
+        });
       } else if (domain === 'fueling') {
         const actual = traces.get('actual')!;
         const target = traces.get('target');
