@@ -6,16 +6,11 @@ Repository: `PJawZK/EpicEFI-EpicScope`
 
 Authoritative branch: `main`
 
-Current application baseline entering this handoff refresh:
+Current application baseline at this handoff refresh:
 
-`468dfdd34587d43bd5e6651df9834ab3996cfa57`
+`df75cac2dcdb26c4fa89d087ed20a99f7bb2a79d`
 
-That commit is the merge of PR #215, **Refine Table Generator controls and filters**.
-
-Validation on that application baseline:
-
-- Web CI: PASS — type-check, tests and production build;
-- GitHub Pages build/deploy: PASS.
+That commit is the merge of PR #238, **Separate Idle Analyzer control systems**.
 
 Hosted application:
 
@@ -23,53 +18,57 @@ Hosted application:
 
 Normal owner testing is browser/GitHub-Pages based and must not require a local clone, Node.js or npm.
 
-This file is the present-tense continuation authority. Older current-state wording in `README.md`, `ROADMAP.md` or `UI_REFERENCE.md` is historical if it conflicts with this handoff.
+This file is the present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, use this handoff plus current `main`/CI state.
 
 ## Current project position
 
-**Phases 1 through 4 are complete for the currently approved scope.**
+**Phases 1 through 4 remain complete for the originally approved scope.** Current work is a deliberate refinement pass, now centered on making Analyzer genuinely useful for tuning work rather than merely displaying aggregate summaries.
 
-Do not begin Phase 5 unless the project owner explicitly asks to resume it. The current work is product/UI refinement of the already-implemented Web analysis surfaces, especially Histogram/Table Generator usability.
+Do not begin Phase 5 unless the project owner explicitly asks.
 
 Approved workflow remains:
 
-> **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
+> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
-Logger/performance architecture is considered stable enough for now. Reopen it only for a concrete defect, regression, or required integration hook.
+Logger, Histogram and Analyzer are all real active EpicScope modes. The EpicScope logo dropdown is the top-level mode switcher. Analyzer and Histogram each use their own compact secondary selector.
 
 ## Current real EpicScope modes
-
-The EpicScope logo dropdown remains the mode/surface switcher.
 
 ### Logger
 
 Recorded-log viewing/navigation and source context:
 
-- MLG v1/v2 loading, indexing and validation;
+- MLG v1/v2 loading, indexing and deferred/full CRC validation;
 - optional INI channel catalog/binding;
-- reusable named workspaces and multi-pane graphs;
-- active channel browser plus full available-channel analysis catalog;
+- reusable named graph workspaces/presets;
+- multi-pane fixed/freeform graph layouts;
+- full available-channel browser plus on-demand analysis catalog;
 - shared viewport/cursor/timeline;
 - A/B selection, markers and saved ranges;
-- Channel Details/statistics;
-- contextual Analyze entry;
 - exact-log persistence separated from reusable workspace state;
-- session/cache/OPFS large-log architecture.
+- session/cache/OPFS large-log architecture;
+- Report health status badge.
+
+**Graph preset invariant:** every available channel assigned to a currently visible pane must be active/rendered. Unavailable channels remain assigned but are not falsely activated. This now applies to workspace switching/restoration, Single→multi-pane layout changes, Freeform visibility changes and duplicated presets.
+
+Internal synchronization must treat assignment state as authoritative. Avoid using a user-style toggle as an `ensure active`/`ensure absent` primitive.
+
+Freeform currently exposes five panes; out-of-layout pane geometry is guarded so hidden pane 6 cannot cause the earlier undefined-geometry `.x` exception.
 
 ### Histogram
 
-Histogram is a no-scroll, visualization-first analysis workspace. Current selectable surfaces are:
+Current selectable surfaces:
 
 - **Table Generator** — primary binned/table analysis surface and default;
 - **Distribution**;
 - **Scatter**;
 - **Math Channels**.
 
-The former Heatmap and Dual Heatmap views are no longer user-facing Histogram modes. Their useful binned-analysis role is owned by Table Generator.
+The former Heatmap and Dual Heatmap views are not separate user-facing modes; their useful role is owned by Table Generator/Scatter.
 
 ### Analyzer
 
-Implemented real Analyzer subviews:
+Current selectable surfaces:
 
 - Range Compare;
 - Tune Table;
@@ -78,38 +77,41 @@ Implemented real Analyzer subviews:
 - AE / MAP Predict · Experimental;
 - Fueling · Experimental;
 - Ignition · Experimental;
-- Fuel Pressure / Injector · Experimental;
+- Fuel / Injector · Experimental;
 - Trigger / Sync · Experimental.
 
-Do not create another top-level mode when a capability naturally belongs in Logger, Histogram or Analyzer.
+Current active product work is **Analyzer refinement**.
 
-## Histogram / Table Generator — current state
+## UI system refinements since the previous handoff
 
-The current Table Generator is the MLV-inspired table-analysis authority in Histogram.
+The prior handoff stopped around PR #215. Important UI changes since then:
+
+- PR #217 — removed the separate Table Generator Size button; remaining control is **Table Size**;
+- PR #218 — visible `MLV weighted mean` wording became **Weighted Mean**; removed redundant active-mode chip; Analyzer mode buttons became a dropdown;
+- PR #219 — unified Logger Layout menu; Reset/Clear moved into it; compact split Undo/Redo; Settings grouped by context;
+- PR #220–#223 — Scatter expanded to Range/Full Log, Single/Dual, Dots/Lines, density heat coloring, shared Logger timeline and shared Hide/Show controls;
+- PR #224 — Distribution became a real statistical workspace;
+- PR #225 — Report gained live health status.
+
+Do not restore removed/redundant controls unless a new requirement justifies them.
+
+## Histogram / Table Generator — current authority
+
+### Naming and controls
+
+- visible weighted statistic label is **Weighted Mean**;
+- the standalone **Size** button is removed;
+- the remaining geometry control is **Table Size**;
+- the Table Size popover owns Auto/custom/MSQ geometry settings.
 
 ### Channel/data authority
 
-- X, Y, Z, optional Z Delta and filters can use the full available loaded-log channel catalog; channels do not need to be graphed first.
-- Only channels actually requested by the current analysis are decoded/read.
-- Whole log, A/B and saved-range scopes remain supported.
-- Source-sample alignment and explicit invalid/unavailable/filter evidence remain authoritative.
+- X, Y, Z, optional Z Delta and filters can use the full available loaded-log channel catalog;
+- only channels requested by the active analysis are decoded/read;
+- Whole Log, A/B and saved-range scopes are supported;
+- source-sample alignment and invalid/unavailable/filter evidence remain authoritative.
 
-### Cell/statistic modes
-
-Current Cell modes include:
-
-- **MLV weighted mean** — first item and default;
-- Mean;
-- Count;
-- Minimum;
-- Maximum;
-- Sum;
-- Standard deviation;
-- Variance.
-
-Weighted mode exposes MLV-style contributing-hit counts and accumulated hit weight, plus minimum individual-weight and minimum total-hit-weight controls.
-
-### Axes and table geometry
+### Geometry
 
 Axis sources:
 
@@ -117,133 +119,199 @@ Axis sources:
 - Custom breakpoints;
 - Loaded MSQ table.
 
-Custom/MSQ breakpoints are real table nodes, not merely min/max limits.
+Custom/MSQ breakpoints are real table nodes.
 
-**Loaded MSQ table is geometry-only.** The selected tune table supplies its X/Y breakpoint vectors and therefore rows/columns. It must **not** change the user's selected X, Y or Z analysis channels.
+**Loaded MSQ table is geometry-only.** It supplies X/Y breakpoint vectors and therefore rows/columns. It must not silently rewrite selected runtime X/Y/Z channels.
 
-Intended workflow:
+### Weighted Mean
 
-> choose scope + X/Y/Z values → choose table geometry → fit the chosen scoped values into that grid.
+PR #213 breakpoint-node weighting remains authoritative:
 
-INI `[TableEditor]` relationships remain the source of truth for which tune `xBins`/`yBins` vectors belong to an MSQ table. Do not guess table axes from matching dimensions when explicit metadata exists.
+- samples between adjacent X nodes contribute linearly to both;
+- samples between adjacent Y nodes contribute linearly to both;
+- combined weight = X weight × Y weight;
+- outer values clamp to the outer node;
+- weighted contributing-hit count and total hit weight remain visible evidence.
 
-The **Size** control applies to Auto bins only and currently offers:
+The previously observed 19-hit difference on the large 1800/0 comparison cell remains a compatibility footnote, not an active task.
 
-- 8×8;
-- 12×12;
-- 16×16;
-- 8×16;
-- 16×8;
-- 16×1.
+### Presets / filters / Math Channels
 
-Selecting one explicitly switches to Auto bins. Custom/MSQ geometry keeps its own dimensions.
+- presets retain complete reusable Table Generator setups;
+- grouped filters support A/B/C grouping plus ALL/ANY semantics;
+- Math Channels have a dedicated editor and safe evaluator;
+- saved formulas/filter/preset records are validated before use;
+- localStorage failure now preserves usable in-memory state for the session and reports persistence failure rather than silently claiming success.
 
-### Presets
+Dynamic file/saved labels must be written as text, not interpolated as executable HTML.
 
-**Presets are saved complete Table Generator setups.** They retain the reusable analysis choices, including:
+## Distribution — current state
 
-- scope;
-- X/Y/Z and Z Delta;
-- statistic;
-- filters;
-- axis/grid configuration;
-- weighting options;
-- calculated-channel references by stable local ID where applicable.
+Distribution is now a proper single-channel statistical/frequency workspace:
 
-### Filters
+- Range A/B and Full Log scopes;
+- shared Logger timeline;
+- Count / % Samples / Time Y-axis modes;
+- automatic Freedman–Diaconis binning with fallback, plus manual bin count;
+- Histogram and Cumulative views;
+- mean, median, standard deviation, min/max and percentile statistics;
+- saved-range A-vs-B comparison using shared bin boundaries;
+- clickable bins with exact evidence and **Open bin in Logger**.
 
-Filters have moved toward a compact Math-Channels-style manager rather than the older flat row list.
+## Scatter — current state
 
-Current direction/state:
+Scatter now supports:
 
-- saved-filter library;
-- compact condition editor;
-- physical and Math/Calculated channels available;
-- `!=` plus the existing comparison operators;
-- A/B/C groups;
-- ALL/ANY logic inside groups;
-- ALL/ANY logic between groups.
+- Range A/B or Full Log;
+- Single or Dual plots;
+- Dots or Lines viewing;
+- density heat coloring/legend;
+- shared Logger timeline below Scatter;
+- shared Hide/Show controls edge tab;
+- current A/B and saved-range interaction without jumping back to Logger.
 
-Continue refining approachability and density from this implementation; do not replace the filter semantics with a new parallel system.
+Stale results are cleared when a newly selected channel cannot load; old plots must never masquerade as the new selection.
 
-### Cell traceability
+## Logger correctness / graph presets
 
-- generated cells retain source sample indices;
-- clicking a cell opens a compact sample inspector;
-- inspector supports exact sample/time evidence and copy;
-- **Open in Logger** returns to Logger and frames the contributing sample span;
-- Histogram reaches Logger through a narrow navigation callback rather than owning Logger internals.
+PRs #225–#230 addressed the multi-pane/preset trace-loading issue. The key lesson was that initial workspace restore may legitimately load only the panes visible at that moment; later layout/preset transitions must explicitly reconcile channels assigned to newly visible panes.
 
-### Export/help/readability
+Current rule:
 
-- CSV export includes table values and evidence tables;
-- contextual information/help controls explain Table Generator behavior;
-- small information/table typography has been increased from the earlier overly-small state;
-- Diagnostics / Perf / Report use compact, visually consistent boxed controls across modes.
+> **Visible pane + assigned available channel = active rendered trace.**
 
-## MLV weighted-mean compatibility status
+Reconciliation understands active vs pending/loading traces so it does not toggle an in-flight activation back off. Removing an assignment suppresses/cancels pending activation so an unassigned trace cannot arrive later.
 
-The established breakpoint-node weighting from PR #213 is considered sufficiently matched for current use. PR #214 aligned the visible weighted hit evidence with the weighted calculation.
+## Correctness/safety audit status
 
-Validated against supplied `2026-10-02_13.27.46.mlg` and MLV screenshots using RPM × TPS × `Boost: Open loop`:
+PR #231 implemented the accepted Codex read-only audit findings:
 
-- samples between adjacent X nodes contribute linearly to both nodes;
-- samples between adjacent Y nodes contribute linearly to both nodes;
-- combined cell weight is X weight × Y weight;
-- values beyond an outer breakpoint clamp to that outer node;
-- the visible MLV cell values reproduced to displayed precision across the inspected 8×8 table.
+- dynamic external/saved text no longer executes through `innerHTML` in the identified paths;
+- channel removal/loading race fixed;
+- histogram formula/filter/preset persistence failures retain session state and report failure;
+- malformed stored histogram records are validated/skipped;
+- Scatter clears stale result/canvas state on unavailable/rejected loads;
+- pre-log Report health no longer describes assignments as unavailable in a nonexistent log.
 
-Representative checks:
+## Retained-memory investigation
 
-- 1800 / 100: MLV 106 hits · 33.16 weight · 40.00; reconstructed ~106 · 33.163 · 40.000;
-- 5000 / 100: MLV 30 · 8.46 · 43.51; reconstructed ~30 · 8.464 · 43.515;
-- 5000 / 0: MLV 39 · 15.60 · 44.23; reconstructed ~39 · 15.601 · 44.231;
-- 1800 / 0: MLV 50,748 · 33,480.82 · 38.53; EpicScope/reconstruction ~50,767 · 33,481.79 · 38.528.
+PR #232 added retained-memory instrumentation. PR #233 extended it across all still-live log-source instances using weak references/finalization tracking so diagnostics do not keep old sources alive themselves.
 
-The remaining 19-hit difference at 1800 / 0 is about 0.037% and is a **compatibility footnote, not an active pursuit**. `docs/DECISIONS.md` records it. If it is ever revisited, inspect MLV/EpicScope record-validity/retry handling before changing the established weighting geometry.
+Test performed in one browser page:
 
-Important historical lesson: large earlier value differences came from comparing different Y inputs (`boostOpenLoopYAxisValue` versus actual TPS). Do not use Loaded MSQ geometry to auto-rewrite runtime analysis channels.
+1. load `2026-10-02_13.27.46.mlg` (~295 MB);
+2. without page reload, load `2026-07-14_22.07.05.mlg` (~1.2 GB).
 
-## Math Channels — current state
+Observed after replacement:
 
-Calculated Fields are represented as a dedicated **Math Channels** surface, based on the useful interaction model from the approved EpicHub 0.0.45 reference rather than a tiny formula popover.
+- one current live source;
+- zero previous live sources;
+- one collected previous source;
+- therefore no evidence of a cross-log strong-reference retention leak.
 
-Current capabilities:
+For the active ~1.2 GB log, one representative run with 22 retained channels reported approximately:
 
-- saved Math Channel list/editor;
-- Name, Unit and Formula;
-- source-channel browser and one-click `[Channel Name]` insertion;
-- arithmetic/operators and helper functions;
-- safe parser/evaluator rather than JavaScript `eval`;
-- validation and preview;
-- calculated channels behave like normal downstream numeric choices in Table Generator axes, values and filters.
+- persistent decoded columns: **56.4 MB**;
+- bound full-channel ranges: **119.9 MB**;
+- active graph ranges: **38.1 MB**.
 
-Supported helpers include `abs`, `min`, `max`, `sqrt`, `pow`, `clamp`, `round`, `floor`, `ceil`, `log` and `exp` plus normal arithmetic/powers.
+These layers overlap and must **not** be summed as independent process memory.
 
-## PR sequence since the Phase 4 handoff
+No new LRU/byte budget was imposed. A future single-log stress test that browses many hundreds of channels may justify one, but do not add eviction merely because the counters exist.
 
-The old Phase-4 handoff ended around PR #199. Relevant current continuation history:
+## Analyzer — current architecture and state
 
-- #200 — Phase 4 completion handoff;
-- #201 — full-screen MLV-style Histogram workspace;
-- #202 — full log channel catalog exposed to Histogram/Analyzer;
-- #203 — MLV-style Table Generator foundation;
-- #204 — custom/MSQ axis intelligence;
-- #205 — presets, formulas/calculated fields and grouped filters;
-- #206 — cell sample drill-down to Logger;
-- #207 — Histogram workflow/Math Channels/readability refinement;
-- #208 — startup blank-page hotfix after #207;
-- #209–#211 — early MLV weighting experiments/revert;
-- #212 — Loaded MSQ table made geometry-only;
-- #213 — validated MLV breakpoint weighting;
-- #214 — weighted evidence/count UI aligned to the calculation;
-- #215 — current Table Generator UI cleanup/defaults/Size/Filters/Presets refinement.
+Analyzer is being changed from summary-only screens into evidence-driven tuning tools.
 
-Earlier experiments #209–#211 are historical only. Do not restore their superseded weighting models.
+### Shared foundation (PR #235)
+
+Specialized analyzers now have:
+
+- semantic channel-role suggestions instead of blindly selecting the first available channel;
+- visible manual overrides;
+- Full Log, Current A/B and Saved Range scope support;
+- event rows that can route back to the source evidence in Logger.
+
+### Event evidence (PR #237)
+
+Idle and AE / MAP Predict now use a reusable event-evidence renderer:
+
+- events aligned at `t=0`;
+- aggregate median trace;
+- 10–90% event envelope;
+- click row to inspect one event in Analyzer;
+- **All events** to return to aggregate evidence;
+- double-click or Enter to open the event in Logger.
+
+Current evidence graphs independently scale signals to emphasize response shape/timing; they are not yet a shared absolute-value Y-axis plot.
+
+### Idle systems (PR #238)
+
+Idle is now explicitly subsystem-aware.
+
+Common required inputs:
+
+- **RPM**;
+- **Idle Target**.
+
+Canonical runtime RPM matching strongly prefers `RPMValue` before fuzzy RPM matches.
+
+Idle system selector:
+
+- Combined;
+- DC Idle;
+- IAC Valve;
+- ETB;
+- Ignition.
+
+System-specific roles are shown only when relevant. Combined can show interaction across systems.
+
+**DC Bias distinction:** the calibration DC Bias curve/table is not a scalar logged channel. Analyzer only offers **DC Bias output (runtime)** when there is an actual logged runtime contribution/output. Calibration-curve analysis belongs to tune/MSQ context and is not implemented yet.
+
+Idle Analyze semantics are explicit:
+
+- **Sag threshold RPM** = how far actual RPM must fall below Idle Target to start a sag event;
+- **Settled band RPM** = ±RPM band around target that ends recovery.
+
+Idle evidence currently includes subsystem-relevant runtime traces and summary metrics such as worst sag and median recovery when available.
+
+### AE / MAP Predict
+
+Current event evidence includes available TPS, measured MAP, predicted MAP and AFR channels. Current richer metrics include mean/MAE prediction error and peak lean/rich excursion.
+
+The intended next maturity step is broader event qualification/comparison and more complete transient-error timing metrics, not another separate UI architecture.
+
+## Analyzer direction — next work
+
+The agreed Analyzer principle is:
+
+> **An analyzer should find relevant operating events, show the evidence that caused the result, quantify repeatability/error, and let the user move directly between analysis and the source log.**
+
+Next shared implementation priorities:
+
+1. **Comparison + qualification infrastructure**
+   - compare two ranges/event sets;
+   - reusable operating-condition filters (RPM/MAP/TPS/CLT/state/ranges);
+   - stable-state qualification where appropriate;
+   - sample/event coverage and confidence/repeatability indicators.
+
+2. **Idle + AE/MAP refinement**
+   - use the shared comparison/qualification layer;
+   - add richer phase/timing metrics and aligned-event comparisons;
+   - eventually integrate tune/MSQ calibration context where necessary, especially the actual DC Bias curve/current operating point.
+
+3. **Boost + Fueling**
+   - Boost: RPM×TPS×upper/lower duty, measured/target curves, spool 10/50/90%, overshoot/settling, duty saturation/contribution and repeated-pull comparison;
+   - Fueling: stable-state RPM×MAP/TPS analysis, actual-target/lambda error, transient/AE/DFCO qualification, confidence and correction proposals.
+
+4. **Fuel/Injector + Ignition + Trigger/Sync + upgraded Range Compare**
+   - reuse the same evidence graph, event navigation, qualification and comparison framework.
+
+Tune Table's useful tune-awareness should converge with the mature Table Generator rather than creating two competing cell-analysis systems.
 
 ## Analysis provenance rules — authoritative
 
-Analysis must not silently discard or invent evidence. Where applicable retain or expose:
+Analysis must not silently discard or invent evidence. Where applicable retain/expose:
 
 - input sample count;
 - valid/invalid/unavailable sample counts;
@@ -251,43 +319,46 @@ Analysis must not silently discard or invent evidence. Where applicable retain o
 - source sample indices;
 - selected time/range scope;
 - complete vs partial decoded coverage;
-- explicit X/Y/Z/value/filter semantics;
-- explicit aggregation method;
-- weighted hit count/weight where weighted analysis is used;
-- event thresholds/configuration where applicable.
+- explicit channel/role/filter semantics;
+- explicit aggregation/event method;
+- event thresholds/configuration;
+- weighted hit count/weight where relevant.
 
 If a trace does not fully cover the requested scope, do not present the result as complete.
 
-## Large-log architecture — do not reopen without evidence
+## Current PR sequence after the previous handoff
 
-The large-log performance campaign remains done for now.
+Relevant merged sequence after #215:
 
-Primary architecture:
-
-1. session RAM full-range cache;
-2. OPFS MLG sidecar native-width transposed stripes;
-3. sparse native OPFS per-channel cache;
-4. original row-reader fallback.
-
-Do not restart generic performance optimization without a concrete regression or feature-demonstrated bottleneck.
+- #216 — docs handoff refresh;
+- #217 — Table Size toolbar cleanup;
+- #218 — streamlined navigation / Analyzer dropdown / Weighted Mean wording;
+- #219 — Layout/history/settings UI consolidation;
+- #220–#223 — Scatter expansion and shared timeline/hide control;
+- #224 — Distribution analysis workspace;
+- #225–#230 — Logger trace reconciliation, layout/preset activation and preset invariant;
+- #231 — Codex correctness/safety audit fixes;
+- #232 — retained-memory instrumentation;
+- #233 — all-live-source memory instrumentation;
+- #234 — Freeform hidden-pane geometry fix;
+- #235 — Analyzer shared foundation;
+- #237 — aligned evidence graphs for Idle and AE/MAP (`#236` was closed/unmerged during branch correction);
+- #238 — Idle subsystem separation, canonical RPM role and DC Bias runtime/calibration distinction.
 
 ## Next chat — continue from here
 
 A new chat should:
 
-1. Read this `docs/HANDOFF.md` first and verify current `main`/CI if repository state may have moved.
-2. Treat `468dfdd34587d43bd5e6651df9834ab3996cfa57` / PR #215 as the application baseline for this handoff refresh.
-3. Continue the current **UI cleanup/refinement** work rather than reopening completed architecture/performance phases.
-4. Use Table Generator as the binned-analysis surface; do not restore Heatmap/Dual Heatmap as separate user-facing modes without a new requirement.
-5. Preserve the **MSQ geometry-only** rule.
-6. Preserve **MLV weighted mean** as the first/default Table Generator statistic and the established PR #213 weighting geometry.
-7. Treat the 19-hit MLV discrepancy as a footnote unless new evidence shows a real functional problem.
-8. Continue refining the compact Filters/Presets/Size/help experience from PR #215; inspect hosted behavior in Brave/Chromium rather than redesigning from assumptions.
-9. Keep Logger and Analyzer semantics stable unless a concrete defect or required integration justifies change.
-10. Do **not** begin Phase 5 unless the project owner explicitly asks.
+1. Read this file first and verify current `main` if repository state may have moved.
+2. Treat `df75cac2dcdb26c4fa89d087ed20a99f7bb2a79d` / PR #238 as the application baseline for this handoff refresh.
+3. Continue **Analyzer functional refinement**, not generic Logger/Histogram redesign.
+4. Preserve the graph preset invariant: visible assigned available channels render.
+5. Preserve Table Generator's MSQ geometry-only rule and established Weighted Mean geometry.
+6. Do not treat DC Bias calibration curve/table as a scalar runtime channel; use tune/MSQ context when that work begins.
+7. Build shared comparison/qualification/evidence capabilities before creating separate one-off analyzer frameworks.
+8. Treat the cross-log memory-retention concern as cleared by current evidence; only revisit memory limits with a concrete single-log growth test or regression.
+9. Keep Phase 5 gated on explicit owner approval.
 
 ## Phase boundary
 
-**Phases 1–4 are complete for the approved scope. Current work is UI refinement.**
-
-Phase 5 remains future work only on explicit project-owner instruction.
+**Phases 1–4 are complete for the originally approved scope. Current work is Analyzer maturity/refinement inside the existing Web product. Phase 5 is not authorized.**
