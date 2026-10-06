@@ -3,8 +3,14 @@ import {
   latestChannelDecodePerformance,
 } from '../../../../core/parsers/mlg/channel-decode-performance';
 import type { BlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
-import { latestPersistentColumnMemoryDiagnostics } from '../adapters/persistent-channel-cache';
-import { latestBoundChannelMemoryDiagnostics } from '../../../../core/channels/channel-binding';
+import {
+  latestPersistentColumnMemoryDiagnostics,
+  persistentColumnMemoryAggregateDiagnostics,
+} from '../adapters/persistent-channel-cache';
+import {
+  boundChannelMemoryAggregateDiagnostics,
+  latestBoundChannelMemoryDiagnostics,
+} from '../../../../core/channels/channel-binding';
 import {
   buildPerformanceDiagnosticsReport,
   decodeMeasuredMs,
@@ -309,7 +315,9 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
 
   const retainedMemoryReport = (): string[] => {
     const persistent = latestPersistentColumnMemoryDiagnostics();
+    const persistentAll = persistentColumnMemoryAggregateDiagnostics();
     const bound = latestBoundChannelMemoryDiagnostics();
+    const boundAll = boundChannelMemoryAggregateDiagnostics();
     const runtime = runtimeMemoryProvider?.();
     if (!persistent && !bound && !runtime) return [];
     return [
@@ -325,6 +333,13 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       `persistentRetainedColumns=${persistent?.retainedColumnCount ?? 0}`,
       `persistentStoreMisses=${persistent?.storeMissCount ?? 0}`,
       `persistentEvictions=0`,
+      `persistentLiveSources=${persistentAll.liveSourceCount}`,
+      `persistentPreviousLiveSources=${persistentAll.previousLiveSourceCount}`,
+      `persistentCollectedSources=${persistentAll.collectedSourceCount}`,
+      `persistentAllResidentColumns=${persistentAll.totalResidentColumnCount}`,
+      `persistentAllResidentBytes=${persistentAll.totalResidentBytes}`,
+      `persistentPreviousResidentColumns=${persistentAll.previousResidentColumnCount}`,
+      `persistentPreviousResidentBytes=${persistentAll.previousResidentBytes}`,
       `boundResidentRanges=${bound?.residentRangeCount ?? 0}`,
       `boundResidentBytes=${bound?.residentBytes ?? 0}`,
       `boundPeakResidentRanges=${bound?.peakResidentRangeCount ?? 0}`,
@@ -333,7 +348,15 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
       `boundResidentMisses=${bound?.residentMissCount ?? 0}`,
       `boundRetainedRanges=${bound?.retainedRangeCount ?? 0}`,
       `boundEvictions=0`,
+      `boundLiveSources=${boundAll.liveSourceCount}`,
+      `boundPreviousLiveSources=${boundAll.previousLiveSourceCount}`,
+      `boundCollectedSources=${boundAll.collectedSourceCount}`,
+      `boundAllResidentRanges=${boundAll.totalResidentRangeCount}`,
+      `boundAllResidentBytes=${boundAll.totalResidentBytes}`,
+      `boundPreviousResidentRanges=${boundAll.previousResidentRangeCount}`,
+      `boundPreviousResidentBytes=${boundAll.previousResidentBytes}`,
       'note=Layer byte counts are retained payload estimates and may overlap; do not sum them as unique process memory.',
+      'noteSourceLifetime=Live-source counts use weak references; previous sources can remain until browser garbage collection, so a nonzero previous-live count alone does not prove a strong-reference leak.',
     ];
   };
 
@@ -555,15 +578,23 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
 
     memoryHost.replaceChildren();
     const persistentMemory = latestPersistentColumnMemoryDiagnostics();
+    const persistentAllMemory = persistentColumnMemoryAggregateDiagnostics();
     const boundMemory = latestBoundChannelMemoryDiagnostics();
+    const boundAllMemory = boundChannelMemoryAggregateDiagnostics();
     const graphMemory = runtimeMemoryProvider?.();
     const memoryRows: [string, string][] = [
       ['Graph active ranges', bytes(graphMemory?.activeTraceRangeBytes ?? 0)],
       ['Persistent resident', `${bytes(persistentMemory?.residentBytes ?? 0)} · ${persistentMemory?.residentColumnCount ?? 0} columns`],
       ['Persistent peak', `${bytes(persistentMemory?.peakResidentBytes ?? 0)} · ${persistentMemory?.peakResidentColumnCount ?? 0} columns`],
       ['Persistent disk reloads', (persistentMemory?.diskLoadCount ?? 0).toLocaleString()],
+      ['Persistent live sources', `${persistentAllMemory.liveSourceCount} · previous ${persistentAllMemory.previousLiveSourceCount} · collected ${persistentAllMemory.collectedSourceCount}`],
+      ['Persistent all live', `${bytes(persistentAllMemory.totalResidentBytes)} · ${persistentAllMemory.totalResidentColumnCount} columns`],
+      ['Persistent previous live', `${bytes(persistentAllMemory.previousResidentBytes)} · ${persistentAllMemory.previousResidentColumnCount} columns`],
       ['Bound resident', `${bytes(boundMemory?.residentBytes ?? 0)} · ${boundMemory?.residentRangeCount ?? 0} ranges`],
       ['Bound peak', `${bytes(boundMemory?.peakResidentBytes ?? 0)} · ${boundMemory?.peakResidentRangeCount ?? 0} ranges`],
+      ['Bound live sources', `${boundAllMemory.liveSourceCount} · previous ${boundAllMemory.previousLiveSourceCount} · collected ${boundAllMemory.collectedSourceCount}`],
+      ['Bound all live', `${bytes(boundAllMemory.totalResidentBytes)} · ${boundAllMemory.totalResidentRangeCount} ranges`],
+      ['Bound previous live', `${bytes(boundAllMemory.previousResidentBytes)} · ${boundAllMemory.previousResidentRangeCount} ranges`],
       ['Evictions', '0 · not budgeted yet'],
     ];
     for (const [label, value] of memoryRows) {

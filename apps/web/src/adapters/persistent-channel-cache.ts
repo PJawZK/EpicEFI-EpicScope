@@ -26,9 +26,60 @@ export interface PersistentColumnMemoryDiagnostics {
 
 let latestPersistentColumnMemory: PersistentColumnMemoryDiagnostics | undefined;
 let persistentMemorySourceSequence = 0;
+const persistentMemorySourceRefs = new Set<WeakRef<PersistentColumnCacheDataSource>>();
+let persistentCollectedSourceCount = 0;
+const persistentMemoryFinalizer = new FinalizationRegistry<number>(() => {
+  persistentCollectedSourceCount += 1;
+});
 
 export function latestPersistentColumnMemoryDiagnostics(): PersistentColumnMemoryDiagnostics | undefined {
   return latestPersistentColumnMemory ? { ...latestPersistentColumnMemory } : undefined;
+}
+
+export interface PersistentColumnMemoryAggregateDiagnostics {
+  readonly liveSourceCount: number;
+  readonly previousLiveSourceCount: number;
+  readonly collectedSourceCount: number;
+  readonly totalResidentColumnCount: number;
+  readonly totalResidentBytes: number;
+  readonly previousResidentColumnCount: number;
+  readonly previousResidentBytes: number;
+}
+
+export function persistentColumnMemoryAggregateDiagnostics(): PersistentColumnMemoryAggregateDiagnostics {
+  let liveSourceCount = 0;
+  let previousLiveSourceCount = 0;
+  let totalResidentColumnCount = 0;
+  let totalResidentBytes = 0;
+  let previousResidentColumnCount = 0;
+  let previousResidentBytes = 0;
+
+  for (const ref of [...persistentMemorySourceRefs]) {
+    const source = ref.deref();
+    if (!source) {
+      persistentMemorySourceRefs.delete(ref);
+      continue;
+    }
+    const snapshot = source.memoryDiagnosticsSnapshot();
+    liveSourceCount += 1;
+    totalResidentColumnCount += snapshot.residentColumnCount;
+    totalResidentBytes += snapshot.residentBytes;
+    if (source.memorySourceId !== persistentMemorySourceSequence) {
+      previousLiveSourceCount += 1;
+      previousResidentColumnCount += snapshot.residentColumnCount;
+      previousResidentBytes += snapshot.residentBytes;
+    }
+  }
+
+  return {
+    liveSourceCount,
+    previousLiveSourceCount,
+    collectedSourceCount: persistentCollectedSourceCount,
+    totalResidentColumnCount,
+    totalResidentBytes,
+    previousResidentColumnCount,
+    previousResidentBytes,
+  };
 }
 
 interface StoredColumnRecord {
@@ -227,7 +278,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
   private readonly missingColumns = new Set<string>();
   private readonly residentColumns = new Map<string, Float64Array>();
   private cachedChannelIdIndex: Set<string> | undefined;
-  private readonly memorySourceId = ++persistentMemorySourceSequence;
+  readonly memorySourceId = ++persistentMemorySourceSequence;
   private peakResidentColumnCount = 0;
   private peakResidentBytes = 0;
   private residentHitCount = 0;
@@ -251,6 +302,8 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     this.preferredBatchWindowMs = source.preferredBatchWindowMs ?? 0;
     this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection ?? false;
     this.updateMemoryDiagnostics();
+    persistentMemorySourceRefs.add(new WeakRef(this));
+    persistentMemoryFinalizer.register(this, this.memorySourceId);
     if (!source.managesPersistentColumns && store.listCachedChannelIds) {
       void store.listCachedChannelIds(logKey, this.sampleCount).then((channelIds) => {
         const warmed = new Set(channelIds);
@@ -258,6 +311,21 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
         this.cachedChannelIdIndex = warmed;
       }).catch(() => undefined);
     }
+  }
+
+  public memoryDiagnosticsSnapshot(): PersistentColumnMemoryDiagnostics {
+    const residentBytes = [...this.residentColumns.values()]
+      .reduce((sum, values) => sum + values.byteLength, 0);
+    return {
+      residentColumnCount: this.residentColumns.size,
+      residentBytes,
+      peakResidentColumnCount: this.peakResidentColumnCount,
+      peakResidentBytes: this.peakResidentBytes,
+      residentHitCount: this.residentHitCount,
+      diskLoadCount: this.diskLoadCount,
+      retainedColumnCount: this.retainedColumnCount,
+      storeMissCount: this.storeMissCount,
+    };
   }
 
   private updateMemoryDiagnostics(): void {
