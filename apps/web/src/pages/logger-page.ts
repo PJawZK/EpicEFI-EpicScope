@@ -819,9 +819,14 @@ export function createLoggerPage(): LoggerPageController {
       runtime.maximizeButton.textContent = maximized ? '↙' : '□';
       runtime.maximizeButton.title = maximized ? 'Restore graph window' : 'Maximize graph window';
 
-      if (workspace.layout === 'freeform') {
-        const geometry = workspace.paneGeometry[runtime.id] ?? freeformArrangement('mosaic')[runtime.id]!;
-        if (maximized) {
+      if (workspace.layout === 'freeform' && inLayout) {
+        const geometry = workspace.paneGeometry[runtime.id] ?? freeformArrangement('mosaic')[runtime.id];
+        if (!geometry) {
+          runtime.windowElement.style.removeProperty('left');
+          runtime.windowElement.style.removeProperty('top');
+          runtime.windowElement.style.removeProperty('width');
+          runtime.windowElement.style.removeProperty('height');
+        } else if (maximized) {
           runtime.windowElement.style.left = '0';
           runtime.windowElement.style.top = '0';
           runtime.windowElement.style.width = '100%';
