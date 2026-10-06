@@ -154,7 +154,11 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `math-channel-row${field.id === editingId ? ' math-channel-row--active' : ''}`;
-        button.innerHTML = `<strong>${field.name}</strong><small>${field.expression}</small>`;
+        const name = document.createElement('strong');
+        name.textContent = field.name;
+        const expression = document.createElement('small');
+        expression.textContent = field.expression;
+        button.replaceChildren(name, expression);
         button.addEventListener('click', () => edit(field.id));
         list.append(button);
       }
@@ -171,7 +175,11 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'math-channel-source-chip';
-      button.innerHTML = `<strong>${label}</strong><small>${channel.unit ?? channel.sourceName}</small>`;
+      const name = document.createElement('strong');
+      name.textContent = label;
+      const detail = document.createElement('small');
+      detail.textContent = channel.unit ?? channel.sourceName;
+      button.replaceChildren(name, detail);
       button.title = `Insert [${label}]`;
       button.addEventListener('click', () => insertText(`[${label}]`));
       sourceList.append(button);
@@ -279,13 +287,18 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
         ...(unitInput.value.trim() ? { unit: unitInput.value.trim() } : {}),
       };
       fields = existing ? fields.map((candidate) => candidate.id === existing.id ? field : candidate) : [...fields, field];
-      saveHistogramCalculatedFields(fields);
+      const persisted = saveHistogramCalculatedFields(fields);
       editingId = field.id;
       deleteButton.hidden = false;
       title.textContent = 'Edit Math Channel';
       renderList();
       notifyChanged();
-      void preview();
+      if (!persisted) {
+        validation.className = 'math-channel-validation math-channel-validation--warning';
+        validation.textContent = 'Available this session; could not save locally.';
+      } else {
+        void preview();
+      }
     } catch (error) {
       validation.className = 'math-channel-validation math-channel-validation--error';
       validation.textContent = error instanceof Error ? error.message : 'Formula is invalid.';

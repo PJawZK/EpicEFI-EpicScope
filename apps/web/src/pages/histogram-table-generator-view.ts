@@ -458,11 +458,13 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       calculatedFields = existing
         ? calculatedFields.map((candidate) => candidate.id === existing.id ? field : candidate)
         : [...calculatedFields, field];
-      saveHistogramCalculatedFields(calculatedFields);
+      const persisted = saveHistogramCalculatedFields(calculatedFields);
       populateFormulaManager();
       formulaSelect.value = field.id;
       refreshLogicalSelectors();
-      formulaStatus.textContent = `Saved ${field.name}.`;
+      formulaStatus.textContent = persisted
+        ? `Saved ${field.name}.`
+        : `${field.name} is available this session; could not save locally.`;
       scheduleRender();
     } catch (error) {
       formulaStatus.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
@@ -758,9 +760,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!name) return;
     const preset = capturePreset(selected?.id ?? createHistogramLocalId('preset'), name);
     tablePresets = selected ? tablePresets.map((candidate) => candidate.id === selected.id ? preset : candidate) : [...tablePresets, preset];
-    saveHistogramTablePresets(tablePresets);
+    const persisted = saveHistogramTablePresets(tablePresets);
     populatePresets();
     presetSelect.value = preset.id;
+    presetSaveButton.title = persisted
+      ? 'Save the current Table Generator setup'
+      : 'Available this session; could not save locally.';
   };
 
   const setIfPresent = (select: HTMLSelectElement, value: string): void => {
@@ -1407,13 +1412,21 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       : currentDeltaTrace && currentZTrace
         ? `${traceLabel(currentZTrace)} − ${traceLabel(currentDeltaTrace)}`
         : currentZTrace ? traceLabel(currentZTrace) : 'Value';
-    tooltip.innerHTML = `
-      <strong>${aggregationLabel(currentAggregation)} · ${zName}: ${formatCellValue(value, currentAggregation, 100)}</strong>
-      <span>${traceLabel(xTrace)}: ${formatNumber(xBin.lowerBound)} to ${formatNumber(xBin.upperBound)}</span>
-      <span>${traceLabel(yTrace)}: ${formatNumber(yBin.lowerBound)} to ${formatNumber(yBin.upperBound)}</span>
-      <span>Hits: ${count.toLocaleString()}${result.aggregationMethod === 'count' ? '' : ` · valid Z: ${validValues.toLocaleString()}`}</span>
-      ${currentAggregation === 'weighted-mean' ? `<span>Total hit weight: ${formatNumber(totalWeight, 3)} · weighted hits: ${(weightedHits ?? 0).toLocaleString()}</span>` : ''}
-    `;
+    const heading = document.createElement('strong');
+    heading.textContent = `${aggregationLabel(currentAggregation)} · ${zName}: ${formatCellValue(value, currentAggregation, 100)}`;
+    const xDetail = document.createElement('span');
+    xDetail.textContent = `${traceLabel(xTrace)}: ${formatNumber(xBin.lowerBound)} to ${formatNumber(xBin.upperBound)}`;
+    const yDetail = document.createElement('span');
+    yDetail.textContent = `${traceLabel(yTrace)}: ${formatNumber(yBin.lowerBound)} to ${formatNumber(yBin.upperBound)}`;
+    const hitDetail = document.createElement('span');
+    hitDetail.textContent = `Hits: ${count.toLocaleString()}${result.aggregationMethod === 'count' ? '' : ` · valid Z: ${validValues.toLocaleString()}`}`;
+    const tooltipChildren: Node[] = [heading, xDetail, yDetail, hitDetail];
+    if (currentAggregation === 'weighted-mean') {
+      const weightDetail = document.createElement('span');
+      weightDetail.textContent = `Total hit weight: ${formatNumber(totalWeight, 3)} · weighted hits: ${(weightedHits ?? 0).toLocaleString()}`;
+      tooltipChildren.push(weightDetail);
+    }
+    tooltip.replaceChildren(...tooltipChildren);
     tooltip.style.left = `${Math.min(rect.width - 230, Math.max(8, x + 14))}px`;
     tooltip.style.top = `${Math.min(rect.height - 96, Math.max(8, y + 14))}px`;
     tooltip.hidden = false;

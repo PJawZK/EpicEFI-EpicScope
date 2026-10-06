@@ -140,6 +140,7 @@ export interface GraphViewportController {
     timeRange: LogTimeRange | undefined,
   ): void;
   toggleChannel(channelId: string): Promise<boolean>;
+  deactivateChannel(channelId: string): void;
   hasActiveChannel(channelId: string): boolean;
   hasPendingChannel(channelId: string): boolean;
   activatePreloadedChannels(
@@ -270,6 +271,7 @@ export function createGraphViewport(): GraphViewportController {
   let pendingChannelsListener: ((channelIds: readonly string[]) => void) | undefined;
   const pendingTraces = new Map<string, PendingTrace>();
   const loadingTraceIds = new Set<string>();
+  const suppressedTraceIds = new Set<string>();
   const materializingTraceIds = new Set<string>();
   const materializationTimers = new Map<string, number>();
   let decodeInFlight = false;
@@ -900,7 +902,7 @@ export function createGraphViewport(): GraphViewportController {
 
       for (const [channelId, pending] of batch) {
         const range = result.ranges.get(channelId);
-        if (!range) continue;
+        if (suppressedTraceIds.has(channelId) || !range) continue;
         const scaleStart = now();
         const scale = buildStableValueScale(range);
         scaleTimes.set(channelId, now() - scaleStart);
@@ -926,7 +928,7 @@ export function createGraphViewport(): GraphViewportController {
 
       for (const [channelId, pending] of batch) {
         const range = result.ranges.get(channelId);
-        if (!range) {
+        if (suppressedTraceIds.has(channelId) || !range) {
           pending.resolve(false);
           continue;
         }
@@ -1281,7 +1283,7 @@ export function createGraphViewport(): GraphViewportController {
           };
       const readDecodeMs = now() - readStart;
       const range = result.ranges.get(channelId);
-      if (generation !== decodeGeneration || !range) return false;
+      if (generation !== decodeGeneration || suppressedTraceIds.has(channelId) || !range) return false;
 
       const scaleStart = now();
       const fullStatistics = summarizeNumericRange(range);
@@ -1505,6 +1507,7 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     if (!channelData) return false;
+    suppressedTraceIds.delete(channelId);
     if (
       activeTraces.size
       + pendingTraces.size
@@ -1567,6 +1570,28 @@ export function createGraphViewport(): GraphViewportController {
 
     if (!decodeInFlight) void flushPending();
     return result;
+  };
+
+  const deactivateChannel = (channelId: string): void => {
+    suppressedTraceIds.add(channelId);
+    const queued = pendingTraces.get(channelId);
+    if (queued) {
+      pendingTraces.delete(channelId);
+      queued.resolve(false);
+      emitPendingChannels();
+    }
+    activeTraces.delete(channelId);
+    envelopeCache.delete(channelId);
+    const materializationTimer = materializationTimers.get(channelId);
+    if (materializationTimer !== undefined) {
+      window.clearTimeout(materializationTimer);
+      materializationTimers.delete(channelId);
+    }
+    materializingTraceIds.delete(channelId);
+    overlay.hidden = activeTraces.size > 0 || assignedChannels.length > 0;
+    renderReadout();
+    emitCursorValues();
+    draw();
   };
 
   const clearChannels = (options: { readonly render?: boolean } = {}): void => {
@@ -1645,6 +1670,7 @@ export function createGraphViewport(): GraphViewportController {
     element: root,
     setLog,
     toggleChannel,
+    deactivateChannel,
     hasActiveChannel: (channelId) => activeTraces.has(channelId),
     hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),
     activatePreloadedChannels,

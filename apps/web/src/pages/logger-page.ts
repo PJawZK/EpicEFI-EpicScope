@@ -1548,14 +1548,9 @@ export function createLoggerPage(): LoggerPageController {
     if (pane.channelIds.includes(channelId)) {
       pane.channelIds = pane.channelIds.filter((id) => id !== channelId);
       syncPaneAssignedChannels(runtime, pane);
-      if (runtime.activeChannelIds.has(channelId)) {
-        void runtime.graph.toggleChannel(channelId).then(() => {
-          runtime.activeChannelIds.delete(channelId);
-          syncActivePaneContext();
-        });
-      } else {
-        syncActivePaneContext();
-      }
+      runtime.graph.deactivateChannel(channelId);
+      runtime.activeChannelIds.delete(channelId);
+      syncActivePaneContext();
       emitWorkspaceMutation();
       return;
     }
@@ -1568,7 +1563,13 @@ export function createLoggerPage(): LoggerPageController {
 
     if (!channelDataSource || unavailableChannelIds.has(channelId)) return;
     void runtime.graph.toggleChannel(channelId).then((active) => {
-      if (active) runtime.activeChannelIds.add(channelId);
+      const latestPane = activePaneState();
+      if (active && latestPane?.id === pane.id && latestPane.channelIds.includes(channelId)) {
+        runtime.activeChannelIds.add(channelId);
+      } else if (!latestPane?.channelIds.includes(channelId)) {
+        runtime.graph.deactivateChannel(channelId);
+        runtime.activeChannelIds.delete(channelId);
+      }
       syncActivePaneContext();
     });
   });
