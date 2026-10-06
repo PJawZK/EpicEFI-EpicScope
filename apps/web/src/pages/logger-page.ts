@@ -1088,6 +1088,7 @@ export function createLoggerPage(): LoggerPageController {
         if (workspace.maximizedPaneId === runtime.id) workspace.maximizedPaneId = undefined;
       }
       renderGraphLayout();
+      reconcileAssignedVisiblePaneChannels();
       emitWorkspaceMutation();
     });
 
@@ -1099,6 +1100,7 @@ export function createLoggerPage(): LoggerPageController {
       workspace.minimizedPaneIds = workspace.minimizedPaneIds.filter((id) => id !== runtime.id);
       workspace.maximizedPaneId = workspace.maximizedPaneId === runtime.id ? undefined : runtime.id;
       renderGraphLayout();
+      reconcileAssignedVisiblePaneChannels();
       emitWorkspaceMutation();
     });
 
@@ -1267,6 +1269,7 @@ export function createLoggerPage(): LoggerPageController {
     if (!target || (target.id === activeWorkspaceId && !force)) {
       renderGraphLayout();
       syncActivePaneContext();
+      reconcileAssignedVisiblePaneChannels();
       return;
     }
 
@@ -1440,6 +1443,7 @@ export function createLoggerPage(): LoggerPageController {
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
     const finalSyncStarted = now();
     const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
+    reconcileAssignedVisiblePaneChannels();
     const finalSyncMs = now() - finalSyncStarted;
     workspaceRestorePerformanceListener?.({
       totalMs: now() - restoreStarted,
@@ -1493,7 +1497,7 @@ export function createLoggerPage(): LoggerPageController {
     if (!workspace || !channelDataSource) return;
     const visibleCount = paneCountForLayout(workspace.layout);
     for (const runtime of paneRuntimes.slice(0, visibleCount)) {
-      reconcileAssignedPaneChannels(runtime);
+      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);
     }
   };
 
@@ -1501,17 +1505,31 @@ export function createLoggerPage(): LoggerPageController {
     const workspace = activeWorkspace();
     const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
     if (!pane || !channelDataSource) return;
-    const missingIds = renderablePersistentChannelIds(pane.channelIds).filter(
-      (channelId) => channelDefinitions.has(channelId)
-        && !unavailableChannelIds.has(channelId)
-        && !runtime.activeChannelIds.has(channelId),
+
+    const assignedIds = renderablePersistentChannelIds(pane.channelIds).filter(
+      (channelId) => channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId),
     );
-    if (missingIds.length === 0) return;
+    const missingIds: string[] = [];
+    for (const channelId of assignedIds) {
+      if (runtime.graph.hasActiveChannel(channelId)) {
+        runtime.activeChannelIds.add(channelId);
+        continue;
+      }
+      runtime.activeChannelIds.delete(channelId);
+      if (!runtime.graph.hasPendingChannel(channelId)) missingIds.push(channelId);
+    }
+
+    if (missingIds.length === 0) {
+      syncActivePaneContext();
+      return;
+    }
     const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
     runtime.graph.loadPendingChannels();
     void Promise.all(activations).then((results) => {
       missingIds.forEach((channelId, index) => {
-        if (results[index]) runtime.activeChannelIds.add(channelId);
+        if (results[index] || runtime.graph.hasActiveChannel(channelId)) {
+          runtime.activeChannelIds.add(channelId);
+        }
       });
       syncActivePaneContext();
     });

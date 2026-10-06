@@ -140,6 +140,8 @@ export interface GraphViewportController {
     timeRange: LogTimeRange | undefined,
   ): void;
   toggleChannel(channelId: string): Promise<boolean>;
+  hasActiveChannel(channelId: string): boolean;
+  hasPendingChannel(channelId: string): boolean;
   activatePreloadedChannels(
     ranges: ReadonlyMap<string, NumericChannelRange>,
   ): GraphPreloadedActivationResult;
@@ -1255,6 +1257,7 @@ export function createGraphViewport(): GraphViewportController {
   const activateCachedChannel = async (
     channelId: string,
     pending: PendingTrace,
+    generation: number,
   ): Promise<boolean> => {
     if (!channelData) return false;
     const now = (): number => globalThis.performance?.now() ?? Date.now();
@@ -1278,7 +1281,7 @@ export function createGraphViewport(): GraphViewportController {
           };
       const readDecodeMs = now() - readStart;
       const range = result.ranges.get(channelId);
-      if (!range) return false;
+      if (generation !== decodeGeneration || !range) return false;
 
       const scaleStart = now();
       const fullStatistics = summarizeNumericRange(range);
@@ -1534,10 +1537,14 @@ export function createGraphViewport(): GraphViewportController {
     ) ?? false;
 
     if (cacheReady) {
+      const generation = decodeGeneration;
+      loadingTraceIds.add(channelId);
       overlay.hidden = false;
       overlayTitle.textContent = `Loading ${channel.sourceName}…`;
       overlayDetail.textContent = 'Using decoded channel cache.';
-      void activateCachedChannel(channelId, pending).then(resolveSelection);
+      void activateCachedChannel(channelId, pending, generation)
+        .then(resolveSelection)
+        .finally(() => { loadingTraceIds.delete(channelId); });
       return result;
     }
 
@@ -1638,6 +1645,8 @@ export function createGraphViewport(): GraphViewportController {
     element: root,
     setLog,
     toggleChannel,
+    hasActiveChannel: (channelId) => activeTraces.has(channelId),
+    hasPendingChannel: (channelId) => pendingTraces.has(channelId) || loadingTraceIds.has(channelId),
     activatePreloadedChannels,
     clearChannels,
     getOverviewTraces: () => [...activeTraces.entries()].map(([channelId, trace]) => ({
