@@ -26,7 +26,8 @@ export function evaluateBugReportHealth(
     issues.push('Log is loaded but Logger has zero channel definitions.');
   }
   if (
-    snapshot.renderableAssignedChannelCount > 0
+    context.logLoaded
+    && snapshot.renderableAssignedChannelCount > 0
     && snapshot.activeTraceCount < snapshot.renderableAssignedChannelCount
   ) {
     issues.push(
@@ -34,12 +35,12 @@ export function evaluateBugReportHealth(
       + `${snapshot.renderableAssignedChannelCount} renderable channels assigned to visible panes are not active.`,
     );
   }
-  if (snapshot.unavailableAssignedChannelCount > 0) {
+  if (context.logLoaded && snapshot.unavailableAssignedChannelCount > 0) {
     warnings.push(
       `${snapshot.unavailableAssignedChannelCount} assigned visible-pane channel(s) are unavailable in the current log.`,
     );
   }
-  if (snapshot.activeTraceCount > snapshot.renderableAssignedChannelCount) {
+  if (context.logLoaded && snapshot.activeTraceCount > snapshot.renderableAssignedChannelCount) {
     warnings.push('Active trace count exceeds renderable assigned visible-channel count.');
   }
   if (context.runtimeErrorCount > 0) {
