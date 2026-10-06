@@ -1,3 +1,4 @@
+import { analyzeIdleControlDiagnostics } from '../../../../core/analysis/idle-control-diagnostics';
 import { aggregateNumericSamples } from '../../../../core/analysis/numeric-aggregation';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
@@ -29,7 +30,7 @@ export interface SpecializedAnalyzerSuiteController {
   refresh(): void;
 }
 
-type IdleSystem = 'combined' | 'dc-idle' | 'iac' | 'etb' | 'ignition';
+type IdleSystem = 'combined' | 'rpm-control' | 'dc-valve' | 'iac' | 'etb' | 'ignition';
 
 interface RoleSpec {
   readonly key: string;
@@ -55,8 +56,9 @@ interface DomainSpec {
 }
 
 const IDLE_SYSTEMS: readonly { value: IdleSystem; label: string; description: string }[] = [
-  { value: 'combined', label: 'Combined', description: 'Inspect how the available idle-control systems respond together.' },
-  { value: 'dc-idle', label: 'DC Idle', description: 'Focus on the RPM controller, feed-forward and PID contributions.' },
+  { value: 'combined', label: 'Combined', description: 'Inspect how the available idle-control layers respond together.' },
+  { value: 'rpm-control', label: 'RPM Control', description: 'Focus on the outer idle RPM controller that decides requested idle-air position.' },
+  { value: 'dc-valve', label: 'DC Valve Control', description: 'Focus on how the feedback DC idle valve tracks the requested position and how hard its position controller works.' },
   { value: 'iac', label: 'IAC Valve', description: 'Focus on the idle-air valve command and available actuator headroom evidence.' },
   { value: 'etb', label: 'ETB', description: 'Focus on electronic-throttle idle target, position and idle contribution.' },
   { value: 'ignition', label: 'Ignition', description: 'Focus on idle spark advance and ignition correction.' },
@@ -65,15 +67,23 @@ const IDLE_SYSTEMS: readonly { value: IdleSystem; label: string; description: st
 const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   idle: {
     title: 'Idle',
-    description: 'Sag/recovery analysis separated by DC Idle, IAC valve, ETB and ignition control evidence.',
+    description: 'Sag/recovery analysis with separate outer RPM-control and inner actuator-control evidence.',
     roles: [
       { key: 'rpm', label: 'RPM', required: true, group: 'Engine' },
       { key: 'target', label: 'Idle target', required: true, group: 'Engine' },
-      { key: 'dcBiasOutput', label: 'DC Bias output (runtime)', systems: ['dc-idle'], group: 'DC Idle' },
-      { key: 'feedForward', label: 'Feed-forward', systems: ['dc-idle'], group: 'DC Idle' },
-      { key: 'p', label: 'P term', systems: ['dc-idle'], group: 'DC Idle' },
-      { key: 'i', label: 'I term', systems: ['dc-idle'], group: 'DC Idle' },
-      { key: 'd', label: 'D term', systems: ['dc-idle'], group: 'DC Idle' },
+      { key: 'basePosition', label: 'Base idle position', systems: ['rpm-control'], group: 'RPM Control' },
+      { key: 'closedLoop', label: 'Closed-loop correction', systems: ['rpm-control'], group: 'RPM Control' },
+      { key: 'finalPosition', label: 'Final idle position', systems: ['rpm-control'], group: 'RPM Control' },
+      { key: 'p', label: 'P term', systems: ['rpm-control'], group: 'RPM Control' },
+      { key: 'i', label: 'I term', systems: ['rpm-control'], group: 'RPM Control' },
+      { key: 'd', label: 'D term', systems: ['rpm-control'], group: 'RPM Control' },
+      { key: 'dcTarget', label: 'Valve target', systems: ['dc-valve'], group: 'DC Valve Control' },
+      { key: 'dcPosition', label: 'Valve position', systems: ['dc-valve'], group: 'DC Valve Control' },
+      { key: 'dcBiasOutput', label: 'DC Bias / feed-forward (runtime)', systems: ['dc-valve'], group: 'DC Valve Control' },
+      { key: 'dcP', label: 'Position P term', systems: ['dc-valve'], group: 'DC Valve Control' },
+      { key: 'dcI', label: 'Position I term', systems: ['dc-valve'], group: 'DC Valve Control' },
+      { key: 'dcD', label: 'Position D term', systems: ['dc-valve'], group: 'DC Valve Control' },
+      { key: 'dcOutput', label: 'Position-controller output', systems: ['dc-valve'], group: 'DC Valve Control' },
       { key: 'valve', label: 'IAC valve duty', systems: ['iac'], group: 'IAC Valve' },
       { key: 'etbTarget', label: 'ETB idle target', systems: ['etb'], group: 'ETB' },
       { key: 'etbPosition', label: 'ETB position', systems: ['etb'], group: 'ETB' },
@@ -251,8 +261,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     const sag = optionNumber('sag', 100);
     const settled = optionNumber('settled', 40);
     field('guidance-title').textContent = `What Analyze does · ${systemInfo.label}`;
-    const biasNote = system === 'combined' || system === 'dc-idle'
-      ? ' DC Bias itself is a calibration curve/table; only a separately logged runtime bias output belongs in the channel selector.'
+    const biasNote = system === 'combined' || system === 'dc-valve'
+      ? ' DC Bias is a calibration curve; in DC Idle mode the firmware exposes its evaluated runtime feed-forward through etbFeedForward.'
       : '';
     field('guidance-text').textContent = `${systemInfo.description} A sag starts when RPM is at least ${sag} RPM below Idle target; recovery ends when RPM returns inside ±${settled} RPM of target.${biasNote}`;
   };
@@ -429,35 +439,62 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       if (domain === 'idle') {
         const rpm = traces.get('rpm')!;
         const target = traces.get('target');
-        const valve = traces.get('valve');
+        const basePosition = traces.get('basePosition');
+        const closedLoop = traces.get('closedLoop');
+        const finalPosition = traces.get('finalPosition');
+        const p = traces.get('p');
+        const i = traces.get('i');
+        const d = traces.get('d');
+        const dcTarget = traces.get('dcTarget');
+        const dcPosition = traces.get('dcPosition');
         const dcBiasOutput = traces.get('dcBiasOutput');
+        const dcP = traces.get('dcP');
+        const dcI = traces.get('dcI');
+        const dcD = traces.get('dcD');
+        const dcOutput = traces.get('dcOutput');
+        const valve = traces.get('valve');
         const etbTarget = traces.get('etbTarget');
         const etbPosition = traces.get('etbPosition');
         const etbContribution = traces.get('etbContribution');
         const ignitionAdvance = traces.get('ignitionAdvance');
         const ignitionCorrection = traces.get('ignitionCorrection');
-        const feedForward = traces.get('feedForward');
-        const p = traces.get('p');
-        const i = traces.get('i');
-        const d = traces.get('d');
         const result = analyzeIdle({
           rpm: rpm.range,
           ...(target ? { target: target.range } : {}),
           ...(valve ? { valveDuty: valve.range } : {}),
-          ...(dcBiasOutput ? { bias: dcBiasOutput.range } : {}),
-          ...(feedForward ? { feedForward: feedForward.range } : {}),
+        }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, sagThresholdRpm: optionNumber('sag', 100), settledBandRpm: optionNumber('settled', 40) });
+        const diagnostics = analyzeIdleControlDiagnostics({
+          sampleIndices: scoped.sampleIndices,
+          ...(basePosition ? { basePosition: basePosition.range } : {}),
+          ...(closedLoop ? { closedLoop: closedLoop.range } : {}),
+          ...(finalPosition ? { finalPosition: finalPosition.range } : {}),
           ...(p ? { pTerm: p.range } : {}),
           ...(i ? { iTerm: i.range } : {}),
           ...(d ? { dTerm: d.range } : {}),
-        }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, sagThresholdRpm: optionNumber('sag', 100), settledBandRpm: optionNumber('settled', 40) });
+          ...(dcTarget ? { dcTarget: dcTarget.range } : {}),
+          ...(dcPosition ? { dcPosition: dcPosition.range } : {}),
+          ...(dcBiasOutput ? { dcBias: dcBiasOutput.range } : {}),
+          ...(dcP ? { dcPTerm: dcP.range } : {}),
+          ...(dcI ? { dcITerm: dcI.range } : {}),
+          ...(dcD ? { dcDTerm: dcD.range } : {}),
+          ...(dcOutput ? { dcOutput: dcOutput.range } : {}),
+        });
         const idleSeries: AnalyzerEvidenceSeries[] = [
           { label: 'RPM', range: rpm.range },
           ...(target ? [{ label: 'Target', range: target.range }] : []),
-          ...(dcBiasOutput ? [{ label: 'DC Bias output', range: dcBiasOutput.range }] : []),
-          ...(feedForward ? [{ label: 'Feed-forward', range: feedForward.range }] : []),
-          ...(p ? [{ label: 'P term', range: p.range }] : []),
-          ...(i ? [{ label: 'I term', range: i.range }] : []),
-          ...(d ? [{ label: 'D term', range: d.range }] : []),
+          ...(basePosition ? [{ label: 'Base idle position', range: basePosition.range }] : []),
+          ...(closedLoop ? [{ label: 'Idle closed-loop correction', range: closedLoop.range }] : []),
+          ...(finalPosition ? [{ label: 'Final idle position', range: finalPosition.range }] : []),
+          ...(p ? [{ label: 'RPM-control P term', range: p.range }] : []),
+          ...(i ? [{ label: 'RPM-control I term', range: i.range }] : []),
+          ...(d ? [{ label: 'RPM-control D term', range: d.range }] : []),
+          ...(dcTarget ? [{ label: 'DC valve target', range: dcTarget.range }] : []),
+          ...(dcPosition ? [{ label: 'DC valve position', range: dcPosition.range }] : []),
+          ...(dcBiasOutput ? [{ label: 'DC Bias / feed-forward', range: dcBiasOutput.range }] : []),
+          ...(dcP ? [{ label: 'DC position P term', range: dcP.range }] : []),
+          ...(dcI ? [{ label: 'DC position I term', range: dcI.range }] : []),
+          ...(dcD ? [{ label: 'DC position D term', range: dcD.range }] : []),
+          ...(dcOutput ? [{ label: 'DC position output', range: dcOutput.range }] : []),
           ...(valve ? [{ label: 'IAC valve duty', range: valve.range }] : []),
           ...(etbTarget ? [{ label: 'ETB target', range: etbTarget.range }] : []),
           ...(etbPosition ? [{ label: 'ETB position', range: etbPosition.range }] : []),
@@ -471,11 +508,22 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Idle system', IDLE_SYSTEMS.find((entry) => entry.value === idleSystem)?.label ?? 'Combined'],
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['RPM mean', numberText(result.rpm.mean)], ['Target mean', numberText(result.target?.mean)],
-          ['Mean error', numberText(result.tracking?.meanError)], ['MAE', numberText(result.tracking?.meanAbsoluteError)],
+          ['RPM error MAE / RMSE', `${numberText(result.tracking?.meanAbsoluteError)} / ${numberText(result.tracking?.rmse)}`],
           ['Worst sag', numberText(result.sagEvents.length ? Math.min(...result.sagEvents.map((event) => event.minimumErrorRpm)) : undefined)],
           ['Median recovery', result.sagEvents.length ? `${numberText(finiteMedian(result.sagEvents.map((event) => event.recoveryMs)), 0)} ms` : '—'],
-          ['IAC valve mean', numberText(result.valveDuty?.mean)], ['DC Bias output mean', numberText(result.bias?.mean)],
-          ['Feed-forward mean', numberText(result.feedForward?.mean)], ['P / I / D mean', `${numberText(result.pTerm?.mean)} / ${numberText(result.iTerm?.mean)} / ${numberText(result.dTerm?.mean)}`],
+          ['Base / CL / final position', `${numberText(diagnostics.basePosition?.mean)} / ${numberText(diagnostics.closedLoop?.mean)} / ${numberText(diagnostics.finalPosition?.mean)}`],
+          ['CL effort |mean| / RMS', `${numberText(diagnostics.closedLoop?.meanAbsolute)} / ${numberText(diagnostics.closedLoop?.rootMeanSquare)}`],
+          ['RPM PID |P| / |I| / |D|', `${numberText(diagnostics.pTerm?.meanAbsolute)} / ${numberText(diagnostics.iTerm?.meanAbsolute)} / ${numberText(diagnostics.dTerm?.meanAbsolute)}`],
+          ['RPM PID RMS P / I / D', `${numberText(diagnostics.pTerm?.rootMeanSquare)} / ${numberText(diagnostics.iTerm?.rootMeanSquare)} / ${numberText(diagnostics.dTerm?.rootMeanSquare)}`],
+          ['RPM I mean', numberText(diagnostics.iTerm?.mean)],
+          ['DC target / position mean', `${numberText(diagnostics.dcTarget?.mean)} / ${numberText(diagnostics.dcPosition?.mean)}`],
+          ['DC position MAE / RMSE', `${numberText(diagnostics.dcTracking?.meanAbsoluteError)} / ${numberText(diagnostics.dcTracking?.rmse)}`],
+          ['DC position error − / +', `${numberText(diagnostics.dcTracking?.maxNegativeError)} / ${numberText(diagnostics.dcTracking?.maxPositiveError)}`],
+          ['DC Bias mean', numberText(diagnostics.dcBias?.mean)],
+          ['DC PID |P| / |I| / |D|', `${numberText(diagnostics.dcPTerm?.meanAbsolute)} / ${numberText(diagnostics.dcITerm?.meanAbsolute)} / ${numberText(diagnostics.dcDTerm?.meanAbsolute)}`],
+          ['DC I mean', numberText(diagnostics.dcITerm?.mean)],
+          ['DC output mean / RMS', `${numberText(diagnostics.dcOutput?.mean)} / ${numberText(diagnostics.dcOutput?.rootMeanSquare)}`],
+          ['IAC valve mean', numberText(result.valveDuty?.mean)],
           ['ETB target / position', `${numberText(etbTarget ? aggregateNumericSamples(etbTarget.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)} / ${numberText(etbPosition ? aggregateNumericSamples(etbPosition.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)}`],
           ['ETB contribution', numberText(etbContribution ? aggregateNumericSamples(etbContribution.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)],
           ['Ign advance / correction', `${numberText(ignitionAdvance ? aggregateNumericSamples(ignitionAdvance.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)} / ${numberText(ignitionCorrection ? aggregateNumericSamples(ignitionCorrection.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)}`],
@@ -609,7 +657,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       const systemSelect = document.createElement('select');
       systemSelect.dataset.role = 'idle-system';
       for (const entry of IDLE_SYSTEMS) systemSelect.add(new Option(entry.label, entry.value));
-      systemSelect.value = rememberedSelections.get('idle:system') ?? 'combined';
+      const rememberedSystem = rememberedSelections.get('idle:system');
+      systemSelect.value = rememberedSystem === 'dc-idle' ? 'rpm-control' : rememberedSystem ?? 'combined';
       systemSelect.addEventListener('change', () => { rememberedSelections.set('idle:system', systemSelect.value); rebuild(); });
       systemLabel.append(systemCaption, systemSelect);
       controls.append(systemLabel);
