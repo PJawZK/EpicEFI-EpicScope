@@ -116,8 +116,8 @@ function tracking(
   };
 }
 
-function aggregate(range: NumericChannelRange | undefined, sampleIndices?: ArrayLike<number>): NumericAggregationResult | undefined {
-  return range ? aggregateNumericSamples(range, { ...(sampleIndices ? { sampleIndices } : {}) }) : undefined;
+function aggregate(range: NumericChannelRange, sampleIndices?: ArrayLike<number>): NumericAggregationResult {
+  return aggregateNumericSamples(range, { ...(sampleIndices ? { sampleIndices } : {}) });
 }
 
 export function analyzeIdleControlDiagnostics(input: IdleControlDiagnosticsInput): IdleControlDiagnosticsResult {
