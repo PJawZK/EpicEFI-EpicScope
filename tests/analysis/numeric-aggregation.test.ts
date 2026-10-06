@@ -81,7 +81,7 @@ describe('aggregateNumericSamples', () => {
     expect(result.standardDeviation).toBeUndefined();
   });
 
-  it('maps aggregation methods to their explicit result values', () => {
+  it('maps selectable aggregation methods to their explicit result values', () => {
     const result = aggregateNumericSamples(range(0, [-1, 2, 3]));
     const expected: Record<NumericAggregationMethod, number | undefined> = {
       count: 3,
@@ -89,8 +89,6 @@ describe('aggregateNumericSamples', () => {
       min: -1,
       max: 3,
       mean: 4 / 3,
-      'mean-absolute': 2,
-      'root-mean-square': Math.sqrt(14 / 3),
       variance: 13 / 3,
       'standard-deviation': Math.sqrt(13 / 3),
     };
