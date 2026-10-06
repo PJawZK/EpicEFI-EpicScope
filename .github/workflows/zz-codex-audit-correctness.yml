@@ -10,13 +10,13 @@ permissions:
 
 jobs:
   patch-and-validate:
-    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           ref: fix/codex-audit-correctness
       - name: Apply correctness fixes
+        if: ${{ github.actor != 'github-actions[bot]' }}
         shell: bash
         run: |
           python3 <<'PY'
@@ -30,7 +30,6 @@ jobs:
               s = s.replace(old, new, count)
               p.write_text(s)
 
-          # 1) Never interpolate external/saved labels into HTML.
           replace('apps/web/src/pages/histogram-math-channels-view.ts',
               """        button.innerHTML = `<strong>${field.name}</strong><small>${field.expression}</small>`;""",
               """        const name = document.createElement('strong');
@@ -45,7 +44,6 @@ jobs:
       const detail = document.createElement('small');
       detail.textContent = channel.unit ?? channel.sourceName;
       button.replaceChildren(name, detail);""")
-
           replace('apps/web/src/pages/histogram-table-generator-view.ts',
               """    tooltip.innerHTML = `
       <strong>${aggregationLabel(currentAggregation)} · ${zName}: ${formatCellValue(value, currentAggregation, 100)}</strong>
@@ -70,7 +68,6 @@ jobs:
     }
     tooltip.replaceChildren(...tooltipChildren);""")
 
-          # 2) Make assignment authoritative even while a channel is loading.
           replace('apps/web/src/components/graph-viewport.ts',
               """  toggleChannel(channelId: string): Promise<boolean>;
   hasActiveChannel(channelId: string): boolean;""",
@@ -108,11 +105,6 @@ jobs:
       if (generation !== decodeGeneration || !range) return false;""",
               """      const range = result.ranges.get(channelId);
       if (generation !== decodeGeneration || suppressedTraceIds.has(channelId) || !range) return false;""")
-          replace('apps/web/src/components/graph-viewport.ts',
-              """  const toggleChannel = async (channelId: string): Promise<boolean> => {
-    const queued = pendingTraces.get(channelId);""",
-              """  const toggleChannel = async (channelId: string): Promise<boolean> => {
-    const queued = pendingTraces.get(channelId);""")
           replace('apps/web/src/components/graph-viewport.ts',
               """    if (!channelData) return false;
     if (
@@ -187,7 +179,6 @@ jobs:
       syncActivePaneContext();
     });""")
 
-          # 3/4) Storage now retains session state; surface persistence failure to users.
           replace('apps/web/src/pages/histogram-math-channels-view.ts',
               """      saveHistogramCalculatedFields(fields);
       editingId = field.id;""",
@@ -205,7 +196,6 @@ jobs:
       } else {
         void preview();
       }""", 1)
-
           replace('apps/web/src/pages/histogram-table-generator-view.ts',
               """      saveHistogramCalculatedFields(calculatedFields);
       populateFormulaManager();""",
@@ -227,7 +217,6 @@ jobs:
       ? 'Save the current Table Generator setup'
       : 'Available this session; could not save locally.';""")
 
-          # 5) Clear Scatter state before every new selection load, and on load failure.
           replace('apps/web/src/pages/scatter-view.ts',
               """      const xId = pane.xSelect.value;
       const yId = pane.ySelect.value;
@@ -253,7 +242,6 @@ jobs:
         pane.status.textContent = error instanceof Error ? `Unable to load selected channels: ${error.message}` : 'Unable to load selected channels.';
         return;
       }""")
-
           PY
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -265,6 +253,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Commit validated fixes
+        if: ${{ github.actor != 'github-actions[bot]' }}
         shell: bash
         run: |
           git config user.name github-actions[bot]
