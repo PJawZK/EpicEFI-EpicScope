@@ -473,8 +473,26 @@ export function createScatterView(): ScatterViewController {
     await Promise.all(visiblePanes.map(async (pane) => {
       const xId = pane.xSelect.value;
       const yId = pane.ySelect.value;
-      if (!xId || !yId) return;
-      const loaded = await context.loadTraces([xId, yId], bounds.startMs, bounds.endMs);
+      pane.result = undefined;
+      pane.xTrace = undefined;
+      pane.yTrace = undefined;
+      pane.renderedPointCount = 0;
+      const canvasContext = pane.canvas.getContext('2d');
+      canvasContext?.clearRect(0, 0, pane.canvas.width, pane.canvas.height);
+      if (!xId || !yId) {
+        pane.status.textContent = 'Select X and Y channels.';
+        return;
+      }
+      let loaded: Awaited<ReturnType<HistogramPageContext['loadTraces']>>;
+      try {
+        loaded = await context.loadTraces([xId, yId], bounds.startMs, bounds.endMs);
+      } catch (error) {
+        if (generation !== renderGeneration) return;
+        pane.status.textContent = error instanceof Error
+          ? `Unable to load selected channels: ${error.message}`
+          : 'Unable to load selected channels.';
+        return;
+      }
       if (generation !== renderGeneration) return;
       const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
       const xTrace = byId.get(xId);
