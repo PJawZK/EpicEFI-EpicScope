@@ -70,8 +70,6 @@ Hardware/storage variance is significant; individual timings are evidence, not u
 
 ## Current Web large-log access architecture
 
-The earlier row-oriented repeated-read problem is no longer the active architecture question.
-
 Current access layers are:
 
 1. **Session/RAM full-range cache** for channels already materialized in the page session.
@@ -83,9 +81,9 @@ Current access layers are:
 
 Authoritative configuration on the canonical benchmark log:
 
-- 59 stripes;
 - target stripe width: **64 bytes**;
-- stored native payload: **1,191,462,844 bytes**.
+- native-width transposed payload;
+- reused sidecar should avoid repeated original row-log traversal for channel access.
 
 A 16-byte stripe prototype was rejected because stripe count/transpose cost rose materially without enough end-to-end channel-selection benefit.
 
@@ -97,25 +95,75 @@ The native-column root is intentionally separate from the primary sidecar so ord
 
 ## Current performance interpretation
 
-The optimization campaign is considered **good enough for the current product stage**.
+The optimization campaign remains **good enough for the current product stage**.
 
-A recent post-audit low-spec run on the canonical log showed approximately:
+The architectural conclusions are more important than one timing run:
 
-- initial MLG load: **8.47 s**;
-- workspace restore: **0.54 s**;
-- shared workspace data batch: only a few milliseconds with **zero original-log physical rereads**;
-- first native-cached arbitrary-channel activation: about **0.27 s** total;
-- repeated same-session channel activation: about **0.05 s** total, with effectively free data lookup.
-
-Other runs have been faster/slower depending on I/O and browser scheduling. Do not reduce the project state to one timing number.
-
-The architectural conclusions are more important:
-
-- workspace restore no longer needs repeated original-MLG traversal;
+- workspace/preset trace activation can reuse already-decoded/cache-backed channel data;
 - previously used arbitrary channels can reuse sparse native columns across sessions;
 - repeated same-session activation is RAM-resident;
-- first-use sidecar/native work is sufficiently fast to move product focus back to features/UI;
-- remaining render/envelope/layout cost is sub-second class and not an active optimization target.
+- first-use sidecar/native work is sufficiently fast that product focus remains on feature maturity;
+- remaining render/envelope/layout work is not an active optimization target without measured regression.
+
+## Retained-memory diagnostics
+
+PR #232 added explicit retained-memory measurement. PR #233 extended that measurement across all still-live log-source instances.
+
+Diagnostics now distinguish, where applicable:
+
+- persistent decoded-column resident count/bytes;
+- bound full-range resident count/bytes;
+- graph-active range bytes;
+- peak retained counts/bytes;
+- cache hits/reloads/retains/misses;
+- explicit eviction count;
+- current/latest source memory;
+- all live source memory;
+- previous live source memory/count;
+- source objects observed as collected/finalized.
+
+The live-source instrumentation uses weak references/finalization tracking so diagnostics do not intentionally keep old sources alive.
+
+### Important accounting rule
+
+Persistent decoded columns, bound ranges and graph-active ranges can reference overlapping payload. Their reported byte estimates must **not** simply be summed and described as unique process RAM.
+
+## Cross-log lifetime test — 2026-10-06
+
+Test sequence in one browser page:
+
+1. load `2026-10-02_13.27.46.mlg` (~295 MB, 66,929 records);
+2. without page reload, load `2026-07-14_22.07.05.mlg` (~1.2 GB, 320,458 records);
+3. inspect retained-memory diagnostics after the second load.
+
+Observed result:
+
+- current/latest live source count: **1**;
+- previous live source count: **0**;
+- previous source observed collected/finalized: **1**;
+- therefore there is currently **no evidence of a cross-log strong-reference retention leak**.
+
+One representative active-1.2-GB state with 22 retained channels showed approximately:
+
+- persistent decoded columns: **56.4 MB**;
+- bound full-channel ranges: **119.9 MB**;
+- graph-active ranges: **38.1 MB**.
+
+These figures overlap by design.
+
+## Current cache-eviction policy
+
+No new LRU/byte budget was added after the retained-memory audit.
+
+Reason:
+
+- cross-log replacement released the previous source;
+- the active-log retained figures were measurable and explainable;
+- adding independent eviction policies without a real single-log growth problem risks fighting useful cache reuse.
+
+Revisit a byte budget/LRU only when a **single-log many-channel stress test** (or another real feature) demonstrates harmful retained growth, GC pressure, UI degradation or browser instability.
+
+A good future stress case is the canonical ~1.2 GB log while deliberately visiting/loading hundreds of distinct channels and Analyzer/Histogram surfaces in one session.
 
 ## Time-to-usable vs background completion
 
@@ -133,13 +181,11 @@ Background validation/storage work may continue after the user can interact with
 
 ### Opportunistic startup predecode
 
-`predecode=32/64/128` proved that many columns can share one source traversal, but it simply moved arbitrary-channel work into startup and benefited only a chosen subset.
-
-The runtime path was fully removed. Do not restore speculative startup hot sets without a new architectural decision and evidence.
+`predecode=32/64/128` was rejected. Normal startup must not decode speculative arbitrary hot sets merely to reduce later selection latency.
 
 ### 16-byte sidecar stripes
 
-Rejected as the default because extra transpose/build cost outweighed practical channel-selection benefit. Keep 64-byte target stripes unless new evidence changes the trade.
+Rejected as default because extra transpose/build cost outweighed practical channel-selection benefit. Keep 64-byte target stripes unless new evidence changes the trade.
 
 ### Generic multilevel graph-envelope experiment
 
@@ -153,10 +199,9 @@ Resume focused performance engineering when:
 
 - a meaningful new feature introduces a measurable regression;
 - representative logs/hardware expose a new bottleneck;
+- the deliberate single-log retained-memory stress test shows harmful growth;
 - Web functional maturity requires a final profiling pass;
 - Linux production implementation begins.
-
-This keeps complexity proportional to user benefit.
 
 ## Benchmark categories
 
@@ -170,10 +215,11 @@ Performance tests should eventually cover:
 - arbitrary first-channel activation;
 - repeated channel activation;
 - viewport query latency;
-- histogram/heatmap calculation;
+- Histogram/Table/Scatter calculation;
 - event detection;
-- analyzer throughput;
-- comparison throughput.
+- Analyzer throughput;
+- comparison throughput;
+- retained-channel growth across many unique channel selections.
 
 Representative benchmark names may include:
 
@@ -186,6 +232,7 @@ viewport_query_large_log
 histogram_large_log
 boost_analysis_large_log
 memory_ceiling_1gb_log
+many_channels_memory_1gb_log
 ```
 
 ## Benchmark discipline
@@ -203,6 +250,7 @@ A performance result should record where applicable:
 - initial load time;
 - workspace restore breakdown;
 - arbitrary-channel breakdown;
+- retained-memory counters/source lifetime;
 - subjective responsiveness;
 - memory/GC pressure where observable.
 
@@ -210,28 +258,12 @@ Do not claim MegaLogViewer's internal strategy as fact. It remains only a behavi
 
 ## UI performance
 
-UI hierarchy work must preserve responsiveness while reducing clutter.
-
-Avoid:
-
-- continuous decorative animation;
-- heavy blur/effects;
-- large unbounded DOM trees;
-- inactive modes recomputing/redrawing;
-- permanent controls that create layout pressure without frequent value.
+Avoid continuous decorative animation, heavy blur/effects, large unbounded DOM trees, inactive modes recomputing/redrawing, and permanent controls that create layout pressure without frequent value.
 
 Virtualized channel lists and bounded graph rendering remain appropriate.
 
 ## Future Linux implementation
 
-Potential native techniques include:
-
-- memory-mapped files;
-- columnar/indexed storage;
-- chunk indexes;
-- parallel decoding/analysis;
-- SIMD where useful;
-- persistent local indexes/caches;
-- multiresolution graph caches.
+Potential native techniques include memory-mapped files, columnar/indexed storage, chunk indexes, parallel decoding/analysis, SIMD where useful, persistent local indexes/caches and multiresolution graph caches.
 
 No technique is mandatory before profiling justifies it.

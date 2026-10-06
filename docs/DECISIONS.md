@@ -213,7 +213,7 @@ Current separate artifacts:
 ## D-039 — MSQ is optional tune-value enrichment
 **Status:** Approved
 
-MSQ later supplies actual calibration values/tables/curves/scalars. It does not replace INI as channel-definition context or MLG as recorded-sample authority.
+MSQ supplies calibration values/tables/curves/scalars. It does not replace INI as channel-definition context or MLG as recorded-sample authority.
 
 ## D-040 — Vitest is active Web/core automated test gate
 **Status:** Approved
@@ -251,29 +251,87 @@ Rules:
 - secondary/rare controls should be contextual, grouped or placed in compact overflow/menu surfaces;
 - future analysis features should not each create a permanent top-level button;
 - disabled placeholders for absent functionality should not consume primary UI space;
-- global workspace context is **Graphs · <workspace>** while active-pane identity stays local to the graph pane;
+- global workspace context is graph preset/workspace selection while active-pane identity stays local to the graph pane;
 - timeline work should group **Navigate**, **Range/Markers**, then contextual **Analyze**.
 
 ## D-045 — EpicScope logo dropdown is the in-product mode switcher
 **Status:** Approved; refines D-033
 
-The EpicScope logo dropdown in the upper-right is intentionally the mode/surface switcher, similar in concept to EpicHub's mode selection.
+The EpicScope logo dropdown is intentionally the mode/surface switcher, similar in concept to EpicHub's mode selection.
 
-Current intended entries:
+Current real entries:
 
-- Logger — active;
-- Analyzer — planned;
-- Histogram — planned.
+- Logger;
+- Analyzer;
+- Histogram.
 
-Future real EpicScope surfaces may be added deliberately as capability lands.
+Analyzer and Histogram use compact secondary selectors for their own subviews. This does **not** adopt EpicHub's broader Dashboard/Tuner/Diagnostics shell or Android navigation architecture.
 
-This does **not** adopt EpicHub's broader Dashboard/Tuner/Diagnostics application shell or Android navigation architecture. The mode menu switches EpicScope analysis surfaces only.
+## D-046 — Table Generator MSQ geometry remains separate from runtime channel semantics
+**Status:** Approved
+
+Loaded MSQ tables provide table geometry (X/Y breakpoint vectors and dimensions) only. They must not silently rewrite user-selected runtime X/Y/Z analysis channels.
+
+Visible UI terminology is **Weighted Mean** and **Table Size**. The redundant standalone Size control is removed.
+
+## D-047 — Visible graph assignments are authoritative
+**Status:** Approved
+
+A Logger graph workspace/preset obeys this invariant:
+
+> **If a pane is visible and a channel is assigned, available and renderable, its trace must be active.**
+
+The rule applies after workspace restore/switch, layout changes, Freeform visibility changes and duplication. Unavailable channels remain assigned but are not falsely activated.
+
+Internal synchronization must distinguish `ensure active` / `ensure absent` from user toggle semantics so duplicate reconciliation cannot cancel an in-flight activation. Assignment removal suppresses/cancels pending completion.
+
+## D-048 — Analyzer is evidence-driven, not summary-driven
+**Status:** Approved
+
+Specialized analyzers should not stop at global channel means. The shared Analyzer model is:
+
+- semantic role resolution with visible manual override;
+- explicit Full Log / Current A-B / Saved Range scope;
+- relevant event/condition detection;
+- source evidence and coverage;
+- event-aligned visualization where appropriate;
+- comparison/qualification/confidence as shared capabilities;
+- direct route back to Logger evidence.
+
+Idle and AE / MAP Predict are the first analyzers using the reusable aligned-event model (median + 10–90% envelope plus individual-event inspection).
+
+## D-049 — Idle subsystems and DC Bias calibration/runtime distinction
+**Status:** Approved
+
+Idle analysis must make controller architecture explicit rather than treat all idle channels as one flat set.
+
+Current UI systems:
+
+- Combined;
+- DC Idle;
+- IAC Valve;
+- ETB;
+- Ignition.
+
+RPM and Idle Target are common required inputs for sag/recovery. Canonical EpicEFI `RPMValue` is preferred before fuzzy RPM-role matching.
+
+The **DC Bias calibration curve/table is tune calibration data, not a scalar runtime channel**. A distinct logged **DC Bias output (runtime)** may be analyzed as runtime evidence. Future curve/current-operating-point analysis must come from tune/MSQ context.
+
+## D-050 — Retained-memory policy remains evidence-driven
+**Status:** Approved
+
+Retained-memory diagnostics measure persistent decoded columns, bound full ranges, graph-active ranges and live source lifetimes. Layer byte estimates can overlap and must not be summed as unique process memory.
+
+A same-page 295 MB → 1.2 GB log replacement test showed the previous source collected and zero previous live sources. No cross-log strong-reference leak is currently evidenced.
+
+Do not impose a new LRU/byte budget solely because retained caches exist. Revisit eviction when a concrete single-log many-channel stress test or regression demonstrates harmful growth.
 
 ## Superseding/refining decisions
 
-Decisions are not silently deleted when refined. A later numbered decision should state what it changes and why. D-045 currently refines the mode-switcher interpretation inside D-033 while preserving the rest of the EpicHub-reference boundary.
-
+Decisions are not silently deleted when refined. A later numbered decision should state what it changes and why. D-045 refines the mode-switcher interpretation inside D-033 while preserving the rest of the EpicHub-reference boundary. D-046 records later Table Generator behavior. D-047–D-050 record the Logger/Analyzer/memory refinements from the October 2026 maturity pass.
 
 ### Table Generator MLV weighted-mean parity note
 
-The MLV-style weighted-mean implementation is considered sufficiently matched for current use. On the 2026-10-02_13.27.46.mlg comparison, representative cells matched MLV values and total hit weights effectively exactly; the large RPM 1800 / TPS 0 reference cell differed by only 19 contributing hits (EpicScope about 50,767 vs MLV 50,748, roughly 0.037%) while the weighted result remained 38.53 and total hit weight differed by about 0.97. This is retained as a compatibility footnote, not an active investigation. If revisited later, examine record-validity/retry handling before changing the established weighting geometry.
+The MLV-style weighted-mean implementation is considered sufficiently matched for current use. On the `2026-10-02_13.27.46.mlg` comparison, representative cells matched MLV values and total hit weights effectively exactly; the large RPM 1800 / TPS 0 reference cell differed by only 19 contributing hits (EpicScope about 50,767 vs MLV 50,748, roughly 0.037%) while the weighted result remained 38.53 and total hit weight differed by about 0.97.
+
+This remains a compatibility footnote, not an active investigation. If revisited later, examine record-validity/retry handling before changing the established weighting geometry.

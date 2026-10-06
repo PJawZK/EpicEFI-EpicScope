@@ -6,416 +6,289 @@
 
 ## Purpose
 
-This document records the approved EpicHub-derived interaction reference and the current EpicScope-specific information hierarchy.
+This document records the approved EpicHub-derived interaction reference and current EpicScope-specific hierarchy.
 
-The authoritative visual/interaction source remains:
-
-- `EpicHub-Tablet-Landscape-0.0.45(2).html`
-
-EpicScope inherits useful Logger/Analyzer interaction concepts, but does not copy EpicHub demo state, Android implementation, Dashboard/Tuner responsibilities, or unrelated shell behavior.
-
-The project owner has explicitly refined one earlier interpretation: the **EpicScope logo dropdown is intentionally the in-product mode/surface switcher**, similar in spirit to EpicHub's mode selection. This does not turn EpicScope into the full EpicHub application shell.
+The visual/interaction reference remains `EpicHub-Tablet-Landscape-0.0.45(2).html`, but EpicScope is its own product. It inherits useful Logger/Analyzer interaction patterns, not the wider EpicHub Dashboard/Tuner/Diagnostics shell or Android architecture.
 
 ## Core UI principle
 
-EpicScope should make the normal analysis path visible in the interface:
+> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
-> **1. Load Data → 2. Channels → 3. Navigate → 4. Select / qualify range → 5. Analyze → 6. Compare / Export**
-
-Controls should be grouped by **what the user is trying to do next**, not by which source file or component owns the implementation.
+Controls are grouped by what the user is trying to do next, not by implementation ownership.
 
 Permanent visibility rule:
 
-> A control should remain permanently visible only when it is frequently useful at the current workflow stage.
+> A control remains permanently visible only when it is frequently useful at the current workflow stage.
 
-Everything else should be contextual, grouped, placed under a compact menu/overflow, or revealed by state.
+Secondary/rare actions belong in compact menus, contextual rows or state-dependent surfaces.
 
-## EpicScope shell and mode switcher
+## EpicScope mode switcher
 
-EpicScope is a dedicated analysis product, but it has multiple analysis modes/surfaces.
+The **EpicScope logo dropdown** is the in-product mode switcher.
 
-The **EpicScope logo dropdown in the upper-right** is the approved mode/surface switcher. It must remain visually distinct from the Logger workflow controls.
+Current real top-level entries:
 
-Current menu state:
+- **Logger**
+- **Analyzer**
+- **Histogram**
 
-- **Logger** — active;
-- **Analyzer** — planned;
-- **Histogram** — planned.
+The redundant active-mode chip is removed. Selected mode is represented by the menu state itself.
 
-Future approved modes may include Scatter, Histogram/Table, Math Channels, specialized Analyzer surfaces, or other genuine product modes. Do not populate the switcher with meaningless disabled clutter simply to advertise roadmap items.
+Analyzer and Histogram each use a compact secondary dropdown for their own subviews. Do not expand those subviews into permanent rows of top-level buttons.
 
-The logo/mode menu is not the place for:
+The logo menu does not own Load Data, layout actions, diagnostics, Settings or wider EpicHub app navigation.
 
-- Load Data;
-- graph-layout controls;
-- range/marker actions;
-- diagnostics;
-- Settings;
-- EpicHub Dashboard/Tuner/Diagnostics application navigation.
+## Logger header hierarchy
 
-## Primary Logger flow
-
-The Logger surface should communicate this progression:
+Conceptual order:
 
 ```text
-Load Data
-   ↓
-Channels / graph workspace
-   ↓
-Navigate the recording
-   ↓
-Select / qualify a range or event context
-   ↓
-Analyze
-   ↓
-Compare / Export result
+EpicScope ▾ | Graph preset ▾ | Layout ▾ | Undo/Redo | Search | Settings | Perf/Report
 ```
 
-This hierarchy is more important than preserving the exact button placement of the EpicHub prototype.
+Exact placement may adapt to viewport width, but redundant context labels should not be reintroduced.
 
-## Load Data
+### Graph presets/workspaces
 
-Log and INI loading belong to one source-input concept.
+Graph workspaces are user-editable presets. The visible selector may display them in the coherent form:
 
-Current implemented presentation:
-
-**Load Data ▾**
-
-Menu entries:
-
-- Open Log…
-- Load INI…
-
-Existing file-loading handlers and data semantics remain authoritative; the dropdown is an information-hierarchy change, not a new source architecture.
-
-The UI should communicate current source state compactly rather than keeping both load actions permanently equal in the top bar.
-
-When no log is loaded, Load Data should be among the strongest visible actions. Once data is loaded, it may visually recede.
-
-## Graph workspaces
-
-A bare workspace name such as `General` does not explain its meaning. The global context is therefore:
-
-**Graphs · <workspace> ▾**
+`<user name> - Graph`
 
 Examples:
 
-- Graphs · General
-- Graphs · Idle
-- Graphs · Boost
+- `General - Graph`
+- `Idle - Graph`
+- `Boost - Graph`
 
-The header communicates **which graph workspace** is active. The graph area itself communicates **which pane inside that workspace** is active.
+The stored user-editable part remains the workspace name itself.
 
-Do not duplicate pane identity in the global header with clutter such as `Graph - General - Pane 3`.
+Supported preset actions include create, rename, duplicate, delete and switch.
 
-Reference/retained behavior:
+**Rendering invariant:** every available channel assigned to a visible pane renders. Hidden panes may retain assignments/active cache state; when made visible they reconcile automatically.
 
-- named graph workspaces;
-- create/rename/duplicate/delete where supported;
-- Single and multi-pane layouts;
-- freeform layout where supported;
-- independent channel assignments per pane;
-- shared cursor/viewport/timeline/A-B navigation;
-- active-pane context;
-- maximize/minimize where useful;
-- compact graph chrome.
+### Layout menu
 
-Current EpicScope density refinements remain approved:
+Layout is one compact menu rather than separate permanent layout/arrange/reset/clear buttons.
 
-- fixed panes use compact static identity rather than a full-height header bar;
-- freeform panes use compact draggable title chips;
-- Single layout may use synchronized stacked channel rows with compact Now/Min/Max information.
+It owns:
 
-## Header hierarchy
+- Single/fixed multi-pane layouts;
+- Freeform;
+- Freeform quick arrange where relevant;
+- **Reset**;
+- **Clear**.
 
-Current implemented hierarchy through PR #171:
+Reset/Clear appear at the bottom of the menu with short single-word labels and fitting symbols.
 
-- Open Log + Load INI → **Load Data ▾**;
-- workspace context → **Graphs · <workspace> ▾**;
-- empty top-level **Tools** placeholder removed;
-- empty top-level **Compare** placeholder removed;
-- EpicScope logo menu explicitly owns mode/surface switching.
+Freeform exposes five visible panes. Out-of-layout hidden pane geometry must not be applied.
 
-Workspace/layout maintenance actions should be grouped together rather than scattered across the header.
+### Undo / Redo
 
-Preferred conceptual grouping:
+Undo and Redo form one compact rectangular control using two triangular halves split diagonally. Preserve the compact silhouette/alignment rather than turning them back into two full independent buttons.
 
-```text
-Load Data | Graphs · workspace | Layout / workspace actions | Undo/Redo | contextual analysis/output
-                                                             ...                  EpicScope ▾
-```
+### Search
 
-Exact spacing may adapt to viewport width.
+The former `Search Symbol Value` text button is represented by a magnifying-glass symbol. The accessible name/popover can still describe Search Symbol Value.
 
-## Right-side inspector rule
+### Settings
 
-On wide layouts, EpicScope keeps channel/detail/tool-specific controls on the **right side**:
+Settings are grouped sensibly by responsibility and current mode.
 
-```text
-main graph / plot / table surface | right-side inspector / controls
-```
+Current conceptual sections:
 
-Depending on mode, the right side may contain:
+- Current mode;
+- Interface;
+- Data & storage;
+- Diagnostics/help where appropriate.
 
-- channel browser;
-- channel statistics/details;
-- scatter controls;
-- histogram/table controls;
-- math-channel editor/source browser;
-- specialized analyzer settings.
+Mode-specific settings should appear only when relevant. Do not hide core analysis controls in Settings.
 
-Future Linux/Android layouts may adapt presentation while preserving these responsibilities.
+## Channels / inspector
 
-## Channels / Channel browser
+Wide layouts retain a right-side inspector/control surface.
 
-The channel browser is workflow step 2 and should be immediately understandable.
+Channel browser expectations:
 
-Current implemented hierarchy through PR #172:
+- Search first;
+- Group + visibility filters together;
+- compact sort + direction;
+- current values may appear directly with units;
+- exact source/channel names remain available;
+- known-no-data is distinct from active data.
 
-- primary identity: **Channels**;
-- secondary descriptor: **Channel browser**;
-- Search remains first;
-- Group + visibility filters remain together;
-- sort uses one compact selector plus ↑/↓ direction control;
-- **Load now** is the primary footer action;
-- **Add all filtered** and **Clear active pane** live under `⋯`.
+Active/Favorites/Recent must reflect actual graph/pane context, not merely catalog existence.
 
-### Filter semantics
+## Timeline
 
-Active/Favorites/Recent/group/search behavior is covered by focused tests.
+Timeline is a shared first-class navigation/selection component.
 
-Expected meanings:
+Conceptual groups:
 
-- **All** — channels allowed by current search/group constraints;
-- **Active** — channels active in the relevant graph/pane context, not merely channels that exist in the catalog;
-- **Favorites** — favorited channels within current search/group constraints;
-- **Recent** — recently used channels within current search/group constraints.
-
-Known-but-unavailable channels must not be silently reclassified as active data merely because they remain assigned to a workspace.
-
-If hosted behavior contradicts these semantics, treat it as a bug candidate rather than assuming user error.
-
-### Live channel values
-
-Channel rows may show the current value directly. A decorative value bar is not required.
-
-Approved style examples:
-
-- `848 rpm`
-- `2.1 %`
-- `λ 0.987`
-- `48 kPa`
-- `82.2 °C`
-- `13.9 V`
-
-Use an established symbol where it communicates the measurement naturally, such as `λ`. Otherwise use the normal unit text.
-
-Exact source/channel names should remain available even if aliases are introduced later.
-
-## Timeline: next hierarchy pass
-
-The timeline is a first-class analysis control, but the existing implementation exposes too many functions at the same visual level.
-
-The next approved UI pass should reorganize the existing controls without removing underlying functionality.
-
-### Group 1 — Navigate
-
-Frequent recording-navigation actions:
+### Navigate
 
 - play/pause;
-- step backward/forward;
-- timeline scrub/cursor;
-- current/total time;
-- Fit;
-- zoom out/in;
+- step/navigation;
+- scrub/cursor;
+- time display;
+- Fit/zoom;
 - previous/next view history.
 
-Order controls by normal frequency/importance. Start/end jumps and other rare navigation helpers may be visually secondary.
+### Range / Markers
 
-Marker navigation does not belong here merely because it moves the cursor; it belongs with Markers.
+- Set A / Set B;
+- current A→B span/duration;
+- save/clear/select saved range;
+- markers and marker navigation.
 
-### Group 2 — Range / Markers
+### Contextual Analyze
 
-Range selection should become the bridge from navigation to analysis.
+Range/event context should naturally feed analysis without creating a permanent button for every tool.
 
-Initial state may present:
+The shared Logger timeline is also reused in Scatter and Distribution where those modes need the same A/B/range context. Re-parent the authoritative component rather than create divergent copies.
 
-```text
-Range   A —   B —    [Set A] [Set B]
-```
+The existing Hide/Show controls edge tab remains shared with timeline-based analysis surfaces; only its silhouette was widened to fit the longer wording.
 
-Once both boundaries exist:
+## Histogram mode hierarchy
 
-```text
-Range 12.400 → 16.820   Δ 4.420 s
-```
+Histogram secondary selector:
 
-Secondary range maintenance should be grouped rather than permanently exposed:
+- **Table Generator**
+- **Distribution**
+- **Scatter**
+- **Math Channels**
 
-- Save range;
-- Clear A/B;
-- Saved ranges;
-- Rename saved range;
-- Delete saved range.
+The former separate Heatmap / Dual Heatmap modes are not restored as separate primary modes.
 
-Markers should similarly form one conceptual group:
+### Table Generator
 
-- Add marker;
-- Previous marker;
-- Next marker;
-- Edit current marker;
-- Delete current marker.
+Important current UI rules:
 
-### Group 3 — Analyze
+- visible statistic wording is **Weighted Mean**, not `MLV Weighted Mean`;
+- standalone **Size** button is removed;
+- the remaining geometry button is **Table Size**;
+- Table Size owns Auto/custom/MSQ geometry controls;
+- Presets mean complete saved Table Generator setups;
+- grouped Filters use the existing saved-library/editor model;
+- cell evidence can open contributing samples in Logger.
 
-`Analyze` becomes the contextual next action after data/channel/range context is meaningful.
+Loaded MSQ table selection changes geometry only and must not silently rewrite selected analysis X/Y/Z channels.
 
-Future menu contents may include:
+### Distribution
 
-- Range statistics;
-- Histogram;
-- 2D Histogram / Heatmap;
-- Scatter;
-- Events;
-- later specialized analyzers.
+Distribution is a real analysis workspace, not a placeholder histogram.
 
-The Analyze entry should be context-sensitive rather than creating a permanent button for every new analysis feature.
+Current controls/features include:
 
-## Cursor-follow and graph-navigation behavior
-
-Retained interaction contract:
-
-- cursor moves independently until it reaches the middle region of the visible window;
-- after that, the viewport follows while maintaining range width;
-- if the cursor jumps outside the window, the viewport recovers to include it;
-- graphs/panes remain synchronized to shared navigation context.
-
-The project owner previously chose not to require the prototype's hard-coded Extremes or Zoom Event controls. Do not re-add them merely for reference fidelity.
-
-## Generic analysis surfaces
-
-After the Logger hierarchy is clear, generic analysis remains the planned foundation before specialized analyzers.
-
-### Range statistics
-
-Should consume explicit source/channel/range context and expose sample count, relevant statistics and qualification evidence.
-
-### Histogram
-
-Must expose:
-
-- selected channel/value;
-- bucket definition/count;
-- scope (full recording or selected/visible range);
-- active filters;
-- sample count.
-
-### 2D Histogram / Table / Heatmap
-
-Must make semantics explicit:
-
-```text
-X axis
-Y axis
-cell value
-aggregation/statistic
-active filters
-sample count
-```
-
-A cell's meaning must never require guesswork.
+- Full Log / Range A/B;
+- Count / % Samples / Time;
+- Automatic / Manual bins;
+- Histogram / Cumulative;
+- statistical summary;
+- saved-range A-vs-B comparison;
+- clickable bin evidence;
+- shared Logger timeline.
 
 ### Scatter
 
-Reference behavior includes:
+Current controls/features include:
 
-- X channel;
-- Y channel;
-- optional color channel;
-- full-recording vs range scope;
-- filter expression/preset;
-- linked navigation back to source time/sample context.
+- Full Log / Range A/B;
+- Single / Dual;
+- Dots / Lines;
+- X/Y selectors per pane;
+- density heat encoding and legend;
+- shared Logger timeline;
+- Hide/Show controls tab.
+
+Per-pane coverage/status belongs outside the plot overlay when possible. Stale previous plots must be cleared if a new selection cannot load.
 
 ### Math Channels
 
-Derived/math channels should behave like normal channels downstream and use stable channel identifiers. Invalid formulas/dependencies fail visibly rather than fabricating data.
+Math Channels is a dedicated editor, not a tiny formula popover.
 
-## Compare / Export
+Dynamic imported/saved labels are text data and must not be interpolated into executable HTML.
 
-Compare remains a first-class future product capability, but a disabled top-level Compare placeholder is not useful.
+## Analyzer mode hierarchy
 
-Comparison may later become:
+Analyzer uses a compact secondary dropdown rather than a permanent mode-button row.
 
-- a dedicated mode/surface;
-- a contextual Analyze/Compare action;
-- or a result-stage menu,
+Current subviews:
 
-provided the generic compare service remains the underlying authority.
+- Range Compare;
+- Tune Table;
+- Boost · Experimental;
+- Idle · Experimental;
+- AE / MAP Predict · Experimental;
+- Fueling · Experimental;
+- Ignition · Experimental;
+- Fuel / Injector · Experimental;
+- Trigger / Sync · Experimental.
 
-Expected comparison concepts include:
+### Shared Analyzer interaction
 
-- second-run/log overlay;
-- time/event/range alignment;
-- manual offset where needed;
-- metric deltas;
-- linked source context.
+- semantic role mapping is visible and manually overridable;
+- scope is explicit (Full Log / Current A-B / Saved Range where supported);
+- event rows select evidence in Analyzer;
+- double-click/Enter can open event evidence in Logger;
+- aligned-event graphs use a common interaction model where applicable.
 
-Export similarly belongs to the result/output stage rather than permanently occupying Logger navigation space before useful export functions exist.
+### Idle Analyzer UI
 
-## Diagnostics and Settings
+Idle must make control architecture explicit.
 
-Healthy diagnostics should visually recede.
+Idle system selector:
 
-Preferred conceptual status:
+- Combined;
+- DC Idle;
+- IAC Valve;
+- ETB;
+- Ignition.
 
-`Ready · CRC ✓`
+Common required roles:
 
-with a compact Diagnostics entry containing parser/source diagnostics, performance diagnostics and Bug report tooling. Warnings/errors may become more prominent when action is useful.
+- RPM;
+- Idle Target.
 
-Settings should be grouped by responsibility, for example:
+Subsystem-specific controls appear only when relevant.
 
-- Display;
-- Playback;
-- Sources;
-- Storage/cache;
-- Diagnostics;
-- Help/shortcuts.
+**DC Bias:** distinguish the calibration curve/table from any logged runtime bias contribution. The calibration itself is not a scalar channel selector.
 
-Do not allow development diagnostics to compete visually with ordinary Logger workflow.
+Analyze controls must explain their meaning in context, e.g. sag threshold relative to target and settled band used to end recovery.
 
-## Performance implications
+## Diagnostics / Perf / Report
 
-The UI reference remains subordinate to EpicScope performance requirements.
+Diagnostics should visually recede when healthy.
 
-Avoid:
+Perf and Report use compact consistent boxed controls.
 
-- unbounded DOM channel lists;
-- full-dataset redraw on every interaction;
-- continuous expensive animations;
-- duplicated full channel arrays in analysis panels;
-- analysis modes recomputing while inactive.
+Report has a live health status:
 
-Preserve capability while using bounded/virtualized/downsampled implementations where appropriate.
+- healthy check when no issue/warning;
+- warning count when warnings exist;
+- issue count when issues exist;
+- tooltip/title explains summary.
 
-## Approved EpicScope deviations/refinements
+Log-specific warnings must not imply a log problem before a log exists.
 
-1. **EpicScope mode switcher** — the EpicScope logo dropdown is an in-product mode/surface switcher. This supersedes the earlier interpretation that EpicScope needed no module-like switcher at all.
-2. **Not the broader EpicHub shell** — Dashboard/Tuner/Diagnostics and Android app-navigation architecture are still not inherited.
-3. **Workflow-first Logger hierarchy** — Load Data → Channels → Navigate → Range → Analyze → Compare/Export.
-4. **Right-side control consistency** on wide layouts.
-5. **Offline/imported-log focus** initially; live ECU acquisition/REC remains separate roadmap work.
-6. **Trigger Logger deferred** unless deliberately approved.
-7. **Performance over exact visual reproduction**.
-8. **Compact dense graph chrome** rather than large permanent pane bars.
-9. **Single-view stacked traces** are an approved EpicScope adaptation.
-10. **No hard requirement for Extremes / Zoom Event**.
-11. **Shortcut discoverability under Settings/Help** rather than permanent toolbar space.
-12. **No disabled future-tool clutter** — absent functionality does not need a permanent header placeholder.
-13. **Current channel values without bars** — direct unit-aware values are preferred.
-14. **Mode/pane identity separation** — mode belongs to EpicScope logo switcher; workspace belongs to Graphs; active pane belongs locally to the graph pane.
+## Approved deviations/refinements
 
-## Reference completion/control
+1. EpicScope logo dropdown is the mode switcher.
+2. Not the broader EpicHub shell.
+3. Workflow-first hierarchy.
+4. Right-side inspector/control consistency on wide layouts.
+5. Offline/imported-log focus; live ECU acquisition remains separate future work.
+6. Performance over exact visual reproduction.
+7. Compact dense graph chrome.
+8. Single-view synchronized stacked traces are an approved adaptation.
+9. No disabled future-tool clutter.
+10. Current values can be direct unit-aware text without decorative bars.
+11. Mode/workspace/pane identity are separate concepts.
+12. Secondary Analyzer/Histogram functions belong in dropdowns rather than permanent button rows.
+13. Shared timeline/range components should be reused across analysis surfaces rather than duplicated.
+14. Analysis controls should state what entered thresholds/values actually do.
 
-`EpicHub-Tablet-Landscape-0.0.45(2).html` remains the reviewed reference source, but this document is the EpicScope authority after project-owner refinements.
+## Reference change control
 
-Future prototype changes do not silently supersede these rules. Meaningful changes require explicit review and corresponding decision/document updates.
+`EpicHub-Tablet-Landscape-0.0.45(2).html` remains the reviewed source reference, but this document plus explicit later owner decisions define EpicScope behavior.
+
+Prototype changes do not silently supersede these rules. Meaningful changes require explicit review and corresponding decision/document updates.
