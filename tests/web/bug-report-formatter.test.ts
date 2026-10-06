@@ -115,7 +115,7 @@ describe('bug report formatter', () => {
 
     expect(report.text).toContain('[Health] 1 ISSUE / 1 WARN');
     expect(report.text).toContain('file=test.mlg');
-    expect(report.text).toContain('runtimeErrors=1');
+    expect(report.text).toContain('[Runtime errors] 1');
     expect(report.text).toContain('pane=pane-1');
     expect(report.text).toContain('[Performance diagnostics]');
     expect(report.issueCount).toBe(1);
