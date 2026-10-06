@@ -287,9 +287,60 @@ export interface BoundChannelMemoryDiagnostics {
 
 let latestBoundChannelMemory: BoundChannelMemoryDiagnostics | undefined;
 let boundMemorySourceSequence = 0;
+const boundMemorySourceRefs = new Set<WeakRef<BoundNumericChannelDataSource>>();
+let boundCollectedSourceCount = 0;
+const boundMemoryFinalizer = new FinalizationRegistry<number>(() => {
+  boundCollectedSourceCount += 1;
+});
 
 export function latestBoundChannelMemoryDiagnostics(): BoundChannelMemoryDiagnostics | undefined {
   return latestBoundChannelMemory ? { ...latestBoundChannelMemory } : undefined;
+}
+
+export interface BoundChannelMemoryAggregateDiagnostics {
+  readonly liveSourceCount: number;
+  readonly previousLiveSourceCount: number;
+  readonly collectedSourceCount: number;
+  readonly totalResidentRangeCount: number;
+  readonly totalResidentBytes: number;
+  readonly previousResidentRangeCount: number;
+  readonly previousResidentBytes: number;
+}
+
+export function boundChannelMemoryAggregateDiagnostics(): BoundChannelMemoryAggregateDiagnostics {
+  let liveSourceCount = 0;
+  let previousLiveSourceCount = 0;
+  let totalResidentRangeCount = 0;
+  let totalResidentBytes = 0;
+  let previousResidentRangeCount = 0;
+  let previousResidentBytes = 0;
+
+  for (const ref of [...boundMemorySourceRefs]) {
+    const source = ref.deref();
+    if (!source) {
+      boundMemorySourceRefs.delete(ref);
+      continue;
+    }
+    const snapshot = source.memoryDiagnosticsSnapshot();
+    liveSourceCount += 1;
+    totalResidentRangeCount += snapshot.residentRangeCount;
+    totalResidentBytes += snapshot.residentBytes;
+    if (source.memorySourceId !== boundMemorySourceSequence) {
+      previousLiveSourceCount += 1;
+      previousResidentRangeCount += snapshot.residentRangeCount;
+      previousResidentBytes += snapshot.residentBytes;
+    }
+  }
+
+  return {
+    liveSourceCount,
+    previousLiveSourceCount,
+    collectedSourceCount: boundCollectedSourceCount,
+    totalResidentRangeCount,
+    totalResidentBytes,
+    previousResidentRangeCount,
+    previousResidentBytes,
+  };
 }
 
 const residentFullRangesBySource = new WeakMap<
@@ -313,7 +364,7 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
   readonly requiresExplicitBatchSelection?: boolean;
 
   private readonly residentFullRanges: Map<string, NumericChannelRange>;
-  private readonly memorySourceId = ++boundMemorySourceSequence;
+  readonly memorySourceId = ++boundMemorySourceSequence;
   private peakResidentRangeCount = 0;
   private peakResidentBytes = 0;
   private residentHitCount = 0;
@@ -327,12 +378,30 @@ export class BoundNumericChannelDataSource implements NumericChannelDataSource {
     this.sampleCount = source.sampleCount;
     this.residentFullRanges = residentFullRangesForSource(source);
     this.updateMemoryDiagnostics();
+    boundMemorySourceRefs.add(new WeakRef(this));
+    boundMemoryFinalizer.register(this, this.memorySourceId);
     if (source.preferredBatchWindowMs !== undefined) {
       this.preferredBatchWindowMs = source.preferredBatchWindowMs;
     }
     if (source.requiresExplicitBatchSelection !== undefined) {
       this.requiresExplicitBatchSelection = source.requiresExplicitBatchSelection;
     }
+  }
+
+  public memoryDiagnosticsSnapshot(): BoundChannelMemoryDiagnostics {
+    const residentBytes = [...this.residentFullRanges.values()].reduce(
+      (sum, range) => sum + range.timeMs.byteLength + range.values.byteLength + range.validity.byteLength,
+      0,
+    );
+    return {
+      residentRangeCount: this.residentFullRanges.size,
+      residentBytes,
+      peakResidentRangeCount: this.peakResidentRangeCount,
+      peakResidentBytes: this.peakResidentBytes,
+      residentHitCount: this.residentHitCount,
+      residentMissCount: this.residentMissCount,
+      retainedRangeCount: this.retainedRangeCount,
+    };
   }
 
   private updateMemoryDiagnostics(): void {
