@@ -61,27 +61,117 @@ const FORMULA_KEY = 'epicscope.histogram.formulas.v1';
 const FILTER_SET_KEY = 'epicscope.histogram.filter-sets.v1';
 const PRESET_KEY = 'epicscope.histogram.table-presets.v1';
 
-function readArray<T>(key: string): T[] {
+const aggregationValues = new Set<HistogramTableAggregation>([
+  'count',
+  'sum',
+  'min',
+  'max',
+  'mean',
+  'variance',
+  'standard-deviation',
+  'weighted-mean',
+]);
+const qualificationOperators = new Set<NumericQualificationOperator>(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);
+const qualificationLogic = new Set<NumericQualificationLogic>(['and', 'or']);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isString = (value: unknown): value is string => typeof value === 'string';
+const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+function isCalculatedField(value: unknown): value is HistogramCalculatedFieldDefinition {
+  if (!isRecord(value)) return false;
+  return isString(value.id)
+    && value.id.length > 0
+    && isString(value.name)
+    && value.name.length > 0
+    && isString(value.expression)
+    && value.expression.length > 0
+    && (value.unit === undefined || isString(value.unit));
+}
+
+function isFilterCondition(value: unknown): value is HistogramFilterConditionState {
+  if (!isRecord(value)) return false;
+  return isString(value.channelId)
+    && qualificationOperators.has(value.operator as NumericQualificationOperator)
+    && isFiniteNumber(value.value)
+    && isString(value.group)
+    && isBoolean(value.enabled);
+}
+
+function isFilterSet(value: unknown): value is HistogramFilterSetState {
+  if (!isRecord(value) || !Array.isArray(value.conditions)) return false;
+  return isString(value.id)
+    && value.id.length > 0
+    && isString(value.name)
+    && value.name.length > 0
+    && qualificationLogic.has(value.groupLogic as NumericQualificationLogic)
+    && qualificationLogic.has(value.groupConditionLogic as NumericQualificationLogic)
+    && value.conditions.every(isFilterCondition);
+}
+
+function isTablePreset(value: unknown): value is HistogramTablePresetState {
+  if (!isRecord(value) || !Array.isArray(value.filters)) return false;
+  const stringKeys = [
+    'id', 'name', 'scope', 'xChannelId', 'yChannelId', 'zChannelId', 'deltaChannelId',
+    'xBins', 'yBins', 'xMin', 'xMax', 'yMin', 'yMax', 'xBreakpoints', 'yBreakpoints',
+    'msqTable', 'msqXAxis', 'msqYAxis',
+  ] as const;
+  return stringKeys.every((key) => isString(value[key]))
+    && (value.id as string).length > 0
+    && (value.name as string).length > 0
+    && aggregationValues.has(value.aggregation as HistogramTableAggregation)
+    && (value.axisSource === 'auto' || value.axisSource === 'custom' || value.axisSource === 'msq')
+    && isBoolean(value.showHits)
+    && (value.minimumIndividualWeight === undefined || isFiniteNumber(value.minimumIndividualWeight))
+    && (value.minimumTotalWeight === undefined || isFiniteNumber(value.minimumTotalWeight))
+    && (value.colorMode === undefined || value.colorMode === 'value' || value.colorMode === 'weight')
+    && qualificationLogic.has(value.groupLogic as NumericQualificationLogic)
+    && qualificationLogic.has(value.groupConditionLogic as NumericQualificationLogic)
+    && value.filters.every(isFilterCondition);
+}
+
+function readValidatedArray<T>(key: string, guard: (value: unknown) => value is T): T[] {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed as T[] : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(guard);
   } catch {
     return [];
   }
 }
 
-function writeArray<T>(key: string, values: readonly T[]): void {
-  try { localStorage.setItem(key, JSON.stringify(values)); } catch { /* session still works without persistence */ }
+function writeArray<T>(key: string, values: readonly T[]): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(values));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export const loadHistogramCalculatedFields = (): HistogramCalculatedFieldDefinition[] => readArray(FORMULA_KEY);
-export const saveHistogramCalculatedFields = (values: readonly HistogramCalculatedFieldDefinition[]): void => writeArray(FORMULA_KEY, values);
-export const loadHistogramFilterSets = (): HistogramFilterSetState[] => readArray(FILTER_SET_KEY);
-export const saveHistogramFilterSets = (values: readonly HistogramFilterSetState[]): void => writeArray(FILTER_SET_KEY, values);
-export const loadHistogramTablePresets = (): HistogramTablePresetState[] => readArray(PRESET_KEY);
-export const saveHistogramTablePresets = (values: readonly HistogramTablePresetState[]): void => writeArray(PRESET_KEY, values);
+let calculatedFieldCache = readValidatedArray(FORMULA_KEY, isCalculatedField);
+let filterSetCache = readValidatedArray(FILTER_SET_KEY, isFilterSet);
+let tablePresetCache = readValidatedArray(PRESET_KEY, isTablePreset);
+
+export const loadHistogramCalculatedFields = (): HistogramCalculatedFieldDefinition[] => [...calculatedFieldCache];
+export const saveHistogramCalculatedFields = (values: readonly HistogramCalculatedFieldDefinition[]): boolean => {
+  calculatedFieldCache = values.filter(isCalculatedField);
+  return writeArray(FORMULA_KEY, calculatedFieldCache);
+};
+export const loadHistogramFilterSets = (): HistogramFilterSetState[] => [...filterSetCache];
+export const saveHistogramFilterSets = (values: readonly HistogramFilterSetState[]): boolean => {
+  filterSetCache = values.filter(isFilterSet);
+  return writeArray(FILTER_SET_KEY, filterSetCache);
+};
+export const loadHistogramTablePresets = (): HistogramTablePresetState[] => [...tablePresetCache];
+export const saveHistogramTablePresets = (values: readonly HistogramTablePresetState[]): boolean => {
+  tablePresetCache = values.filter(isTablePreset);
+  return writeArray(PRESET_KEY, tablePresetCache);
+};
 
 export function createHistogramLocalId(prefix: string): string {
   const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
