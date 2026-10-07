@@ -224,7 +224,7 @@ describe('ts_shim telemetry client', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const telemetry = harness.events.findLast((event) => event.type === 'telemetry');
+    const telemetry = [...harness.events].reverse().find((event) => event.type === 'telemetry');
     expect(telemetry?.type).toBe('telemetry');
     if (telemetry?.type === 'telemetry') {
       expect(telemetry.subscriptionId).toBe(subscriptionId);
