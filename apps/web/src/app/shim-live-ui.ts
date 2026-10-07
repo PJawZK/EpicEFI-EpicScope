@@ -313,7 +313,6 @@ export function installShimLiveUi(root: HTMLElement): void {
       capture,
       channelData: dataSource,
       schema,
-      welcome,
     });
     captureOpened = true;
     dispatchShimCaptureSource(root, source);
