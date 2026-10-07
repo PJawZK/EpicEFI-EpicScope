@@ -21,31 +21,147 @@ The WebSocket proxy rewrites both Host and WebSocket Origin toward the shim targ
 
 This is a development/test bridge only. Production/GitHub Pages build behavior is unchanged.
 
-## Windows test flow
+## Windows 10 test flow
 
-1. Start `ts_shim` and confirm it is listening on port `29002`.
-2. Open a terminal in the EpicScope repository.
-3. Install dependencies if needed:
+The current native `ts_shim` runtime is tested on Windows. The GitHub Pages site is not the correct page for this local proxy test; use a fresh local checkout/ZIP of current `main`.
 
-```text
-npm install
-```
+### 1. Run ts_shim
 
-4. Start the shim development mode:
+Start the Windows `ts_shim` build normally.
+
+The default EpicScope development target is:
 
 ```text
-npm run dev:shim
+http://127.0.0.1:29002
 ```
 
-5. Open:
+In **PowerShell**, verify the port is listening:
+
+```powershell
+Test-NetConnection 127.0.0.1 -Port 29002
+```
+
+Expected result:
+
+```text
+TcpTestSucceeded : True
+```
+
+If using Command Prompt instead of PowerShell, use:
+
+```bat
+netstat -ano | findstr :29002
+```
+
+### 2. Download a fresh EpicScope main ZIP
+
+From the `PJawZK/EpicEFI-EpicScope` GitHub repository:
+
+```text
+Code → Download ZIP
+```
+
+Extract the complete repository. A normal Windows path is:
+
+```text
+C:\Users\<user>\Downloads\EpicEFI-EpicScope-main
+```
+
+The extracted folder must contain at least:
+
+```text
+package.json
+vite.config.ts
+apps\
+core\
+docs\
+tests\
+```
+
+Do not use an older extracted ZIP after shim work has moved forward. If the running page does not show **Connect Shim…**, first verify that the source copy is current.
+
+### 3. Install Node.js if needed
+
+EpicScope currently declares:
+
+```text
+Node ^20.19.0 or >=22.12.0
+```
+
+Use a normal current Node.js Windows x64 installation. Native-module build tools are not required by EpicScope's current dependency set.
+
+Open a **new** PowerShell window after installation and verify:
+
+```powershell
+node --version
+npm.cmd --version
+```
+
+PowerShell may block `npm.ps1` under the default Windows execution policy. Do not change policy just for EpicScope; use `npm.cmd` explicitly.
+
+### 4. Install EpicScope dependencies
+
+In PowerShell:
+
+```powershell
+cd "C:\Users\<user>\Downloads\EpicEFI-EpicScope-main"
+npm.cmd install
+```
+
+Run this before `dev:shim`. If `vite` is reported as not recognized, dependencies were not installed in the current extracted repository; run `npm.cmd install` and retry.
+
+### 5. Start shim-development mode
+
+```powershell
+npm.cmd run dev:shim
+```
+
+Vite should report a local URL similar to:
 
 ```text
 http://localhost:5173/
 ```
 
-6. In EpicScope use **Connect Shim...**.
+Leave this terminal running.
 
-EpicScope still requests only same-origin paths such as `/telemetry` and `/api/v1/...`; the development server handles forwarding them to the actual shim.
+### 6. Open the local EpicScope page
+
+Open Brave/Chromium at:
+
+```text
+http://localhost:5173/
+```
+
+Do **not** use the GitHub Pages URL for this test.
+
+Open **Load Data**. Current shim-capable main should show:
+
+```text
+Connect Shim…
+```
+
+If only the traditional file-loading choices are present, the most likely cause is a stale source ZIP. In current source, `apps/web/src/main.ts` installs both the live shim UI and shim HTTP UI.
+
+### 7. Runtime test
+
+Use:
+
+```text
+Load Data → Connect Shim…
+```
+
+Then test, in order:
+
+- connection / schema status;
+- **Channels…**;
+- **Record**;
+- **View Live**;
+- **Follow** on/off;
+- **Stop**;
+- **Open Capture** where applicable;
+- **Shim HTTP…** for INIs, Objects and Trigger Log.
+
+The HTTP payloads are especially useful because typed read-only HTTP integration is intentionally waiting for real responses instead of guessing the native shim's response shapes.
 
 ## Different shim host or port
 
@@ -61,7 +177,7 @@ PowerShell example:
 
 ```powershell
 $env:EPICSCOPE_SHIM_TARGET='http://192.168.1.50:29002'
-npm run dev:shim
+npm.cmd run dev:shim
 ```
 
 Command Prompt example:
