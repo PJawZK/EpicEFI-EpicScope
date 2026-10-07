@@ -2,7 +2,7 @@ import type {
   NumericChannelBatchResult,
   NumericChannelDataSource,
   NumericChannelRange,
-} from '../../../../core/log-model/log-types';
+} from '../../../../../core/log-model/log-types';
 import { ShimCaptureSession } from './shim-capture-session';
 
 export class ShimLiveNumericChannelDataSource implements NumericChannelDataSource {
