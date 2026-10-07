@@ -27,10 +27,10 @@ if (!root) {
 }
 
 mountAppShell(root);
-applyUiRefinements(root);
-applyNavigationRefinements(root);
 installShimLiveUi(root);
 installShimHttpUi(root);
+applyUiRefinements(root);
+applyNavigationRefinements(root);
 
 root.querySelector<HTMLElement>('.histogram-table-size')?.remove();
 const tableSizeSummary = root.querySelector<HTMLElement>('.histogram-table-options > summary');
