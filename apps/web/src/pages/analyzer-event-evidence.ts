@@ -1,3 +1,4 @@
+import '../app/font-size-settings';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import { ensureIdleAnalyzerHelp } from './idle-analyzer-help';
 
@@ -26,11 +27,18 @@ interface RenderState {
   visibility: Map<string, SeriesVisibility>;
   hits: LegendHit[];
   listenerAttached: boolean;
+  typographyListenerAttached?: boolean;
   lastRender?: () => void;
 }
 
 const PALETTE = ['#58a6ff', '#f2cc60', '#56d364', '#ff7b72', '#d2a8ff', '#79c0ff', '#ffa657', '#a5d6ff'];
 const STATE = new WeakMap<HTMLCanvasElement, RenderState>();
+
+function graphScale(): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--epicscope-font-graph-scale').trim();
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.min(1.8, Math.max(0.8, value)) : 1;
+}
 
 function percentile(values: number[], p: number): number | undefined {
   if (!values.length) return undefined;
@@ -118,6 +126,10 @@ function ensureState(canvas: HTMLCanvasElement): RenderState {
     });
     state.listenerAttached = true;
   }
+  if (!state.typographyListenerAttached) {
+    window.addEventListener('epicscope:typography-change', () => STATE.get(canvas)?.lastRender?.());
+    state.typographyListenerAttached = true;
+  }
   return state;
 }
 
@@ -128,16 +140,21 @@ function drawLegend(
   top: number,
   left: number,
   maxWidth: number,
+  scale: number,
 ): number {
   let x = left;
   let y = top;
-  const rowHeight = 17;
-  ctx.font = '9px system-ui, sans-serif';
+  const rowHeight = 17 * scale;
+  const labelFont = 9 * scale;
+  const envelopeFont = 8 * scale;
+  const hitHeight = 14 * scale;
+  ctx.font = `${labelFont}px system-ui, sans-serif`;
   for (const { entry, seriesIndex } of entries) {
     const key = String(seriesIndex);
     const visibility = state.visibility.get(key)!;
-    const labelWidth = Math.min(145, ctx.measureText(entry.label).width + 18);
-    const itemWidth = labelWidth + 24;
+    const labelWidth = Math.min(145 * scale, ctx.measureText(entry.label).width + 18 * scale);
+    const envelopeWidth = 15 * scale;
+    const itemWidth = labelWidth + 24 * scale;
     if (x + itemWidth > left + maxWidth && x > left) {
       x = left;
       y += rowHeight;
@@ -145,26 +162,26 @@ function drawLegend(
     const color = PALETTE[seriesIndex % PALETTE.length]!;
     ctx.globalAlpha = visibility.visible ? 1 : 0.35;
     ctx.fillStyle = color;
-    ctx.fillRect(x, y + 5, 9, 2);
+    ctx.fillRect(x, y + 5 * scale, 9 * scale, Math.max(2, 2 * scale));
     ctx.fillStyle = '#a9bdc9';
-    ctx.fillText(entry.label, x + 13, y + 9);
-    state.hits.push({ x, y, width: labelWidth, height: 14, seriesIndex, kind: 'trace' });
+    ctx.fillText(entry.label, x + 13 * scale, y + 9 * scale);
+    state.hits.push({ x, y, width: labelWidth, height: hitHeight, seriesIndex, kind: 'trace' });
 
     const envelopeX = x + labelWidth;
     ctx.globalAlpha = visibility.envelope ? 1 : 0.35;
     ctx.strokeStyle = color;
-    ctx.strokeRect(envelopeX, y + 1, 15, 11);
+    ctx.strokeRect(envelopeX, y + 1 * scale, envelopeWidth, 11 * scale);
     if (visibility.envelope) {
       ctx.globalAlpha = 0.18;
       ctx.fillStyle = color;
-      ctx.fillRect(envelopeX + 2, y + 3, 11, 7);
+      ctx.fillRect(envelopeX + 2 * scale, y + 3 * scale, 11 * scale, 7 * scale);
     }
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#a9bdc9';
-    ctx.font = '8px system-ui, sans-serif';
-    ctx.fillText('E', envelopeX + 5, y + 9);
-    ctx.font = '9px system-ui, sans-serif';
-    state.hits.push({ x: envelopeX, y, width: 15, height: 14, seriesIndex, kind: 'envelope' });
+    ctx.font = `${envelopeFont}px system-ui, sans-serif`;
+    ctx.fillText('E', envelopeX + 5 * scale, y + 9 * scale);
+    ctx.font = `${labelFont}px system-ui, sans-serif`;
+    state.hits.push({ x: envelopeX, y, width: envelopeWidth, height: hitHeight, seriesIndex, kind: 'envelope' });
     x += itemWidth;
   }
   ctx.globalAlpha = 1;
@@ -182,19 +199,20 @@ function drawPane(
   beforeMs: number,
   afterMs: number,
   state: RenderState,
+  scale: number,
 ): void {
-  const left = 44;
+  const left = Math.max(44, 44 * scale);
   const right = 14;
-  const titleHeight = title ? 16 : 0;
+  const titleHeight = title ? 16 * scale : 0;
   const legendTop = paneTop + titleHeight;
   if (title) {
     ctx.fillStyle = '#8ea7b5';
-    ctx.font = '10px system-ui, sans-serif';
-    ctx.fillText(title, left, paneTop + 10);
+    ctx.font = `${10 * scale}px system-ui, sans-serif`;
+    ctx.fillText(title, left, paneTop + 10 * scale);
   }
-  const legendBottom = drawLegend(ctx, entries, state, legendTop, left, width - left - right);
-  const plotTop = legendBottom + 3;
-  const bottom = 24;
+  const legendBottom = drawLegend(ctx, entries, state, legendTop, left, width - left - right, scale);
+  const plotTop = legendBottom + 3 * scale;
+  const bottom = 24 * scale;
   const plotW = width - left - right;
   const plotH = Math.max(70, paneTop + paneHeight - plotTop - bottom);
   const bins = 101;
@@ -217,10 +235,11 @@ function drawPane(
   ctx.setLineDash([]);
 
   ctx.fillStyle = '#78909e';
-  ctx.font = '9px system-ui, sans-serif';
-  ctx.fillText(`${(-beforeMs).toFixed(0)} ms`, left, paneTop + paneHeight - 6);
-  ctx.fillText('t=0', Math.max(left, zeroX - 10), paneTop + paneHeight - 6);
-  ctx.fillText(`+${afterMs.toFixed(0)} ms`, left + plotW - 44, paneTop + paneHeight - 6);
+  ctx.font = `${9 * scale}px system-ui, sans-serif`;
+  const labelY = paneTop + paneHeight - 6 * scale;
+  ctx.fillText(`${(-beforeMs).toFixed(0)} ms`, left, labelY);
+  ctx.fillText('t=0', Math.max(left, zeroX - 10 * scale), labelY);
+  ctx.fillText(`+${afterMs.toFixed(0)} ms`, left + plotW - 44 * scale, labelY);
 
   for (const { entry, seriesIndex } of entries) {
     const visibility = state.visibility.get(String(seriesIndex))!;
@@ -281,9 +300,12 @@ export function renderAlignedAnalyzerEvidence(
 ): void {
   const idleSplit = isIdleEvidence(series);
   if (idleSplit) ensureIdleAnalyzerHelp(canvas);
-  canvas.style.height = idleSplit ? '460px' : '';
+  const scale = graphScale();
+  const baseHeight = idleSplit ? 460 : 260;
+  const scaledHeight = Math.round(baseHeight * Math.max(1, scale));
+  canvas.style.height = `${scaledHeight}px`;
   const width = Math.max(320, canvas.clientWidth || 900);
-  const height = Math.max(idleSplit ? 460 : 180, canvas.clientHeight || (idleSplit ? 460 : 260));
+  const height = Math.max(idleSplit ? 460 : 180, canvas.clientHeight || scaledHeight);
   const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
@@ -317,8 +339,8 @@ export function renderAlignedAnalyzerEvidence(
     const control = indexed.filter(({ entry }) => idlePaneFor(entry) === 'control');
     const gap = 8;
     const paneHeight = (height - gap) / 2;
-    drawPane(ctx, width, 0, paneHeight, 'Engine response', engine, events, beforeMs, afterMs, state);
-    drawPane(ctx, width, paneHeight + gap, paneHeight, 'Controller / actuator response', control, events, beforeMs, afterMs, state);
+    drawPane(ctx, width, 0, paneHeight, 'Engine response', engine, events, beforeMs, afterMs, state, scale);
+    drawPane(ctx, width, paneHeight + gap, paneHeight, 'Controller / actuator response', control, events, beforeMs, afterMs, state, scale);
     ctx.strokeStyle = '#193241';
     ctx.beginPath();
     ctx.moveTo(14, paneHeight + gap / 2);
@@ -326,6 +348,6 @@ export function renderAlignedAnalyzerEvidence(
     ctx.stroke();
   } else {
     const indexed = series.map((entry, seriesIndex) => ({ entry, seriesIndex }));
-    drawPane(ctx, width, 0, height, undefined, indexed, events, beforeMs, afterMs, state);
+    drawPane(ctx, width, 0, height, undefined, indexed, events, beforeMs, afterMs, state, scale);
   }
 }

@@ -368,9 +368,155 @@
   }
 }
 
-
 /* Live Report health indicator. */
 .bug-report-button .bug-report-status { min-width:15px; height:15px; display:inline-grid; place-items:center; margin-left:2px; padding:0 3px; border:1px solid #3a5364; border-radius:8px; color:#91a5b2; font-size:8px; font-weight:850; line-height:1; }
 .bug-report-button[data-report-state="ok"] .bug-report-status { border-color:#315f4c; color:#76d6a8; }
 .bug-report-button[data-report-state="warning"] .bug-report-status { border-color:#7b682d; color:#f1c84b; }
 .bug-report-button[data-report-state="issue"] .bug-report-status { border-color:#8c5344; color:#ff8c78; }
+
+/* User-adjustable typography. Percentage scales are persisted locally by font-size-settings.ts. */
+:root {
+  --epicscope-font-interface-scale: 1;
+  --epicscope-font-info-scale: 1;
+  --epicscope-font-analyzer-scale: 1;
+  --epicscope-font-graph-scale: 1;
+}
+
+.settings-typography {
+  padding: 8px 0 2px;
+  border-top: 1px solid #1f303c;
+}
+
+.settings-typography-head,
+.settings-font-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-typography-head {
+  padding: 0 0 7px;
+}
+
+.settings-typography-head strong,
+.settings-font-slider-copy strong {
+  display: block;
+  color: #dce7ee;
+  font-size: calc(10px * var(--epicscope-font-interface-scale));
+}
+
+.settings-typography-head small,
+.settings-font-slider-copy small {
+  display: block;
+  margin-top: 2px;
+  color: #7e94a2;
+  font-size: calc(8px * var(--epicscope-font-info-scale));
+  line-height: 1.35;
+}
+
+.settings-typography-reset {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: calc(9px * var(--epicscope-font-interface-scale));
+}
+
+.settings-font-slider {
+  padding: 7px 0;
+  border-top: 1px solid #172a35;
+}
+
+.settings-font-slider-control {
+  display: grid;
+  grid-template-columns: 116px 42px;
+  align-items: center;
+  gap: 7px;
+}
+
+.settings-font-slider-control input[type='range'] {
+  width: 116px;
+  accent-color: #4d9ac5;
+}
+
+.settings-font-slider-control output {
+  color: #b8cbd5;
+  font-size: calc(9px * var(--epicscope-font-interface-scale));
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Interface text: menus, settings and general controls. */
+.settings-popover-head strong,
+.settings-section > header strong,
+.settings-mode-body--analyzer p strong,
+.settings-mode-body--histogram p strong,
+.logger-layout-menu-button,
+.logger-layout-choice,
+.logger-arrange-choice,
+.logger-layout-actions button,
+.analyzer-header-view select,
+.histogram-header-view select,
+.load-data-menu button,
+.global-switch-menu button {
+  font-size: calc(10px * var(--epicscope-font-interface-scale));
+}
+
+.settings-popover-head small,
+.settings-section > header small,
+.settings-field > span,
+.settings-toggle strong,
+.settings-shortcuts strong,
+.settings-ini-source strong,
+.settings-persistence strong {
+  font-size: calc(9px * var(--epicscope-font-interface-scale));
+}
+
+/* Information/help text: explanations should be independently readable. */
+.analyzer-head p,
+.specialized-analyzer-banner span:not(.specialized-analyzer-badge),
+.specialized-analyzer-guidance span,
+.specialized-analyzer-empty span,
+.specialized-analyzer-evidence > header span,
+.settings-toggle small,
+.settings-shortcuts small,
+.settings-ini-source small,
+.settings-persistence small,
+.settings-note,
+.settings-mode-body--analyzer > small,
+.settings-mode-body--histogram > small {
+  font-size: calc(9px * var(--epicscope-font-info-scale)) !important;
+  line-height: 1.45;
+}
+
+.specialized-analyzer-guidance strong,
+.specialized-analyzer-evidence > header strong {
+  font-size: calc(9px * var(--epicscope-font-info-scale)) !important;
+}
+
+.idle-analyzer-info {
+  width: calc(14px * var(--epicscope-font-info-scale)) !important;
+  height: calc(14px * var(--epicscope-font-info-scale)) !important;
+  font-size: calc(9px * var(--epicscope-font-info-scale)) !important;
+}
+
+/* Analyzer data/results: controls, result cards, events and table text. */
+.specialized-analyzer-controls label > span,
+.specialized-analyzer-options-grid label > span,
+.specialized-analyzer-summary span,
+.specialized-analyzer-events > header span,
+.specialized-analyzer-table {
+  font-size: calc(8px * var(--epicscope-font-analyzer-scale)) !important;
+}
+
+.specialized-analyzer-controls select,
+.specialized-analyzer-controls button,
+.specialized-analyzer-options-grid input,
+.specialized-analyzer-summary strong,
+.specialized-analyzer-events > header strong {
+  font-size: calc(10px * var(--epicscope-font-analyzer-scale)) !important;
+}
+
+.specialized-analyzer-table th,
+.specialized-analyzer-table td {
+  font-size: calc(9px * var(--epicscope-font-analyzer-scale));
+}
