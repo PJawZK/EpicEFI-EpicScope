@@ -1,4 +1,4 @@
-name: Prune merged branches
+name: Prune reviewed branches
 
 on:
   push:
@@ -14,36 +14,39 @@ jobs:
   prune:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Fetch all branches
-        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune
-
-      - name: Delete branches already contained in main
+      - name: Delete reviewed stale branches
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          base='origin/main'
-          deleted=0
-          kept=0
 
-          while IFS= read -r ref; do
-            branch="${ref#refs/remotes/origin/}"
-            [[ "$branch" == 'main' || "$branch" == 'HEAD' ]] && continue
+          branches=(
+            'analyzer/foundation-phase1'
+            'analyzer/shared-comparison-qualification'
+            'fix/freeform-hidden-pane-geometry'
+            'fix/load-newly-visible-pane-traces'
+            'fix/load-newly-visible-pane-traces-clean'
+            'fix/visible-pane-trace-invariant'
+            'phase1/log-mlg-foundation'
+            'phase1/log-mlg-plan'
+            'phase1/mlg-counter-wrap-fix'
+            'phase1/mlg-diagnostics-ui'
+            'phase1/web-boot'
+            'phase1/web-boot-finalize'
+            'phase1/web-boot-plan'
+            'phase1/web-reference'
+            'refactor/extract-bug-report-health-v1'
+            'cleanup/remove-superseded-branches'
+          )
 
-            if git merge-base --is-ancestor "$ref" "$base"; then
+          for branch in "${branches[@]}"; do
+            encoded="${branch//\//%2F}"
+            if gh api --silent "repos/$GH_REPO/git/ref/heads/$encoded" >/dev/null 2>&1; then
               echo "DELETE $branch"
-              git push origin --delete "$branch"
-              deleted=$((deleted + 1))
+              gh api --method DELETE "repos/$GH_REPO/git/refs/heads/$encoded"
             else
-              echo "KEEP   $branch (contains commits not in main)"
-              kept=$((kept + 1))
+              echo "SKIP   $branch (already absent)"
             fi
-          done < <(git for-each-ref --format='%(refname)' refs/remotes/origin/ | sort)
-
-          echo "Deleted merged branches: $deleted"
-          echo "Kept branches with unique commits: $kept"
+          done
