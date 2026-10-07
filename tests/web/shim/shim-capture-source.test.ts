@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createShimCaptureSource } from '../../../apps/web/src/adapters/shim/shim-capture-source';
 import { ShimCaptureSession } from '../../../apps/web/src/adapters/shim/shim-capture-session';
 import { ShimLiveNumericChannelDataSource } from '../../../apps/web/src/adapters/shim/shim-live-data-source';
-import type { ShimSchema, ShimStreamDefinitionMessage, ShimWelcomeMessage } from '../../../apps/web/src/adapters/shim/shim-protocol';
+import type { ShimSchema, ShimStreamDefinitionMessage } from '../../../apps/web/src/adapters/shim/shim-protocol';
 import type { ShimTelemetryFrame } from '../../../apps/web/src/adapters/shim/shim-binary-decoder';
 
 const definition: ShimStreamDefinitionMessage = {
@@ -20,28 +20,21 @@ const definition: ShimStreamDefinitionMessage = {
 
 const schema: ShimSchema = {
   id: 'schema-1',
+  iniHash: 'hash',
+  decoderVersion: '1',
+  complete: true,
   decodable: true,
   channels: [
-    { id: 'RPMValue', name: 'RPMValue', unit: 'rpm', type: 'float64' },
-    { id: 'coolant', name: 'coolant', unit: 'C', type: 'float64' },
-    { id: 'unused', name: 'unused', unit: '', type: 'float64' },
+    { id: 'RPMValue', name: 'RPMValue', unit: 'rpm', type: 'number' },
+    { id: 'coolant', name: 'coolant', unit: 'C', type: 'number' },
+    { id: 'unused', name: 'unused', unit: '', type: 'number' },
   ],
 };
 
-const welcome = {
-  type: 'welcome',
-  protocolVersion: 1,
-  clockId: 'clock-a',
-  generation: 4,
-  simulator: false,
-  ecu: { signature: 'epicEFI-test' },
-  schema: { id: 'schema-1', iniHash: 'hash' },
-  capabilities: [],
-  limits: { maxStreams: 16, maxChannelsPerStream: 256, maxRateHz: 50, maxDeliveryHz: 50 },
-} as ShimWelcomeMessage;
-
 function frame(streamId: number, generation: bigint, deliveryLoss = 0): ShimTelemetryFrame {
   return {
+    encoding: 'epicefi-f64-v1',
+    flags: deliveryLoss > 0 ? 1 : 0,
     streamId,
     generation,
     deliverySequence: 1n,
@@ -76,7 +69,6 @@ describe('createShimCaptureSource', () => {
       capture,
       channelData: new ShimLiveNumericChannelDataSource(capture),
       schema,
-      welcome,
     });
 
     expect(source.recordCount).toBe(2);
@@ -104,6 +96,7 @@ describe('createShimCaptureSource', () => {
         quality: new Uint8Array([0, 0]),
       }],
       deliveryLoss: 0,
+      flags: 0,
     });
 
     const source = createShimCaptureSource({
@@ -111,7 +104,6 @@ describe('createShimCaptureSource', () => {
       capture,
       channelData: new ShimLiveNumericChannelDataSource(capture),
       schema,
-      welcome,
     });
 
     expect(source.summary.diagnostics[0]?.code).toBe('SHIM_DELIVERY_LOSS');
