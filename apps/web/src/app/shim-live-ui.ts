@@ -1,6 +1,8 @@
+import { createShimCaptureSource } from '../adapters/shim/shim-capture-source';
 import { ShimTelemetryClient, type ShimTelemetryClientEvent } from '../adapters/shim/shim-telemetry-client';
 import { ShimLiveSession } from '../adapters/shim/shim-live-session';
 import type { ShimSchema } from '../adapters/shim/shim-protocol';
+import { dispatchShimCaptureSource } from './shim-capture-source-event';
 
 const STYLE_ID = 'epicscope-shim-live-ui-style';
 
@@ -70,12 +72,14 @@ export function installShimLiveUi(root: HTMLElement): void {
   toolbar.innerHTML = `
     <button type="button" class="shim-live-channels">Channels…</button>
     <button type="button" class="shim-live-record" disabled>Record</button>
+    <button type="button" class="shim-live-open-capture" disabled>Open Capture</button>
     <span class="shim-live-state">Disconnected</span>
   `;
   loggerTools.prepend(toolbar);
 
   const channelsButton = toolbar.querySelector<HTMLButtonElement>('.shim-live-channels')!;
   const recordButton = toolbar.querySelector<HTMLButtonElement>('.shim-live-record')!;
+  const openCaptureButton = toolbar.querySelector<HTMLButtonElement>('.shim-live-open-capture')!;
   const liveState = toolbar.querySelector<HTMLElement>('.shim-live-state')!;
 
   const dialog = document.createElement('dialog');
@@ -107,10 +111,12 @@ export function installShimLiveUi(root: HTMLElement): void {
   let selected = new Set<string>();
   let maxChannels = 0;
   let connected = false;
+  let captureId: string | undefined;
 
   const updateSelectionCount = (): void => {
     count.textContent = `${selected.size} selected${maxChannels > 0 ? ` / ${maxChannels} max` : ''}`;
     recordButton.disabled = !connected || selected.size === 0 || selected.size > maxChannels || session?.isRecording === true;
+    openCaptureButton.disabled = session?.state !== 'stopped' || !session.capture || session.capture.sampleCount === 0 || !session.dataSource || !schema || !client?.welcome;
   };
 
   const renderChannelList = (): void => {
@@ -142,10 +148,15 @@ export function installShimLiveUi(root: HTMLElement): void {
     updateSelectionCount();
   };
 
+  let captureOpened = false;
   const setHeaderLive = (detail: string): void => {
+    if (captureOpened) return;
     modeChip.textContent = session?.isRecording ? 'LIVE · SHIM · RECORDING' : 'LIVE · SHIM';
     loadedLog.title = 'Live ts_shim source';
-    loadedLog.innerHTML = `<span>Shim</span><strong class="shim-live-detail">${detail}</strong>`;
+    const label = loadedLog.querySelector<HTMLElement>(':scope > span');
+    const value = loadedLog.querySelector<HTMLElement>(':scope > strong');
+    if (label) label.textContent = 'Shim';
+    if (value) { value.textContent = detail; value.classList.add('shim-live-detail'); }
     parserStatus.textContent = 'TS-SHIM · same-origin telemetry';
   };
 
@@ -180,7 +191,7 @@ export function installShimLiveUi(root: HTMLElement): void {
         toolbar.hidden = true;
         setButtonText(connectButton, 'Connect Shim…', 'Same-origin live telemetry');
         liveState.textContent = 'Disconnected';
-        if (!session?.isRecording) resetRecordedHeader();
+        if (!session?.isRecording && !captureOpened) resetRecordedHeader();
       } else if (event.state === 'reconnecting') {
         toolbar.hidden = false;
         liveState.textContent = 'Reconnecting…';
@@ -202,9 +213,7 @@ export function installShimLiveUi(root: HTMLElement): void {
       liveState.textContent = `Reconnect in ${(event.delayMs / 1000).toFixed(1)} s`;
       return;
     }
-    if (event.type === 'protocolError') {
-      appStatus.textContent = `Shim: ${event.error.message}`;
-    }
+    if (event.type === 'protocolError') appStatus.textContent = `Shim: ${event.error.message}`;
   };
 
   const connect = (): void => {
@@ -223,6 +232,7 @@ export function installShimLiveUi(root: HTMLElement): void {
         if (event.state === 'recording' || event.state === 'waiting-stream' || event.state === 'waiting-reconnect') {
           recordButton.textContent = 'Stop';
           recordButton.disabled = false;
+          openCaptureButton.disabled = true;
           modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : 'LIVE · SHIM · RECORDING';
         } else if (event.state === 'stopped') {
           recordButton.textContent = 'Record';
@@ -252,10 +262,11 @@ export function installShimLiveUi(root: HTMLElement): void {
     selected.clear();
     connected = false;
     maxChannels = 0;
+    captureId = undefined;
     toolbar.hidden = true;
     setButtonText(connectButton, 'Connect Shim…', 'Same-origin live telemetry');
-    resetRecordedHeader();
-    appStatus.textContent = 'Shim disconnected';
+    if (!captureOpened) resetRecordedHeader();
+    appStatus.textContent = captureOpened ? 'Shim disconnected · retained capture remains active' : 'Shim disconnected';
   };
 
   connectButton.addEventListener('click', () => {
@@ -281,6 +292,8 @@ export function installShimLiveUi(root: HTMLElement): void {
     }
     const welcome = client.welcome;
     if (!welcome) return;
+    captureId = `shim:${Date.now()}:${welcome.generation}`;
+    openCaptureButton.disabled = true;
     session.startRecording({
       channels: [...selected],
       mode: 'series',
@@ -289,5 +302,21 @@ export function installShimLiveUi(root: HTMLElement): void {
     });
     setHeaderLive(`${selected.size} channels · ${welcome.limits.maxRateHz} Hz`);
     appStatus.textContent = `Shim recording armed · ${selected.size} channels`;
+  });
+  openCaptureButton.addEventListener('click', () => {
+    const capture = session?.capture;
+    const dataSource = session?.dataSource;
+    const welcome = client?.welcome;
+    if (!capture || !dataSource || !schema || !welcome || capture.sampleCount === 0) return;
+    const source = createShimCaptureSource({
+      captureId: captureId ?? `shim:${Date.now()}:${welcome.generation}`,
+      capture,
+      channelData: dataSource,
+      schema,
+    });
+    captureOpened = true;
+    dispatchShimCaptureSource(root, source);
+    modeChip.textContent = 'CAPTURE · SHIM';
+    appStatus.textContent = `Shim capture opened · ${source.recordCount.toLocaleString()} samples`;
   });
 }
