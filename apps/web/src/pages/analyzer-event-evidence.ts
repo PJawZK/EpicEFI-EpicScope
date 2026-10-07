@@ -1,4 +1,4 @@
-import '../../app/font-size-settings';
+import '../app/font-size-settings';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import { ensureIdleAnalyzerHelp } from './idle-analyzer-help';
 
