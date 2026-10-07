@@ -41,6 +41,7 @@ import {
   createWorkspaceHistory,
   type WebWorkspaceState,
 } from '../state/workspace-state';
+import { SHIM_CAPTURE_SOURCE_EVENT, type ShimCaptureSourceEventDetail } from './shim-capture-source-event';
 
 function importErrorMessage(error: unknown): string {
   if (error instanceof MlgFormatError) {
@@ -370,6 +371,7 @@ export function mountAppShell(root: HTMLElement): void {
   if (!brandButton || !brandMenu || !loadDataButton || !loadDataMenu || !openButton || !loadIniButton || !loadMsqButton || !loadedLog || !appStatus || !parserStatus || !modeChip || !settingsButton || !settingsPopover || !playbackSpeed || !samplePoints || !overviewTraces || !performanceVisible || !undoButton || !redoButton || !unloadIniButton || !iniStatus || !forgetWorkspaceButton || !persistenceStatus || !clearChannelCacheButton || !channelCacheStatus) {
     throw new Error('EpicScope application shell structure is incomplete.');
   }
+  modeChip.dataset.loggerSource = 'recorded';
 
   clearChannelCacheButton.addEventListener('click', () => {
     clearChannelCacheButton.disabled = true;
@@ -892,7 +894,7 @@ export function mountAppShell(root: HTMLElement): void {
     loggerToolsSlot.hidden = !loggerActive;
     undoButton.hidden = !loggerActive;
     redoButton.hidden = !loggerActive;
-    modeChip.textContent = loggerActive ? 'RECORDED' : analyzerActive ? 'ANALYZER' : 'HISTOGRAM';
+    modeChip.textContent = loggerActive ? (modeChip.dataset.loggerSource === 'shim' ? 'CAPTURE · SHIM' : 'RECORDED') : analyzerActive ? 'ANALYZER' : 'HISTOGRAM';
 
     for (const choice of modeChoices) {
       const choiceMode = choice.dataset.epicscopeMode;
@@ -1286,6 +1288,39 @@ export function mountAppShell(root: HTMLElement): void {
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
+  root.addEventListener(SHIM_CAPTURE_SOURCE_EVENT, (event) => {
+    const detail = (event as CustomEvent<ShimCaptureSourceEventDetail>).detail;
+    const source = detail?.source;
+    if (!source || source.recordCount < 1) return;
+
+    activeStagedImport?.cancel();
+    activeStagedImport = undefined;
+    currentRawLog = {
+      summary: source.summary,
+      recordCount: source.recordCount,
+      channelData: source.channelData,
+    };
+    activeIniBinding = undefined;
+    activeWorkspaceSource = undefined;
+    workspacePersistenceBlocked = false;
+    forgetWorkspaceButton.disabled = true;
+    modeChip.dataset.loggerSource = 'shim';
+
+    loggerPage.setLog(source.summary, source.recordCount, source.channelData);
+    loadedLog.textContent = source.summary.source.displayName;
+    loggerPage.setDiagnostics(source.summary.diagnostics);
+    parserStatus.textContent = `TS-SHIM · ${source.recordCount.toLocaleString()} samples · ${source.summary.channels.length.toLocaleString()} channels · retained capture`;
+    appStatus.textContent = `Shim capture active · ${source.recordCount.toLocaleString()} samples`;
+    setPersistenceStatus('Shim capture uses the reusable workspace structure · capture navigation is session-only.');
+
+    if (activeMode !== 'logger') setEpicScopeMode('logger');
+    else modeChip.textContent = 'CAPTURE · SHIM';
+    void loggerPage.restoreActiveWorkspace().then(() => {
+      resetWorkspaceHistory();
+      scheduleWorkspaceSave();
+    });
+  });
+
   const priorityCaptureSelectorsForWorkspace = (workspaceState: WebWorkspaceState) => {
     const activeWorkspace = workspaceState.logger.workspaces.find((workspace) => workspace.id === workspaceState.logger.activeWorkspaceId);
     if (!activeWorkspace) return [];
@@ -1424,6 +1459,7 @@ export function mountAppShell(root: HTMLElement): void {
     fileInput.value = '';
     if (!file) return;
 
+    modeChip.dataset.loggerSource = 'recorded';
     activeStagedImport?.cancel();
     activeStagedImport = undefined;
     openButton.disabled = true;

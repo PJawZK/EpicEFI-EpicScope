@@ -148,10 +148,15 @@ export function installShimLiveUi(root: HTMLElement): void {
     updateSelectionCount();
   };
 
+  let captureOpened = false;
   const setHeaderLive = (detail: string): void => {
+    if (captureOpened) return;
     modeChip.textContent = session?.isRecording ? 'LIVE · SHIM · RECORDING' : 'LIVE · SHIM';
     loadedLog.title = 'Live ts_shim source';
-    loadedLog.innerHTML = `<span>Shim</span><strong class="shim-live-detail">${detail}</strong>`;
+    const label = loadedLog.querySelector<HTMLElement>(':scope > span');
+    const value = loadedLog.querySelector<HTMLElement>(':scope > strong');
+    if (label) label.textContent = 'Shim';
+    if (value) { value.textContent = detail; value.classList.add('shim-live-detail'); }
     parserStatus.textContent = 'TS-SHIM · same-origin telemetry';
   };
 
@@ -310,7 +315,9 @@ export function installShimLiveUi(root: HTMLElement): void {
       schema,
       welcome,
     });
+    captureOpened = true;
     dispatchShimCaptureSource(root, source);
+    modeChip.textContent = 'CAPTURE · SHIM';
     appStatus.textContent = `Shim capture opened · ${source.recordCount.toLocaleString()} samples`;
   });
 }
