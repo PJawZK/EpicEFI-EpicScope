@@ -2034,10 +2034,11 @@ export function createLoggerPage(): LoggerPageController {
         followWindowMs: options.followWindowMs ?? 10_000,
       });
       syncViewport(nextViewport);
-      if (options.followLatest) setCursorWithoutFollow(summary.timeRange.endMs);
     }
 
+    // Update graph source bounds before moving graph cursors to the new live edge.
     await Promise.all(paneRuntimes.map((runtime) => runtime.graph.refreshGrowingSource(summary.timeRange)));
+    if (options.followLatest && summary.timeRange) setCursorWithoutFollow(summary.timeRange.endMs);
     syncActivePaneContext();
     refreshSelectedChannelStatistics();
   };

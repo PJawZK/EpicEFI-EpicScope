@@ -233,7 +233,7 @@ export function installShimLiveUi(root: HTMLElement): void {
       if (event.type === 'captureChanged') {
         const loss = event.deliveryLossCount > 0 ? ` · loss ${event.deliveryLossCount}` : '';
         liveState.textContent = `${event.sampleCount.toLocaleString()} samples${loss}`;
-        modeChip.textContent = captureOpened ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · RECORDING';
+        modeChip.textContent = captureOpened ? (followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW') : 'LIVE · SHIM · RECORDING';
         updateSelectionCount();
         const now = performance.now();
         if (captureOpened && now - lastLiveDispatchMs >= 100) {
@@ -251,12 +251,13 @@ export function installShimLiveUi(root: HTMLElement): void {
           recordButton.textContent = 'Stop';
           recordButton.disabled = false;
           updateSelectionCount();
-          modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : (captureOpened ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · RECORDING');
+          modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : (captureOpened ? (followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW') : 'LIVE · SHIM · RECORDING');
         } else if (event.state === 'stopped') {
           recordButton.textContent = 'Record';
           recordButton.dataset.recording = 'false';
           appStatus.textContent = `Shim capture stopped · ${session?.capture?.sampleCount ?? 0} samples retained`;
-          setHeaderLive(`${session?.capture?.sampleCount.toLocaleString() ?? '0'} samples retained`);
+          if (captureOpened) modeChip.textContent = 'CAPTURE · SHIM';
+          else setHeaderLive(`${session?.capture?.sampleCount.toLocaleString() ?? '0'} samples retained`);
           updateSelectionCount();
         }
       } else if (event.type === 'error') {
@@ -334,7 +335,7 @@ export function installShimLiveUi(root: HTMLElement): void {
     const source = createShimCaptureSource({ captureId: captureId ?? `shim:${Date.now()}:${welcome.generation}`, capture, channelData: dataSource, schema });
     captureOpened = true;
     dispatchShimCaptureSource(root, source, 'open', followLatest);
-    modeChip.textContent = session?.isRecording ? 'LIVE · SHIM · FOLLOW' : 'CAPTURE · SHIM';
+    modeChip.textContent = session?.isRecording ? (followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW') : 'CAPTURE · SHIM';
     appStatus.textContent = session?.isRecording
       ? `Live shim view active · ${source.recordCount.toLocaleString()} samples`
       : `Shim capture opened · ${source.recordCount.toLocaleString()} samples`;
@@ -344,6 +345,7 @@ export function installShimLiveUi(root: HTMLElement): void {
     followLatest = !followLatest;
     followButton.setAttribute('aria-pressed', String(followLatest));
     followButton.textContent = followLatest ? 'Follow' : 'Follow Off';
+    modeChip.textContent = followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW';
     appStatus.textContent = followLatest ? 'Live follow enabled' : 'Live follow paused · inspect history freely';
   });
 }
