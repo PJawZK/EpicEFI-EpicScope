@@ -3,7 +3,7 @@ import {
   numericSampleQualityToValidity,
   type NumericChannelRange,
   type NumericSampleQualityCode,
-} from '../../../../core/log-model/log-types';
+} from '../../../../../core/log-model/log-types';
 import { nanosecondsDeltaToMilliseconds, type ShimTelemetryFrame } from './shim-binary-decoder';
 import { ShimProtocolError, type ShimStreamDefinitionMessage } from './shim-protocol';
 
