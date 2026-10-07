@@ -1,0 +1,142 @@
+name: SHIM-8 live follow patch
+
+on:
+  push:
+    branches: [shim/live-follow-v1-work]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, '[shim8-patched]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: shim/live-follow-v1-work
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Patch live follow integration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'{label} anchor missing')
+              return text.replace(old, new, 1)
+
+          # Graph viewport: incremental growth refresh and rich-quality-preserving range merge.
+          p = Path('apps/web/src/components/graph-viewport.ts')
+          s = p.read_text()
+          s = replace_once(s,
+              "  refreshValidity(): void;\n  setHighZoomSamplePointsVisible(visible: boolean): void;",
+              "  refreshValidity(): void;\n  refreshGrowingSource(timeRange: LogTimeRange | undefined): Promise<void>;\n  setHighZoomSamplePointsVisible(visible: boolean): void;",
+              'graph interface')
+          s = replace_once(s,
+              "    const validity = new Uint8Array(sampleCount);\n\n    const copy = (range: NumericChannelRange): void => {\n      const offset = range.startSampleIndex - startSampleIndex;\n      timeMs.set(range.timeMs, offset);\n      values.set(range.values, offset);\n      validity.set(range.validity, offset);\n    };\n    copy(first);\n    copy(second);\n    return { startSampleIndex, timeMs, values, validity };",
+              "    const validity = new Uint8Array(sampleCount);\n    const quality = first.quality && second.quality ? new Uint8Array(sampleCount) : undefined;\n\n    const copy = (range: NumericChannelRange): void => {\n      const offset = range.startSampleIndex - startSampleIndex;\n      timeMs.set(range.timeMs, offset);\n      values.set(range.values, offset);\n      validity.set(range.validity, offset);\n      if (quality && range.quality) quality.set(range.quality, offset);\n    };\n    copy(first);\n    copy(second);\n    return { startSampleIndex, timeMs, values, validity, ...(quality ? { quality } : {}) };",
+              'quality merge')
+          graph_anchor = "  const activatePreloadedChannels = (\n"
+          graph_method = "  const refreshGrowingSource = async (nextTimeRange: LogTimeRange | undefined): Promise<void> => {\n    timeRange = nextTimeRange;\n    const dataSource = channelData;\n    if (!dataSource || activeTraces.size === 0) {\n      draw();\n      return;\n    }\n\n    const targetSampleCount = dataSource.sampleCount;\n    const updates = [...activeTraces.entries()].map(async ([channelId, trace]) => {\n      const existingEnd = trace.range.startSampleIndex + trace.range.values.length;\n      if (existingEnd >= targetSampleCount) return;\n      const missingCount = targetSampleCount - existingEnd;\n      const result = dataSource.readChannelsRange\n        ? await dataSource.readChannelsRange([channelId], existingEnd, missingCount)\n        : {\n            ranges: new Map([[channelId, await dataSource.readChannelRange(channelId, existingEnd, missingCount)]]),\n            performance: {\n              channelCount: 1,\n              cacheHitChannelIds: [] as readonly string[],\n              physicalReadCount: 0,\n              physicalBytesRead: 0,\n              physicalReadMs: 0,\n            },\n          };\n      const appended = result.ranges.get(channelId);\n      const latest = activeTraces.get(channelId);\n      if (!appended || !latest || latest !== trace) return;\n      const merged = mergeContiguousRanges(trace.range, appended);\n      const fullStatistics = summarizeNumericRange(merged);\n      activeTraces.set(channelId, {\n        ...trace,\n        range: merged,\n        scale: stableScaleFromStatistics(fullStatistics),\n        fullStatistics,\n        statisticsComplete: merged.startSampleIndex === 0 && merged.values.length >= targetSampleCount,\n      });\n      envelopeCache.delete(channelId);\n    });\n\n    await Promise.all(updates);\n    renderReadout();\n    emitCursorValues();\n    draw();\n  };\n\n"
+          if 'const refreshGrowingSource = async' not in s:
+              s = replace_once(s, graph_anchor, graph_method + graph_anchor, 'graph method insertion')
+          return_anchor = "    refreshValidity,\n    setHighZoomSamplePointsVisible,"
+          s = replace_once(s, return_anchor, "    refreshValidity,\n    refreshGrowingSource,\n    setHighZoomSamplePointsVisible,", 'graph return')
+          p.write_text(s)
+
+          # Timeline shell: grow full bounds without clearing A/B, markers, playback state, or overview traces.
+          p = Path('apps/web/src/components/timeline-shell.ts')
+          s = p.read_text()
+          s = replace_once(s,
+              "  setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;\n  setOverviewContent",
+              "  setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;\n  extendTimeRange(timeRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void;\n  setOverviewContent",
+              'timeline interface')
+          timeline_anchor = "  const setViewport = (nextViewport: TimelineViewport | undefined): void => {"
+          timeline_method = "  const extendTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void => {\n    fullStartMs = nextRange?.startMs ?? fullStartMs;\n    fullEndMs = nextRange?.endMs ?? fullEndMs;\n    sourceMarkers = markers;\n    cursorTimeMs = Math.min(fullEndMs, Math.max(fullStartMs, cursorTimeMs));\n    overviewText.textContent = nextRange\n      ? `${recordCount.toLocaleString()} live samples · focus window shows the graph viewport.`\n      : `${recordCount.toLocaleString()} live samples; duration unavailable.`;\n    const enabled = fullDuration() > 0;\n    for (const button of transportButtons) button.disabled = !enabled;\n    for (const button of viewportButtons) button.disabled = !enabled;\n    progress.tabIndex = enabled ? 0 : -1;\n    renderRangeState();\n    updateOverviewMessage();\n    renderOverview();\n    renderViewport();\n    renderCursor();\n  };\n\n"
+          if 'const extendTimeRange =' not in s:
+              s = replace_once(s, timeline_anchor, timeline_method + timeline_anchor, 'timeline method insertion')
+          timeline_return = "    setTimeRange,\n    setOverviewContent,"
+          s = replace_once(s, timeline_return, "    setTimeRange,\n    extendTimeRange,\n    setOverviewContent,", 'timeline return')
+          p.write_text(s)
+
+          # Logger page: normalized growing-source refresh and follow-window application.
+          p = Path('apps/web/src/pages/logger-page.ts')
+          s = p.read_text()
+          import_anchor = "import {\n  centerViewportOn,"
+          if "from '../../../../core/timeline/live-follow'" not in s:
+              s = s.replace(import_anchor, "import { extendLiveViewport } from '../../../../core/timeline/live-follow';\n" + import_anchor, 1)
+          s = replace_once(s,
+              "  refreshValidity(): void;\n  setPlaybackSpeed(speed: number): void;",
+              "  refreshValidity(): void;\n  refreshGrowingLog(\n    summary: ImportedLogSummary,\n    recordCount: number,\n    options?: { readonly followLatest?: boolean; readonly followWindowMs?: number },\n  ): Promise<void>;\n  setPlaybackSpeed(speed: number): void;",
+              'logger interface')
+          logger_anchor = "  const setImportError = (message: string): void => {"
+          logger_method = "  const refreshGrowingLog = async (\n    summary: ImportedLogSummary,\n    recordCount: number,\n    options: { readonly followLatest?: boolean; readonly followWindowMs?: number } = {},\n  ): Promise<void> => {\n    if (!channelDataSource) return;\n    logMarkers = summary.markers;\n    diagnostics.setDiagnostics(summary.diagnostics);\n    timeline.extendTimeRange(summary.timeRange, recordCount, logMarkers);\n\n    if (summary.timeRange) {\n      const nextViewport = extendLiveViewport(viewport, summary.timeRange, {\n        followLatest: options.followLatest ?? false,\n        followWindowMs: options.followWindowMs ?? 10_000,\n      });\n      syncViewport(nextViewport);\n      if (options.followLatest) setCursorWithoutFollow(summary.timeRange.endMs);\n    }\n\n    await Promise.all(paneRuntimes.map((runtime) => runtime.graph.refreshGrowingSource(summary.timeRange)));\n    syncActivePaneContext();\n    refreshSelectedChannelStatistics();\n  };\n\n"
+          if 'const refreshGrowingLog = async' not in s:
+              s = replace_once(s, logger_anchor, logger_method + logger_anchor, 'logger method insertion')
+          logger_return = "    refreshValidity,\n    setPlaybackSpeed,"
+          s = replace_once(s, logger_return, "    refreshValidity,\n    refreshGrowingLog,\n    setPlaybackSpeed,", 'logger return')
+          p.write_text(s)
+
+          # Capture source event: distinguish first install from growing refresh and carry follow preference.
+          p = Path('apps/web/src/app/shim-capture-source-event.ts')
+          s = p.read_text()
+          s = s.replace(
+              "export interface ShimCaptureSourceEventDetail {\n  readonly source: ShimCaptureSource;\n}\n\nexport function dispatchShimCaptureSource(root: HTMLElement, source: ShimCaptureSource): void {\n  root.dispatchEvent(new CustomEvent<ShimCaptureSourceEventDetail>(SHIM_CAPTURE_SOURCE_EVENT, {\n    bubbles: true,\n    detail: { source },\n  }));\n}",
+              "export interface ShimCaptureSourceEventDetail {\n  readonly source: ShimCaptureSource;\n  readonly mode: 'open' | 'refresh';\n  readonly followLatest: boolean;\n}\n\nexport function dispatchShimCaptureSource(\n  root: HTMLElement,\n  source: ShimCaptureSource,\n  mode: 'open' | 'refresh' = 'open',\n  followLatest = true,\n): void {\n  root.dispatchEvent(new CustomEvent<ShimCaptureSourceEventDetail>(SHIM_CAPTURE_SOURCE_EVENT, {\n    bubbles: true,\n    detail: { source, mode, followLatest },\n  }));\n}",
+              1,
+          )
+          p.write_text(s)
+
+          # Application shell: update an already-open shim capture in place instead of reinstalling the source.
+          p = Path('apps/web/src/app/app-shell.ts')
+          s = p.read_text()
+          listener_anchor = "    const source = detail?.source;\n    if (!source || source.recordCount < 1) return;\n\n    activeStagedImport?.cancel();"
+          listener_new = "    const source = detail?.source;\n    if (!source || source.recordCount < 1) return;\n\n    if (detail.mode === 'refresh' && currentRawLog?.summary.source.id === source.summary.source.id) {\n      currentRawLog = { summary: source.summary, recordCount: source.recordCount, channelData: source.channelData };\n      loadedLog.textContent = source.summary.source.displayName;\n      parserStatus.textContent = `TS-SHIM · ${source.recordCount.toLocaleString()} live samples · ${source.summary.channels.length.toLocaleString()} channels`;\n      void loggerPage.refreshGrowingLog(source.summary, source.recordCount, {\n        followLatest: detail.followLatest,\n        followWindowMs: 10_000,\n      });\n      return;\n    }\n\n    activeStagedImport?.cancel();"
+          s = replace_once(s, listener_anchor, listener_new, 'app shell refresh branch')
+          p.write_text(s)
+
+          # Shim UI: View Live during recording, Open Capture after stop, explicit Follow toggle, throttled live refresh.
+          p = Path('apps/web/src/app/shim-live-ui.ts')
+          s = p.read_text()
+          s = replace_once(s,
+              "    <button type=\"button\" class=\"shim-live-open-capture\" disabled>Open Capture</button>\n    <span class=\"shim-live-state\">Disconnected</span>",
+              "    <button type=\"button\" class=\"shim-live-open-capture\" disabled>Open Capture</button>\n    <button type=\"button\" class=\"shim-live-follow\" aria-pressed=\"true\" disabled>Follow</button>\n    <span class=\"shim-live-state\">Disconnected</span>",
+              'shim toolbar')
+          s = replace_once(s,
+              "  const openCaptureButton = toolbar.querySelector<HTMLButtonElement>('.shim-live-open-capture')!;\n  const liveState",
+              "  const openCaptureButton = toolbar.querySelector<HTMLButtonElement>('.shim-live-open-capture')!;\n  const followButton = toolbar.querySelector<HTMLButtonElement>('.shim-live-follow')!;\n  const liveState",
+              'follow button ref')
+          s = replace_once(s,
+              "  let captureId: string | undefined;\n",
+              "  let captureId: string | undefined;\n  let followLatest = true;\n  let lastLiveDispatchMs = 0;\n",
+              'shim state')
+          old_update = "    openCaptureButton.disabled = session?.state !== 'stopped' || !session.capture || session.capture.sampleCount === 0 || !session.dataSource || !schema || !client?.welcome;"
+          new_update = "    const canOpenCapture = Boolean(session?.capture && session.capture.sampleCount > 0 && session.dataSource && schema && client?.welcome);\n    openCaptureButton.disabled = !canOpenCapture;\n    openCaptureButton.textContent = session?.isRecording ? (captureOpened ? 'Viewing Live' : 'View Live') : 'Open Capture';\n    followButton.disabled = !captureOpened || !session?.isRecording;"
+          s = replace_once(s, old_update, new_update, 'selection update')
+          capture_changed = "      if (event.type === 'captureChanged') {\n        const loss = event.deliveryLossCount > 0 ? ` · loss ${event.deliveryLossCount}` : '';\n        liveState.textContent = `${event.sampleCount.toLocaleString()} samples${loss}`;\n        modeChip.textContent = 'LIVE · SHIM · RECORDING';"
+          capture_changed_new = "      if (event.type === 'captureChanged') {\n        const loss = event.deliveryLossCount > 0 ? ` · loss ${event.deliveryLossCount}` : '';\n        liveState.textContent = `${event.sampleCount.toLocaleString()} samples${loss}`;\n        modeChip.textContent = captureOpened ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · RECORDING';\n        updateSelectionCount();\n        const now = performance.now();\n        if (captureOpened && now - lastLiveDispatchMs >= 100) {\n          const capture = session?.capture;\n          const dataSource = session?.dataSource;\n          const welcome = client?.welcome;\n          if (capture && dataSource && schema && welcome && capture.sampleCount > 0) {\n            lastLiveDispatchMs = now;\n            dispatchShimCaptureSource(root, createShimCaptureSource({\n              captureId: captureId ?? `shim:${Date.now()}:${welcome.generation}`,\n              capture, channelData: dataSource, schema,\n            }), 'refresh', followLatest);\n          }\n        }"
+          s = replace_once(s, capture_changed, capture_changed_new, 'capture changed')
+          s = replace_once(s,
+              "          openCaptureButton.disabled = true;\n          modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : 'LIVE · SHIM · RECORDING';",
+              "          updateSelectionCount();\n          modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : (captureOpened ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · RECORDING');",
+              'recording state')
+          s = replace_once(s,
+              "    captureId = `shim:${Date.now()}:${welcome.generation}`;\n    openCaptureButton.disabled = true;\n    session.startRecording",
+              "    captureId = `shim:${Date.now()}:${welcome.generation}`;\n    captureOpened = false;\n    followLatest = true;\n    followButton.setAttribute('aria-pressed', 'true');\n    lastLiveDispatchMs = 0;\n    openCaptureButton.disabled = true;\n    session.startRecording",
+              'record start reset')
+          open_handler = "  openCaptureButton.addEventListener('click', () => {\n    const capture = session?.capture;\n    const dataSource = session?.dataSource;\n    const welcome = client?.welcome;\n    if (!capture || !dataSource || !schema || !welcome || capture.sampleCount === 0) return;\n    const source = createShimCaptureSource({\n      captureId: captureId ?? `shim:${Date.now()}:${welcome.generation}`,\n      capture,\n      channelData: dataSource,\n      schema,\n    });\n    captureOpened = true;\n    dispatchShimCaptureSource(root, source);\n    modeChip.textContent = 'CAPTURE · SHIM';\n    appStatus.textContent = `Shim capture opened · ${source.recordCount.toLocaleString()} samples`;\n  });"
+          open_handler_new = "  openCaptureButton.addEventListener('click', () => {\n    const capture = session?.capture;\n    const dataSource = session?.dataSource;\n    const welcome = client?.welcome;\n    if (!capture || !dataSource || !schema || !welcome || capture.sampleCount === 0) return;\n    const source = createShimCaptureSource({\n      captureId: captureId ?? `shim:${Date.now()}:${welcome.generation}`,\n      capture,\n      channelData: dataSource,\n      schema,\n    });\n    captureOpened = true;\n    dispatchShimCaptureSource(root, source, 'open', followLatest);\n    modeChip.textContent = session?.isRecording ? 'LIVE · SHIM · FOLLOW' : 'CAPTURE · SHIM';\n    appStatus.textContent = session?.isRecording\n      ? `Live shim view active · ${source.recordCount.toLocaleString()} samples`\n      : `Shim capture opened · ${source.recordCount.toLocaleString()} samples`;\n    updateSelectionCount();\n  });\n  followButton.addEventListener('click', () => {\n    followLatest = !followLatest;\n    followButton.setAttribute('aria-pressed', String(followLatest));\n    followButton.textContent = followLatest ? 'Follow' : 'Follow Off';\n    appStatus.textContent = followLatest ? 'Live follow enabled' : 'Live follow paused · inspect history freely';\n  });"
+          s = replace_once(s, open_handler, open_handler_new, 'open handler')
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/components/graph-viewport.ts apps/web/src/components/timeline-shell.ts apps/web/src/pages/logger-page.ts apps/web/src/app/shim-capture-source-event.ts apps/web/src/app/app-shell.ts apps/web/src/app/shim-live-ui.ts
+          git commit -m "Add live shim Logger follow mode [shim8-patched]"
+          git push origin HEAD:shim/live-follow-v1-work
