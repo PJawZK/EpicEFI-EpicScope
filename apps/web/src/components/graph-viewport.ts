@@ -160,6 +160,7 @@ export interface GraphViewportController {
   onPendingChannelsChanged(listener: (channelIds: readonly string[]) => void): void;
   loadPendingChannels(): void;
   refreshValidity(): void;
+  refreshGrowingSource(timeRange: LogTimeRange | undefined): Promise<void>;
   setHighZoomSamplePointsVisible(visible: boolean): void;
   setAssignedChannels(channels: readonly ChannelDefinition[]): void;
   setDisplayMode(mode: GraphViewportDisplayMode): void;
@@ -1092,16 +1093,18 @@ export function createGraphViewport(): GraphViewportController {
     const timeMs = new Float64Array(sampleCount);
     const values = new Float64Array(sampleCount);
     const validity = new Uint8Array(sampleCount);
+    const quality = first.quality && second.quality ? new Uint8Array(sampleCount) : undefined;
 
     const copy = (range: NumericChannelRange): void => {
       const offset = range.startSampleIndex - startSampleIndex;
       timeMs.set(range.timeMs, offset);
       values.set(range.values, offset);
       validity.set(range.validity, offset);
+      if (quality && range.quality) quality.set(range.quality, offset);
     };
     copy(first);
     copy(second);
-    return { startSampleIndex, timeMs, values, validity };
+    return { startSampleIndex, timeMs, values, validity, ...(quality ? { quality } : {}) };
   };
 
   const refreshActiveViewportRanges = async (generation: number): Promise<void> => {
@@ -1379,6 +1382,45 @@ export function createGraphViewport(): GraphViewportController {
       window.clearTimeout(toastTimer);
       toastTimer = undefined;
     }
+    draw();
+  };
+
+  const refreshGrowingSource = async (nextTimeRange: LogTimeRange | undefined): Promise<void> => {
+    timeRange = nextTimeRange;
+    const dataSource = channelData;
+    if (!dataSource || activeTraces.size === 0) {
+      draw();
+      return;
+    }
+
+    const targetSampleCount = dataSource.sampleCount;
+    await Promise.all([...activeTraces.entries()].map(async ([channelId, trace]) => {
+      const existingEnd = trace.range.startSampleIndex + trace.range.values.length;
+      if (existingEnd >= targetSampleCount) return;
+      const missingCount = targetSampleCount - existingEnd;
+      const result = dataSource.readChannelsRange
+        ? await dataSource.readChannelsRange([channelId], existingEnd, missingCount)
+        : {
+            ranges: new Map([[channelId, await dataSource.readChannelRange(channelId, existingEnd, missingCount)]]),
+            performance: { channelCount: 1, cacheHitChannelIds: [] as readonly string[], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 },
+          };
+      const appended = result.ranges.get(channelId);
+      const latest = activeTraces.get(channelId);
+      if (!appended || !latest || latest !== trace) return;
+      const merged = mergeContiguousRanges(trace.range, appended);
+      const fullStatistics = summarizeNumericRange(merged);
+      activeTraces.set(channelId, {
+        ...trace,
+        range: merged,
+        scale: stableScaleFromStatistics(fullStatistics),
+        fullStatistics,
+        statisticsComplete: merged.startSampleIndex === 0 && merged.values.length >= targetSampleCount,
+      });
+      envelopeCache.delete(channelId);
+    }));
+
+    renderReadout();
+    emitCursorValues();
     draw();
   };
 
@@ -1742,6 +1784,7 @@ export function createGraphViewport(): GraphViewportController {
     onPendingChannelsChanged: (listener) => { pendingChannelsListener = listener; },
     loadPendingChannels: () => { if (!decodeInFlight) void flushPending(); },
     refreshValidity,
+    refreshGrowingSource,
     setHighZoomSamplePointsVisible: (visible) => {
       highZoomSamplePointsVisible = visible;
       draw();

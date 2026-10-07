@@ -32,6 +32,7 @@ export interface TimelineShellController {
   setOverviewTracesVisible(visible: boolean): void;
   setViewHistoryState(canBack: boolean, canForward: boolean): void;
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
+  extendTimeRange(timeRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
   refreshOverview(): void;
   refreshValidity(): void;
@@ -510,6 +511,25 @@ export function createTimelineShell(): TimelineShellController {
     renderCursor();
   };
 
+  const extendTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void => {
+    fullStartMs = nextRange?.startMs ?? fullStartMs;
+    fullEndMs = nextRange?.endMs ?? fullEndMs;
+    sourceMarkers = markers;
+    cursorTimeMs = Math.min(fullEndMs, Math.max(fullStartMs, cursorTimeMs));
+    overviewText.textContent = nextRange
+      ? `${recordCount.toLocaleString()} live samples · focus window shows the graph viewport.`
+      : `${recordCount.toLocaleString()} live samples; duration unavailable.`;
+    const enabled = fullDuration() > 0;
+    for (const button of transportButtons) button.disabled = !enabled;
+    for (const button of viewportButtons) button.disabled = !enabled;
+    progress.tabIndex = enabled ? 0 : -1;
+    renderRangeState();
+    updateOverviewMessage();
+    renderOverview();
+    renderViewport();
+    renderCursor();
+  };
+
   const setViewport = (nextViewport: TimelineViewport | undefined): void => {
     viewport = nextViewport;
     renderViewport();
@@ -884,6 +904,7 @@ export function createTimelineShell(): TimelineShellController {
     },
     isExpanded: () => expanded,
     setTimeRange,
+    extendTimeRange,
     setOverviewContent,
     refreshOverview: renderOverview,
     refreshValidity: () => {
