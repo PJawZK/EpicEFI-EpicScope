@@ -1139,7 +1139,7 @@ export function mountAppShell(root: HTMLElement): void {
         iniStatus.textContent =
           `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} channels · loaded this session`;
 
-        if (currentRawLog) {
+        if (currentRawLog && currentRawLog.summary.source.format !== 'TS-SHIM') {
           const persistedReusable = reusableWorkspacePersistenceSuspended
             ? applicationWorkspaceStorage.load()?.workspace
             : undefined;

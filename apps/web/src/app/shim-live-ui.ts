@@ -191,7 +191,7 @@ export function installShimLiveUi(root: HTMLElement): void {
         toolbar.hidden = true;
         setButtonText(connectButton, 'Connect Shim…', 'Same-origin live telemetry');
         liveState.textContent = 'Disconnected';
-        if (!session?.isRecording) resetRecordedHeader();
+        if (!session?.isRecording && !captureOpened) resetRecordedHeader();
       } else if (event.state === 'reconnecting') {
         toolbar.hidden = false;
         liveState.textContent = 'Reconnecting…';
@@ -265,8 +265,8 @@ export function installShimLiveUi(root: HTMLElement): void {
     captureId = undefined;
     toolbar.hidden = true;
     setButtonText(connectButton, 'Connect Shim…', 'Same-origin live telemetry');
-    resetRecordedHeader();
-    appStatus.textContent = 'Shim disconnected';
+    if (!captureOpened) resetRecordedHeader();
+    appStatus.textContent = captureOpened ? 'Shim disconnected · retained capture remains active' : 'Shim disconnected';
   };
 
   connectButton.addEventListener('click', () => {
