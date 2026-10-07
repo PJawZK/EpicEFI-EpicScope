@@ -107,3 +107,20 @@ export function installFontSizeSettings(root: HTMLElement): void {
 export function initializeFontSizeSettings(): void {
   applyState(readState());
 }
+
+function autoInstall(): void {
+  initializeFontSizeSettings();
+  const install = (): boolean => {
+    const app = document.querySelector<HTMLElement>('.epicscope-app');
+    if (!app) return false;
+    installFontSizeSettings(app);
+    return !!app.querySelector('.settings-typography');
+  };
+  if (install()) return;
+  const observer = new MutationObserver(() => {
+    if (install()) observer.disconnect();
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+}
+
+autoInstall();
