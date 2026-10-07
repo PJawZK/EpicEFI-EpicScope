@@ -284,7 +284,7 @@ export class ShimTelemetryClient {
   private scheduleReconnect(closeCode?: number): void {
     if (this.manualDisconnect || this.reconnectToken !== undefined) return;
     const index = Math.min(this.reconnectAttempt, DEFAULT_RECONNECT_DELAYS_MS.length - 1);
-    let delayMs = DEFAULT_RECONNECT_DELAYS_MS[index] ?? 15_000;
+    let delayMs: number = DEFAULT_RECONNECT_DELAYS_MS[index] ?? 15_000;
     if (closeCode === CLIENT_QUOTA_CLOSE_CODE) delayMs = Math.max(delayMs, CLIENT_QUOTA_MIN_RETRY_MS);
     this.reconnectAttempt += 1;
     this.setState('reconnecting');
