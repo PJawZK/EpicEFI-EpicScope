@@ -2,7 +2,7 @@ import type { ImportedLogSummary, ParserDiagnostic } from '../../../../../core/l
 import { shimSchemaChannelDefinitions } from './shim-schema-adapter';
 import type { ShimCaptureSession } from './shim-capture-session';
 import type { ShimLiveNumericChannelDataSource } from './shim-live-data-source';
-import type { ShimSchema, ShimWelcomeMessage } from './shim-protocol';
+import type { ShimSchema } from './shim-protocol';
 
 export interface ShimCaptureSource {
   readonly summary: ImportedLogSummary;
@@ -15,11 +15,10 @@ export interface CreateShimCaptureSourceOptions {
   readonly capture: ShimCaptureSession;
   readonly channelData: ShimLiveNumericChannelDataSource;
   readonly schema: ShimSchema;
-  readonly welcome: ShimWelcomeMessage;
 }
 
 export function createShimCaptureSource(options: CreateShimCaptureSourceOptions): ShimCaptureSource {
-  const { capture, channelData, schema, welcome } = options;
+  const { capture, channelData, schema } = options;
   const snapshot = capture.snapshot();
   const selected = new Set(snapshot.channelIds);
   const channels = shimSchemaChannelDefinitions(schema).filter((channel) => selected.has(channel.id));
