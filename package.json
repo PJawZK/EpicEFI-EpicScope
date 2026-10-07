@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:shim": "vite --base / --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
     "build": "npm run typecheck && vite build",
