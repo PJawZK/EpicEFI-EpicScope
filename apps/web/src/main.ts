@@ -18,6 +18,7 @@ import { mountAppShell } from './app/app-shell';
 import { applyUiRefinements } from './app/ui-refinements';
 import { applyNavigationRefinements } from './app/ui-refinements-navigation';
 import { installShimLiveUi } from './app/shim-live-ui';
+import { installShimHttpUi } from './app/shim-http-ui';
 
 const root = document.querySelector<HTMLElement>('#app');
 
@@ -29,6 +30,7 @@ mountAppShell(root);
 applyUiRefinements(root);
 applyNavigationRefinements(root);
 installShimLiveUi(root);
+installShimHttpUi(root);
 
 root.querySelector<HTMLElement>('.histogram-table-size')?.remove();
 const tableSizeSummary = root.querySelector<HTMLElement>('.histogram-table-options > summary');
