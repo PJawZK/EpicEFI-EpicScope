@@ -1,0 +1,49 @@
+name: Prune merged branches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/prune-merged-branches.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch all branches
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune
+
+      - name: Delete branches already contained in main
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='origin/main'
+          deleted=0
+          kept=0
+
+          while IFS= read -r ref; do
+            branch="${ref#refs/remotes/origin/}"
+            [[ "$branch" == 'main' || "$branch" == 'HEAD' ]] && continue
+
+            if git merge-base --is-ancestor "$ref" "$base"; then
+              echo "DELETE $branch"
+              git push origin --delete "$branch"
+              deleted=$((deleted + 1))
+            else
+              echo "KEEP   $branch (contains commits not in main)"
+              kept=$((kept + 1))
+            fi
+          done < <(git for-each-ref --format='%(refname)' refs/remotes/origin/ | sort)
+
+          echo "Deleted merged branches: $deleted"
+          echo "Kept branches with unique commits: $kept"
