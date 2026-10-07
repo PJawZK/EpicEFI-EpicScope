@@ -45,8 +45,8 @@ function installCanvasFontScaling(): void {
   const nativeGet = descriptor.get;
   const nativeSet = descriptor.set;
   Object.defineProperty(CanvasRenderingContext2D.prototype, 'font', {
-    configurable: descriptor.configurable,
-    enumerable: descriptor.enumerable,
+    configurable: descriptor.configurable ?? true,
+    enumerable: descriptor.enumerable ?? false,
     get(this: CanvasRenderingContext2D): string {
       return nativeGet.call(this) as string;
     },
