@@ -1,5 +1,23 @@
 export type LogValidity = 'valid' | 'missing' | 'invalid';
 
+export const NUMERIC_SAMPLE_QUALITY = {
+  valid: 0,
+  invalid: 1,
+  stale: 2,
+  unavailable: 3,
+  lost: 4,
+} as const;
+
+export type NumericSampleQualityCode = typeof NUMERIC_SAMPLE_QUALITY[keyof typeof NUMERIC_SAMPLE_QUALITY];
+
+export function numericSampleQualityIsValid(code: number): boolean {
+  return code === NUMERIC_SAMPLE_QUALITY.valid;
+}
+
+export function numericSampleQualityToValidity(code: number): 0 | 1 {
+  return numericSampleQualityIsValid(code) ? 1 : 0;
+}
+
 export type ParserDiagnosticSeverity = 'info' | 'warning' | 'error';
 
 export interface ParserDiagnostic {
@@ -56,8 +74,10 @@ export interface NumericChannelRange {
   readonly startSampleIndex: number;
   readonly timeMs: Float64Array;
   readonly values: Float64Array;
-  /** 1 = valid source record, 0 = invalid/corrupt source record. */
+  /** Compatibility projection: 1 = usable valid sample, 0 = non-valid sample. */
   readonly validity: Uint8Array;
+  /** Optional richer per-sample quality. Values use NUMERIC_SAMPLE_QUALITY. */
+  readonly quality?: Uint8Array;
   /** Optional full-range statistics computed while source samples were already being decoded. */
   readonly fullStatistics?: NumericChannelStatistics;
   /** Optional exact fixed-block envelope summaries for acceleration before CRC validity is refreshed. */
