@@ -1293,6 +1293,14 @@ export function mountAppShell(root: HTMLElement): void {
     const source = detail?.source;
     if (!source || source.recordCount < 1) return;
 
+    if (detail.mode === 'refresh' && currentRawLog?.summary.source.id === source.summary.source.id) {
+      currentRawLog = { summary: source.summary, recordCount: source.recordCount, channelData: source.channelData };
+      loadedLog.textContent = source.summary.source.displayName;
+      parserStatus.textContent = `TS-SHIM · ${source.recordCount.toLocaleString()} live samples · ${source.summary.channels.length.toLocaleString()} channels`;
+      void loggerPage.refreshGrowingLog(source.summary, source.recordCount, { followLatest: detail.followLatest, followWindowMs: 10_000 });
+      return;
+    }
+
     activeStagedImport?.cancel();
     activeStagedImport = undefined;
     currentRawLog = {

@@ -6,6 +6,7 @@ import type {
   LogMarker,
   ParserDiagnostic,
 } from '../../../../core/log-model/log-types';
+import { extendLiveViewport } from '../../../../core/timeline/live-follow';
 import {
   centerViewportOn,
   createFullViewport,
@@ -184,6 +185,11 @@ export interface LoggerPageController {
   setImportError(message: string): void;
   setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
   refreshValidity(): void;
+  refreshGrowingLog(
+    summary: ImportedLogSummary,
+    recordCount: number,
+    options?: { readonly followLatest?: boolean; readonly followWindowMs?: number },
+  ): Promise<void>;
   setPlaybackSpeed(speed: number): void;
   setHighZoomSamplePointsVisible(visible: boolean): void;
   setTimelineOverviewTracesVisible(visible: boolean): void;
@@ -2012,6 +2018,30 @@ export function createLoggerPage(): LoggerPageController {
     return performance;
   };
 
+  const refreshGrowingLog = async (
+    summary: ImportedLogSummary,
+    recordCount: number,
+    options: { readonly followLatest?: boolean; readonly followWindowMs?: number } = {},
+  ): Promise<void> => {
+    if (!channelDataSource) return;
+    logMarkers = summary.markers;
+    diagnostics.setDiagnostics(summary.diagnostics);
+    timeline.extendTimeRange(summary.timeRange, recordCount, logMarkers);
+
+    if (summary.timeRange) {
+      const nextViewport = extendLiveViewport(viewport, summary.timeRange, {
+        followLatest: options.followLatest ?? false,
+        followWindowMs: options.followWindowMs ?? 10_000,
+      });
+      syncViewport(nextViewport);
+      if (options.followLatest) setCursorWithoutFollow(summary.timeRange.endMs);
+    }
+
+    await Promise.all(paneRuntimes.map((runtime) => runtime.graph.refreshGrowingSource(summary.timeRange)));
+    syncActivePaneContext();
+    refreshSelectedChannelStatistics();
+  };
+
   const setImportError = (message: string): void => {
     workspaceGeneration += 1;
     workspaces = workspaces.map((workspace) => ({
@@ -2336,6 +2366,7 @@ export function createLoggerPage(): LoggerPageController {
       timeline.refreshValidity();
       timeline.refreshOverview();
     },
+    refreshGrowingLog,
     setPlaybackSpeed: (speed) => { timeline.setPlaybackSpeed(speed); },
     setHighZoomSamplePointsVisible: (visible) => {
       paneRuntimes.forEach((runtime) => runtime.graph.setHighZoomSamplePointsVisible(visible));
