@@ -176,6 +176,7 @@ function timeText(ms: number | undefined): string {
 export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let domain: SpecializedAnalyzerDomain = 'idle';
+  let analysisGeneration = 0;
   const rememberedSelections = new Map<string, string>();
 
   const root = document.createElement('section');
@@ -399,6 +400,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   };
 
   const analyzeCurrent = async (): Promise<void> => {
+    const generation = ++analysisGeneration;
     const spec = SPECS[domain];
     const selected = new Map<string, string>();
     const idleSystem = domain === 'idle' ? currentIdleSystem() : 'combined';
@@ -417,6 +419,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     if (!scope) { empty.hidden = false; content.hidden = true; return; }
     const { startMs, endMs } = analyzerScopeBounds(scope);
     const loaded = await context.loadTraces([...selected.values()], startMs, endMs);
+    if (generation !== analysisGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<string, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
