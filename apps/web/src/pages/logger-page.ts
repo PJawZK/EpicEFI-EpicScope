@@ -829,6 +829,10 @@ export function createLoggerPage(): LoggerPageController {
 
     paneRuntimes.forEach((runtime, index) => {
       const inLayout = index < visibleCount;
+      if (!inLayout && runtime.activeChannelIds.size > 0) {
+        runtime.graph.clearChannels({ render: false });
+        runtime.activeChannelIds.clear();
+      }
       const maximized = workspace.maximizedPaneId === runtime.id;
       const hiddenByMaximize = workspace.maximizedPaneId !== undefined && !maximized;
       const visible = inLayout && !hiddenByMaximize;
@@ -1733,6 +1737,16 @@ export function createLoggerPage(): LoggerPageController {
       });
       if (!restoringWorkspaceState && runtime.id === activeWorkspace()?.activePaneId) {
         timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);
+      }
+      const workspace = activeWorkspace();
+      const paneIndex = workspace?.panes.findIndex((pane) => pane.id === runtime.id) ?? -1;
+      const inLayout = workspace !== undefined
+        && paneIndex >= 0
+        && paneIndex < paneCountForLayout(workspace.layout);
+      if (!inLayout) {
+        runtime.graph.clearChannels({ render: false });
+        runtime.activeChannelIds.clear();
+        return;
       }
       window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
     });
