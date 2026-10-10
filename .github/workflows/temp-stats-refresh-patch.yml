@@ -1,0 +1,44 @@
+name: Temporary stats refresh patch
+on:
+  push:
+    branches:
+      - perf/reuse-precrc-stats-refresh-authoritative
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Final patch commit'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/reuse-precrc-stats-refresh-authoritative
+          fetch-depth: 0
+      - name: Patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/components/graph-viewport.ts')
+          text = path.read_text()
+
+          old = """        const statisticsStart = now();\n        const fullStatistics = summarizeNumericRange(range);\n        statisticsMs += now() - statisticsStart;\n"""
+          new = """        const statisticsStart = now();\n        const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);\n        statisticsMs += now() - statisticsStart;\n"""
+          count = text.count(old)
+          assert count == 2, f'expected 2 statistics anchors, found {count}'
+          text = text.replace(old, new)
+
+          old_refresh = """  const refreshValidity = (): void => {\n    // Priority envelope blocks are computed before CRC validation; once source\n    // validity changes, fall back to authoritative raw samples for exact redraws.\n    precomputedEnvelopeBlocksEnabled = false;\n    envelopeCache.clear();\n    emitCursorValues();\n    draw();\n  };\n"""
+          new_refresh = """  const refreshValidity = (): void => {\n    // Priority statistics/envelope blocks are computed before CRC validation.\n    // Full ranges share the mutable CRC-validity array, so refresh their stored\n    // statistics/scale once validation becomes authoritative. Partial ranges keep\n    // copied validity and are materialized again rather than being treated as exact.\n    precomputedEnvelopeBlocksEnabled = false;\n    envelopeCache.clear();\n    const dataSource = channelData;\n    for (const [channelId, trace] of activeTraces) {\n      const fullRange = dataSource !== undefined\n        && trace.range.startSampleIndex === 0\n        && trace.range.values.length === dataSource.sampleCount;\n      if (!fullRange) {\n        if (!materializingTraceIds.has(channelId)) scheduleMaterialization(channelId);\n        continue;\n      }\n      const fullStatistics = summarizeNumericRange(trace.range);\n      activeTraces.set(channelId, {\n        ...trace,\n        fullStatistics,\n        scale: stableScaleFromStatistics(fullStatistics),\n        statisticsComplete: true,\n      });\n    }\n    renderReadout();\n    emitCursorValues();\n    draw();\n  };\n"""
+          count = text.count(old_refresh)
+          assert count == 1, f'expected 1 refreshValidity anchor, found {count}'
+          text = text.replace(old_refresh, new_refresh)
+
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/components/graph-viewport.ts
+          git commit -m "Final patch commit"
+          git push origin HEAD:perf/reuse-precrc-stats-refresh-authoritative
