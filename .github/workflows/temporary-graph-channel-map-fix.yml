@@ -1,0 +1,53 @@
+name: Temporary graph channel map cleanup
+
+on:
+  push:
+    branches:
+      - audit/graph-channel-id-map
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/graph-channel-id-map
+          fetch-depth: 0
+
+      - name: Remove obsolete graph channel array state
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/components/graph-viewport.ts')
+          text = path.read_text()
+          replacements = [
+              ("  let channels: readonly ChannelDefinition[] = [];\n  const channelsById = new Map<string, ChannelDefinition>();", "  const channelsById = new Map<string, ChannelDefinition>();"),
+              ("    channels = nextChannels;\n    channelsById.clear();", "    channelsById.clear();"),
+              ("    channels = [];\n    channelsById.clear();", "    channelsById.clear();"),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count == 1:
+                  text = text.replace(old, new)
+              elif count != 0:
+                  raise SystemExit(f'Unexpected replacement count {count}: {old!r}')
+          path.write_text(text)
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- apps/web/src/components/graph-viewport.ts; then
+            echo "No patch needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/graph-viewport.ts
+          git commit -m "Remove obsolete graph channel array"
+          git push origin HEAD:audit/graph-channel-id-map
