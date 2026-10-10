@@ -1,0 +1,85 @@
+name: Temporary restore activation instrumentation
+
+on:
+  push:
+    branches:
+      - perf/instrument-restore-activation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Instrument workspace restore activation path'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/instrument-restore-activation
+          fetch-depth: 0
+      - name: Patch activation instrumentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_str, old, new):
+              path = Path(path_str)
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one anchor, found {count}: {old[:120]!r}')
+              path.write_text(text.replace(old, new, 1))
+
+          logger = 'apps/web/src/pages/logger-page.ts'
+          replace_once(
+              logger,
+              "  readonly activationMs: number;\n  readonly activationGraphTotalMs: number;\n",
+              "  readonly activationMs: number;\n  readonly activationScheduleMs: number;\n  readonly activationAwaitMs: number;\n  readonly activationToggleDispatchMaxMs: number;\n  readonly activationLoadPendingMaxMs: number;\n  readonly activationToggleAwaitMaxMs: number;\n  readonly activationApplyResultsMaxMs: number;\n  readonly activationGraphTotalMs: number;\n",
+          )
+          replace_once(
+              logger,
+              "    let activationDrawOverlayMs = 0;\n    const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {\n",
+              "    let activationDrawOverlayMs = 0;\n    let activationToggleDispatchMaxMs = 0;\n    let activationLoadPendingMaxMs = 0;\n    let activationToggleAwaitMaxMs = 0;\n    let activationApplyResultsMaxMs = 0;\n    const activationScheduleStarted = now();\n    const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {\n",
+          )
+          replace_once(
+              logger,
+              "      const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n      runtime.graph.loadPendingChannels();\n      const results = await Promise.all(activations);\n      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;\n\n      runtime.activeChannelIds.clear();\n      requestedIds.forEach((channelId, resultIndex) => {\n        if (results[resultIndex]) runtime.activeChannelIds.add(channelId);\n      });\n      pane.channelIds = [...assignedIds];\n",
+              "      const toggleDispatchStarted = now();\n      const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));\n      activationToggleDispatchMaxMs = Math.max(\n        activationToggleDispatchMaxMs,\n        now() - toggleDispatchStarted,\n      );\n      const loadPendingStarted = now();\n      runtime.graph.loadPendingChannels();\n      activationLoadPendingMaxMs = Math.max(\n        activationLoadPendingMaxMs,\n        now() - loadPendingStarted,\n      );\n      const toggleAwaitStarted = now();\n      const results = await Promise.all(activations);\n      activationToggleAwaitMaxMs = Math.max(\n        activationToggleAwaitMaxMs,\n        now() - toggleAwaitStarted,\n      );\n      if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;\n\n      const applyResultsStarted = now();\n      runtime.activeChannelIds.clear();\n      requestedIds.forEach((channelId, resultIndex) => {\n        if (results[resultIndex]) runtime.activeChannelIds.add(channelId);\n      });\n      pane.channelIds = [...assignedIds];\n      activationApplyResultsMaxMs = Math.max(\n        activationApplyResultsMaxMs,\n        now() - applyResultsStarted,\n      );\n",
+          )
+          replace_once(
+              logger,
+              "    });\n\n    await Promise.all(loads);\n    const activationMs = now() - activationStarted;\n",
+              "    });\n    const activationScheduleMs = now() - activationScheduleStarted;\n\n    const activationAwaitStarted = now();\n    await Promise.all(loads);\n    const activationAwaitMs = now() - activationAwaitStarted;\n    const activationMs = now() - activationStarted;\n",
+          )
+          replace_once(
+              logger,
+              "      sharedBatchMs,\n      activationMs,\n      activationGraphTotalMs,\n",
+              "      sharedBatchMs,\n      activationMs,\n      activationScheduleMs,\n      activationAwaitMs,\n      activationToggleDispatchMaxMs,\n      activationLoadPendingMaxMs,\n      activationToggleAwaitMaxMs,\n      activationApplyResultsMaxMs,\n      activationGraphTotalMs,\n",
+          )
+
+          perf = 'apps/web/src/components/performance-diagnostics.ts'
+          replace_once(
+              perf,
+              "  readonly activationMs: number;\n  readonly activationGraphTotalMs: number;\n",
+              "  readonly activationMs: number;\n  readonly activationScheduleMs: number;\n  readonly activationAwaitMs: number;\n  readonly activationToggleDispatchMaxMs: number;\n  readonly activationLoadPendingMaxMs: number;\n  readonly activationToggleAwaitMaxMs: number;\n  readonly activationApplyResultsMaxMs: number;\n  readonly activationGraphTotalMs: number;\n",
+          )
+
+          report = 'apps/web/src/components/performance-diagnostics-report.ts'
+          replace_once(
+              report,
+              "        `activation=${latestRestore.activationMs.toFixed(2)} ms`,\n        `activationGraphTotal=${latestRestore.activationGraphTotalMs.toFixed(2)} ms`,\n",
+              "        `activation=${latestRestore.activationMs.toFixed(2)} ms`,\n        `activationSchedule=${latestRestore.activationScheduleMs.toFixed(2)} ms`,\n        `activationAwait=${latestRestore.activationAwaitMs.toFixed(2)} ms`,\n        `activationToggleDispatchMax=${latestRestore.activationToggleDispatchMaxMs.toFixed(2)} ms`,\n        `activationLoadPendingMax=${latestRestore.activationLoadPendingMaxMs.toFixed(2)} ms`,\n        `activationToggleAwaitMax=${latestRestore.activationToggleAwaitMaxMs.toFixed(2)} ms`,\n        `activationApplyResultsMax=${latestRestore.activationApplyResultsMaxMs.toFixed(2)} ms`,\n        `activationGraphTotal=${latestRestore.activationGraphTotalMs.toFixed(2)} ms`,\n",
+          )
+          replace_once(
+              report,
+              "        `activationRemainder=${Math.max(0, latestRestore.activationMs - latestRestore.activationGraphTotalMs).toFixed(2)} ms`,\n",
+              "        `activationRemainder=${Math.max(0, latestRestore.activationMs - latestRestore.activationGraphTotalMs).toFixed(2)} ms`,\n        `activationUnclassified=${Math.max(0, latestRestore.activationMs - latestRestore.activationScheduleMs - latestRestore.activationAwaitMs).toFixed(2)} ms`,\n",
+          )
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/logger-page.ts apps/web/src/components/performance-diagnostics.ts apps/web/src/components/performance-diagnostics-report.ts
+          git commit -m "Instrument workspace restore activation path"
+          git push origin HEAD:perf/instrument-restore-activation
