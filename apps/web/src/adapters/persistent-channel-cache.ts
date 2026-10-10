@@ -501,7 +501,7 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
       delegatedCacheHits.push(...delegated.performance.cacheHitChannelIds);
       for (const [channelId, range] of delegated.ranges) {
         ranges.set(channelId, range);
-        if (channelIds.length <= MAX_PERSISTED_SELECTION_BATCH) {
+        if (this.source.managesPersistentColumns || channelIds.length <= MAX_PERSISTED_SELECTION_BATCH) {
           this.persistFullColumn(channelId, range);
         }
       }
