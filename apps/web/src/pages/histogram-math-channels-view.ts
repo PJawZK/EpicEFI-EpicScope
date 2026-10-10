@@ -21,6 +21,7 @@ interface ChannelSearchText {
 }
 
 const channelSearchTextCache = new WeakMap<ChannelDefinition, ChannelSearchText>();
+const sourceButtonCache = new WeakMap<ChannelDefinition, HTMLButtonElement>();
 
 function channelLabel(channel: ChannelDefinition): string {
   return channel.displayName || channel.sourceName;
@@ -36,6 +37,24 @@ function searchableChannelText(channel: ChannelDefinition): ChannelSearchText {
   };
   channelSearchTextCache.set(channel, text);
   return text;
+}
+
+function sourceButtonFor(channel: ChannelDefinition): HTMLButtonElement {
+  const cached = sourceButtonCache.get(channel);
+  if (cached) return cached;
+  const label = channelLabel(channel);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'math-channel-source-chip';
+  button.dataset.sourceLabel = label;
+  const name = document.createElement('strong');
+  name.textContent = label;
+  const detail = document.createElement('small');
+  detail.textContent = channel.unit ?? channel.sourceName;
+  button.replaceChildren(name, detail);
+  button.title = `Insert [${label}]`;
+  sourceButtonCache.set(channel, button);
+  return button;
 }
 
 function sameChannelCatalog(
@@ -197,20 +216,9 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     const query = sourceSearch.value.trim().toLocaleLowerCase();
     const fragment = document.createDocumentFragment();
     for (const channel of context.channels) {
-      const label = channelLabel(channel);
       const searchable = searchableChannelText(channel);
       if (query && !searchable.label.includes(query) && !searchable.sourceName.includes(query) && !searchable.id.includes(query)) continue;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'math-channel-source-chip';
-      button.dataset.sourceLabel = label;
-      const name = document.createElement('strong');
-      name.textContent = label;
-      const detail = document.createElement('small');
-      detail.textContent = channel.unit ?? channel.sourceName;
-      button.replaceChildren(name, detail);
-      button.title = `Insert [${label}]`;
-      fragment.append(button);
+      fragment.append(sourceButtonFor(channel));
     }
     sourceList.replaceChildren(fragment);
   };
