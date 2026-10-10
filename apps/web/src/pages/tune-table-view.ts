@@ -29,11 +29,19 @@ function tableCandidates(model: TuneModel | undefined): readonly TuneEntry[] {
   return model?.entries.filter((entry) => entry.kind === 'table' && entry.numericValues !== undefined) ?? [];
 }
 
+function sameChannelCatalog(
+  left: readonly LoggerAnalysisContext['channels'][number][],
+  right: readonly LoggerAnalysisContext['channels'][number][],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+}
+
 export function createTuneTableView(): TuneTableViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
   let currentResult: TuneTableCorrelationResult | undefined;
+  let renderGeneration = 0;
 
   const root = document.createElement('section');
   root.className = 'tune-table-view';
@@ -160,6 +168,7 @@ export function createTuneTableView(): TuneTableViewController {
   };
 
   const render = async (): Promise<void> => {
+    const generation = ++renderGeneration;
     field('source').textContent = tuneSourceName ?? 'No MSQ loaded';
     field('signature').textContent = tuneModel?.identity.signature ?? tuneModel?.identity.firmwareInfo ?? '—';
 
@@ -194,6 +203,7 @@ export function createTuneTableView(): TuneTableViewController {
     const startMs = Math.min(scope.startMs, scope.endMs);
     const endMs = Math.max(scope.startMs, scope.endMs);
     const loaded = await context.loadTraces([xId, yId, observedId], startMs, endMs);
+    if (generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
@@ -254,10 +264,13 @@ export function createTuneTableView(): TuneTableViewController {
     const previousY = yChannelSelect.value;
     const previousObserved = observedSelect.value;
     const previousScope = scopeSelect.value;
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
-    fillTraceSelect(xChannelSelect, previousX, 0);
-    fillTraceSelect(yChannelSelect, previousY, 1);
-    fillTraceSelect(observedSelect, previousObserved, 2);
+    if (channelsChanged) {
+      fillTraceSelect(xChannelSelect, previousX, 0);
+      fillTraceSelect(yChannelSelect, previousY, 1);
+      fillTraceSelect(observedSelect, previousObserved, 2);
+    }
     fillScopeSelect(previousScope);
     void render();
   };
