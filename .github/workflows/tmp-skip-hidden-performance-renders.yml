@@ -1,0 +1,48 @@
+name: Temporary skip hidden performance renders
+
+on:
+  push:
+    branches:
+      - perf/skip-hidden-performance-renders
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Avoid hidden performance diagnostics renders'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/skip-hidden-performance-renders
+          fetch-depth: 0
+      - name: Patch performance diagnostics render path
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/components/performance-diagnostics.ts')
+          text = path.read_text()
+
+          old = """  button.addEventListener('click', (event) => {\n    event.stopPropagation();\n    const open = popover.hidden === true;\n    popover.hidden = !open;\n    button.setAttribute('aria-expanded', String(open));\n  });\n"""
+          new = """  button.addEventListener('click', (event) => {\n    event.stopPropagation();\n    const open = popover.hidden === true;\n    if (open) render();\n    popover.hidden = !open;\n    button.setAttribute('aria-expanded', String(open));\n  });\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'button anchor count={text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = """    recordChannel: (run) => {\n      channelRuns.push(run);\n      if (channelRuns.length > 50) channelRuns.shift();\n      render();\n    },\n"""
+          new = """    recordChannel: (run) => {\n      channelRuns.push(run);\n      if (channelRuns.length > 50) channelRuns.shift();\n      if (!popover.hidden) render();\n    },\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'recordChannel anchor count={text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/components/performance-diagnostics.ts
+          git commit -m "Avoid hidden performance diagnostics renders"
+          git push origin HEAD:perf/skip-hidden-performance-renders
