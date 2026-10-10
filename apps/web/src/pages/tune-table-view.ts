@@ -276,13 +276,14 @@ export function createTuneTableView(): TuneTableViewController {
   };
 
   const setTuneModel = (model: TuneModel | undefined, sourceName?: string): void => {
+    if (tuneModel === model && tuneSourceName === sourceName) return;
     const previousTable = tableSelect.value;
     const previousX = xAxisSelect.value;
     const previousY = yAxisSelect.value;
     tuneModel = model;
     tuneSourceName = sourceName;
     fillTuneSelectors(previousTable, previousX, previousY);
-    void render();
+    if (!root.hidden) void render();
   };
 
   tableSelect.addEventListener('change', () => { syncAxisCandidates(); void render(); });
