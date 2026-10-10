@@ -4,6 +4,7 @@ import { channelMatchesInspectorFilters } from './inspector-channel-view';
 
 const VIRTUAL_ROW_HEIGHT = 36;
 const VIRTUAL_OVERSCAN_ROWS = 6;
+const CHANNEL_NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export interface InspectorChannelStatistics {
   readonly channelId: string;
@@ -316,22 +317,22 @@ export function createInspectorPanel(): InspectorPanelController {
   const compareChannels = (left: ChannelDefinition, right: ChannelDefinition): number => {
     let result = 0;
     if (sortKey === 'name') {
-      result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+      result = CHANNEL_NAME_COLLATOR.compare(left.sourceName, right.sourceName);
     } else if (sortKey === 'group') {
-      result = (left.category ?? '').localeCompare(right.category ?? '', undefined, { numeric: true, sensitivity: 'base' });
-      if (result === 0) result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+      result = CHANNEL_NAME_COLLATOR.compare(left.category ?? '', right.category ?? '');
+      if (result === 0) result = CHANNEL_NAME_COLLATOR.compare(left.sourceName, right.sourceName);
     } else {
       const leftValue = numericValue(left.id);
       const rightValue = numericValue(right.id);
       if (leftValue === undefined && rightValue === undefined) {
-        result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+        result = CHANNEL_NAME_COLLATOR.compare(left.sourceName, right.sourceName);
       } else if (leftValue === undefined) {
         result = 1;
       } else if (rightValue === undefined) {
         result = -1;
       } else {
         result = leftValue - rightValue;
-        if (result === 0) result = left.sourceName.localeCompare(right.sourceName, undefined, { numeric: true, sensitivity: 'base' });
+        if (result === 0) result = CHANNEL_NAME_COLLATOR.compare(left.sourceName, right.sourceName);
       }
     }
     return sortAscending ? result : -result;
@@ -348,15 +349,18 @@ export function createInspectorPanel(): InspectorPanelController {
     const query = search.value.trim().toLocaleLowerCase();
     const selectedGroup = groupSelect.value;
     const visibility = visibilitySelect.value;
-
-    filteredChannels = channels.filter((channel) => channelMatchesInspectorFilters(channel, {
+    const filterContext = {
       query,
       selectedGroup,
       visibility: visibility as 'all' | 'active' | 'favorites' | 'recent',
       activeChannelIds,
       favoriteChannelIds,
       recentChannelIds,
-    })).sort(compareChannels);
+    };
+
+    filteredChannels = channels
+      .filter((channel) => channelMatchesInspectorFilters(channel, filterContext))
+      .sort(compareChannels);
 
     renderSortControls();
     spacer.style.height = `${filteredChannels.length * VIRTUAL_ROW_HEIGHT}px`;
