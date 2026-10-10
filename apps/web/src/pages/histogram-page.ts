@@ -47,6 +47,8 @@ export function createHistogramPage(): HistogramPageController {
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let activeView: HistogramView = 'table';
   let lastIniMappedTable = '';
+  let suppressImmediateRefresh = false;
+  let contextUpdateGeneration = 0;
 
   const tableGeneratorView = createHistogramTableGeneratorView();
   const distributionView = createHistogramDistributionView();
@@ -135,6 +137,11 @@ export function createHistogramPage(): HistogramPageController {
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
+    const generation = ++contextUpdateGeneration;
+    suppressImmediateRefresh = true;
+    queueMicrotask(() => {
+      if (generation === contextUpdateGeneration) suppressImmediateRefresh = false;
+    });
     context = nextContext;
     setActiveContext();
     if (activeView === 'table') applyIniTableAxisAuthority(false);
@@ -163,6 +170,12 @@ export function createHistogramPage(): HistogramPageController {
     element: page,
     headerControl,
     setContext,
-    refresh: refreshActive,
+    refresh: () => {
+      if (suppressImmediateRefresh) {
+        suppressImmediateRefresh = false;
+        return;
+      }
+      refreshActive();
+    },
   };
 }
