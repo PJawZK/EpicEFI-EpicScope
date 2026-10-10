@@ -1,0 +1,39 @@
+name: Temporary skip restore channel overviews
+
+on:
+  push:
+    branches:
+      - perf/skip-restore-channel-overviews
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Avoid repeated restore overview refreshes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/skip-restore-channel-overviews
+          fetch-depth: 0
+      - name: Patch logger restore overview updates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/pages/logger-page.ts')
+          text = path.read_text()
+          old = """      if (runtime.id === activeWorkspace()?.activePaneId) {\n        timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);\n      }\n"""
+          new = """      if (!restoringWorkspaceState && runtime.id === activeWorkspace()?.activePaneId) {\n        timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);\n      }\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'overview callback anchor count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/logger-page.ts
+          git commit -m "Avoid repeated restore overview refreshes"
+          git push origin HEAD:perf/skip-restore-channel-overviews
