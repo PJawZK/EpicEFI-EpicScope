@@ -1,0 +1,64 @@
+name: Temporary restore final-sync patch
+
+on:
+  push:
+    branches:
+      - perf/avoid-duplicate-restore-final-sync
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Avoid duplicate workspace restore final sync'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/avoid-duplicate-restore-final-sync
+          fetch-depth: 0
+      - name: Patch restore reconciliation sync
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/logger-page.ts')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  "    reconcileAssignedVisiblePaneChannels();\n    const finalSyncMs = now() - finalSyncStarted;\n",
+                  "    reconcileAssignedVisiblePaneChannels({ syncContextOnNoMissing: false });\n    const finalSyncMs = now() - finalSyncStarted;\n",
+              ),
+              (
+                  "  const reconcileAssignedVisiblePaneChannels = (): void => {\n",
+                  "  const reconcileAssignedVisiblePaneChannels = (\n    options: { readonly syncContextOnNoMissing?: boolean } = {},\n  ): void => {\n",
+              ),
+              (
+                  "      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);\n",
+                  "      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime, options);\n",
+              ),
+              (
+                  "  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {\n",
+                  "  const reconcileAssignedPaneChannels = (\n    runtime: (typeof paneRuntimes)[number],\n    options: { readonly syncContextOnNoMissing?: boolean } = {},\n  ): void => {\n",
+              ),
+              (
+                  "    if (missingIds.length === 0) {\n      syncActivePaneContext();\n      return;\n    }\n",
+                  "    if (missingIds.length === 0) {\n      if (options.syncContextOnNoMissing !== false) syncActivePaneContext();\n      return;\n    }\n",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one anchor, found {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/logger-page.ts
+          git commit -m "Avoid duplicate workspace restore final sync"
+          git push origin HEAD:perf/avoid-duplicate-restore-final-sync
