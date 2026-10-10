@@ -1673,13 +1673,21 @@ export function mountAppShell(root: HTMLElement): void {
                 sidecarTotalBytes: validated.sidecar.manifest.totalBytes,
               } : {}),
             });
+            const unrecoveredCrcCount = validated.diagnostics.filter(
+              (diagnostic) => diagnostic.code === 'mlg-crc-mismatch',
+            ).length;
+            const crcStatus = unrecoveredCrcCount > 0
+              ? `CRC checked · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
+              : 'CRC validated';
             setSourceLoadState(
               openButton,
               hasWarningOrError(validated.diagnostics) ? 'issue' : 'success',
-              `${indexed.summary.source.displayName} · CRC validated · ${indexed.recordIndex.offsets.length.toLocaleString()} records`,
+              `${indexed.summary.source.displayName} · ${crcStatus} · ${indexed.recordIndex.offsets.length.toLocaleString()} records`,
             );
-            appStatus.textContent = 'Ready';
-            parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validated · local only`;
+            appStatus.textContent = unrecoveredCrcCount > 0
+              ? `Ready · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
+              : 'Ready';
+            parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · ${crcStatus} · local only`;
             activeStagedImport = undefined;
           })
           .catch((error: unknown) => {
