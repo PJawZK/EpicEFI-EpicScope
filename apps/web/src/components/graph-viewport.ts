@@ -95,6 +95,15 @@ export interface GraphChannelPerformance {
   readonly readDecodeMs: number;
   readonly scaleMs: number;
   readonly renderMs: number;
+  readonly statisticsMs?: number | undefined;
+  readonly applyMs?: number | undefined;
+  readonly readoutMs?: number | undefined;
+  readonly cursorMs?: number | undefined;
+  readonly envelopeMs?: number | undefined;
+  readonly drawSetupMs?: number | undefined;
+  readonly drawTraceMs?: number | undefined;
+  readonly drawOverlayMs?: number | undefined;
+  readonly drawRemainderMs?: number | undefined;
   readonly sampleCount: number;
   readonly batchSize: number;
   readonly cacheHit: boolean;
@@ -903,6 +912,8 @@ export function createGraphViewport(): GraphViewportController {
 
       const cacheHits = new Set(result.performance.cacheHitChannelIds);
       const scaleTimes = new Map<string, number>();
+      let statisticsMs = 0;
+      let applyMs = 0;
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
 
       for (const [channelId, pending] of batch) {
@@ -911,24 +922,40 @@ export function createGraphViewport(): GraphViewportController {
         const scaleStart = now();
         const scale = buildStableValueScale(range);
         scaleTimes.set(channelId, now() - scaleStart);
+        const statisticsStart = now();
+        const fullStatistics = summarizeNumericRange(range);
+        statisticsMs += now() - statisticsStart;
+        const applyStart = now();
         const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
         usedColors.add(color);
         activeTraces.set(channelId, {
           channel: pending.channel,
           range,
           scale,
-          fullStatistics: summarizeNumericRange(range),
+          fullStatistics,
           statisticsComplete: requestRange.phase === 'full',
           color,
         });
+        applyMs += now() - applyStart;
       }
 
       overlay.hidden = activeTraces.size > 0;
+      const readoutStart = now();
       renderReadout();
+      const readoutMs = now() - readoutStart;
+      const cursorStart = now();
       emitCursorValues();
+      const cursorMs = now() - cursorStart;
+      measuredEnvelopeBuildMs = 0;
+      measuredDrawSetupMs = 0;
+      measuredDrawTraceMs = 0;
+      measuredDrawOverlayMs = 0;
+      measureEnvelopeBuild = true;
       const renderStart = now();
       draw();
       const renderMs = now() - renderStart;
+      measureEnvelopeBuild = false;
+      const drawRemainderMs = Math.max(0, renderMs - measuredEnvelopeBuildMs - measuredDrawSetupMs - measuredDrawTraceMs - measuredDrawOverlayMs);
       const completedMs = now();
 
       for (const [channelId, pending] of batch) {
@@ -946,6 +973,15 @@ export function createGraphViewport(): GraphViewportController {
           readDecodeMs,
           scaleMs: scaleTimes.get(channelId) ?? 0,
           renderMs,
+          statisticsMs,
+          applyMs,
+          readoutMs,
+          cursorMs,
+          envelopeMs: measuredEnvelopeBuildMs,
+          drawSetupMs: measuredDrawSetupMs,
+          drawTraceMs: measuredDrawTraceMs,
+          drawOverlayMs: measuredDrawOverlayMs,
+          drawRemainderMs,
           sampleCount: range.values.length,
           batchSize: batch.length,
           cacheHit: cacheHits.has(channelId),
@@ -1039,27 +1075,45 @@ export function createGraphViewport(): GraphViewportController {
       if (channelData !== dataSource) return;
 
       const completedChannelIds: string[] = [];
+      let statisticsMs = 0;
+      let applyMs = 0;
       for (const channelId of candidates) {
         const latest = activeTraces.get(channelId);
         const range = result.ranges.get(channelId);
         if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) continue;
+        const statisticsStart = now();
+        const fullStatistics = summarizeNumericRange(range);
+        statisticsMs += now() - statisticsStart;
+        const applyStart = now();
         activeTraces.set(channelId, {
           ...latest,
           range,
           scale: latest.scale,
-          fullStatistics: summarizeNumericRange(range),
+          fullStatistics,
           statisticsComplete: true,
         });
         envelopeCache.delete(channelId);
         completedChannelIds.push(channelId);
+        applyMs += now() - applyStart;
       }
 
       if (completedChannelIds.length === 0) return;
+      const readoutStart = now();
       renderReadout();
+      const readoutMs = now() - readoutStart;
+      const cursorStart = now();
       emitCursorValues();
+      const cursorMs = now() - cursorStart;
+      measuredEnvelopeBuildMs = 0;
+      measuredDrawSetupMs = 0;
+      measuredDrawTraceMs = 0;
+      measuredDrawOverlayMs = 0;
+      measureEnvelopeBuild = true;
       const renderStart = now();
       draw();
       const renderMs = now() - renderStart;
+      measureEnvelopeBuild = false;
+      const drawRemainderMs = Math.max(0, renderMs - measuredEnvelopeBuildMs - measuredDrawSetupMs - measuredDrawTraceMs - measuredDrawOverlayMs);
       const completedMs = now();
       const cacheHits = new Set(result.performance.cacheHitChannelIds);
       for (const channelId of completedChannelIds) {
@@ -1074,6 +1128,15 @@ export function createGraphViewport(): GraphViewportController {
           readDecodeMs,
           scaleMs: 0,
           renderMs,
+          statisticsMs,
+          applyMs,
+          readoutMs,
+          cursorMs,
+          envelopeMs: measuredEnvelopeBuildMs,
+          drawSetupMs: measuredDrawSetupMs,
+          drawTraceMs: measuredDrawTraceMs,
+          drawOverlayMs: measuredDrawOverlayMs,
+          drawRemainderMs,
           sampleCount: range.values.length,
           batchSize: candidates.length,
           cacheHit: cacheHits.has(channelId),

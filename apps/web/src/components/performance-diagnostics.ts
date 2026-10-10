@@ -174,6 +174,15 @@ export interface ChannelPerformanceRun {
   readonly readDecodeMs: number;
   readonly scaleMs: number;
   readonly renderMs: number;
+  readonly statisticsMs?: number | undefined;
+  readonly applyMs?: number | undefined;
+  readonly readoutMs?: number | undefined;
+  readonly cursorMs?: number | undefined;
+  readonly envelopeMs?: number | undefined;
+  readonly drawSetupMs?: number | undefined;
+  readonly drawTraceMs?: number | undefined;
+  readonly drawOverlayMs?: number | undefined;
+  readonly drawRemainderMs?: number | undefined;
   readonly sampleCount: number;
   readonly batchSize: number;
   readonly cacheHit: boolean;

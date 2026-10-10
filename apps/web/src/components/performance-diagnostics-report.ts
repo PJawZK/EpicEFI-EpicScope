@@ -275,6 +275,17 @@ export function buildPerformanceDiagnosticsReport(
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
       channelRuns.slice(-24).forEach((run, index) => {
+        const renderDetail = [
+          run.statisticsMs !== undefined ? `statistics=${run.statisticsMs.toFixed(2)} ms` : '',
+          run.applyMs !== undefined ? `apply=${run.applyMs.toFixed(2)} ms` : '',
+          run.readoutMs !== undefined ? `readout=${run.readoutMs.toFixed(2)} ms` : '',
+          run.cursorMs !== undefined ? `cursor=${run.cursorMs.toFixed(2)} ms` : '',
+          run.envelopeMs !== undefined ? `envelope=${run.envelopeMs.toFixed(2)} ms` : '',
+          run.drawSetupMs !== undefined ? `drawSetup=${run.drawSetupMs.toFixed(2)} ms` : '',
+          run.drawTraceMs !== undefined ? `drawTrace=${run.drawTraceMs.toFixed(2)} ms` : '',
+          run.drawOverlayMs !== undefined ? `drawOverlay=${run.drawOverlayMs.toFixed(2)} ms` : '',
+          run.drawRemainderMs !== undefined ? `drawRemainder=${run.drawRemainderMs.toFixed(2)} ms` : '',
+        ].filter(Boolean).join('; ');
         const lowLevel = [
           run.persistentLookupMs !== undefined ? `persistentLookup=${run.persistentLookupMs.toFixed(2)} ms` : '',
           run.persistentRangeBuildMs !== undefined ? `persistentRange=${run.persistentRangeBuildMs.toFixed(2)} ms` : '',
@@ -287,7 +298,7 @@ export function buildPerformanceDiagnosticsReport(
           run.sidecarRangeBuildMs !== undefined ? `sidecarRange=${run.sidecarRangeBuildMs.toFixed(2)} ms` : '',
         ].filter(Boolean).join('; ');
         lines.push(
-          `${index + 1}. ${run.channelName}: phase=${run.phase}; startSample=${run.startSampleIndex}; requestedSamples=${run.requestedSampleCount}; returnedSamples=${run.sampleCount}; total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms${lowLevel ? `; ${lowLevel}` : ''}`,
+          `${index + 1}. ${run.channelName}: phase=${run.phase}; startSample=${run.startSampleIndex}; requestedSamples=${run.requestedSampleCount}; returnedSamples=${run.sampleCount}; total=${run.totalMs.toFixed(2)} ms; readDecode=${run.readDecodeMs.toFixed(2)} ms; scale=${run.scaleMs.toFixed(2)} ms; render=${run.renderMs.toFixed(2)} ms; batch=${run.batchSize}; cacheHit=${run.cacheHit}; physicalReads=${run.physicalReadCount}; physicalBytes=${run.physicalBytesRead}; physicalReadMs=${run.physicalReadMs.toFixed(2)} ms${renderDetail ? `; ${renderDetail}` : ''}${lowLevel ? `; ${lowLevel}` : ''}`,
         );
       });
     }
