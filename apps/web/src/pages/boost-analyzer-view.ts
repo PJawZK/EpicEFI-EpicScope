@@ -21,9 +21,17 @@ function optionalNumber(input: HTMLInputElement): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function sameChannelCatalog(
+  left: LoggerAnalysisContext['channels'],
+  right: LoggerAnalysisContext['channels'],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+}
+
 export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: BoostAnalyzerResult | undefined;
+  let renderGeneration = 0;
 
   const root = document.createElement('section');
   root.className = 'boost-analyzer-view';
@@ -144,6 +152,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   const render = async (): Promise<void> => {
+    const generation = ++renderGeneration;
     const measuredId = measuredSelect.value || context.channels[0]?.id;
     const targetId = targetSelect.value || undefined;
     const rpmId = rpmSelect.value || undefined;
@@ -161,6 +170,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const startMs = Math.min(scope.startMs, scope.endMs);
     const endMs = Math.max(scope.startMs, scope.endMs);
     const loaded = await context.loadTraces([measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined), startMs, endMs);
+    if (generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const measured = byId.get(measuredId);
     const target = targetId ? byId.get(targetId) : undefined;
@@ -263,13 +273,16 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const previousUpper = upperSelect.value;
     const previousLower = lowerSelect.value;
     const previousScope = scopeSelect.value;
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
-    measuredSelect.replaceChildren(...context.channels.map((channel) => new Option(channel.displayName || channel.sourceName, channel.id)));
-    if (context.channels.some((channel) => channel.id === previousMeasured)) measuredSelect.value = previousMeasured;
-    addOptionalTraceOptions(targetSelect, previousTarget);
-    addOptionalTraceOptions(rpmSelect, previousRpm);
-    addOptionalTraceOptions(upperSelect, previousUpper);
-    addOptionalTraceOptions(lowerSelect, previousLower);
+    if (channelsChanged) {
+      measuredSelect.replaceChildren(...context.channels.map((channel) => new Option(channel.displayName || channel.sourceName, channel.id)));
+      if (context.channels.some((channel) => channel.id === previousMeasured)) measuredSelect.value = previousMeasured;
+      addOptionalTraceOptions(targetSelect, previousTarget);
+      addOptionalTraceOptions(rpmSelect, previousRpm);
+      addOptionalTraceOptions(upperSelect, previousUpper);
+      addOptionalTraceOptions(lowerSelect, previousLower);
+    }
     fillScope(previousScope);
     void render();
   };
