@@ -277,6 +277,8 @@ export function createGraphViewport(): GraphViewportController {
   const suppressedTraceIds = new Set<string>();
   const materializingTraceIds = new Set<string>();
   const materializationTimers = new Map<string, number>();
+  const dueMaterializationIds = new Set<string>();
+  let materializationBatchTimer: number | undefined;
   let decodeInFlight = false;
   let decodeGeneration = 0;
   let viewportRefreshTimer: number | undefined;
@@ -986,36 +988,47 @@ export function createGraphViewport(): GraphViewportController {
   const scheduleMaterialization = (channelId: string): void => {
     const existingTimer = materializationTimers.get(channelId);
     if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+    dueMaterializationIds.delete(channelId);
     const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
     const delayMs = logicalThreads <= 3
       ? MATERIALIZATION_LOW_SPEC_IDLE_DELAY_MS
       : MATERIALIZATION_DESKTOP_DELAY_MS;
     const timer = window.setTimeout(() => {
       materializationTimers.delete(channelId);
-      void materializeActiveChannel(channelId);
+      dueMaterializationIds.add(channelId);
+      if (materializationBatchTimer !== undefined) return;
+      materializationBatchTimer = window.setTimeout(() => {
+        materializationBatchTimer = undefined;
+        const channelIds = [...dueMaterializationIds];
+        dueMaterializationIds.clear();
+        void materializeActiveChannels(channelIds);
+      }, 0);
     }, delayMs);
     materializationTimers.set(channelId, timer);
   };
 
-  const materializeActiveChannel = async (channelId: string): Promise<void> => {
+  const materializeActiveChannels = async (channelIds: readonly string[]): Promise<void> => {
     const dataSource = channelData;
-    const initial = activeTraces.get(channelId);
-    if (!dataSource || !initial || initial.statisticsComplete || materializingTraceIds.has(channelId)) return;
+    if (!dataSource) return;
+    const candidates = channelIds.filter((channelId) => {
+      const trace = activeTraces.get(channelId);
+      return trace !== undefined && !trace.statisticsComplete && !materializingTraceIds.has(channelId);
+    });
+    if (candidates.length === 0) return;
 
-    materializingTraceIds.add(channelId);
+    for (const channelId of candidates) materializingTraceIds.add(channelId);
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const readStart = now();
     try {
       const result = dataSource.readChannelsRange
-        ? await dataSource.readChannelsRange([channelId], 0, dataSource.sampleCount)
+        ? await dataSource.readChannelsRange(candidates, 0, dataSource.sampleCount)
         : {
-            ranges: new Map([[channelId, await dataSource.readChannelRange(
+            ranges: new Map(await Promise.all(candidates.map(async (channelId) => [
               channelId,
-              0,
-              dataSource.sampleCount,
-            )]]),
+              await dataSource.readChannelRange(channelId, 0, dataSource.sampleCount),
+            ] as const))),
             performance: {
-              channelCount: 1,
+              channelCount: candidates.length,
               cacheHitChannelIds: [] as readonly string[],
               physicalReadCount: 0,
               physicalBytesRead: 0,
@@ -1025,47 +1038,69 @@ export function createGraphViewport(): GraphViewportController {
       const readDecodeMs = now() - readStart;
       if (channelData !== dataSource) return;
 
-      const latest = activeTraces.get(channelId);
-      const range = result.ranges.get(channelId);
-      if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) return;
+      const completedChannelIds: string[] = [];
+      for (const channelId of candidates) {
+        const latest = activeTraces.get(channelId);
+        const range = result.ranges.get(channelId);
+        if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) continue;
+        activeTraces.set(channelId, {
+          ...latest,
+          range,
+          scale: latest.scale,
+          fullStatistics: summarizeNumericRange(range),
+          statisticsComplete: true,
+        });
+        envelopeCache.delete(channelId);
+        completedChannelIds.push(channelId);
+      }
 
-      const scaleMs = 0;
-      activeTraces.set(channelId, {
-        ...latest,
-        range,
-        scale: latest.scale,
-        fullStatistics: summarizeNumericRange(range),
-        statisticsComplete: true,
-      });
-      envelopeCache.delete(channelId);
+      if (completedChannelIds.length === 0) return;
       renderReadout();
       emitCursorValues();
       const renderStart = now();
       draw();
       const renderMs = now() - renderStart;
       const completedMs = now();
-      channelPerformanceListener?.({
-        channelId,
-        phase: 'full',
-        startSampleIndex: 0,
-        requestedSampleCount: dataSource.sampleCount,
-        totalMs: completedMs - readStart,
-        readDecodeMs,
-        scaleMs,
-        renderMs,
-        sampleCount: range.values.length,
-        batchSize: 1,
-        cacheHit: result.performance.cacheHitChannelIds.includes(channelId),
-        physicalReadCount: result.performance.physicalReadCount,
-        physicalBytesRead: result.performance.physicalBytesRead,
-        physicalReadMs: result.performance.physicalReadMs,
-      });
+      const cacheHits = new Set(result.performance.cacheHitChannelIds);
+      for (const channelId of completedChannelIds) {
+        const range = result.ranges.get(channelId);
+        if (!range) continue;
+        channelPerformanceListener?.({
+          channelId,
+          phase: 'full',
+          startSampleIndex: 0,
+          requestedSampleCount: dataSource.sampleCount,
+          totalMs: completedMs - readStart,
+          readDecodeMs,
+          scaleMs: 0,
+          renderMs,
+          sampleCount: range.values.length,
+          batchSize: candidates.length,
+          cacheHit: cacheHits.has(channelId),
+          physicalReadCount: result.performance.physicalReadCount,
+          physicalBytesRead: result.performance.physicalBytesRead,
+          physicalReadMs: result.performance.physicalReadMs,
+          persistentLookupMs: result.performance.persistentLookupMs,
+          persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+          delegatedSourceMs: result.performance.delegatedSourceMs,
+          sidecarManifestMs: result.performance.sidecarManifestMs,
+          sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+          sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+          sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
+          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
+          sidecarReadPath: result.performance.sidecarReadPath,
+        });
+      }
     } catch {
-      // Keep the viewport-first trace usable if complete materialization fails.
+      // Keep the viewport-first traces usable if complete materialization fails.
     } finally {
-      materializingTraceIds.delete(channelId);
-      const latest = activeTraces.get(channelId);
-      if (latest && !latest.statisticsComplete) scheduleViewportRefresh();
+      for (const channelId of candidates) materializingTraceIds.delete(channelId);
+      if (candidates.some((channelId) => {
+        const latest = activeTraces.get(channelId);
+        return latest !== undefined && !latest.statisticsComplete;
+      })) {
+        scheduleViewportRefresh();
+      }
     }
   };
 
@@ -1373,6 +1408,11 @@ export function createGraphViewport(): GraphViewportController {
     materializingTraceIds.clear();
     for (const timer of materializationTimers.values()) window.clearTimeout(timer);
     materializationTimers.clear();
+    dueMaterializationIds.clear();
+    if (materializationBatchTimer !== undefined) {
+      window.clearTimeout(materializationBatchTimer);
+      materializationBatchTimer = undefined;
+    }
     activeTraces.clear();
     envelopeCache.clear();
     cursorTimeMs = nextTimeRange?.startMs ?? 0;
