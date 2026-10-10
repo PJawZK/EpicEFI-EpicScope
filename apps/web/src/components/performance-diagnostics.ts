@@ -313,6 +313,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     const open = popover.hidden === true;
+    if (open) render();
     popover.hidden = !open;
     button.setAttribute('aria-expanded', String(open));
   });
@@ -717,7 +718,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     recordChannel: (run) => {
       channelRuns.push(run);
       if (channelRuns.length > 50) channelRuns.shift();
-      render();
+      if (!popover.hidden) render();
     },
     reportText,
     clear: () => {
