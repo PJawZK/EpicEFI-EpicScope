@@ -115,6 +115,13 @@ export function createHistogramPage(): HistogramPageController {
     else mathChannelsView.refresh();
   };
 
+  const setActiveContext = (): void => {
+    if (activeView === 'table') tableGeneratorView.setContext(context);
+    else if (activeView === 'distribution') distributionView.setContext(context);
+    else if (activeView === 'scatter') scatterView.setContext(context);
+    else mathChannelsView.setContext(context);
+  };
+
   const setActiveView = (view: HistogramView): void => {
     activeView = view;
     viewSelect.value = view;
@@ -122,17 +129,15 @@ export function createHistogramPage(): HistogramPageController {
     distributionView.element.hidden = view !== 'distribution';
     scatterView.element.hidden = view !== 'scatter';
     mathChannelsView.element.hidden = view !== 'math-channels';
-    refreshActive();
+    setActiveContext();
+    if (view === 'table') applyIniTableAxisAuthority(false);
+    else if (view === 'math-channels') mathChannelsView.refresh();
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
     context = nextContext;
-    tableGeneratorView.setContext(nextContext);
-    distributionView.setContext(nextContext);
-    scatterView.setContext(nextContext);
-    mathChannelsView.setContext(nextContext);
-    applyIniTableAxisAuthority(false);
-    refreshActive();
+    setActiveContext();
+    if (activeView === 'table') applyIniTableAxisAuthority(false);
   };
 
   viewSelect.addEventListener('change', () => {
