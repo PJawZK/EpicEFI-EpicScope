@@ -365,12 +365,12 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
 
   private async persistedColumn(channelId: string): Promise<Float64Array | undefined> {
     const resident = this.residentColumns.get(channelId);
-    if (this.source.managesPersistentColumns) return undefined;
     if (resident) {
       this.residentHitCount += 1;
       this.updateMemoryDiagnostics();
       return resident;
     }
+    if (this.source.managesPersistentColumns) return undefined;
     if (this.missingColumns.has(channelId)) return undefined;
     if (this.cachedChannelIdIndex && !this.cachedChannelIdIndex.has(channelId)) {
       this.missingColumns.add(channelId);
