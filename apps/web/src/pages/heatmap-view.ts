@@ -43,11 +43,19 @@ function aggregationLabel(method: NumericAggregationMethod): string {
   return 'Variance';
 }
 
+function sameChannelCatalog(
+  left: HistogramPageContext['channels'],
+  right: HistogramPageContext['channels'],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+}
+
 export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapViewController {
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let currentResult: NumericHeatmapResult | undefined;
   let currentXTrace: HistogramTraceContext | undefined;
   let currentYTrace: HistogramTraceContext | undefined;
+  let renderGeneration = 0;
 
   const root = document.createElement('section');
   root.className = `heatmap-view${options.compact ? ' heatmap-view--compact' : ''}`;
@@ -218,6 +226,7 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
   };
 
   const render = async (): Promise<void> => {
+    const generation = ++renderGeneration;
     const xId = xSelect.value || context.channels[0]?.id;
     const yId = ySelect.value || context.channels[1]?.id || context.channels[0]?.id;
     const aggregation = selectedAggregation();
@@ -237,6 +246,7 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     const startMs = Math.min(context.aTimeMs!, context.bTimeMs!);
     const endMs = Math.max(context.aTimeMs!, context.bTimeMs!);
     const loaded = await context.loadTraces([xId, yId, ...(valueId ? [valueId] : [])], startMs, endMs);
+    if (generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
@@ -304,8 +314,9 @@ export function createHeatmapView(options: HeatmapViewOptions = {}): HeatmapView
     const previousX = xSelect.value;
     const previousY = ySelect.value;
     const previousValue = valueSelect.value;
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
-    fillSelects(previousX, previousY, previousValue);
+    if (channelsChanged) fillSelects(previousX, previousY, previousValue);
     void render();
   };
 
