@@ -267,11 +267,12 @@ export function buildPerformanceDiagnosticsReport(
 
     if (channelRuns.length > 0) {
       lines.push('', '[Channel selections]');
-      channelRuns.slice(-10).forEach((run, index) => {
+      channelRuns.slice(-24).forEach((run, index) => {
         const lowLevel = [
           run.persistentLookupMs !== undefined ? `persistentLookup=${run.persistentLookupMs.toFixed(2)} ms` : '',
           run.persistentRangeBuildMs !== undefined ? `persistentRange=${run.persistentRangeBuildMs.toFixed(2)} ms` : '',
           run.delegatedSourceMs !== undefined ? `delegatedSource=${run.delegatedSourceMs.toFixed(2)} ms` : '',
+          run.sidecarReadPath !== undefined ? `sidecarPath=${run.sidecarReadPath}` : '',
           run.sidecarManifestMs !== undefined ? `sidecarManifest=${run.sidecarManifestMs.toFixed(2)} ms` : '',
           run.sidecarFileOpenAggregateMs !== undefined ? `sidecarFileOpenAggregate=${run.sidecarFileOpenAggregateMs.toFixed(2)} ms` : '',
           run.sidecarBlobReadAggregateMs !== undefined ? `sidecarBlobReadAggregate=${run.sidecarBlobReadAggregateMs.toFixed(2)} ms` : '',

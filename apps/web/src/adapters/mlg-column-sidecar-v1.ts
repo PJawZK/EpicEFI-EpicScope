@@ -708,7 +708,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
             ),
           );
         }
-        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 } };
+        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0, sidecarReadPath: 'captured' } };
       }
     }
     const manifestStarted = now();
@@ -754,6 +754,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
               sidecarBlobReadAggregateMs,
               sidecarDecodeAggregateMs,
               sidecarRangeBuildMs: 0,
+              sidecarReadPath: 'native',
             },
           };
         }
@@ -841,6 +842,7 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
           sidecarBlobReadAggregateMs,
           sidecarDecodeAggregateMs,
           sidecarRangeBuildMs,
+          sidecarReadPath: 'striped',
         },
       };
     } catch {

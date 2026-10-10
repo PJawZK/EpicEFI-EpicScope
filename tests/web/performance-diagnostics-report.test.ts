@@ -22,6 +22,7 @@ describe('performance diagnostics report formatter', () => {
       physicalReadMs: 0,
       persistentLookupMs: 0.2,
       delegatedSourceMs: 11.4,
+      sidecarReadPath: 'native',
       sidecarBlobReadAggregateMs: 5.5,
       sidecarDecodeAggregateMs: 4.5,
     };
@@ -33,6 +34,7 @@ describe('performance diagnostics report formatter', () => {
     expect(report).toContain('accelerationLat');
     expect(report).toContain('readDecode=12.00 ms');
     expect(report).toContain('persistentLookup=0.20 ms');
+    expect(report).toContain('sidecarPath=native');
     expect(report).toContain('sidecarBlobReadAggregate=5.50 ms');
   });
 });
