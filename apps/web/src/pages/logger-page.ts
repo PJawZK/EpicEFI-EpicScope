@@ -1731,7 +1731,7 @@ export function createLoggerPage(): LoggerPageController {
         ...performance,
         channelName: channel?.sourceName ?? performance.channelId,
       });
-      if (runtime.id === activeWorkspace()?.activePaneId) {
+      if (!restoringWorkspaceState && runtime.id === activeWorkspace()?.activePaneId) {
         timeline.setOverviewContent(runtime.graph.getOverviewTraces(), logMarkers);
       }
       window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
