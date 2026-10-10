@@ -57,6 +57,24 @@ describe('inspector channel filters', () => {
     expect(channelMatchesInspectorFilters(rpm, context)).toBe(false);
   });
 
+  it('keeps search normalization correct across consecutive queries', () => {
+    expect(channelMatchesInspectorFilters(rpm, {
+      ...base,
+      visibility: 'all',
+      query: '  ENGINE  ',
+    })).toBe(true);
+    expect(channelMatchesInspectorFilters(lambda, {
+      ...base,
+      visibility: 'all',
+      query: 'LAMBDA',
+    })).toBe(true);
+    expect(channelMatchesInspectorFilters(rpm, {
+      ...base,
+      visibility: 'all',
+      query: 'LAMBDA',
+    })).toBe(false);
+  });
+
   it('keeps favorites and recent independent from active state', () => {
     expect(channelMatchesInspectorFilters(tps, {
       ...base,
