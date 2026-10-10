@@ -1,0 +1,90 @@
+name: Patch captured priority viewport slices
+on:
+  push:
+    branches:
+      - perf/captured-priority-viewport-slices
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add temporary captured viewport patch workflow'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/captured-priority-viewport-slices
+      - name: Patch captured priority partial reads
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('apps/web/src/adapters/mlg-column-sidecar-v1.ts')
+          text = path.read_text()
+          old = '''    if (startSampleIndex === 0 && sampleCount === this.sampleCount) {
+      const captured = channelIds.map((channelId) => this.capturedPriorityColumns.get(channelId));
+      if (captured.every((column) => column !== undefined)) {
+        const ranges = new Map<string, NumericChannelRange>();
+        for (let index = 0; index < channelIds.length; index += 1) {
+          const column = captured[index]!;
+          ranges.set(
+            channelIds[index]!,
+            buildRange(
+              this.recordIndex,
+              0,
+              this.sampleCount,
+              column.values,
+              column.statistics,
+              column.envelopeBlocks,
+            ),
+          );
+        }
+        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0, sidecarReadPath: 'captured' } };
+      }
+    }
+'''
+          new = '''    const captured = channelIds.map((channelId) => this.capturedPriorityColumns.get(channelId));
+    if (captured.every((column) => column !== undefined)) {
+      const rangeStarted = now();
+      const ranges = new Map<string, NumericChannelRange>();
+      const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
+      const endSampleIndex = startSampleIndex + sampleCount;
+      for (let index = 0; index < channelIds.length; index += 1) {
+        const column = captured[index]!;
+        ranges.set(
+          channelIds[index]!,
+          buildRange(
+            this.recordIndex,
+            startSampleIndex,
+            sampleCount,
+            isFullRange
+              ? column.values
+              : column.values.slice(startSampleIndex, endSampleIndex),
+            isFullRange ? column.statistics : undefined,
+            isFullRange ? column.envelopeBlocks : undefined,
+          ),
+        );
+      }
+      return {
+        ranges,
+        performance: {
+          channelCount: channelIds.length,
+          cacheHitChannelIds: [...channelIds],
+          physicalReadCount: 0,
+          physicalBytesRead: 0,
+          physicalReadMs: 0,
+          sidecarRangeBuildMs: now() - rangeStarted,
+          sidecarReadPath: 'captured',
+        },
+      };
+    }
+'''
+          count = text.count(old)
+          assert count == 1, f'expected exactly one captured-priority block, found {count}'
+          path.write_text(text.replace(old, new))
+      - name: Remove temporary workflow and commit
+        run: |
+          git rm .github/workflows/patch-captured-priority-viewport.yml
+          git add apps/web/src/adapters/mlg-column-sidecar-v1.ts
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Use captured columns for viewport ranges"
+          git push origin HEAD:perf/captured-priority-viewport-slices
