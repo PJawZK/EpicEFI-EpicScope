@@ -14,8 +14,35 @@ export interface HistogramMathChannelsController {
   refresh(): void;
 }
 
+interface ChannelSearchText {
+  readonly label: string;
+  readonly sourceName: string;
+  readonly id: string;
+}
+
+const channelSearchTextCache = new WeakMap<ChannelDefinition, ChannelSearchText>();
+
 function channelLabel(channel: ChannelDefinition): string {
   return channel.displayName || channel.sourceName;
+}
+
+function searchableChannelText(channel: ChannelDefinition): ChannelSearchText {
+  const cached = channelSearchTextCache.get(channel);
+  if (cached) return cached;
+  const text = {
+    label: channelLabel(channel).toLocaleLowerCase(),
+    sourceName: channel.sourceName.toLocaleLowerCase(),
+    id: channel.id.toLocaleLowerCase(),
+  };
+  channelSearchTextCache.set(channel, text);
+  return text;
+}
+
+function sameChannelCatalog(
+  left: HistogramPageContext['channels'],
+  right: HistogramPageContext['channels'],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
 }
 
 function formatNumber(value: number | undefined): string {
@@ -168,22 +195,24 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
 
   const renderSources = (): void => {
     const query = sourceSearch.value.trim().toLocaleLowerCase();
-    sourceList.replaceChildren();
+    const fragment = document.createDocumentFragment();
     for (const channel of context.channels) {
       const label = channelLabel(channel);
-      if (query && !label.toLocaleLowerCase().includes(query) && !channel.sourceName.toLocaleLowerCase().includes(query) && !channel.id.toLocaleLowerCase().includes(query)) continue;
+      const searchable = searchableChannelText(channel);
+      if (query && !searchable.label.includes(query) && !searchable.sourceName.includes(query) && !searchable.id.includes(query)) continue;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'math-channel-source-chip';
+      button.dataset.sourceLabel = label;
       const name = document.createElement('strong');
       name.textContent = label;
       const detail = document.createElement('small');
       detail.textContent = channel.unit ?? channel.sourceName;
       button.replaceChildren(name, detail);
       button.title = `Insert [${label}]`;
-      button.addEventListener('click', () => insertText(`[${label}]`));
-      sourceList.append(button);
+      fragment.append(button);
     }
+    sourceList.replaceChildren(fragment);
   };
 
   const resetEditor = (): void => {
@@ -316,6 +345,13 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   root.querySelectorAll<HTMLButtonElement>('[data-insert]').forEach((button) => {
     button.addEventListener('click', () => insertText(button.dataset.insert ?? ''));
   });
+  sourceList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLElement>('[data-source-label]');
+    const label = button?.dataset.sourceLabel;
+    if (label) insertText(`[${label}]`);
+  });
   newButton.addEventListener('click', resetEditor);
   resetButton.addEventListener('click', resetEditor);
   saveButton.addEventListener('click', save);
@@ -339,8 +375,9 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
-    renderSources();
+    if (channelsChanged) renderSources();
     if (!root.hidden && formulaInput.value.trim()) void preview();
   };
 
