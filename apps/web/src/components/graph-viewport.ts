@@ -252,7 +252,6 @@ function stableScaleFromStatistics(
 }
 
 export function createGraphViewport(): GraphViewportController {
-  let channels: readonly ChannelDefinition[] = [];
   const channelsById = new Map<string, ChannelDefinition>();
   let channelData: NumericChannelDataSource | undefined;
   let timeRange: LogTimeRange | undefined;
@@ -1347,7 +1346,6 @@ export function createGraphViewport(): GraphViewportController {
     nextChannelData: NumericChannelDataSource,
     nextTimeRange: LogTimeRange | undefined,
   ): void => {
-    channels = nextChannels;
     channelsById.clear();
     for (const channel of nextChannels) {
       if (!channelsById.has(channel.id)) channelsById.set(channel.id, channel);
@@ -1695,7 +1693,6 @@ export function createGraphViewport(): GraphViewportController {
 
   const clear = (): void => {
     cancelPending();
-    channels = [];
     channelsById.clear();
     channelData = undefined;
     timeRange = undefined;
