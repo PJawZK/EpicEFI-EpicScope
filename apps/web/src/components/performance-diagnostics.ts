@@ -160,6 +160,7 @@ export interface ChannelPerformanceRun {
   readonly sidecarBlobReadAggregateMs?: number | undefined;
   readonly sidecarDecodeAggregateMs?: number | undefined;
   readonly sidecarRangeBuildMs?: number | undefined;
+  readonly sidecarReadPath?: 'captured' | 'native' | 'striped' | undefined;
   readonly phase: 'viewport' | 'full' | 'cache';
   readonly startSampleIndex: number;
   readonly requestedSampleCount: number;
@@ -612,7 +613,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     if (channelRuns.length === 0) {
       channelsHost.textContent = 'No channel selections captured.';
     } else {
-      for (const run of channelRuns.slice(-10).reverse()) {
+      for (const run of channelRuns.slice(-24).reverse()) {
         const card = document.createElement('div');
         card.className = 'performance-channel-card';
         const title = document.createElement('strong');

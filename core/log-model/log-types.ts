@@ -98,6 +98,7 @@ export interface NumericChannelBatchPerformance {
   readonly sidecarBlobReadAggregateMs?: number;
   readonly sidecarDecodeAggregateMs?: number;
   readonly sidecarRangeBuildMs?: number;
+  readonly sidecarReadPath?: 'captured' | 'native' | 'striped';
 }
 
 export interface NumericChannelBatchResult {

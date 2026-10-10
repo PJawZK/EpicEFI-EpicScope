@@ -316,6 +316,7 @@ export function mountAppShell(root: HTMLElement): void {
       sidecarBlobReadAggregateMs: run.sidecarBlobReadAggregateMs,
       sidecarDecodeAggregateMs: run.sidecarDecodeAggregateMs,
       sidecarRangeBuildMs: run.sidecarRangeBuildMs,
+      sidecarReadPath: run.sidecarReadPath,
     });
   });
 

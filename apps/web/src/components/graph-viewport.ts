@@ -109,6 +109,7 @@ export interface GraphChannelPerformance {
   readonly sidecarBlobReadAggregateMs?: number | undefined;
   readonly sidecarDecodeAggregateMs?: number | undefined;
   readonly sidecarRangeBuildMs?: number | undefined;
+  readonly sidecarReadPath?: 'captured' | 'native' | 'striped' | undefined;
 }
 
 export interface GraphPreloadedActivationPerformance {
@@ -957,6 +958,7 @@ export function createGraphViewport(): GraphViewportController {
           sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
           sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
           sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
+          sidecarReadPath: result.performance.sidecarReadPath,
         });
         pending.resolve(true);
         const activated = activeTraces.get(channelId);
@@ -1238,6 +1240,7 @@ export function createGraphViewport(): GraphViewportController {
           sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
           sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
           sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
+          sidecarReadPath: result.performance.sidecarReadPath,
           });
           completedSteps += 1;
         } catch {
