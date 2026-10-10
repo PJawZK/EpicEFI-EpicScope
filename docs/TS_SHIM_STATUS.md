@@ -4,7 +4,7 @@ This file is the present-tense implementation/status companion to [`TS_SHIM_INTE
 
 ## Current implementation state
 
-EpicScope now contains a complete first-pass read-only `ts_shim` telemetry path through the existing normalized Logger/Analyzer/Histogram architecture.
+EpicScope contains a complete first-pass read-only `ts_shim` telemetry path through the existing normalized Logger/Analyzer/Histogram architecture.
 
 Implemented sequence:
 
@@ -18,9 +18,10 @@ Implemented sequence:
 - **PR #256 / SHIM-7** — retained captures become normal EpicScope sources for Logger/Analyzer/Histogram;
 - **PR #257 / SHIM-8** — live Logger viewing and Follow mode while recording;
 - **PR #258 / SHIM-9 slice 1** — strict read-only HTTP inspector for `/api/v1/inis`, `/api/v1/objects` and `/api/v1/triggerlog`;
-- **PR #259** — same-origin Vite development proxy for testing a real Windows `ts_shim` without first embedding EpicScope into the shim package.
+- **PR #259** — same-origin Vite development proxy for testing a real Windows `ts_shim` without first embedding EpicScope into the shim package;
+- **PR #262** — fixed shim UI bootstrap after navigation refinement removed the mode-chip before shim UI installation. Current `main` correctly exposes **Load Data → Connect Shim…**.
 
-The working data path is now:
+The working data path is:
 
 ```text
 ECU
@@ -63,7 +64,7 @@ Important behavior:
 - unrelated `clockId` timestamp origins are never subtracted directly;
 - delivery-loss and rich per-sample quality are preserved as provenance;
 - Analyzer/Histogram operate through normal normalized-source reads, not a separate shim-only analysis stack;
-- live Logger refresh appends newly arrived samples; Follow keeps a rolling ~10 s latest-data viewport;
+- live Logger refresh appends newly arrived samples; Follow keeps a rolling latest-data viewport;
 - turning Follow off keeps incoming recording active while allowing historical inspection;
 - stopping a live-viewed session turns it into a retained `CAPTURE · SHIM` source.
 
@@ -123,23 +124,55 @@ Browser → shim-host:29002
 
 EpicScope addresses these routes relative to the current origin, so moving from the development proxy to shim-hosted deployment should not require a networking rewrite.
 
-## Current runtime-test position
+## Runtime-test checkpoint — PAUSED pending hardware
 
-The next work is not another speculative protocol layer. It is real Windows runtime validation against the current native `ts_shim`.
+The Windows development proxy and **Connect Shim…** UI are now known to start correctly. Full real-ECU runtime validation is intentionally paused because the required Pi Zero 2 W ↔ ECU USB adapter is not yet available.
 
-Expected test order:
+The intended physical/network arrangement has been checked against the current EpicEFI firmware/JZ-fork `ts_shim` implementation:
 
-1. run `ts_shim` and verify TCP port `29002` is listening;
-2. run the current EpicScope `main` using `npm.cmd run dev:shim` on Windows;
-3. open `http://localhost:5173/` in Brave/Chromium;
-4. verify **Load Data → Connect Shim…** is present;
-5. connect and inspect `welcome`/schema/lifecycle behavior;
-6. select channels, Record and View Live;
-7. test Follow, Stop and Open Capture;
-8. open **Shim HTTP…** and capture real responses for INIs, Objects and Trigger Log;
-9. use those responses to define the next typed read-only HTTP slice.
+```text
+Mega144H7 USB CDC
+      ↓
+Pi Zero 2 W
+Raspberry Pi OS Lite
+raw serial ↔ TCP bridge (planned: ser2net)
+      ↓ Wi-Fi / home LAN
+Windows PC
+      ↓
+ts_shim.exe --upstream-tcp PI_HOST:PORT
+      ↓
+EpicScope / tuning clients
+```
 
-If **Connect Shim…** is absent, the local ZIP/source copy is stale. Download a fresh current `main` ZIP before continuing.
+Current firmware-side `ts_shim` explicitly supports `--upstream-tcp H:PORT`, so the Pi does not need to run `ts_shim` or understand EpicEFI protocol. Its role is only to expose the ECU USB CDC byte stream over plain TCP.
+
+Pi preparation reached the point where Raspberry Pi OS Lite is installed/configured and ready for the ECU-side USB check. Work stops there until the USB adapter arrives; do not speculate around missing hardware.
+
+When hardware is available, resume in this order:
+
+1. connect Mega144H7 to the Pi and confirm the actual `/dev/ttyACM*` / `/dev/serial/by-id/*` identity;
+2. freeze the exact minimal `ser2net` configuration from the installed OS/ser2net version;
+3. test Pi TCP exposure from Windows;
+4. start `ts_shim.exe --upstream-tcp PI_HOST:PORT`;
+5. establish EpicScope WebSocket connection;
+6. capture real `welcome`, schema and lifecycle behavior;
+7. record a small selected-channel live capture and verify View Live / Follow / Stop / Open Capture;
+8. inspect `/api/v1/inis`, `/api/v1/objects` and `/api/v1/triggerlog`;
+9. use those real payloads to define the next typed read-only HTTP slice.
+
+Until that hardware arrives, shim/runtime work is not the active development track.
+
+## Active work while shim runtime is paused
+
+Continue browser-only EpicScope maturity using recorded MLG/INI/MSQ sources:
+
+- codebase/static sanity and maintainability audits;
+- performance profiling and optimization on large recorded logs;
+- polish of existing Logger, Analyzer, Histogram/Table Generator and navigation/settings interactions;
+- shared Analyzer comparison/qualification/evidence refinement;
+- regression cleanup without destabilizing established MLG/INI/MSQ behavior.
+
+Do not build speculative shim protocol layers merely because the hardware test is paused.
 
 ## Scope still intentionally deferred
 
