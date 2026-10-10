@@ -253,6 +253,7 @@ function stableScaleFromStatistics(
 
 export function createGraphViewport(): GraphViewportController {
   let channels: readonly ChannelDefinition[] = [];
+  const channelsById = new Map<string, ChannelDefinition>();
   let channelData: NumericChannelDataSource | undefined;
   let timeRange: LogTimeRange | undefined;
   let viewport: TimelineViewport | undefined;
@@ -1347,6 +1348,10 @@ export function createGraphViewport(): GraphViewportController {
     nextTimeRange: LogTimeRange | undefined,
   ): void => {
     channels = nextChannels;
+    channelsById.clear();
+    for (const channel of nextChannels) {
+      if (!channelsById.has(channel.id)) channelsById.set(channel.id, channel);
+    }
     channelData = nextChannelData;
     precomputedEnvelopeBlocksEnabled = true;
     timeRange = nextTimeRange;
@@ -1458,7 +1463,7 @@ export function createGraphViewport(): GraphViewportController {
     for (const [channelId, range] of ranges) {
       if (activeTraces.has(channelId) || activeTraces.size >= MAX_ACTIVE_TRACES) continue;
       const lookupStarted = now();
-      const channel = channels.find((candidate) => candidate.id === channelId);
+      const channel = channelsById.get(channelId);
       channelLookupMs += now() - lookupStarted;
       if (!channel) continue;
 
@@ -1562,7 +1567,7 @@ export function createGraphViewport(): GraphViewportController {
       return false;
     }
 
-    const channel = channels.find((candidate) => candidate.id === channelId);
+    const channel = channelsById.get(channelId);
     if (!channel) return false;
 
     const now = (): number => globalThis.performance?.now() ?? Date.now();
@@ -1691,6 +1696,7 @@ export function createGraphViewport(): GraphViewportController {
   const clear = (): void => {
     cancelPending();
     channels = [];
+    channelsById.clear();
     channelData = undefined;
     timeRange = undefined;
     viewport = undefined;
