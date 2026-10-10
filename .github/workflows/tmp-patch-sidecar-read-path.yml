@@ -62,7 +62,7 @@ jobs:
           replace('apps/web/src/components/graph-viewport.ts', old, new)
           old = "          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,\n"
           new = old + "          sidecarReadPath: result.performance.sidecarReadPath,\n"
-          replace('apps/web/src/components/graph-viewport.ts', old, new)
+          replace('apps/web/src/components/graph-viewport.ts', old, new, count=2)
 
           replace('apps/web/src/components/performance-diagnostics.ts',
                   "  readonly sidecarRangeBuildMs?: number | undefined;\n",
