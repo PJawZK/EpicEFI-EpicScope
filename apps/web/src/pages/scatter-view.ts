@@ -224,6 +224,13 @@ function drawHeatLegend(
   }
 }
 
+function sameChannelCatalog(
+  left: HistogramPageContext['channels'],
+  right: HistogramPageContext['channels'],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+}
+
 export function createScatterView(): ScatterViewController {
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let scope: ScatterScope = 'range';
@@ -537,15 +544,18 @@ export function createScatterView(): ScatterViewController {
 
   const setContext = (nextContext: HistogramPageContext): void => {
     const previous = panes.map((pane) => ({ x: pane.xSelect.value, y: pane.ySelect.value }));
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     analysisA = nextContext.aTimeMs;
     analysisB = nextContext.bTimeMs;
     fullStartMs = undefined;
     fullEndMs = undefined;
-    fillSelect(panes[0]!.xSelect, previous[0]?.x ?? '', 0);
-    fillSelect(panes[0]!.ySelect, previous[0]?.y ?? '', 1);
-    fillSelect(panes[1]!.xSelect, previous[1]?.x ?? '', 0);
-    fillSelect(panes[1]!.ySelect, previous[1]?.y ?? '', 2);
+    if (channelsChanged) {
+      fillSelect(panes[0]!.xSelect, previous[0]?.x ?? '', 0);
+      fillSelect(panes[0]!.ySelect, previous[0]?.y ?? '', 1);
+      fillSelect(panes[1]!.xSelect, previous[1]?.x ?? '', 0);
+      fillSelect(panes[1]!.ySelect, previous[1]?.y ?? '', 2);
+    }
     void render();
   };
 
