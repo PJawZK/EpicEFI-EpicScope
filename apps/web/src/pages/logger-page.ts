@@ -82,6 +82,12 @@ export interface LoggerWorkspaceRestorePerformance {
   readonly prepareBatchPlanMs: number;
   readonly sharedBatchMs: number;
   readonly activationMs: number;
+  readonly activationScheduleMs: number;
+  readonly activationAwaitMs: number;
+  readonly activationToggleDispatchMaxMs: number;
+  readonly activationLoadPendingMaxMs: number;
+  readonly activationToggleAwaitMaxMs: number;
+  readonly activationApplyResultsMaxMs: number;
   readonly activationGraphTotalMs: number;
   readonly activationChannelLookupMs: number;
   readonly activationStatisticsScaleMs: number;
@@ -1428,6 +1434,11 @@ export function createLoggerPage(): LoggerPageController {
     let activationDrawSetupMs = 0;
     let activationDrawTraceMs = 0;
     let activationDrawOverlayMs = 0;
+    let activationToggleDispatchMaxMs = 0;
+    let activationLoadPendingMaxMs = 0;
+    let activationToggleAwaitMaxMs = 0;
+    let activationApplyResultsMaxMs = 0;
+    const activationScheduleStarted = now();
     const loads = paneRequests.map(async ({ runtime, pane, assignedIds, requestedIds }) => {
       if (!pane || requestedIds.length === 0) return;
 
@@ -1459,19 +1470,42 @@ export function createLoggerPage(): LoggerPageController {
         }
       }
 
+      const toggleDispatchStarted = now();
       const activations = requestedIds.map((channelId) => runtime.graph.toggleChannel(channelId));
+      activationToggleDispatchMaxMs = Math.max(
+        activationToggleDispatchMaxMs,
+        now() - toggleDispatchStarted,
+      );
+      const loadPendingStarted = now();
       runtime.graph.loadPendingChannels();
+      activationLoadPendingMaxMs = Math.max(
+        activationLoadPendingMaxMs,
+        now() - loadPendingStarted,
+      );
+      const toggleAwaitStarted = now();
       const results = await Promise.all(activations);
+      activationToggleAwaitMaxMs = Math.max(
+        activationToggleAwaitMaxMs,
+        now() - toggleAwaitStarted,
+      );
       if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
 
+      const applyResultsStarted = now();
       runtime.activeChannelIds.clear();
       requestedIds.forEach((channelId, resultIndex) => {
         if (results[resultIndex]) runtime.activeChannelIds.add(channelId);
       });
       pane.channelIds = [...assignedIds];
+      activationApplyResultsMaxMs = Math.max(
+        activationApplyResultsMaxMs,
+        now() - applyResultsStarted,
+      );
     });
+    const activationScheduleMs = now() - activationScheduleStarted;
 
+    const activationAwaitStarted = now();
     await Promise.all(loads);
+    const activationAwaitMs = now() - activationAwaitStarted;
     const activationMs = now() - activationStarted;
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
     const finalSyncStarted = now();
@@ -1489,6 +1523,12 @@ export function createLoggerPage(): LoggerPageController {
       prepareBatchPlanMs,
       sharedBatchMs,
       activationMs,
+      activationScheduleMs,
+      activationAwaitMs,
+      activationToggleDispatchMaxMs,
+      activationLoadPendingMaxMs,
+      activationToggleAwaitMaxMs,
+      activationApplyResultsMaxMs,
       activationGraphTotalMs,
       activationChannelLookupMs,
       activationStatisticsScaleMs,
