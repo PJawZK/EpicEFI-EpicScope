@@ -121,6 +121,12 @@ export interface WorkspaceRestorePerformanceRun {
   readonly prepareBatchPlanMs: number;
   readonly sharedBatchMs: number;
   readonly activationMs: number;
+  readonly activationScheduleMs: number;
+  readonly activationAwaitMs: number;
+  readonly activationToggleDispatchMaxMs: number;
+  readonly activationLoadPendingMaxMs: number;
+  readonly activationToggleAwaitMaxMs: number;
+  readonly activationApplyResultsMaxMs: number;
   readonly activationGraphTotalMs: number;
   readonly activationChannelLookupMs: number;
   readonly activationStatisticsScaleMs: number;
