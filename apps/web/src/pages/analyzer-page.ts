@@ -34,9 +34,17 @@ function formatDuration(range: SavedTimelineRangeState): string {
   return seconds < 60 ? `${seconds.toFixed(3)} s` : `${(seconds / 60).toFixed(2)} min`;
 }
 
+function sameChannelCatalog(
+  left: LoggerAnalysisContext['channels'],
+  right: LoggerAnalysisContext['channels'],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+}
+
 export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
+  let renderGeneration = 0;
   type AnalyzerView = 'compare' | 'tune-table' | 'boost' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
   const tuneTableView = createTuneTableView();
@@ -139,6 +147,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   };
 
   const render = async (): Promise<void> => {
+    const generation = ++renderGeneration;
     if (currentView !== 'compare') return;
     const channelId = channelSelect.value || context.channels[0]?.id;
     const leftRange = selectedRange(leftSelect);
@@ -155,6 +164,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const loadStartMs = Math.min(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);
     const loadEndMs = Math.max(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);
     const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);
+    if (generation !== renderGeneration || currentView !== 'compare') return;
     if (!trace) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);
     const leftScope = qualifyNumericSamples({
@@ -238,6 +248,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   };
 
   const setView = (view: AnalyzerView): void => {
+    renderGeneration += 1;
     currentView = view;
     const compareActive = view === 'compare';
     const tuneActive = view === 'tune-table';
@@ -283,11 +294,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const previousChannel = channelSelect.value;
     const previousLeft = Number(leftSelect.value);
     const previousRight = Number(rightSelect.value);
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     tuneTableView.setContext(nextContext);
     boostView.setContext(nextContext);
     specializedView.setContext(nextContext);
-    fillChannelSelect(previousChannel);
+    if (channelsChanged) fillChannelSelect(previousChannel);
     fillRangeSelect(leftSelect, previousLeft, 0);
     fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
     void render();
