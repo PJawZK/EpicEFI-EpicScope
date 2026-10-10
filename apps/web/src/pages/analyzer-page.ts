@@ -45,6 +45,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
   let renderGeneration = 0;
+  let suppressImmediateRefresh = false;
+  let contextUpdateGeneration = 0;
   type AnalyzerView = 'compare' | 'tune-table' | 'boost' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
   const tuneTableView = createTuneTableView();
@@ -290,6 +292,11 @@ export function createAnalyzerPage(): AnalyzerPageController {
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
+    const generation = ++contextUpdateGeneration;
+    suppressImmediateRefresh = true;
+    queueMicrotask(() => {
+      if (generation === contextUpdateGeneration) suppressImmediateRefresh = false;
+    });
     const previousChannel = channelSelect.value;
     const previousLeft = Number(leftSelect.value);
     const previousRight = Number(rightSelect.value);
@@ -320,6 +327,10 @@ export function createAnalyzerPage(): AnalyzerPageController {
     setContext,
     setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
     refresh: () => {
+      if (suppressImmediateRefresh) {
+        suppressImmediateRefresh = false;
+        return;
+      }
       if (currentView === 'compare') void render();
       else if (currentView === 'tune-table') tuneTableView.refresh();
       else if (currentView === 'boost') boostView.refresh();
