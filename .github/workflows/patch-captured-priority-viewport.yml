@@ -7,14 +7,14 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Add temporary captured viewport patch workflow'
+    if: github.event.head_commit.message == 'Fix temporary captured viewport patch workflow'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: perf/captured-priority-viewport-slices
       - name: Patch captured priority partial reads
-        shell: python
+        shell: python3 {0}
         run: |
           from pathlib import Path
           path = Path('apps/web/src/adapters/mlg-column-sidecar-v1.ts')
