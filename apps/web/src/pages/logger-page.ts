@@ -1476,7 +1476,7 @@ export function createLoggerPage(): LoggerPageController {
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
     const finalSyncStarted = now();
     const finalSyncPerformance = syncActivePaneContext({ syncAssignedChannels: false });
-    reconcileAssignedVisiblePaneChannels();
+    reconcileAssignedVisiblePaneChannels({ syncContextOnNoMissing: false });
     const finalSyncMs = now() - finalSyncStarted;
     workspaceRestorePerformanceListener?.({
       totalMs: now() - restoreStarted,
@@ -1525,16 +1525,21 @@ export function createLoggerPage(): LoggerPageController {
     });
   };
 
-  const reconcileAssignedVisiblePaneChannels = (): void => {
+  const reconcileAssignedVisiblePaneChannels = (
+    options: { readonly syncContextOnNoMissing?: boolean } = {},
+  ): void => {
     const workspace = activeWorkspace();
     if (!workspace || !channelDataSource) return;
     const visibleCount = paneCountForLayout(workspace.layout);
     for (const runtime of paneRuntimes.slice(0, visibleCount)) {
-      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime);
+      if (!runtime.windowElement.hidden) reconcileAssignedPaneChannels(runtime, options);
     }
   };
 
-  const reconcileAssignedPaneChannels = (runtime: (typeof paneRuntimes)[number]): void => {
+  const reconcileAssignedPaneChannels = (
+    runtime: (typeof paneRuntimes)[number],
+    options: { readonly syncContextOnNoMissing?: boolean } = {},
+  ): void => {
     const workspace = activeWorkspace();
     const pane = workspace?.panes.find((candidate) => candidate.id === runtime.id);
     if (!pane || !channelDataSource) return;
@@ -1553,7 +1558,7 @@ export function createLoggerPage(): LoggerPageController {
     }
 
     if (missingIds.length === 0) {
-      syncActivePaneContext();
+      if (options.syncContextOnNoMissing !== false) syncActivePaneContext();
       return;
     }
     const activations = missingIds.map((channelId) => runtime.graph.toggleChannel(channelId));
