@@ -11,15 +11,48 @@ export interface InspectorFilterContext {
   readonly recentChannelIds: readonly string[];
 }
 
+interface NormalizedChannelSearchText {
+  readonly sourceName: string;
+  readonly displayName: string;
+  readonly unit: string | undefined;
+}
+
+let lastQuerySource: string | undefined;
+let lastNormalizedQuery = '';
+const normalizedChannelSearchText = new WeakMap<ChannelDefinition, NormalizedChannelSearchText>();
+
+function normalizeFilterQuery(query: string): string {
+  if (query === lastQuerySource) return lastNormalizedQuery;
+  lastQuerySource = query;
+  lastNormalizedQuery = query.trim().toLocaleLowerCase();
+  return lastNormalizedQuery;
+}
+
+function searchableText(channel: ChannelDefinition): NormalizedChannelSearchText {
+  const cached = normalizedChannelSearchText.get(channel);
+  if (cached) return cached;
+
+  const normalized = {
+    sourceName: channel.sourceName.toLocaleLowerCase(),
+    displayName: channel.displayName.toLocaleLowerCase(),
+    unit: channel.unit?.toLocaleLowerCase(),
+  };
+  normalizedChannelSearchText.set(channel, normalized);
+  return normalized;
+}
+
 export function channelMatchesInspectorFilters(
   channel: ChannelDefinition,
   context: InspectorFilterContext,
 ): boolean {
-  const query = context.query.trim().toLocaleLowerCase();
-  const matchesText = query.length === 0
-    || channel.sourceName.toLocaleLowerCase().includes(query)
-    || channel.displayName.toLocaleLowerCase().includes(query)
-    || (channel.unit?.toLocaleLowerCase().includes(query) ?? false);
+  const query = normalizeFilterQuery(context.query);
+  let matchesText = true;
+  if (query.length > 0) {
+    const text = searchableText(channel);
+    matchesText = text.sourceName.includes(query)
+      || text.displayName.includes(query)
+      || (text.unit?.includes(query) ?? false);
+  }
 
   const matchesGroup = context.selectedGroup === ''
     || (context.selectedGroup === '__ungrouped__'
