@@ -434,7 +434,10 @@ export class PersistentColumnCacheDataSource implements NumericChannelDataSource
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelBatchResult> {
-    if (!this.source.readChannelsRange || channelIds.length > MAX_PERSISTED_SELECTION_BATCH) {
+    if (
+      !this.source.readChannelsRange
+      || (channelIds.length > MAX_PERSISTED_SELECTION_BATCH && !this.source.managesPersistentColumns)
+    ) {
       const delegated = this.source.readChannelsRange
         ? await this.source.readChannelsRange(channelIds, startSampleIndex, sampleCount)
         : {
