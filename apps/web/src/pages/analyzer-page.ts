@@ -274,20 +274,19 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (tuneActive) {
       heading.textContent = 'Tune table correlation';
       description.textContent = 'Map decoded operating points and observed values into an explicitly selected MSQ table.';
-      tuneTableView.refresh();
+      tuneTableView.setContext(context);
       return;
     }
     if (boostActive) {
       heading.textContent = 'Boost analysis';
       description.textContent = 'Analyze boost tracking, spool and steady-state behavior using any channels available in the loaded log.';
-      boostView.refresh();
+      boostView.setContext(context);
       return;
     }
     const [title, detail] = specializedTitles[view];
     heading.textContent = title;
     description.textContent = detail;
     specializedView.setDomain(view);
-    specializedView.refresh();
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
@@ -296,13 +295,13 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const previousRight = Number(rightSelect.value);
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
-    tuneTableView.setContext(nextContext);
-    boostView.setContext(nextContext);
+    if (currentView === 'tune-table') tuneTableView.setContext(nextContext);
+    else if (currentView === 'boost') boostView.setContext(nextContext);
     specializedView.setContext(nextContext);
     if (channelsChanged) fillChannelSelect(previousChannel);
     fillRangeSelect(leftSelect, previousLeft, 0);
     fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
-    void render();
+    if (currentView === 'compare') void render();
   };
 
   channelSelect.addEventListener('change', () => { void render(); });
