@@ -1,0 +1,42 @@
+name: Temporary resident batch patch
+
+on:
+  push:
+    branches:
+      - perf/reuse-resident-large-batches
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Reuse resident columns in large sidecar batches'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/reuse-resident-large-batches
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Patch persistent batch gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/adapters/persistent-channel-cache.ts')
+          text = path.read_text()
+          old = "    if (!this.source.readChannelsRange || channelIds.length > MAX_PERSISTED_SELECTION_BATCH) {\n"
+          new = "    if (\n      !this.source.readChannelsRange\n      || (channelIds.length > MAX_PERSISTED_SELECTION_BATCH && !this.source.managesPersistentColumns)\n    ) {\n"
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one batch gate, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/adapters/persistent-channel-cache.ts
+          git commit -m "Reuse resident columns in large sidecar batches"
+          git push origin HEAD:perf/reuse-resident-large-batches
