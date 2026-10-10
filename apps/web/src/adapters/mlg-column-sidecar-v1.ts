@@ -690,26 +690,40 @@ export class MlgColumnSidecarDataSource implements NumericChannelDataSource {
     startSampleIndex: number,
     sampleCount: number,
   ): Promise<NumericChannelBatchResult | undefined> {
-    if (startSampleIndex === 0 && sampleCount === this.sampleCount) {
-      const captured = channelIds.map((channelId) => this.capturedPriorityColumns.get(channelId));
-      if (captured.every((column) => column !== undefined)) {
-        const ranges = new Map<string, NumericChannelRange>();
-        for (let index = 0; index < channelIds.length; index += 1) {
-          const column = captured[index]!;
-          ranges.set(
-            channelIds[index]!,
-            buildRange(
-              this.recordIndex,
-              0,
-              this.sampleCount,
-              column.values,
-              column.statistics,
-              column.envelopeBlocks,
-            ),
-          );
-        }
-        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0, sidecarReadPath: 'captured' } };
+    const captured = channelIds.map((channelId) => this.capturedPriorityColumns.get(channelId));
+    if (captured.every((column) => column !== undefined)) {
+      const rangeStarted = now();
+      const ranges = new Map<string, NumericChannelRange>();
+      const isFullRange = startSampleIndex === 0 && sampleCount === this.sampleCount;
+      const endSampleIndex = startSampleIndex + sampleCount;
+      for (let index = 0; index < channelIds.length; index += 1) {
+        const column = captured[index]!;
+        ranges.set(
+          channelIds[index]!,
+          buildRange(
+            this.recordIndex,
+            startSampleIndex,
+            sampleCount,
+            isFullRange
+              ? column.values
+              : column.values.slice(startSampleIndex, endSampleIndex),
+            isFullRange ? column.statistics : undefined,
+            isFullRange ? column.envelopeBlocks : undefined,
+          ),
+        );
       }
+      return {
+        ranges,
+        performance: {
+          channelCount: channelIds.length,
+          cacheHitChannelIds: [...channelIds],
+          physicalReadCount: 0,
+          physicalBytesRead: 0,
+          physicalReadMs: 0,
+          sidecarRangeBuildMs: now() - rangeStarted,
+          sidecarReadPath: 'captured',
+        },
+      };
     }
     const manifestStarted = now();
     await this.waitForPrioritizedChannels(channelIds);
