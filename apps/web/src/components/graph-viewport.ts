@@ -923,7 +923,7 @@ export function createGraphViewport(): GraphViewportController {
         const scale = buildStableValueScale(range);
         scaleTimes.set(channelId, now() - scaleStart);
         const statisticsStart = now();
-        const fullStatistics = summarizeNumericRange(range);
+        const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
         statisticsMs += now() - statisticsStart;
         const applyStart = now();
         const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
@@ -1082,7 +1082,7 @@ export function createGraphViewport(): GraphViewportController {
         const range = result.ranges.get(channelId);
         if (!latest || !range || range.startSampleIndex !== 0 || range.values.length !== dataSource.sampleCount) continue;
         const statisticsStart = now();
-        const fullStatistics = summarizeNumericRange(range);
+        const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
         statisticsMs += now() - statisticsStart;
         const applyStart = now();
         activeTraces.set(channelId, {
@@ -1789,10 +1789,30 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const refreshValidity = (): void => {
-    // Priority envelope blocks are computed before CRC validation; once source
-    // validity changes, fall back to authoritative raw samples for exact redraws.
+    // Priority statistics/envelope blocks are computed before CRC validation.
+    // Full ranges share the mutable CRC-validity array, so refresh their stored
+    // statistics/scale once validation becomes authoritative. Partial ranges keep
+    // copied validity and are materialized again rather than being treated as exact.
     precomputedEnvelopeBlocksEnabled = false;
     envelopeCache.clear();
+    const dataSource = channelData;
+    for (const [channelId, trace] of activeTraces) {
+      const fullRange = dataSource !== undefined
+        && trace.range.startSampleIndex === 0
+        && trace.range.values.length === dataSource.sampleCount;
+      if (!fullRange) {
+        if (!materializingTraceIds.has(channelId)) scheduleMaterialization(channelId);
+        continue;
+      }
+      const fullStatistics = summarizeNumericRange(trace.range);
+      activeTraces.set(channelId, {
+        ...trace,
+        fullStatistics,
+        scale: stableScaleFromStatistics(fullStatistics),
+        statisticsComplete: true,
+      });
+    }
+    renderReadout();
     emitCursorValues();
     draw();
   };
