@@ -1,0 +1,98 @@
+name: Temporary sidecar read-path diagnostics patch
+
+on:
+  push:
+    branches:
+      - perf/sidecar-read-path-diagnostics
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Expose sidecar read paths in diagnostics'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/sidecar-read-path-diagnostics
+          fetch-depth: 0
+      - name: Patch diagnostics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              found = text.count(old)
+              if found != count:
+                  raise SystemExit(f'{path}: expected {count} occurrences, found {found}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, count))
+
+          field = "  readonly sidecarRangeBuildMs?: number;\n"
+          field_with_path = field + "  readonly sidecarReadPath?: 'captured' | 'native' | 'striped';\n"
+          replace('core/log-model/log-types.ts', field, field_with_path)
+
+          p = Path('apps/web/src/adapters/mlg-column-sidecar-v1.ts')
+          text = p.read_text()
+          old = "        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0 } };"
+          new = "        return { ranges, performance: { channelCount: channelIds.length, cacheHitChannelIds: [...channelIds], physicalReadCount: 0, physicalBytesRead: 0, physicalReadMs: 0, sidecarReadPath: 'captured' } };"
+          if text.count(old) != 1:
+              raise SystemExit('captured sidecar return anchor mismatch')
+          text = text.replace(old, new, 1)
+          old = "              sidecarRangeBuildMs: 0,\n"
+          new = old + "              sidecarReadPath: 'native',\n"
+          if text.count(old) != 1:
+              raise SystemExit('native sidecar return anchor mismatch')
+          text = text.replace(old, new, 1)
+          old = "          sidecarRangeBuildMs,\n"
+          new = old + "          sidecarReadPath: 'striped',\n"
+          if text.count(old) != 1:
+              raise SystemExit('striped sidecar return anchor mismatch')
+          text = text.replace(old, new, 1)
+          p.write_text(text)
+
+          old = "        ...(delegatedPerformance?.sidecarRangeBuildMs !== undefined ? { sidecarRangeBuildMs: delegatedPerformance.sidecarRangeBuildMs } : {}),\n"
+          new = old + "        ...(delegatedPerformance?.sidecarReadPath !== undefined ? { sidecarReadPath: delegatedPerformance.sidecarReadPath } : {}),\n"
+          replace('apps/web/src/adapters/persistent-channel-cache.ts', old, new)
+
+          old = "  readonly sidecarRangeBuildMs?: number | undefined;\n"
+          new = old + "  readonly sidecarReadPath?: 'captured' | 'native' | 'striped' | undefined;\n"
+          replace('apps/web/src/components/graph-viewport.ts', old, new)
+          old = "          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,\n"
+          new = old + "          sidecarReadPath: result.performance.sidecarReadPath,\n"
+          replace('apps/web/src/components/graph-viewport.ts', old, new)
+
+          replace('apps/web/src/components/performance-diagnostics.ts',
+                  "  readonly sidecarRangeBuildMs?: number | undefined;\n",
+                  "  readonly sidecarRangeBuildMs?: number | undefined;\n  readonly sidecarReadPath?: 'captured' | 'native' | 'striped' | undefined;\n")
+          replace('apps/web/src/components/performance-diagnostics.ts',
+                  "      for (const run of channelRuns.slice(-10).reverse()) {\n",
+                  "      for (const run of channelRuns.slice(-24).reverse()) {\n")
+
+          replace('apps/web/src/app/app-shell.ts',
+                  "      sidecarRangeBuildMs: run.sidecarRangeBuildMs,\n",
+                  "      sidecarRangeBuildMs: run.sidecarRangeBuildMs,\n      sidecarReadPath: run.sidecarReadPath,\n")
+
+          replace('apps/web/src/components/performance-diagnostics-report.ts',
+                  "      channelRuns.slice(-10).forEach((run, index) => {\n",
+                  "      channelRuns.slice(-24).forEach((run, index) => {\n")
+          replace('apps/web/src/components/performance-diagnostics-report.ts',
+                  "          run.sidecarManifestMs !== undefined ? `sidecarManifest=${run.sidecarManifestMs.toFixed(2)} ms` : '',\n",
+                  "          run.sidecarReadPath !== undefined ? `sidecarPath=${run.sidecarReadPath}` : '',\n          run.sidecarManifestMs !== undefined ? `sidecarManifest=${run.sidecarManifestMs.toFixed(2)} ms` : '',\n")
+
+          replace('tests/web/performance-diagnostics-report.test.ts',
+                  "      sidecarBlobReadAggregateMs: 5.5,\n",
+                  "      sidecarReadPath: 'native',\n      sidecarBlobReadAggregateMs: 5.5,\n")
+          replace('tests/web/performance-diagnostics-report.test.ts',
+                  "    expect(report).toContain('sidecarBlobReadAggregate=5.50 ms');\n",
+                  "    expect(report).toContain('sidecarPath=native');\n    expect(report).toContain('sidecarBlobReadAggregate=5.50 ms');\n")
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/log-model/log-types.ts apps/web/src/adapters/mlg-column-sidecar-v1.ts apps/web/src/adapters/persistent-channel-cache.ts apps/web/src/components/graph-viewport.ts apps/web/src/components/performance-diagnostics.ts apps/web/src/app/app-shell.ts apps/web/src/components/performance-diagnostics-report.ts tests/web/performance-diagnostics-report.test.ts
+          git commit -m "Expose sidecar read paths in diagnostics"
+          git push origin HEAD:perf/sidecar-read-path-diagnostics
