@@ -163,6 +163,13 @@ function savedRangeOption(range: SavedTimelineRangeState, index: number): HTMLOp
   return new Option(`${range.label || `Range ${index + 1}`} · ${duration.toFixed(2)} s`, String(index));
 }
 
+function sameChannelCatalog(
+  left: HistogramPageContext['channels'],
+  right: HistogramPageContext['channels'],
+): boolean {
+  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+}
+
 export function createHistogramDistributionView(): HistogramDistributionViewController {
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let scope: DistributionScope = 'range';
@@ -590,10 +597,13 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
   const setContext = (nextContext: HistogramPageContext): void => {
     const previousChannel = channelSelect.value;
+    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
-    channelSelect.replaceChildren();
-    for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
-    if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
+    if (channelsChanged) {
+      channelSelect.replaceChildren();
+      for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
+      if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
+    }
     refreshRangeSelectors();
     void render();
   };
