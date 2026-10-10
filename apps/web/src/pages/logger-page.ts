@@ -390,6 +390,8 @@ export function createLoggerPage(): LoggerPageController {
     lastHistoryMutationMs: 0,
   }];
   let channelDefinitions = new Map<string, ChannelDefinition>();
+  const analysisChannelCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  let analysisChannelsCache: readonly ChannelDefinition[] | undefined;
   let catalogChannelDefinitions = new Map<string, ChannelDefinition>();
   let catalogSourceName = '';
   let channelIdAliases = new Map<string, string>();
@@ -615,6 +617,19 @@ export function createLoggerPage(): LoggerPageController {
   const activePaneRuntime = () => {
     const pane = activePaneState();
     return paneRuntimes.find((runtime) => runtime.id === pane?.id) ?? paneRuntimes[0];
+  };
+
+  const invalidateAnalysisChannels = (): void => { analysisChannelsCache = undefined; };
+
+  const analysisChannels = (): readonly ChannelDefinition[] => {
+    if (analysisChannelsCache) return analysisChannelsCache;
+    analysisChannelsCache = [...channelDefinitions.values()]
+      .filter((channel) => !unavailableChannelIds.has(channel.id))
+      .sort((left, right) => analysisChannelCollator.compare(
+        left.displayName || left.sourceName,
+        right.displayName || right.sourceName,
+      ));
+    return analysisChannelsCache;
   };
 
   const activeDecodedChannels = (): readonly ChannelDefinition[] => {
@@ -1893,6 +1908,7 @@ export function createLoggerPage(): LoggerPageController {
       channelDefinitions = new Map(catalogChannelDefinitions);
       unavailableChannelIds.clear();
       for (const channel of channels) unavailableChannelIds.add(channel.id);
+      invalidateAnalysisChannels();
       inspector.setCatalogChannels(channels, sourceName);
       paneRuntimes.forEach((runtime, index) => {
         syncPaneAssignedChannels(runtime, activeWorkspace()?.panes[index]);
@@ -1908,6 +1924,7 @@ export function createLoggerPage(): LoggerPageController {
     if (!channelDataSource) {
       channelDefinitions.clear();
       unavailableChannelIds.clear();
+      invalidateAnalysisChannels();
       inspector.setChannels([], 'No source channels');
       paneRuntimes.forEach((runtime, index) => {
         syncPaneAssignedChannels(runtime, activeWorkspace()?.panes[index]);
@@ -1955,6 +1972,7 @@ export function createLoggerPage(): LoggerPageController {
     channelIdAliases = new Map(options.channelIdAliases ?? []);
     unavailableChannelIds.clear();
     for (const channelId of options.unavailableChannelIds ?? []) unavailableChannelIds.add(channelId);
+    invalidateAnalysisChannels();
     channelDataSource = channelData;
     logMarkers = summary.markers;
     const channelModelMs = now() - channelModelStarted;
@@ -2067,6 +2085,7 @@ export function createLoggerPage(): LoggerPageController {
     } else {
       inspector.setError(message);
     }
+    invalidateAnalysisChannels();
     timeline.setTimeRange(undefined, 0);
     syncViewport(undefined);
     paneRuntimes.forEach((runtime) => runtime.graph.clear());
@@ -2214,13 +2233,7 @@ export function createLoggerPage(): LoggerPageController {
         })
       : [];
 
-    const channels = [...channelDefinitions.values()]
-      .filter((channel) => !unavailableChannelIds.has(channel.id))
-      .sort((left, right) => (left.displayName || left.sourceName).localeCompare(
-        right.displayName || right.sourceName,
-        undefined,
-        { numeric: true, sensitivity: 'base' },
-      ));
+    const channels = analysisChannels();
     const activeColors = new Map(traces.map((trace) => [trace.channel.id, trace.color]));
     const palette = ['#58aef6', '#ffb15a', '#7ddf8a', '#df7dcb', '#ffd45a', '#67d8d2', '#ff7f7f', '#9ca7ff'];
     const colorFor = (channelId: string): string => {
