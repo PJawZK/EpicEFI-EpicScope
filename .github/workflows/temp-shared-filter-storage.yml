@@ -1,0 +1,66 @@
+name: Temporary shared filter storage patch
+on:
+  push:
+    branches:
+      - refactor/shared-analysis-filter-storage
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/shared-analysis-filter-storage
+          fetch-depth: 0
+      - name: Share analysis filter storage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/state/histogram-table-storage.ts')
+          text = path.read_text()
+
+          old = "import type { NumericQualificationLogic, NumericQualificationOperator } from '../../../../core/analysis/sample-qualification';\n"
+          new = "import type { NumericQualificationLogic } from '../../../../core/analysis/sample-qualification';\nimport {\n  isAnalysisFilterCondition,\n  loadAnalysisFilterSets,\n  saveAnalysisFilterSets,\n  type AnalysisFilterConditionState,\n  type AnalysisFilterSetState,\n} from './analysis-filter-storage';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          start = text.index('export interface HistogramFilterConditionState {')
+          end = text.index('export interface HistogramTablePresetState {')
+          replacement = (
+              'export type HistogramFilterConditionState = AnalysisFilterConditionState;\n'
+              'export type HistogramFilterSetState = AnalysisFilterSetState;\n\n'
+          )
+          text = text[:start] + replacement + text[end:]
+
+          text = text.replace("const FILTER_SET_KEY = 'epicscope.histogram.filter-sets.v1';\n", '', 1)
+          text = text.replace("const qualificationOperators = new Set<NumericQualificationOperator>(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);\n", '', 1)
+
+          start = text.index('function isFilterCondition(')
+          end = text.index('function isTablePreset(')
+          text = text[:start] + text[end:]
+          text = text.replace('    && value.filters.every(isFilterCondition);', '    && value.filters.every(isAnalysisFilterCondition);', 1)
+
+          text = text.replace('let filterSetCache = readValidatedArray(FILTER_SET_KEY, isFilterSet);\n', '')
+          # isFilterSet sat between the removed filter-condition guard and table preset guard.
+          if 'function isFilterSet(' in text:
+              start = text.index('function isFilterSet(')
+              end = text.index('function isTablePreset(')
+              text = text[:start] + text[end:]
+
+          old = "export const loadHistogramFilterSets = (): HistogramFilterSetState[] => [...filterSetCache];\nexport const saveHistogramFilterSets = (values: readonly HistogramFilterSetState[]): boolean => {\n  filterSetCache = values.filter(isFilterSet);\n  return writeArray(FILTER_SET_KEY, filterSetCache);\n};\n"
+          new = "export const loadHistogramFilterSets = loadAnalysisFilterSets;\nexport const saveHistogramFilterSets = saveAnalysisFilterSets;\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          assert 'FILTER_SET_KEY' not in text
+          assert 'isFilterSet' not in text
+          assert 'filterSetCache' not in text
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/state/histogram-table-storage.ts
+          git commit -m "Share analysis filter storage"
+          git push origin HEAD:refactor/shared-analysis-filter-storage
