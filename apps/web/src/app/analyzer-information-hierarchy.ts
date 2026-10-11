@@ -8,7 +8,6 @@ const SPECIALIZED_PRIMARY: Readonly<Record<string, readonly string[]>> = {
 };
 
 const BOOST_PRIMARY = new Set([
-  'Measured mean',
   'Measured max',
   'Peak RPM',
   'Mean error',
@@ -172,13 +171,23 @@ function standardizeInfoIcons(root: HTMLElement): void {
     if (!icon.classList.contains('epicscope-info-icon')) icon.classList.add('epicscope-info-icon');
     if (icon.classList.contains('channel-details')) {
       if (icon.textContent !== 'i') icon.textContent = 'i';
-      if (!icon.getAttribute('aria-label')) icon.setAttribute('aria-label', icon.getAttribute('title') ?? 'Channel information');
+      const label = icon.getAttribute('title') ?? 'Channel information';
+      if (icon.getAttribute('aria-label') !== label) icon.setAttribute('aria-label', label);
     }
+  }
+}
+
+function collapseAdvancedOptionsOnce(root: HTMLElement): void {
+  for (const details of root.querySelectorAll<HTMLDetailsElement>('.specialized-analyzer-options')) {
+    if (details.dataset.analyzerHierarchyInitialized === 'true') continue;
+    details.open = false;
+    details.dataset.analyzerHierarchyInitialized = 'true';
   }
 }
 
 function apply(root: HTMLElement): void {
   standardizeInfoIcons(root);
+  collapseAdvancedOptionsOnce(root);
   for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) specializeSummary(view);
   for (const view of root.querySelectorAll<HTMLElement>('.boost-analyzer-view')) boostSummary(view);
   for (const spec of TABLE_DISCLOSURES) {
