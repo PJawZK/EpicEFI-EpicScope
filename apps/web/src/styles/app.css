@@ -626,6 +626,13 @@ button:disabled { opacity: .48; cursor: default; }
   color: #b8d8ea;
   background: #0d2130;
 }
+.timeline-open-analyzer {
+  border-color: #3479ae;
+  color: #dceef8;
+  background: #12334a;
+  font-weight: 750;
+}
+.timeline-open-analyzer:hover { background: #17425f; }
 .timeline-maintenance-menu {
   position: relative;
   flex: none;

@@ -15,6 +15,7 @@ export interface AnalyzerPageController {
   readonly headerControl: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
+  openRangeCompareScope(scopeValue: 'ab'): void;
   refresh(): void;
 }
 
@@ -333,6 +334,14 @@ export function createAnalyzerPage(): AnalyzerPageController {
     headerControl,
     setContext,
     setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
+    openRangeCompareScope: (scopeValue) => {
+      setView('compare');
+      const leftHasScope = [...leftSelect.options].some((option) => option.value === scopeValue);
+      const rightHasScope = [...rightSelect.options].some((option) => option.value === scopeValue);
+      if (!leftHasScope && !rightHasScope) return;
+      if (leftSelect.value !== scopeValue && rightSelect.value !== scopeValue && rightHasScope) rightSelect.value = scopeValue;
+      void render();
+    },
     refresh: () => {
       if (suppressImmediateRefresh) {
         suppressImmediateRefresh = false;

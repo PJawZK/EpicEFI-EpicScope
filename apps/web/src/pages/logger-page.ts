@@ -204,6 +204,7 @@ export interface LoggerPageController {
     listener: (performance: LoggerWorkspaceRestorePerformance) => void,
   ): void;
   onWorkspaceMutation(listener: () => void): void;
+  onAnalyzeRange(listener: () => void): void;
   getWorkspaceState(): LoggerWorkspaceState;
   getRuntimeDiagnosticSnapshot(): LoggerRuntimeDiagnosticSnapshot;
   getAnalysisContext(): LoggerAnalysisContext;
@@ -698,7 +699,7 @@ export function createLoggerPage(): LoggerPageController {
   if (analysisTrigger) {
     analysisTrigger.setAttribute('role', 'button');
     analysisTrigger.tabIndex = 0;
-    analysisTrigger.title = 'Analyze the selected A/B range';
+    analysisTrigger.title = 'Qualify samples or find events inside the selected A/B range';
     const openRangeAnalysis = (): void => {
       if (analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) return;
       const channels = activeDecodedChannels();
@@ -2450,6 +2451,7 @@ export function createLoggerPage(): LoggerPageController {
       workspaceRestorePerformanceListener = listener;
     },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
+    onAnalyzeRange: (listener) => { timeline.onAnalyzeRequest(() => listener()); },
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
     getAnalysisContext,
