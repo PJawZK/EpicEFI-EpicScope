@@ -1,0 +1,297 @@
+name: Temporary Range Compare qualification
+on:
+  push:
+    branches:
+      - feature/range-compare-qualification
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/range-compare-qualification
+          fetch-depth: 0
+      - name: Add Range Compare qualification
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/analyzer-page.ts')
+          text = path.read_text()
+
+          old = "import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';\n"
+          new = "import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "import type { TuneModel } from '../../../../core/tune/tune-model';\n"
+          new = (
+              "import type { TuneModel } from '../../../../core/tune/tune-model';\n"
+              "import { loadAnalysisFilterSets, type AnalysisFilterSetState } from '../state/analysis-filter-storage';\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "  let currentResult: NumericCompareResult | undefined;\n"
+          new = "  let currentResult: NumericCompareResult | undefined;\n  let analysisFilterSets = loadAnalysisFilterSets();\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "        <label><span>Left scope</span><select class=\"analyzer-left-range\"></select></label>\n"
+              "        <label><span>Right scope</span><select class=\"analyzer-right-range\"></select></label>\n"
+              "        <button type=\"button\" class=\"analyzer-refresh\">Refresh</button>\n"
+          )
+          new = (
+              "        <label><span>Left scope</span><select class=\"analyzer-left-range\"></select></label>\n"
+              "        <label><span>Right scope</span><select class=\"analyzer-right-range\"></select></label>\n"
+              "        <label><span>Qualification</span><select class=\"analyzer-qualification-filter\"><option value=\"\">None</option></select></label>\n"
+              "        <button type=\"button\" class=\"analyzer-refresh\">Refresh</button>\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          text = text.replace(
+              '<span>Compare Full Log, the current Logger A/B selection, or saved Logger ranges.</span>',
+              '<span>Compare Full Log, Current A/B, or saved ranges, with an optional saved qualification filter.</span>',
+              1,
+          )
+
+          old = (
+              "        <div><span>Input</span><strong data-analyzer=\"left-input\">0</strong></div>\n"
+              "        <div><span>Valid</span><strong data-analyzer=\"left-valid\">0</strong></div>\n"
+              "        <div><span>Invalid</span><strong data-analyzer=\"left-invalid\">0</strong></div>\n"
+          )
+          new = (
+              "        <div><span>Input</span><strong data-analyzer=\"left-input\">0</strong></div>\n"
+              "        <div><span>Eligible</span><strong data-analyzer=\"left-eligible\">0</strong></div>\n"
+              "        <div><span>Rejected</span><strong data-analyzer=\"left-rejected\">0</strong></div>\n"
+              "        <div><span>Invalid</span><strong data-analyzer=\"left-invalid\">0</strong></div>\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "        <div><span>Input</span><strong data-analyzer=\"right-input\">0</strong></div>\n"
+              "        <div><span>Valid</span><strong data-analyzer=\"right-valid\">0</strong></div>\n"
+              "        <div><span>Invalid</span><strong data-analyzer=\"right-invalid\">0</strong></div>\n"
+          )
+          new = (
+              "        <div><span>Input</span><strong data-analyzer=\"right-input\">0</strong></div>\n"
+              "        <div><span>Eligible</span><strong data-analyzer=\"right-eligible\">0</strong></div>\n"
+              "        <div><span>Rejected</span><strong data-analyzer=\"right-rejected\">0</strong></div>\n"
+              "        <div><span>Invalid</span><strong data-analyzer=\"right-invalid\">0</strong></div>\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "        <span>Comparison coverage <strong data-analyzer=\"coverage\">—</strong></span>\n        <span>Delta convention <strong>Right − Left</strong></span>\n"
+          new = "        <span>Comparison coverage <strong data-analyzer=\"coverage\">—</strong></span>\n        <span>Qualification <strong data-analyzer=\"qualification\">None</strong></span>\n        <span>Delta convention <strong>Right − Left</strong></span>\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "  const rightSelect = root.querySelector<HTMLSelectElement>('.analyzer-right-range');\n  const refreshButton = root.querySelector<HTMLButtonElement>('.analyzer-refresh');\n"
+          new = "  const rightSelect = root.querySelector<HTMLSelectElement>('.analyzer-right-range');\n  const qualificationSelect = root.querySelector<HTMLSelectElement>('.analyzer-qualification-filter');\n  const refreshButton = root.querySelector<HTMLButtonElement>('.analyzer-refresh');\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {\n"
+          new = "  if (!channelSelect || !leftSelect || !rightSelect || !qualificationSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          anchor = "  const render = async (): Promise<void> => {\n"
+          assert text.count(anchor) == 1
+          helpers = (
+              "  const selectedQualificationFilter = (): AnalysisFilterSetState | undefined =>\n"
+              "    qualificationSelect.value ? analysisFilterSets.find((filterSet) => filterSet.id === qualificationSelect.value) : undefined;\n\n"
+              "  const qualificationGroups = (filterSet: AnalysisFilterSetState | undefined): NumericQualificationGroup[] => {\n"
+              "    if (!filterSet) return [];\n"
+              "    const grouped = new Map<string, Array<{ channelId: string; operator: AnalysisFilterSetState['conditions'][number]['operator']; value: number }>>();\n"
+              "    for (const condition of filterSet.conditions) {\n"
+              "      if (!condition.enabled) continue;\n"
+              "      const groupId = condition.group || 'A';\n"
+              "      const conditions = grouped.get(groupId) ?? [];\n"
+              "      conditions.push({ channelId: condition.channelId, operator: condition.operator, value: condition.value });\n"
+              "      grouped.set(groupId, conditions);\n"
+              "    }\n"
+              "    return [...grouped.entries()].map(([id, conditions]) => ({ id, logic: filterSet.groupConditionLogic, conditions }));\n"
+              "  };\n\n"
+          )
+          text = text.replace(anchor, helpers + anchor, 1)
+
+          old = (
+              "    const leftScope = selectedAnalyzerScope(leftSelect, context);\n"
+              "    const rightScope = selectedAnalyzerScope(rightSelect, context);\n"
+              "    if (!channelId || !leftScope || !rightScope) {\n"
+          )
+          new = (
+              "    const leftScope = selectedAnalyzerScope(leftSelect, context);\n"
+              "    const rightScope = selectedAnalyzerScope(rightSelect, context);\n"
+              "    const filterSet = selectedQualificationFilter();\n"
+              "    if (!channelId || !leftScope || !rightScope) {\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    const loadStartMs = needsFullRange ? undefined : Math.min(leftBounds.startMs!, rightBounds.startMs!);\n"
+              "    const loadEndMs = needsFullRange ? undefined : Math.max(leftBounds.endMs!, rightBounds.endMs!);\n"
+              "    const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);\n"
+              "    if (generation !== renderGeneration || currentView !== 'compare') return;\n"
+              "    if (!trace) { empty.hidden = false; content.hidden = true; return; }\n"
+              "    const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);\n"
+              "    const leftQualified = qualifyNumericSamples({\n"
+              "      referenceChannelId: trace.channel.id,\n"
+              "      channels,\n"
+              "      conditions: [],\n"
+          )
+          new = (
+              "    const loadStartMs = needsFullRange ? undefined : Math.min(leftBounds.startMs!, rightBounds.startMs!);\n"
+              "    const loadEndMs = needsFullRange ? undefined : Math.max(leftBounds.endMs!, rightBounds.endMs!);\n"
+              "    const filterChannelIds = filterSet\n"
+              "      ? [...new Set(filterSet.conditions.filter((condition) => condition.enabled).map((condition) => condition.channelId))]\n"
+              "      : [];\n"
+              "    const requestedChannelIds = [channelId, ...filterChannelIds.filter((id) => id !== channelId)];\n"
+              "    const traces = await context.loadTraces(requestedChannelIds, loadStartMs, loadEndMs);\n"
+              "    if (generation !== renderGeneration || currentView !== 'compare') return;\n"
+              "    const trace = traces.find((candidate) => candidate.channel.id === channelId);\n"
+              "    if (!trace) { empty.hidden = false; content.hidden = true; return; }\n"
+              "    const channels = new Map(traces.map((candidate) => [candidate.channel.id, { range: candidate.range, complete: candidate.complete }]));\n"
+              "    const groups = qualificationGroups(filterSet);\n"
+              "    if (filterChannelIds.some((id) => !channels.has(id))) {\n"
+              "      currentResult = undefined;\n"
+              "      empty.hidden = false;\n"
+              "      content.hidden = true;\n"
+              "      return;\n"
+              "    }\n"
+              "    const leftQualified = qualifyNumericSampleGroups({\n"
+              "      referenceChannelId: trace.channel.id,\n"
+              "      channels,\n"
+              "      groupLogic: filterSet?.groupLogic ?? 'and',\n"
+              "      groups,\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    const rightQualified = qualifyNumericSamples({\n"
+              "      referenceChannelId: trace.channel.id,\n"
+              "      channels,\n"
+              "      conditions: [],\n"
+          )
+          new = (
+              "    const rightQualified = qualifyNumericSampleGroups({\n"
+              "      referenceChannelId: trace.channel.id,\n"
+              "      channels,\n"
+              "      groupLogic: filterSet?.groupLogic ?? 'and',\n"
+              "      groups,\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    field('left-input').textContent = currentResult.left.inputSampleCount.toLocaleString();\n"
+              "    field('left-valid').textContent = currentResult.left.validSampleCount.toLocaleString();\n"
+              "    field('left-invalid').textContent = currentResult.left.invalidSampleCount.toLocaleString();\n"
+              "    field('left-unavailable').textContent = currentResult.left.unavailableSampleCount.toLocaleString();\n"
+          )
+          new = (
+              "    field('left-input').textContent = leftQualified.inputSampleCount.toLocaleString();\n"
+              "    field('left-eligible').textContent = leftQualified.eligibleSampleCount.toLocaleString();\n"
+              "    field('left-rejected').textContent = leftQualified.valueRejectedSampleCount.toLocaleString();\n"
+              "    field('left-invalid').textContent = leftQualified.invalidSampleCount.toLocaleString();\n"
+              "    field('left-unavailable').textContent = leftQualified.unavailableSampleCount.toLocaleString();\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    field('right-input').textContent = currentResult.right.inputSampleCount.toLocaleString();\n"
+              "    field('right-valid').textContent = currentResult.right.validSampleCount.toLocaleString();\n"
+              "    field('right-invalid').textContent = currentResult.right.invalidSampleCount.toLocaleString();\n"
+              "    field('right-unavailable').textContent = currentResult.right.unavailableSampleCount.toLocaleString();\n"
+          )
+          new = (
+              "    field('right-input').textContent = rightQualified.inputSampleCount.toLocaleString();\n"
+              "    field('right-eligible').textContent = rightQualified.eligibleSampleCount.toLocaleString();\n"
+              "    field('right-rejected').textContent = rightQualified.valueRejectedSampleCount.toLocaleString();\n"
+              "    field('right-invalid').textContent = rightQualified.invalidSampleCount.toLocaleString();\n"
+              "    field('right-unavailable').textContent = rightQualified.unavailableSampleCount.toLocaleString();\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "    field('coverage').textContent = currentResult.complete ? 'Complete' : 'Partial decoded';\n"
+          new = "    field('coverage').textContent = currentResult.complete ? 'Complete' : 'Partial decoded';\n    field('qualification').textContent = filterSet?.name ?? 'None';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          anchor = "  const specializedTitles: Record<SpecializedAnalyzerDomain, [string, string]> = {\n"
+          assert text.count(anchor) == 1
+          helper = (
+              "  const fillQualificationSelect = (preferred: string): void => {\n"
+              "    analysisFilterSets = loadAnalysisFilterSets();\n"
+              "    qualificationSelect.replaceChildren(new Option('None', ''));\n"
+              "    const availableChannelIds = new Set(context.channels.map((channel) => channel.id));\n"
+              "    for (const filterSet of analysisFilterSets) {\n"
+              "      const missingChannel = filterSet.conditions.some((condition) => condition.enabled && !availableChannelIds.has(condition.channelId));\n"
+              "      const option = new Option(missingChannel ? `${filterSet.name} · unavailable channels` : filterSet.name, filterSet.id);\n"
+              "      option.disabled = missingChannel;\n"
+              "      qualificationSelect.add(option);\n"
+              "    }\n"
+              "    const preferredOption = [...qualificationSelect.options].find((option) => option.value === preferred && !option.disabled);\n"
+              "    qualificationSelect.value = preferredOption?.value ?? '';\n"
+              "  };\n\n"
+          )
+          text = text.replace(anchor, helper + anchor, 1)
+
+          old = "      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges.';\n"
+          new = "      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges with optional saved qualification.';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    const previousChannel = channelSelect.value;\n"
+              "    const previousLeft = leftSelect.value;\n"
+              "    const previousRight = rightSelect.value;\n"
+          )
+          new = (
+              "    const previousChannel = channelSelect.value;\n"
+              "    const previousLeft = leftSelect.value;\n"
+              "    const previousRight = rightSelect.value;\n"
+              "    const previousQualification = qualificationSelect.value;\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    fillScopeSelect(leftSelect, previousLeft, leftFallback);\n"
+              "    fillScopeSelect(rightSelect, previousRight, rightFallback);\n"
+              "    if (currentView === 'compare') void render();\n"
+          )
+          new = (
+              "    fillScopeSelect(leftSelect, previousLeft, leftFallback);\n"
+              "    fillScopeSelect(rightSelect, previousRight, rightFallback);\n"
+              "    fillQualificationSelect(previousQualification);\n"
+              "    if (currentView === 'compare') void render();\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "  rightSelect.addEventListener('change', () => { void render(); });\n  refreshButton.addEventListener('click', () => { void render(); });\n"
+          new = "  rightSelect.addEventListener('change', () => { void render(); });\n  qualificationSelect.addEventListener('change', () => { void render(); });\n  refreshButton.addEventListener('click', () => { fillQualificationSelect(qualificationSelect.value); void render(); });\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          assert 'qualifyNumericSamples(' not in text
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/analyzer-page.ts
+          git commit -m "Apply saved qualification filters in Range Compare"
+          git push origin HEAD:feature/range-compare-qualification
