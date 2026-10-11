@@ -1,0 +1,189 @@
+name: Temporary Boost spool landmarks
+on:
+  push:
+    branches:
+      - feature/boost-spool-landmarks
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-spool-landmarks
+          fetch-depth: 0
+      - name: Add Boost spool landmarks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core_path = Path('core/analysis/boost-analyzer.ts')
+          text = core_path.read_text()
+
+          old = "export interface BoostSpoolEvent {\n"
+          new = (
+              "export interface BoostSpoolAttainment {\n"
+              "  readonly fraction: 0.1 | 0.5 | 0.9;\n"
+              "  readonly sampleIndex: number;\n"
+              "  readonly timeMs: number;\n"
+              "  readonly durationMs: number;\n"
+              "  readonly measuredPressure: number;\n"
+              "  readonly targetPressure: number;\n"
+              "  readonly rpm: number | undefined;\n"
+              "}\n\n"
+              "export interface BoostSpoolEvent {\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "  readonly startRpm: number | undefined;\n  readonly endRpm: number | undefined;\n}\n"
+          new = (
+              "  readonly startRpm: number | undefined;\n"
+              "  readonly endRpm: number | undefined;\n"
+              "  readonly attainment10: BoostSpoolAttainment | undefined;\n"
+              "  readonly attainment50: BoostSpoolAttainment | undefined;\n"
+              "  readonly attainment90: BoostSpoolAttainment | undefined;\n"
+              "}\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "  let start: TrackingSample | undefined;\n\n  for (const sample of samples) {\n"
+          new = (
+              "  let start: TrackingSample | undefined;\n"
+              "  let attainment10: BoostSpoolAttainment | undefined;\n"
+              "  let attainment50: BoostSpoolAttainment | undefined;\n"
+              "  let attainment90: BoostSpoolAttainment | undefined;\n\n"
+              "  const reset = (): void => {\n"
+              "    start = undefined;\n"
+              "    attainment10 = undefined;\n"
+              "    attainment50 = undefined;\n"
+              "    attainment90 = undefined;\n"
+              "  };\n\n"
+              "  const attainment = (sample: TrackingSample, fraction: 0.1 | 0.5 | 0.9): BoostSpoolAttainment => ({\n"
+              "    fraction,\n"
+              "    sampleIndex: sample.sampleIndex,\n"
+              "    timeMs: sample.timeMs,\n"
+              "    durationMs: sample.timeMs - start!.timeMs,\n"
+              "    measuredPressure: sample.measured,\n"
+              "    targetPressure: sample.target,\n"
+              "    rpm: sample.rpm,\n"
+              "  });\n\n"
+              "  for (const sample of samples) {\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "    if (!start) {\n"
+              "      if (sample.target >= config.minimumTargetPressure && sample.measured <= config.startPressure) start = sample;\n"
+              "      continue;\n"
+              "    }\n"
+              "    if (sample.target < config.minimumTargetPressure || sample.timeMs < start.timeMs) {\n"
+              "      start = undefined;\n"
+              "      continue;\n"
+              "    }\n"
+              "    if (sample.measured < sample.target * config.completionFraction) continue;\n"
+          )
+          new = (
+              "    if (!start) {\n"
+              "      if (sample.target >= config.minimumTargetPressure && sample.measured <= config.startPressure) {\n"
+              "        start = sample;\n"
+              "        if (sample.measured >= sample.target * 0.1) attainment10 = attainment(sample, 0.1);\n"
+              "        if (sample.measured >= sample.target * 0.5) attainment50 = attainment(sample, 0.5);\n"
+              "        if (sample.measured >= sample.target * 0.9) attainment90 = attainment(sample, 0.9);\n"
+              "      }\n"
+              "      continue;\n"
+              "    }\n"
+              "    if (sample.target < config.minimumTargetPressure || sample.timeMs < start.timeMs) {\n"
+              "      reset();\n"
+              "      continue;\n"
+              "    }\n"
+              "    if (!attainment10 && sample.measured >= sample.target * 0.1) attainment10 = attainment(sample, 0.1);\n"
+              "    if (!attainment50 && sample.measured >= sample.target * 0.5) attainment50 = attainment(sample, 0.5);\n"
+              "    if (!attainment90 && sample.measured >= sample.target * 0.9) attainment90 = attainment(sample, 0.9);\n"
+              "    if (sample.measured < sample.target * config.completionFraction) continue;\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = (
+              "        startRpm: start.rpm,\n"
+              "        endRpm: sample.rpm,\n"
+              "      });\n"
+              "    }\n"
+              "    start = undefined;\n"
+          )
+          new = (
+              "        startRpm: start.rpm,\n"
+              "        endRpm: sample.rpm,\n"
+              "        attainment10,\n"
+              "        attainment50,\n"
+              "        attainment90,\n"
+              "      });\n"
+              "    }\n"
+              "    reset();\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          core_path.write_text(text)
+
+          test_path = Path('tests/analysis/boost-analyzer.test.ts')
+          text = test_path.read_text()
+          anchor = "    expect(result.spoolEvents[0]).toMatchObject({\n      startSampleIndex: 0,\n      endSampleIndex: 3,\n      durationMs: 300,\n      startPressure: 100,\n      endPressure: 180,\n      endTargetPressure: 200,\n      startRpm: 2000,\n      endRpm: 2800,\n    });\n"
+          addition = anchor + (
+              "    expect(result.spoolEvents[0]?.attainment10).toMatchObject({ durationMs: 0, measuredPressure: 100, targetPressure: 200, rpm: 2000 });\n"
+              "    expect(result.spoolEvents[0]?.attainment50).toMatchObject({ durationMs: 0, measuredPressure: 100, targetPressure: 200, rpm: 2000 });\n"
+              "    expect(result.spoolEvents[0]?.attainment90).toMatchObject({ durationMs: 300, measuredPressure: 180, targetPressure: 200, rpm: 2800 });\n"
+          )
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, addition, 1)
+
+          marker = "  it('applies spool minimum duration after completion', () => {\n"
+          extra = (
+              "  it('records first 10/50/90 percent target-attainment landmarks after spool start', () => {\n"
+              "    const result = analyzeBoost({\n"
+              "      measuredPressure: range(0, [10, 25, 60, 110, 185]),\n"
+              "      targetPressure: range(0, [200, 200, 200, 200, 200]),\n"
+              "      rpm: range(0, [1800, 2000, 2300, 2700, 3100]),\n"
+              "    }, {\n"
+              "      spool: { startPressure: 15, minimumTargetPressure: 180, completionFraction: 0.9 },\n"
+              "    });\n\n"
+              "    const event = result.spoolEvents[0];\n"
+              "    expect(event?.attainment10).toMatchObject({ sampleIndex: 1, durationMs: 100, rpm: 2000 });\n"
+              "    expect(event?.attainment50).toMatchObject({ sampleIndex: 3, durationMs: 300, rpm: 2700 });\n"
+              "    expect(event?.attainment90).toMatchObject({ sampleIndex: 4, durationMs: 400, rpm: 3100 });\n"
+              "  });\n\n"
+          )
+          assert text.count(marker) == 1
+          text = text.replace(marker, extra + marker, 1)
+          test_path.write_text(text)
+
+          view_path = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          text = view_path.read_text()
+          old = '<thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>Start P</th><th>End P</th><th>Target</th><th>Start RPM</th><th>End RPM</th></tr></thead><tbody></tbody>'
+          new = '<thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Target</th><th>Start RPM</th><th>End RPM</th></tr></thead><tbody></tbody>'
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          # Locate the spool row rendering and insert three duration cells after event duration.
+          old = "          <td>${formatNumber(event.durationMs, 0)} ms</td>\n          <td>${formatNumber(event.startPressure)}</td>\n"
+          new = (
+              "          <td>${formatNumber(event.durationMs, 0)} ms</td>\n"
+              "          <td>${event.attainment10 ? `${formatNumber(event.attainment10.durationMs, 0)} ms` : '—'}</td>\n"
+              "          <td>${event.attainment50 ? `${formatNumber(event.attainment50.durationMs, 0)} ms` : '—'}</td>\n"
+              "          <td>${event.attainment90 ? `${formatNumber(event.attainment90.durationMs, 0)} ms` : '—'}</td>\n"
+              "          <td>${formatNumber(event.startPressure)}</td>\n"
+          )
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          view_path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts tests/analysis/boost-analyzer.test.ts apps/web/src/pages/boost-analyzer-view.ts
+          git commit -m "Add Boost spool attainment landmarks"
+          git push origin HEAD:feature/boost-spool-landmarks
