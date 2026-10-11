@@ -71,6 +71,23 @@ describe('analyzeBoost', () => {
       startRpm: 2000,
       endRpm: 2800,
     });
+    expect(result.spoolEvents[0]?.attainment10).toMatchObject({ durationMs: 0, measuredPressure: 100, targetPressure: 200, rpm: 2000 });
+    expect(result.spoolEvents[0]?.attainment50).toMatchObject({ durationMs: 0, measuredPressure: 100, targetPressure: 200, rpm: 2000 });
+    expect(result.spoolEvents[0]?.attainment90).toMatchObject({ durationMs: 300, measuredPressure: 180, targetPressure: 200, rpm: 2800 });
+  });
+
+  it('records first 10/50/90 percent target-attainment landmarks after spool start', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [10, 25, 60, 110, 185]),
+      targetPressure: range(0, [200, 200, 200, 200, 200]),
+      rpm: range(0, [1800, 2000, 2300, 2700, 3100]),
+    }, {
+      spool: { startPressure: 15, minimumTargetPressure: 180, completionFraction: 0.9 },
+    });
+    const event = result.spoolEvents[0];
+    expect(event?.attainment10).toMatchObject({ sampleIndex: 1, durationMs: 100, rpm: 2000 });
+    expect(event?.attainment50).toMatchObject({ sampleIndex: 3, durationMs: 300, rpm: 2700 });
+    expect(event?.attainment90).toMatchObject({ sampleIndex: 4, durationMs: 400, rpm: 3100 });
   });
 
   it('applies spool minimum duration after completion', () => {

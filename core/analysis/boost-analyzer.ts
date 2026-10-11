@@ -43,6 +43,16 @@ export interface BoostTrackingStatistics {
   readonly maxUndershoot: number | undefined;
 }
 
+export interface BoostSpoolAttainment {
+  readonly fraction: 0.1 | 0.5 | 0.9;
+  readonly sampleIndex: number;
+  readonly timeMs: number;
+  readonly durationMs: number;
+  readonly measuredPressure: number;
+  readonly targetPressure: number;
+  readonly rpm: number | undefined;
+}
+
 export interface BoostSpoolEvent {
   readonly startSampleIndex: number;
   readonly endSampleIndex: number;
@@ -54,6 +64,9 @@ export interface BoostSpoolEvent {
   readonly endTargetPressure: number;
   readonly startRpm: number | undefined;
   readonly endRpm: number | undefined;
+  readonly attainment10: BoostSpoolAttainment | undefined;
+  readonly attainment50: BoostSpoolAttainment | undefined;
+  readonly attainment90: BoostSpoolAttainment | undefined;
 }
 
 export interface BoostSteadyStateWindow {
@@ -212,16 +225,44 @@ function findSpoolEvents(samples: readonly TrackingSample[], rawConfig: BoostSpo
   if (!config) return [];
   const events: BoostSpoolEvent[] = [];
   let start: TrackingSample | undefined;
+  let attainment10: BoostSpoolAttainment | undefined;
+  let attainment50: BoostSpoolAttainment | undefined;
+  let attainment90: BoostSpoolAttainment | undefined;
+
+  const reset = (): void => {
+    start = undefined;
+    attainment10 = undefined;
+    attainment50 = undefined;
+    attainment90 = undefined;
+  };
+
+  const attainment = (sample: TrackingSample, fraction: 0.1 | 0.5 | 0.9): BoostSpoolAttainment => ({
+    fraction,
+    sampleIndex: sample.sampleIndex,
+    timeMs: sample.timeMs,
+    durationMs: sample.timeMs - start!.timeMs,
+    measuredPressure: sample.measured,
+    targetPressure: sample.target,
+    rpm: sample.rpm,
+  });
 
   for (const sample of samples) {
     if (!start) {
-      if (sample.target >= config.minimumTargetPressure && sample.measured <= config.startPressure) start = sample;
+      if (sample.target >= config.minimumTargetPressure && sample.measured <= config.startPressure) {
+        start = sample;
+        if (sample.measured >= sample.target * 0.1) attainment10 = attainment(sample, 0.1);
+        if (sample.measured >= sample.target * 0.5) attainment50 = attainment(sample, 0.5);
+        if (sample.measured >= sample.target * 0.9) attainment90 = attainment(sample, 0.9);
+      }
       continue;
     }
     if (sample.target < config.minimumTargetPressure || sample.timeMs < start.timeMs) {
-      start = undefined;
+      reset();
       continue;
     }
+    if (!attainment10 && sample.measured >= sample.target * 0.1) attainment10 = attainment(sample, 0.1);
+    if (!attainment50 && sample.measured >= sample.target * 0.5) attainment50 = attainment(sample, 0.5);
+    if (!attainment90 && sample.measured >= sample.target * 0.9) attainment90 = attainment(sample, 0.9);
     if (sample.measured < sample.target * config.completionFraction) continue;
     const durationMs = sample.timeMs - start.timeMs;
     if (durationMs >= config.minimumDurationMs) {
@@ -236,9 +277,12 @@ function findSpoolEvents(samples: readonly TrackingSample[], rawConfig: BoostSpo
         endTargetPressure: sample.target,
         startRpm: start.rpm,
         endRpm: sample.rpm,
+        attainment10,
+        attainment50,
+        attainment90,
       });
     }
-    start = undefined;
+    reset();
   }
   return events;
 }
