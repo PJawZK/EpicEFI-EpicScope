@@ -1,0 +1,159 @@
+name: Temporary Boost open-loop UI
+on:
+  push:
+    branches:
+      - feature/boost-open-loop-ui
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-open-loop-ui
+          fetch-depth: 0
+      - name: Wire open-loop spool UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+
+          old = "      <label><span>RPM</span><select class=\"boost-rpm\"></select></label>\n      <label><span>Upper duty</span><select class=\"boost-upper\"></select></label>"
+          new = "      <label><span>RPM</span><select class=\"boost-rpm\"></select></label>\n      <label><span>TPS / load</span><select class=\"boost-tps\"></select></label>\n      <label><span>Upper duty</span><select class=\"boost-upper\"></select></label>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "    <details class=\"boost-analysis-options boost-closed-loop-only\">\n"
+          addition = "    <details class=\"boost-analysis-options boost-open-loop-only\">\n      <summary>Open-loop pressure-rise spool</summary>\n      <div class=\"boost-analysis-options-grid\">\n        <label class=\"boost-option-toggle\"><input type=\"checkbox\" class=\"boost-open-spool-enabled\" /><span>Detect pressure-rise spool</span></label>\n        <label><span>Open-loop start pressure</span><input type=\"number\" step=\"any\" class=\"boost-open-spool-start\" /></label>\n        <label><span>Open-loop end pressure</span><input type=\"number\" step=\"any\" class=\"boost-open-spool-end\" /></label>\n        <label><span>Open-loop min duration ms</span><input type=\"number\" step=\"1\" min=\"0\" value=\"0\" class=\"boost-open-spool-duration\" /></label>\n      </div>\n    </details>\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "        <div><span>Measured max</span><strong data-boost=\"measured-max\">—</strong></div>\n        <div class=\"boost-closed-loop-only\"><span>Target mean</span>"
+          new = "        <div><span>Measured max</span><strong data-boost=\"measured-max\">—</strong></div>\n        <div><span>TPS / load mean</span><strong data-boost=\"tps-mean\">—</strong></div>\n        <div class=\"boost-closed-loop-only\"><span>Target mean</span>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "      <section class=\"boost-result-section boost-closed-loop-only\">\n        <header><strong>Target-relative spool events</strong>"
+          addition = "      <section class=\"boost-result-section boost-open-loop-only\">\n        <header><strong>Open-loop pressure-rise spool events</strong><span data-boost=\"open-spool-count\">0</span></header>\n        <div class=\"boost-table-wrap\"><table class=\"boost-table boost-open-spool-table\"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Start RPM</th><th>End RPM</th><th>Start TPS</th><th>End TPS</th><th>Upper start→end</th><th>Lower start→end</th></tr></thead><tbody></tbody></table></div>\n      </section>\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "  const rpmSelect = root.querySelector<HTMLSelectElement>('.boost-rpm');\n  const upperSelect = root.querySelector<HTMLSelectElement>('.boost-upper');"
+          new = "  const rpmSelect = root.querySelector<HTMLSelectElement>('.boost-rpm');\n  const tpsSelect = root.querySelector<HTMLSelectElement>('.boost-tps');\n  const upperSelect = root.querySelector<HTMLSelectElement>('.boost-upper');"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');\n  const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');"
+          new = "  const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');\n  const openSpoolEnabled = root.querySelector<HTMLInputElement>('.boost-open-spool-enabled');\n  const openSpoolStart = root.querySelector<HTMLInputElement>('.boost-open-spool-start');\n  const openSpoolEnd = root.querySelector<HTMLInputElement>('.boost-open-spool-end');\n  const openSpoolDuration = root.querySelector<HTMLInputElement>('.boost-open-spool-duration');\n  const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  const content = root.querySelector<HTMLElement>('.boost-analyzer-content');\n  const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');"
+          new = "  const content = root.querySelector<HTMLElement>('.boost-analyzer-content');\n  const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');\n  const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !spoolEnabled"
+          new = "  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = " || !empty || !content || !spoolBody || !steadyBody) {"
+          new = " || !empty || !content || !openSpoolBody || !spoolBody || !steadyBody) {"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    for (const node of root.querySelectorAll<HTMLElement>('.boost-closed-loop-only')) node.hidden = !closedLoop;\n    targetSelect.disabled = !closedLoop;"
+          new = "    for (const node of root.querySelectorAll<HTMLElement>('.boost-closed-loop-only')) node.hidden = !closedLoop;\n    for (const node of root.querySelectorAll<HTMLElement>('.boost-open-loop-only')) node.hidden = closedLoop;\n    targetSelect.disabled = !closedLoop;"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    const targetId = closedLoop ? (targetSelect.value || undefined) : undefined;\n    const rpmId = rpmSelect.value || undefined;\n    const upperId = upperSelect.value || undefined;"
+          new = "    const targetId = closedLoop ? (targetSelect.value || undefined) : undefined;\n    const rpmId = rpmSelect.value || undefined;\n    const tpsId = tpsSelect.value || undefined;\n    const upperId = upperSelect.value || undefined;"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "      ...[measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined),"
+          new = "      ...[measuredId, targetId, rpmId, tpsId, upperId, lowerId].filter((id): id is string => id !== undefined),"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    const rpm = rpmId ? byId.get(rpmId) : undefined;\n    const upper = upperId ? byId.get(upperId) : undefined;"
+          new = "    const rpm = rpmId ? byId.get(rpmId) : undefined;\n    const tps = tpsId ? byId.get(tpsId) : undefined;\n    const upper = upperId ? byId.get(upperId) : undefined;"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    const selectedTraces = [measured, target, rpm, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);"
+          new = "    const selectedTraces = [measured, target, rpm, tps, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "    const spoolStartValue = optionalNumber(spoolStart);\n"
+          addition = "    const openSpoolStartValue = optionalNumber(openSpoolStart);\n    const openSpoolEndValue = optionalNumber(openSpoolEnd);\n    let openLoopSpool;\n    if (!closedLoop && openSpoolEnabled.checked && openSpoolStartValue !== undefined && openSpoolEndValue !== undefined) {\n      openLoopSpool = {\n        startPressure: openSpoolStartValue,\n        endPressure: openSpoolEndValue,\n        minimumDurationMs: optionalNumber(openSpoolDuration) ?? 0,\n      };\n    }\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "        ...(rpm ? { rpm: rpm.range } : {}),\n        ...(upper ? { upperDuty: upper.range } : {}),"
+          new = "        ...(rpm ? { rpm: rpm.range } : {}),\n        ...(tps ? { tps: tps.range } : {}),\n        ...(upper ? { upperDuty: upper.range } : {}),"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "        ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),\n        ...(spool ? { spool } : {}),"
+          new = "        ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),\n        ...(openLoopSpool ? { openLoopSpool } : {}),\n        ...(spool ? { spool } : {}),"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    field('measured-max').textContent = formatNumber(currentResult.measured.max);\n    field('target-mean').textContent = formatNumber(currentResult.target?.mean);"
+          new = "    field('measured-max').textContent = formatNumber(currentResult.measured.max);\n    field('tps-mean').textContent = formatNumber(currentResult.tps?.mean);\n    field('target-mean').textContent = formatNumber(currentResult.target?.mean);"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    field('spool-count').textContent = currentResult.spoolEvents.length.toLocaleString();\n    field('steady-count').textContent = currentResult.steadyStateWindows.length.toLocaleString();\n\n    spoolBody.replaceChildren"
+          new = "    field('open-spool-count').textContent = currentResult.openLoopSpoolEvents.length.toLocaleString();\n    field('spool-count').textContent = currentResult.spoolEvents.length.toLocaleString();\n    field('steady-count').textContent = currentResult.steadyStateWindows.length.toLocaleString();\n\n    openSpoolBody.replaceChildren(...currentResult.openLoopSpoolEvents.map((event, index) => {\n      const row = document.createElement('tr');\n      const dutyRange = (start: number | undefined, end: number | undefined): string => start === undefined && end === undefined ? '—' : `${formatNumber(start)} → ${formatNumber(end)}`;\n      row.innerHTML = `<td>${index + 1}</td><td>${(event.startTimeMs / 1000).toFixed(3)}</td><td>${(event.endTimeMs / 1000).toFixed(3)}</td><td>${event.durationMs.toFixed(0)} ms</td><td>${event.attainment10 ? `${event.attainment10.durationMs.toFixed(0)} ms` : '—'}</td><td>${event.attainment50 ? `${event.attainment50.durationMs.toFixed(0)} ms` : '—'}</td><td>${event.attainment90 ? `${event.attainment90.durationMs.toFixed(0)} ms` : '—'}</td><td>${formatNumber(event.startPressure)}</td><td>${formatNumber(event.endPressure)}</td><td>${formatNumber(event.startRpm, 0)}</td><td>${formatNumber(event.endRpm, 0)}</td><td>${formatNumber(event.startTps)}</td><td>${formatNumber(event.endTps)}</td><td>${dutyRange(event.startUpperDuty, event.endUpperDuty)}</td><td>${dutyRange(event.startLowerDuty, event.endLowerDuty)}</td>`;\n      return row;\n    }));\n\n    spoolBody.replaceChildren"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    const previousRpm = rpmSelect.value;\n    const previousUpper = upperSelect.value;"
+          new = "    const previousRpm = rpmSelect.value;\n    const previousTps = tpsSelect.value;\n    const previousUpper = upperSelect.value;"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "      addOptionalTraceOptions(rpmSelect, previousRpm);\n      addOptionalTraceOptions(upperSelect, previousUpper);"
+          new = "      addOptionalTraceOptions(rpmSelect, previousRpm);\n      addOptionalTraceOptions(tpsSelect, previousTps);\n      addOptionalTraceOptions(upperSelect, previousUpper);"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });\n  for (const input of [targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });"
+          new = "  for (const select of [measuredSelect, targetSelect, rpmSelect, tpsSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });\n  for (const input of [openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          old = "  [/^RPM$/i, { title: 'RPM', text: 'Engine speed used as operating-point context. Boost and wastegate duty should be interpreted against RPM because the same duty can produce very different pressure at different engine speeds. RPM is also used to report where spool landmarks occur.' }],\n"
+          new = old + "  [/^TPS \/ load$/i, { title: 'TPS / load', text: 'Throttle or load context for the boost event. In Open Loop, duty-to-pressure comparisons are only meaningful when load is comparable, so this channel is strongly recommended. EpicScope retains TPS/load at spool start/end and will use it in later operating-point analysis.' }],\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          marker = "  [/^Target tolerance$/i,"
+          addition = "  [/^Detect pressure-rise spool$/i, { title: 'Detect pressure-rise spool · Open Loop', text: 'Detects an actual measured-pressure rise without using Boost Target. EpicScope starts from the last sample at or below Open-loop start pressure and ends when measured pressure reaches Open-loop end pressure. The result reports elapsed time plus T10/T50/T90, RPM, TPS/load and wastegate duty evidence.' }],\n  [/^Open-loop start pressure$/i, { title: 'Open-loop start pressure', text: 'Defines the low-pressure boundary where an Open Loop spool event begins. EpicScope uses the last qualifying sample at or below this value, so time is measured from the latest pre-spool baseline rather than from an arbitrary earlier point.' }],\n  [/^Open-loop end pressure$/i, { title: 'Open-loop end pressure', text: 'Defines the measured pressure that completes an Open Loop spool event. It must be higher than Start pressure. T10/T50/T90 are calculated across the configured pressure rise between these two thresholds, in the selected pressure channel native unit.' }],\n  [/^Open-loop min duration ms$/i, { title: 'Open-loop minimum spool duration', text: 'Rejects pressure-rise events that complete faster than this duration. Use it to suppress brief threshold crossings/noise, not to force a desired spool result.' }],\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, addition + marker, 1)
+          old = "  'Measured max': { title: 'Measured pressure maximum', text: 'Highest valid measured pressure in the qualified scope. Useful for identifying peak boost, but pair it with RPM/load and event context before deciding whether it represents overshoot or intended operation.' },\n"
+          new = old + "  'TPS / load mean': { title: 'TPS / load mean', text: 'Average selected TPS/load value over eligible samples. This is context only; use matched load conditions when comparing duty-to-pressure behavior because a broad average can hide meaningful load differences.' },\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/styles/boost-analyzer.css')
+          t = p.read_text()
+          old = ".boost-analyzer-guidance[hidden],\n.boost-closed-loop-only[hidden] { display: none !important; }"
+          new = ".boost-analyzer-guidance[hidden],\n.boost-closed-loop-only[hidden],\n.boost-open-loop-only[hidden] { display: none !important; }"
+          assert t.count(old) == 1
+          p.write_text(t.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts apps/web/src/styles/boost-analyzer.css
+          git commit -m "Expose open-loop Boost spool analysis"
+          git push origin HEAD:feature/boost-open-loop-ui
