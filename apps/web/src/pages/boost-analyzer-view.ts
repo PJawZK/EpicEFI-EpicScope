@@ -1,4 +1,4 @@
-import { analyzeBoost, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
+import { analyzeBoost, compareBoostOperatingPoints, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
 import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
@@ -51,6 +51,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <label><span>Upper duty</span><select class="boost-upper"></select></label>
       <label><span>Lower duty</span><select class="boost-lower"></select></label>
       <label><span>Scope</span><select class="boost-scope"></select></label>
+      <label class="boost-open-loop-only"><span>Compare scope</span><select class="boost-compare-scope"></select></label>
       <label><span>Qualification</span><select class="boost-qualification"><option value="">None</option></select></label>
       <button type="button" class="boost-refresh">Analyze</button>
     </div>
@@ -133,6 +134,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <header><strong>RPM × TPS/load operating points</strong><span data-boost="operating-count">0</span></header>
         <div class="boost-table-wrap"><table class="boost-table boost-operating-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Variation</th><th>Evidence</th><th>Assessment</th><th>RPM trend</th><th>Load trend</th><th>What this suggests</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>
       </section>
+      <section class="boost-result-section boost-open-loop-only boost-comparison-section" hidden>
+        <header><strong>Matched scope comparison</strong><span data-boost="comparison-count">0</span></header>
+        <div class="boost-table-wrap"><table class="boost-table boost-comparison-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Primary N</th><th>Compare N</th><th>Primary P</th><th>Compare P</th><th>Δ pressure</th><th>Δ upper duty</th><th>Δ lower duty</th><th>Observed result</th></tr></thead><tbody></tbody></table></div>
+      </section>
       <section class="boost-result-section boost-open-loop-only">
         <header><strong>Open-loop pressure-rise spool events</strong><span data-boost="open-spool-count">0</span></header>
         <div class="boost-table-wrap"><table class="boost-table boost-open-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Start RPM</th><th>End RPM</th><th>Start TPS</th><th>End TPS</th><th>Upper start→end</th><th>Lower start→end</th></tr></thead><tbody></tbody></table></div>
@@ -156,6 +161,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const upperSelect = root.querySelector<HTMLSelectElement>('.boost-upper');
   const lowerSelect = root.querySelector<HTMLSelectElement>('.boost-lower');
   const scopeSelect = root.querySelector<HTMLSelectElement>('.boost-scope');
+  const compareScopeSelect = root.querySelector<HTMLSelectElement>('.boost-compare-scope');
   const qualificationSelect = root.querySelector<HTMLSelectElement>('.boost-qualification');
   const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');
   const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');
@@ -182,10 +188,12 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const empty = root.querySelector<HTMLElement>('.boost-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.boost-analyzer-content');
   const operatingBody = root.querySelector<HTMLTableSectionElement>('.boost-operating-table tbody');
+  const comparisonSection = root.querySelector<HTMLElement>('.boost-comparison-section');
+  const comparisonBody = root.querySelector<HTMLTableSectionElement>('.boost-comparison-table tbody');
   const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !operatingEnabled || !pullGateEnabled || !pullMinTps || !pullMinRpm || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !operatingBody || !openSpoolBody || !spoolBody || !steadyBody) {
+  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !compareScopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !operatingEnabled || !pullGateEnabled || !pullMinTps || !pullMinRpm || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !operatingBody || !comparisonSection || !comparisonBody || !openSpoolBody || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -205,6 +213,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   const selectedScope = (): AnalyzerScope | undefined => selectedAnalyzerScope(scopeSelect, context);
+  const selectedComparisonScope = (): AnalyzerScope | undefined => compareScopeSelect.value ? selectedAnalyzerScope(compareScopeSelect, context) : undefined;
 
   const selectedQualificationFilter = (): AnalysisFilterSetState | undefined =>
     qualificationSelect.value ? analysisFilterSets.find((filterSet) => filterSet.id === qualificationSelect.value) : undefined;
@@ -242,8 +251,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     if ([...select.options].some((option) => option.value === preferred)) select.value = preferred;
   };
 
-  const fillScope = (preferred: string): void => {
+  const fillScope = (preferred: string, comparisonPreferred = ''): void => {
     populateAnalyzerScopeSelect(scopeSelect, context, preferred);
+    populateAnalyzerScopeSelect(compareScopeSelect, context, comparisonPreferred);
+    compareScopeSelect.insertBefore(new Option('(none)', ''), compareScopeSelect.firstChild);
+    if (comparisonPreferred === '' || ![...compareScopeSelect.options].some((option) => option.value === comparisonPreferred)) compareScopeSelect.value = '';
   };
 
   const fillQualification = (preferred: string): void => {
@@ -270,6 +282,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const upperId = upperSelect.value || undefined;
     const lowerId = lowerSelect.value || undefined;
     const scope = selectedScope();
+    const comparisonScope = !closedLoop ? selectedComparisonScope() : undefined;
     const filterSet = selectedQualificationFilter();
     if (!measuredId || !scope) {
       currentResult = undefined;
@@ -282,6 +295,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const bounds = analyzerScopeBounds(scope);
     const startMs = bounds.startMs;
     const endMs = bounds.endMs;
+    const comparisonBounds = comparisonScope ? analyzerScopeBounds(comparisonScope) : {};
     const filterChannelIds = filterSet
       ? [...new Set(filterSet.conditions.filter((condition) => condition.enabled).map((condition) => condition.channelId))]
       : [];
@@ -289,7 +303,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       ...[measuredId, targetId, rpmId, tpsId, upperId, lowerId].filter((id): id is string => id !== undefined),
       ...filterChannelIds,
     ])];
-    const loaded = await context.loadTraces(requestedIds, startMs, endMs);
+    const loaded = comparisonScope ? await context.loadTraces(requestedIds) : await context.loadTraces(requestedIds, startMs, endMs);
     if (generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const measured = byId.get(measuredId);
@@ -448,6 +462,59 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('spool-count').textContent = currentResult.spoolEvents.length.toLocaleString();
     field('steady-count').textContent = currentResult.steadyStateWindows.length.toLocaleString();
 
+    let comparisonRows = [] as ReturnType<typeof compareBoostOperatingPoints>;
+    if (!closedLoop && comparisonScope && operatingPoints && comparisonScope.label !== scope.label) {
+      const compareStartMs = comparisonBounds.startMs;
+      const compareEndMs = comparisonBounds.endMs;
+      const compareScoped = qualifyNumericSampleGroups({
+        referenceChannelId: measured.channel.id,
+        channels,
+        groupLogic: filterSet?.groupLogic ?? 'and',
+        groups,
+        ...(comparisonScope.kind === 'range' && compareStartMs !== undefined && compareEndMs !== undefined ? { timeRange: { startMs: compareStartMs, endMs: compareEndMs } } : {}),
+      });
+      let compareEligible = compareScoped.eligibleSampleIndices;
+      if (pullGateEnabled.checked && rpm && tps) {
+        const minimumTps = optionalNumber(pullMinTps);
+        const minimumRpm = optionalNumber(pullMinRpm);
+        if (minimumTps !== undefined && minimumRpm !== undefined) {
+          const compareQuick = qualifyNumericSampleGroups({
+            referenceChannelId: measured.channel.id,
+            channels,
+            groupLogic: 'and',
+            groups: [{ id: 'boost-high-load', logic: 'and', conditions: [
+              { channelId: tps.channel.id, operator: 'gte', value: minimumTps },
+              { channelId: rpm.channel.id, operator: 'gte', value: minimumRpm },
+            ] }],
+            ...(comparisonScope.kind === 'range' && compareStartMs !== undefined && compareEndMs !== undefined ? { timeRange: { startMs: compareStartMs, endMs: compareEndMs } } : {}),
+          });
+          compareEligible = intersectSampleIndices(compareEligible, compareQuick.eligibleSampleIndices);
+        }
+      }
+      const comparisonResult = analyzeBoost({
+        measuredPressure: measured.range,
+        ...(rpm ? { rpm: rpm.range } : {}),
+        ...(tps ? { tps: tps.range } : {}),
+        ...(upper ? { upperDuty: upper.range } : {}),
+        ...(lower ? { lowerDuty: lower.range } : {}),
+      }, { sampleIndices: compareEligible, operatingPoints });
+      comparisonRows = compareBoostOperatingPoints(currentResult.operatingPoints, comparisonResult.operatingPoints);
+    }
+    comparisonSection.hidden = comparisonRows.length === 0;
+    field('comparison-count').textContent = comparisonRows.length.toLocaleString();
+    comparisonBody.replaceChildren(...comparisonRows.map((comparison) => {
+      const row = document.createElement('tr');
+      const direction = comparison.pressureDirection === 'rising' ? '↑' : comparison.pressureDirection === 'falling' ? '↓' : '→';
+      const delta = (value: number | undefined): string => value === undefined ? '—' : `${value >= 0 ? '+' : ''}${formatNumber(value)}`;
+      const interpretation = comparison.interpretation === 'pressure-only' ? 'Pressure comparison; duty unavailable'
+        : comparison.interpretation === 'pressure-changed-similar-duty' ? 'Pressure changed at similar duty'
+          : comparison.interpretation === 'duty-changed-little-pressure-response' ? 'Duty changed with little pressure response'
+            : comparison.interpretation === 'duty-and-pressure-response' ? 'Observed duty + pressure response; repeat to confirm'
+              : 'Similar duty and pressure';
+      row.innerHTML = `<td>${formatNumber(comparison.rpmStart, 0)}</td><td>${formatNumber(comparison.tpsStart)}</td><td>${comparison.primarySampleCount.toLocaleString()}</td><td>${comparison.comparisonSampleCount.toLocaleString()}</td><td>${formatNumber(comparison.primaryPressureMean)}</td><td>${formatNumber(comparison.comparisonPressureMean)}</td><td>${direction} ${delta(comparison.pressureDelta)}</td><td>${delta(comparison.upperDutyDelta)}</td><td>${delta(comparison.lowerDutyDelta)}</td><td>${interpretation}</td>`;
+      return row;
+    }));
+
     operatingBody.replaceChildren(...currentResult.operatingPoints.map((point) => {
       const row = document.createElement('tr');
       const evidence = point.evidenceQuality === 'strong' ? 'Strong' : point.evidenceQuality === 'moderate' ? 'Moderate' : 'Limited';
@@ -506,6 +573,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const previousUpper = upperSelect.value;
     const previousLower = lowerSelect.value;
     const previousScope = scopeSelect.value;
+    const previousCompareScope = compareScopeSelect.value;
     const previousQualification = qualificationSelect.value;
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
@@ -518,13 +586,13 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       addOptionalTraceOptions(upperSelect, previousUpper);
       addOptionalTraceOptions(lowerSelect, previousLower);
     }
-    fillScope(previousScope);
+    fillScope(previousScope, previousCompareScope);
     fillQualification(previousQualification);
     void render();
   };
 
   modeSelect.addEventListener('change', () => { syncControlModeUi(); void render(); });
-  for (const select of [measuredSelect, targetSelect, rpmSelect, tpsSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
+  for (const select of [measuredSelect, targetSelect, rpmSelect, tpsSelect, upperSelect, lowerSelect, scopeSelect, compareScopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
   for (const input of [operatingEnabled, pullGateEnabled, pullMinTps, pullMinRpm, operatingRpmBin, operatingTpsBin, operatingMinSamples, openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
   syncControlModeUi();
