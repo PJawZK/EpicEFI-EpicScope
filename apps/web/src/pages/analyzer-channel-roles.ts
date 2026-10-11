@@ -56,6 +56,9 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'fueling:actual': { include: [/^afr(value)?$/i, /actual.*afr/i, /lambda(value)?/i], exclude: [/target/i, /error/i] },
   'fueling:target': { include: [/target.*afr/i, /afr.*target/i, /lambda.*target/i, /target.*lambda/i] },
   'fueling:ve': { include: [/^ve(value)?$/i, /(^|\b)ve(\b|$)/i, /fuel.*table.*value/i] },
+  'fueling:fuelCommand': { include: [/injector.*(pw|pulse)/i, /pulse.*width/i, /inj.*pw/i, /fuel.*command/i, /commanded.*fuel/i, /(^|\b)ve(\b|$)/i], exclude: [/dead.*time/i, /duty/i, /target.*afr/i] },
+  'fueling:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
+  'fueling:load': { include: [/^map(value)?$/i, /manifold.*pressure/i, /engine.*load/i, /(^|\b)tps(\b|$)/i], exclude: [/predict/i, /estimate/i, /target/i] },
 
   'ignition:advance': { include: [/ignition.*advance/i, /spark.*advance/i, /advance.*deg/i, /ign.*adv/i] },
   'ignition:retard': { include: [/ignition.*retard/i, /spark.*retard/i, /knock.*retard/i, /(^|\b)retard(\b|$)/i] },

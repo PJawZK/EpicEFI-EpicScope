@@ -2,6 +2,7 @@ import { analyzeIdleControlDiagnostics } from '../../../../core/analysis/idle-co
 import { aggregateNumericSamples } from '../../../../core/analysis/numeric-aggregation';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
+import { analyzeAfrDelay } from '../../../../core/analysis/afr-delay-analyzer';
 import {
   analyzeAeMapPredict,
   analyzeFueling,
@@ -112,13 +113,22 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   },
   fueling: {
     title: 'Fueling',
-    description: 'AFR target/actual error, lean/rich evidence and optional VE context.',
+    description: 'AFR target/actual error plus observed AFR response-delay evidence from isolated fuel-command changes.',
     roles: [
       { key: 'actual', label: 'Actual AFR', required: true },
       { key: 'target', label: 'Target AFR' },
       { key: 've', label: 'VE / fuel value' },
+      { key: 'fuelCommand', label: 'Fuel command · higher = more fuel' },
+      { key: 'rpm', label: 'RPM' },
+      { key: 'load', label: 'Load / MAP / TPS' },
     ],
-    options: [{ key: 'deadband', label: 'AFR error deadband', value: '0.2', step: '0.05' }],
+    options: [
+      { key: 'deadband', label: 'AFR error deadband', value: '0.2', step: '0.05' },
+      { key: 'delayCommandDelta', label: 'Delay command Δ threshold', value: '0.5', step: 'any' },
+      { key: 'delayAfrDelta', label: 'Delay AFR response threshold', value: '0.15', step: '0.01' },
+      { key: 'delayWindow', label: 'Delay search window ms', value: '1200', step: '10' },
+      { key: 'delaySpacing', label: 'Delay min event spacing ms', value: '250', step: '10' },
+    ],
   },
   ignition: {
     title: 'Ignition',
@@ -255,6 +265,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     !role.systems?.length || system === 'combined' || role.systems.includes(system);
 
   const updateIdleGuidance = (): void => {
+    if (domain === 'fueling') {
+      guidance.hidden = false;
+      field('guidance-title').textContent = 'Observed AFR response delay';
+      field('guidance-text').textContent = 'Delay analysis is optional. Select a fuel-command channel where a larger value means more commanded fuel (for example injector PW or an appropriate VE/fuel command). EpicScope then expects AFR to move in the opposite direction, rejects overlapping command changes and source/qualification gaps, and reports the observed response timing as evidence rather than a pure sensor-delay claim.';
+      return;
+    }
     if (domain !== 'idle') { guidance.hidden = true; return; }
     guidance.hidden = false;
     const system = currentIdleSystem();
@@ -569,7 +585,32 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const actual = traces.get('actual')!;
         const target = traces.get('target');
         const ve = traces.get('ve');
+        const fuelCommand = traces.get('fuelCommand');
+        const rpm = traces.get('rpm');
+        const load = traces.get('load');
         const result = analyzeFueling({ actualAfr: actual.range, ...(target ? { targetAfr: target.range } : {}), ...(ve ? { ve: ve.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, errorDeadband: optionNumber('deadband', 0.2) });
+        const delayWindow = optionNumber('delayWindow', 1200);
+        const delay = fuelCommand ? analyzeAfrDelay({
+          actualAfr: actual.range,
+          fuelCommand: fuelCommand.range,
+          ...(rpm ? { rpm: rpm.range } : {}),
+          ...(load ? { load: load.range } : {}),
+        }, {
+          commandDeltaThreshold: optionNumber('delayCommandDelta', 0.5),
+          afrResponseThreshold: optionNumber('delayAfrDelta', 0.15),
+          searchWindowMs: delayWindow,
+          minimumEventSpacingMs: optionNumber('delaySpacing', 250),
+          responsePolarity: 'inverse',
+        }, scoped.sampleIndices) : undefined;
+        const delaySeries: AnalyzerEvidenceSeries[] = fuelCommand ? [
+          { label: 'Fuel command', range: fuelCommand.range },
+          { label: 'Actual AFR', range: actual.range },
+          ...(target ? [{ label: 'Target AFR', range: target.range }] : []),
+          ...(rpm ? [{ label: 'RPM', range: rpm.range }] : []),
+          ...(load ? [{ label: 'Load', range: load.range }] : []),
+        ] : [];
+        const delayEvidenceEvents = delay?.events.map((event) => ({ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs })) ?? [];
+        showAlignedEvidence('Fueling · AFR response-delay evidence', delaySeries, delayEvidenceEvents, 200, delayWindow);
         renderSummary([
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['Actual AFR mean', numberText(result.actual.mean)], ['Target AFR mean', numberText(result.target?.mean)],
@@ -577,13 +618,55 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Max lean error', numberText(result.tracking?.maxPositiveError)], ['Max rich error', numberText(result.tracking?.maxNegativeError)],
           ['Lean samples', result.leanSampleCount.toLocaleString()], ['Rich samples', result.richSampleCount.toLocaleString()],
           ['VE mean', numberText(result.ve?.mean)], ['Valid AFR samples', result.actual.validSampleCount.toLocaleString()],
+          ['Observed AFR delay median', delay?.onsetDelay ? `${numberText(delay.onsetDelay.medianMs, 0)} ms` : fuelCommand ? 'No usable events' : 'Select fuel command'],
+          ['Observed delay P10–P90', delay?.onsetDelay ? `${numberText(delay.onsetDelay.p10Ms, 0)}–${numberText(delay.onsetDelay.p90Ms, 0)} ms` : '—'],
+          ['Delay median T50 / T90', delay ? `${numberText(delay.medianT50Ms, 0)} / ${numberText(delay.medianT90Ms, 0)} ms` : '—'],
+          ['Delay evidence strength', delay?.evidenceStrength ?? 'Not evaluated'],
+          ['Delay candidates / usable', delay ? `${delay.candidateEventCount.toLocaleString()} / ${delay.usableEventCount.toLocaleString()}` : '—'],
+          ['Delay rejected no-response / overlap / gap', delay ? `${delay.rejectedNoResponseCount} / ${delay.rejectedOverlapCount} / ${delay.rejectedGapCount}` : '—'],
         ]);
-        renderTable('Fueling evidence', ['Metric', 'Value'], [
-          ['Invalid AFR samples', result.actual.invalidSampleCount.toLocaleString()],
-          ['Unavailable AFR samples', result.actual.unavailableSampleCount.toLocaleString()],
-          ['Tracking invalid', (result.tracking?.invalidSampleCount ?? 0).toLocaleString()],
-          ['Tracking unavailable', (result.tracking?.unavailableSampleCount ?? 0).toLocaleString()],
-        ]);
+        if (delay && delay.events.length > 0) {
+          const navigation: EvidenceNavigation[] = delay.events.map((event, index) => ({
+            sampleIndices: event.commandSampleIndex === event.responseSampleIndex ? [event.commandSampleIndex] : [event.commandSampleIndex, event.responseSampleIndex],
+            timeMs: event.commandTimeMs === event.responseTimeMs ? [event.commandTimeMs] : [event.commandTimeMs, event.responseTimeMs],
+            label: `AFR delay event ${index + 1}`,
+          }));
+          renderTable('AFR response-delay events', ['#', 'Command time', 'Onset delay', 'Command Δ', 'AFR Δ @ onset', 'Peak AFR Δ', 'Peak delay', 'T50', 'T90', 'RPM', 'Load'], delay.events.map((event, index) => [
+            String(index + 1),
+            timeText(event.commandTimeMs),
+            `${event.onsetDelayMs.toFixed(0)} ms`,
+            numberText(event.commandDelta),
+            numberText(event.responseDeltaAfr),
+            numberText(event.peakResponseDeltaAfr),
+            `${event.peakResponseDelayMs.toFixed(0)} ms`,
+            event.t50Ms === undefined ? '—' : `${event.t50Ms.toFixed(0)} ms`,
+            event.t90Ms === undefined ? '—' : `${event.t90Ms.toFixed(0)} ms`,
+            numberText(event.rpm, 0),
+            numberText(event.load),
+          ]), navigation, (index) => {
+            const event = delay.events[index];
+            if (!event) return;
+            field('evidence-note').textContent = `Event ${index + 1} · onset ${event.onsetDelayMs.toFixed(0)} ms · command Δ ${numberText(event.commandDelta)} · t=0 command change`;
+            renderAlignedAnalyzerEvidence(evidenceCanvas, delaySeries, [{ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs }], 200, delayWindow);
+          });
+        } else if (delay) {
+          renderTable('AFR delay evidence', ['Metric', 'Value'], [
+            ['Candidate command transitions', delay.candidateEventCount.toLocaleString()],
+            ['Usable AFR responses', delay.usableEventCount.toLocaleString()],
+            ['Rejected · no response', delay.rejectedNoResponseCount.toLocaleString()],
+            ['Rejected · overlapping command', delay.rejectedOverlapCount.toLocaleString()],
+            ['Rejected · source/qualification gap', delay.rejectedGapCount.toLocaleString()],
+            ['Hint', delay.candidateEventCount === 0 ? 'Choose a command with clear changes or lower the command Δ threshold.' : 'No isolated AFR response passed the current timing/response thresholds.'],
+          ]);
+        } else {
+          renderTable('Fueling evidence', ['Metric', 'Value'], [
+            ['Invalid AFR samples', result.actual.invalidSampleCount.toLocaleString()],
+            ['Unavailable AFR samples', result.actual.unavailableSampleCount.toLocaleString()],
+            ['Tracking invalid', (result.tracking?.invalidSampleCount ?? 0).toLocaleString()],
+            ['Tracking unavailable', (result.tracking?.unavailableSampleCount ?? 0).toLocaleString()],
+            ['AFR delay', 'Select Fuel command to estimate observed response delay.'],
+          ]);
+        }
       } else if (domain === 'ignition') {
         const advance = traces.get('advance')!;
         const retard = traces.get('retard');
