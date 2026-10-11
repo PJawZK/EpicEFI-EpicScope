@@ -202,6 +202,21 @@ describe('analyzeBoost', () => {
     expect(result.operatingPoints[1]?.pressureVariationFraction).toBeGreaterThan(0.08);
   });
 
+  it('compares trustworthy neighboring RPM operating points', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [150, 151, 149, 150, 151, 149, 165, 166, 164, 165, 166, 164]),
+      rpm: range(0, [3000, 3010, 3020, 3030, 3040, 3050, 3250, 3260, 3270, 3280, 3290, 3300]),
+      tps: range(0, [90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90]),
+      upperDuty: range(0, [40, 40, 40, 40, 40, 40, 45, 45, 45, 45, 45, 45]),
+      lowerDuty: range(0, [10, 10, 10, 10, 10, 10, 12, 12, 12, 12, 12, 12]),
+    }, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 2 } });
+
+    expect(result.operatingPoints).toHaveLength(2);
+    expect(result.operatingPoints[0]?.rpmTrend).toBeUndefined();
+    expect(result.operatingPoints[1]?.rpmTrend).toMatchObject({ direction: 'rising', pressureDelta: 15, upperDutyDelta: 5, lowerDutyDelta: 2 });
+    expect(result.operatingPoints[1]?.loadTrend).toBeUndefined();
+  });
+
   it('detects open-loop pressure-rise spool without a boost target', () => {
     const result = analyzeBoost({
       measuredPressure: range(0, [100, 108, 125, 155, 182, 205]),

@@ -135,6 +135,14 @@ export interface BoostSteadyStateWindow {
   readonly maxUndershoot: number | undefined;
 }
 
+export interface BoostOperatingPointTrend {
+  readonly direction: 'rising' | 'similar' | 'falling';
+  readonly pressureDelta: number;
+  readonly pressureDeltaFraction: number;
+  readonly upperDutyDelta: number | undefined;
+  readonly lowerDutyDelta: number | undefined;
+}
+
 export interface BoostOperatingPoint {
   readonly rpmStart: number;
   readonly rpmEnd: number;
@@ -153,6 +161,8 @@ export interface BoostOperatingPoint {
   readonly evidenceQuality: 'strong' | 'moderate' | 'limited';
   readonly pressureConsistency: 'stable' | 'variable' | 'mixed';
   readonly assessment: 'good-comparison' | 'usable-with-care' | 'mixed-transient-likely' | 'limited-evidence';
+  readonly rpmTrend: BoostOperatingPointTrend | undefined;
+  readonly loadTrend: BoostOperatingPointTrend | undefined;
 }
 
 export interface BoostPeakContext {
@@ -392,7 +402,7 @@ function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig
     buckets.set(key, bucket);
   }
 
-  return [...buckets.values()]
+  const points = [...buckets.values()]
     .filter((bucket) => bucket.count >= minimumSamples)
     .sort((left, right) => left.rpmStart - right.rpmStart || left.tpsStart - right.tpsStart)
     .map((bucket) => {
@@ -431,8 +441,32 @@ function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig
         assessment,
         upperDutyMean: bucket.upperCount > 0 ? bucket.upperSum / bucket.upperCount : undefined,
         lowerDutyMean: bucket.lowerCount > 0 ? bucket.lowerSum / bucket.lowerCount : undefined,
+        rpmTrend: undefined,
+        loadTrend: undefined,
       };
     });
+
+  const byKey = new Map(points.map((point) => [`${point.rpmStart}|${point.tpsStart}`, point]));
+  const canCompare = (point: BoostOperatingPoint): boolean => point.assessment !== 'mixed-transient-likely' && point.assessment !== 'limited-evidence';
+  const trendFrom = (current: BoostOperatingPoint, previous: BoostOperatingPoint | undefined): BoostOperatingPointTrend | undefined => {
+    if (!previous || !canCompare(current) || !canCompare(previous)) return undefined;
+    const pressureDelta = current.pressureMean - previous.pressureMean;
+    const scale = Math.max((Math.abs(current.pressureMean) + Math.abs(previous.pressureMean)) / 2, Number.EPSILON);
+    const pressureDeltaFraction = pressureDelta / scale;
+    return {
+      direction: pressureDeltaFraction > 0.02 ? 'rising' : pressureDeltaFraction < -0.02 ? 'falling' : 'similar',
+      pressureDelta,
+      pressureDeltaFraction,
+      upperDutyDelta: current.upperDutyMean !== undefined && previous.upperDutyMean !== undefined ? current.upperDutyMean - previous.upperDutyMean : undefined,
+      lowerDutyDelta: current.lowerDutyMean !== undefined && previous.lowerDutyMean !== undefined ? current.lowerDutyMean - previous.lowerDutyMean : undefined,
+    };
+  };
+
+  return points.map((point) => ({
+    ...point,
+    rpmTrend: trendFrom(point, byKey.get(`${point.rpmStart - rawConfig.rpmBinSize}|${point.tpsStart}`)),
+    loadTrend: trendFrom(point, byKey.get(`${point.rpmStart}|${point.tpsStart - rawConfig.tpsBinSize}`)),
+  }));
 }
 
 function buildTrackingSamples(
