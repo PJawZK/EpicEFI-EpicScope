@@ -23,6 +23,7 @@ import { installShimLiveUi } from './app/shim-live-ui';
 import { installShimHttpUi } from './app/shim-http-ui';
 import { installBoostTableEnhancements } from './app/boost-table-enhancements';
 import { installAnalyzerInformationHierarchy } from './app/analyzer-information-hierarchy';
+import { installAnalyzerHelp } from './app/analyzer-help-installer';
 
 const root = document.querySelector<HTMLElement>('#app');
 
@@ -37,6 +38,7 @@ applyUiRefinements(root);
 applyNavigationRefinements(root);
 installBoostTableEnhancements(root);
 installAnalyzerInformationHierarchy(root);
+installAnalyzerHelp(root);
 
 root.querySelector<HTMLElement>('.histogram-table-size')?.remove();
 const tableSizeSummary = root.querySelector<HTMLElement>('.histogram-table-options > summary');
