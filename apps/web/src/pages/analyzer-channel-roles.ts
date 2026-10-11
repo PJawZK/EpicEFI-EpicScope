@@ -85,6 +85,37 @@ const RULES: Readonly<Record<string, RoleRule>> = {
     include: [/ve.*table.*y.*axis/i, /fuel.*load/i, /^map(value)?$/i, /manifold.*pressure/i, /engine.*load/i, /(^|\b)tps(\b|$)/i],
     exclude: [/predict/i, /estimate/i, /target/i, /idle/i],
   },
+  'fueling:dfco': {
+    exact: ['ini:dfcoActive', 'dfcoActive'],
+    include: [/dfco.*active/i, /decel.*fuel.*cut/i],
+  },
+  'fueling:fuelCutReason': {
+    exact: ['ini:fuelCutReason', 'fuelCutReason'],
+    include: [/fuel.*cut.*(reason|code)/i, /(^|\b)fuelcutreason(\b|$)/i],
+    exclude: [/blinker/i],
+  },
+  'fueling:aeActive': {
+    exact: ['ini:isAboveAccelThreshold', 'isAboveAccelThreshold'],
+    include: [/tps.*ae.*active/i, /accel.*enrich.*active/i, /above.*accel.*threshold/i],
+  },
+  'fueling:decelActive': {
+    exact: ['ini:isBelowDecelThreshold', 'isBelowDecelThreshold'],
+    include: [/tps.*decel.*active/i, /decel.*active/i, /below.*decel.*threshold/i],
+  },
+  'fueling:totalCorrection': {
+    exact: ['ini:totalFuelCorrection', 'totalFuelCorrection'],
+    include: [/total.*fuel.*correction/i],
+  },
+  'fueling:stft': {
+    exact: ['ini:stftCorrection1', 'stftCorrection1'],
+    include: [/stft.*bank.*1/i, /short.*term.*fuel.*trim.*bank.*1/i],
+    exclude: [/input.*error/i, /state/i, /bank.*2/i],
+  },
+  'fueling:ltft': {
+    exact: ['ini:ltftCorrection1', 'ltftCorrection1'],
+    include: [/ltft.*bank.*1/i, /long.*term.*fuel.*trim.*bank.*1/i],
+    exclude: [/total/i, /accum/i, /state/i, /bank.*2/i],
+  },
 
   'ignition:advance': { include: [/ignition.*advance/i, /spark.*advance/i, /advance.*deg/i, /ign.*adv/i] },
   'ignition:retard': { include: [/ignition.*retard/i, /spark.*retard/i, /knock.*retard/i, /(^|\b)retard(\b|$)/i] },
