@@ -1,8 +1,8 @@
 import { compareNumericCohorts, type NumericCompareResult } from '../../../../core/analysis/numeric-compare';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import type { TuneModel } from '../../../../core/tune/tune-model';
-import type { SavedTimelineRangeState } from '../state/workspace-state';
 import type { LoggerAnalysisContext } from './logger-page';
+import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';
 import { createTuneTableView } from './tune-table-view';
 import { createBoostAnalyzerView } from './boost-analyzer-view';
 import {
@@ -30,8 +30,10 @@ function formatPercent(value: number | undefined): string {
   return `${percent > 0 ? '+' : ''}${percent.toFixed(1)}%`;
 }
 
-function formatDuration(range: SavedTimelineRangeState): string {
-  const seconds = Math.abs(range.endMs - range.startMs) / 1000;
+function formatScope(scope: AnalyzerScope): string {
+  if (scope.kind === 'full') return 'Entire source';
+  if (scope.startMs === undefined || scope.endMs === undefined) return '—';
+  const seconds = Math.abs(scope.endMs - scope.startMs) / 1000;
   return seconds < 60 ? `${seconds.toFixed(3)} s` : `${(seconds / 60).toFixed(2)} min`;
 }
 
@@ -77,21 +79,21 @@ export function createAnalyzerPage(): AnalyzerPageController {
     <section class="analyzer-head">
       <div>
         <span class="analyzer-eyebrow">Analyzer</span>
-        <h1>Saved range comparison</h1>
-        <p>Compare one available log channel across two saved Logger ranges.</p>
+        <h1>Range comparison</h1>
+        <p>Compare one available log channel across two analysis scopes.</p>
       </div>
       <div class="analyzer-head-actions">
         <div class="analyzer-controls">
         <label><span>Channel</span><select class="analyzer-channel"></select></label>
-        <label><span>Left range</span><select class="analyzer-left-range"></select></label>
-        <label><span>Right range</span><select class="analyzer-right-range"></select></label>
+        <label><span>Left scope</span><select class="analyzer-left-range"></select></label>
+        <label><span>Right scope</span><select class="analyzer-right-range"></select></label>
         <button type="button" class="analyzer-refresh">Refresh</button>
         </div>
       </div>
     </section>
     <section class="analyzer-empty">
-      <strong>Analyzer needs one available channel and two saved ranges.</strong>
-      <span>Save at least two A/B ranges in Logger, then choose any channel present in the loaded log.</span>
+      <strong>Analyzer needs one available channel and two comparison scopes.</strong>
+      <span>Compare Full Log, the current Logger A/B selection, or saved Logger ranges.</span>
     </section>
     <section class="analyzer-content" hidden>
       <div class="analyzer-side analyzer-side--left">
@@ -149,18 +151,13 @@ export function createAnalyzerPage(): AnalyzerPageController {
     return element;
   };
 
-  const selectedRange = (select: HTMLSelectElement): SavedTimelineRangeState | undefined => {
-    const index = Number(select.value);
-    return Number.isInteger(index) ? context.savedRanges[index] : undefined;
-  };
-
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
     if (currentView !== 'compare') return;
     const channelId = channelSelect.value || context.channels[0]?.id;
-    const leftRange = selectedRange(leftSelect);
-    const rightRange = selectedRange(rightSelect);
-    if (!channelId || !leftRange || !rightRange || context.savedRanges.length < 2) {
+    const leftScope = selectedAnalyzerScope(leftSelect, context);
+    const rightScope = selectedAnalyzerScope(rightSelect, context);
+    if (!channelId || !leftScope || !rightScope) {
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -169,46 +166,53 @@ export function createAnalyzerPage(): AnalyzerPageController {
     }
 
     refreshButton.disabled = false;
-    const loadStartMs = Math.min(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);
-    const loadEndMs = Math.max(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);
+    const leftBounds = analyzerScopeBounds(leftScope);
+    const rightBounds = analyzerScopeBounds(rightScope);
+    const needsFullRange = leftScope.kind === 'full' || rightScope.kind === 'full';
+    const loadStartMs = needsFullRange ? undefined : Math.min(leftBounds.startMs!, rightBounds.startMs!);
+    const loadEndMs = needsFullRange ? undefined : Math.max(leftBounds.endMs!, rightBounds.endMs!);
     const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);
     if (generation !== renderGeneration || currentView !== 'compare') return;
     if (!trace) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);
-    const leftScope = qualifyNumericSamples({
+    const leftQualified = qualifyNumericSamples({
       referenceChannelId: trace.channel.id,
       channels,
       conditions: [],
-      timeRange: { startMs: leftRange.startMs, endMs: leftRange.endMs },
+      ...(leftScope.kind === 'range' && leftScope.startMs !== undefined && leftScope.endMs !== undefined
+        ? { timeRange: { startMs: leftScope.startMs, endMs: leftScope.endMs } }
+        : {}),
     });
-    const rightScope = qualifyNumericSamples({
+    const rightQualified = qualifyNumericSamples({
       referenceChannelId: trace.channel.id,
       channels,
       conditions: [],
-      timeRange: { startMs: rightRange.startMs, endMs: rightRange.endMs },
+      ...(rightScope.kind === 'range' && rightScope.startMs !== undefined && rightScope.endMs !== undefined
+        ? { timeRange: { startMs: rightScope.startMs, endMs: rightScope.endMs } }
+        : {}),
     });
 
     currentResult = compareNumericCohorts(
-      { range: trace.range, sampleIndices: leftScope.eligibleSampleIndices, complete: leftScope.complete },
-      { range: trace.range, sampleIndices: rightScope.eligibleSampleIndices, complete: rightScope.complete },
+      { range: trace.range, sampleIndices: leftQualified.eligibleSampleIndices, complete: leftQualified.complete },
+      { range: trace.range, sampleIndices: rightQualified.eligibleSampleIndices, complete: rightQualified.complete },
     );
 
     empty.hidden = true;
     content.hidden = false;
-    field('left-label').textContent = leftRange.label;
-    field('right-label').textContent = rightRange.label;
-    field('left-scope').textContent = formatDuration(leftRange);
-    field('right-scope').textContent = formatDuration(rightRange);
+    field('left-label').textContent = leftScope.label;
+    field('right-label').textContent = rightScope.label;
+    field('left-scope').textContent = formatScope(leftScope);
+    field('right-scope').textContent = formatScope(rightScope);
     field('left-input').textContent = currentResult.left.inputSampleCount.toLocaleString();
     field('left-valid').textContent = currentResult.left.validSampleCount.toLocaleString();
     field('left-invalid').textContent = currentResult.left.invalidSampleCount.toLocaleString();
     field('left-unavailable').textContent = currentResult.left.unavailableSampleCount.toLocaleString();
-    field('left-coverage').textContent = leftScope.complete ? 'Complete' : 'Partial decoded';
+    field('left-coverage').textContent = leftQualified.complete ? 'Complete' : 'Partial decoded';
     field('right-input').textContent = currentResult.right.inputSampleCount.toLocaleString();
     field('right-valid').textContent = currentResult.right.validSampleCount.toLocaleString();
     field('right-invalid').textContent = currentResult.right.invalidSampleCount.toLocaleString();
     field('right-unavailable').textContent = currentResult.right.unavailableSampleCount.toLocaleString();
-    field('right-coverage').textContent = rightScope.complete ? 'Complete' : 'Partial decoded';
+    field('right-coverage').textContent = rightQualified.complete ? 'Complete' : 'Partial decoded';
     field('coverage').textContent = currentResult.complete ? 'Complete' : 'Partial decoded';
 
     const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
@@ -239,11 +243,10 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (context.channels.some((channel) => channel.id === preferred)) channelSelect.value = preferred;
   };
 
-  const fillRangeSelect = (select: HTMLSelectElement, preferredIndex: number, fallbackIndex: number): void => {
-    select.replaceChildren();
-    context.savedRanges.forEach((range, index) => select.add(new Option(range.label, String(index))));
-    const chosen = context.savedRanges[preferredIndex] ? preferredIndex : fallbackIndex;
-    if (context.savedRanges[chosen]) select.value = String(chosen);
+  const fillScopeSelect = (select: HTMLSelectElement, preferred: string, fallback: string): void => {
+    populateAnalyzerScopeSelect(select, context, preferred);
+    if ([...select.options].some((option) => option.value === preferred)) return;
+    if ([...select.options].some((option) => option.value === fallback)) select.value = fallback;
   };
 
   const specializedTitles: Record<SpecializedAnalyzerDomain, [string, string]> = {
@@ -268,8 +271,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
     specializedView.element.hidden = !specializedActive;
     viewSelect.value = view;
     if (compareActive) {
-      heading.textContent = 'Saved range comparison';
-      description.textContent = 'Compare any available log channel across two saved Logger ranges.';
+      heading.textContent = 'Range comparison';
+      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges.';
       void render();
       return;
     }
@@ -300,16 +303,19 @@ export function createAnalyzerPage(): AnalyzerPageController {
       if (generation === contextUpdateGeneration) suppressImmediateRefresh = false;
     });
     const previousChannel = channelSelect.value;
-    const previousLeft = Number(leftSelect.value);
-    const previousRight = Number(rightSelect.value);
+    const previousLeft = leftSelect.value;
+    const previousRight = rightSelect.value;
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     if (currentView === 'tune-table') tuneTableView.setContext(nextContext);
     else if (currentView === 'boost') boostView.setContext(nextContext);
     specializedView.setContext(nextContext);
     if (channelsChanged) fillChannelSelect(previousChannel);
-    fillRangeSelect(leftSelect, previousLeft, 0);
-    fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);
+    const hasCurrentAb = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
+    const leftFallback = context.savedRanges.length > 0 ? 'saved:0' : hasCurrentAb ? 'ab' : 'full';
+    const rightFallback = context.savedRanges.length > 1 ? 'saved:1' : hasCurrentAb && leftFallback !== 'ab' ? 'ab' : 'full';
+    fillScopeSelect(leftSelect, previousLeft, leftFallback);
+    fillScopeSelect(rightSelect, previousRight, rightFallback);
     if (currentView === 'compare') void render();
   };
 
