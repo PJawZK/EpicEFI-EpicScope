@@ -149,6 +149,25 @@ describe('analyzeBoost', () => {
     expect(result.steadyStateWindows[0]?.endSampleIndex).toBe(1);
   });
 
+  it('retains RPM, TPS and wastegate duty at peak measured pressure', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [100, 180, 220, 205]),
+      rpm: range(0, [2000, 2500, 3200, 3600]),
+      tps: range(0, [80, 95, 100, 100]),
+      upperDuty: range(0, [30, 45, 60, 65]),
+      lowerDuty: range(0, [5, 10, 20, 25]),
+    }, { complete: true });
+
+    expect(result.peak).toMatchObject({
+      sampleIndex: 2,
+      pressure: 220,
+      rpm: 3200,
+      tps: 100,
+      upperDuty: 60,
+      lowerDuty: 20,
+    });
+  });
+
   it('detects open-loop pressure-rise spool without a boost target', () => {
     const result = analyzeBoost({
       measuredPressure: range(0, [100, 108, 125, 155, 182, 205]),

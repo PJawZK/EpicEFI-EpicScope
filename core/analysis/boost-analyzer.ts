@@ -128,6 +128,16 @@ export interface BoostSteadyStateWindow {
   readonly maxUndershoot: number | undefined;
 }
 
+export interface BoostPeakContext {
+  readonly sampleIndex: number;
+  readonly timeMs: number;
+  readonly pressure: number;
+  readonly rpm: number | undefined;
+  readonly tps: number | undefined;
+  readonly upperDuty: number | undefined;
+  readonly lowerDuty: number | undefined;
+}
+
 export interface BoostAnalyzerResult {
   readonly inputSampleCount: number;
   readonly measured: NumericAggregationResult;
@@ -136,6 +146,7 @@ export interface BoostAnalyzerResult {
   readonly upperDuty: NumericAggregationResult | undefined;
   readonly lowerDuty: NumericAggregationResult | undefined;
   readonly tracking: BoostTrackingStatistics | undefined;
+  readonly peak: BoostPeakContext | undefined;
   readonly openLoopSpoolEvents: readonly BoostOpenLoopSpoolEvent[];
   readonly spoolEvents: readonly BoostSpoolEvent[];
   readonly steadyStateWindows: readonly BoostSteadyStateWindow[];
@@ -306,6 +317,22 @@ function findOpenLoopSpoolEvents(samples: readonly PhysicalBoostSample[], rawCon
     previous = sample;
   }
   return events;
+}
+
+function peakContext(samples: readonly PhysicalBoostSample[]): BoostPeakContext | undefined {
+  let peak: PhysicalBoostSample | undefined;
+  for (const sample of samples) {
+    if (!peak || sample.measured > peak.measured) peak = sample;
+  }
+  return peak ? {
+    sampleIndex: peak.sampleIndex,
+    timeMs: peak.timeMs,
+    pressure: peak.measured,
+    rpm: peak.rpm,
+    tps: peak.tps,
+    upperDuty: peak.upperDuty,
+    lowerDuty: peak.lowerDuty,
+  } : undefined;
 }
 
 function buildTrackingSamples(
@@ -551,6 +578,7 @@ export function analyzeBoost(
   const upperDuty = aggregateFor(inputs.upperDuty, indices);
   const lowerDuty = aggregateFor(inputs.lowerDuty, indices);
   const physicalSamples = buildPhysicalSamples(inputs, indices);
+  const peak = peakContext(physicalSamples);
   const aligned = buildTrackingSamples(inputs, indices);
   const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable, options.targetTolerance) : undefined;
   const openLoopSpoolEvents = findOpenLoopSpoolEvents(physicalSamples, options.openLoopSpool);
@@ -566,6 +594,7 @@ export function analyzeBoost(
     upperDuty,
     lowerDuty,
     tracking,
+    peak,
     openLoopSpoolEvents,
     spoolEvents,
     steadyStateWindows,

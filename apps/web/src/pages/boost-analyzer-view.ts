@@ -90,6 +90,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <div><span>Qualification</span><strong data-boost="qualification">None</strong></div>
         <div><span>Measured mean</span><strong data-boost="measured-mean">—</strong></div>
         <div><span>Measured max</span><strong data-boost="measured-max">—</strong></div>
+        <div><span>Peak RPM</span><strong data-boost="peak-rpm">—</strong></div>
+        <div><span>Peak TPS / load</span><strong data-boost="peak-tps">—</strong></div>
+        <div><span>Peak upper duty</span><strong data-boost="peak-upper">—</strong></div>
+        <div><span>Peak lower duty</span><strong data-boost="peak-lower">—</strong></div>
         <div><span>TPS / load mean</span><strong data-boost="tps-mean">—</strong></div>
         <div class="boost-closed-loop-only"><span>Target mean</span><strong data-boost="target-mean">—</strong></div>
         <div class="boost-closed-loop-only"><span>Mean error</span><strong data-boost="mean-error">—</strong></div>
@@ -337,6 +341,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('qualification').textContent = filterSet?.name ?? 'None';
     field('measured-mean').textContent = formatNumber(currentResult.measured.mean);
     field('measured-max').textContent = formatNumber(currentResult.measured.max);
+    field('peak-rpm').textContent = formatNumber(currentResult.peak?.rpm, 0);
+    field('peak-tps').textContent = formatNumber(currentResult.peak?.tps);
+    field('peak-upper').textContent = formatNumber(currentResult.peak?.upperDuty);
+    field('peak-lower').textContent = formatNumber(currentResult.peak?.lowerDuty);
     field('tps-mean').textContent = formatNumber(currentResult.tps?.mean);
     field('target-mean').textContent = formatNumber(currentResult.target?.mean);
     field('mean-error').textContent = formatNumber(currentResult.tracking?.meanError);
