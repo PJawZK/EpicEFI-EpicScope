@@ -6,7 +6,6 @@ interface SortState {
 }
 
 const sortStates = new WeakMap<HTMLTableElement, SortState>();
-let applyingEnhancements = false;
 
 function targetTable(element: Element | null): HTMLTableElement | undefined {
   if (!(element instanceof HTMLTableElement)) return undefined;
@@ -37,12 +36,13 @@ function applySort(table: HTMLTableElement): void {
   const rows = [...body.rows].filter((row) => row.dataset.boostEmptyState !== 'true');
   if (rows.length < 2) return;
   const direction = state.direction === 'ascending' ? 1 : -1;
-  rows.sort((left, right) => {
+  const sorted = [...rows].sort((left, right) => {
     const leftText = left.cells[state.columnIndex]?.textContent?.trim() ?? '';
     const rightText = right.cells[state.columnIndex]?.textContent?.trim() ?? '';
     return compareCellText(leftText, rightText) * direction;
   });
-  for (const row of rows) body.append(row);
+  if (sorted.every((row, index) => row === rows[index])) return;
+  for (const row of sorted) body.append(row);
 }
 
 function updateHeaderState(table: HTMLTableElement): void {
@@ -114,21 +114,16 @@ function openSpoolFeedback(root: HTMLElement): void {
     row.append(cell);
     body.append(row);
   }
-  row.cells[0]!.textContent = message;
+  const cell = row.cells[0];
+  if (cell && cell.textContent !== message) cell.textContent = message;
 }
 
 function apply(root: HTMLElement): void {
-  if (applyingEnhancements) return;
-  applyingEnhancements = true;
-  try {
-    for (const selector of BOOST_SORT_TABLES) {
-      const table = root.querySelector<HTMLTableElement>(selector);
-      if (table) prepareSortableTable(table);
-    }
-    openSpoolFeedback(root);
-  } finally {
-    applyingEnhancements = false;
+  for (const selector of BOOST_SORT_TABLES) {
+    const table = root.querySelector<HTMLTableElement>(selector);
+    if (table) prepareSortableTable(table);
   }
+  openSpoolFeedback(root);
 }
 
 export function installBoostTableEnhancements(root: HTMLElement): void {
@@ -151,6 +146,16 @@ export function installBoostTableEnhancements(root: HTMLElement): void {
     sortByHeader(header);
   });
 
-  const observer = new MutationObserver(() => apply(root));
-  observer.observe(root, { childList: true, subtree: true, characterData: true });
+  const observe = (observer: MutationObserver): void => {
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+  };
+  const observer = new MutationObserver(() => {
+    observer.disconnect();
+    try {
+      apply(root);
+    } finally {
+      observe(observer);
+    }
+  });
+  observe(observer);
 }
