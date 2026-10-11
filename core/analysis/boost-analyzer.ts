@@ -28,6 +28,7 @@ export interface BoostSteadyStateConfig {
 export interface BoostAnalyzerOptions {
   readonly sampleIndices?: ArrayLike<number>;
   readonly complete?: boolean;
+  readonly targetTolerance?: number;
   readonly spool?: BoostSpoolConfig;
   readonly steadyState?: BoostSteadyStateConfig;
 }
@@ -41,6 +42,9 @@ export interface BoostTrackingStatistics {
   readonly rootMeanSquareError: number | undefined;
   readonly maxOvershoot: number | undefined;
   readonly maxUndershoot: number | undefined;
+  readonly targetTolerance: number | undefined;
+  readonly targetAttainmentSampleCount: number | undefined;
+  readonly targetAttainmentFraction: number | undefined;
 }
 
 export interface BoostSpoolAttainment {
@@ -173,7 +177,8 @@ function buildTrackingSamples(
   return { samples, invalid, unavailable };
 }
 
-function trackingStatistics(samples: readonly TrackingSample[], invalid: number, unavailable: number): BoostTrackingStatistics {
+function trackingStatistics(samples: readonly TrackingSample[], invalid: number, unavailable: number, targetTolerance: number | undefined): BoostTrackingStatistics {
+  if (targetTolerance !== undefined && (!Number.isFinite(targetTolerance) || targetTolerance < 0)) throw new RangeError('Boost targetTolerance must be finite and >= 0 when provided.');
   if (samples.length === 0) {
     return {
       sampleCount: 0,
@@ -184,6 +189,9 @@ function trackingStatistics(samples: readonly TrackingSample[], invalid: number,
       rootMeanSquareError: undefined,
       maxOvershoot: undefined,
       maxUndershoot: undefined,
+      targetTolerance,
+      targetAttainmentSampleCount: targetTolerance === undefined ? undefined : 0,
+      targetAttainmentFraction: targetTolerance === undefined ? undefined : 0,
     };
   }
   let sum = 0;
@@ -191,12 +199,14 @@ function trackingStatistics(samples: readonly TrackingSample[], invalid: number,
   let sumSquares = 0;
   let maxOvershoot = Number.NEGATIVE_INFINITY;
   let maxUndershoot = Number.POSITIVE_INFINITY;
+  let targetAttainmentSampleCount = 0;
   for (const sample of samples) {
     sum += sample.error;
     sumAbs += Math.abs(sample.error);
     sumSquares += sample.error * sample.error;
     if (sample.error > 0) maxOvershoot = Math.max(maxOvershoot, sample.error);
     if (sample.error < 0) maxUndershoot = Math.min(maxUndershoot, sample.error);
+    if (targetTolerance !== undefined && Math.abs(sample.error) <= targetTolerance) targetAttainmentSampleCount += 1;
   }
   return {
     sampleCount: samples.length,
@@ -207,6 +217,9 @@ function trackingStatistics(samples: readonly TrackingSample[], invalid: number,
     rootMeanSquareError: Math.sqrt(sumSquares / samples.length),
     maxOvershoot: Number.isFinite(maxOvershoot) ? maxOvershoot : undefined,
     maxUndershoot: Number.isFinite(maxUndershoot) ? maxUndershoot : undefined,
+    targetTolerance,
+    targetAttainmentSampleCount: targetTolerance === undefined ? undefined : targetAttainmentSampleCount,
+    targetAttainmentFraction: targetTolerance === undefined ? undefined : targetAttainmentSampleCount / samples.length,
   };
 }
 
@@ -373,7 +386,7 @@ export function analyzeBoost(
   const upperDuty = aggregateFor(inputs.upperDuty, indices);
   const lowerDuty = aggregateFor(inputs.lowerDuty, indices);
   const aligned = buildTrackingSamples(inputs, indices);
-  const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable) : undefined;
+  const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable, options.targetTolerance) : undefined;
   const spoolEvents = inputs.targetPressure ? findSpoolEvents(aligned.samples, options.spool) : [];
   const steadyStateWindows = inputs.targetPressure ? findSteadyStateWindows(aligned.samples, options.steadyState) : [];
 
