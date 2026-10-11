@@ -13,6 +13,12 @@ export interface BoostAnalyzerInputs {
   readonly lowerDuty?: NumericChannelRange;
 }
 
+export interface BoostOperatingPointConfig {
+  readonly rpmBinSize: number;
+  readonly tpsBinSize: number;
+  readonly minimumSamples?: number;
+}
+
 export interface BoostOpenLoopSpoolConfig {
   readonly startPressure: number;
   readonly endPressure: number;
@@ -36,6 +42,7 @@ export interface BoostAnalyzerOptions {
   readonly sampleIndices?: ArrayLike<number>;
   readonly complete?: boolean;
   readonly targetTolerance?: number;
+  readonly operatingPoints?: BoostOperatingPointConfig;
   readonly openLoopSpool?: BoostOpenLoopSpoolConfig;
   readonly spool?: BoostSpoolConfig;
   readonly steadyState?: BoostSteadyStateConfig;
@@ -128,6 +135,22 @@ export interface BoostSteadyStateWindow {
   readonly maxUndershoot: number | undefined;
 }
 
+export interface BoostOperatingPoint {
+  readonly rpmStart: number;
+  readonly rpmEnd: number;
+  readonly tpsStart: number;
+  readonly tpsEnd: number;
+  readonly sampleCount: number;
+  readonly rpmMean: number;
+  readonly tpsMean: number;
+  readonly pressureMean: number;
+  readonly pressureMin: number;
+  readonly pressureMax: number;
+  readonly pressureStdDev: number;
+  readonly upperDutyMean: number | undefined;
+  readonly lowerDutyMean: number | undefined;
+}
+
 export interface BoostPeakContext {
   readonly sampleIndex: number;
   readonly timeMs: number;
@@ -147,6 +170,7 @@ export interface BoostAnalyzerResult {
   readonly lowerDuty: NumericAggregationResult | undefined;
   readonly tracking: BoostTrackingStatistics | undefined;
   readonly peak: BoostPeakContext | undefined;
+  readonly operatingPoints: readonly BoostOperatingPoint[];
   readonly openLoopSpoolEvents: readonly BoostOpenLoopSpoolEvent[];
   readonly spoolEvents: readonly BoostSpoolEvent[];
   readonly steadyStateWindows: readonly BoostSteadyStateWindow[];
@@ -333,6 +357,59 @@ function peakContext(samples: readonly PhysicalBoostSample[]): BoostPeakContext 
     upperDuty: peak.upperDuty,
     lowerDuty: peak.lowerDuty,
   } : undefined;
+}
+
+function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig: BoostOperatingPointConfig | undefined): BoostOperatingPoint[] {
+  if (!rawConfig) return [];
+  const minimumSamples = rawConfig.minimumSamples ?? 1;
+  if (!Number.isFinite(rawConfig.rpmBinSize) || rawConfig.rpmBinSize <= 0) throw new RangeError('Boost operating-point rpmBinSize must be finite and > 0.');
+  if (!Number.isFinite(rawConfig.tpsBinSize) || rawConfig.tpsBinSize <= 0) throw new RangeError('Boost operating-point tpsBinSize must be finite and > 0.');
+  if (!Number.isSafeInteger(minimumSamples) || minimumSamples < 1) throw new RangeError('Boost operating-point minimumSamples must be an integer >= 1.');
+
+  interface Bucket {
+    rpmStart: number; tpsStart: number; count: number; rpmSum: number; tpsSum: number; pressureSum: number; pressureSumSquares: number; pressureMin: number; pressureMax: number; upperSum: number; upperCount: number; lowerSum: number; lowerCount: number;
+  }
+  const buckets = new Map<string, Bucket>();
+  for (const sample of samples) {
+    if (sample.rpm === undefined || sample.tps === undefined) continue;
+    const rpmStart = Math.floor(sample.rpm / rawConfig.rpmBinSize) * rawConfig.rpmBinSize;
+    const tpsStart = Math.floor(sample.tps / rawConfig.tpsBinSize) * rawConfig.tpsBinSize;
+    const key = `${rpmStart}|${tpsStart}`;
+    const bucket = buckets.get(key) ?? { rpmStart, tpsStart, count: 0, rpmSum: 0, tpsSum: 0, pressureSum: 0, pressureSumSquares: 0, pressureMin: Number.POSITIVE_INFINITY, pressureMax: Number.NEGATIVE_INFINITY, upperSum: 0, upperCount: 0, lowerSum: 0, lowerCount: 0 };
+    bucket.count += 1;
+    bucket.rpmSum += sample.rpm;
+    bucket.tpsSum += sample.tps;
+    bucket.pressureSum += sample.measured;
+    bucket.pressureSumSquares += sample.measured * sample.measured;
+    bucket.pressureMin = Math.min(bucket.pressureMin, sample.measured);
+    bucket.pressureMax = Math.max(bucket.pressureMax, sample.measured);
+    if (sample.upperDuty !== undefined) { bucket.upperSum += sample.upperDuty; bucket.upperCount += 1; }
+    if (sample.lowerDuty !== undefined) { bucket.lowerSum += sample.lowerDuty; bucket.lowerCount += 1; }
+    buckets.set(key, bucket);
+  }
+
+  return [...buckets.values()]
+    .filter((bucket) => bucket.count >= minimumSamples)
+    .sort((left, right) => left.rpmStart - right.rpmStart || left.tpsStart - right.tpsStart)
+    .map((bucket) => {
+      const pressureMean = bucket.pressureSum / bucket.count;
+      const variance = Math.max(0, bucket.pressureSumSquares / bucket.count - pressureMean * pressureMean);
+      return {
+        rpmStart: bucket.rpmStart,
+        rpmEnd: bucket.rpmStart + rawConfig.rpmBinSize,
+        tpsStart: bucket.tpsStart,
+        tpsEnd: bucket.tpsStart + rawConfig.tpsBinSize,
+        sampleCount: bucket.count,
+        rpmMean: bucket.rpmSum / bucket.count,
+        tpsMean: bucket.tpsSum / bucket.count,
+        pressureMean,
+        pressureMin: bucket.pressureMin,
+        pressureMax: bucket.pressureMax,
+        pressureStdDev: Math.sqrt(variance),
+        upperDutyMean: bucket.upperCount > 0 ? bucket.upperSum / bucket.upperCount : undefined,
+        lowerDutyMean: bucket.lowerCount > 0 ? bucket.lowerSum / bucket.lowerCount : undefined,
+      };
+    });
 }
 
 function buildTrackingSamples(
@@ -579,6 +656,7 @@ export function analyzeBoost(
   const lowerDuty = aggregateFor(inputs.lowerDuty, indices);
   const physicalSamples = buildPhysicalSamples(inputs, indices);
   const peak = peakContext(physicalSamples);
+  const operatingPoints = buildOperatingPoints(physicalSamples, options.operatingPoints);
   const aligned = buildTrackingSamples(inputs, indices);
   const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable, options.targetTolerance) : undefined;
   const openLoopSpoolEvents = findOpenLoopSpoolEvents(physicalSamples, options.openLoopSpool);
@@ -595,6 +673,7 @@ export function analyzeBoost(
     lowerDuty,
     tracking,
     peak,
+    operatingPoints,
     openLoopSpoolEvents,
     spoolEvents,
     steadyStateWindows,
