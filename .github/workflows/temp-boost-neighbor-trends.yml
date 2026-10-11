@@ -1,0 +1,78 @@
+name: Temporary Boost neighbor trends
+on:
+  push:
+    branches:
+      - feature/boost-neighbor-trends
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-neighbor-trends
+          fetch-depth: 0
+      - name: Add neighboring operating-point trends
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('core/analysis/boost-analyzer.ts')
+          t = p.read_text()
+          anchor = "export interface BoostOperatingPoint {\n"
+          addition = "export interface BoostOperatingPointTrend {\n  readonly direction: 'rising' | 'similar' | 'falling';\n  readonly pressureDelta: number;\n  readonly pressureDeltaFraction: number;\n  readonly upperDutyDelta: number | undefined;\n  readonly lowerDutyDelta: number | undefined;\n}\n\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "  readonly assessment: 'good-comparison' | 'usable-with-care' | 'mixed-transient-likely' | 'limited-evidence';\n}\n\nexport interface BoostPeakContext"
+          new = "  readonly assessment: 'good-comparison' | 'usable-with-care' | 'mixed-transient-likely' | 'limited-evidence';\n  readonly rpmTrend: BoostOperatingPointTrend | undefined;\n  readonly loadTrend: BoostOperatingPointTrend | undefined;\n}\n\nexport interface BoostPeakContext"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  return [...buckets.values()]\n    .filter((bucket) => bucket.count >= minimumSamples)"
+          new = "  const points = [...buckets.values()]\n    .filter((bucket) => bucket.count >= minimumSamples)"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "        lowerDutyMean: bucket.lowerCount > 0 ? bucket.lowerSum / bucket.lowerCount : undefined,\n      };\n    });\n}\n\nfunction buildTrackingSamples("
+          new = "        lowerDutyMean: bucket.lowerCount > 0 ? bucket.lowerSum / bucket.lowerCount : undefined,\n        rpmTrend: undefined,\n        loadTrend: undefined,\n      };\n    });\n\n  const byKey = new Map(points.map((point) => [`${point.rpmStart}|${point.tpsStart}`, point]));\n  const canCompare = (point: BoostOperatingPoint): boolean => point.assessment !== 'mixed-transient-likely' && point.assessment !== 'limited-evidence';\n  const trendFrom = (current: BoostOperatingPoint, previous: BoostOperatingPoint | undefined): BoostOperatingPointTrend | undefined => {\n    if (!previous || !canCompare(current) || !canCompare(previous)) return undefined;\n    const pressureDelta = current.pressureMean - previous.pressureMean;\n    const scale = Math.max((Math.abs(current.pressureMean) + Math.abs(previous.pressureMean)) / 2, Number.EPSILON);\n    const pressureDeltaFraction = pressureDelta / scale;\n    return {\n      direction: pressureDeltaFraction > 0.02 ? 'rising' : pressureDeltaFraction < -0.02 ? 'falling' : 'similar',\n      pressureDelta,\n      pressureDeltaFraction,\n      upperDutyDelta: current.upperDutyMean !== undefined && previous.upperDutyMean !== undefined ? current.upperDutyMean - previous.upperDutyMean : undefined,\n      lowerDutyDelta: current.lowerDutyMean !== undefined && previous.lowerDutyMean !== undefined ? current.lowerDutyMean - previous.lowerDutyMean : undefined,\n    };\n  };\n\n  return points.map((point) => ({\n    ...point,\n    rpmTrend: trendFrom(point, byKey.get(`${point.rpmStart - rawConfig.rpmBinSize}|${point.tpsStart}`)),\n    loadTrend: trendFrom(point, byKey.get(`${point.rpmStart}|${point.tpsStart - rawConfig.tpsBinSize}`)),\n  }));\n}\n\nfunction buildTrackingSamples("
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          old = "<th>Variation</th><th>Evidence</th><th>Assessment</th><th>Upper duty mean</th><th>Lower duty mean</th>"
+          new = "<th>Variation</th><th>Evidence</th><th>Assessment</th><th>RPM trend</th><th>Load trend</th><th>Upper duty mean</th><th>Lower duty mean</th>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "      const assessment = point.assessment === 'good-comparison' ? 'Good comparison evidence' : point.assessment === 'usable-with-care' ? 'Usable with care' : point.assessment === 'limited-evidence' ? 'Limited evidence' : 'Mixed/transient likely';\n      row.dataset.boostAssessment = point.assessment;\n      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${(point.pressureVariationFraction * 100).toFixed(1)}% · ${consistency}</td><td>${evidence}</td><td>${assessment}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;"
+          new = "      const assessment = point.assessment === 'good-comparison' ? 'Good comparison evidence' : point.assessment === 'usable-with-care' ? 'Usable with care' : point.assessment === 'limited-evidence' ? 'Limited evidence' : 'Mixed/transient likely';\n      const trendText = (trend: typeof point.rpmTrend): string => {\n        if (!trend) return '—';\n        const direction = trend.direction === 'rising' ? '↑' : trend.direction === 'falling' ? '↓' : '→';\n        const duty = trend.upperDutyDelta === undefined && trend.lowerDutyDelta === undefined\n          ? ''\n          : ` · U ${trend.upperDutyDelta === undefined ? '—' : `${trend.upperDutyDelta >= 0 ? '+' : ''}${formatNumber(trend.upperDutyDelta)}`} · L ${trend.lowerDutyDelta === undefined ? '—' : `${trend.lowerDutyDelta >= 0 ? '+' : ''}${formatNumber(trend.lowerDutyDelta)}`}`;\n        return `${direction} P ${trend.pressureDelta >= 0 ? '+' : ''}${formatNumber(trend.pressureDelta)}${duty}`;\n      };\n      row.dataset.boostAssessment = point.assessment;\n      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${(point.pressureVariationFraction * 100).toFixed(1)}% · ${consistency}</td><td>${evidence}</td><td>${assessment}</td><td>${trendText(point.rpmTrend)}</td><td>${trendText(point.loadTrend)}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          old = "The intended result is a practical duty-to-pressure map with an immediate indication of which regions are trustworthy enough to compare. These labels describe evidence quality; they do not prescribe a tune change."
+          new = "The intended result is a practical duty-to-pressure map with an immediate indication of which regions are trustworthy enough to compare. For trustworthy adjacent bins, RPM trend compares against the immediately lower RPM bin at the same TPS/load, and Load trend compares against the immediately lower TPS/load bin at the same RPM. The trend shows measured-pressure delta and, when available, upper/lower duty delta. These labels and trends describe observed evidence; they do not prescribe a tune change."
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('tests/analysis/boost-analyzer.test.ts')
+          t = p.read_text()
+          marker = "  it('detects open-loop pressure-rise spool without a boost target', () => {\n"
+          tests = "  it('compares trustworthy neighboring RPM operating points', () => {\n    const result = analyzeBoost({\n      measuredPressure: range(0, [150, 151, 149, 150, 151, 149, 165, 166, 164, 165, 166, 164]),\n      rpm: range(0, [3000, 3010, 3020, 3030, 3040, 3050, 3250, 3260, 3270, 3280, 3290, 3300]),\n      tps: range(0, [90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90]),\n      upperDuty: range(0, [40, 40, 40, 40, 40, 40, 45, 45, 45, 45, 45, 45]),\n      lowerDuty: range(0, [10, 10, 10, 10, 10, 10, 12, 12, 12, 12, 12, 12]),\n    }, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 2 } });\n\n    expect(result.operatingPoints).toHaveLength(2);\n    expect(result.operatingPoints[0]?.rpmTrend).toBeUndefined();\n    expect(result.operatingPoints[1]?.rpmTrend).toMatchObject({ direction: 'rising', pressureDelta: 15, upperDutyDelta: 5, lowerDutyDelta: 2 });\n    expect(result.operatingPoints[1]?.loadTrend).toBeUndefined();\n  });\n\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, tests + marker, 1)
+          p.write_text(t)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts tests/analysis/boost-analyzer.test.ts
+          git commit -m "Compare neighboring Boost operating points"
+          git push origin HEAD:feature/boost-neighbor-trends
