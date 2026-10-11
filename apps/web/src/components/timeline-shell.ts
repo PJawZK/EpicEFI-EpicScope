@@ -47,6 +47,7 @@ export interface TimelineShellController {
   onCursorChange(listener: (timeMs: number) => void): void;
   onViewportIntent(listener: (intent: TimelineViewportIntent) => void): void;
   onAnnotationChange(listener: (state: TimelineAnnotationState) => void): void;
+  onAnalyzeRequest(listener: (state: TimelineAnnotationState) => void): void;
   onWorkspaceMutation(listener: () => void): void;
   getWorkspaceState(): TimelineWorkspaceState;
   restoreWorkspaceState(state: TimelineWorkspaceState): void;
@@ -80,6 +81,7 @@ export function createTimelineShell(): TimelineShellController {
   let cursorListener: ((timeMs: number) => void) | undefined;
   let viewportListener: ((intent: TimelineViewportIntent) => void) | undefined;
   let annotationListener: ((state: TimelineAnnotationState) => void) | undefined;
+  let analyzeRequestListener: ((state: TimelineAnnotationState) => void) | undefined;
   let workspaceMutationListener: (() => void) | undefined;
   let restoringWorkspace = false;
 
@@ -136,7 +138,8 @@ export function createTimelineShell(): TimelineShellController {
       </select>
       <button type="button" class="timeline-add-marker" disabled>＋ Marker</button>
       <span class="grow"></span>
-      <span class="timeline-analysis-context">Analyze · set A and B</span>
+      <span class="timeline-analysis-context">Qualify · set A and B</span>
+      <button type="button" class="timeline-open-analyzer" hidden disabled>Analyze A/B</button>
       <details class="timeline-maintenance-menu">
         <summary title="More range and marker actions" aria-label="More range and marker actions">⋯</summary>
         <span class="timeline-maintenance-actions">
@@ -163,6 +166,7 @@ export function createTimelineShell(): TimelineShellController {
   const markerText = timeline.querySelector<HTMLElement>('.timeline-marker-value');
   const abText = timeline.querySelector<HTMLElement>('.timeline-ab-value');
   const analysisContext = timeline.querySelector<HTMLElement>('.timeline-analysis-context');
+  const analyzeButton = timeline.querySelector<HTMLButtonElement>('.timeline-open-analyzer');
   const savedRangeSelect = timeline.querySelector<HTMLSelectElement>('.timeline-saved-ranges');
   const saveRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-save-range');
   const renameRangeButton = timeline.querySelector<HTMLButtonElement>('.timeline-rename-range');
@@ -179,7 +183,7 @@ export function createTimelineShell(): TimelineShellController {
   const markerButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-marker-action]')];
   const historyButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-view-history]')];
   const viewportButtons = [...timeline.querySelectorAll<HTMLButtonElement>('[data-viewport-action]')];
-  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !analysisContext || !savedRangeSelect || !saveRangeButton || !renameRangeButton || !deleteRangeButton || !addMarkerButton || !editMarkerButton || !deleteMarkerButton || !setAButton || !setBButton || !clearAbButton || !progress || !progressFill) {
+  if (!overview || !overviewCanvas || !overviewText || !focusWindow || !focusStartHandle || !focusEndHandle || !overviewCursor || !timelineTime || !cursorText || !visibleRangeText || !markerText || !abText || !analysisContext || !analyzeButton || !savedRangeSelect || !saveRangeButton || !renameRangeButton || !deleteRangeButton || !addMarkerButton || !editMarkerButton || !deleteMarkerButton || !setAButton || !setBButton || !clearAbButton || !progress || !progressFill) {
     throw new Error('Timeline shell structure is incomplete.');
   }
 
@@ -212,8 +216,10 @@ export function createTimelineShell(): TimelineShellController {
     setBButton.disabled = fullDuration() <= 0;
     clearAbButton.disabled = aTimeMs === undefined && bTimeMs === undefined;
     const analysisReady = aTimeMs !== undefined && bTimeMs !== undefined && aTimeMs !== bTimeMs;
-    analysisContext.textContent = analysisReady ? 'Analyze · range ready' : 'Analyze · set A and B';
+    analysisContext.textContent = analysisReady ? 'Qualify · range ready' : 'Qualify · set A and B';
     analysisContext.classList.toggle('timeline-analysis-context--ready', analysisReady);
+    analyzeButton.hidden = !analysisReady;
+    analyzeButton.disabled = !analysisReady;
   };
 
   const refreshSavedRangeSelect = (): void => {
@@ -770,6 +776,10 @@ export function createTimelineShell(): TimelineShellController {
 
   setAButton.addEventListener('click', () => setAnalysisBoundary('a'));
   setBButton.addEventListener('click', () => setAnalysisBoundary('b'));
+  analyzeButton.addEventListener('click', () => {
+    if (aTimeMs === undefined || bTimeMs === undefined || aTimeMs === bTimeMs) return;
+    analyzeRequestListener?.({ aTimeMs, bTimeMs });
+  });
 
   saveRangeButton.addEventListener('click', () => {
     if (aTimeMs === undefined || bTimeMs === undefined || aTimeMs === bTimeMs) return;
@@ -922,6 +932,7 @@ export function createTimelineShell(): TimelineShellController {
     onCursorChange: (listener) => { cursorListener = listener; },
     onViewportIntent: (listener) => { viewportListener = listener; },
     onAnnotationChange: (listener) => { annotationListener = listener; },
+    onAnalyzeRequest: (listener) => { analyzeRequestListener = listener; },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
     getWorkspaceState,
     restoreWorkspaceState,

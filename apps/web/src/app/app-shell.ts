@@ -985,6 +985,12 @@ export function mountAppShell(root: HTMLElement): void {
     closeBrandMenu();
   };
 
+  loggerPage.onAnalyzeRange(() => {
+    setEpicScopeMode('analyzer');
+    analyzerPage.openRangeCompareScope('ab');
+    appStatus.textContent = 'Analyzer · Current A/B';
+  });
+
   const closeLoadDataMenu = (): void => {
     loadDataMenu.hidden = true;
     loadDataButton.setAttribute('aria-expanded', 'false');

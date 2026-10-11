@@ -204,6 +204,7 @@ export interface LoggerPageController {
     listener: (performance: LoggerWorkspaceRestorePerformance) => void,
   ): void;
   onWorkspaceMutation(listener: () => void): void;
+  onAnalyzeRange(listener: () => void): void;
   getWorkspaceState(): LoggerWorkspaceState;
   getRuntimeDiagnosticSnapshot(): LoggerRuntimeDiagnosticSnapshot;
   getAnalysisContext(): LoggerAnalysisContext;
@@ -2450,6 +2451,7 @@ export function createLoggerPage(): LoggerPageController {
       workspaceRestorePerformanceListener = listener;
     },
     onWorkspaceMutation: (listener) => { workspaceMutationListener = listener; },
+    onAnalyzeRange: (listener) => { timeline.onAnalyzeRequest(() => listener()); },
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
     getAnalysisContext,
