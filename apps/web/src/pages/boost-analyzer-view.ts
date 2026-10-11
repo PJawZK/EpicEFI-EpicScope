@@ -59,6 +59,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <summary>Open-loop RPM × TPS/load operating points</summary>
       <div class="boost-analysis-options-grid">
         <label class="boost-option-toggle"><input type="checkbox" class="boost-operating-enabled" checked /><span>Build operating points</span></label>
+        <label class="boost-option-toggle"><input type="checkbox" class="boost-pull-gate-enabled" /><span>High-load pull gate</span></label>
+        <label><span>Min TPS / load</span><input type="number" step="any" value="80" class="boost-pull-min-tps" /></label>
+        <label><span>Min pull RPM</span><input type="number" step="1" min="0" value="2000" class="boost-pull-min-rpm" /></label>
         <label><span>RPM bin size</span><input type="number" step="1" min="1" value="250" class="boost-operating-rpm-bin" /></label>
         <label><span>TPS / load bin size</span><input type="number" step="any" min="0.000001" value="5" class="boost-operating-tps-bin" /></label>
         <label><span>Minimum samples / bin</span><input type="number" step="1" min="1" value="10" class="boost-operating-min-samples" /></label>
@@ -116,8 +119,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       </div>
       <div class="boost-evidence">
         <span>Scope input <strong data-boost="qualification-input">0</strong></span>
-        <span>Eligible <strong data-boost="qualification-eligible">0</strong></span>
-        <span>Rejected <strong data-boost="qualification-rejected">0</strong></span>
+        <span>Saved eligible <strong data-boost="qualification-eligible">0</strong></span>
+        <span>Quick gate eligible <strong data-boost="quick-gate-eligible">Off</strong></span>
+        <span>Final eligible <strong data-boost="final-eligible">0</strong></span>
+        <span>Rejected (saved) <strong data-boost="qualification-rejected">0</strong></span>
         <span>Qualification invalid <strong data-boost="qualification-invalid">0</strong></span>
         <span>Qualification unavailable <strong data-boost="qualification-unavailable">0</strong></span>
         <span class="boost-closed-loop-only">Tracking valid <strong data-boost="tracking-valid">0</strong></span>
@@ -155,6 +160,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');
   const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');
   const operatingEnabled = root.querySelector<HTMLInputElement>('.boost-operating-enabled');
+  const pullGateEnabled = root.querySelector<HTMLInputElement>('.boost-pull-gate-enabled');
+  const pullMinTps = root.querySelector<HTMLInputElement>('.boost-pull-min-tps');
+  const pullMinRpm = root.querySelector<HTMLInputElement>('.boost-pull-min-rpm');
   const operatingRpmBin = root.querySelector<HTMLInputElement>('.boost-operating-rpm-bin');
   const operatingTpsBin = root.querySelector<HTMLInputElement>('.boost-operating-tps-bin');
   const operatingMinSamples = root.querySelector<HTMLInputElement>('.boost-operating-min-samples');
@@ -177,7 +185,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !operatingEnabled || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !operatingBody || !openSpoolBody || !spoolBody || !steadyBody) {
+  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !operatingEnabled || !pullGateEnabled || !pullMinTps || !pullMinRpm || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !operatingBody || !openSpoolBody || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -200,6 +208,20 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   const selectedQualificationFilter = (): AnalysisFilterSetState | undefined =>
     qualificationSelect.value ? analysisFilterSets.find((filterSet) => filterSet.id === qualificationSelect.value) : undefined;
+
+  const intersectSampleIndices = (left: ArrayLike<number>, right: ArrayLike<number>): Uint32Array => {
+    const rightSet = new Set<number>();
+    for (let index = 0; index < right.length; index += 1) {
+      const value = right[index];
+      if (value !== undefined) rightSet.add(value);
+    }
+    const result: number[] = [];
+    for (let index = 0; index < left.length; index += 1) {
+      const value = left[index];
+      if (value !== undefined && rightSet.has(value)) result.push(value);
+    }
+    return Uint32Array.from(result);
+  };
 
   const qualificationGroups = (filterSet: AnalysisFilterSetState | undefined): NumericQualificationGroup[] => {
     if (!filterSet) return [];
@@ -287,8 +309,36 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       groups,
       ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),
     });
+    let finalEligibleSampleIndices = scoped.eligibleSampleIndices;
+    let quickGateEligibleCount: number | undefined;
+    let quickGateComplete = true;
+    if (!closedLoop && pullGateEnabled.checked) {
+      const minimumTps = optionalNumber(pullMinTps);
+      const minimumRpm = optionalNumber(pullMinRpm);
+      if (!rpm || !tps || minimumTps === undefined || minimumRpm === undefined) {
+        currentResult = undefined;
+        empty.hidden = false;
+        content.hidden = true;
+        empty.querySelector('strong')!.textContent = 'High-load pull gate needs RPM, TPS/load and finite minimum thresholds.';
+        refreshButton.disabled = false;
+        return;
+      }
+      const quick = qualifyNumericSampleGroups({
+        referenceChannelId: measured.channel.id,
+        channels,
+        groupLogic: 'and',
+        groups: [{ id: 'boost-high-load', logic: 'and', conditions: [
+          { channelId: tps.channel.id, operator: 'gte', value: minimumTps },
+          { channelId: rpm.channel.id, operator: 'gte', value: minimumRpm },
+        ] }],
+        ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),
+      });
+      quickGateEligibleCount = quick.eligibleSampleCount;
+      quickGateComplete = quick.complete;
+      finalEligibleSampleIndices = intersectSampleIndices(scoped.eligibleSampleIndices, quick.eligibleSampleIndices);
+    }
     const selectedTraces = [measured, target, rpm, tps, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);
-    const complete = scoped.complete && selectedTraces.every((trace) =>
+    const complete = scoped.complete && quickGateComplete && selectedTraces.every((trace) =>
       trace.complete || (startMs !== undefined && endMs !== undefined && numericRangeCoversTime(trace.range, startMs, endMs)),
     );
 
@@ -340,7 +390,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         ...(upper ? { upperDuty: upper.range } : {}),
         ...(lower ? { lowerDuty: lower.range } : {}),
       }, {
-        sampleIndices: scoped.eligibleSampleIndices,
+        sampleIndices: finalEligibleSampleIndices,
         complete,
         ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),
         ...(operatingPoints ? { operatingPoints } : {}),
@@ -385,6 +435,8 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('lower-duty').textContent = formatNumber(currentResult.lowerDuty?.mean);
     field('qualification-input').textContent = scoped.inputSampleCount.toLocaleString();
     field('qualification-eligible').textContent = scoped.eligibleSampleCount.toLocaleString();
+    field('quick-gate-eligible').textContent = quickGateEligibleCount === undefined ? 'Off' : quickGateEligibleCount.toLocaleString();
+    field('final-eligible').textContent = finalEligibleSampleIndices.length.toLocaleString();
     field('qualification-rejected').textContent = scoped.valueRejectedSampleCount.toLocaleString();
     field('qualification-invalid').textContent = scoped.invalidSampleCount.toLocaleString();
     field('qualification-unavailable').textContent = scoped.unavailableSampleCount.toLocaleString();
@@ -460,7 +512,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   modeSelect.addEventListener('change', () => { syncControlModeUi(); void render(); });
   for (const select of [measuredSelect, targetSelect, rpmSelect, tpsSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
-  for (const input of [operatingEnabled, operatingRpmBin, operatingTpsBin, operatingMinSamples, openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
+  for (const input of [operatingEnabled, pullGateEnabled, pullMinTps, pullMinRpm, operatingRpmBin, operatingTpsBin, operatingMinSamples, openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
   syncControlModeUi();
   ensureBoostAnalyzerHelp(root);
