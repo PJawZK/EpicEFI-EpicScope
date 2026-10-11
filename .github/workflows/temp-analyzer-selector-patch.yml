@@ -20,109 +20,109 @@ jobs:
 
           analyzer_path = Path('apps/web/src/pages/analyzer-page.ts')
           analyzer = analyzer_path.read_text()
-
-          analyzer = analyzer.replace(
-              'export interface AnalyzerPageController {\n  readonly element: HTMLElement;\n',
-              'export interface AnalyzerPageController {\n  readonly element: HTMLElement;\n  readonly headerControl: HTMLElement;\n',
-              1,
-          )
+          old = 'export interface AnalyzerPageController {\n  readonly element: HTMLElement;\n'
+          new = 'export interface AnalyzerPageController {\n  readonly element: HTMLElement;\n  readonly headerControl: HTMLElement;\n'
+          assert analyzer.count(old) == 1
+          analyzer = analyzer.replace(old, new, 1)
 
           anchor = '  const specializedView = createSpecializedAnalyzerSuiteView();\n\n'
-          assert anchor in analyzer
-          header_control = '''  const headerControl = document.createElement('label');
-          headerControl.className = 'histogram-header-view analyzer-header-view';
-          headerControl.innerHTML = `
-            <select class="analyzer-header-view-select" aria-label="Analyzer analysis view">
-              <option value="compare" selected>Range Compare</option>
-              <option value="tune-table">Tune Table</option>
-              <option value="boost">Boost · Experimental</option>
-              <option value="idle">Idle · Experimental</option>
-              <option value="ae-map">AE / MAP Predict · Experimental</option>
-              <option value="fueling">Fueling · Experimental</option>
-              <option value="ignition">Ignition · Experimental</option>
-              <option value="fuel-injector">Fuel Pressure / Injector · Experimental</option>
-              <option value="trigger-sync">Trigger / Sync · Experimental</option>
-            </select>
-          `;
+          assert analyzer.count(anchor) == 1
+          header_lines = [
+              "  const headerControl = document.createElement('label');",
+              "  headerControl.className = 'histogram-header-view analyzer-header-view';",
+              '  headerControl.innerHTML = `',
+              '    <select class="analyzer-header-view-select" aria-label="Analyzer analysis view">',
+              '      <option value="compare" selected>Range Compare</option>',
+              '      <option value="tune-table">Tune Table</option>',
+              '      <option value="boost">Boost · Experimental</option>',
+              '      <option value="idle">Idle · Experimental</option>',
+              '      <option value="ae-map">AE / MAP Predict · Experimental</option>',
+              '      <option value="fueling">Fueling · Experimental</option>',
+              '      <option value="ignition">Ignition · Experimental</option>',
+              '      <option value="fuel-injector">Fuel Pressure / Injector · Experimental</option>',
+              '      <option value="trigger-sync">Trigger / Sync · Experimental</option>',
+              '    </select>',
+              '  `;',
+              '',
+          ]
+          analyzer = analyzer.replace(anchor, anchor + '\n'.join(header_lines) + '\n', 1)
 
-'''.replace('          ', '')
-          analyzer = analyzer.replace(anchor, anchor + header_control, 1)
-
-          old_switch = '''        <div class="analyzer-view-switch" role="group" aria-label="Analyzer view">
-          <button type="button" class="analyzer-view-choice analyzer-view-choice--active" data-analyzer-view="compare">Range Compare</button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="tune-table">Tune Table</button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="boost">Boost <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="idle">Idle <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="ae-map">AE / MAP <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="fueling">Fueling <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="ignition">Ignition <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="fuel-injector">Fuel / Injector <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="trigger-sync">Trigger / Sync <span class="analyzer-experimental-tag">EXP</span></button>
-        </div>
-'''
+          switch_lines = [
+              '        <div class="analyzer-view-switch" role="group" aria-label="Analyzer view">',
+              '          <button type="button" class="analyzer-view-choice analyzer-view-choice--active" data-analyzer-view="compare">Range Compare</button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="tune-table">Tune Table</button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="boost">Boost <span class="analyzer-experimental-tag">EXP</span></button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="idle">Idle <span class="analyzer-experimental-tag">EXP</span></button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="ae-map">AE / MAP <span class="analyzer-experimental-tag">EXP</span></button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="fueling">Fueling <span class="analyzer-experimental-tag">EXP</span></button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="ignition">Ignition <span class="analyzer-experimental-tag">EXP</span></button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="fuel-injector">Fuel / Injector <span class="analyzer-experimental-tag">EXP</span></button>',
+              '          <button type="button" class="analyzer-view-choice" data-analyzer-view="trigger-sync">Trigger / Sync <span class="analyzer-experimental-tag">EXP</span></button>',
+              '        </div>',
+          ]
+          old_switch = '\n'.join(switch_lines) + '\n'
           assert analyzer.count(old_switch) == 1
           analyzer = analyzer.replace(old_switch, '', 1)
 
-          old_queries = "  const description = root.querySelector<HTMLElement>('.analyzer-head p');\n  const viewChoices = [...root.querySelectorAll<HTMLButtonElement>('[data-analyzer-view]')];\n  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description) {"
-          new_queries = "  const description = root.querySelector<HTMLElement>('.analyzer-head p');\n  const viewSelect = headerControl.querySelector<HTMLSelectElement>('.analyzer-header-view-select');\n  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {"
-          assert analyzer.count(old_queries) == 1
-          analyzer = analyzer.replace(old_queries, new_queries, 1)
+          old = "  const description = root.querySelector<HTMLElement>('.analyzer-head p');\n  const viewChoices = [...root.querySelectorAll<HTMLButtonElement>('[data-analyzer-view]')];\n  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description) {"
+          new = "  const description = root.querySelector<HTMLElement>('.analyzer-head p');\n  const viewSelect = headerControl.querySelector<HTMLSelectElement>('.analyzer-header-view-select');\n  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {"
+          assert analyzer.count(old) == 1
+          analyzer = analyzer.replace(old, new, 1)
 
-          old_loop = '''    for (const choice of viewChoices) {
-      const selected = choice.dataset.analyzerView === view;
-      choice.classList.toggle('analyzer-view-choice--active', selected);
-      choice.setAttribute('aria-pressed', String(selected));
-    }
-'''
+          loop_lines = [
+              '    for (const choice of viewChoices) {',
+              '      const selected = choice.dataset.analyzerView === view;',
+              "      choice.classList.toggle('analyzer-view-choice--active', selected);",
+              "      choice.setAttribute('aria-pressed', String(selected));",
+              '    }',
+          ]
+          old_loop = '\n'.join(loop_lines) + '\n'
           assert analyzer.count(old_loop) == 1
           analyzer = analyzer.replace(old_loop, '    viewSelect.value = view;\n', 1)
 
-          old_events = '''  for (const choice of viewChoices) {
-    choice.addEventListener('click', () => {
-      const view = choice.dataset.analyzerView;
-      if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
-    });
-  }
-'''
-          new_events = '''  viewSelect.addEventListener('change', () => {
-    const view = viewSelect.value;
-    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
-  });
-'''
+          event_lines = [
+              '  for (const choice of viewChoices) {',
+              "    choice.addEventListener('click', () => {",
+              '      const view = choice.dataset.analyzerView;',
+              "      if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);",
+              '    });',
+              '  }',
+          ]
+          old_events = '\n'.join(event_lines) + '\n'
+          new_events = "  viewSelect.addEventListener('change', () => {\n    const view = viewSelect.value;\n    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);\n  });\n"
           assert analyzer.count(old_events) == 1
           analyzer = analyzer.replace(old_events, new_events, 1)
 
-          old_return = '  return {\n    element: root,\n    setContext,\n'
-          assert analyzer.count(old_return) == 1
-          analyzer = analyzer.replace(old_return, '  return {\n    element: root,\n    headerControl,\n    setContext,\n', 1)
+          old = '  return {\n    element: root,\n    setContext,\n'
+          new = '  return {\n    element: root,\n    headerControl,\n    setContext,\n'
+          assert analyzer.count(old) == 1
+          analyzer = analyzer.replace(old, new, 1)
           assert 'analyzer-view-switch' not in analyzer
           assert 'viewChoices' not in analyzer
           analyzer_path.write_text(analyzer)
 
           shell_path = Path('apps/web/src/app/app-shell.ts')
           shell = shell_path.read_text()
-          shell = shell.replace(
-              '      <div class="graph-selector-slot"></div>\n      <div class="histogram-selector-slot" hidden></div>\n',
-              '      <div class="graph-selector-slot"></div>\n      <div class="analyzer-selector-slot" hidden></div>\n      <div class="histogram-selector-slot" hidden></div>\n',
-              1,
-          )
-          shell = shell.replace(
-              "  const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');\n  const histogramSelectorSlot = header.querySelector<HTMLElement>('.histogram-selector-slot');\n",
-              "  const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');\n  const analyzerSelectorSlot = header.querySelector<HTMLElement>('.analyzer-selector-slot');\n  const histogramSelectorSlot = header.querySelector<HTMLElement>('.histogram-selector-slot');\n",
-              1,
-          )
-          old_guard = '  if (!graphSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {'
-          new_guard = '  if (!graphSelectorSlot || !analyzerSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {'
-          assert shell.count(old_guard) == 1
-          shell = shell.replace(old_guard, new_guard, 1)
-          shell = shell.replace(
-              '  graphSelectorSlot.append(loggerPage.graphSelector);\n  histogramSelectorSlot.append(histogramPage.headerControl);\n',
-              '  graphSelectorSlot.append(loggerPage.graphSelector);\n  analyzerSelectorSlot.append(analyzerPage.headerControl);\n  histogramSelectorSlot.append(histogramPage.headerControl);\n',
-              1,
-          )
-          mode_anchor = '    graphSelectorSlot.hidden = !loggerActive;\n    histogramSelectorSlot.hidden = !histogramActive;\n'
-          assert shell.count(mode_anchor) == 1
-          shell = shell.replace(mode_anchor, '    graphSelectorSlot.hidden = !loggerActive;\n    analyzerSelectorSlot.hidden = !analyzerActive;\n    histogramSelectorSlot.hidden = !histogramActive;\n', 1)
+          old = '      <div class="graph-selector-slot"></div>\n      <div class="histogram-selector-slot" hidden></div>\n'
+          new = '      <div class="graph-selector-slot"></div>\n      <div class="analyzer-selector-slot" hidden></div>\n      <div class="histogram-selector-slot" hidden></div>\n'
+          assert shell.count(old) == 1
+          shell = shell.replace(old, new, 1)
+          old = "  const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');\n  const histogramSelectorSlot = header.querySelector<HTMLElement>('.histogram-selector-slot');\n"
+          new = "  const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');\n  const analyzerSelectorSlot = header.querySelector<HTMLElement>('.analyzer-selector-slot');\n  const histogramSelectorSlot = header.querySelector<HTMLElement>('.histogram-selector-slot');\n"
+          assert shell.count(old) == 1
+          shell = shell.replace(old, new, 1)
+          old = '  if (!graphSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {'
+          new = '  if (!graphSelectorSlot || !analyzerSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {'
+          assert shell.count(old) == 1
+          shell = shell.replace(old, new, 1)
+          old = '  graphSelectorSlot.append(loggerPage.graphSelector);\n  histogramSelectorSlot.append(histogramPage.headerControl);\n'
+          new = '  graphSelectorSlot.append(loggerPage.graphSelector);\n  analyzerSelectorSlot.append(analyzerPage.headerControl);\n  histogramSelectorSlot.append(histogramPage.headerControl);\n'
+          assert shell.count(old) == 1
+          shell = shell.replace(old, new, 1)
+          old = '    graphSelectorSlot.hidden = !loggerActive;\n    histogramSelectorSlot.hidden = !histogramActive;\n'
+          new = '    graphSelectorSlot.hidden = !loggerActive;\n    analyzerSelectorSlot.hidden = !analyzerActive;\n    histogramSelectorSlot.hidden = !histogramActive;\n'
+          assert shell.count(old) == 1
+          shell = shell.replace(old, new, 1)
           shell_path.write_text(shell)
 
           refinements_path = Path('apps/web/src/app/ui-refinements.ts')
