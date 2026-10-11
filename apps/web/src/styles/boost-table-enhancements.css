@@ -1,0 +1,25 @@
+.boost-sortable-table thead th {
+  cursor: pointer;
+  user-select: none;
+}
+
+.boost-sortable-table thead th::after {
+  content: ' ↕';
+  opacity: 0.35;
+}
+
+.boost-sortable-table thead th[aria-sort='ascending']::after {
+  content: ' ↑';
+  opacity: 1;
+}
+
+.boost-sortable-table thead th[aria-sort='descending']::after {
+  content: ' ↓';
+  opacity: 1;
+}
+
+.boost-sortable-table tbody tr[data-boost-empty-state='true'] td {
+  white-space: normal;
+  opacity: 0.75;
+  line-height: 1.45;
+}
