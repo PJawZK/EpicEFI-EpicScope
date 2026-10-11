@@ -48,8 +48,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <button type="button" class="boost-refresh">Analyze</button>
     </div>
     <details class="boost-analysis-options">
-      <summary>Spool / steady-state detection</summary>
+      <summary>Tracking / spool / steady-state</summary>
       <div class="boost-analysis-options-grid">
+        <label><span>Target tolerance</span><input type="number" step="any" min="0" class="boost-target-tolerance" placeholder="native pressure unit" /></label>
         <label class="boost-option-toggle"><input type="checkbox" class="boost-spool-enabled" /><span>Detect spool</span></label>
         <label><span>Spool start pressure</span><input type="number" step="any" class="boost-spool-start" /></label>
         <label><span>Minimum target pressure</span><input type="number" step="any" class="boost-spool-target" /></label>
@@ -75,6 +76,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <div><span>Mean error</span><strong data-boost="mean-error">—</strong></div>
         <div><span>Mean abs error</span><strong data-boost="mae">—</strong></div>
         <div><span>RMSE</span><strong data-boost="rmse">—</strong></div>
+        <div><span>Target attainment</span><strong data-boost="target-attainment">—</strong></div>
         <div><span>Max overshoot</span><strong data-boost="overshoot">—</strong></div>
         <div><span>Max undershoot</span><strong data-boost="undershoot">—</strong></div>
         <div><span>Upper duty mean</span><strong data-boost="upper-duty">—</strong></div>
@@ -104,6 +106,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const lowerSelect = root.querySelector<HTMLSelectElement>('.boost-lower');
   const scopeSelect = root.querySelector<HTMLSelectElement>('.boost-scope');
   const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');
+  const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');
   const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');
   const spoolStart = root.querySelector<HTMLInputElement>('.boost-spool-start');
   const spoolTarget = root.querySelector<HTMLInputElement>('.boost-spool-target');
@@ -117,7 +120,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const content = root.querySelector<HTMLElement>('.boost-analyzer-content');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !refreshButton || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
+  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -220,6 +223,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       }, {
         sampleIndices: scoped.eligibleSampleIndices,
         complete,
+        ...(optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),
         ...(spool ? { spool } : {}),
         ...(steadyState ? { steadyState } : {}),
       });
@@ -243,6 +247,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('mean-error').textContent = formatNumber(currentResult.tracking?.meanError);
     field('mae').textContent = formatNumber(currentResult.tracking?.meanAbsoluteError);
     field('rmse').textContent = formatNumber(currentResult.tracking?.rootMeanSquareError);
+    field('target-attainment').textContent = currentResult.tracking?.targetAttainmentFraction === undefined
+      ? '—'
+      : `${(currentResult.tracking.targetAttainmentFraction * 100).toFixed(1)}% · ±${formatNumber(currentResult.tracking.targetTolerance)}`;
     field('overshoot').textContent = formatNumber(currentResult.tracking?.maxOvershoot);
     field('undershoot').textContent = formatNumber(currentResult.tracking?.maxUndershoot);
     field('upper-duty').textContent = formatNumber(currentResult.upperDuty?.mean);
@@ -288,7 +295,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect]) select.addEventListener('change', () => { void render(); });
-  for (const input of [spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
+  for (const input of [targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
 
   return { element: root, setContext, refresh: () => { void render(); } };

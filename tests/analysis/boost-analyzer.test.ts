@@ -37,6 +37,17 @@ describe('analyzeBoost', () => {
     expect(result.complete).toBe(true);
   });
 
+  it('reports target attainment inside an explicit absolute pressure tolerance', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [195, 205, 212, 180]),
+      targetPressure: range(0, [200, 200, 200, 200]),
+    }, { complete: true, targetTolerance: 5 });
+
+    expect(result.tracking?.targetTolerance).toBe(5);
+    expect(result.tracking?.targetAttainmentSampleCount).toBe(2);
+    expect(result.tracking?.targetAttainmentFraction).toBe(0.5);
+  });
+
   it('keeps target tracking invalid and unavailable evidence explicit', () => {
     const result = analyzeBoost({
       measuredPressure: range(10, [100, 120, 140], [1, 0, 1]),
@@ -149,6 +160,7 @@ describe('analyzeBoost', () => {
 
   it('validates spool and steady-state configuration', () => {
     const inputs = { measuredPressure: range(0, [100]), targetPressure: range(0, [200]) };
+    expect(() => analyzeBoost(inputs, { targetTolerance: -1 })).toThrow(RangeError);
     expect(() => analyzeBoost(inputs, { spool: { startPressure: 100, minimumTargetPressure: 150, completionFraction: 2 } })).toThrow(RangeError);
     expect(() => analyzeBoost(inputs, { steadyState: { maxTargetRatePerSecond: -1, minimumDurationMs: 0 } })).toThrow(RangeError);
   });
