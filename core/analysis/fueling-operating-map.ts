@@ -164,18 +164,18 @@ export function buildFuelingOperatingMap(
   const minimumStableDurationMs = finiteNonNegative(config.minimumStableDurationMs ?? 300, 'Fueling minimum stable duration');
 
   const indices = selectedIndices(inputs.actualAfr, sampleIndices);
-  const stableCandidates: StableSample[] = [];
   let invalidSampleCount = 0;
   let unavailableSampleCount = 0;
-  let transientRejectedSampleCount = 0;
-
-  let segment: StableSample[] = [];
+  let validAlignedSampleCount = 0;
   const stableSamples: StableSample[] = [];
+  let segment: StableSample[] = [];
+
   const finishSegment = (): void => {
     if (segment.length === 0) return;
-    const durationMs = segment[segment.length - 1]!.timeMs - segment[0]!.timeMs;
-    if (durationMs >= minimumStableDurationMs) stableSamples.push(...segment);
-    else transientRejectedSampleCount += segment.length;
+    const startTimeMs = segment[0]!.timeMs;
+    for (const current of segment) {
+      if (current.timeMs - startTimeMs >= minimumStableDurationMs) stableSamples.push(current);
+    }
     segment = [];
   };
 
@@ -188,6 +188,7 @@ export function buildFuelingOperatingMap(
       else unavailableSampleCount += 1;
       continue;
     }
+    validAlignedSampleCount += 1;
 
     if (position === 0 || sampleIndex !== indices[position - 1]! + 1) {
       finishSegment();
@@ -204,16 +205,16 @@ export function buildFuelingOperatingMap(
     const deltaTimeMs = current.timeMs - previous.timeMs;
     if (!(deltaTimeMs > 0)) {
       finishSegment();
-      transientRejectedSampleCount += 1;
+      segment = [current];
       continue;
     }
     const seconds = deltaTimeMs / 1000;
     const rpmRate = Math.abs(current.rpm - previous.rpm) / seconds;
     const loadRate = Math.abs(current.load - previous.load) / seconds;
-    const stable = rpmRate <= maxRpmRate && loadRate <= maxLoadRate;
-    if (!stable) {
+    const stableTransition = rpmRate <= maxRpmRate && loadRate <= maxLoadRate;
+    if (!stableTransition) {
       finishSegment();
-      transientRejectedSampleCount += 1;
+      segment = [current];
       continue;
     }
     if (segment.length === 0) segment.push(previous);
@@ -221,9 +222,10 @@ export function buildFuelingOperatingMap(
   }
   finishSegment();
 
-  stableCandidates.push(...stableSamples);
+  const stableSampleIndices = new Set(stableSamples.map((entry) => entry.sampleIndex));
+  const transientRejectedSampleCount = Math.max(0, validAlignedSampleCount - stableSampleIndices.size);
   const bins = new Map<string, MutableBin>();
-  for (const current of stableCandidates) {
+  for (const current of stableSamples) {
     const rpmStart = Math.floor(current.rpm / rpmBinSize) * rpmBinSize;
     const loadStart = Math.floor(current.load / loadBinSize) * loadBinSize;
     const key = `${rpmStart}:${loadStart}`;
@@ -269,7 +271,7 @@ export function buildFuelingOperatingMap(
   operatingPoints.sort((left, right) => left.rpmStart - right.rpmStart || left.loadStart - right.loadStart);
   return {
     inputSampleCount: indices.length,
-    stableEligibleSampleCount: stableCandidates.length,
+    stableEligibleSampleCount: stableSampleIndices.size,
     transientRejectedSampleCount,
     invalidSampleCount,
     unavailableSampleCount,
