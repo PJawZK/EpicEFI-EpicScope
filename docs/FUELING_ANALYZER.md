@@ -51,11 +51,12 @@ The maturity sequence is:
 1. steady-state target/actual mixture error and rich/lean bias;
 2. observed mixture response-delay estimation;
 3. state-aware DFCO/fuel-cut/transient qualification;
-4. delay-compensated mixture error;
-5. injector PW/duty/headroom evidence;
-6. fuel-pressure and rail-differential stability;
-7. repeated-event / before-after consistency;
-8. conservative diagnostic interpretation.
+4. rolling-window operating-point qualification and visible evidence strength;
+5. delay-compensated mixture error;
+6. injector PW/duty/headroom evidence;
+7. fuel-pressure and rail-differential stability;
+8. repeated-event / before-after consistency;
+9. conservative diagnostic interpretation.
 
 ## Steady-state mixture operating map
 
@@ -63,13 +64,43 @@ The maturity sequence is:
 
 For EpicEFI/JZ, the preferred load channel is `veTableYAxis`, not guessed MAP/TPS. This is the Y-axis value actually used by the VE table after any configured VE load-axis override. That keeps operating bins aligned with the calibration table being evaluated.
 
-Before the map sees a sample, the Fueling context qualifier removes DFCO, other fuel cuts, TPS AE, TPS Decel, and selected-context gaps. The map then applies its own stability rules.
+Before the map sees a sample, the Fueling context qualifier removes DFCO, other fuel cuts, TPS AE, TPS Decel, and selected-context gaps. The map then evaluates RPM/load stability.
 
-The map is deliberately stricter than simply binning every valid sample. A sample only becomes steady-state evidence after RPM and load have remained inside configured rate limits for the configured stable duration. The stable duration therefore acts as a **settling period**: samples immediately after a load/RPM transition stay rejected even when the following operating point becomes stable. Selected-source-index gaps, invalid values and unavailable channel coverage break the stable segment and remain explicit provenance.
+### Trailing stability window
 
-Each trustworthy bin reports:
+The original implementation used adjacent-sample derivatives. At high logger rates this was too brittle: for example a 10 ms sample interval with a 500 RPM/s limit allowed only about 5 RPM difference between neighboring samples, so ordinary sensor/quantization jitter could restart a 300 ms settling period repeatedly and make a large log look artificially sparse.
 
-- sample count and RPM/load means;
+The map now evaluates a **trailing stability window** instead:
+
+- the current sample must have a contiguous history at least as long as the configured stability window;
+- a least-squares RPM trend across the window must remain within the configured RPM-rate limit;
+- a least-squares load trend across the window must remain within the configured load-rate limit;
+- a deliberately broader RPM/load span guard prevents a violently oscillating window from appearing stable merely because its net trend is near zero;
+- an individual high-rate adjacent jitter sample does not by itself reset a separate timer;
+- transitions naturally stop qualifying while they remain inside the trailing window, then age out once the operating condition genuinely settles;
+- selected-source-index gaps, invalid values and unavailable coverage still break continuity and require a new complete stability window.
+
+This makes stability depend on the operating condition as a whole rather than the logger's sample interval.
+
+### Visible low-evidence bins
+
+`minimumSamplesPerBin` is now an **evidence threshold**, not a visibility threshold. Any RPM × load bin containing at least one window-stable sample remains visible.
+
+Evidence strength is graded from the configured threshold:
+
+- **Weak**: fewer than the threshold number of window-stable samples;
+- **Moderate**: at least the threshold but fewer than three times the threshold;
+- **Strong**: at least three times the threshold.
+
+Weak bins remain observational evidence but should not drive a tuning conclusion by themselves. Keeping them visible prevents the table from falsely implying that the engine never visited those regions.
+
+Each operating point retains:
+
+- window-stable sample count;
+- all valid context-qualified observations in that RPM/load bin;
+- stable fraction (`stable / observed`);
+- evidence strength;
+- RPM/load means;
 - actual and target mixture means;
 - mixture error mean and median;
 - P10–P90 error spread;
@@ -79,7 +110,7 @@ Each trustworthy bin reports:
 
 Error uses `actual mixture − target mixture`, so positive values are lean and negative values are rich for both lambda and AFR. The map is descriptive calibration evidence; it does not by itself prove that VE is the cause of an error.
 
-The operating-map result also retains input, stable-eligible, transient-rejected, invalid and unavailable counts. Bins below the configured minimum sample count are omitted instead of being promoted as weak tuning evidence. The browser shows an explicit empty-state explanation when no bin passes the current context, stability and evidence rules.
+The result keeps the full qualification funnel: scoped/context input, valid aligned samples, window-stable samples, window-rejected samples, invalid samples, unavailable samples, observed operating-point count, evidence-strength bin counts and low-evidence stable-sample count. The browser presents the main stages as **Context eligible → Window-stable**, adds a window-stable coverage percentage, keeps low-count bins visible, and adds an Evidence column to the operating-point table.
 
 ### Mixture-scale-aware thresholds
 
@@ -165,6 +196,7 @@ Fueling reuses Analyzer patterns proven in Boost where they are genuinely domain
 - inline `i` help for channel roles, thresholds and summary/provenance metrics;
 - explicit empty-state feedback instead of blank tables;
 - visible scope and evidence provenance;
+- visible Weak / Moderate / Strong operating-point evidence instead of silently omitted low-count bins;
 - event rows that remain inspectable/openable in Logger;
 - observational wording instead of unsupported causal or tuning claims.
 

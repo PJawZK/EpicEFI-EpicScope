@@ -10,19 +10,28 @@ export interface FuelingOperatingMapInputs {
 export interface FuelingOperatingMapConfig {
   readonly rpmBinSize: number;
   readonly loadBinSize: number;
+  /** Evidence threshold. Bins below this count remain visible as weak evidence. */
   readonly minimumSamplesPerBin?: number;
   readonly errorDeadband?: number;
   readonly maxRpmRatePerSecond?: number;
   readonly maxLoadRatePerSecond?: number;
+  /** Width of the trailing stability window. */
   readonly minimumStableDurationMs?: number;
 }
+
+export type FuelingOperatingPointEvidenceStrength = 'weak' | 'moderate' | 'strong';
 
 export interface FuelingOperatingPoint {
   readonly rpmStart: number;
   readonly rpmEnd: number;
   readonly loadStart: number;
   readonly loadEnd: number;
+  /** Window-stable samples used for mixture statistics. */
   readonly sampleCount: number;
+  /** All valid aligned context-qualified samples observed in this RPM/load bin. */
+  readonly observedSampleCount: number;
+  readonly stableFraction: number;
+  readonly evidenceStrength: FuelingOperatingPointEvidenceStrength;
   readonly rpmMean: number;
   readonly loadMean: number;
   readonly actualAfrMean: number;
@@ -41,10 +50,17 @@ export interface FuelingOperatingPoint {
 
 export interface FuelingOperatingMapResult {
   readonly inputSampleCount: number;
+  readonly validAlignedSampleCount: number;
   readonly stableEligibleSampleCount: number;
+  /** Valid aligned samples rejected by the trailing RPM/load stability window. */
   readonly transientRejectedSampleCount: number;
   readonly invalidSampleCount: number;
   readonly unavailableSampleCount: number;
+  readonly observedOperatingPointCount: number;
+  readonly weakOperatingPointCount: number;
+  readonly moderateOperatingPointCount: number;
+  readonly strongOperatingPointCount: number;
+  readonly lowEvidenceSampleCount: number;
   readonly operatingPoints: readonly FuelingOperatingPoint[];
 }
 
@@ -149,6 +165,86 @@ function biasFor(lean: number, rich: number, within: number): FuelingOperatingPo
   return 'balanced';
 }
 
+function evidenceStrength(sampleCount: number, evidenceThreshold: number): FuelingOperatingPointEvidenceStrength {
+  if (sampleCount < evidenceThreshold) return 'weak';
+  if (sampleCount < evidenceThreshold * 3) return 'moderate';
+  return 'strong';
+}
+
+function binKey(rpm: number, load: number, rpmBinSize: number, loadBinSize: number): { key: string; rpmStart: number; loadStart: number } {
+  const rpmStart = Math.floor(rpm / rpmBinSize) * rpmBinSize;
+  const loadStart = Math.floor(load / loadBinSize) * loadBinSize;
+  return { key: `${rpmStart}:${loadStart}`, rpmStart, loadStart };
+}
+
+function linearSlopePerSecond(samples: readonly StableSample[], start: number, end: number, value: (sample: StableSample) => number): number {
+  const originMs = samples[start]!.timeMs;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumX2 = 0;
+  let count = 0;
+  for (let index = start; index <= end; index += 1) {
+    const entry = samples[index]!;
+    const x = (entry.timeMs - originMs) / 1000;
+    const y = value(entry);
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumX2 += x * x;
+    count += 1;
+  }
+  if (count <= 1) return 0;
+  const denominator = count * sumX2 - sumX * sumX;
+  if (!(denominator > 0)) return 0;
+  return (count * sumXY - sumX * sumY) / denominator;
+}
+
+function windowSpan(samples: readonly StableSample[], start: number, end: number, value: (sample: StableSample) => number): number {
+  let minimum = Number.POSITIVE_INFINITY;
+  let maximum = Number.NEGATIVE_INFINITY;
+  for (let index = start; index <= end; index += 1) {
+    const current = value(samples[index]!);
+    minimum = Math.min(minimum, current);
+    maximum = Math.max(maximum, current);
+  }
+  return maximum - minimum;
+}
+
+function stableSamplesFromSegment(
+  segment: readonly StableSample[],
+  minimumStableDurationMs: number,
+  maxRpmRate: number,
+  maxLoadRate: number,
+): StableSample[] {
+  if (minimumStableDurationMs === 0) return [...segment];
+  const accepted: StableSample[] = [];
+  let windowStart = 0;
+  for (let end = 0; end < segment.length; end += 1) {
+    const current = segment[end]!;
+    while (windowStart + 1 <= end && current.timeMs - segment[windowStart + 1]!.timeMs >= minimumStableDurationMs) {
+      windowStart += 1;
+    }
+    const windowDurationMs = current.timeMs - segment[windowStart]!.timeMs;
+    if (windowDurationMs < minimumStableDurationMs) continue;
+
+    const rpmSlope = Math.abs(linearSlopePerSecond(segment, windowStart, end, (entry) => entry.rpm));
+    const loadSlope = Math.abs(linearSlopePerSecond(segment, windowStart, end, (entry) => entry.load));
+    if (rpmSlope > maxRpmRate || loadSlope > maxLoadRate) continue;
+
+    // A slope alone can hide a noisy oscillation. The span guard is deliberately looser than
+    // the slope threshold so ordinary high-rate logger jitter does not reset qualification.
+    const windowSeconds = windowDurationMs / 1000;
+    const rpmSpanLimit = maxRpmRate * windowSeconds * 1.5;
+    const loadSpanLimit = maxLoadRate * windowSeconds * 1.5;
+    if (windowSpan(segment, windowStart, end, (entry) => entry.rpm) > rpmSpanLimit) continue;
+    if (windowSpan(segment, windowStart, end, (entry) => entry.load) > loadSpanLimit) continue;
+
+    accepted.push(current);
+  }
+  return accepted;
+}
+
 export function buildFuelingOperatingMap(
   inputs: FuelingOperatingMapInputs,
   config: FuelingOperatingMapConfig,
@@ -168,14 +264,13 @@ export function buildFuelingOperatingMap(
   let unavailableSampleCount = 0;
   let validAlignedSampleCount = 0;
   const stableSamples: StableSample[] = [];
+  const observedCounts = new Map<string, number>();
+  const observedBins = new Set<string>();
   let segment: StableSample[] = [];
 
   const finishSegment = (): void => {
-    if (segment.length === 0) return;
-    const startTimeMs = segment[0]!.timeMs;
-    for (const current of segment) {
-      if (current.timeMs - startTimeMs >= minimumStableDurationMs) stableSamples.push(current);
-    }
+    if (!segment.length) return;
+    stableSamples.push(...stableSamplesFromSegment(segment, minimumStableDurationMs, maxRpmRate, maxLoadRate));
     segment = [];
   };
 
@@ -189,35 +284,21 @@ export function buildFuelingOperatingMap(
       continue;
     }
     validAlignedSampleCount += 1;
+    const observed = binKey(current.rpm, current.load, rpmBinSize, loadBinSize);
+    observedCounts.set(observed.key, (observedCounts.get(observed.key) ?? 0) + 1);
+    observedBins.add(observed.key);
 
     if (position === 0 || sampleIndex !== indices[position - 1]! + 1) {
       finishSegment();
       segment = [current];
       continue;
     }
-
     const previous = completeSample(inputs, indices[position - 1]!);
-    if (!previous) {
+    if (!previous || !(current.timeMs > previous.timeMs)) {
       finishSegment();
       segment = [current];
       continue;
     }
-    const deltaTimeMs = current.timeMs - previous.timeMs;
-    if (!(deltaTimeMs > 0)) {
-      finishSegment();
-      segment = [current];
-      continue;
-    }
-    const seconds = deltaTimeMs / 1000;
-    const rpmRate = Math.abs(current.rpm - previous.rpm) / seconds;
-    const loadRate = Math.abs(current.load - previous.load) / seconds;
-    const stableTransition = rpmRate <= maxRpmRate && loadRate <= maxLoadRate;
-    if (!stableTransition) {
-      finishSegment();
-      segment = [current];
-      continue;
-    }
-    if (segment.length === 0) segment.push(previous);
     segment.push(current);
   }
   finishSegment();
@@ -226,9 +307,7 @@ export function buildFuelingOperatingMap(
   const transientRejectedSampleCount = Math.max(0, validAlignedSampleCount - stableSampleIndices.size);
   const bins = new Map<string, MutableBin>();
   for (const current of stableSamples) {
-    const rpmStart = Math.floor(current.rpm / rpmBinSize) * rpmBinSize;
-    const loadStart = Math.floor(current.load / loadBinSize) * loadBinSize;
-    const key = `${rpmStart}:${loadStart}`;
+    const { key, rpmStart, loadStart } = binKey(current.rpm, current.load, rpmBinSize, loadBinSize);
     let bin = bins.get(key);
     if (!bin) {
       bin = { rpmStart, loadStart, samples: [] };
@@ -238,19 +317,35 @@ export function buildFuelingOperatingMap(
   }
 
   const operatingPoints: FuelingOperatingPoint[] = [];
-  for (const bin of bins.values()) {
-    if (bin.samples.length < minimumSamples) continue;
+  let lowEvidenceSampleCount = 0;
+  let weakOperatingPointCount = 0;
+  let moderateOperatingPointCount = 0;
+  let strongOperatingPointCount = 0;
+  for (const [key, bin] of bins) {
     const errors = bin.samples.map((entry) => entry.actualAfr - entry.targetAfr);
     const errorMean = mean(errors);
     const leanSampleCount = errors.filter((error) => error > errorDeadband).length;
     const richSampleCount = errors.filter((error) => error < -errorDeadband).length;
     const withinDeadbandSampleCount = errors.length - leanSampleCount - richSampleCount;
+    const strength = evidenceStrength(bin.samples.length, minimumSamples);
+    if (strength === 'weak') {
+      weakOperatingPointCount += 1;
+      lowEvidenceSampleCount += bin.samples.length;
+    } else if (strength === 'moderate') {
+      moderateOperatingPointCount += 1;
+    } else {
+      strongOperatingPointCount += 1;
+    }
+    const observedSampleCount = observedCounts.get(key) ?? bin.samples.length;
     operatingPoints.push({
       rpmStart: bin.rpmStart,
       rpmEnd: bin.rpmStart + rpmBinSize,
       loadStart: bin.loadStart,
       loadEnd: bin.loadStart + loadBinSize,
       sampleCount: bin.samples.length,
+      observedSampleCount,
+      stableFraction: observedSampleCount > 0 ? bin.samples.length / observedSampleCount : 0,
+      evidenceStrength: strength,
       rpmMean: mean(bin.samples.map((entry) => entry.rpm)),
       loadMean: mean(bin.samples.map((entry) => entry.load)),
       actualAfrMean: mean(bin.samples.map((entry) => entry.actualAfr)),
@@ -271,10 +366,16 @@ export function buildFuelingOperatingMap(
   operatingPoints.sort((left, right) => left.rpmStart - right.rpmStart || left.loadStart - right.loadStart);
   return {
     inputSampleCount: indices.length,
+    validAlignedSampleCount,
     stableEligibleSampleCount: stableSampleIndices.size,
     transientRejectedSampleCount,
     invalidSampleCount,
     unavailableSampleCount,
+    observedOperatingPointCount: observedBins.size,
+    weakOperatingPointCount,
+    moderateOperatingPointCount,
+    strongOperatingPointCount,
+    lowEvidenceSampleCount,
     operatingPoints,
   };
 }
