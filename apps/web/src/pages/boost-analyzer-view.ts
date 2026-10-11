@@ -131,7 +131,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       </div>
       <section class="boost-result-section boost-open-loop-only">
         <header><strong>RPM × TPS/load operating points</strong><span data-boost="operating-count">0</span></header>
-        <div class="boost-table-wrap"><table class="boost-table boost-operating-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Variation</th><th>Evidence</th><th>Assessment</th><th>RPM trend</th><th>Load trend</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>
+        <div class="boost-table-wrap"><table class="boost-table boost-operating-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Variation</th><th>Evidence</th><th>Assessment</th><th>RPM trend</th><th>Load trend</th><th>What this suggests</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>
       </section>
       <section class="boost-result-section boost-open-loop-only">
         <header><strong>Open-loop pressure-rise spool events</strong><span data-boost="open-spool-count">0</span></header>
@@ -461,8 +461,21 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
           : ` · U ${trend.upperDutyDelta === undefined ? '—' : `${trend.upperDutyDelta >= 0 ? '+' : ''}${formatNumber(trend.upperDutyDelta)}`} · L ${trend.lowerDutyDelta === undefined ? '—' : `${trend.lowerDutyDelta >= 0 ? '+' : ''}${formatNumber(trend.lowerDutyDelta)}`}`;
         return `${direction} P ${trend.pressureDelta >= 0 ? '+' : ''}${formatNumber(trend.pressureDelta)}${duty}`;
       };
+      const suggestionText = (): string => {
+        if (point.assessment === 'mixed-transient-likely') return 'Qualify further before tuning';
+        if (point.assessment === 'limited-evidence') return 'Collect more evidence';
+        const trend = point.rpmTrend ?? point.loadTrend;
+        if (!trend) return point.assessment === 'good-comparison' ? 'Good standalone evidence; no comparable neighbor' : 'Usable, but no trustworthy adjacent bin';
+        const dutyDeltas = [trend.upperDutyDelta, trend.lowerDutyDelta].filter((value): value is number => value !== undefined);
+        if (dutyDeltas.length === 0) return 'Pressure trend only; duty response unavailable';
+        const dutyChanged = dutyDeltas.some((value) => Math.abs(value) >= 0.5);
+        if (!dutyChanged && trend.direction !== 'similar') return 'Pressure changed at similar duty';
+        if (dutyChanged && trend.direction === 'similar') return 'Duty changed with little pressure response';
+        if (dutyChanged) return 'Observed duty + pressure response; confirm with another pull';
+        return 'Similar duty and pressure';
+      };
       row.dataset.boostAssessment = point.assessment;
-      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${(point.pressureVariationFraction * 100).toFixed(1)}% · ${consistency}</td><td>${evidence}</td><td>${assessment}</td><td>${trendText(point.rpmTrend)}</td><td>${trendText(point.loadTrend)}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;
+      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${(point.pressureVariationFraction * 100).toFixed(1)}% · ${consistency}</td><td>${evidence}</td><td>${assessment}</td><td>${trendText(point.rpmTrend)}</td><td>${trendText(point.loadTrend)}</td><td>${suggestionText()}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;
       return row;
     }));
 
