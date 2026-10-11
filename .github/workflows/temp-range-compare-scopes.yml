@@ -1,0 +1,107 @@
+name: Temporary Range Compare scope patch
+on:
+  push:
+    branches:
+      - feature/range-compare-scopes
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/range-compare-scopes
+          fetch-depth: 0
+      - name: Patch Range Compare scopes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/pages/analyzer-page.ts')
+          text = path.read_text()
+
+          old = "import type { SavedTimelineRangeState } from '../state/workspace-state';\nimport type { LoggerAnalysisContext } from './logger-page';\n"
+          new = "import type { LoggerAnalysisContext } from './logger-page';\nimport { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "function formatDuration(range: SavedTimelineRangeState): string {\n  const seconds = Math.abs(range.endMs - range.startMs) / 1000;\n  return seconds < 60 ? `${seconds.toFixed(3)} s` : `${(seconds / 60).toFixed(2)} min`;\n}\n"
+          new = "function formatScope(scope: AnalyzerScope): string {\n  if (scope.kind === 'full') return 'Entire source';\n  if (scope.startMs === undefined || scope.endMs === undefined) return '—';\n  const seconds = Math.abs(scope.endMs - scope.startMs) / 1000;\n  return seconds < 60 ? `${seconds.toFixed(3)} s` : `${(seconds / 60).toFixed(2)} min`;\n}\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          replacements = [
+              ('<p>Compare one available log channel across two saved Logger ranges.</p>', '<p>Compare one available log channel across two analysis scopes.</p>'),
+              ('<label><span>Left range</span><select class="analyzer-left-range"></select></label>', '<label><span>Left scope</span><select class="analyzer-left-range"></select></label>'),
+              ('<label><span>Right range</span><select class="analyzer-right-range"></select></label>', '<label><span>Right scope</span><select class="analyzer-right-range"></select></label>'),
+              ('<strong>Analyzer needs one available channel and two saved ranges.</strong>', '<strong>Analyzer needs one available channel and two comparison scopes.</strong>'),
+              ('<span>Save at least two A/B ranges in Logger, then choose any channel present in the loaded log.</span>', '<span>Compare Full Log, the current Logger A/B selection, or saved Logger ranges.</span>'),
+          ]
+          for old, new in replacements:
+              assert text.count(old) == 1, old
+              text = text.replace(old, new, 1)
+
+          old = "  const selectedRange = (select: HTMLSelectElement): SavedTimelineRangeState | undefined => {\n    const index = Number(select.value);\n    return Number.isInteger(index) ? context.savedRanges[index] : undefined;\n  };\n\n"
+          assert text.count(old) == 1
+          text = text.replace(old, '', 1)
+
+          old = "    const leftRange = selectedRange(leftSelect);\n    const rightRange = selectedRange(rightSelect);\n    if (!channelId || !leftRange || !rightRange || context.savedRanges.length < 2) {\n"
+          new = "    const leftScope = selectedAnalyzerScope(leftSelect, context);\n    const rightScope = selectedAnalyzerScope(rightSelect, context);\n    if (!channelId || !leftScope || !rightScope) {\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "    const loadStartMs = Math.min(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);\n    const loadEndMs = Math.max(leftRange.startMs, leftRange.endMs, rightRange.startMs, rightRange.endMs);\n    const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);\n"
+          new = "    const leftBounds = analyzerScopeBounds(leftScope);\n    const rightBounds = analyzerScopeBounds(rightScope);\n    const needsFullRange = leftScope.kind === 'full' || rightScope.kind === 'full';\n    const loadStartMs = needsFullRange ? undefined : Math.min(leftBounds.startMs!, rightBounds.startMs!);\n    const loadEndMs = needsFullRange ? undefined : Math.max(leftBounds.endMs!, rightBounds.endMs!);\n    const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "      conditions: [],\n      timeRange: { startMs: leftRange.startMs, endMs: leftRange.endMs },\n    });\n    const rightScope = qualifyNumericSamples({\n      referenceChannelId: trace.channel.id,\n      channels,\n      conditions: [],\n      timeRange: { startMs: rightRange.startMs, endMs: rightRange.endMs },\n    });\n\n    currentResult = compareNumericCohorts(\n      { range: trace.range, sampleIndices: leftScope.eligibleSampleIndices, complete: leftScope.complete },\n      { range: trace.range, sampleIndices: rightScope.eligibleSampleIndices, complete: rightScope.complete },\n    );\n"
+          new = "      conditions: [],\n      ...(leftScope.kind === 'range' && leftScope.startMs !== undefined && leftScope.endMs !== undefined\n        ? { timeRange: { startMs: leftScope.startMs, endMs: leftScope.endMs } }\n        : {}),\n    });\n    const rightQualified = qualifyNumericSamples({\n      referenceChannelId: trace.channel.id,\n      channels,\n      conditions: [],\n      ...(rightScope.kind === 'range' && rightScope.startMs !== undefined && rightScope.endMs !== undefined\n        ? { timeRange: { startMs: rightScope.startMs, endMs: rightScope.endMs } }\n        : {}),\n    });\n\n    currentResult = compareNumericCohorts(\n      { range: trace.range, sampleIndices: leftQualified.eligibleSampleIndices, complete: leftQualified.complete },\n      { range: trace.range, sampleIndices: rightQualified.eligibleSampleIndices, complete: rightQualified.complete },\n    );\n"
+          # Rename the first qualification result before replacing the shared block.
+          marker = "    const leftScope = qualifyNumericSamples({\n"
+          assert text.count(marker) == 1
+          text = text.replace(marker, "    const leftQualified = qualifyNumericSamples({\n", 1)
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "    field('left-label').textContent = leftRange.label;\n    field('right-label').textContent = rightRange.label;\n    field('left-scope').textContent = formatDuration(leftRange);\n    field('right-scope').textContent = formatDuration(rightRange);\n"
+          new = "    field('left-label').textContent = leftScope.label;\n    field('right-label').textContent = rightScope.label;\n    field('left-scope').textContent = formatScope(leftScope);\n    field('right-scope').textContent = formatScope(rightScope);\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          text = text.replace("    field('left-coverage').textContent = leftScope.complete ? 'Complete' : 'Partial decoded';", "    field('left-coverage').textContent = leftQualified.complete ? 'Complete' : 'Partial decoded';", 1)
+          text = text.replace("    field('right-coverage').textContent = rightScope.complete ? 'Complete' : 'Partial decoded';", "    field('right-coverage').textContent = rightQualified.complete ? 'Complete' : 'Partial decoded';", 1)
+
+          old = "  const fillRangeSelect = (select: HTMLSelectElement, preferredIndex: number, fallbackIndex: number): void => {\n    select.replaceChildren();\n    context.savedRanges.forEach((range, index) => select.add(new Option(range.label, String(index))));\n    const chosen = context.savedRanges[preferredIndex] ? preferredIndex : fallbackIndex;\n    if (context.savedRanges[chosen]) select.value = String(chosen);\n  };\n"
+          new = "  const fillScopeSelect = (select: HTMLSelectElement, preferred: string, fallback: string): void => {\n    populateAnalyzerScopeSelect(select, context, preferred);\n    if ([...select.options].some((option) => option.value === preferred)) return;\n    if ([...select.options].some((option) => option.value === fallback)) select.value = fallback;\n  };\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "      description.textContent = 'Compare any available log channel across two saved Logger ranges.';\n"
+          new = "      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges.';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "    const previousLeft = Number(leftSelect.value);\n    const previousRight = Number(rightSelect.value);\n"
+          new = "    const previousLeft = leftSelect.value;\n    const previousRight = rightSelect.value;\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = "    if (channelsChanged) fillChannelSelect(previousChannel);\n    fillRangeSelect(leftSelect, previousLeft, 0);\n    fillRangeSelect(rightSelect, previousRight, context.savedRanges.length > 1 ? 1 : 0);\n"
+          new = "    if (channelsChanged) fillChannelSelect(previousChannel);\n    const hasCurrentAb = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;\n    const leftFallback = context.savedRanges.length > 0 ? 'saved:0' : hasCurrentAb ? 'ab' : 'full';\n    const rightFallback = context.savedRanges.length > 1 ? 'saved:1' : hasCurrentAb && leftFallback !== 'ab' ? 'ab' : 'full';\n    fillScopeSelect(leftSelect, previousLeft, leftFallback);\n    fillScopeSelect(rightSelect, previousRight, rightFallback);\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          assert 'leftRange' not in text
+          assert 'rightRange' not in text
+          assert 'fillRangeSelect' not in text
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/analyzer-page.ts
+          git commit -m "Support shared scopes in Range Compare"
+          git push origin HEAD:feature/range-compare-scopes
