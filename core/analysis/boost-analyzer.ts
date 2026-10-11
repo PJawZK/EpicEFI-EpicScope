@@ -167,7 +167,9 @@ export interface BoostOperatingPoint {
 
 export interface BoostOperatingPointComparison {
   readonly rpmStart: number;
+  readonly rpmEnd: number;
   readonly tpsStart: number;
+  readonly tpsEnd: number;
   readonly primarySampleCount: number;
   readonly comparisonSampleCount: number;
   readonly primaryPressureMean: number;
@@ -513,7 +515,9 @@ export function compareBoostOperatingPoints(
             : 'similar-duty-and-pressure';
     results.push({
       rpmStart: first.rpmStart,
+      rpmEnd: first.rpmEnd,
       tpsStart: first.tpsStart,
+      tpsEnd: first.tpsEnd,
       primarySampleCount: first.sampleCount,
       comparisonSampleCount: second.sampleCount,
       primaryPressureMean: first.pressureMean,

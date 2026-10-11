@@ -463,7 +463,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('steady-count').textContent = currentResult.steadyStateWindows.length.toLocaleString();
 
     let comparisonRows = [] as ReturnType<typeof compareBoostOperatingPoints>;
-    if (!closedLoop && comparisonScope && operatingPoints && comparisonScope.label !== scope.label) {
+    if (!closedLoop && comparisonScope && operatingPoints && compareScopeSelect.value !== scopeSelect.value) {
       const compareStartMs = comparisonBounds.startMs;
       const compareEndMs = comparisonBounds.endMs;
       const compareScoped = qualifyNumericSampleGroups({
@@ -500,9 +500,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       }, { sampleIndices: compareEligible, operatingPoints });
       comparisonRows = compareBoostOperatingPoints(currentResult.operatingPoints, comparisonResult.operatingPoints);
     }
-    comparisonSection.hidden = comparisonRows.length === 0;
+    const comparisonActive = !closedLoop && comparisonScope !== undefined && compareScopeSelect.value !== scopeSelect.value;
+    comparisonSection.hidden = !comparisonActive;
     field('comparison-count').textContent = comparisonRows.length.toLocaleString();
-    comparisonBody.replaceChildren(...comparisonRows.map((comparison) => {
+    if (comparisonActive && comparisonRows.length === 0) {
+      const row = document.createElement('tr');
+      row.innerHTML = '<td colspan="10">No trustworthy matched RPM × TPS/load bins between these scopes. Collect more evidence or adjust qualification/binning.</td>';
+      comparisonBody.replaceChildren(row);
+    } else comparisonBody.replaceChildren(...comparisonRows.map((comparison) => {
       const row = document.createElement('tr');
       const direction = comparison.pressureDirection === 'rising' ? '↑' : comparison.pressureDirection === 'falling' ? '↓' : '→';
       const delta = (value: number | undefined): string => value === undefined ? '—' : `${value >= 0 ? '+' : ''}${formatNumber(value)}`;
@@ -511,7 +516,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
           : comparison.interpretation === 'duty-changed-little-pressure-response' ? 'Duty changed with little pressure response'
             : comparison.interpretation === 'duty-and-pressure-response' ? 'Observed duty + pressure response; repeat to confirm'
               : 'Similar duty and pressure';
-      row.innerHTML = `<td>${formatNumber(comparison.rpmStart, 0)}</td><td>${formatNumber(comparison.tpsStart)}</td><td>${comparison.primarySampleCount.toLocaleString()}</td><td>${comparison.comparisonSampleCount.toLocaleString()}</td><td>${formatNumber(comparison.primaryPressureMean)}</td><td>${formatNumber(comparison.comparisonPressureMean)}</td><td>${direction} ${delta(comparison.pressureDelta)}</td><td>${delta(comparison.upperDutyDelta)}</td><td>${delta(comparison.lowerDutyDelta)}</td><td>${interpretation}</td>`;
+      row.innerHTML = `<td>${formatNumber(comparison.rpmStart, 0)}–${formatNumber(comparison.rpmEnd, 0)}</td><td>${formatNumber(comparison.tpsStart)}–${formatNumber(comparison.tpsEnd)}</td><td>${comparison.primarySampleCount.toLocaleString()}</td><td>${comparison.comparisonSampleCount.toLocaleString()}</td><td>${formatNumber(comparison.primaryPressureMean)}</td><td>${formatNumber(comparison.comparisonPressureMean)}</td><td>${direction} ${delta(comparison.pressureDelta)}</td><td>${delta(comparison.upperDutyDelta)}</td><td>${delta(comparison.lowerDutyDelta)}</td><td>${interpretation}</td>`;
       return row;
     }));
 
