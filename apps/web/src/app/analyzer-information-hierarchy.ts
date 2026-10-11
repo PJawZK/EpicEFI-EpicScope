@@ -63,6 +63,12 @@ function setDatasetValue(element: HTMLElement, key: string, value: string | unde
   if (element.dataset[key] !== value) element.dataset[key] = value;
 }
 
+function setButtonState(button: HTMLButtonElement, expanded: boolean, openText: string, closedText: string): void {
+  const nextText = expanded ? openText : closedText;
+  if (button.getAttribute('aria-expanded') !== String(expanded)) button.setAttribute('aria-expanded', String(expanded));
+  if (button.textContent !== nextText) button.textContent = nextText;
+}
+
 function ensureSummaryToggle(
   view: HTMLElement,
   summary: HTMLElement,
@@ -95,15 +101,12 @@ function ensureSummaryToggle(
     button.addEventListener('click', () => {
       const expanded = !view.classList.contains('analyzer-summary-expanded');
       view.classList.toggle('analyzer-summary-expanded', expanded);
-      button!.setAttribute('aria-expanded', String(expanded));
-      button!.textContent = expanded ? 'Less details' : 'More details';
+      setButtonState(button!, expanded, 'Less details', 'More details');
     });
     summary.insertAdjacentElement('afterend', button);
   }
-  const expanded = view.classList.contains('analyzer-summary-expanded');
   button.hidden = false;
-  button.setAttribute('aria-expanded', String(expanded));
-  button.textContent = expanded ? 'Less details' : 'More details';
+  setButtonState(button, view.classList.contains('analyzer-summary-expanded'), 'Less details', 'More details');
 }
 
 function specializeSummary(view: HTMLElement): void {
@@ -156,20 +159,17 @@ function setColumnDisclosure(table: HTMLTableElement, primaryHeaders: ReadonlySe
     button.addEventListener('click', () => {
       const expanded = !table.classList.contains('analyzer-columns-expanded');
       table.classList.toggle('analyzer-columns-expanded', expanded);
-      button!.setAttribute('aria-expanded', String(expanded));
-      button!.textContent = expanded ? 'Fewer columns' : 'More columns';
+      setButtonState(button!, expanded, 'Fewer columns', 'More columns');
     });
     header.append(button);
   }
-  const expanded = table.classList.contains('analyzer-columns-expanded');
   button.hidden = false;
-  button.setAttribute('aria-expanded', String(expanded));
-  button.textContent = expanded ? 'Fewer columns' : 'More columns';
+  setButtonState(button, table.classList.contains('analyzer-columns-expanded'), 'Fewer columns', 'More columns');
 }
 
 function standardizeInfoIcons(root: HTMLElement): void {
   for (const icon of root.querySelectorAll<HTMLElement>('.epicscope-inline-help, .histogram-table-help > summary, .channel-details')) {
-    icon.classList.add('epicscope-info-icon');
+    if (!icon.classList.contains('epicscope-info-icon')) icon.classList.add('epicscope-info-icon');
     if (icon.classList.contains('channel-details')) {
       if (icon.textContent !== 'i') icon.textContent = 'i';
       if (!icon.getAttribute('aria-label')) icon.setAttribute('aria-label', icon.getAttribute('title') ?? 'Channel information');
@@ -188,7 +188,7 @@ function apply(root: HTMLElement): void {
 
 export function installAnalyzerInformationHierarchy(root: HTMLElement): void {
   apply(root);
-  const observe = (observer: MutationObserver): void => observer.observe(root, { childList: true, subtree: true, characterData: true });
+  const observe = (observer: MutationObserver): void => observer.observe(root, { childList: true, subtree: true });
   const observer = new MutationObserver(() => {
     observer.disconnect();
     try {
