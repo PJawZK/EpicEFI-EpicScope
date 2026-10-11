@@ -1,7 +1,8 @@
 import { analyzeBoost, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
-import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
+import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
+import { loadAnalysisFilterSets, type AnalysisFilterSetState } from '../state/analysis-filter-storage';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';
 
 export interface BoostAnalyzerViewController {
@@ -33,6 +34,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: BoostAnalyzerResult | undefined;
   let renderGeneration = 0;
+  let analysisFilterSets = loadAnalysisFilterSets();
 
   const root = document.createElement('section');
   root.className = 'boost-analyzer-view';
@@ -46,6 +48,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <label><span>Upper duty</span><select class="boost-upper"></select></label>
       <label><span>Lower duty</span><select class="boost-lower"></select></label>
       <label><span>Scope</span><select class="boost-scope"></select></label>
+      <label><span>Qualification</span><select class="boost-qualification"><option value="">None</option></select></label>
       <button type="button" class="boost-refresh">Analyze</button>
     </div>
     <details class="boost-analysis-options">
@@ -71,6 +74,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <div class="boost-analyzer-summary">
         <div><span>Scope</span><strong data-boost="scope">—</strong></div>
         <div><span>Coverage</span><strong data-boost="coverage">—</strong></div>
+        <div><span>Qualification</span><strong data-boost="qualification">None</strong></div>
         <div><span>Measured mean</span><strong data-boost="measured-mean">—</strong></div>
         <div><span>Measured max</span><strong data-boost="measured-max">—</strong></div>
         <div><span>Target mean</span><strong data-boost="target-mean">—</strong></div>
@@ -106,6 +110,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const upperSelect = root.querySelector<HTMLSelectElement>('.boost-upper');
   const lowerSelect = root.querySelector<HTMLSelectElement>('.boost-lower');
   const scopeSelect = root.querySelector<HTMLSelectElement>('.boost-scope');
+  const qualificationSelect = root.querySelector<HTMLSelectElement>('.boost-qualification');
   const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');
   const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');
   const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');
@@ -121,7 +126,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const content = root.querySelector<HTMLElement>('.boost-analyzer-content');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
+  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -133,6 +138,22 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   const selectedScope = (): AnalyzerScope | undefined => selectedAnalyzerScope(scopeSelect, context);
 
+  const selectedQualificationFilter = (): AnalysisFilterSetState | undefined =>
+    qualificationSelect.value ? analysisFilterSets.find((filterSet) => filterSet.id === qualificationSelect.value) : undefined;
+
+  const qualificationGroups = (filterSet: AnalysisFilterSetState | undefined): NumericQualificationGroup[] => {
+    if (!filterSet) return [];
+    const grouped = new Map<string, Array<{ channelId: string; operator: AnalysisFilterSetState['conditions'][number]['operator']; value: number }>>();
+    for (const condition of filterSet.conditions) {
+      if (!condition.enabled) continue;
+      const groupId = condition.group || 'A';
+      const conditions = grouped.get(groupId) ?? [];
+      conditions.push({ channelId: condition.channelId, operator: condition.operator, value: condition.value });
+      grouped.set(groupId, conditions);
+    }
+    return [...grouped.entries()].map(([id, conditions]) => ({ id, logic: filterSet.groupConditionLogic, conditions }));
+  };
+
   const addOptionalTraceOptions = (select: HTMLSelectElement, preferred: string): void => {
     select.replaceChildren(new Option('(none)', ''));
     for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
@@ -143,6 +164,20 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     populateAnalyzerScopeSelect(scopeSelect, context, preferred);
   };
 
+  const fillQualification = (preferred: string): void => {
+    analysisFilterSets = loadAnalysisFilterSets();
+    qualificationSelect.replaceChildren(new Option('None', ''));
+    const available = new Set(context.channels.map((channel) => channel.id));
+    for (const filterSet of analysisFilterSets) {
+      const unavailable = filterSet.conditions.some((condition) => condition.enabled && !available.has(condition.channelId));
+      const option = new Option(unavailable ? `${filterSet.name} · unavailable channels` : filterSet.name, filterSet.id);
+      option.disabled = unavailable;
+      qualificationSelect.add(option);
+    }
+    const option = [...qualificationSelect.options].find((candidate) => candidate.value === preferred && !candidate.disabled);
+    qualificationSelect.value = option?.value ?? '';
+  };
+
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
     const measuredId = measuredSelect.value || context.channels[0]?.id;
@@ -151,6 +186,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const upperId = upperSelect.value || undefined;
     const lowerId = lowerSelect.value || undefined;
     const scope = selectedScope();
+    const filterSet = selectedQualificationFilter();
     if (!measuredId || !scope) {
       currentResult = undefined;
       empty.hidden = false;
@@ -162,11 +198,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const bounds = analyzerScopeBounds(scope);
     const startMs = bounds.startMs;
     const endMs = bounds.endMs;
-    const loaded = await context.loadTraces(
-      [measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined),
-      startMs,
-      endMs,
-    );
+    const filterChannelIds = filterSet
+      ? [...new Set(filterSet.conditions.filter((condition) => condition.enabled).map((condition) => condition.channelId))]
+      : [];
+    const requestedIds = [...new Set([
+      ...[measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined),
+      ...filterChannelIds,
+    ])];
+    const loaded = await context.loadTraces(requestedIds, startMs, endMs);
     if (generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const measured = byId.get(measuredId);
@@ -175,11 +214,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const upper = upperId ? byId.get(upperId) : undefined;
     const lower = lowerId ? byId.get(lowerId) : undefined;
     if (!measured) { empty.hidden = false; content.hidden = true; return; }
-    const channels = new Map([[measured.channel.id, { range: measured.range, complete: measured.complete }]]);
-    const scoped = qualifyNumericSamples({
+    const channels = new Map(loaded.map((trace) => [trace.channel.id, { range: trace.range, complete: trace.complete }]));
+    const groups = qualificationGroups(filterSet);
+    if (filterChannelIds.some((id) => !channels.has(id))) { empty.hidden = false; content.hidden = true; return; }
+    const scoped = qualifyNumericSampleGroups({
       referenceChannelId: measured.channel.id,
       channels,
-      conditions: [],
+      groupLogic: filterSet?.groupLogic ?? 'and',
+      groups,
       ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),
     });
     const selectedTraces = [measured, target, rpm, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);
@@ -239,6 +281,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       ? `${scope.label} · entire source`
       : `${scope.label} · ${(((endMs ?? 0) - (startMs ?? 0)) / 1000).toFixed(3)} s`;
     field('coverage').textContent = currentResult.complete ? 'Complete' : 'Partial decoded';
+    field('qualification').textContent = filterSet?.name ?? 'None';
     field('measured-mean').textContent = formatNumber(currentResult.measured.mean);
     field('measured-max').textContent = formatNumber(currentResult.measured.max);
     field('target-mean').textContent = formatNumber(currentResult.target?.mean);
@@ -278,6 +321,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const previousUpper = upperSelect.value;
     const previousLower = lowerSelect.value;
     const previousScope = scopeSelect.value;
+    const previousQualification = qualificationSelect.value;
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     if (channelsChanged) {
@@ -289,10 +333,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       addOptionalTraceOptions(lowerSelect, previousLower);
     }
     fillScope(previousScope);
+    fillQualification(previousQualification);
     void render();
   };
 
-  for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect]) select.addEventListener('change', () => { void render(); });
+  for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
   for (const input of [targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
 
