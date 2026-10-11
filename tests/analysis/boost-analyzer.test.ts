@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeBoost, compareBoostOperatingPoints } from '../../core/analysis/boost-analyzer';
+import { analyzeBoost, compareBoostOperatingPoints, summarizeBoostDutyResponse } from '../../core/analysis/boost-analyzer';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
 
 function range(
@@ -239,6 +239,20 @@ describe('analyzeBoost', () => {
       upperDutyDelta: 5,
       interpretation: 'duty-and-pressure-response',
     })]);
+  });
+
+  it('summarizes observed chamber duty response without prescribing polarity', () => {
+    const comparisons = [
+      { rpmStart: 3000, rpmEnd: 3250, tpsStart: 90, tpsEnd: 95, primarySampleCount: 20, comparisonSampleCount: 20, primaryPressureMean: 150, comparisonPressureMean: 165, pressureDelta: 15, pressureDeltaFraction: 0.095, pressureDirection: 'rising' as const, upperDutyDelta: 5, lowerDutyDelta: 0, interpretation: 'duty-and-pressure-response' as const },
+      { rpmStart: 3250, rpmEnd: 3500, tpsStart: 90, tpsEnd: 95, primarySampleCount: 20, comparisonSampleCount: 20, primaryPressureMean: 160, comparisonPressureMean: 172, pressureDelta: 12, pressureDeltaFraction: 0.072, pressureDirection: 'rising' as const, upperDutyDelta: 4, lowerDutyDelta: undefined, interpretation: 'duty-and-pressure-response' as const },
+    ];
+    expect(summarizeBoostDutyResponse(comparisons, 'upper')).toMatchObject({
+      qualifyingComparisonCount: 2,
+      otherDutyUnavailableCount: 1,
+      higherDutyHigherPressureCount: 2,
+      association: 'higher-duty-higher-pressure',
+    });
+    expect(summarizeBoostDutyResponse(comparisons, 'lower')).toMatchObject({ qualifyingComparisonCount: 0, association: 'insufficient' });
   });
 
   it('detects open-loop pressure-rise spool without a boost target', () => {
