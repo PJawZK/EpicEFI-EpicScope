@@ -47,6 +47,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <label><span>Measured pressure</span><select class="boost-measured"></select></label>
       <label class="boost-closed-loop-only"><span>Target pressure</span><select class="boost-target"></select></label>
       <label><span>RPM</span><select class="boost-rpm"></select></label>
+      <label><span>TPS / load</span><select class="boost-tps"></select></label>
       <label><span>Upper duty</span><select class="boost-upper"></select></label>
       <label><span>Lower duty</span><select class="boost-lower"></select></label>
       <label><span>Scope</span><select class="boost-scope"></select></label>
@@ -54,6 +55,15 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <button type="button" class="boost-refresh">Analyze</button>
     </div>
     <div class="boost-analyzer-guidance" hidden><strong data-boost-help="title">What this setting does</strong><span data-boost-help="text"></span></div>
+    <details class="boost-analysis-options boost-open-loop-only">
+      <summary>Open-loop pressure-rise spool</summary>
+      <div class="boost-analysis-options-grid">
+        <label class="boost-option-toggle"><input type="checkbox" class="boost-open-spool-enabled" /><span>Detect pressure-rise spool</span></label>
+        <label><span>Open-loop start pressure</span><input type="number" step="any" class="boost-open-spool-start" /></label>
+        <label><span>Open-loop end pressure</span><input type="number" step="any" class="boost-open-spool-end" /></label>
+        <label><span>Open-loop min duration ms</span><input type="number" step="1" min="0" value="0" class="boost-open-spool-duration" /></label>
+      </div>
+    </details>
     <details class="boost-analysis-options boost-closed-loop-only">
       <summary>Closed-loop tracking / spool / steady-state</summary>
       <div class="boost-analysis-options-grid">
@@ -80,6 +90,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <div><span>Qualification</span><strong data-boost="qualification">None</strong></div>
         <div><span>Measured mean</span><strong data-boost="measured-mean">—</strong></div>
         <div><span>Measured max</span><strong data-boost="measured-max">—</strong></div>
+        <div><span>TPS / load mean</span><strong data-boost="tps-mean">—</strong></div>
         <div class="boost-closed-loop-only"><span>Target mean</span><strong data-boost="target-mean">—</strong></div>
         <div class="boost-closed-loop-only"><span>Mean error</span><strong data-boost="mean-error">—</strong></div>
         <div class="boost-closed-loop-only"><span>Mean abs error</span><strong data-boost="mae">—</strong></div>
@@ -100,6 +111,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <span class="boost-closed-loop-only">Tracking invalid <strong data-boost="tracking-invalid">0</strong></span>
         <span class="boost-closed-loop-only">Tracking unavailable <strong data-boost="tracking-unavailable">0</strong></span>
       </div>
+      <section class="boost-result-section boost-open-loop-only">
+        <header><strong>Open-loop pressure-rise spool events</strong><span data-boost="open-spool-count">0</span></header>
+        <div class="boost-table-wrap"><table class="boost-table boost-open-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Start RPM</th><th>End RPM</th><th>Start TPS</th><th>End TPS</th><th>Upper start→end</th><th>Lower start→end</th></tr></thead><tbody></tbody></table></div>
+      </section>
       <section class="boost-result-section boost-closed-loop-only">
         <header><strong>Target-relative spool events</strong><span data-boost="spool-count">0</span></header>
         <div class="boost-table-wrap"><table class="boost-table boost-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Target</th><th>Start RPM</th><th>End RPM</th></tr></thead><tbody></tbody></table></div>
@@ -115,12 +130,17 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const measuredSelect = root.querySelector<HTMLSelectElement>('.boost-measured');
   const targetSelect = root.querySelector<HTMLSelectElement>('.boost-target');
   const rpmSelect = root.querySelector<HTMLSelectElement>('.boost-rpm');
+  const tpsSelect = root.querySelector<HTMLSelectElement>('.boost-tps');
   const upperSelect = root.querySelector<HTMLSelectElement>('.boost-upper');
   const lowerSelect = root.querySelector<HTMLSelectElement>('.boost-lower');
   const scopeSelect = root.querySelector<HTMLSelectElement>('.boost-scope');
   const qualificationSelect = root.querySelector<HTMLSelectElement>('.boost-qualification');
   const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');
   const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');
+  const openSpoolEnabled = root.querySelector<HTMLInputElement>('.boost-open-spool-enabled');
+  const openSpoolStart = root.querySelector<HTMLInputElement>('.boost-open-spool-start');
+  const openSpoolEnd = root.querySelector<HTMLInputElement>('.boost-open-spool-end');
+  const openSpoolDuration = root.querySelector<HTMLInputElement>('.boost-open-spool-duration');
   const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');
   const spoolStart = root.querySelector<HTMLInputElement>('.boost-spool-start');
   const spoolTarget = root.querySelector<HTMLInputElement>('.boost-spool-target');
@@ -132,9 +152,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const steadyDuration = root.querySelector<HTMLInputElement>('.boost-steady-duration');
   const empty = root.querySelector<HTMLElement>('.boost-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.boost-analyzer-content');
+  const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
+  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !openSpoolBody || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -149,6 +170,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const syncControlModeUi = (): void => {
     const closedLoop = isClosedLoop();
     for (const node of root.querySelectorAll<HTMLElement>('.boost-closed-loop-only')) node.hidden = !closedLoop;
+    for (const node of root.querySelectorAll<HTMLElement>('.boost-open-loop-only')) node.hidden = closedLoop;
     targetSelect.disabled = !closedLoop;
   };
 
@@ -200,6 +222,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const measuredId = measuredSelect.value || context.channels[0]?.id;
     const targetId = closedLoop ? (targetSelect.value || undefined) : undefined;
     const rpmId = rpmSelect.value || undefined;
+    const tpsId = tpsSelect.value || undefined;
     const upperId = upperSelect.value || undefined;
     const lowerId = lowerSelect.value || undefined;
     const scope = selectedScope();
@@ -219,7 +242,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       ? [...new Set(filterSet.conditions.filter((condition) => condition.enabled).map((condition) => condition.channelId))]
       : [];
     const requestedIds = [...new Set([
-      ...[measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined),
+      ...[measuredId, targetId, rpmId, tpsId, upperId, lowerId].filter((id): id is string => id !== undefined),
       ...filterChannelIds,
     ])];
     const loaded = await context.loadTraces(requestedIds, startMs, endMs);
@@ -228,6 +251,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const measured = byId.get(measuredId);
     const target = targetId ? byId.get(targetId) : undefined;
     const rpm = rpmId ? byId.get(rpmId) : undefined;
+    const tps = tpsId ? byId.get(tpsId) : undefined;
     const upper = upperId ? byId.get(upperId) : undefined;
     const lower = lowerId ? byId.get(lowerId) : undefined;
     if (!measured) { empty.hidden = false; content.hidden = true; return; }
@@ -241,11 +265,21 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       groups,
       ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),
     });
-    const selectedTraces = [measured, target, rpm, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);
+    const selectedTraces = [measured, target, rpm, tps, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);
     const complete = scoped.complete && selectedTraces.every((trace) =>
       trace.complete || (startMs !== undefined && endMs !== undefined && numericRangeCoversTime(trace.range, startMs, endMs)),
     );
 
+    const openSpoolStartValue = optionalNumber(openSpoolStart);
+    const openSpoolEndValue = optionalNumber(openSpoolEnd);
+    let openLoopSpool;
+    if (!closedLoop && openSpoolEnabled.checked && openSpoolStartValue !== undefined && openSpoolEndValue !== undefined) {
+      openLoopSpool = {
+        startPressure: openSpoolStartValue,
+        endPressure: openSpoolEndValue,
+        minimumDurationMs: optionalNumber(openSpoolDuration) ?? 0,
+      };
+    }
     const spoolStartValue = optionalNumber(spoolStart);
     const spoolTargetValue = optionalNumber(spoolTarget);
     const steadyTargetRateValue = optionalNumber(steadyTargetRate);
@@ -273,12 +307,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         measuredPressure: measured.range,
         ...(target ? { targetPressure: target.range } : {}),
         ...(rpm ? { rpm: rpm.range } : {}),
+        ...(tps ? { tps: tps.range } : {}),
         ...(upper ? { upperDuty: upper.range } : {}),
         ...(lower ? { lowerDuty: lower.range } : {}),
       }, {
         sampleIndices: scoped.eligibleSampleIndices,
         complete,
         ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),
+        ...(openLoopSpool ? { openLoopSpool } : {}),
         ...(spool ? { spool } : {}),
         ...(steadyState ? { steadyState } : {}),
       });
@@ -301,6 +337,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('qualification').textContent = filterSet?.name ?? 'None';
     field('measured-mean').textContent = formatNumber(currentResult.measured.mean);
     field('measured-max').textContent = formatNumber(currentResult.measured.max);
+    field('tps-mean').textContent = formatNumber(currentResult.tps?.mean);
     field('target-mean').textContent = formatNumber(currentResult.target?.mean);
     field('mean-error').textContent = formatNumber(currentResult.tracking?.meanError);
     field('mae').textContent = formatNumber(currentResult.tracking?.meanAbsoluteError);
@@ -320,8 +357,16 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('tracking-valid').textContent = (currentResult.tracking?.sampleCount ?? 0).toLocaleString();
     field('tracking-invalid').textContent = (currentResult.tracking?.invalidSampleCount ?? 0).toLocaleString();
     field('tracking-unavailable').textContent = (currentResult.tracking?.unavailableSampleCount ?? 0).toLocaleString();
+    field('open-spool-count').textContent = currentResult.openLoopSpoolEvents.length.toLocaleString();
     field('spool-count').textContent = currentResult.spoolEvents.length.toLocaleString();
     field('steady-count').textContent = currentResult.steadyStateWindows.length.toLocaleString();
+
+    openSpoolBody.replaceChildren(...currentResult.openLoopSpoolEvents.map((event, index) => {
+      const row = document.createElement('tr');
+      const dutyRange = (start: number | undefined, end: number | undefined): string => start === undefined && end === undefined ? '—' : `${formatNumber(start)} → ${formatNumber(end)}`;
+      row.innerHTML = `<td>${index + 1}</td><td>${(event.startTimeMs / 1000).toFixed(3)}</td><td>${(event.endTimeMs / 1000).toFixed(3)}</td><td>${event.durationMs.toFixed(0)} ms</td><td>${event.attainment10 ? `${event.attainment10.durationMs.toFixed(0)} ms` : '—'}</td><td>${event.attainment50 ? `${event.attainment50.durationMs.toFixed(0)} ms` : '—'}</td><td>${event.attainment90 ? `${event.attainment90.durationMs.toFixed(0)} ms` : '—'}</td><td>${formatNumber(event.startPressure)}</td><td>${formatNumber(event.endPressure)}</td><td>${formatNumber(event.startRpm, 0)}</td><td>${formatNumber(event.endRpm, 0)}</td><td>${formatNumber(event.startTps)}</td><td>${formatNumber(event.endTps)}</td><td>${dutyRange(event.startUpperDuty, event.endUpperDuty)}</td><td>${dutyRange(event.startLowerDuty, event.endLowerDuty)}</td>`;
+      return row;
+    }));
 
     spoolBody.replaceChildren(...currentResult.spoolEvents.map((event, index) => {
       const row = document.createElement('tr');
@@ -339,6 +384,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const previousMeasured = measuredSelect.value;
     const previousTarget = targetSelect.value;
     const previousRpm = rpmSelect.value;
+    const previousTps = tpsSelect.value;
     const previousUpper = upperSelect.value;
     const previousLower = lowerSelect.value;
     const previousScope = scopeSelect.value;
@@ -350,6 +396,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       if (context.channels.some((channel) => channel.id === previousMeasured)) measuredSelect.value = previousMeasured;
       addOptionalTraceOptions(targetSelect, previousTarget);
       addOptionalTraceOptions(rpmSelect, previousRpm);
+      addOptionalTraceOptions(tpsSelect, previousTps);
       addOptionalTraceOptions(upperSelect, previousUpper);
       addOptionalTraceOptions(lowerSelect, previousLower);
     }
@@ -359,8 +406,8 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   modeSelect.addEventListener('change', () => { syncControlModeUi(); void render(); });
-  for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
-  for (const input of [targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
+  for (const select of [measuredSelect, targetSelect, rpmSelect, tpsSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
+  for (const input of [openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
   syncControlModeUi();
   ensureBoostAnalyzerHelp(root);

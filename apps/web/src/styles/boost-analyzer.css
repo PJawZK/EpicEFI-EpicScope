@@ -43,7 +43,8 @@
   background: #0d1c27;
 }
 .boost-analyzer-guidance[hidden],
-.boost-closed-loop-only[hidden] { display: none !important; }
+.boost-closed-loop-only[hidden],
+.boost-open-loop-only[hidden] { display: none !important; }
 .boost-analyzer-guidance strong { color: #cfe3ed; font-size:10px; }
 .boost-analyzer-guidance span { color: #8da4b1; font-size:9px; line-height:1.5; }
 
