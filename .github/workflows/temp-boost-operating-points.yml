@@ -1,0 +1,135 @@
+name: Temporary Boost operating points
+on:
+  push:
+    branches:
+      - feature/boost-operating-points
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-operating-points
+          fetch-depth: 0
+      - name: Add RPM TPS operating-point analysis
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('core/analysis/boost-analyzer.ts')
+          t = p.read_text()
+
+          anchor = "export interface BoostOpenLoopSpoolConfig {\n"
+          addition = "export interface BoostOperatingPointConfig {\n  readonly rpmBinSize: number;\n  readonly tpsBinSize: number;\n  readonly minimumSamples?: number;\n}\n\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "  readonly targetTolerance?: number;\n  readonly openLoopSpool?: BoostOpenLoopSpoolConfig;\n"
+          new = "  readonly targetTolerance?: number;\n  readonly operatingPoints?: BoostOperatingPointConfig;\n  readonly openLoopSpool?: BoostOpenLoopSpoolConfig;\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "export interface BoostPeakContext {\n"
+          addition = "export interface BoostOperatingPoint {\n  readonly rpmStart: number;\n  readonly rpmEnd: number;\n  readonly tpsStart: number;\n  readonly tpsEnd: number;\n  readonly sampleCount: number;\n  readonly rpmMean: number;\n  readonly tpsMean: number;\n  readonly pressureMean: number;\n  readonly pressureMin: number;\n  readonly pressureMax: number;\n  readonly pressureStdDev: number;\n  readonly upperDutyMean: number | undefined;\n  readonly lowerDutyMean: number | undefined;\n}\n\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "  readonly tracking: BoostTrackingStatistics | undefined;\n  readonly peak: BoostPeakContext | undefined;\n"
+          new = "  readonly tracking: BoostTrackingStatistics | undefined;\n  readonly peak: BoostPeakContext | undefined;\n  readonly operatingPoints: readonly BoostOperatingPoint[];\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "function peakContext(samples: readonly PhysicalBoostSample[]): BoostPeakContext | undefined {\n"
+          start = t.index(anchor)
+          end = t.index("function buildTrackingSamples(", start)
+          existing = t[start:end]
+          addition = existing + "function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig: BoostOperatingPointConfig | undefined): BoostOperatingPoint[] {\n  if (!rawConfig) return [];\n  const minimumSamples = rawConfig.minimumSamples ?? 1;\n  if (!Number.isFinite(rawConfig.rpmBinSize) || rawConfig.rpmBinSize <= 0) throw new RangeError('Boost operating-point rpmBinSize must be finite and > 0.');\n  if (!Number.isFinite(rawConfig.tpsBinSize) || rawConfig.tpsBinSize <= 0) throw new RangeError('Boost operating-point tpsBinSize must be finite and > 0.');\n  if (!Number.isSafeInteger(minimumSamples) || minimumSamples < 1) throw new RangeError('Boost operating-point minimumSamples must be an integer >= 1.');\n\n  interface Bucket {\n    rpmStart: number; tpsStart: number; count: number; rpmSum: number; tpsSum: number; pressureSum: number; pressureSumSquares: number; pressureMin: number; pressureMax: number; upperSum: number; upperCount: number; lowerSum: number; lowerCount: number;\n  }\n  const buckets = new Map<string, Bucket>();\n  for (const sample of samples) {\n    if (sample.rpm === undefined || sample.tps === undefined) continue;\n    const rpmStart = Math.floor(sample.rpm / rawConfig.rpmBinSize) * rawConfig.rpmBinSize;\n    const tpsStart = Math.floor(sample.tps / rawConfig.tpsBinSize) * rawConfig.tpsBinSize;\n    const key = `${rpmStart}|${tpsStart}`;\n    const bucket = buckets.get(key) ?? { rpmStart, tpsStart, count: 0, rpmSum: 0, tpsSum: 0, pressureSum: 0, pressureSumSquares: 0, pressureMin: Number.POSITIVE_INFINITY, pressureMax: Number.NEGATIVE_INFINITY, upperSum: 0, upperCount: 0, lowerSum: 0, lowerCount: 0 };\n    bucket.count += 1;\n    bucket.rpmSum += sample.rpm;\n    bucket.tpsSum += sample.tps;\n    bucket.pressureSum += sample.measured;\n    bucket.pressureSumSquares += sample.measured * sample.measured;\n    bucket.pressureMin = Math.min(bucket.pressureMin, sample.measured);\n    bucket.pressureMax = Math.max(bucket.pressureMax, sample.measured);\n    if (sample.upperDuty !== undefined) { bucket.upperSum += sample.upperDuty; bucket.upperCount += 1; }\n    if (sample.lowerDuty !== undefined) { bucket.lowerSum += sample.lowerDuty; bucket.lowerCount += 1; }\n    buckets.set(key, bucket);\n  }\n\n  return [...buckets.values()]\n    .filter((bucket) => bucket.count >= minimumSamples)\n    .sort((left, right) => left.rpmStart - right.rpmStart || left.tpsStart - right.tpsStart)\n    .map((bucket) => {\n      const pressureMean = bucket.pressureSum / bucket.count;\n      const variance = Math.max(0, bucket.pressureSumSquares / bucket.count - pressureMean * pressureMean);\n      return {\n        rpmStart: bucket.rpmStart,\n        rpmEnd: bucket.rpmStart + rawConfig.rpmBinSize,\n        tpsStart: bucket.tpsStart,\n        tpsEnd: bucket.tpsStart + rawConfig.tpsBinSize,\n        sampleCount: bucket.count,\n        rpmMean: bucket.rpmSum / bucket.count,\n        tpsMean: bucket.tpsSum / bucket.count,\n        pressureMean,\n        pressureMin: bucket.pressureMin,\n        pressureMax: bucket.pressureMax,\n        pressureStdDev: Math.sqrt(variance),\n        upperDutyMean: bucket.upperCount > 0 ? bucket.upperSum / bucket.upperCount : undefined,\n        lowerDutyMean: bucket.lowerCount > 0 ? bucket.lowerSum / bucket.lowerCount : undefined,\n      };\n    });\n}\n\n"
+          t = t[:start] + addition + t[end:]
+
+          old = "  const peak = peakContext(physicalSamples);\n  const aligned = buildTrackingSamples(inputs, indices);"
+          new = "  const peak = peakContext(physicalSamples);\n  const operatingPoints = buildOperatingPoints(physicalSamples, options.operatingPoints);\n  const aligned = buildTrackingSamples(inputs, indices);"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    tracking,\n    peak,\n    openLoopSpoolEvents,\n"
+          new = "    tracking,\n    peak,\n    operatingPoints,\n    openLoopSpoolEvents,\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('tests/analysis/boost-analyzer.test.ts')
+          t = p.read_text()
+          marker = "  it('retains RPM, TPS and wastegate duty at peak measured pressure', () => {\n"
+          test = "  it('groups qualified physical response into RPM and TPS operating-point bins', () => {\n    const result = analyzeBoost({\n      measuredPressure: range(0, [150, 160, 170, 190, 200]),\n      rpm: range(0, [3050, 3150, 3250, 3550, 3650]),\n      tps: range(0, [92, 94, 96, 92, 94]),\n      upperDuty: range(0, [40, 42, 44, 50, 52]),\n      lowerDuty: range(0, [10, 12, 14, 20, 22]),\n    }, { operatingPoints: { rpmBinSize: 500, tpsBinSize: 10, minimumSamples: 2 } });\n\n    expect(result.operatingPoints).toHaveLength(2);\n    expect(result.operatingPoints[0]).toMatchObject({ rpmStart: 3000, rpmEnd: 3500, tpsStart: 90, tpsEnd: 100, sampleCount: 3, pressureMean: 160, upperDutyMean: 42, lowerDutyMean: 12 });\n    expect(result.operatingPoints[1]).toMatchObject({ rpmStart: 3500, rpmEnd: 4000, tpsStart: 90, tpsEnd: 100, sampleCount: 2, pressureMean: 195, upperDutyMean: 51, lowerDutyMean: 21 });\n  });\n\n  it('validates Boost operating-point bin configuration', () => {\n    const inputs = { measuredPressure: range(0, [100]), rpm: range(0, [2000]), tps: range(0, [100]) };\n    expect(() => analyzeBoost(inputs, { operatingPoints: { rpmBinSize: 0, tpsBinSize: 5 } })).toThrow(RangeError);\n    expect(() => analyzeBoost(inputs, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 0 } })).toThrow(RangeError);\n    expect(() => analyzeBoost(inputs, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 0 } })).toThrow(RangeError);\n  });\n\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, test + marker, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          anchor = "    <details class=\"boost-analysis-options boost-open-loop-only\">\n      <summary>Open-loop pressure-rise spool</summary>"
+          addition = "    <details class=\"boost-analysis-options boost-open-loop-only\">\n      <summary>Open-loop RPM × TPS/load operating points</summary>\n      <div class=\"boost-analysis-options-grid\">\n        <label class=\"boost-option-toggle\"><input type=\"checkbox\" class=\"boost-operating-enabled\" checked /><span>Build operating points</span></label>\n        <label><span>RPM bin size</span><input type=\"number\" step=\"1\" min=\"1\" value=\"250\" class=\"boost-operating-rpm-bin\" /></label>\n        <label><span>TPS / load bin size</span><input type=\"number\" step=\"any\" min=\"0.000001\" value=\"5\" class=\"boost-operating-tps-bin\" /></label>\n        <label><span>Minimum samples / bin</span><input type=\"number\" step=\"1\" min=\"1\" value=\"10\" class=\"boost-operating-min-samples\" /></label>\n      </div>\n    </details>\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          anchor = "      <section class=\"boost-result-section boost-open-loop-only\">\n        <header><strong>Open-loop pressure-rise spool events</strong>"
+          addition = "      <section class=\"boost-result-section boost-open-loop-only\">\n        <header><strong>RPM × TPS/load operating points</strong><span data-boost=\"operating-count\">0</span></header>\n        <div class=\"boost-table-wrap\"><table class=\"boost-table boost-operating-table\"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>\n      </section>\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+
+          old = "  const openSpoolEnabled = root.querySelector<HTMLInputElement>('.boost-open-spool-enabled');\n"
+          new = "  const operatingEnabled = root.querySelector<HTMLInputElement>('.boost-operating-enabled');\n  const operatingRpmBin = root.querySelector<HTMLInputElement>('.boost-operating-rpm-bin');\n  const operatingTpsBin = root.querySelector<HTMLInputElement>('.boost-operating-tps-bin');\n  const operatingMinSamples = root.querySelector<HTMLInputElement>('.boost-operating-min-samples');\n  const openSpoolEnabled = root.querySelector<HTMLInputElement>('.boost-open-spool-enabled');\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "  const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');\n"
+          new = "  const operatingBody = root.querySelector<HTMLTableSectionElement>('.boost-operating-table tbody');\n  const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "!targetTolerance || !openSpoolEnabled || !openSpoolStart"
+          new = "!targetTolerance || !operatingEnabled || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples || !openSpoolEnabled || !openSpoolStart"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = " || !empty || !content || !openSpoolBody || !spoolBody || !steadyBody) {"
+          new = " || !empty || !content || !operatingBody || !openSpoolBody || !spoolBody || !steadyBody) {"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "    const openSpoolStartValue = optionalNumber(openSpoolStart);\n"
+          addition = "    const rpmBinSize = optionalNumber(operatingRpmBin);\n    const tpsBinSize = optionalNumber(operatingTpsBin);\n    const minimumSamples = optionalNumber(operatingMinSamples);\n    let operatingPoints;\n    if (!closedLoop && operatingEnabled.checked && rpm && tps && rpmBinSize !== undefined && tpsBinSize !== undefined && minimumSamples !== undefined) {\n      operatingPoints = { rpmBinSize, tpsBinSize, minimumSamples };\n    }\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+          old = "        ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),\n        ...(openLoopSpool ? { openLoopSpool } : {}),"
+          new = "        ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),\n        ...(operatingPoints ? { operatingPoints } : {}),\n        ...(openLoopSpool ? { openLoopSpool } : {}),"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    field('open-spool-count').textContent = currentResult.openLoopSpoolEvents.length.toLocaleString();\n"
+          new = "    field('operating-count').textContent = currentResult.operatingPoints.length.toLocaleString();\n    field('open-spool-count').textContent = currentResult.openLoopSpoolEvents.length.toLocaleString();\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    openSpoolBody.replaceChildren(...currentResult.openLoopSpoolEvents.map((event, index) => {\n"
+          new = "    operatingBody.replaceChildren(...currentResult.operatingPoints.map((point) => {\n      const row = document.createElement('tr');\n      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;\n      return row;\n    }));\n\n    openSpoolBody.replaceChildren(...currentResult.openLoopSpoolEvents.map((event, index) => {\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  for (const input of [openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance,"
+          new = "  for (const input of [operatingEnabled, operatingRpmBin, operatingTpsBin, operatingMinSamples, openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance,"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          marker = "  [/^Detect pressure-rise spool$/i,"
+          addition = "  [/^Build operating points$/i, { title: 'Build RPM × TPS/load operating points · Open Loop', text: 'Groups qualified samples into user-defined RPM and TPS/load bins, then summarizes the pressure and wastegate duty actually seen in each region. The intended result is a practical duty-to-pressure map: compare like-for-like operating regions instead of relying on whole-log averages.' }],\n  [/^RPM bin size$/i, { title: 'RPM bin size', text: 'Width of each Open Loop RPM group. Smaller bins preserve more RPM detail but need more samples; larger bins are more stable but can blur changes across the rev range. The value is in RPM.' }],\n  [/^TPS \/ load bin size$/i, { title: 'TPS / load bin size', text: 'Width of each selected TPS/load group in that channel native unit. Use a size appropriate to the channel: for TPS percent, 5 is a 5%-wide bin; for another load channel, choose a meaningful native-unit width.' }],\n  [/^Minimum samples \/ bin$/i, { title: 'Minimum samples per operating point', text: 'Suppresses bins with too little evidence. Raising it favors repeatable/stable regions; lowering it shows sparse regions sooner. A missing bin means it did not meet this evidence threshold, not that boost data was discarded silently.' }],\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, addition + marker, 1)
+          p.write_text(t)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts tests/analysis/boost-analyzer.test.ts apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts
+          git commit -m "Add Boost RPM TPS operating points"
+          git push origin HEAD:feature/boost-operating-points
