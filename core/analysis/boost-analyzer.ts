@@ -149,6 +149,10 @@ export interface BoostOperatingPoint {
   readonly pressureStdDev: number;
   readonly upperDutyMean: number | undefined;
   readonly lowerDutyMean: number | undefined;
+  readonly pressureVariationFraction: number;
+  readonly evidenceQuality: 'strong' | 'moderate' | 'limited';
+  readonly pressureConsistency: 'stable' | 'variable' | 'mixed';
+  readonly assessment: 'good-comparison' | 'usable-with-care' | 'mixed-transient-likely' | 'limited-evidence';
 }
 
 export interface BoostPeakContext {
@@ -394,6 +398,21 @@ function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig
     .map((bucket) => {
       const pressureMean = bucket.pressureSum / bucket.count;
       const variance = Math.max(0, bucket.pressureSumSquares / bucket.count - pressureMean * pressureMean);
+      const pressureStdDev = Math.sqrt(variance);
+      const pressureVariationFraction = pressureStdDev / Math.max(Math.abs(pressureMean), Number.EPSILON);
+      const evidenceQuality: BoostOperatingPoint['evidenceQuality'] = bucket.count >= minimumSamples * 3
+        ? 'strong'
+        : bucket.count >= minimumSamples * 2 ? 'moderate' : 'limited';
+      const pressureConsistency: BoostOperatingPoint['pressureConsistency'] = pressureVariationFraction <= 0.03
+        ? 'stable'
+        : pressureVariationFraction <= 0.08 ? 'variable' : 'mixed';
+      const assessment: BoostOperatingPoint['assessment'] = pressureConsistency === 'mixed'
+        ? 'mixed-transient-likely'
+        : evidenceQuality === 'limited'
+          ? 'limited-evidence'
+          : pressureConsistency === 'stable' && evidenceQuality === 'strong'
+            ? 'good-comparison'
+            : 'usable-with-care';
       return {
         rpmStart: bucket.rpmStart,
         rpmEnd: bucket.rpmStart + rawConfig.rpmBinSize,
@@ -405,7 +424,11 @@ function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig
         pressureMean,
         pressureMin: bucket.pressureMin,
         pressureMax: bucket.pressureMax,
-        pressureStdDev: Math.sqrt(variance),
+        pressureStdDev,
+        pressureVariationFraction,
+        evidenceQuality,
+        pressureConsistency,
+        assessment,
         upperDutyMean: bucket.upperCount > 0 ? bucket.upperSum / bucket.upperCount : undefined,
         lowerDutyMean: bucket.lowerCount > 0 ? bucket.lowerSum / bucket.lowerCount : undefined,
       };
