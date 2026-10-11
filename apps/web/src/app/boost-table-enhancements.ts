@@ -25,7 +25,18 @@ function numericSortValue(text: string): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function evidenceSortValue(text: string): number | undefined {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === 'weak') return 1;
+  if (normalized === 'moderate') return 2;
+  if (normalized === 'strong') return 3;
+  return undefined;
+}
+
 function compareCellText(leftText: string, rightText: string): number {
+  const leftEvidence = evidenceSortValue(leftText);
+  const rightEvidence = evidenceSortValue(rightText);
+  if (leftEvidence !== undefined && rightEvidence !== undefined) return leftEvidence - rightEvidence;
   const leftNumber = numericSortValue(leftText);
   const rightNumber = numericSortValue(rightText);
   if (leftNumber !== undefined && rightNumber !== undefined) return leftNumber - rightNumber;
@@ -136,9 +147,12 @@ function setOwnText(host: HTMLElement, value: string): void {
   else host.prepend(document.createTextNode(value));
 }
 
-function summaryItem(view: HTMLElement, label: string): HTMLElement | undefined {
+function summaryItem(view: HTMLElement, ...labels: string[]): HTMLElement | undefined {
   return [...view.querySelectorAll<HTMLElement>('.specialized-analyzer-summary > div')]
-    .find((item) => item.querySelector('span')?.textContent?.trim().startsWith(label));
+    .find((item) => {
+      const text = item.querySelector('span')?.textContent?.trim() ?? '';
+      return labels.some((label) => text.startsWith(label));
+    });
 }
 
 function parseCountPair(text: string): { first: number; second: number } | undefined {
@@ -150,10 +164,10 @@ function parseCountPair(text: string): { first: number; second: number } | undef
 function addFuelingCoverageSummary(view: HTMLElement): void {
   const summary = view.querySelector<HTMLElement>('.specialized-analyzer-summary');
   if (!summary) return;
-  const calibration = summaryItem(view, 'Calibration eligible / scoped');
-  const stable = summaryItem(view, 'Steady eligible / input');
-  const rejected = summaryItem(view, 'Transient rejected');
-  const bins = summaryItem(view, 'Steady map bins');
+  const calibration = summaryItem(view, 'Calibration eligible / scoped', 'Context eligible / scoped');
+  const stable = summaryItem(view, 'Steady eligible / input', 'Window-stable / context eligible');
+  const rejected = summaryItem(view, 'Transient rejected', 'Window rejected');
+  const bins = summaryItem(view, 'Steady map bins', 'Steady map bins shown');
 
   const calibrationLabel = calibration?.querySelector<HTMLElement>('span');
   const stableLabel = stable?.querySelector<HTMLElement>('span');
@@ -200,7 +214,7 @@ function enhanceFuelingMap(view: HTMLElement): void {
   if (!table?.tHead || !table.tBodies[0] || table.tHead.rows.length === 0) return;
   const headerRow = table.tHead.rows[0]!;
   const headers = [...headerRow.cells];
-  let sampleIndex = headers.findIndex((cell) => cell.textContent?.trim() === 'Samples' || cell.textContent?.trim() === 'Stable samples');
+  const sampleIndex = headers.findIndex((cell) => cell.textContent?.trim() === 'Samples' || cell.textContent?.trim() === 'Stable samples');
   if (sampleIndex < 0) return;
   const sampleHeader = headers[sampleIndex]!;
   if (sampleHeader.textContent?.trim() !== 'Stable samples') sampleHeader.textContent = 'Stable samples';
@@ -224,9 +238,7 @@ function enhanceFuelingMap(view: HTMLElement): void {
     const samples = numericSortValue(row.cells[sampleIndex]?.textContent ?? '') ?? 0;
     const evidence = evidenceForSamples(samples, threshold);
     let cell = row.cells[evidenceIndex];
-    if (!cell) {
-      cell = row.insertCell(evidenceIndex);
-    }
+    if (!cell) cell = row.insertCell(evidenceIndex);
     cell.textContent = evidence === 'weak' ? 'Weak' : evidence === 'moderate' ? 'Moderate' : 'Strong';
     cell.dataset.fuelingEvidence = evidence;
     row.dataset.fuelingEvidence = evidence;
