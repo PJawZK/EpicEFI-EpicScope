@@ -1765,6 +1765,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput, bugReportPopover);
+  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput);
   root.append(app);
 }
