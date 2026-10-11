@@ -4,6 +4,7 @@ import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualific
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import { analyzeAfrDelay } from '../../../../core/analysis/afr-delay-analyzer';
 import { buildFuelingOperatingMap } from '../../../../core/analysis/fueling-operating-map';
+import { qualifyFuelingContext, type FuelingCutReasonCount } from '../../../../core/analysis/fueling-context';
 import {
   analyzeAeMapPredict,
   analyzeFueling,
@@ -16,6 +17,7 @@ import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger
 import { suggestAnalyzerChannel } from './analyzer-channel-roles';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { renderAlignedAnalyzerEvidence, type AnalyzerEvidenceSeries } from './analyzer-event-evidence';
+import { ensureFuelingAnalyzerHelp } from './fueling-analyzer-help';
 
 export type SpecializedAnalyzerDomain =
   | 'idle'
@@ -57,6 +59,34 @@ interface DomainSpec {
   readonly roles: readonly RoleSpec[];
   readonly options: readonly OptionSpec[];
 }
+
+const FUEL_CUT_REASON_LABELS: Readonly<Record<number, string>> = {
+  1: 'Fatal error',
+  2: 'Setting disabled',
+  3: 'RPM limit',
+  4: 'ETB RPM limit',
+  5: 'Boost cut',
+  6: 'Oil pressure',
+  7: 'Stop requested',
+  8: 'ETB problem',
+  9: 'Launch control',
+  10: 'Max injector duty',
+  11: 'Flood clear',
+  12: 'Engine sync',
+  13: 'Kickstart',
+  14: 'Ignition off',
+  15: 'Lua',
+  16: 'ACR',
+  17: 'Lambda protection',
+  18: 'GDI comms',
+  19: 'Brake',
+  20: 'Fatal',
+  21: 'GDI limits',
+  22: 'Pump limit',
+  23: 'Logic output',
+  24: 'Neutral safety',
+  25: 'Fuel pressure',
+};
 
 const IDLE_SYSTEMS: readonly { value: IdleSystem; label: string; description: string }[] = [
   { value: 'combined', label: 'Combined', description: 'Inspect how the available idle-control layers respond together.' },
@@ -115,7 +145,7 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   },
   fueling: {
     title: 'Fueling',
-    description: 'Steady-state mixture error by RPM/VE-load plus observed mixture response-delay evidence from isolated injector-PW changes.',
+    description: 'State-aware steady mixture error by RPM/VE-load plus observed response-delay evidence from isolated injector-PW changes.',
     roles: [
       { key: 'actual', label: 'Actual mixture (λ preferred)', required: true },
       { key: 'target', label: 'Target mixture (λ preferred)' },
@@ -123,6 +153,13 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
       { key: 'fuelCommand', label: 'Fuel command / injector PW · higher = more fuel' },
       { key: 'rpm', label: 'RPM' },
       { key: 'load', label: 'VE table load axis' },
+      { key: 'dfco', label: 'DFCO active', group: 'State' },
+      { key: 'fuelCutReason', label: 'Fuel cut code', group: 'State' },
+      { key: 'aeActive', label: 'TPS AE active', group: 'Transient' },
+      { key: 'decelActive', label: 'TPS Decel active', group: 'Transient' },
+      { key: 'totalCorrection', label: 'Total fuel correction', group: 'Corrections' },
+      { key: 'stft', label: 'STFT Bank 1', group: 'Corrections' },
+      { key: 'ltft', label: 'LTFT Bank 1', group: 'Corrections' },
     ],
     options: [
       { key: 'deadband', label: 'Mixture error deadband', placeholder: 'auto: 0.015 λ / 0.20 AFR', step: '0.001' },
@@ -189,6 +226,17 @@ function numberText(value: number | undefined, precision = 3): string {
 
 function timeText(ms: number | undefined): string {
   return ms === undefined || !Number.isFinite(ms) ? '—' : `${(ms / 1000).toFixed(3)} s`;
+}
+
+function percentageText(count: number, total: number): string {
+  if (total <= 0) return '0%';
+  return `${((count / total) * 100).toFixed(1)}%`;
+}
+
+function fuelCutReasonSummary(counts: readonly FuelingCutReasonCount[]): string {
+  if (!counts.length) return 'None in scope';
+  return counts.slice(0, 4).map(({ code, count }) => `${FUEL_CUT_REASON_LABELS[code] ?? `Code ${code}`} ${count}`).join(' · ')
+    + (counts.length > 4 ? ` · +${counts.length - 4} more` : '');
 }
 
 export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteController {
@@ -292,8 +340,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const updateIdleGuidance = (): void => {
     if (domain === 'fueling') {
       guidance.hidden = false;
-      field('guidance-title').textContent = 'Steady-state mixture evidence + observed response delay';
-      field('guidance-text').textContent = 'EpicEFI/JZ defaults to Lambda + target lambda, current VE, last injector pulse width and the VE-table Y axis when those channels are present. The steady-state map only accepts samples after RPM/load settle. Leave the two mixture thresholds blank to use scale-aware defaults: 0.015 λ / 0.20 AFR deadband and 0.010 λ / 0.15 AFR response. Delay is observed transport/response timing, not a pure sensor-delay claim.';
+      field('guidance-title').textContent = 'State-aware mixture evidence + observed response delay';
+      field('guidance-text').textContent = 'DFCO and nonzero fuel-cut codes are excluded from both calibration and delay evidence because they intentionally remove fuel. TPS AE and TPS Decel are excluded from steady VE evidence but remain usable for transient delay analysis. The map then applies RPM/load settling. Lambda-first, scale-aware mixture thresholds remain the default.';
       return;
     }
     if (domain !== 'idle') { guidance.hidden = true; return; }
@@ -324,6 +372,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       div.append(caption, strong);
       return div;
     }));
+    if (domain === 'fueling') ensureFuelingAnalyzerHelp(root);
   };
 
   let restoreAllEvidence: (() => void) | undefined;
@@ -419,6 +468,16 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       headerRow.append(th);
     }
     mapHead.replaceChildren(headerRow);
+    if (!rows.length) {
+      const row = document.createElement('tr');
+      row.dataset.analyzerEmptyState = 'true';
+      const cell = document.createElement('td');
+      cell.colSpan = headers.length;
+      cell.textContent = 'No steady operating points passed the current scope, fuel-state/transient context, settling and minimum-sample rules.';
+      row.append(cell);
+      mapBody.replaceChildren(row);
+      return;
+    }
     mapBody.replaceChildren(...rows.slice(0, 300).map((values) => {
       const tr = document.createElement('tr');
       for (const value of values) {
@@ -637,13 +696,29 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const fuelCommand = traces.get('fuelCommand');
         const rpm = traces.get('rpm');
         const load = traces.get('load');
+        const dfco = traces.get('dfco');
+        const fuelCutReason = traces.get('fuelCutReason');
+        const aeActive = traces.get('aeActive');
+        const decelActive = traces.get('decelActive');
+        const totalCorrection = traces.get('totalCorrection');
+        const stft = traces.get('stft');
+        const ltft = traces.get('ltft');
         const actualScale = mixtureScale(actual);
         const targetScale = mixtureScale(target);
         if (target && actualScale !== 'unknown' && targetScale !== 'unknown' && actualScale !== targetScale) {
           throw new Error('Actual and target mixture channels use different scales. Select Lambda + target lambda, or matching AFR channels.');
         }
+        const fuelingContext = qualifyFuelingContext({
+          reference: actual.range,
+          ...(dfco ? { dfcoActive: dfco.range } : {}),
+          ...(fuelCutReason ? { fuelCutReason: fuelCutReason.range } : {}),
+          ...(aeActive ? { aeActive: aeActive.range } : {}),
+          ...(decelActive ? { decelActive: decelActive.range } : {}),
+        }, scoped.sampleIndices);
+        const calibrationIndices = fuelingContext.calibrationEligibleSampleIndices;
+        const delayIndices = fuelingContext.delayEligibleSampleIndices;
         const deadband = optionNumber('deadband', actualScale === 'lambda' ? 0.015 : 0.2);
-        const result = analyzeFueling({ actualAfr: actual.range, ...(target ? { targetAfr: target.range } : {}), ...(ve ? { ve: ve.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, errorDeadband: deadband });
+        const result = analyzeFueling({ actualAfr: actual.range, ...(target ? { targetAfr: target.range } : {}), ...(ve ? { ve: ve.range } : {}) }, { sampleIndices: calibrationIndices, complete: scoped.complete, errorDeadband: deadband });
         const operatingMap = target && rpm && load ? buildFuelingOperatingMap({
           actualAfr: actual.range,
           targetAfr: target.range,
@@ -657,7 +732,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           maxRpmRatePerSecond: optionNumber('mapMaxRpmRate', 500),
           maxLoadRatePerSecond: optionNumber('mapMaxLoadRate', 25),
           minimumStableDurationMs: optionNumber('mapSettleMs', 300),
-        }, scoped.sampleIndices) : undefined;
+        }, calibrationIndices) : undefined;
         if (operatingMap) {
           renderMapTable(
             ['RPM bin', 'Load bin', 'Samples', 'RPM mean', 'Load mean', 'Actual mixture', 'Target mixture', 'Error mean', 'Error median', 'P10', 'P90', 'MAE', 'SD', 'Lean / rich / band', 'Bias'],
@@ -692,24 +767,50 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           searchWindowMs: delayWindow,
           minimumEventSpacingMs: optionNumber('delaySpacing', 250),
           responsePolarity: 'inverse',
-        }, scoped.sampleIndices) : undefined;
+        }, delayIndices) : undefined;
+        const correction = totalCorrection ? aggregateNumericSamples(totalCorrection.range, { sampleIndices: calibrationIndices }) : undefined;
+        const stftStats = stft ? aggregateNumericSamples(stft.range, { sampleIndices: calibrationIndices }) : undefined;
+        const ltftStats = ltft ? aggregateNumericSamples(ltft.range, { sampleIndices: calibrationIndices }) : undefined;
         const delaySeries: AnalyzerEvidenceSeries[] = fuelCommand ? [
           { label: 'Fuel command / injector PW', range: fuelCommand.range },
           { label: 'Actual mixture', range: actual.range },
           ...(target ? [{ label: 'Target mixture', range: target.range }] : []),
           ...(rpm ? [{ label: 'RPM', range: rpm.range }] : []),
           ...(load ? [{ label: 'VE table load', range: load.range }] : []),
+          ...(aeActive ? [{ label: 'TPS AE active', range: aeActive.range }] : []),
+          ...(decelActive ? [{ label: 'TPS Decel active', range: decelActive.range }] : []),
         ] : [];
         const delayEvidenceEvents = delay?.events.map((event) => ({ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs })) ?? [];
         showAlignedEvidence('Fueling · observed mixture response-delay evidence', delaySeries, delayEvidenceEvents, 200, delayWindow);
+        const hasCutContext = Boolean(dfco || fuelCutReason || aeActive || decelActive);
+        const dfcoStatus = !dfco
+          ? 'Not available'
+          : fuelingContext.dfcoActiveSampleCount > 0
+            ? `Active · ${fuelingContext.dfcoActiveSampleCount.toLocaleString()} samples (${percentageText(fuelingContext.dfcoActiveSampleCount, fuelingContext.inputSampleCount)})`
+            : 'Not active in scope';
+        const otherCuts = !fuelCutReason
+          ? 'Not available'
+          : fuelingContext.fuelCutSampleCount > 0
+            ? `${fuelingContext.fuelCutSampleCount.toLocaleString()} samples (${percentageText(fuelingContext.fuelCutSampleCount, fuelingContext.inputSampleCount)})`
+            : 'None in scope';
         renderSummary([
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['Mixture scale', actualScale === 'lambda' ? 'Lambda' : actualScale === 'afr' ? 'AFR' : 'Unknown / selected units'],
+          ['Calibration eligible / scoped', `${calibrationIndices.length.toLocaleString()} / ${fuelingContext.inputSampleCount.toLocaleString()}`],
+          ['Delay eligible / scoped', `${delayIndices.length.toLocaleString()} / ${fuelingContext.inputSampleCount.toLocaleString()}`],
+          ['DFCO status', dfcoStatus],
+          ['Other fuel cuts', otherCuts],
+          ['Fuel cut reasons', fuelCutReason ? fuelCutReasonSummary(fuelingContext.fuelCutReasonCounts) : 'Not available'],
+          ['AE / decel excluded', aeActive || decelActive ? `${fuelingContext.aeActiveSampleCount.toLocaleString()} / ${fuelingContext.decelActiveSampleCount.toLocaleString()}` : 'Not available'],
+          ['Context invalid / unavailable', hasCutContext ? `${fuelingContext.invalidContextSampleCount.toLocaleString()} / ${fuelingContext.unavailableContextSampleCount.toLocaleString()}` : 'No context channels selected'],
           ['Actual mixture mean', numberText(result.actual.mean)], ['Target mixture mean', numberText(result.target?.mean)],
           ['Mean error', numberText(result.tracking?.meanError)], ['MAE', numberText(result.tracking?.meanAbsoluteError)],
           ['Max lean error', numberText(result.tracking?.maxPositiveError)], ['Max rich error', numberText(result.tracking?.maxNegativeError)],
           ['Lean samples', result.leanSampleCount.toLocaleString()], ['Rich samples', result.richSampleCount.toLocaleString()],
           ['Current VE mean', numberText(result.ve?.mean)], ['Valid mixture samples', result.actual.validSampleCount.toLocaleString()],
+          ['Total fuel correction mean', totalCorrection ? numberText(correction?.mean) : 'Not available'],
+          ['STFT Bank 1 mean', stft ? numberText(stftStats?.mean) : 'Not available'],
+          ['LTFT Bank 1 mean', ltft ? numberText(ltftStats?.mean) : 'Not available'],
           ['Steady map bins', operatingMap ? operatingMap.operatingPoints.length.toLocaleString() : 'Select target / RPM / load'],
           ['Steady eligible / input', operatingMap ? `${operatingMap.stableEligibleSampleCount.toLocaleString()} / ${operatingMap.inputSampleCount.toLocaleString()}` : '—'],
           ['Transient rejected', operatingMap ? operatingMap.transientRejectedSampleCount.toLocaleString() : '—'],
@@ -907,6 +1008,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       optionsGrid.append(label);
     }
     updateIdleGuidance();
+    if (domain === 'fueling') ensureFuelingAnalyzerHelp(root);
     void analyzeCurrent();
   };
 
