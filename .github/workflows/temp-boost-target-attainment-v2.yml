@@ -1,0 +1,107 @@
+name: Temporary Boost target attainment v2
+on:
+  push:
+    branches:
+      - feature/boost-target-attainment
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-target-attainment
+          fetch-depth: 0
+      - name: Add Boost target attainment
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('core/analysis/boost-analyzer.ts')
+          t = p.read_text()
+          old = "export interface BoostAnalyzerOptions {\n  readonly sampleIndices?: ArrayLike<number>;\n  readonly complete?: boolean;\n  readonly spool?: BoostSpoolConfig;\n  readonly steadyState?: BoostSteadyStateConfig;\n}\n"
+          new = "export interface BoostAnalyzerOptions {\n  readonly sampleIndices?: ArrayLike<number>;\n  readonly complete?: boolean;\n  readonly targetTolerance?: number;\n  readonly spool?: BoostSpoolConfig;\n  readonly steadyState?: BoostSteadyStateConfig;\n}\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "export interface BoostTrackingStatistics {\n  readonly sampleCount: number;\n  readonly invalidSampleCount: number;\n  readonly unavailableSampleCount: number;\n  readonly meanError: number | undefined;\n  readonly meanAbsoluteError: number | undefined;\n  readonly rootMeanSquareError: number | undefined;\n  readonly maxOvershoot: number | undefined;\n  readonly maxUndershoot: number | undefined;\n}\n"
+          new = "export interface BoostTrackingStatistics {\n  readonly sampleCount: number;\n  readonly invalidSampleCount: number;\n  readonly unavailableSampleCount: number;\n  readonly meanError: number | undefined;\n  readonly meanAbsoluteError: number | undefined;\n  readonly rootMeanSquareError: number | undefined;\n  readonly maxOvershoot: number | undefined;\n  readonly maxUndershoot: number | undefined;\n  readonly targetTolerance: number | undefined;\n  readonly targetAttainmentSampleCount: number | undefined;\n  readonly targetAttainmentFraction: number | undefined;\n}\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "function trackingStatistics(samples: readonly TrackingSample[], invalid: number, unavailable: number): BoostTrackingStatistics {\n"
+          new = "function trackingStatistics(samples: readonly TrackingSample[], invalid: number, unavailable: number, targetTolerance: number | undefined): BoostTrackingStatistics {\n  if (targetTolerance !== undefined && (!Number.isFinite(targetTolerance) || targetTolerance < 0)) throw new RangeError('Boost targetTolerance must be finite and >= 0 when provided.');\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "      maxOvershoot: undefined,\n      maxUndershoot: undefined,\n    };\n  }\n  let sum = 0;\n"
+          new = "      maxOvershoot: undefined,\n      maxUndershoot: undefined,\n      targetTolerance,\n      targetAttainmentSampleCount: targetTolerance === undefined ? undefined : 0,\n      targetAttainmentFraction: targetTolerance === undefined ? undefined : 0,\n    };\n  }\n  let sum = 0;\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "  let maxOvershoot = Number.NEGATIVE_INFINITY;\n  let maxUndershoot = Number.POSITIVE_INFINITY;\n  for (const sample of samples) {\n"
+          new = "  let maxOvershoot = Number.NEGATIVE_INFINITY;\n  let maxUndershoot = Number.POSITIVE_INFINITY;\n  let targetAttainmentSampleCount = 0;\n  for (const sample of samples) {\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    if (sample.error > 0) maxOvershoot = Math.max(maxOvershoot, sample.error);\n    if (sample.error < 0) maxUndershoot = Math.min(maxUndershoot, sample.error);\n  }\n  return {\n"
+          new = "    if (sample.error > 0) maxOvershoot = Math.max(maxOvershoot, sample.error);\n    if (sample.error < 0) maxUndershoot = Math.min(maxUndershoot, sample.error);\n    if (targetTolerance !== undefined && Math.abs(sample.error) <= targetTolerance) targetAttainmentSampleCount += 1;\n  }\n  return {\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    maxOvershoot: Number.isFinite(maxOvershoot) ? maxOvershoot : undefined,\n    maxUndershoot: Number.isFinite(maxUndershoot) ? maxUndershoot : undefined,\n  };\n}\n\nfunction validateSpool"
+          new = "    maxOvershoot: Number.isFinite(maxOvershoot) ? maxOvershoot : undefined,\n    maxUndershoot: Number.isFinite(maxUndershoot) ? maxUndershoot : undefined,\n    targetTolerance,\n    targetAttainmentSampleCount: targetTolerance === undefined ? undefined : targetAttainmentSampleCount,\n    targetAttainmentFraction: targetTolerance === undefined ? undefined : targetAttainmentSampleCount / samples.length,\n  };\n}\n\nfunction validateSpool"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "  const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable) : undefined;\n"
+          new = "  const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable, options.targetTolerance) : undefined;\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('tests/analysis/boost-analyzer.test.ts')
+          t = p.read_text()
+          marker = "  it('keeps target tracking invalid and unavailable evidence explicit', () => {\n"
+          extra = "  it('reports target attainment inside an explicit absolute pressure tolerance', () => {\n    const result = analyzeBoost({\n      measuredPressure: range(0, [195, 205, 212, 180]),\n      targetPressure: range(0, [200, 200, 200, 200]),\n    }, { complete: true, targetTolerance: 5 });\n\n    expect(result.tracking?.targetTolerance).toBe(5);\n    expect(result.tracking?.targetAttainmentSampleCount).toBe(2);\n    expect(result.tracking?.targetAttainmentFraction).toBe(0.5);\n  });\n\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, extra + marker, 1)
+          old = "    expect(() => analyzeBoost(inputs, { spool: { startPressure: 100, minimumTargetPressure: 150, completionFraction: 2 } })).toThrow(RangeError);\n"
+          new = "    expect(() => analyzeBoost(inputs, { targetTolerance: -1 })).toThrow(RangeError);\n    expect(() => analyzeBoost(inputs, { spool: { startPressure: 100, minimumTargetPressure: 150, completionFraction: 2 } })).toThrow(RangeError);\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          old = "    <details class=\"boost-analysis-options\">\n      <summary>Spool / steady-state detection</summary>\n      <div class=\"boost-analysis-options-grid\">\n"
+          new = "    <details class=\"boost-analysis-options\">\n      <summary>Tracking / spool / steady-state</summary>\n      <div class=\"boost-analysis-options-grid\">\n        <label><span>Target tolerance</span><input type=\"number\" step=\"any\" min=\"0\" class=\"boost-target-tolerance\" placeholder=\"native pressure unit\" /></label>\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "        <div><span>RMSE</span><strong data-boost=\"rmse\">—</strong></div>\n        <div><span>Max overshoot</span><strong data-boost=\"overshoot\">—</strong></div>\n"
+          new = "        <div><span>RMSE</span><strong data-boost=\"rmse\">—</strong></div>\n        <div><span>Target attainment</span><strong data-boost=\"target-attainment\">—</strong></div>\n        <div><span>Max overshoot</span><strong data-boost=\"overshoot\">—</strong></div>\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "  const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');\n  const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');\n"
+          new = "  const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');\n  const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');\n  const spoolEnabled = root.querySelector<HTMLInputElement>('.boost-spool-enabled');\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !refreshButton || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {\n"
+          new = "  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "        sampleIndices: scoped.eligibleSampleIndices,\n        complete,\n        ...(spool ? { spool } : {}),\n"
+          new = "        sampleIndices: scoped.eligibleSampleIndices,\n        complete,\n        ...(optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),\n        ...(spool ? { spool } : {}),\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    field('rmse').textContent = formatNumber(currentResult.tracking?.rootMeanSquareError);\n    field('overshoot').textContent = formatNumber(currentResult.tracking?.maxOvershoot);\n"
+          new = "    field('rmse').textContent = formatNumber(currentResult.tracking?.rootMeanSquareError);\n    field('target-attainment').textContent = currentResult.tracking?.targetAttainmentFraction === undefined\n      ? '—'\n      : `${(currentResult.tracking.targetAttainmentFraction * 100).toFixed(1)}% · ±${formatNumber(currentResult.tracking.targetTolerance)}`;\n    field('overshoot').textContent = formatNumber(currentResult.tracking?.maxOvershoot);\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "  for (const input of [spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });\n"
+          new = "  for (const input of [targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts tests/analysis/boost-analyzer.test.ts apps/web/src/pages/boost-analyzer-view.ts
+          git commit -m "Add Boost target attainment metric"
+          git push origin HEAD:feature/boost-target-attainment
