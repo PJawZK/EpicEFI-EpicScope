@@ -4,6 +4,7 @@ import { numericRangeCoversTime } from '../../../../core/analysis/range-statisti
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { loadAnalysisFilterSets, type AnalysisFilterSetState } from '../state/analysis-filter-storage';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';
+import { ensureBoostAnalyzerHelp } from './boost-analyzer-help';
 
 export interface BoostAnalyzerViewController {
   readonly element: HTMLElement;
@@ -40,10 +41,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   root.className = 'boost-analyzer-view';
   root.hidden = true;
   root.innerHTML = `
-    <div class="boost-analyzer-banner"><strong>Boost · Experimental</strong><span>Capability-driven analysis. Select the channels that represent measured pressure, target, RPM and wastegate duties in this log.</span></div>
+    <div class="boost-analyzer-banner"><strong>Boost · Experimental</strong><span>Analyze the physical pressure response to wastegate control. Closed Loop additionally enables Boost Target tracking metrics.</span></div>
     <div class="boost-analyzer-controls">
+      <label><span>Control mode</span><select class="boost-control-mode"><option value="open-loop">Open Loop</option><option value="closed-loop">Closed Loop</option></select></label>
       <label><span>Measured pressure</span><select class="boost-measured"></select></label>
-      <label><span>Target pressure</span><select class="boost-target"></select></label>
+      <label class="boost-closed-loop-only"><span>Target pressure</span><select class="boost-target"></select></label>
       <label><span>RPM</span><select class="boost-rpm"></select></label>
       <label><span>Upper duty</span><select class="boost-upper"></select></label>
       <label><span>Lower duty</span><select class="boost-lower"></select></label>
@@ -51,8 +53,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       <label><span>Qualification</span><select class="boost-qualification"><option value="">None</option></select></label>
       <button type="button" class="boost-refresh">Analyze</button>
     </div>
-    <details class="boost-analysis-options">
-      <summary>Tracking / spool / steady-state</summary>
+    <div class="boost-analyzer-guidance" hidden><strong data-boost-help="title">What this setting does</strong><span data-boost-help="text"></span></div>
+    <details class="boost-analysis-options boost-closed-loop-only">
+      <summary>Closed-loop tracking / spool / steady-state</summary>
       <div class="boost-analysis-options-grid">
         <label><span>Target tolerance</span><input type="number" step="any" min="0" class="boost-target-tolerance" placeholder="native pressure unit" /></label>
         <label class="boost-option-toggle"><input type="checkbox" class="boost-spool-enabled" /><span>Detect spool</span></label>
@@ -68,7 +71,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     </details>
     <div class="boost-analyzer-empty">
       <strong>Boost analysis needs a measured-pressure channel available in the log and a valid scope.</strong>
-      <span>Target/RPM/wastegate duty channels are optional. Spool and steady-state detection require a target channel and explicit thresholds.</span>
+      <span>RPM and wastegate duty channels are optional but strongly recommended. Boost Target is only used in Closed Loop mode.</span>
     </div>
     <div class="boost-analyzer-content" hidden>
       <div class="boost-analyzer-summary">
@@ -77,13 +80,13 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <div><span>Qualification</span><strong data-boost="qualification">None</strong></div>
         <div><span>Measured mean</span><strong data-boost="measured-mean">—</strong></div>
         <div><span>Measured max</span><strong data-boost="measured-max">—</strong></div>
-        <div><span>Target mean</span><strong data-boost="target-mean">—</strong></div>
-        <div><span>Mean error</span><strong data-boost="mean-error">—</strong></div>
-        <div><span>Mean abs error</span><strong data-boost="mae">—</strong></div>
-        <div><span>RMSE</span><strong data-boost="rmse">—</strong></div>
-        <div><span>Target attainment</span><strong data-boost="target-attainment">—</strong></div>
-        <div><span>Max overshoot</span><strong data-boost="overshoot">—</strong></div>
-        <div><span>Max undershoot</span><strong data-boost="undershoot">—</strong></div>
+        <div class="boost-closed-loop-only"><span>Target mean</span><strong data-boost="target-mean">—</strong></div>
+        <div class="boost-closed-loop-only"><span>Mean error</span><strong data-boost="mean-error">—</strong></div>
+        <div class="boost-closed-loop-only"><span>Mean abs error</span><strong data-boost="mae">—</strong></div>
+        <div class="boost-closed-loop-only"><span>RMSE</span><strong data-boost="rmse">—</strong></div>
+        <div class="boost-closed-loop-only"><span>Target attainment</span><strong data-boost="target-attainment">—</strong></div>
+        <div class="boost-closed-loop-only"><span>Max overshoot</span><strong data-boost="overshoot">—</strong></div>
+        <div class="boost-closed-loop-only"><span>Max undershoot</span><strong data-boost="undershoot">—</strong></div>
         <div><span>Upper duty mean</span><strong data-boost="upper-duty">—</strong></div>
         <div><span>Lower duty mean</span><strong data-boost="lower-duty">—</strong></div>
       </div>
@@ -93,21 +96,22 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <span>Rejected <strong data-boost="qualification-rejected">0</strong></span>
         <span>Qualification invalid <strong data-boost="qualification-invalid">0</strong></span>
         <span>Qualification unavailable <strong data-boost="qualification-unavailable">0</strong></span>
-        <span>Tracking valid <strong data-boost="tracking-valid">0</strong></span>
-        <span>Tracking invalid <strong data-boost="tracking-invalid">0</strong></span>
-        <span>Tracking unavailable <strong data-boost="tracking-unavailable">0</strong></span>
+        <span class="boost-closed-loop-only">Tracking valid <strong data-boost="tracking-valid">0</strong></span>
+        <span class="boost-closed-loop-only">Tracking invalid <strong data-boost="tracking-invalid">0</strong></span>
+        <span class="boost-closed-loop-only">Tracking unavailable <strong data-boost="tracking-unavailable">0</strong></span>
       </div>
-      <section class="boost-result-section">
-        <header><strong>Spool events</strong><span data-boost="spool-count">0</span></header>
+      <section class="boost-result-section boost-closed-loop-only">
+        <header><strong>Target-relative spool events</strong><span data-boost="spool-count">0</span></header>
         <div class="boost-table-wrap"><table class="boost-table boost-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Target</th><th>Start RPM</th><th>End RPM</th></tr></thead><tbody></tbody></table></div>
       </section>
-      <section class="boost-result-section">
-        <header><strong>Steady-state windows</strong><span data-boost="steady-count">0</span></header>
+      <section class="boost-result-section boost-closed-loop-only">
+        <header><strong>Closed-loop steady-state windows</strong><span data-boost="steady-count">0</span></header>
         <div class="boost-table-wrap"><table class="boost-table boost-steady-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>Samples</th><th>Target mean</th><th>Measured mean</th><th>Mean error</th><th>Overshoot</th><th>Undershoot</th></tr></thead><tbody></tbody></table></div>
       </section>
     </div>
   `;
 
+  const modeSelect = root.querySelector<HTMLSelectElement>('.boost-control-mode');
   const measuredSelect = root.querySelector<HTMLSelectElement>('.boost-measured');
   const targetSelect = root.querySelector<HTMLSelectElement>('.boost-target');
   const rpmSelect = root.querySelector<HTMLSelectElement>('.boost-rpm');
@@ -130,7 +134,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const content = root.querySelector<HTMLElement>('.boost-analyzer-content');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
+  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -138,6 +142,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const node = root.querySelector<HTMLElement>(`[data-boost="${name}"]`);
     if (!node) throw new Error(`Boost Analyzer field is missing: ${name}`);
     return node;
+  };
+
+  const isClosedLoop = (): boolean => modeSelect.value === 'closed-loop';
+
+  const syncControlModeUi = (): void => {
+    const closedLoop = isClosedLoop();
+    for (const node of root.querySelectorAll<HTMLElement>('.boost-closed-loop-only')) node.hidden = !closedLoop;
+    targetSelect.disabled = !closedLoop;
   };
 
   const selectedScope = (): AnalyzerScope | undefined => selectedAnalyzerScope(scopeSelect, context);
@@ -184,8 +196,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
+    const closedLoop = isClosedLoop();
     const measuredId = measuredSelect.value || context.channels[0]?.id;
-    const targetId = targetSelect.value || undefined;
+    const targetId = closedLoop ? (targetSelect.value || undefined) : undefined;
     const rpmId = rpmSelect.value || undefined;
     const upperId = upperSelect.value || undefined;
     const lowerId = lowerSelect.value || undefined;
@@ -237,7 +250,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const spoolTargetValue = optionalNumber(spoolTarget);
     const steadyTargetRateValue = optionalNumber(steadyTargetRate);
     let spool;
-    if (spoolEnabled.checked && target && spoolStartValue !== undefined && spoolTargetValue !== undefined) {
+    if (closedLoop && spoolEnabled.checked && target && spoolStartValue !== undefined && spoolTargetValue !== undefined) {
       spool = {
         startPressure: spoolStartValue,
         minimumTargetPressure: spoolTargetValue,
@@ -246,7 +259,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       };
     }
     let steadyState;
-    if (steadyEnabled.checked && target && steadyTargetRateValue !== undefined) {
+    if (closedLoop && steadyEnabled.checked && target && steadyTargetRateValue !== undefined) {
       const measuredRate = optionalNumber(steadyMeasuredRate);
       steadyState = {
         maxTargetRatePerSecond: steadyTargetRateValue,
@@ -265,7 +278,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       }, {
         sampleIndices: scoped.eligibleSampleIndices,
         complete,
-        ...(optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),
+        ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),
         ...(spool ? { spool } : {}),
         ...(steadyState ? { steadyState } : {}),
       });
@@ -345,9 +358,12 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     void render();
   };
 
+  modeSelect.addEventListener('change', () => { syncControlModeUi(); void render(); });
   for (const select of [measuredSelect, targetSelect, rpmSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
   for (const input of [targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
+  syncControlModeUi();
+  ensureBoostAnalyzerHelp(root);
 
   return { element: root, setContext, refresh: () => { void render(); } };
 }
