@@ -189,6 +189,19 @@ describe('analyzeBoost', () => {
     });
   });
 
+  it('classifies operating-point evidence and pressure consistency', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [150, 151, 149, 150, 151, 149, 150, 151, 149, 150, 100, 130, 160, 190]),
+      rpm: range(0, [3000, 3010, 3020, 3030, 3040, 3050, 3060, 3070, 3080, 3090, 3300, 3310, 3320, 3330]),
+      tps: range(0, [90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90]),
+    }, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 3 } });
+
+    expect(result.operatingPoints[0]).toMatchObject({ evidenceQuality: 'strong', pressureConsistency: 'stable', assessment: 'good-comparison' });
+    expect(result.operatingPoints[0]?.pressureVariationFraction).toBeLessThan(0.03);
+    expect(result.operatingPoints[1]).toMatchObject({ evidenceQuality: 'limited', pressureConsistency: 'mixed', assessment: 'mixed-transient-likely' });
+    expect(result.operatingPoints[1]?.pressureVariationFraction).toBeGreaterThan(0.08);
+  });
+
   it('detects open-loop pressure-rise spool without a boost target', () => {
     const result = analyzeBoost({
       measuredPressure: range(0, [100, 108, 125, 155, 182, 205]),

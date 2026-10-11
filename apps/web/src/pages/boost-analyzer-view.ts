@@ -126,7 +126,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       </div>
       <section class="boost-result-section boost-open-loop-only">
         <header><strong>RPM × TPS/load operating points</strong><span data-boost="operating-count">0</span></header>
-        <div class="boost-table-wrap"><table class="boost-table boost-operating-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>
+        <div class="boost-table-wrap"><table class="boost-table boost-operating-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Variation</th><th>Evidence</th><th>Assessment</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>
       </section>
       <section class="boost-result-section boost-open-loop-only">
         <header><strong>Open-loop pressure-rise spool events</strong><span data-boost="open-spool-count">0</span></header>
@@ -398,7 +398,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
     operatingBody.replaceChildren(...currentResult.operatingPoints.map((point) => {
       const row = document.createElement('tr');
-      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;
+      const evidence = point.evidenceQuality === 'strong' ? 'Strong' : point.evidenceQuality === 'moderate' ? 'Moderate' : 'Limited';
+      const consistency = point.pressureConsistency === 'stable' ? 'Stable' : point.pressureConsistency === 'variable' ? 'Variable' : 'Mixed';
+      const assessment = point.assessment === 'good-comparison' ? 'Good comparison evidence' : point.assessment === 'usable-with-care' ? 'Usable with care' : point.assessment === 'limited-evidence' ? 'Limited evidence' : 'Mixed/transient likely';
+      row.dataset.boostAssessment = point.assessment;
+      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${(point.pressureVariationFraction * 100).toFixed(1)}% · ${consistency}</td><td>${evidence}</td><td>${assessment}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;
       return row;
     }));
 
