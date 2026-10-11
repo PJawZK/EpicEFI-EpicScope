@@ -699,7 +699,7 @@ export function createLoggerPage(): LoggerPageController {
   if (analysisTrigger) {
     analysisTrigger.setAttribute('role', 'button');
     analysisTrigger.tabIndex = 0;
-    analysisTrigger.title = 'Analyze the selected A/B range';
+    analysisTrigger.title = 'Qualify samples or find events inside the selected A/B range';
     const openRangeAnalysis = (): void => {
       if (analysisStartMs === undefined || analysisEndMs === undefined || analysisStartMs === analysisEndMs) return;
       const channels = activeDecodedChannels();
