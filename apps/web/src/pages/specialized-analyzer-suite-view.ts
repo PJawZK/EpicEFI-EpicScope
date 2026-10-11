@@ -602,7 +602,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const transientSeries: AnalyzerEvidenceSeries[] = [
           { label: 'TPS', range: tps.range },
           ...(map ? [{ label: 'MAP', range: map.range }] : []),
-          ...(predicted ? [{ label: 'Predicted MAP', range: predictedMap.range }] : []),
+          ...(predicted ? [{ label: 'Predicted MAP', range: predicted.range }] : []),
           ...(afr ? [{ label: 'AFR', range: afr.range }] : []),
         ];
         const eventWindow = optionNumber('window', 500);
