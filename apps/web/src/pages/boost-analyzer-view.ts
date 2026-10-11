@@ -88,7 +88,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       </div>
       <section class="boost-result-section">
         <header><strong>Spool events</strong><span data-boost="spool-count">0</span></header>
-        <div class="boost-table-wrap"><table class="boost-table boost-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>Start P</th><th>End P</th><th>Target</th><th>Start RPM</th><th>End RPM</th></tr></thead><tbody></tbody></table></div>
+        <div class="boost-table-wrap"><table class="boost-table boost-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Target</th><th>Start RPM</th><th>End RPM</th></tr></thead><tbody></tbody></table></div>
       </section>
       <section class="boost-result-section">
         <header><strong>Steady-state windows</strong><span data-boost="steady-count">0</span></header>
@@ -256,7 +256,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
     spoolBody.replaceChildren(...currentResult.spoolEvents.map((event, index) => {
       const row = document.createElement('tr');
-      row.innerHTML = `<td>${index + 1}</td><td>${(event.startTimeMs / 1000).toFixed(3)}</td><td>${(event.endTimeMs / 1000).toFixed(3)}</td><td>${event.durationMs.toFixed(0)} ms</td><td>${formatNumber(event.startPressure)}</td><td>${formatNumber(event.endPressure)}</td><td>${formatNumber(event.endTargetPressure)}</td><td>${formatNumber(event.startRpm, 0)}</td><td>${formatNumber(event.endRpm, 0)}</td>`;
+      row.innerHTML = `<td>${index + 1}</td><td>${(event.startTimeMs / 1000).toFixed(3)}</td><td>${(event.endTimeMs / 1000).toFixed(3)}</td><td>${event.durationMs.toFixed(0)} ms</td><td>${event.attainment10 ? `${event.attainment10.durationMs.toFixed(0)} ms` : '—'}</td><td>${event.attainment50 ? `${event.attainment50.durationMs.toFixed(0)} ms` : '—'}</td><td>${event.attainment90 ? `${event.attainment90.durationMs.toFixed(0)} ms` : '—'}</td><td>${formatNumber(event.startPressure)}</td><td>${formatNumber(event.endPressure)}</td><td>${formatNumber(event.endTargetPressure)}</td><td>${formatNumber(event.startRpm, 0)}</td><td>${formatNumber(event.endRpm, 0)}</td>`;
       return row;
     }));
     steadyBody.replaceChildren(...currentResult.steadyStateWindows.map((window, index) => {
