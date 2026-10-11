@@ -165,6 +165,23 @@ export interface BoostOperatingPoint {
   readonly loadTrend: BoostOperatingPointTrend | undefined;
 }
 
+export interface BoostOperatingPointComparison {
+  readonly rpmStart: number;
+  readonly rpmEnd: number;
+  readonly tpsStart: number;
+  readonly tpsEnd: number;
+  readonly primarySampleCount: number;
+  readonly comparisonSampleCount: number;
+  readonly primaryPressureMean: number;
+  readonly comparisonPressureMean: number;
+  readonly pressureDelta: number;
+  readonly pressureDeltaFraction: number;
+  readonly pressureDirection: 'rising' | 'similar' | 'falling';
+  readonly upperDutyDelta: number | undefined;
+  readonly lowerDutyDelta: number | undefined;
+  readonly interpretation: 'pressure-only' | 'pressure-changed-similar-duty' | 'duty-changed-little-pressure-response' | 'duty-and-pressure-response' | 'similar-duty-and-pressure';
+}
+
 export interface BoostPeakContext {
   readonly sampleIndex: number;
   readonly timeMs: number;
@@ -467,6 +484,53 @@ function buildOperatingPoints(samples: readonly PhysicalBoostSample[], rawConfig
     rpmTrend: trendFrom(point, byKey.get(`${point.rpmStart - rawConfig.rpmBinSize}|${point.tpsStart}`)),
     loadTrend: trendFrom(point, byKey.get(`${point.rpmStart}|${point.tpsStart - rawConfig.tpsBinSize}`)),
   }));
+}
+
+export function compareBoostOperatingPoints(
+  primary: readonly BoostOperatingPoint[],
+  comparison: readonly BoostOperatingPoint[],
+): BoostOperatingPointComparison[] {
+  const trustworthy = (point: BoostOperatingPoint): boolean => point.assessment !== 'mixed-transient-likely' && point.assessment !== 'limited-evidence';
+  const comparisonByKey = new Map(comparison.map((point) => [`${point.rpmStart}|${point.tpsStart}`, point]));
+  const results: BoostOperatingPointComparison[] = [];
+  for (const first of primary) {
+    const second = comparisonByKey.get(`${first.rpmStart}|${first.tpsStart}`);
+    if (!second || !trustworthy(first) || !trustworthy(second)) continue;
+    const pressureDelta = second.pressureMean - first.pressureMean;
+    const pressureScale = Math.max((Math.abs(first.pressureMean) + Math.abs(second.pressureMean)) / 2, Number.EPSILON);
+    const pressureDeltaFraction = pressureDelta / pressureScale;
+    const pressureDirection: BoostOperatingPointComparison['pressureDirection'] = pressureDeltaFraction > 0.02 ? 'rising' : pressureDeltaFraction < -0.02 ? 'falling' : 'similar';
+    const upperDutyDelta = first.upperDutyMean !== undefined && second.upperDutyMean !== undefined ? second.upperDutyMean - first.upperDutyMean : undefined;
+    const lowerDutyDelta = first.lowerDutyMean !== undefined && second.lowerDutyMean !== undefined ? second.lowerDutyMean - first.lowerDutyMean : undefined;
+    const dutyDeltas = [upperDutyDelta, lowerDutyDelta].filter((value): value is number => value !== undefined);
+    const dutyChanged = dutyDeltas.some((value) => Math.abs(value) >= 0.5);
+    const interpretation: BoostOperatingPointComparison['interpretation'] = dutyDeltas.length === 0
+      ? 'pressure-only'
+      : !dutyChanged && pressureDirection !== 'similar'
+        ? 'pressure-changed-similar-duty'
+        : dutyChanged && pressureDirection === 'similar'
+          ? 'duty-changed-little-pressure-response'
+          : dutyChanged
+            ? 'duty-and-pressure-response'
+            : 'similar-duty-and-pressure';
+    results.push({
+      rpmStart: first.rpmStart,
+      rpmEnd: first.rpmEnd,
+      tpsStart: first.tpsStart,
+      tpsEnd: first.tpsEnd,
+      primarySampleCount: first.sampleCount,
+      comparisonSampleCount: second.sampleCount,
+      primaryPressureMean: first.pressureMean,
+      comparisonPressureMean: second.pressureMean,
+      pressureDelta,
+      pressureDeltaFraction,
+      pressureDirection,
+      upperDutyDelta,
+      lowerDutyDelta,
+      interpretation,
+    });
+  }
+  return results;
 }
 
 function buildTrackingSamples(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeBoost } from '../../core/analysis/boost-analyzer';
+import { analyzeBoost, compareBoostOperatingPoints } from '../../core/analysis/boost-analyzer';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
 
 function range(
@@ -215,6 +215,30 @@ describe('analyzeBoost', () => {
     expect(result.operatingPoints[0]?.rpmTrend).toBeUndefined();
     expect(result.operatingPoints[1]?.rpmTrend).toMatchObject({ direction: 'rising', pressureDelta: 15, upperDutyDelta: 5, lowerDutyDelta: 2 });
     expect(result.operatingPoints[1]?.loadTrend).toBeUndefined();
+  });
+
+  it('compares matched trustworthy operating points across scopes without assuming wastegate polarity', () => {
+    const primary = analyzeBoost({
+      measuredPressure: range(0, [150, 151, 149, 150, 151, 149]),
+      rpm: range(0, [3000, 3010, 3020, 3030, 3040, 3050]),
+      tps: range(0, [90, 90, 90, 90, 90, 90]),
+      upperDuty: range(0, [40, 40, 40, 40, 40, 40]),
+    }, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 2 } });
+    const comparison = analyzeBoost({
+      measuredPressure: range(0, [165, 166, 164, 165, 166, 164]),
+      rpm: range(0, [3000, 3010, 3020, 3030, 3040, 3050]),
+      tps: range(0, [90, 90, 90, 90, 90, 90]),
+      upperDuty: range(0, [45, 45, 45, 45, 45, 45]),
+    }, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 2 } });
+
+    expect(compareBoostOperatingPoints(primary.operatingPoints, comparison.operatingPoints)).toEqual([expect.objectContaining({
+      rpmStart: 3000,
+      tpsStart: 90,
+      pressureDelta: 15,
+      pressureDirection: 'rising',
+      upperDutyDelta: 5,
+      interpretation: 'duty-and-pressure-response',
+    })]);
   });
 
   it('detects open-loop pressure-rise spool without a boost target', () => {
