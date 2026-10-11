@@ -56,6 +56,15 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     </div>
     <div class="boost-analyzer-guidance" hidden><strong data-boost-help="title">What this setting does</strong><span data-boost-help="text"></span></div>
     <details class="boost-analysis-options boost-open-loop-only">
+      <summary>Open-loop RPM × TPS/load operating points</summary>
+      <div class="boost-analysis-options-grid">
+        <label class="boost-option-toggle"><input type="checkbox" class="boost-operating-enabled" checked /><span>Build operating points</span></label>
+        <label><span>RPM bin size</span><input type="number" step="1" min="1" value="250" class="boost-operating-rpm-bin" /></label>
+        <label><span>TPS / load bin size</span><input type="number" step="any" min="0.000001" value="5" class="boost-operating-tps-bin" /></label>
+        <label><span>Minimum samples / bin</span><input type="number" step="1" min="1" value="10" class="boost-operating-min-samples" /></label>
+      </div>
+    </details>
+    <details class="boost-analysis-options boost-open-loop-only">
       <summary>Open-loop pressure-rise spool</summary>
       <div class="boost-analysis-options-grid">
         <label class="boost-option-toggle"><input type="checkbox" class="boost-open-spool-enabled" /><span>Detect pressure-rise spool</span></label>
@@ -116,6 +125,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <span class="boost-closed-loop-only">Tracking unavailable <strong data-boost="tracking-unavailable">0</strong></span>
       </div>
       <section class="boost-result-section boost-open-loop-only">
+        <header><strong>RPM × TPS/load operating points</strong><span data-boost="operating-count">0</span></header>
+        <div class="boost-table-wrap"><table class="boost-table boost-operating-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Samples</th><th>RPM mean</th><th>TPS/load mean</th><th>Pressure mean</th><th>Pressure min</th><th>Pressure max</th><th>Pressure SD</th><th>Upper duty mean</th><th>Lower duty mean</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="boost-result-section boost-open-loop-only">
         <header><strong>Open-loop pressure-rise spool events</strong><span data-boost="open-spool-count">0</span></header>
         <div class="boost-table-wrap"><table class="boost-table boost-open-spool-table"><thead><tr><th>#</th><th>Start</th><th>End</th><th>Duration</th><th>T10</th><th>T50</th><th>T90</th><th>Start P</th><th>End P</th><th>Start RPM</th><th>End RPM</th><th>Start TPS</th><th>End TPS</th><th>Upper start→end</th><th>Lower start→end</th></tr></thead><tbody></tbody></table></div>
       </section>
@@ -141,6 +154,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const qualificationSelect = root.querySelector<HTMLSelectElement>('.boost-qualification');
   const refreshButton = root.querySelector<HTMLButtonElement>('.boost-refresh');
   const targetTolerance = root.querySelector<HTMLInputElement>('.boost-target-tolerance');
+  const operatingEnabled = root.querySelector<HTMLInputElement>('.boost-operating-enabled');
+  const operatingRpmBin = root.querySelector<HTMLInputElement>('.boost-operating-rpm-bin');
+  const operatingTpsBin = root.querySelector<HTMLInputElement>('.boost-operating-tps-bin');
+  const operatingMinSamples = root.querySelector<HTMLInputElement>('.boost-operating-min-samples');
   const openSpoolEnabled = root.querySelector<HTMLInputElement>('.boost-open-spool-enabled');
   const openSpoolStart = root.querySelector<HTMLInputElement>('.boost-open-spool-start');
   const openSpoolEnd = root.querySelector<HTMLInputElement>('.boost-open-spool-end');
@@ -156,10 +173,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const steadyDuration = root.querySelector<HTMLInputElement>('.boost-steady-duration');
   const empty = root.querySelector<HTMLElement>('.boost-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.boost-analyzer-content');
+  const operatingBody = root.querySelector<HTMLTableSectionElement>('.boost-operating-table tbody');
   const openSpoolBody = root.querySelector<HTMLTableSectionElement>('.boost-open-spool-table tbody');
   const spoolBody = root.querySelector<HTMLTableSectionElement>('.boost-spool-table tbody');
   const steadyBody = root.querySelector<HTMLTableSectionElement>('.boost-steady-table tbody');
-  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !openSpoolBody || !spoolBody || !steadyBody) {
+  if (!modeSelect || !measuredSelect || !targetSelect || !rpmSelect || !tpsSelect || !upperSelect || !lowerSelect || !scopeSelect || !qualificationSelect || !refreshButton || !targetTolerance || !operatingEnabled || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples || !openSpoolEnabled || !openSpoolStart || !openSpoolEnd || !openSpoolDuration || !spoolEnabled || !spoolStart || !spoolTarget || !spoolFraction || !spoolDuration || !steadyEnabled || !steadyTargetRate || !steadyMeasuredRate || !steadyDuration || !empty || !content || !operatingBody || !openSpoolBody || !spoolBody || !steadyBody) {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
@@ -274,6 +292,13 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       trace.complete || (startMs !== undefined && endMs !== undefined && numericRangeCoversTime(trace.range, startMs, endMs)),
     );
 
+    const rpmBinSize = optionalNumber(operatingRpmBin);
+    const tpsBinSize = optionalNumber(operatingTpsBin);
+    const minimumSamples = optionalNumber(operatingMinSamples);
+    let operatingPoints;
+    if (!closedLoop && operatingEnabled.checked && rpm && tps && rpmBinSize !== undefined && tpsBinSize !== undefined && minimumSamples !== undefined) {
+      operatingPoints = { rpmBinSize, tpsBinSize, minimumSamples };
+    }
     const openSpoolStartValue = optionalNumber(openSpoolStart);
     const openSpoolEndValue = optionalNumber(openSpoolEnd);
     let openLoopSpool;
@@ -318,6 +343,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         sampleIndices: scoped.eligibleSampleIndices,
         complete,
         ...(closedLoop && optionalNumber(targetTolerance) !== undefined ? { targetTolerance: optionalNumber(targetTolerance)! } : {}),
+        ...(operatingPoints ? { operatingPoints } : {}),
         ...(openLoopSpool ? { openLoopSpool } : {}),
         ...(spool ? { spool } : {}),
         ...(steadyState ? { steadyState } : {}),
@@ -365,9 +391,16 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('tracking-valid').textContent = (currentResult.tracking?.sampleCount ?? 0).toLocaleString();
     field('tracking-invalid').textContent = (currentResult.tracking?.invalidSampleCount ?? 0).toLocaleString();
     field('tracking-unavailable').textContent = (currentResult.tracking?.unavailableSampleCount ?? 0).toLocaleString();
+    field('operating-count').textContent = currentResult.operatingPoints.length.toLocaleString();
     field('open-spool-count').textContent = currentResult.openLoopSpoolEvents.length.toLocaleString();
     field('spool-count').textContent = currentResult.spoolEvents.length.toLocaleString();
     field('steady-count').textContent = currentResult.steadyStateWindows.length.toLocaleString();
+
+    operatingBody.replaceChildren(...currentResult.operatingPoints.map((point) => {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;
+      return row;
+    }));
 
     openSpoolBody.replaceChildren(...currentResult.openLoopSpoolEvents.map((event, index) => {
       const row = document.createElement('tr');
@@ -415,7 +448,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   modeSelect.addEventListener('change', () => { syncControlModeUi(); void render(); });
   for (const select of [measuredSelect, targetSelect, rpmSelect, tpsSelect, upperSelect, lowerSelect, scopeSelect, qualificationSelect]) select.addEventListener('change', () => { void render(); });
-  for (const input of [openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
+  for (const input of [operatingEnabled, operatingRpmBin, operatingTpsBin, operatingMinSamples, openSpoolEnabled, openSpoolStart, openSpoolEnd, openSpoolDuration, targetTolerance, spoolEnabled, spoolStart, spoolTarget, spoolFraction, spoolDuration, steadyEnabled, steadyTargetRate, steadyMeasuredRate, steadyDuration]) input.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
   syncControlModeUi();
   ensureBoostAnalyzerHelp(root);

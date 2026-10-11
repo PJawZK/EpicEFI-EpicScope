@@ -149,6 +149,27 @@ describe('analyzeBoost', () => {
     expect(result.steadyStateWindows[0]?.endSampleIndex).toBe(1);
   });
 
+  it('groups qualified physical response into RPM and TPS operating-point bins', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [150, 160, 170, 190, 200]),
+      rpm: range(0, [3050, 3150, 3250, 3550, 3650]),
+      tps: range(0, [92, 94, 96, 92, 94]),
+      upperDuty: range(0, [40, 42, 44, 50, 52]),
+      lowerDuty: range(0, [10, 12, 14, 20, 22]),
+    }, { operatingPoints: { rpmBinSize: 500, tpsBinSize: 10, minimumSamples: 2 } });
+
+    expect(result.operatingPoints).toHaveLength(2);
+    expect(result.operatingPoints[0]).toMatchObject({ rpmStart: 3000, rpmEnd: 3500, tpsStart: 90, tpsEnd: 100, sampleCount: 3, pressureMean: 160, upperDutyMean: 42, lowerDutyMean: 12 });
+    expect(result.operatingPoints[1]).toMatchObject({ rpmStart: 3500, rpmEnd: 4000, tpsStart: 90, tpsEnd: 100, sampleCount: 2, pressureMean: 195, upperDutyMean: 51, lowerDutyMean: 21 });
+  });
+
+  it('validates Boost operating-point bin configuration', () => {
+    const inputs = { measuredPressure: range(0, [100]), rpm: range(0, [2000]), tps: range(0, [100]) };
+    expect(() => analyzeBoost(inputs, { operatingPoints: { rpmBinSize: 0, tpsBinSize: 5 } })).toThrow(RangeError);
+    expect(() => analyzeBoost(inputs, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 0 } })).toThrow(RangeError);
+    expect(() => analyzeBoost(inputs, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 0 } })).toThrow(RangeError);
+  });
+
   it('retains RPM, TPS and wastegate duty at peak measured pressure', () => {
     const result = analyzeBoost({
       measuredPressure: range(0, [100, 180, 220, 205]),
