@@ -81,7 +81,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     </details>
     <div class="boost-analyzer-empty">
       <strong>Boost analysis needs a measured-pressure channel available in the log and a valid scope.</strong>
-      <span>RPM and wastegate duty channels are optional but strongly recommended. Boost Target is only used in Closed Loop mode.</span>
+      <span>RPM, TPS/load and wastegate duty channels are optional but strongly recommended for useful Open Loop evidence. Boost Target is only used in Closed Loop mode.</span>
     </div>
     <div class="boost-analyzer-content" hidden>
       <div class="boost-analyzer-summary">
