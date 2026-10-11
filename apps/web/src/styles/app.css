@@ -754,11 +754,12 @@ button:disabled { opacity: .48; cursor: default; }
   width: min(760px, 80vw);
   max-width: calc(100vw - 24px);
   max-height: min(620px, 76vh);
-  overflow: hidden;
+  overflow: auto;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #0a141d;
+  border: 1px solid #385064;
+  border-radius: 5px;
+  background: #071722;
+  box-shadow: 0 12px 34px rgba(0,0,0,.5);
   color: var(--text);
 }
 
