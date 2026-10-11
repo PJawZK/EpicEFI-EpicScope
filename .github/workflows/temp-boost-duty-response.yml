@@ -1,0 +1,74 @@
+name: Temporary Boost duty response summary
+on:
+  push:
+    branches:
+      - feature/boost-duty-response-summary
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-duty-response-summary
+          fetch-depth: 0
+      - name: Add duty response summary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core = Path('core/analysis/boost-analyzer.ts')
+          text = core.read_text()
+          anchor = "export interface BoostPeakContext {\n"
+          insert = """export interface BoostDutyResponseSummary {\n  readonly chamber: 'upper' | 'lower';\n  readonly qualifyingComparisonCount: number;\n  readonly otherDutyUnavailableCount: number;\n  readonly higherDutyHigherPressureCount: number;\n  readonly higherDutyLowerPressureCount: number;\n  readonly similarPressureCount: number;\n  readonly association: 'insufficient' | 'higher-duty-higher-pressure' | 'higher-duty-lower-pressure' | 'little-pressure-response' | 'mixed';\n}\n\n"""
+          assert anchor in text
+          text = text.replace(anchor, insert + anchor, 1)
+
+          anchor = "\nfunction buildTrackingSamples(\n"
+          insert = """\nexport function summarizeBoostDutyResponse(\n  comparisons: readonly BoostOperatingPointComparison[],\n  chamber: 'upper' | 'lower',\n  minimumDutyDelta = 0.5,\n): BoostDutyResponseSummary {\n  if (!Number.isFinite(minimumDutyDelta) || minimumDutyDelta < 0) throw new RangeError('Boost duty response minimumDutyDelta must be finite and >= 0.');\n  let qualifyingComparisonCount = 0;\n  let otherDutyUnavailableCount = 0;\n  let higherDutyHigherPressureCount = 0;\n  let higherDutyLowerPressureCount = 0;\n  let similarPressureCount = 0;\n  for (const comparison of comparisons) {\n    const selectedDelta = chamber === 'upper' ? comparison.upperDutyDelta : comparison.lowerDutyDelta;\n    const otherDelta = chamber === 'upper' ? comparison.lowerDutyDelta : comparison.upperDutyDelta;\n    if (selectedDelta === undefined || Math.abs(selectedDelta) < minimumDutyDelta) continue;\n    if (otherDelta !== undefined && Math.abs(otherDelta) >= minimumDutyDelta) continue;\n    qualifyingComparisonCount += 1;\n    if (otherDelta === undefined) otherDutyUnavailableCount += 1;\n    if (comparison.pressureDirection === 'similar') {\n      similarPressureCount += 1;\n      continue;\n    }\n    const higherDuty = selectedDelta > 0;\n    const higherPressure = comparison.pressureDelta > 0;\n    if (higherDuty === higherPressure) higherDutyHigherPressureCount += 1;\n    else higherDutyLowerPressureCount += 1;\n  }\n  let association: BoostDutyResponseSummary['association'] = 'insufficient';\n  if (qualifyingComparisonCount >= 2) {\n    if (similarPressureCount / qualifyingComparisonCount >= 0.6) association = 'little-pressure-response';\n    else if (higherDutyHigherPressureCount / qualifyingComparisonCount >= 0.7) association = 'higher-duty-higher-pressure';\n    else if (higherDutyLowerPressureCount / qualifyingComparisonCount >= 0.7) association = 'higher-duty-lower-pressure';\n    else association = 'mixed';\n  }\n  return {\n    chamber,\n    qualifyingComparisonCount,\n    otherDutyUnavailableCount,\n    higherDutyHigherPressureCount,\n    higherDutyLowerPressureCount,\n    similarPressureCount,\n    association,\n  };\n}\n"""
+          assert anchor in text
+          text = text.replace(anchor, insert + anchor, 1)
+          core.write_text(text)
+
+          tests = Path('tests/analysis/boost-analyzer.test.ts')
+          text = tests.read_text()
+          text = text.replace("import { analyzeBoost, compareBoostOperatingPoints }", "import { analyzeBoost, compareBoostOperatingPoints, summarizeBoostDutyResponse }", 1)
+          anchor = "  it('detects open-loop pressure-rise spool without a boost target', () => {\n"
+          insert = """  it('summarizes observed chamber duty response without prescribing polarity', () => {\n    const comparisons = [\n      { rpmStart: 3000, rpmEnd: 3250, tpsStart: 90, tpsEnd: 95, primarySampleCount: 20, comparisonSampleCount: 20, primaryPressureMean: 150, comparisonPressureMean: 165, pressureDelta: 15, pressureDeltaFraction: 0.095, pressureDirection: 'rising' as const, upperDutyDelta: 5, lowerDutyDelta: 0, interpretation: 'duty-and-pressure-response' as const },\n      { rpmStart: 3250, rpmEnd: 3500, tpsStart: 90, tpsEnd: 95, primarySampleCount: 20, comparisonSampleCount: 20, primaryPressureMean: 160, comparisonPressureMean: 172, pressureDelta: 12, pressureDeltaFraction: 0.072, pressureDirection: 'rising' as const, upperDutyDelta: 4, lowerDutyDelta: undefined, interpretation: 'duty-and-pressure-response' as const },\n    ];\n    expect(summarizeBoostDutyResponse(comparisons, 'upper')).toMatchObject({\n      qualifyingComparisonCount: 2,\n      otherDutyUnavailableCount: 1,\n      higherDutyHigherPressureCount: 2,\n      association: 'higher-duty-higher-pressure',\n    });\n    expect(summarizeBoostDutyResponse(comparisons, 'lower')).toMatchObject({ qualifyingComparisonCount: 0, association: 'insufficient' });\n  });\n\n"""
+          assert anchor in text
+          text = text.replace(anchor, insert + anchor, 1)
+          tests.write_text(text)
+
+          view = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          text = view.read_text()
+          text = text.replace("import { analyzeBoost, compareBoostOperatingPoints, type BoostAnalyzerResult }", "import { analyzeBoost, compareBoostOperatingPoints, summarizeBoostDutyResponse, type BoostAnalyzerResult }", 1)
+          old = """        <header><strong>Matched scope comparison</strong><span data-boost=\"comparison-count\">0</span></header>\n        <div class=\"boost-table-wrap\">"""
+          new = """        <header><strong>Matched scope comparison</strong><span data-boost=\"comparison-count\">0</span></header>\n        <div class=\"boost-evidence boost-duty-response-summary\">\n          <span><span data-boost-help-key=\"Upper response\">Upper response</span> <strong data-boost=\"upper-response\">—</strong></span>\n          <span><span data-boost-help-key=\"Lower response\">Lower response</span> <strong data-boost=\"lower-response\">—</strong></span>\n        </div>\n        <div class=\"boost-table-wrap\">"""
+          assert old in text
+          text = text.replace(old, new, 1)
+          anchor = """    const comparisonActive = !closedLoop && comparisonScope !== undefined && compareScopeSelect.value !== scopeSelect.value;\n    comparisonSection.hidden = !comparisonActive;\n    field('comparison-count').textContent = comparisonRows.length.toLocaleString();"""
+          replacement = """    const comparisonActive = !closedLoop && comparisonScope !== undefined && compareScopeSelect.value !== scopeSelect.value;\n    comparisonSection.hidden = !comparisonActive;\n    field('comparison-count').textContent = comparisonRows.length.toLocaleString();\n    const responseText = (summary: ReturnType<typeof summarizeBoostDutyResponse>): string => {\n      if (summary.qualifyingComparisonCount === 0) return 'No isolated duty-change evidence';\n      const unavailable = summary.otherDutyUnavailableCount > 0 ? ` · other duty unavailable ${summary.otherDutyUnavailableCount}` : '';\n      const prefix = `${summary.qualifyingComparisonCount} usable${unavailable}`;\n      if (summary.association === 'insufficient') return `${prefix} · need more comparisons`;\n      if (summary.association === 'higher-duty-higher-pressure') return `${prefix} · higher duty accompanied higher pressure`;\n      if (summary.association === 'higher-duty-lower-pressure') return `${prefix} · higher duty accompanied lower pressure`;\n      if (summary.association === 'little-pressure-response') return `${prefix} · duty changed with little pressure response`;\n      return `${prefix} · mixed observed association`;\n    };\n    field('upper-response').textContent = responseText(summarizeBoostDutyResponse(comparisonRows, 'upper'));\n    field('lower-response').textContent = responseText(summarizeBoostDutyResponse(comparisonRows, 'lower'));"""
+          assert anchor in text
+          text = text.replace(anchor, replacement, 1)
+          view.write_text(text)
+
+          help_file = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          text = help_file.read_text()
+          anchor = "  'Lower duty mean': { title: 'Lower duty mean', text: 'Average lower-chamber wastegate command across eligible samples. Interpret together with upper duty and pressure response because the two chamber commands can have different physical effects.' },\n"
+          insert = """  'Upper response': { title: 'Observed upper-chamber response', text: 'Summarizes matched operating-point comparisons where upper duty changed by at least 0.5 percentage point while lower duty stayed within 0.5 point when it was available. It reports whether higher upper duty was usually accompanied by higher pressure, lower pressure, little pressure response, or a mixed result. If lower duty was unavailable, EpicScope reports that count because true chamber isolation cannot be proven. This is an observed association, not a command to raise or lower duty.' },\n  'Lower response': { title: 'Observed lower-chamber response', text: 'Summarizes matched operating-point comparisons where lower duty changed by at least 0.5 percentage point while upper duty stayed within 0.5 point when it was available. It reports whether higher lower duty was usually accompanied by higher pressure, lower pressure, little pressure response, or a mixed result. If upper duty was unavailable, EpicScope reports that count because true chamber isolation cannot be proven. This is an observed association, not a command to raise or lower duty.' },\n"""
+          assert anchor in text
+          text = text.replace(anchor, anchor + insert, 1)
+          anchor = """  for (const card of root.querySelectorAll<HTMLElement>('.boost-analyzer-summary > div')) {\n    const label = card.querySelector<HTMLElement>(':scope > span')?.textContent?.trim();\n    if (!label) continue;\n    const help = SUMMARY_HELP[label];\n    if (help) addInlineHelpButton(card, help, show);\n  }\n"""
+          replacement = anchor + """  for (const label of root.querySelectorAll<HTMLElement>('[data-boost-help-key]')) {\n    const key = label.dataset.boostHelpKey;\n    if (!key) continue;\n    const help = SUMMARY_HELP[key];\n    if (help) addInlineHelpButton(label, help, show);\n  }\n"""
+          assert anchor in text
+          text = text.replace(anchor, replacement, 1)
+          help_file.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts tests/analysis/boost-analyzer.test.ts apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts
+          git commit -m "Summarize Boost chamber response"
+          git push origin HEAD:feature/boost-duty-response-summary
