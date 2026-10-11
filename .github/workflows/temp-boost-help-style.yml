@@ -1,0 +1,33 @@
+name: Temporary Boost help style
+on:
+  push:
+    branches:
+      - feature/boost-mode-aware-help
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-mode-aware-help
+          fetch-depth: 0
+      - name: Style Boost inline guidance
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/src/styles/boost-analyzer.css')
+          t = p.read_text()
+          anchor = ".boost-analyzer-banner span { color: #79909f; font-size:9px; }\n"
+          addition = anchor + "\n.boost-analyzer-guidance {\n  display: grid;\n  gap: 4px;\n  padding: 8px 10px;\n  border: 1px solid #355268;\n  border-radius: 4px;\n  background: #0d1c27;\n}\n.boost-analyzer-guidance[hidden],\n.boost-closed-loop-only[hidden] { display: none !important; }\n.boost-analyzer-guidance strong { color: #cfe3ed; font-size:10px; }\n.boost-analyzer-guidance span { color: #8da4b1; font-size:9px; line-height:1.5; }\n\n.boost-analyzer-controls label > span,\n.boost-analysis-options-grid label > span { display:inline-flex; align-items:center; }\n.boost-analyzer-summary > div { position:relative; }\n.boost-analyzer-summary > div > .epicscope-inline-help { position:absolute; top:5px; right:5px; }\n"
+          assert t.count(anchor) == 1
+          p.write_text(t.replace(anchor, addition, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/styles/boost-analyzer.css
+          git commit -m "Style Boost inline help guidance"
+          git push origin HEAD:feature/boost-mode-aware-help
