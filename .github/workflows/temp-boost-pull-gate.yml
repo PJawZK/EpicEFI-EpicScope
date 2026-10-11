@@ -1,0 +1,83 @@
+name: Temporary Boost pull gate
+on:
+  push:
+    branches:
+      - feature/boost-pull-gate
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-pull-gate
+          fetch-depth: 0
+      - name: Add high-load pull gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          old = "        <label class=\"boost-option-toggle\"><input type=\"checkbox\" class=\"boost-operating-enabled\" checked /><span>Build operating points</span></label>\n        <label><span>RPM bin size</span>"
+          new = "        <label class=\"boost-option-toggle\"><input type=\"checkbox\" class=\"boost-operating-enabled\" checked /><span>Build operating points</span></label>\n        <label class=\"boost-option-toggle\"><input type=\"checkbox\" class=\"boost-pull-gate-enabled\" /><span>High-load pull gate</span></label>\n        <label><span>Min TPS / load</span><input type=\"number\" step=\"any\" value=\"80\" class=\"boost-pull-min-tps\" /></label>\n        <label><span>Min pull RPM</span><input type=\"number\" step=\"1\" min=\"0\" value=\"2000\" class=\"boost-pull-min-rpm\" /></label>\n        <label><span>RPM bin size</span>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "        <span>Scope input <strong data-boost=\"qualification-input\">0</strong></span>\n        <span>Eligible <strong data-boost=\"qualification-eligible\">0</strong></span>\n        <span>Rejected <strong data-boost=\"qualification-rejected\">0</strong></span>"
+          new = "        <span>Scope input <strong data-boost=\"qualification-input\">0</strong></span>\n        <span>Saved eligible <strong data-boost=\"qualification-eligible\">0</strong></span>\n        <span>Quick gate eligible <strong data-boost=\"quick-gate-eligible\">Off</strong></span>\n        <span>Final eligible <strong data-boost=\"final-eligible\">0</strong></span>\n        <span>Rejected (saved) <strong data-boost=\"qualification-rejected\">0</strong></span>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "  const operatingEnabled = root.querySelector<HTMLInputElement>('.boost-operating-enabled');\n  const operatingRpmBin ="
+          new = "  const operatingEnabled = root.querySelector<HTMLInputElement>('.boost-operating-enabled');\n  const pullGateEnabled = root.querySelector<HTMLInputElement>('.boost-pull-gate-enabled');\n  const pullMinTps = root.querySelector<HTMLInputElement>('.boost-pull-min-tps');\n  const pullMinRpm = root.querySelector<HTMLInputElement>('.boost-pull-min-rpm');\n  const operatingRpmBin ="
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "!targetTolerance || !operatingEnabled || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples ||"
+          new = "!targetTolerance || !operatingEnabled || !pullGateEnabled || !pullMinTps || !pullMinRpm || !operatingRpmBin || !operatingTpsBin || !operatingMinSamples ||"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "  const qualificationGroups = (filterSet: AnalysisFilterSetState | undefined): NumericQualificationGroup[] => {\n"
+          helper = "  const intersectSampleIndices = (left: ArrayLike<number>, right: ArrayLike<number>): Uint32Array => {\n    const rightSet = new Set<number>();\n    for (let index = 0; index < right.length; index += 1) {\n      const value = right[index];\n      if (value !== undefined) rightSet.add(value);\n    }\n    const result: number[] = [];\n    for (let index = 0; index < left.length; index += 1) {\n      const value = left[index];\n      if (value !== undefined && rightSet.has(value)) result.push(value);\n    }\n    return Uint32Array.from(result);\n  };\n\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, helper + anchor, 1)
+
+          old = "    const scoped = qualifyNumericSampleGroups({\n      referenceChannelId: measured.channel.id,\n      channels,\n      groupLogic: filterSet?.groupLogic ?? 'and',\n      groups,\n      ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),\n    });\n    const selectedTraces = [measured, target, rpm, tps, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);\n    const complete = scoped.complete && selectedTraces.every((trace) =>"
+          new = "    const scoped = qualifyNumericSampleGroups({\n      referenceChannelId: measured.channel.id,\n      channels,\n      groupLogic: filterSet?.groupLogic ?? 'and',\n      groups,\n      ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),\n    });\n    let finalEligibleSampleIndices = scoped.eligibleSampleIndices;\n    let quickGateEligibleCount: number | undefined;\n    let quickGateComplete = true;\n    if (!closedLoop && pullGateEnabled.checked) {\n      const minimumTps = optionalNumber(pullMinTps);\n      const minimumRpm = optionalNumber(pullMinRpm);\n      if (!rpm || !tps || minimumTps === undefined || minimumRpm === undefined) {\n        currentResult = undefined;\n        empty.hidden = false;\n        content.hidden = true;\n        empty.querySelector('strong')!.textContent = 'High-load pull gate needs RPM, TPS/load and finite minimum thresholds.';\n        refreshButton.disabled = false;\n        return;\n      }\n      const quick = qualifyNumericSampleGroups({\n        referenceChannelId: measured.channel.id,\n        channels,\n        groupLogic: 'and',\n        groups: [{ id: 'boost-high-load', logic: 'and', conditions: [\n          { channelId: tps.channel.id, operator: 'gte', value: minimumTps },\n          { channelId: rpm.channel.id, operator: 'gte', value: minimumRpm },\n        ] }],\n        ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),\n      });\n      quickGateEligibleCount = quick.eligibleSampleCount;\n      quickGateComplete = quick.complete;\n      finalEligibleSampleIndices = intersectSampleIndices(scoped.eligibleSampleIndices, quick.eligibleSampleIndices);\n    }\n    const selectedTraces = [measured, target, rpm, tps, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);\n    const complete = scoped.complete && quickGateComplete && selectedTraces.every((trace) =>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "        sampleIndices: scoped.eligibleSampleIndices,\n"
+          new = "        sampleIndices: finalEligibleSampleIndices,\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "    field('qualification-eligible').textContent = scoped.eligibleSampleCount.toLocaleString();\n    field('qualification-rejected').textContent"
+          new = "    field('qualification-eligible').textContent = scoped.eligibleSampleCount.toLocaleString();\n    field('quick-gate-eligible').textContent = quickGateEligibleCount === undefined ? 'Off' : quickGateEligibleCount.toLocaleString();\n    field('final-eligible').textContent = finalEligibleSampleIndices.length.toLocaleString();\n    field('qualification-rejected').textContent"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "for (const input of [operatingEnabled, operatingRpmBin, operatingTpsBin, operatingMinSamples,"
+          new = "for (const input of [operatingEnabled, pullGateEnabled, pullMinTps, pullMinRpm, operatingRpmBin, operatingTpsBin, operatingMinSamples,"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          anchor = "  [/^Build operating points$/i, { title: 'Build RPM × TPS/load operating points · Open Loop',"
+          insert = "  [/^High-load pull gate$/i, { title: 'High-load pull gate · Open Loop', text: 'Adds a simple Boost-specific gate on top of any saved Qualification: TPS/load must be at least Min TPS / load and RPM must be at least Min pull RPM. The default 80 value is a starting point for a percentage TPS channel, not a universal load value; change it when the selected load channel uses another unit. The evidence row shows Saved eligible, Quick gate eligible, and Final eligible separately so the extra filtering is visible.' }],\n  [/^Min TPS \\/ load$/i, { title: 'Minimum TPS / load', text: 'Minimum selected TPS/load value accepted by the High-load pull gate. 80 is intended only as a convenient starting point when the selected channel is TPS percent. For another load channel, enter a threshold meaningful in that channel native unit.' }],\n  [/^Min pull RPM$/i, { title: 'Minimum pull RPM', text: 'Minimum engine speed accepted by the High-load pull gate. Use it to exclude idle/low-speed samples that are not relevant to the boost pull being assessed. This gate combines with Min TPS/load using AND logic.' }],\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, insert + anchor, 1)
+          p.write_text(t)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts
+          git commit -m "Add Boost high-load pull gate"
+          git push origin HEAD:feature/boost-pull-gate
