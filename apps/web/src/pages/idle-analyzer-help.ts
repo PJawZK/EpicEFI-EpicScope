@@ -1,4 +1,4 @@
-import { addInlineHelpButton, createInlineHelpPresenter, matchingInlineHelp, type InlineInlineHelpEntry } from '../components/inline-help';
+import { addInlineHelpButton, createInlineHelpPresenter, matchingInlineHelp, type InlineHelpEntry } from '../components/inline-help';
 
 const CONTROL_HELP: readonly [RegExp, InlineHelpEntry][] = [
   [/^Idle system$/i, { title: 'Idle system', text: 'Chooses which idle-control layer to focus on. Combined shows every available layer. RPM Control is the outer loop that decides requested idle-air position. DC Valve Control is the inner position loop that makes the physical DC valve follow that request. IAC, ETB and Ignition isolate those actuator/helper paths.' }],
