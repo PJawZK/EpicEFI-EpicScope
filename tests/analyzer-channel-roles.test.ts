@@ -68,6 +68,16 @@ describe('Fueling analyzer canonical channel roles', () => {
     channel('fuelingLoad', 'Fuel: Load'),
     channel('veTableYAxis', 'veTableYAxis'),
     channel('RPMValue', 'RPM - engine speed'),
+    channel('dfcoActive', 'dfcoActive'),
+    channel('fuelCutReason', 'Fuel: Cut Code'),
+    channel('fuelCutReasonBlinker', 'fuelCutReasonBlinker'),
+    channel('isAboveAccelThreshold', 'Fuel: TPS AE Active'),
+    channel('isBelowDecelThreshold', 'Fuel: TPS Decel Active'),
+    channel('totalFuelCorrection', 'Fuel: Total correction'),
+    channel('stftCorrection1', 'STFT: Bank 1'),
+    channel('stftCorrection2', 'STFT: Bank 2'),
+    channel('ltftCorrection1', 'LTFT: Bank 1'),
+    channel('ltftCorrection2', 'LTFT: Bank 2'),
   ];
 
   it('prefers lambda and target lambda over AFR representations', () => {
@@ -85,6 +95,16 @@ describe('Fueling analyzer canonical channel roles', () => {
     expect(suggestAnalyzerChannel('fueling', 'fuelCommand', channels)?.sourceName).toBe('actualLastInjection');
     expect(suggestAnalyzerChannel('fueling', 'load', channels)?.sourceName).toBe('veTableYAxis');
     expect(suggestAnalyzerChannel('fueling', 'rpm', channels)?.sourceName).toBe('RPMValue');
+  });
+
+  it('maps cut/transient context and correction layers to the canonical JZ runtime channels', () => {
+    expect(suggestAnalyzerChannel('fueling', 'dfco', channels)?.sourceName).toBe('dfcoActive');
+    expect(suggestAnalyzerChannel('fueling', 'fuelCutReason', channels)?.sourceName).toBe('fuelCutReason');
+    expect(suggestAnalyzerChannel('fueling', 'aeActive', channels)?.sourceName).toBe('isAboveAccelThreshold');
+    expect(suggestAnalyzerChannel('fueling', 'decelActive', channels)?.sourceName).toBe('isBelowDecelThreshold');
+    expect(suggestAnalyzerChannel('fueling', 'totalCorrection', channels)?.sourceName).toBe('totalFuelCorrection');
+    expect(suggestAnalyzerChannel('fueling', 'stft', channels)?.sourceName).toBe('stftCorrection1');
+    expect(suggestAnalyzerChannel('fueling', 'ltft', channels)?.sourceName).toBe('ltftCorrection1');
   });
 
   it('does not use VE as a fuel-command fallback', () => {
