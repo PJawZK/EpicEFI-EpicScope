@@ -1,0 +1,41 @@
+name: Temporary Boost scope comparison fixes
+on:
+  push:
+    branches:
+      - feature/boost-scope-comparison
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-scope-comparison
+          fetch-depth: 0
+      - name: Apply review fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core = Path('core/analysis/boost-analyzer.ts')
+          text = core.read_text()
+          text = text.replace("  readonly rpmStart: number;\n  readonly tpsStart: number;\n  readonly primarySampleCount", "  readonly rpmStart: number;\n  readonly rpmEnd: number;\n  readonly tpsStart: number;\n  readonly tpsEnd: number;\n  readonly primarySampleCount", 1)
+          text = text.replace("      rpmStart: first.rpmStart,\n      tpsStart: first.tpsStart,\n      primarySampleCount", "      rpmStart: first.rpmStart,\n      rpmEnd: first.rpmEnd,\n      tpsStart: first.tpsStart,\n      tpsEnd: first.tpsEnd,\n      primarySampleCount", 1)
+          core.write_text(text)
+
+          view = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          text = view.read_text()
+          text = text.replace("comparisonScope.label !== scope.label", "compareScopeSelect.value !== scopeSelect.value", 1)
+          text = text.replace("comparisonSection.hidden = comparisonRows.length === 0;\n    field('comparison-count').textContent = comparisonRows.length.toLocaleString();\n    comparisonBody.replaceChildren(...comparisonRows.map((comparison) => {", "const comparisonActive = !closedLoop && comparisonScope !== undefined && compareScopeSelect.value !== scopeSelect.value;\n    comparisonSection.hidden = !comparisonActive;\n    field('comparison-count').textContent = comparisonRows.length.toLocaleString();\n    if (comparisonActive && comparisonRows.length === 0) {\n      const row = document.createElement('tr');\n      row.innerHTML = '<td colspan=\"10\">No trustworthy matched RPM × TPS/load bins between these scopes. Collect more evidence or adjust qualification/binning.</td>';\n      comparisonBody.replaceChildren(row);\n    } else comparisonBody.replaceChildren(...comparisonRows.map((comparison) => {", 1)
+          text = text.replace("<td>${formatNumber(comparison.rpmStart, 0)}</td><td>${formatNumber(comparison.tpsStart)}</td>", "<td>${formatNumber(comparison.rpmStart, 0)}–${formatNumber(comparison.rpmEnd, 0)}</td><td>${formatNumber(comparison.tpsStart)}–${formatNumber(comparison.tpsEnd)}</td>", 1)
+          text = text.replace("      return row;\n    }));\n\n    operatingBody.replaceChildren", "      return row;\n    }));\n\n    operatingBody.replaceChildren", 1)
+          view.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts apps/web/src/pages/boost-analyzer-view.ts
+          git commit -m "Refine Boost scope comparison feedback"
+          git push origin HEAD:feature/boost-scope-comparison
