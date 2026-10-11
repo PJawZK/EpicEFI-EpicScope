@@ -50,3 +50,49 @@ describe('Idle analyzer canonical channel roles', () => {
     expect(suggestAnalyzerChannel('idle', 'dcOutput', channels)?.sourceName).toBe('dcIdlePositionStatus_output');
   });
 });
+
+describe('Fueling analyzer canonical channel roles', () => {
+  const channels = [
+    channel('AFRValue', 'Air/Fuel Ratio'),
+    channel('afrGasolineScale', 'Air/Fuel Ratio (Gas Scale)'),
+    channel('lambdaValue', 'Lambda'),
+    channel('targetAFR', 'Fuel: target AFR'),
+    channel('targetLambda', 'Fuel: target lambda'),
+    channel('tunedVeValue', 'Fuel: Tuned VE'),
+    channel('veValue', 'Fuel: VE'),
+    channel('actualLastInjection', 'Fuel: Last inj pulse width'),
+    channel('actualLastInjectionStage2', 'Fuel: Last inj pulse width stg 2'),
+    channel('injectorDutyCycle', 'Fuel: injector duty cycle'),
+    channel('MAPValue', 'MAP'),
+    channel('TPSValue', 'TPS'),
+    channel('fuelingLoad', 'Fuel: Load'),
+    channel('veTableYAxis', 'veTableYAxis'),
+    channel('RPMValue', 'RPM - engine speed'),
+  ];
+
+  it('prefers lambda and target lambda over AFR representations', () => {
+    expect(suggestAnalyzerChannel('fueling', 'actual', channels)?.sourceName).toBe('lambdaValue');
+    expect(suggestAnalyzerChannel('fueling', 'target', channels)?.sourceName).toBe('targetLambda');
+  });
+
+  it('falls back to Gas Scale AFR before generic AFR when lambda is unavailable', () => {
+    const withoutLambda = channels.filter((entry) => entry.sourceName !== 'lambdaValue');
+    expect(suggestAnalyzerChannel('fueling', 'actual', withoutLambda)?.sourceName).toBe('afrGasolineScale');
+  });
+
+  it('uses current VE, actual scheduled injector PW, and the actual VE-table load axis', () => {
+    expect(suggestAnalyzerChannel('fueling', 've', channels)?.sourceName).toBe('veValue');
+    expect(suggestAnalyzerChannel('fueling', 'fuelCommand', channels)?.sourceName).toBe('actualLastInjection');
+    expect(suggestAnalyzerChannel('fueling', 'load', channels)?.sourceName).toBe('veTableYAxis');
+    expect(suggestAnalyzerChannel('fueling', 'rpm', channels)?.sourceName).toBe('RPMValue');
+  });
+
+  it('does not use VE as a fuel-command fallback', () => {
+    const noPulseWidth = [channel('veValue', 'Fuel: VE'), channel('tunedVeValue', 'Fuel: Tuned VE')];
+    expect(suggestAnalyzerChannel('fueling', 'fuelCommand', noPulseWidth)).toBeUndefined();
+  });
+
+  it('also prefers lambda for AE / MAP Predict mixture evidence', () => {
+    expect(suggestAnalyzerChannel('ae-map', 'afr', channels)?.sourceName).toBe('lambdaValue');
+  });
+});
