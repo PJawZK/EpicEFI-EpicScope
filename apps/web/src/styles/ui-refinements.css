@@ -493,7 +493,7 @@
   font-size: calc(9px * var(--epicscope-font-info-scale)) !important;
 }
 
-.idle-analyzer-info {
+.epicscope-inline-help {
   width: calc(14px * var(--epicscope-font-info-scale)) !important;
   height: calc(14px * var(--epicscope-font-info-scale)) !important;
   font-size: calc(9px * var(--epicscope-font-info-scale)) !important;
