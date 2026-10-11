@@ -1,4 +1,4 @@
-import { analyzeBoost, compareBoostOperatingPoints, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
+import { analyzeBoost, compareBoostOperatingPoints, summarizeBoostDutyResponse, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
 import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
@@ -136,6 +136,10 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       </section>
       <section class="boost-result-section boost-open-loop-only boost-comparison-section" hidden>
         <header><strong>Matched scope comparison</strong><span data-boost="comparison-count">0</span></header>
+        <div class="boost-evidence boost-duty-response-summary">
+          <span><span data-boost-help-key="Upper response">Upper response</span> <strong data-boost="upper-response">—</strong></span>
+          <span><span data-boost-help-key="Lower response">Lower response</span> <strong data-boost="lower-response">—</strong></span>
+        </div>
         <div class="boost-table-wrap"><table class="boost-table boost-comparison-table"><thead><tr><th>RPM bin</th><th>TPS/load bin</th><th>Primary N</th><th>Compare N</th><th>Primary P</th><th>Compare P</th><th>Δ pressure</th><th>Δ upper duty</th><th>Δ lower duty</th><th>Observed result</th></tr></thead><tbody></tbody></table></div>
       </section>
       <section class="boost-result-section boost-open-loop-only">
@@ -503,6 +507,18 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const comparisonActive = !closedLoop && comparisonScope !== undefined && compareScopeSelect.value !== scopeSelect.value;
     comparisonSection.hidden = !comparisonActive;
     field('comparison-count').textContent = comparisonRows.length.toLocaleString();
+    const responseText = (summary: ReturnType<typeof summarizeBoostDutyResponse>): string => {
+      if (summary.qualifyingComparisonCount === 0) return 'No isolated duty-change evidence';
+      const unavailable = summary.otherDutyUnavailableCount > 0 ? ` · other duty unavailable ${summary.otherDutyUnavailableCount}` : '';
+      const prefix = `${summary.qualifyingComparisonCount} usable${unavailable}`;
+      if (summary.association === 'insufficient') return `${prefix} · need more comparisons`;
+      if (summary.association === 'higher-duty-higher-pressure') return `${prefix} · higher duty accompanied higher pressure`;
+      if (summary.association === 'higher-duty-lower-pressure') return `${prefix} · higher duty accompanied lower pressure`;
+      if (summary.association === 'little-pressure-response') return `${prefix} · duty changed with little pressure response`;
+      return `${prefix} · mixed observed association`;
+    };
+    field('upper-response').textContent = responseText(summarizeBoostDutyResponse(comparisonRows, 'upper'));
+    field('lower-response').textContent = responseText(summarizeBoostDutyResponse(comparisonRows, 'lower'));
     if (comparisonActive && comparisonRows.length === 0) {
       const row = document.createElement('tr');
       row.innerHTML = '<td colspan="10">No trustworthy matched RPM × TPS/load bins between these scopes. Collect more evidence or adjust qualification/binning.</td>';

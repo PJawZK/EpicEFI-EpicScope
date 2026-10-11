@@ -54,6 +54,8 @@ const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
   'Max undershoot': { title: 'Maximum undershoot · Closed Loop only', text: 'Largest negative measured-minus-target error. It identifies the worst under-target excursion in the qualified scope.' },
   'Upper duty mean': { title: 'Upper duty mean', text: 'Average upper-chamber wastegate command across eligible samples. Use it as operating-point context; the useful tuning result comes from relating duty to RPM/load and resulting pressure, not from the mean alone.' },
   'Lower duty mean': { title: 'Lower duty mean', text: 'Average lower-chamber wastegate command across eligible samples. Interpret together with upper duty and pressure response because the two chamber commands can have different physical effects.' },
+  'Upper response': { title: 'Observed upper-chamber response', text: 'Summarizes matched operating-point comparisons where upper duty changed by at least 0.5 percentage point while lower duty stayed within 0.5 point when it was available. It reports whether higher upper duty was usually accompanied by higher pressure, lower pressure, little pressure response, or a mixed result. If lower duty was unavailable, EpicScope reports that count because true chamber isolation cannot be proven. This is an observed association, not a command to raise or lower duty.' },
+  'Lower response': { title: 'Observed lower-chamber response', text: 'Summarizes matched operating-point comparisons where lower duty changed by at least 0.5 percentage point while upper duty stayed within 0.5 point when it was available. It reports whether higher lower duty was usually accompanied by higher pressure, lower pressure, little pressure response, or a mixed result. If upper duty was unavailable, EpicScope reports that count because true chamber isolation cannot be proven. This is an observed association, not a command to raise or lower duty.' },
 };
 
 export function ensureBoostAnalyzerHelp(root: HTMLElement): void {
@@ -72,5 +74,11 @@ export function ensureBoostAnalyzerHelp(root: HTMLElement): void {
     if (!label) continue;
     const help = SUMMARY_HELP[label];
     if (help) addInlineHelpButton(card, help, show);
+  }
+  for (const label of root.querySelectorAll<HTMLElement>('[data-boost-help-key]')) {
+    const key = label.dataset.boostHelpKey;
+    if (!key) continue;
+    const help = SUMMARY_HELP[key];
+    if (help) addInlineHelpButton(label, help, show);
   }
 }

@@ -182,6 +182,16 @@ export interface BoostOperatingPointComparison {
   readonly interpretation: 'pressure-only' | 'pressure-changed-similar-duty' | 'duty-changed-little-pressure-response' | 'duty-and-pressure-response' | 'similar-duty-and-pressure';
 }
 
+export interface BoostDutyResponseSummary {
+  readonly chamber: 'upper' | 'lower';
+  readonly qualifyingComparisonCount: number;
+  readonly otherDutyUnavailableCount: number;
+  readonly higherDutyHigherPressureCount: number;
+  readonly higherDutyLowerPressureCount: number;
+  readonly similarPressureCount: number;
+  readonly association: 'insufficient' | 'higher-duty-higher-pressure' | 'higher-duty-lower-pressure' | 'little-pressure-response' | 'mixed';
+}
+
 export interface BoostPeakContext {
   readonly sampleIndex: number;
   readonly timeMs: number;
@@ -531,6 +541,51 @@ export function compareBoostOperatingPoints(
     });
   }
   return results;
+}
+
+export function summarizeBoostDutyResponse(
+  comparisons: readonly BoostOperatingPointComparison[],
+  chamber: 'upper' | 'lower',
+  minimumDutyDelta = 0.5,
+): BoostDutyResponseSummary {
+  if (!Number.isFinite(minimumDutyDelta) || minimumDutyDelta < 0) throw new RangeError('Boost duty response minimumDutyDelta must be finite and >= 0.');
+  let qualifyingComparisonCount = 0;
+  let otherDutyUnavailableCount = 0;
+  let higherDutyHigherPressureCount = 0;
+  let higherDutyLowerPressureCount = 0;
+  let similarPressureCount = 0;
+  for (const comparison of comparisons) {
+    const selectedDelta = chamber === 'upper' ? comparison.upperDutyDelta : comparison.lowerDutyDelta;
+    const otherDelta = chamber === 'upper' ? comparison.lowerDutyDelta : comparison.upperDutyDelta;
+    if (selectedDelta === undefined || Math.abs(selectedDelta) < minimumDutyDelta) continue;
+    if (otherDelta !== undefined && Math.abs(otherDelta) >= minimumDutyDelta) continue;
+    qualifyingComparisonCount += 1;
+    if (otherDelta === undefined) otherDutyUnavailableCount += 1;
+    if (comparison.pressureDirection === 'similar') {
+      similarPressureCount += 1;
+      continue;
+    }
+    const higherDuty = selectedDelta > 0;
+    const higherPressure = comparison.pressureDelta > 0;
+    if (higherDuty === higherPressure) higherDutyHigherPressureCount += 1;
+    else higherDutyLowerPressureCount += 1;
+  }
+  let association: BoostDutyResponseSummary['association'] = 'insufficient';
+  if (qualifyingComparisonCount >= 2) {
+    if (similarPressureCount / qualifyingComparisonCount >= 0.6) association = 'little-pressure-response';
+    else if (higherDutyHigherPressureCount / qualifyingComparisonCount >= 0.7) association = 'higher-duty-higher-pressure';
+    else if (higherDutyLowerPressureCount / qualifyingComparisonCount >= 0.7) association = 'higher-duty-lower-pressure';
+    else association = 'mixed';
+  }
+  return {
+    chamber,
+    qualifyingComparisonCount,
+    otherDutyUnavailableCount,
+    higherDutyHigherPressureCount,
+    higherDutyLowerPressureCount,
+    similarPressureCount,
+    association,
+  };
 }
 
 function buildTrackingSamples(
