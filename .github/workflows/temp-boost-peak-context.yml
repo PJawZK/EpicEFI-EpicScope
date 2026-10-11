@@ -1,0 +1,79 @@
+name: Temporary Boost peak context
+on:
+  push:
+    branches:
+      - feature/boost-peak-context
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-peak-context
+          fetch-depth: 0
+      - name: Add peak pressure operating context
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('core/analysis/boost-analyzer.ts')
+          t = p.read_text()
+          anchor = "export interface BoostAnalyzerResult {\n"
+          addition = "export interface BoostPeakContext {\n  readonly sampleIndex: number;\n  readonly timeMs: number;\n  readonly pressure: number;\n  readonly rpm: number | undefined;\n  readonly tps: number | undefined;\n  readonly upperDuty: number | undefined;\n  readonly lowerDuty: number | undefined;\n}\n\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+          old = "  readonly tracking: BoostTrackingStatistics | undefined;\n  readonly openLoopSpoolEvents: readonly BoostOpenLoopSpoolEvent[];\n"
+          new = "  readonly tracking: BoostTrackingStatistics | undefined;\n  readonly peak: BoostPeakContext | undefined;\n  readonly openLoopSpoolEvents: readonly BoostOpenLoopSpoolEvent[];\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          anchor = "function buildTrackingSamples(\n"
+          addition = "function peakContext(samples: readonly PhysicalBoostSample[]): BoostPeakContext | undefined {\n  let peak: PhysicalBoostSample | undefined;\n  for (const sample of samples) {\n    if (!peak || sample.measured > peak.measured) peak = sample;\n  }\n  return peak ? {\n    sampleIndex: peak.sampleIndex,\n    timeMs: peak.timeMs,\n    pressure: peak.measured,\n    rpm: peak.rpm,\n    tps: peak.tps,\n    upperDuty: peak.upperDuty,\n    lowerDuty: peak.lowerDuty,\n  } : undefined;\n}\n\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition + anchor, 1)
+          old = "  const physicalSamples = buildPhysicalSamples(inputs, indices);\n  const aligned = buildTrackingSamples(inputs, indices);"
+          new = "  const physicalSamples = buildPhysicalSamples(inputs, indices);\n  const peak = peakContext(physicalSamples);\n  const aligned = buildTrackingSamples(inputs, indices);"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    tracking,\n    openLoopSpoolEvents,\n"
+          new = "    tracking,\n    peak,\n    openLoopSpoolEvents,\n"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('tests/analysis/boost-analyzer.test.ts')
+          t = p.read_text()
+          marker = "  it('detects open-loop pressure-rise spool without a boost target', () => {\n"
+          test = "  it('retains RPM, TPS and wastegate duty at peak measured pressure', () => {\n    const result = analyzeBoost({\n      measuredPressure: range(0, [100, 180, 220, 205]),\n      rpm: range(0, [2000, 2500, 3200, 3600]),\n      tps: range(0, [80, 95, 100, 100]),\n      upperDuty: range(0, [30, 45, 60, 65]),\n      lowerDuty: range(0, [5, 10, 20, 25]),\n    }, { complete: true });\n\n    expect(result.peak).toMatchObject({\n      sampleIndex: 2,\n      pressure: 220,\n      rpm: 3200,\n      tps: 100,\n      upperDuty: 60,\n      lowerDuty: 20,\n    });\n  });\n\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, test + marker, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          old = "        <div><span>Measured max</span><strong data-boost=\"measured-max\">—</strong></div>\n        <div><span>TPS / load mean</span>"
+          new = "        <div><span>Measured max</span><strong data-boost=\"measured-max\">—</strong></div>\n        <div><span>Peak RPM</span><strong data-boost=\"peak-rpm\">—</strong></div>\n        <div><span>Peak TPS / load</span><strong data-boost=\"peak-tps\">—</strong></div>\n        <div><span>Peak upper duty</span><strong data-boost=\"peak-upper\">—</strong></div>\n        <div><span>Peak lower duty</span><strong data-boost=\"peak-lower\">—</strong></div>\n        <div><span>TPS / load mean</span>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "    field('measured-max').textContent = formatNumber(currentResult.measured.max);\n    field('tps-mean').textContent = formatNumber(currentResult.tps?.mean);"
+          new = "    field('measured-max').textContent = formatNumber(currentResult.measured.max);\n    field('peak-rpm').textContent = formatNumber(currentResult.peak?.rpm, 0);\n    field('peak-tps').textContent = formatNumber(currentResult.peak?.tps);\n    field('peak-upper').textContent = formatNumber(currentResult.peak?.upperDuty);\n    field('peak-lower').textContent = formatNumber(currentResult.peak?.lowerDuty);\n    field('tps-mean').textContent = formatNumber(currentResult.tps?.mean);"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          old = "  'Measured max': { title: 'Measured pressure maximum', text: 'Highest valid measured pressure in the qualified scope. Useful for identifying peak boost, but pair it with RPM/load and event context before deciding whether it represents overshoot or intended operation.' },\n"
+          addition = old + "  'Peak RPM': { title: 'RPM at peak pressure', text: 'Engine speed at the exact sample where measured pressure was highest in the qualified scope. This turns peak boost into a usable operating point instead of an isolated pressure number.' },\n  'Peak TPS / load': { title: 'TPS / load at peak pressure', text: 'Selected TPS/load value at the exact peak-pressure sample. Use it to confirm the peak came from a comparable load condition before comparing pulls or duty strategies.' },\n  'Peak upper duty': { title: 'Upper duty at peak pressure', text: 'Upper-chamber wastegate command at the exact peak-pressure sample. In Open Loop this directly ties the peak result to the command being used at that operating point.' },\n  'Peak lower duty': { title: 'Lower duty at peak pressure', text: 'Lower-chamber wastegate command at the exact peak-pressure sample. Compare with upper duty rather than treating dual-chamber control as one combined command.' },\n"
+          assert t.count(old) == 1
+          t = t.replace(old, addition, 1)
+          p.write_text(t)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts tests/analysis/boost-analyzer.test.ts apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts
+          git commit -m "Add peak Boost operating context"
+          git push origin HEAD:feature/boost-peak-context
