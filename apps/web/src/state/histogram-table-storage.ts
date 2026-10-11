@@ -1,5 +1,12 @@
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
-import type { NumericQualificationLogic, NumericQualificationOperator } from '../../../../core/analysis/sample-qualification';
+import type { NumericQualificationLogic } from '../../../../core/analysis/sample-qualification';
+import {
+  isAnalysisFilterCondition,
+  loadAnalysisFilterSets,
+  saveAnalysisFilterSets,
+  type AnalysisFilterConditionState,
+  type AnalysisFilterSetState,
+} from './analysis-filter-storage';
 
 export type HistogramTableAggregation = NumericAggregationMethod | 'weighted-mean';
 export type HistogramTableColorMode = 'value' | 'weight';
@@ -11,21 +18,8 @@ export interface HistogramCalculatedFieldDefinition {
   readonly unit?: string;
 }
 
-export interface HistogramFilterConditionState {
-  readonly channelId: string;
-  readonly operator: NumericQualificationOperator;
-  readonly value: number;
-  readonly group: string;
-  readonly enabled: boolean;
-}
-
-export interface HistogramFilterSetState {
-  readonly id: string;
-  readonly name: string;
-  readonly groupLogic: NumericQualificationLogic;
-  readonly groupConditionLogic: NumericQualificationLogic;
-  readonly conditions: readonly HistogramFilterConditionState[];
-}
+export type HistogramFilterConditionState = AnalysisFilterConditionState;
+export type HistogramFilterSetState = AnalysisFilterSetState;
 
 export interface HistogramTablePresetState {
   readonly id: string;
@@ -58,7 +52,6 @@ export interface HistogramTablePresetState {
 }
 
 const FORMULA_KEY = 'epicscope.histogram.formulas.v1';
-const FILTER_SET_KEY = 'epicscope.histogram.filter-sets.v1';
 const PRESET_KEY = 'epicscope.histogram.table-presets.v1';
 
 const aggregationValues = new Set<HistogramTableAggregation>([
@@ -71,13 +64,12 @@ const aggregationValues = new Set<HistogramTableAggregation>([
   'standard-deviation',
   'weighted-mean',
 ]);
-const qualificationOperators = new Set<NumericQualificationOperator>(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);
 const qualificationLogic = new Set<NumericQualificationLogic>(['and', 'or']);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === 'string';
-const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
+const isBoolean = (value: unknown): value => typeof value === 'boolean';
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 function isCalculatedField(value: unknown): value is HistogramCalculatedFieldDefinition {
@@ -89,26 +81,6 @@ function isCalculatedField(value: unknown): value is HistogramCalculatedFieldDef
     && isString(value.expression)
     && value.expression.length > 0
     && (value.unit === undefined || isString(value.unit));
-}
-
-function isFilterCondition(value: unknown): value is HistogramFilterConditionState {
-  if (!isRecord(value)) return false;
-  return isString(value.channelId)
-    && qualificationOperators.has(value.operator as NumericQualificationOperator)
-    && isFiniteNumber(value.value)
-    && isString(value.group)
-    && isBoolean(value.enabled);
-}
-
-function isFilterSet(value: unknown): value is HistogramFilterSetState {
-  if (!isRecord(value) || !Array.isArray(value.conditions)) return false;
-  return isString(value.id)
-    && value.id.length > 0
-    && isString(value.name)
-    && value.name.length > 0
-    && qualificationLogic.has(value.groupLogic as NumericQualificationLogic)
-    && qualificationLogic.has(value.groupConditionLogic as NumericQualificationLogic)
-    && value.conditions.every(isFilterCondition);
 }
 
 function isTablePreset(value: unknown): value is HistogramTablePresetState {
@@ -129,7 +101,7 @@ function isTablePreset(value: unknown): value is HistogramTablePresetState {
     && (value.colorMode === undefined || value.colorMode === 'value' || value.colorMode === 'weight')
     && qualificationLogic.has(value.groupLogic as NumericQualificationLogic)
     && qualificationLogic.has(value.groupConditionLogic as NumericQualificationLogic)
-    && value.filters.every(isFilterCondition);
+    && value.filters.every(isAnalysisFilterCondition);
 }
 
 function readValidatedArray<T>(key: string, guard: (value: unknown) => value is T): T[] {
@@ -154,7 +126,6 @@ function writeArray<T>(key: string, values: readonly T[]): boolean {
 }
 
 let calculatedFieldCache = readValidatedArray(FORMULA_KEY, isCalculatedField);
-let filterSetCache = readValidatedArray(FILTER_SET_KEY, isFilterSet);
 let tablePresetCache = readValidatedArray(PRESET_KEY, isTablePreset);
 
 export const loadHistogramCalculatedFields = (): HistogramCalculatedFieldDefinition[] => [...calculatedFieldCache];
@@ -162,11 +133,8 @@ export const saveHistogramCalculatedFields = (values: readonly HistogramCalculat
   calculatedFieldCache = values.filter(isCalculatedField);
   return writeArray(FORMULA_KEY, calculatedFieldCache);
 };
-export const loadHistogramFilterSets = (): HistogramFilterSetState[] => [...filterSetCache];
-export const saveHistogramFilterSets = (values: readonly HistogramFilterSetState[]): boolean => {
-  filterSetCache = values.filter(isFilterSet);
-  return writeArray(FILTER_SET_KEY, filterSetCache);
-};
+export const loadHistogramFilterSets = loadAnalysisFilterSets;
+export const saveHistogramFilterSets = saveAnalysisFilterSets;
 export const loadHistogramTablePresets = (): HistogramTablePresetState[] => [...tablePresetCache];
 export const saveHistogramTablePresets = (values: readonly HistogramTablePresetState[]): boolean => {
   tablePresetCache = values.filter(isTablePreset);
