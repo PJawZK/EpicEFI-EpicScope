@@ -133,6 +133,7 @@ export function mountAppShell(root: HTMLElement): void {
         </div>
       </div>
       <div class="graph-selector-slot"></div>
+      <div class="analyzer-selector-slot" hidden></div>
       <div class="histogram-selector-slot" hidden></div>
     </div>
     <div class="header-context">
@@ -248,16 +249,18 @@ export function mountAppShell(root: HTMLElement): void {
   `;
 
   const graphSelectorSlot = header.querySelector<HTMLElement>('.graph-selector-slot');
+  const analyzerSelectorSlot = header.querySelector<HTMLElement>('.analyzer-selector-slot');
   const histogramSelectorSlot = header.querySelector<HTMLElement>('.histogram-selector-slot');
   const loggerToolsSlot = header.querySelector<HTMLElement>('.logger-tools-slot');
   const settingsShortcutsSlot = header.querySelector<HTMLElement>('.settings-shortcuts-slot');
   const diagnosticsSlot = footer.querySelector<HTMLElement>('.diagnostics-slot');
   const performanceDiagnosticsSlot = footer.querySelector<HTMLElement>('.performance-diagnostics-slot');
   const bugReportSlot = footer.querySelector<HTMLElement>('.bug-report-slot');
-  if (!graphSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {
+  if (!graphSelectorSlot || !analyzerSelectorSlot || !histogramSelectorSlot || !loggerToolsSlot || !settingsShortcutsSlot || !diagnosticsSlot || !performanceDiagnosticsSlot || !bugReportSlot) {
     throw new Error('EpicScope application shell control slots are incomplete.');
   }
   graphSelectorSlot.append(loggerPage.graphSelector);
+  analyzerSelectorSlot.append(analyzerPage.headerControl);
   histogramSelectorSlot.append(histogramPage.headerControl);
   loggerToolsSlot.append(loggerPage.headerTools);
   settingsShortcutsSlot.append(loggerPage.keyboardShortcutsControl);
@@ -939,6 +942,7 @@ export function mountAppShell(root: HTMLElement): void {
     analyzerPage.element.hidden = !analyzerActive;
     histogramPage.element.hidden = !histogramActive;
     graphSelectorSlot.hidden = !loggerActive;
+    analyzerSelectorSlot.hidden = !analyzerActive;
     histogramSelectorSlot.hidden = !histogramActive;
     loggerToolsSlot.hidden = !loggerActive;
     undoButton.hidden = !loggerActive;

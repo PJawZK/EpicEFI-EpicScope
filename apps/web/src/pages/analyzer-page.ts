@@ -12,6 +12,7 @@ import {
 
 export interface AnalyzerPageController {
   readonly element: HTMLElement;
+  readonly headerControl: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
@@ -53,6 +54,22 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const boostView = createBoostAnalyzerView();
   const specializedView = createSpecializedAnalyzerSuiteView();
 
+  const headerControl = document.createElement('label');
+  headerControl.className = 'histogram-header-view analyzer-header-view';
+  headerControl.innerHTML = `
+    <select class="analyzer-header-view-select" aria-label="Analyzer analysis view">
+      <option value="compare" selected>Range Compare</option>
+      <option value="tune-table">Tune Table</option>
+      <option value="boost">Boost · Experimental</option>
+      <option value="idle">Idle · Experimental</option>
+      <option value="ae-map">AE / MAP Predict · Experimental</option>
+      <option value="fueling">Fueling · Experimental</option>
+      <option value="ignition">Ignition · Experimental</option>
+      <option value="fuel-injector">Fuel Pressure / Injector · Experimental</option>
+      <option value="trigger-sync">Trigger / Sync · Experimental</option>
+    </select>
+  `;
+
   const root = document.createElement('main');
   root.className = 'analyzer-page';
   root.hidden = true;
@@ -64,17 +81,6 @@ export function createAnalyzerPage(): AnalyzerPageController {
         <p>Compare one available log channel across two saved Logger ranges.</p>
       </div>
       <div class="analyzer-head-actions">
-        <div class="analyzer-view-switch" role="group" aria-label="Analyzer view">
-          <button type="button" class="analyzer-view-choice analyzer-view-choice--active" data-analyzer-view="compare">Range Compare</button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="tune-table">Tune Table</button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="boost">Boost <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="idle">Idle <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="ae-map">AE / MAP <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="fueling">Fueling <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="ignition">Ignition <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="fuel-injector">Fuel / Injector <span class="analyzer-experimental-tag">EXP</span></button>
-          <button type="button" class="analyzer-view-choice" data-analyzer-view="trigger-sync">Trigger / Sync <span class="analyzer-experimental-tag">EXP</span></button>
-        </div>
         <div class="analyzer-controls">
         <label><span>Channel</span><select class="analyzer-channel"></select></label>
         <label><span>Left range</span><select class="analyzer-left-range"></select></label>
@@ -132,8 +138,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const compareControls = root.querySelector<HTMLElement>('.analyzer-controls');
   const heading = root.querySelector<HTMLElement>('.analyzer-head h1');
   const description = root.querySelector<HTMLElement>('.analyzer-head p');
-  const viewChoices = [...root.querySelectorAll<HTMLButtonElement>('[data-analyzer-view]')];
-  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description) {
+  const viewSelect = headerControl.querySelector<HTMLSelectElement>('.analyzer-header-view-select');
+  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {
     throw new Error('Analyzer page structure is incomplete.');
   }
 
@@ -260,11 +266,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     tuneTableView.element.hidden = !tuneActive;
     boostView.element.hidden = !boostActive;
     specializedView.element.hidden = !specializedActive;
-    for (const choice of viewChoices) {
-      const selected = choice.dataset.analyzerView === view;
-      choice.classList.toggle('analyzer-view-choice--active', selected);
-      choice.setAttribute('aria-pressed', String(selected));
-    }
+    viewSelect.value = view;
     if (compareActive) {
       heading.textContent = 'Saved range comparison';
       description.textContent = 'Compare any available log channel across two saved Logger ranges.';
@@ -315,15 +317,14 @@ export function createAnalyzerPage(): AnalyzerPageController {
   leftSelect.addEventListener('change', () => { void render(); });
   rightSelect.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
-  for (const choice of viewChoices) {
-    choice.addEventListener('click', () => {
-      const view = choice.dataset.analyzerView;
-      if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
-    });
-  }
+  viewSelect.addEventListener('change', () => {
+    const view = viewSelect.value;
+    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
+  });
 
   return {
     element: root,
+    headerControl,
     setContext,
     setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
     refresh: () => {
