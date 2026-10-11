@@ -79,7 +79,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     <section class="analyzer-head">
       <div>
         <span class="analyzer-eyebrow">Analyzer</span>
-        <h1>Saved range comparison</h1>
+        <h1>Range comparison</h1>
         <p>Compare one available log channel across two analysis scopes.</p>
       </div>
       <div class="analyzer-head-actions">
@@ -271,7 +271,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     specializedView.element.hidden = !specializedActive;
     viewSelect.value = view;
     if (compareActive) {
-      heading.textContent = 'Saved range comparison';
+      heading.textContent = 'Range comparison';
       description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges.';
       void render();
       return;
