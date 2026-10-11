@@ -32,11 +32,23 @@ jobs:
               1,
           )
 
-          shell = shell.replace(
-              "  const bugReportDialog = document.createElement('dialog');\n  bugReportDialog.className = 'bug-report-dialog';\n  bugReportDialog.innerHTML = `\n    <form method=\"dialog\" class=\"bug-report-panel\">",
-              "  const bugReportPopover = document.createElement('div');\n  bugReportPopover.className = 'bug-report-popover';\n  bugReportPopover.setAttribute('role', 'dialog');\n  bugReportPopover.setAttribute('aria-label', 'EpicScope report');\n  bugReportPopover.hidden = true;\n  bugReportPopover.innerHTML = `\n    <div class=\"bug-report-panel\">",
-              1,
+          old_create = (
+              "  const bugReportDialog = document.createElement('dialog');\n"
+              "  bugReportDialog.className = 'bug-report-dialog';\n"
+              "  bugReportDialog.innerHTML = `\n"
+              "    <form method=\"dialog\" class=\"bug-report-panel\">"
           )
+          new_create = (
+              "  const bugReportPopover = document.createElement('div');\n"
+              "  bugReportPopover.className = 'bug-report-popover';\n"
+              "  bugReportPopover.setAttribute('role', 'dialog');\n"
+              "  bugReportPopover.setAttribute('aria-label', 'EpicScope report');\n"
+              "  bugReportPopover.hidden = true;\n"
+              "  bugReportPopover.innerHTML = `\n"
+              "    <div class=\"bug-report-panel\">"
+          )
+          assert old_create in shell
+          shell = shell.replace(old_create, new_create, 1)
           shell = shell.replace('bugReportDialog', 'bugReportPopover')
           shell = shell.replace(
               '<button type="submit" class="bug-report-close" aria-label="Close bug report">×</button>',
@@ -48,57 +60,58 @@ jobs:
               '        <button type="button" class="bug-report-footer-close">Close</button>\n      </footer>\n    </div>',
               1,
           )
+
           old_append = '  bugReportSlot.append(bugReportButton);\n'
           assert old_append in shell
-          new_append = '''  const bugReportWrap = document.createElement('div');
-  bugReportWrap.className = 'bug-report-wrap';
-  bugReportWrap.append(bugReportButton, bugReportPopover);
-  bugReportSlot.append(bugReportWrap);
-
-  const closeTransientSurface = (trigger: HTMLElement): void => {
-    trigger.setAttribute('aria-expanded', 'false');
-    const owner = trigger.parentElement;
-    if (!owner) return;
-    for (const surface of owner.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"]')) {
-      surface.hidden = true;
-    }
-    if (trigger.classList.contains('brand-button')) trigger.classList.remove('brand-button--open');
-  };
-
-  document.addEventListener('pointerdown', (event) => {
-    const target = event.target;
-    if (!(target instanceof Node)) return;
-    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]')) {
-      const owner = trigger.parentElement;
-      if (!owner || owner.contains(target)) continue;
-      closeTransientSurface(trigger);
-    }
-  }, true);
-'''
+          new_append = (
+              "  const bugReportWrap = document.createElement('div');\n"
+              "  bugReportWrap.className = 'bug-report-wrap';\n"
+              "  bugReportWrap.append(bugReportButton, bugReportPopover);\n"
+              "  bugReportSlot.append(bugReportWrap);\n\n"
+              "  const closeTransientSurface = (trigger: HTMLElement): void => {\n"
+              "    trigger.setAttribute('aria-expanded', 'false');\n"
+              "    const owner = trigger.parentElement;\n"
+              "    if (!owner) return;\n"
+              "    for (const surface of owner.querySelectorAll<HTMLElement>('[role=\"menu\"], [role=\"dialog\"]')) {\n"
+              "      surface.hidden = true;\n"
+              "    }\n"
+              "    if (trigger.classList.contains('brand-button')) trigger.classList.remove('brand-button--open');\n"
+              "  };\n\n"
+              "  document.addEventListener('pointerdown', (event) => {\n"
+              "    const target = event.target;\n"
+              "    if (!(target instanceof Node)) return;\n"
+              "    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded=\"true\"]')) {\n"
+              "      const owner = trigger.parentElement;\n"
+              "      if (!owner || owner.contains(target)) continue;\n"
+              "      closeTransientSurface(trigger);\n"
+              "    }\n"
+              "  }, true);\n"
+          )
           shell = shell.replace(old_append, new_append, 1)
 
-          old_open = '''  bugReportButton.addEventListener('click', () => {
-    refreshBugReport();
-    bugReportPopover.showModal();
-  });
-'''
+          old_open = (
+              "  bugReportButton.addEventListener('click', () => {\n"
+              "    refreshBugReport();\n"
+              "    bugReportPopover.showModal();\n"
+              "  });\n"
+          )
           assert old_open in shell
-          new_open = '''  const closeBugReport = (): void => {
-    bugReportPopover.hidden = true;
-    bugReportButton.setAttribute('aria-expanded', 'false');
-  };
-
-  bugReportButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const nextOpen = bugReportPopover.hidden;
-    if (nextOpen) refreshBugReport();
-    bugReportPopover.hidden = !nextOpen;
-    bugReportButton.setAttribute('aria-expanded', String(nextOpen));
-  });
-  bugReportPopover.addEventListener('click', (event) => event.stopPropagation());
-  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-close')?.addEventListener('click', closeBugReport);
-  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-footer-close')?.addEventListener('click', closeBugReport);
-'''
+          new_open = (
+              "  const closeBugReport = (): void => {\n"
+              "    bugReportPopover.hidden = true;\n"
+              "    bugReportButton.setAttribute('aria-expanded', 'false');\n"
+              "  };\n\n"
+              "  bugReportButton.addEventListener('click', (event) => {\n"
+              "    event.stopPropagation();\n"
+              "    const nextOpen = bugReportPopover.hidden;\n"
+              "    if (nextOpen) refreshBugReport();\n"
+              "    bugReportPopover.hidden = !nextOpen;\n"
+              "    bugReportButton.setAttribute('aria-expanded', String(nextOpen));\n"
+              "  });\n"
+              "  bugReportPopover.addEventListener('click', (event) => event.stopPropagation());\n"
+              "  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-close')?.addEventListener('click', closeBugReport);\n"
+              "  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-footer-close')?.addEventListener('click', closeBugReport);\n"
+          )
           shell = shell.replace(old_open, new_open, 1)
 
           assert 'bugReportDialog' not in shell
@@ -120,8 +133,10 @@ jobs:
               + '  position: absolute;\n  left: 0;\n  bottom: calc(100% + 4px);\n  z-index: 300;\n',
               1,
           )
+          size_anchor = '  width: min(920px, calc(100vw - 32px));\n  max-width: none;\n'
+          assert size_anchor in css
           css = css.replace(
-              '  width: min(920px, calc(100vw - 32px));\n  max-width: none;\n',
+              size_anchor,
               '  width: min(760px, 80vw);\n  max-width: calc(100vw - 24px);\n  max-height: min(620px, 76vh);\n  overflow: hidden;\n',
               1,
           )
