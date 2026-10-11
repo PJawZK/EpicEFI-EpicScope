@@ -19,26 +19,28 @@ jobs:
           from pathlib import Path
           path = Path('apps/web/src/app/app-shell.ts')
           text = path.read_text()
-          old = '''    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]')) {
-      const owner = trigger.parentElement;
-      if (!owner || owner.contains(target)) continue;
-      closeTransientSurface(trigger);
-    }
-  }, true);
-'''
-          new = '''    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]')) {
-      const owner = trigger.parentElement;
-      if (!owner || owner.contains(target)) continue;
-      closeTransientSurface(trigger);
-    }
-    for (const details of app.querySelectorAll<HTMLDetailsElement>('details[open]')) {
-      if (details.contains(target)) continue;
-      const transient = details.classList.contains('timeline-maintenance-menu')
-        || details.querySelector(':scope > [class*="popover"]') !== null;
-      if (transient) details.open = false;
-    }
-  }, true);
-'''
+          old = (
+              "    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded=\"true\"]')) {\n"
+              "      const owner = trigger.parentElement;\n"
+              "      if (!owner || owner.contains(target)) continue;\n"
+              "      closeTransientSurface(trigger);\n"
+              "    }\n"
+              "  }, true);\n"
+          )
+          new = (
+              "    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded=\"true\"]')) {\n"
+              "      const owner = trigger.parentElement;\n"
+              "      if (!owner || owner.contains(target)) continue;\n"
+              "      closeTransientSurface(trigger);\n"
+              "    }\n"
+              "    for (const details of app.querySelectorAll<HTMLDetailsElement>('details[open]')) {\n"
+              "      if (details.contains(target)) continue;\n"
+              "      const transient = details.classList.contains('timeline-maintenance-menu')\n"
+              "        || details.querySelector(':scope > [class*=\"popover\"]') !== null;\n"
+              "      if (transient) details.open = false;\n"
+              "    }\n"
+              "  }, true);\n"
+          )
           assert text.count(old) == 1
           path.write_text(text.replace(old, new, 1))
           PY
