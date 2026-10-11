@@ -149,10 +149,46 @@ describe('analyzeBoost', () => {
     expect(result.steadyStateWindows[0]?.endSampleIndex).toBe(1);
   });
 
+  it('detects open-loop pressure-rise spool without a boost target', () => {
+    const result = analyzeBoost({
+      measuredPressure: range(0, [100, 108, 125, 155, 182, 205]),
+      rpm: range(0, [1800, 1900, 2100, 2400, 2750, 3100]),
+      tps: range(0, [96, 97, 98, 99, 100, 100]),
+      upperDuty: range(0, [45, 45, 50, 55, 60, 60]),
+      lowerDuty: range(0, [10, 10, 12, 15, 18, 20]),
+    }, {
+      complete: true,
+      openLoopSpool: { startPressure: 110, endPressure: 200 },
+    });
+
+    expect(result.tracking).toBeUndefined();
+    expect(result.openLoopSpoolEvents).toHaveLength(1);
+    const event = result.openLoopSpoolEvents[0];
+    expect(event).toMatchObject({ startSampleIndex: 1, endSampleIndex: 5, durationMs: 400, startRpm: 1900, endRpm: 3100, startTps: 97, endTps: 100 });
+    expect(event?.attainment10).toMatchObject({ sampleIndex: 2, durationMs: 100, rpm: 2100, tps: 98, upperDuty: 50 });
+    expect(event?.attainment50).toMatchObject({ sampleIndex: 3, durationMs: 200, rpm: 2400, tps: 99, upperDuty: 55 });
+    expect(event?.attainment90).toMatchObject({ sampleIndex: 5, durationMs: 400, rpm: 3100, tps: 100, upperDuty: 60 });
+  });
+
+  it('resets open-loop spool across non-contiguous source samples', () => {
+    const result = analyzeBoost({ measuredPressure: range(0, [100, 130, 170, 205]) }, {
+      sampleIndices: [0, 1, 3],
+      openLoopSpool: { startPressure: 110, endPressure: 200 },
+    });
+    expect(result.openLoopSpoolEvents).toEqual([]);
+  });
+
+  it('validates open-loop spool pressure thresholds', () => {
+    const inputs = { measuredPressure: range(0, [100, 200]) };
+    expect(() => analyzeBoost(inputs, { openLoopSpool: { startPressure: 200, endPressure: 100 } })).toThrow(RangeError);
+    expect(() => analyzeBoost(inputs, { openLoopSpool: { startPressure: 100, endPressure: 200, minimumDurationMs: -1 } })).toThrow(RangeError);
+  });
+
   it('works as measured-pressure-only analysis when target is unavailable', () => {
     const result = analyzeBoost({ measuredPressure: range(0, [100, 120, 140]) }, { complete: true });
     expect(result.measured.max).toBe(140);
     expect(result.tracking).toBeUndefined();
+    expect(result.openLoopSpoolEvents).toEqual([]);
     expect(result.spoolEvents).toEqual([]);
     expect(result.steadyStateWindows).toEqual([]);
     expect(result.complete).toBe(true);

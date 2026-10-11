@@ -8,8 +8,15 @@ export interface BoostAnalyzerInputs {
   readonly measuredPressure: NumericChannelRange;
   readonly targetPressure?: NumericChannelRange;
   readonly rpm?: NumericChannelRange;
+  readonly tps?: NumericChannelRange;
   readonly upperDuty?: NumericChannelRange;
   readonly lowerDuty?: NumericChannelRange;
+}
+
+export interface BoostOpenLoopSpoolConfig {
+  readonly startPressure: number;
+  readonly endPressure: number;
+  readonly minimumDurationMs?: number;
 }
 
 export interface BoostSpoolConfig {
@@ -29,6 +36,7 @@ export interface BoostAnalyzerOptions {
   readonly sampleIndices?: ArrayLike<number>;
   readonly complete?: boolean;
   readonly targetTolerance?: number;
+  readonly openLoopSpool?: BoostOpenLoopSpoolConfig;
   readonly spool?: BoostSpoolConfig;
   readonly steadyState?: BoostSteadyStateConfig;
 }
@@ -45,6 +53,39 @@ export interface BoostTrackingStatistics {
   readonly targetTolerance: number | undefined;
   readonly targetAttainmentSampleCount: number | undefined;
   readonly targetAttainmentFraction: number | undefined;
+}
+
+export interface BoostOpenLoopSpoolAttainment {
+  readonly fraction: 0.1 | 0.5 | 0.9;
+  readonly sampleIndex: number;
+  readonly timeMs: number;
+  readonly durationMs: number;
+  readonly measuredPressure: number;
+  readonly rpm: number | undefined;
+  readonly tps: number | undefined;
+  readonly upperDuty: number | undefined;
+  readonly lowerDuty: number | undefined;
+}
+
+export interface BoostOpenLoopSpoolEvent {
+  readonly startSampleIndex: number;
+  readonly endSampleIndex: number;
+  readonly startTimeMs: number;
+  readonly endTimeMs: number;
+  readonly durationMs: number;
+  readonly startPressure: number;
+  readonly endPressure: number;
+  readonly startRpm: number | undefined;
+  readonly endRpm: number | undefined;
+  readonly startTps: number | undefined;
+  readonly endTps: number | undefined;
+  readonly startUpperDuty: number | undefined;
+  readonly endUpperDuty: number | undefined;
+  readonly startLowerDuty: number | undefined;
+  readonly endLowerDuty: number | undefined;
+  readonly attainment10: BoostOpenLoopSpoolAttainment | undefined;
+  readonly attainment50: BoostOpenLoopSpoolAttainment | undefined;
+  readonly attainment90: BoostOpenLoopSpoolAttainment | undefined;
 }
 
 export interface BoostSpoolAttainment {
@@ -91,9 +132,11 @@ export interface BoostAnalyzerResult {
   readonly inputSampleCount: number;
   readonly measured: NumericAggregationResult;
   readonly target: NumericAggregationResult | undefined;
+  readonly tps: NumericAggregationResult | undefined;
   readonly upperDuty: NumericAggregationResult | undefined;
   readonly lowerDuty: NumericAggregationResult | undefined;
   readonly tracking: BoostTrackingStatistics | undefined;
+  readonly openLoopSpoolEvents: readonly BoostOpenLoopSpoolEvent[];
   readonly spoolEvents: readonly BoostSpoolEvent[];
   readonly steadyStateWindows: readonly BoostSteadyStateWindow[];
   readonly complete: boolean;
@@ -103,6 +146,16 @@ interface AlignedValue {
   readonly status: 'valid' | 'invalid' | 'unavailable';
   readonly value?: number;
   readonly timeMs?: number;
+}
+
+interface PhysicalBoostSample {
+  readonly sampleIndex: number;
+  readonly timeMs: number;
+  readonly measured: number;
+  readonly rpm: number | undefined;
+  readonly tps: number | undefined;
+  readonly upperDuty: number | undefined;
+  readonly lowerDuty: number | undefined;
 }
 
 interface TrackingSample {
@@ -142,6 +195,117 @@ function readAligned(range: NumericChannelRange | undefined, sampleIndex: number
 
 function aggregateFor(range: NumericChannelRange | undefined, indices: readonly number[]): NumericAggregationResult | undefined {
   return range ? aggregateNumericSamples(range, { sampleIndices: indices }) : undefined;
+}
+
+function buildPhysicalSamples(inputs: BoostAnalyzerInputs, indices: readonly number[]): PhysicalBoostSample[] {
+  const samples: PhysicalBoostSample[] = [];
+  for (const sampleIndex of indices) {
+    const measured = readAligned(inputs.measuredPressure, sampleIndex);
+    if (measured.status !== 'valid') continue;
+    const rpm = readAligned(inputs.rpm, sampleIndex);
+    const tps = readAligned(inputs.tps, sampleIndex);
+    const upperDuty = readAligned(inputs.upperDuty, sampleIndex);
+    const lowerDuty = readAligned(inputs.lowerDuty, sampleIndex);
+    samples.push({
+      sampleIndex,
+      timeMs: measured.timeMs!,
+      measured: measured.value!,
+      rpm: rpm.status === 'valid' ? rpm.value : undefined,
+      tps: tps.status === 'valid' ? tps.value : undefined,
+      upperDuty: upperDuty.status === 'valid' ? upperDuty.value : undefined,
+      lowerDuty: lowerDuty.status === 'valid' ? lowerDuty.value : undefined,
+    });
+  }
+  return samples;
+}
+
+function validateOpenLoopSpool(config: BoostOpenLoopSpoolConfig | undefined): Required<BoostOpenLoopSpoolConfig> | undefined {
+  if (!config) return undefined;
+  const minimumDurationMs = config.minimumDurationMs ?? 0;
+  if (!Number.isFinite(config.startPressure) || !Number.isFinite(config.endPressure)) throw new RangeError('Open-loop boost spool pressure thresholds must be finite.');
+  if (config.endPressure <= config.startPressure) throw new RangeError('Open-loop boost spool endPressure must be greater than startPressure.');
+  if (!Number.isFinite(minimumDurationMs) || minimumDurationMs < 0) throw new RangeError('Open-loop boost spool minimumDurationMs must be >= 0.');
+  return { ...config, minimumDurationMs };
+}
+
+function findOpenLoopSpoolEvents(samples: readonly PhysicalBoostSample[], rawConfig: BoostOpenLoopSpoolConfig | undefined): BoostOpenLoopSpoolEvent[] {
+  const config = validateOpenLoopSpool(rawConfig);
+  if (!config) return [];
+  const events: BoostOpenLoopSpoolEvent[] = [];
+  const rise = config.endPressure - config.startPressure;
+  const threshold10 = config.startPressure + rise * 0.1;
+  const threshold50 = config.startPressure + rise * 0.5;
+  const threshold90 = config.startPressure + rise * 0.9;
+  let start: PhysicalBoostSample | undefined;
+  let previous: PhysicalBoostSample | undefined;
+  let attainment10: BoostOpenLoopSpoolAttainment | undefined;
+  let attainment50: BoostOpenLoopSpoolAttainment | undefined;
+  let attainment90: BoostOpenLoopSpoolAttainment | undefined;
+
+  const reset = (): void => {
+    start = undefined;
+    attainment10 = undefined;
+    attainment50 = undefined;
+    attainment90 = undefined;
+  };
+  const attainment = (sample: PhysicalBoostSample, fraction: 0.1 | 0.5 | 0.9): BoostOpenLoopSpoolAttainment => ({
+    fraction,
+    sampleIndex: sample.sampleIndex,
+    timeMs: sample.timeMs,
+    durationMs: sample.timeMs - start!.timeMs,
+    measuredPressure: sample.measured,
+    rpm: sample.rpm,
+    tps: sample.tps,
+    upperDuty: sample.upperDuty,
+    lowerDuty: sample.lowerDuty,
+  });
+
+  for (const sample of samples) {
+    if (previous && (sample.sampleIndex !== previous.sampleIndex + 1 || sample.timeMs <= previous.timeMs)) reset();
+    if (sample.measured <= config.startPressure) {
+      start = sample;
+      attainment10 = undefined;
+      attainment50 = undefined;
+      attainment90 = undefined;
+      previous = sample;
+      continue;
+    }
+    if (!start) {
+      previous = sample;
+      continue;
+    }
+    if (!attainment10 && sample.measured >= threshold10) attainment10 = attainment(sample, 0.1);
+    if (!attainment50 && sample.measured >= threshold50) attainment50 = attainment(sample, 0.5);
+    if (!attainment90 && sample.measured >= threshold90) attainment90 = attainment(sample, 0.9);
+    if (sample.measured >= config.endPressure) {
+      const durationMs = sample.timeMs - start.timeMs;
+      if (durationMs >= config.minimumDurationMs) {
+        events.push({
+          startSampleIndex: start.sampleIndex,
+          endSampleIndex: sample.sampleIndex,
+          startTimeMs: start.timeMs,
+          endTimeMs: sample.timeMs,
+          durationMs,
+          startPressure: start.measured,
+          endPressure: sample.measured,
+          startRpm: start.rpm,
+          endRpm: sample.rpm,
+          startTps: start.tps,
+          endTps: sample.tps,
+          startUpperDuty: start.upperDuty,
+          endUpperDuty: sample.upperDuty,
+          startLowerDuty: start.lowerDuty,
+          endLowerDuty: sample.lowerDuty,
+          attainment10,
+          attainment50,
+          attainment90,
+        });
+      }
+      reset();
+    }
+    previous = sample;
+  }
+  return events;
 }
 
 function buildTrackingSamples(
@@ -383,21 +547,26 @@ export function analyzeBoost(
   const indices = selectedSampleIndices(inputs.measuredPressure, options.sampleIndices);
   const measured = aggregateNumericSamples(inputs.measuredPressure, { sampleIndices: indices });
   const target = aggregateFor(inputs.targetPressure, indices);
+  const tps = aggregateFor(inputs.tps, indices);
   const upperDuty = aggregateFor(inputs.upperDuty, indices);
   const lowerDuty = aggregateFor(inputs.lowerDuty, indices);
+  const physicalSamples = buildPhysicalSamples(inputs, indices);
   const aligned = buildTrackingSamples(inputs, indices);
   const tracking = inputs.targetPressure ? trackingStatistics(aligned.samples, aligned.invalid, aligned.unavailable, options.targetTolerance) : undefined;
+  const openLoopSpoolEvents = findOpenLoopSpoolEvents(physicalSamples, options.openLoopSpool);
   const spoolEvents = inputs.targetPressure ? findSpoolEvents(aligned.samples, options.spool) : [];
   const steadyStateWindows = inputs.targetPressure ? findSteadyStateWindows(aligned.samples, options.steadyState) : [];
 
-  const aggregates = [measured, target, upperDuty, lowerDuty].filter((value): value is NumericAggregationResult => value !== undefined);
+  const aggregates = [measured, target, tps, upperDuty, lowerDuty].filter((value): value is NumericAggregationResult => value !== undefined);
   return {
     inputSampleCount: indices.length,
     measured,
     target,
+    tps,
     upperDuty,
     lowerDuty,
     tracking,
+    openLoopSpoolEvents,
     spoolEvents,
     steadyStateWindows,
     complete: options.complete === true
