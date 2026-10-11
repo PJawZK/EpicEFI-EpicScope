@@ -51,14 +51,40 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'ae-map:tps': { include: [/^tps(value)?$/i, /throttle.*position/i, /(^|\b)tps(\b|$)/i] },
   'ae-map:map': { include: [/^map(value)?$/i, /manifold.*pressure/i, /(^|\b)map(\b|$)/i], exclude: [/predict/i, /estimate/i] },
   'ae-map:predictedMap': { include: [/map.*predict/i, /predict.*map/i, /map.*estimate/i, /estimate.*map/i] },
-  'ae-map:afr': { include: [/^afr(value)?$/i, /air.*fuel/i, /lambda(value)?/i], exclude: [/target/i, /error/i] },
+  'ae-map:afr': {
+    exact: ['ini:lambdaValue', 'lambdaValue', 'ini:afrGasolineScale', 'afrGasolineScale', 'ini:AFRValue', 'AFRValue'],
+    include: [/^lambda(value)?$/i, /(^|\b)lambda(\b|$)/i, /gas.*scale.*afr/i, /air.*fuel.*gas.*scale/i, /^afr(value)?$/i, /air.*fuel/i],
+    exclude: [/target/i, /error/i, /lambda.*2/i, /afr.*2/i],
+  },
 
-  'fueling:actual': { include: [/^afr(value)?$/i, /actual.*afr/i, /lambda(value)?/i], exclude: [/target/i, /error/i] },
-  'fueling:target': { include: [/target.*afr/i, /afr.*target/i, /lambda.*target/i, /target.*lambda/i] },
-  'fueling:ve': { include: [/^ve(value)?$/i, /(^|\b)ve(\b|$)/i, /fuel.*table.*value/i] },
-  'fueling:fuelCommand': { include: [/injector.*(pw|pulse)/i, /pulse.*width/i, /inj.*pw/i, /fuel.*command/i, /commanded.*fuel/i, /(^|\b)ve(\b|$)/i], exclude: [/dead.*time/i, /duty/i, /target.*afr/i] },
+  // EpicEFI/JZ works in lambda internally. Prefer the canonical lambda pair, then Gas Scale AFR,
+  // then generic AFR only as a fallback for logs that do not expose lambda.
+  'fueling:actual': {
+    exact: ['ini:lambdaValue', 'lambdaValue', 'ini:afrGasolineScale', 'afrGasolineScale', 'ini:AFRValue', 'AFRValue'],
+    include: [/^lambda(value)?$/i, /(^|\b)lambda(\b|$)/i, /gas.*scale.*afr/i, /air.*fuel.*gas.*scale/i, /^afr(value)?$/i, /actual.*afr/i, /air.*fuel/i],
+    exclude: [/target/i, /error/i, /lambda.*2/i, /afr.*2/i],
+  },
+  'fueling:target': {
+    exact: ['ini:targetLambda', 'targetLambda', 'ini:targetAFR', 'targetAFR'],
+    include: [/target.*lambda/i, /lambda.*target/i, /target.*afr/i, /afr.*target/i],
+    exclude: [/table/i, /axis/i],
+  },
+  'fueling:ve': {
+    exact: ['ini:veValue', 'veValue'],
+    include: [/^ve(value)?$/i, /fuel.*ve/i, /(^|\b)ve(\b|$)/i],
+    exclude: [/tuned/i, /table/i, /axis/i, /bin/i],
+  },
+  'fueling:fuelCommand': {
+    exact: ['ini:actualLastInjection', 'actualLastInjection'],
+    include: [/last.*inj.*pulse.*width/i, /injector.*(pw|pulse)/i, /pulse.*width/i, /inj.*pw/i, /fuel.*command/i, /commanded.*fuel/i],
+    exclude: [/dead.*time/i, /duty/i, /target/i, /stage\s*2/i, /secondary/i],
+  },
   'fueling:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
-  'fueling:load': { include: [/^map(value)?$/i, /manifold.*pressure/i, /engine.*load/i, /(^|\b)tps(\b|$)/i], exclude: [/predict/i, /estimate/i, /target/i] },
+  'fueling:load': {
+    exact: ['ini:veTableYAxis', 'veTableYAxis'],
+    include: [/ve.*table.*y.*axis/i, /fuel.*load/i, /^map(value)?$/i, /manifold.*pressure/i, /engine.*load/i, /(^|\b)tps(\b|$)/i],
+    exclude: [/predict/i, /estimate/i, /target/i, /idle/i],
+  },
 
   'ignition:advance': { include: [/ignition.*advance/i, /spark.*advance/i, /advance.*deg/i, /ign.*adv/i] },
   'ignition:retard': { include: [/ignition.*retard/i, /spark.*retard/i, /knock.*retard/i, /(^|\b)retard(\b|$)/i] },

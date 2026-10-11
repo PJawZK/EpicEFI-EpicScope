@@ -33,6 +33,7 @@ export interface SpecializedAnalyzerSuiteController {
 }
 
 type IdleSystem = 'combined' | 'rpm-control' | 'dc-valve' | 'iac' | 'etb' | 'ignition';
+type MixtureScale = 'lambda' | 'afr' | 'unknown';
 
 interface RoleSpec {
   readonly key: string;
@@ -100,12 +101,12 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   },
   'ae-map': {
     title: 'AE / MAP Predict',
-    description: 'Tip-in/decel events with MAP response, predicted MAP error and AFR excursion.',
+    description: 'Tip-in/decel events with MAP response, predicted MAP error and mixture excursion; lambda is preferred when available.',
     roles: [
       { key: 'tps', label: 'TPS', required: true },
       { key: 'map', label: 'Measured MAP' },
       { key: 'predictedMap', label: 'Predicted MAP' },
-      { key: 'afr', label: 'AFR' },
+      { key: 'afr', label: 'Mixture (λ preferred)' },
     ],
     options: [
       { key: 'tpsThreshold', label: 'TPS delta threshold', value: '2', step: '0.1' },
@@ -114,17 +115,17 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   },
   fueling: {
     title: 'Fueling',
-    description: 'Steady-state AFR error by RPM/load plus observed AFR response-delay evidence from isolated fuel-command changes.',
+    description: 'Steady-state mixture error by RPM/VE-load plus observed mixture response-delay evidence from isolated injector-PW changes.',
     roles: [
-      { key: 'actual', label: 'Actual AFR', required: true },
-      { key: 'target', label: 'Target AFR' },
-      { key: 've', label: 'VE / fuel value' },
-      { key: 'fuelCommand', label: 'Fuel command · higher = more fuel' },
+      { key: 'actual', label: 'Actual mixture (λ preferred)', required: true },
+      { key: 'target', label: 'Target mixture (λ preferred)' },
+      { key: 've', label: 'Current VE' },
+      { key: 'fuelCommand', label: 'Fuel command / injector PW · higher = more fuel' },
       { key: 'rpm', label: 'RPM' },
-      { key: 'load', label: 'Load / MAP / TPS' },
+      { key: 'load', label: 'VE table load axis' },
     ],
     options: [
-      { key: 'deadband', label: 'AFR error deadband', value: '0.2', step: '0.05' },
+      { key: 'deadband', label: 'Mixture error deadband', placeholder: 'auto: 0.015 λ / 0.20 AFR', step: '0.001' },
       { key: 'mapRpmBin', label: 'Map RPM bin size', value: '250', step: '1' },
       { key: 'mapLoadBin', label: 'Map load bin size', value: '10', step: 'any' },
       { key: 'mapMinSamples', label: 'Map minimum samples / bin', value: '10', step: '1' },
@@ -132,7 +133,7 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
       { key: 'mapMaxLoadRate', label: 'Map max load rate / s', value: '25', step: 'any' },
       { key: 'mapSettleMs', label: 'Map stable settling ms', value: '300', step: '10' },
       { key: 'delayCommandDelta', label: 'Delay command Δ threshold', value: '0.5', step: 'any' },
-      { key: 'delayAfrDelta', label: 'Delay AFR response threshold', value: '0.15', step: '0.01' },
+      { key: 'delayAfrDelta', label: 'Delay mixture response threshold', placeholder: 'auto: 0.010 λ / 0.15 AFR', step: '0.001' },
       { key: 'delayWindow', label: 'Delay search window ms', value: '1200', step: '10' },
       { key: 'delaySpacing', label: 'Delay min event spacing ms', value: '250', step: '10' },
     ],
@@ -217,7 +218,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary"></div>
       <section class="specialized-analyzer-events specialized-analyzer-map-section" hidden>
-        <header><strong data-specialized="map-title">Steady-state AFR operating points</strong><span data-specialized="map-count">0</span></header>
+        <header><strong data-specialized="map-title">Steady-state mixture operating points</strong><span data-specialized="map-count">0</span></header>
         <div class="specialized-analyzer-table-wrap">
           <table class="specialized-analyzer-table specialized-analyzer-map-table"><thead></thead><tbody></tbody></table>
         </div>
@@ -272,6 +273,14 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     return Number.isFinite(value) ? value : fallback;
   }
 
+  const mixtureScale = (trace: LoggerAnalysisTraceContext | undefined): MixtureScale => {
+    if (!trace) return 'unknown';
+    const identity = `${trace.channel.sourceName} ${trace.channel.displayName}`.toLowerCase();
+    if (identity.includes('lambda')) return 'lambda';
+    if (/\bafr\b|air.?fuel/.test(identity)) return 'afr';
+    return 'unknown';
+  };
+
   const currentIdleSystem = (): IdleSystem => {
     const value = controls.querySelector<HTMLSelectElement>('select[data-role="idle-system"]')?.value as IdleSystem | undefined;
     return IDLE_SYSTEMS.some((entry) => entry.value === value) ? value! : 'combined';
@@ -283,8 +292,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const updateIdleGuidance = (): void => {
     if (domain === 'fueling') {
       guidance.hidden = false;
-      field('guidance-title').textContent = 'Steady-state AFR evidence + observed response delay';
-      field('guidance-text').textContent = 'The steady-state map requires Target AFR, RPM and load. Samples only enter it after RPM/load remain inside the configured rate limits for the settling period. Delay analysis is separate and optional: select a fuel-command channel where a larger value means more commanded fuel (for example injector PW or an appropriate VE/fuel command). Delay is reported as observed response timing, not as a pure sensor-delay claim.';
+      field('guidance-title').textContent = 'Steady-state mixture evidence + observed response delay';
+      field('guidance-text').textContent = 'EpicEFI/JZ defaults to Lambda + target lambda, current VE, last injector pulse width and the VE-table Y axis when those channels are present. The steady-state map only accepts samples after RPM/load settle. Leave the two mixture thresholds blank to use scale-aware defaults: 0.015 λ / 0.20 AFR deadband and 0.010 λ / 0.15 AFR response. Delay is observed transport/response timing, not a pure sensor-delay claim.';
       return;
     }
     if (domain !== 'idle') { guidance.hidden = true; return; }
@@ -603,7 +612,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           { label: 'TPS', range: tps.range },
           ...(map ? [{ label: 'MAP', range: map.range }] : []),
           ...(predicted ? [{ label: 'Predicted MAP', range: predicted.range }] : []),
-          ...(afr ? [{ label: 'AFR', range: afr.range }] : []),
+          ...(afr ? [{ label: 'Mixture', range: afr.range }] : []),
         ];
         const eventWindow = optionNumber('window', 500);
         showAlignedEvidence('AE / MAP Predict · aligned transients', transientSeries, result.events, 200, Math.max(300, eventWindow));
@@ -615,9 +624,9 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Predict error MAE', numberText(finiteMean(result.events.map((event) => event.predictionErrorAtEnd === undefined ? undefined : Math.abs(event.predictionErrorAtEnd))))],
           ['Peak lean excursion', numberText(result.events.length ? Math.max(...result.events.map((event) => event.afrLeanExcursion ?? 0)) : undefined)],
           ['Peak rich excursion', numberText(result.events.length ? Math.min(...result.events.map((event) => event.afrRichExcursion ?? 0)) : undefined)],
-          ['Predicted MAP mean', numberText(result.predictedMap?.mean)], ['AFR mean', numberText(result.afr?.mean)],
+          ['Predicted MAP mean', numberText(result.predictedMap?.mean)], ['Mixture mean', numberText(result.afr?.mean)],
         ]);
-        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'AFR lean', 'AFR rich'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]), eventNavigation(result.events, 'AE / MAP transient'), (index) => {
+        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'Lean excursion', 'Rich excursion'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]), eventNavigation(result.events, 'AE / MAP transient'), (index) => {
           const event = result.events[index];
           if (event) { field('evidence-note').textContent = `Event ${index + 1} · ${event.direction} · TPS Δ ${numberText(event.tpsDelta)} · t=0 onset`; renderAlignedAnalyzerEvidence(evidenceCanvas, transientSeries, [event], 200, Math.max(300, eventWindow)); }
         });
@@ -628,7 +637,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const fuelCommand = traces.get('fuelCommand');
         const rpm = traces.get('rpm');
         const load = traces.get('load');
-        const deadband = optionNumber('deadband', 0.2);
+        const actualScale = mixtureScale(actual);
+        const targetScale = mixtureScale(target);
+        if (target && actualScale !== 'unknown' && targetScale !== 'unknown' && actualScale !== targetScale) {
+          throw new Error('Actual and target mixture channels use different scales. Select Lambda + target lambda, or matching AFR channels.');
+        }
+        const deadband = optionNumber('deadband', actualScale === 'lambda' ? 0.015 : 0.2);
         const result = analyzeFueling({ actualAfr: actual.range, ...(target ? { targetAfr: target.range } : {}), ...(ve ? { ve: ve.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, errorDeadband: deadband });
         const operatingMap = target && rpm && load ? buildFuelingOperatingMap({
           actualAfr: actual.range,
@@ -646,7 +660,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         }, scoped.sampleIndices) : undefined;
         if (operatingMap) {
           renderMapTable(
-            ['RPM bin', 'Load bin', 'Samples', 'RPM mean', 'Load mean', 'Actual AFR', 'Target AFR', 'Error mean', 'Error median', 'P10', 'P90', 'MAE', 'SD', 'Lean / rich / band', 'Bias'],
+            ['RPM bin', 'Load bin', 'Samples', 'RPM mean', 'Load mean', 'Actual mixture', 'Target mixture', 'Error mean', 'Error median', 'P10', 'P90', 'MAE', 'SD', 'Lean / rich / band', 'Bias'],
             operatingMap.operatingPoints.map((point) => [
               `${numberText(point.rpmStart, 0)}–${numberText(point.rpmEnd, 0)}`,
               `${numberText(point.loadStart)}–${numberText(point.loadEnd)}`,
@@ -674,32 +688,33 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ...(load ? { load: load.range } : {}),
         }, {
           commandDeltaThreshold: optionNumber('delayCommandDelta', 0.5),
-          afrResponseThreshold: optionNumber('delayAfrDelta', 0.15),
+          afrResponseThreshold: optionNumber('delayAfrDelta', actualScale === 'lambda' ? 0.010 : 0.15),
           searchWindowMs: delayWindow,
           minimumEventSpacingMs: optionNumber('delaySpacing', 250),
           responsePolarity: 'inverse',
         }, scoped.sampleIndices) : undefined;
         const delaySeries: AnalyzerEvidenceSeries[] = fuelCommand ? [
-          { label: 'Fuel command', range: fuelCommand.range },
-          { label: 'Actual AFR', range: actual.range },
-          ...(target ? [{ label: 'Target AFR', range: target.range }] : []),
+          { label: 'Fuel command / injector PW', range: fuelCommand.range },
+          { label: 'Actual mixture', range: actual.range },
+          ...(target ? [{ label: 'Target mixture', range: target.range }] : []),
           ...(rpm ? [{ label: 'RPM', range: rpm.range }] : []),
-          ...(load ? [{ label: 'Load', range: load.range }] : []),
+          ...(load ? [{ label: 'VE table load', range: load.range }] : []),
         ] : [];
         const delayEvidenceEvents = delay?.events.map((event) => ({ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs })) ?? [];
-        showAlignedEvidence('Fueling · AFR response-delay evidence', delaySeries, delayEvidenceEvents, 200, delayWindow);
+        showAlignedEvidence('Fueling · observed mixture response-delay evidence', delaySeries, delayEvidenceEvents, 200, delayWindow);
         renderSummary([
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
-          ['Actual AFR mean', numberText(result.actual.mean)], ['Target AFR mean', numberText(result.target?.mean)],
+          ['Mixture scale', actualScale === 'lambda' ? 'Lambda' : actualScale === 'afr' ? 'AFR' : 'Unknown / selected units'],
+          ['Actual mixture mean', numberText(result.actual.mean)], ['Target mixture mean', numberText(result.target?.mean)],
           ['Mean error', numberText(result.tracking?.meanError)], ['MAE', numberText(result.tracking?.meanAbsoluteError)],
           ['Max lean error', numberText(result.tracking?.maxPositiveError)], ['Max rich error', numberText(result.tracking?.maxNegativeError)],
           ['Lean samples', result.leanSampleCount.toLocaleString()], ['Rich samples', result.richSampleCount.toLocaleString()],
-          ['VE mean', numberText(result.ve?.mean)], ['Valid AFR samples', result.actual.validSampleCount.toLocaleString()],
+          ['Current VE mean', numberText(result.ve?.mean)], ['Valid mixture samples', result.actual.validSampleCount.toLocaleString()],
           ['Steady map bins', operatingMap ? operatingMap.operatingPoints.length.toLocaleString() : 'Select target / RPM / load'],
           ['Steady eligible / input', operatingMap ? `${operatingMap.stableEligibleSampleCount.toLocaleString()} / ${operatingMap.inputSampleCount.toLocaleString()}` : '—'],
           ['Transient rejected', operatingMap ? operatingMap.transientRejectedSampleCount.toLocaleString() : '—'],
           ['Map invalid / unavailable', operatingMap ? `${operatingMap.invalidSampleCount.toLocaleString()} / ${operatingMap.unavailableSampleCount.toLocaleString()}` : '—'],
-          ['Observed AFR delay median', delay?.onsetDelay ? `${numberText(delay.onsetDelay.medianMs, 0)} ms` : fuelCommand ? 'No usable events' : 'Select fuel command'],
+          ['Observed mixture delay median', delay?.onsetDelay ? `${numberText(delay.onsetDelay.medianMs, 0)} ms` : fuelCommand ? 'No usable events' : 'Select fuel command'],
           ['Observed delay P10–P90', delay?.onsetDelay ? `${numberText(delay.onsetDelay.p10Ms, 0)}–${numberText(delay.onsetDelay.p90Ms, 0)} ms` : '—'],
           ['Delay median T50 / T90', delay ? `${numberText(delay.medianT50Ms, 0)} / ${numberText(delay.medianT90Ms, 0)} ms` : '—'],
           ['Delay evidence strength', delay?.evidenceStrength ?? 'Not evaluated'],
@@ -710,9 +725,9 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           const navigation: EvidenceNavigation[] = delay.events.map((event, index) => ({
             sampleIndices: event.commandSampleIndex === event.responseSampleIndex ? [event.commandSampleIndex] : [event.commandSampleIndex, event.responseSampleIndex],
             timeMs: event.commandTimeMs === event.responseTimeMs ? [event.commandTimeMs] : [event.commandTimeMs, event.responseTimeMs],
-            label: `AFR delay event ${index + 1}`,
+            label: `Mixture delay event ${index + 1}`,
           }));
-          renderTable('AFR response-delay events', ['#', 'Command time', 'Onset delay', 'Command Δ', 'AFR Δ @ onset', 'Peak AFR Δ', 'Peak delay', 'T50', 'T90', 'RPM', 'Load'], delay.events.map((event, index) => [
+          renderTable('Mixture response-delay events', ['#', 'Command time', 'Onset delay', 'Command Δ', 'Mixture Δ @ onset', 'Peak mixture Δ', 'Peak delay', 'T50', 'T90', 'RPM', 'Load'], delay.events.map((event, index) => [
             String(index + 1),
             timeText(event.commandTimeMs),
             `${event.onsetDelayMs.toFixed(0)} ms`,
@@ -731,21 +746,21 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
             renderAlignedAnalyzerEvidence(evidenceCanvas, delaySeries, [{ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs }], 200, delayWindow);
           });
         } else if (delay) {
-          renderTable('AFR delay evidence', ['Metric', 'Value'], [
+          renderTable('Mixture delay evidence', ['Metric', 'Value'], [
             ['Candidate command transitions', delay.candidateEventCount.toLocaleString()],
-            ['Usable AFR responses', delay.usableEventCount.toLocaleString()],
+            ['Usable mixture responses', delay.usableEventCount.toLocaleString()],
             ['Rejected · no response', delay.rejectedNoResponseCount.toLocaleString()],
             ['Rejected · overlapping command', delay.rejectedOverlapCount.toLocaleString()],
             ['Rejected · source/qualification gap', delay.rejectedGapCount.toLocaleString()],
-            ['Hint', delay.candidateEventCount === 0 ? 'Choose a command with clear changes or lower the command Δ threshold.' : 'No isolated AFR response passed the current timing/response thresholds.'],
+            ['Hint', delay.candidateEventCount === 0 ? 'Choose a command with clear changes or lower the command Δ threshold.' : 'No isolated mixture response passed the current timing/response thresholds.'],
           ]);
         } else {
           renderTable('Fueling evidence', ['Metric', 'Value'], [
-            ['Invalid AFR samples', result.actual.invalidSampleCount.toLocaleString()],
-            ['Unavailable AFR samples', result.actual.unavailableSampleCount.toLocaleString()],
+            ['Invalid mixture samples', result.actual.invalidSampleCount.toLocaleString()],
+            ['Unavailable mixture samples', result.actual.unavailableSampleCount.toLocaleString()],
             ['Tracking invalid', (result.tracking?.invalidSampleCount ?? 0).toLocaleString()],
             ['Tracking unavailable', (result.tracking?.unavailableSampleCount ?? 0).toLocaleString()],
-            ['AFR delay', 'Select Fuel command to estimate observed response delay.'],
+            ['Mixture delay', 'Select Fuel command / injector PW to estimate observed response delay.'],
           ]);
         }
       } else if (domain === 'ignition') {
