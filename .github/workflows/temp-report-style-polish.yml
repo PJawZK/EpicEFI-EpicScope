@@ -1,0 +1,31 @@
+name: Temporary report popover style polish
+on:
+  push:
+    branches:
+      - ui/transient-popover-behavior
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/transient-popover-behavior
+          fetch-depth: 0
+      - name: Polish report popover
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/styles/app.css')
+          text = path.read_text()
+          text = text.replace('  overflow: hidden;\n  padding: 0;\n  border: 1px solid var(--line);\n  border-radius: 6px;\n  background: #0a141d;\n  color: var(--text);\n', '  overflow: auto;\n  padding: 0;\n  border: 1px solid #385064;\n  border-radius: 5px;\n  background: #071722;\n  box-shadow: 0 12px 34px rgba(0,0,0,.5);\n  color: var(--text);\n', 1)
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/styles/app.css
+          git commit -m "Polish report popover styling"
+          git push origin HEAD:ui/transient-popover-behavior
