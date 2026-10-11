@@ -1,0 +1,33 @@
+name: Temporary report mount fix
+on:
+  push:
+    branches:
+      - ui/transient-popover-behavior
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/transient-popover-behavior
+          fetch-depth: 0
+      - name: Fix report mount
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/app/app-shell.ts')
+          text = path.read_text()
+          old = '  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput, bugReportPopover);\n'
+          new = '  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput);\n'
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/app/app-shell.ts
+          git commit -m "Keep Report popover in footer wrapper"
+          git push origin HEAD:ui/transient-popover-behavior
