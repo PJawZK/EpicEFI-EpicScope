@@ -15,6 +15,26 @@ The maturity sequence is:
 7. repeated-event / before-after consistency;
 8. conservative diagnostic interpretation.
 
+## Steady-state AFR operating map
+
+`core/analysis/fueling-operating-map.ts` builds RPM × load operating points from aligned Actual AFR, Target AFR, RPM and load channels.
+
+The map is deliberately stricter than simply binning every valid sample. A sample only becomes steady-state evidence after RPM and load have remained inside configured rate limits for the configured stable duration. The stable duration therefore acts as a **settling period**: samples immediately after a load/RPM transition stay rejected even when the following operating point becomes stable. Selected-source-index gaps, invalid values and unavailable channel coverage break the stable segment and remain explicit provenance.
+
+Each trustworthy bin reports:
+
+- sample count and RPM/load means;
+- actual and target AFR means;
+- AFR error mean and median;
+- P10–P90 AFR error spread;
+- mean absolute error and error standard deviation;
+- lean, rich and within-deadband sample counts;
+- a descriptive lean/rich/balanced/within-deadband bias.
+
+AFR error uses `Actual AFR − Target AFR`, so positive values are lean and negative values are rich. The map is descriptive calibration evidence; it does not by itself prove that VE is the cause of an error.
+
+The operating-map result also retains input, stable-eligible, transient-rejected, invalid and unavailable counts. Bins below the configured minimum sample count are omitted instead of being promoted as weak tuning evidence.
+
 ## AFR response delay
 
 `core/analysis/afr-delay-analyzer.ts` estimates **observed AFR response delay** from isolated changes in a selected fuel-command channel. This is intentionally not labelled as a pure sensor delay because the observation can include:
