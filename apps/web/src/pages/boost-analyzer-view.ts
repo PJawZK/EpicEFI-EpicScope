@@ -88,7 +88,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         <div><span>Lower duty mean</span><strong data-boost="lower-duty">—</strong></div>
       </div>
       <div class="boost-evidence">
-        <span>Input <strong data-boost="input">0</strong></span>
+        <span>Scope input <strong data-boost="qualification-input">0</strong></span>
+        <span>Eligible <strong data-boost="qualification-eligible">0</strong></span>
+        <span>Rejected <strong data-boost="qualification-rejected">0</strong></span>
+        <span>Qualification invalid <strong data-boost="qualification-invalid">0</strong></span>
+        <span>Qualification unavailable <strong data-boost="qualification-unavailable">0</strong></span>
         <span>Tracking valid <strong data-boost="tracking-valid">0</strong></span>
         <span>Tracking invalid <strong data-boost="tracking-invalid">0</strong></span>
         <span>Tracking unavailable <strong data-boost="tracking-unavailable">0</strong></span>
@@ -295,7 +299,11 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     field('undershoot').textContent = formatNumber(currentResult.tracking?.maxUndershoot);
     field('upper-duty').textContent = formatNumber(currentResult.upperDuty?.mean);
     field('lower-duty').textContent = formatNumber(currentResult.lowerDuty?.mean);
-    field('input').textContent = currentResult.inputSampleCount.toLocaleString();
+    field('qualification-input').textContent = scoped.inputSampleCount.toLocaleString();
+    field('qualification-eligible').textContent = scoped.eligibleSampleCount.toLocaleString();
+    field('qualification-rejected').textContent = scoped.valueRejectedSampleCount.toLocaleString();
+    field('qualification-invalid').textContent = scoped.invalidSampleCount.toLocaleString();
+    field('qualification-unavailable').textContent = scoped.unavailableSampleCount.toLocaleString();
     field('tracking-valid').textContent = (currentResult.tracking?.sampleCount ?? 0).toLocaleString();
     field('tracking-invalid').textContent = (currentResult.tracking?.invalidSampleCount ?? 0).toLocaleString();
     field('tracking-unavailable').textContent = (currentResult.tracking?.unavailableSampleCount ?? 0).toLocaleString();
