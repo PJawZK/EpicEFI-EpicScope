@@ -1,0 +1,72 @@
+name: Temporary Boost operating quality
+on:
+  push:
+    branches:
+      - feature/boost-operating-quality
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-operating-quality
+          fetch-depth: 0
+      - name: Add operating-point quality assessment
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('core/analysis/boost-analyzer.ts')
+          t = p.read_text()
+          old = "  readonly lowerDutyMean: number | undefined;\n}\n\nexport interface BoostPeakContext"
+          new = "  readonly lowerDutyMean: number | undefined;\n  readonly pressureVariationFraction: number;\n  readonly evidenceQuality: 'strong' | 'moderate' | 'limited';\n  readonly pressureConsistency: 'stable' | 'variable' | 'mixed';\n  readonly assessment: 'good-comparison' | 'usable-with-care' | 'mixed-transient-likely' | 'limited-evidence';\n}\n\nexport interface BoostPeakContext"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+
+          old = "      const pressureMean = bucket.pressureSum / bucket.count;\n      const variance = Math.max(0, bucket.pressureSumSquares / bucket.count - pressureMean * pressureMean);\n      return {"
+          new = "      const pressureMean = bucket.pressureSum / bucket.count;\n      const variance = Math.max(0, bucket.pressureSumSquares / bucket.count - pressureMean * pressureMean);\n      const pressureStdDev = Math.sqrt(variance);\n      const pressureVariationFraction = pressureStdDev / Math.max(Math.abs(pressureMean), Number.EPSILON);\n      const evidenceQuality: BoostOperatingPoint['evidenceQuality'] = bucket.count >= minimumSamples * 3\n        ? 'strong'\n        : bucket.count >= minimumSamples * 2 ? 'moderate' : 'limited';\n      const pressureConsistency: BoostOperatingPoint['pressureConsistency'] = pressureVariationFraction <= 0.03\n        ? 'stable'\n        : pressureVariationFraction <= 0.08 ? 'variable' : 'mixed';\n      const assessment: BoostOperatingPoint['assessment'] = pressureConsistency === 'mixed'\n        ? 'mixed-transient-likely'\n        : evidenceQuality === 'limited'\n          ? 'limited-evidence'\n          : pressureConsistency === 'stable' && evidenceQuality === 'strong'\n            ? 'good-comparison'\n            : 'usable-with-care';\n      return {"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "        pressureStdDev: Math.sqrt(variance),\n        upperDutyMean:"
+          new = "        pressureStdDev,\n        pressureVariationFraction,\n        evidenceQuality,\n        pressureConsistency,\n        assessment,\n        upperDutyMean:"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          old = "<th>Pressure SD</th><th>Upper duty mean</th><th>Lower duty mean</th>"
+          new = "<th>Pressure SD</th><th>Variation</th><th>Evidence</th><th>Assessment</th><th>Upper duty mean</th><th>Lower duty mean</th>"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          old = "      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;"
+          new = "      const evidence = point.evidenceQuality === 'strong' ? 'Strong' : point.evidenceQuality === 'moderate' ? 'Moderate' : 'Limited';\n      const consistency = point.pressureConsistency === 'stable' ? 'Stable' : point.pressureConsistency === 'variable' ? 'Variable' : 'Mixed';\n      const assessment = point.assessment === 'good-comparison' ? 'Good comparison evidence' : point.assessment === 'usable-with-care' ? 'Usable with care' : point.assessment === 'limited-evidence' ? 'Limited evidence' : 'Mixed/transient likely';\n      row.dataset.boostAssessment = point.assessment;\n      row.innerHTML = `<td>${formatNumber(point.rpmStart, 0)}–${formatNumber(point.rpmEnd, 0)}</td><td>${formatNumber(point.tpsStart)}–${formatNumber(point.tpsEnd)}</td><td>${point.sampleCount.toLocaleString()}</td><td>${formatNumber(point.rpmMean, 0)}</td><td>${formatNumber(point.tpsMean)}</td><td>${formatNumber(point.pressureMean)}</td><td>${formatNumber(point.pressureMin)}</td><td>${formatNumber(point.pressureMax)}</td><td>${formatNumber(point.pressureStdDev)}</td><td>${(point.pressureVariationFraction * 100).toFixed(1)}% · ${consistency}</td><td>${evidence}</td><td>${assessment}</td><td>${formatNumber(point.upperDutyMean)}</td><td>${formatNumber(point.lowerDutyMean)}</td>`;"
+          assert t.count(old) == 1
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          anchor = "  [/^Minimum samples \\/ bin$/i, { title: 'Minimum samples per operating point', text: 'Suppresses bins with too little evidence. Raising it favors repeatable/stable regions; lowering it shows sparse regions sooner. A missing bin means it did not meet this evidence threshold, not that boost data was discarded silently.' }],\n"
+          addition = anchor + "  [/^Build operating points$/i, { title: 'Operating-point quality assessment', text: 'Each shown operating point also receives Evidence, Variation and Assessment labels. Evidence is based on how far the sample count exceeds your Minimum samples / bin threshold. Variation uses pressure standard deviation divided by absolute mean pressure, so the heuristic remains unit-independent: up to 3% is Stable, 3–8% Variable, and above 8% Mixed. A Mixed result often means spool, throttle movement, gear/load changes or otherwise non-comparable samples are being combined. These labels describe evidence quality; they do not prescribe a tune change.' }],\n"
+          assert t.count(anchor) == 1
+          t = t.replace(anchor, addition, 1)
+          p.write_text(t)
+
+          p = Path('tests/analysis/boost-analyzer.test.ts')
+          t = p.read_text()
+          marker = "  it('detects open-loop pressure-rise spool without a boost target', () => {\n"
+          tests = "  it('classifies operating-point evidence and pressure consistency', () => {\n    const result = analyzeBoost({\n      measuredPressure: range(0, [150, 151, 149, 150, 151, 149, 150, 151, 149, 150, 100, 130, 160, 190]),\n      rpm: range(0, [3000, 3010, 3020, 3030, 3040, 3050, 3060, 3070, 3080, 3090, 3300, 3310, 3320, 3330]),\n      tps: range(0, [90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90]),\n    }, { operatingPoints: { rpmBinSize: 250, tpsBinSize: 5, minimumSamples: 3 } });\n\n    expect(result.operatingPoints[0]).toMatchObject({ evidenceQuality: 'strong', pressureConsistency: 'stable', assessment: 'good-comparison' });\n    expect(result.operatingPoints[0]?.pressureVariationFraction).toBeLessThan(0.03);\n    expect(result.operatingPoints[1]).toMatchObject({ evidenceQuality: 'limited', pressureConsistency: 'mixed', assessment: 'mixed-transient-likely' });\n    expect(result.operatingPoints[1]?.pressureVariationFraction).toBeGreaterThan(0.08);\n  });\n\n"
+          assert t.count(marker) == 1
+          t = t.replace(marker, tests + marker, 1)
+          p.write_text(t)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add core/analysis/boost-analyzer.ts apps/web/src/pages/boost-analyzer-view.ts apps/web/src/pages/boost-analyzer-help.ts tests/analysis/boost-analyzer.test.ts
+          git commit -m "Assess Boost operating-point evidence quality"
+          git push origin HEAD:feature/boost-operating-quality
