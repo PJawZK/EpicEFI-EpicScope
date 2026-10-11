@@ -1,6 +1,7 @@
 import { compareNumericCohorts, type NumericCompareResult } from '../../../../core/analysis/numeric-compare';
-import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
+import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';
 import type { TuneModel } from '../../../../core/tune/tune-model';
+import { loadAnalysisFilterSets, type AnalysisFilterSetState } from '../state/analysis-filter-storage';
 import type { LoggerAnalysisContext } from './logger-page';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';
 import { createTuneTableView } from './tune-table-view';
@@ -48,6 +49,7 @@ function sameChannelCatalog(
 export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
+  let analysisFilterSets = loadAnalysisFilterSets();
   let renderGeneration = 0;
   let suppressImmediateRefresh = false;
   let contextUpdateGeneration = 0;
@@ -88,13 +90,14 @@ export function createAnalyzerPage(): AnalyzerPageController {
         <label><span>Channel</span><select class="analyzer-channel"></select></label>
         <label><span>Left scope</span><select class="analyzer-left-range"></select></label>
         <label><span>Right scope</span><select class="analyzer-right-range"></select></label>
+        <label><span>Qualification</span><select class="analyzer-qualification-filter"><option value="">None</option></select></label>
         <button type="button" class="analyzer-refresh">Refresh</button>
         </div>
       </div>
     </section>
     <section class="analyzer-empty">
       <strong>Analyzer needs one available channel and two comparison scopes.</strong>
-      <span>Compare Full Log, the current Logger A/B selection, or saved Logger ranges.</span>
+      <span>Compare Full Log, Current A/B, or saved ranges, with an optional saved qualification filter.</span>
     </section>
     <section class="analyzer-content" hidden>
       <div class="analyzer-side analyzer-side--left">
@@ -105,14 +108,16 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
       <div class="analyzer-evidence analyzer-evidence--left">
         <div><span>Input</span><strong data-analyzer="left-input">0</strong></div>
-        <div><span>Valid</span><strong data-analyzer="left-valid">0</strong></div>
+        <div><span>Eligible</span><strong data-analyzer="left-eligible">0</strong></div>
+        <div><span>Rejected</span><strong data-analyzer="left-rejected">0</strong></div>
         <div><span>Invalid</span><strong data-analyzer="left-invalid">0</strong></div>
         <div><span>Unavailable</span><strong data-analyzer="left-unavailable">0</strong></div>
         <div><span>Coverage</span><strong data-analyzer="left-coverage">—</strong></div>
       </div>
       <div class="analyzer-evidence analyzer-evidence--right">
         <div><span>Input</span><strong data-analyzer="right-input">0</strong></div>
-        <div><span>Valid</span><strong data-analyzer="right-valid">0</strong></div>
+        <div><span>Eligible</span><strong data-analyzer="right-eligible">0</strong></div>
+        <div><span>Rejected</span><strong data-analyzer="right-rejected">0</strong></div>
         <div><span>Invalid</span><strong data-analyzer="right-invalid">0</strong></div>
         <div><span>Unavailable</span><strong data-analyzer="right-unavailable">0</strong></div>
         <div><span>Coverage</span><strong data-analyzer="right-coverage">—</strong></div>
@@ -125,6 +130,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
       <div class="analyzer-foot">
         <span>Comparison coverage <strong data-analyzer="coverage">—</strong></span>
+        <span>Qualification <strong data-analyzer="qualification">None</strong></span>
         <span>Delta convention <strong>Right − Left</strong></span>
       </div>
     </section>
@@ -134,6 +140,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
   const rightSelect = root.querySelector<HTMLSelectElement>('.analyzer-right-range');
+  const qualificationSelect = root.querySelector<HTMLSelectElement>('.analyzer-qualification-filter');
   const refreshButton = root.querySelector<HTMLButtonElement>('.analyzer-refresh');
   const empty = root.querySelector<HTMLElement>('.analyzer-empty');
   const content = root.querySelector<HTMLElement>('.analyzer-content');
@@ -142,7 +149,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const heading = root.querySelector<HTMLElement>('.analyzer-head h1');
   const description = root.querySelector<HTMLElement>('.analyzer-head p');
   const viewSelect = headerControl.querySelector<HTMLSelectElement>('.analyzer-header-view-select');
-  if (!channelSelect || !leftSelect || !rightSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {
+  if (!channelSelect || !leftSelect || !rightSelect || !qualificationSelect || !refreshButton || !empty || !content || !tableBody || !compareControls || !heading || !description || !viewSelect) {
     throw new Error('Analyzer page structure is incomplete.');
   }
 
@@ -152,12 +159,29 @@ export function createAnalyzerPage(): AnalyzerPageController {
     return element;
   };
 
+  const selectedQualificationFilter = (): AnalysisFilterSetState | undefined =>
+    qualificationSelect.value ? analysisFilterSets.find((filterSet) => filterSet.id === qualificationSelect.value) : undefined;
+
+  const qualificationGroups = (filterSet: AnalysisFilterSetState | undefined): NumericQualificationGroup[] => {
+    if (!filterSet) return [];
+    const grouped = new Map<string, Array<{ channelId: string; operator: AnalysisFilterSetState['conditions'][number]['operator']; value: number }>>();
+    for (const condition of filterSet.conditions) {
+      if (!condition.enabled) continue;
+      const groupId = condition.group || 'A';
+      const conditions = grouped.get(groupId) ?? [];
+      conditions.push({ channelId: condition.channelId, operator: condition.operator, value: condition.value });
+      grouped.set(groupId, conditions);
+    }
+    return [...grouped.entries()].map(([id, conditions]) => ({ id, logic: filterSet.groupConditionLogic, conditions }));
+  };
+
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
     if (currentView !== 'compare') return;
     const channelId = channelSelect.value || context.channels[0]?.id;
     const leftScope = selectedAnalyzerScope(leftSelect, context);
     const rightScope = selectedAnalyzerScope(rightSelect, context);
+    const filterSet = selectedQualificationFilter();
     if (!channelId || !leftScope || !rightScope) {
       currentResult = undefined;
       empty.hidden = false;
@@ -172,22 +196,36 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const needsFullRange = leftScope.kind === 'full' || rightScope.kind === 'full';
     const loadStartMs = needsFullRange ? undefined : Math.min(leftBounds.startMs!, rightBounds.startMs!);
     const loadEndMs = needsFullRange ? undefined : Math.max(leftBounds.endMs!, rightBounds.endMs!);
-    const [trace] = await context.loadTraces([channelId], loadStartMs, loadEndMs);
+    const filterChannelIds = filterSet
+      ? [...new Set(filterSet.conditions.filter((condition) => condition.enabled).map((condition) => condition.channelId))]
+      : [];
+    const requestedChannelIds = [channelId, ...filterChannelIds.filter((id) => id !== channelId)];
+    const traces = await context.loadTraces(requestedChannelIds, loadStartMs, loadEndMs);
     if (generation !== renderGeneration || currentView !== 'compare') return;
+    const trace = traces.find((candidate) => candidate.channel.id === channelId);
     if (!trace) { empty.hidden = false; content.hidden = true; return; }
-    const channels = new Map([[trace.channel.id, { range: trace.range, complete: trace.complete }]]);
-    const leftQualified = qualifyNumericSamples({
+    const channels = new Map(traces.map((candidate) => [candidate.channel.id, { range: candidate.range, complete: candidate.complete }]));
+    const groups = qualificationGroups(filterSet);
+    if (filterChannelIds.some((id) => !channels.has(id))) {
+      currentResult = undefined;
+      empty.hidden = false;
+      content.hidden = true;
+      return;
+    }
+    const leftQualified = qualifyNumericSampleGroups({
       referenceChannelId: trace.channel.id,
       channels,
-      conditions: [],
+      groupLogic: filterSet?.groupLogic ?? 'and',
+      groups,
       ...(leftScope.kind === 'range' && leftScope.startMs !== undefined && leftScope.endMs !== undefined
         ? { timeRange: { startMs: leftScope.startMs, endMs: leftScope.endMs } }
         : {}),
     });
-    const rightQualified = qualifyNumericSamples({
+    const rightQualified = qualifyNumericSampleGroups({
       referenceChannelId: trace.channel.id,
       channels,
-      conditions: [],
+      groupLogic: filterSet?.groupLogic ?? 'and',
+      groups,
       ...(rightScope.kind === 'range' && rightScope.startMs !== undefined && rightScope.endMs !== undefined
         ? { timeRange: { startMs: rightScope.startMs, endMs: rightScope.endMs } }
         : {}),
@@ -204,17 +242,20 @@ export function createAnalyzerPage(): AnalyzerPageController {
     field('right-label').textContent = rightScope.label;
     field('left-scope').textContent = formatScope(leftScope);
     field('right-scope').textContent = formatScope(rightScope);
-    field('left-input').textContent = currentResult.left.inputSampleCount.toLocaleString();
-    field('left-valid').textContent = currentResult.left.validSampleCount.toLocaleString();
-    field('left-invalid').textContent = currentResult.left.invalidSampleCount.toLocaleString();
-    field('left-unavailable').textContent = currentResult.left.unavailableSampleCount.toLocaleString();
+    field('left-input').textContent = leftQualified.inputSampleCount.toLocaleString();
+    field('left-eligible').textContent = leftQualified.eligibleSampleCount.toLocaleString();
+    field('left-rejected').textContent = leftQualified.valueRejectedSampleCount.toLocaleString();
+    field('left-invalid').textContent = leftQualified.invalidSampleCount.toLocaleString();
+    field('left-unavailable').textContent = leftQualified.unavailableSampleCount.toLocaleString();
     field('left-coverage').textContent = leftQualified.complete ? 'Complete' : 'Partial decoded';
-    field('right-input').textContent = currentResult.right.inputSampleCount.toLocaleString();
-    field('right-valid').textContent = currentResult.right.validSampleCount.toLocaleString();
-    field('right-invalid').textContent = currentResult.right.invalidSampleCount.toLocaleString();
-    field('right-unavailable').textContent = currentResult.right.unavailableSampleCount.toLocaleString();
+    field('right-input').textContent = rightQualified.inputSampleCount.toLocaleString();
+    field('right-eligible').textContent = rightQualified.eligibleSampleCount.toLocaleString();
+    field('right-rejected').textContent = rightQualified.valueRejectedSampleCount.toLocaleString();
+    field('right-invalid').textContent = rightQualified.invalidSampleCount.toLocaleString();
+    field('right-unavailable').textContent = rightQualified.unavailableSampleCount.toLocaleString();
     field('right-coverage').textContent = rightQualified.complete ? 'Complete' : 'Partial decoded';
     field('coverage').textContent = currentResult.complete ? 'Complete' : 'Partial decoded';
+    field('qualification').textContent = filterSet?.name ?? 'None';
 
     const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
     const rows: Array<{ label: string; key: 'count' | 'mean' | 'min' | 'max' | 'standard-deviation'; unit: string }> = [
@@ -250,6 +291,20 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if ([...select.options].some((option) => option.value === fallback)) select.value = fallback;
   };
 
+  const fillQualificationSelect = (preferred: string): void => {
+    analysisFilterSets = loadAnalysisFilterSets();
+    qualificationSelect.replaceChildren(new Option('None', ''));
+    const availableChannelIds = new Set(context.channels.map((channel) => channel.id));
+    for (const filterSet of analysisFilterSets) {
+      const missingChannel = filterSet.conditions.some((condition) => condition.enabled && !availableChannelIds.has(condition.channelId));
+      const option = new Option(missingChannel ? `${filterSet.name} · unavailable channels` : filterSet.name, filterSet.id);
+      option.disabled = missingChannel;
+      qualificationSelect.add(option);
+    }
+    const preferredOption = [...qualificationSelect.options].find((option) => option.value === preferred && !option.disabled);
+    qualificationSelect.value = preferredOption?.value ?? '';
+  };
+
   const specializedTitles: Record<SpecializedAnalyzerDomain, [string, string]> = {
     idle: ['Idle analysis', 'Target/error, valve duty/bias/feed-forward, PID terms and sag/recovery behavior.'],
     'ae-map': ['AE / MAP Predict analysis', 'Tip-in/decel events, measured/predicted MAP response and AFR excursion.'],
@@ -273,7 +328,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     viewSelect.value = view;
     if (compareActive) {
       heading.textContent = 'Range comparison';
-      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges.';
+      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges with optional saved qualification.';
       void render();
       return;
     }
@@ -306,6 +361,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const previousChannel = channelSelect.value;
     const previousLeft = leftSelect.value;
     const previousRight = rightSelect.value;
+    const previousQualification = qualificationSelect.value;
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     if (currentView === 'tune-table') tuneTableView.setContext(nextContext);
@@ -317,13 +373,15 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const rightFallback = context.savedRanges.length > 1 ? 'saved:1' : hasCurrentAb && leftFallback !== 'ab' ? 'ab' : 'full';
     fillScopeSelect(leftSelect, previousLeft, leftFallback);
     fillScopeSelect(rightSelect, previousRight, rightFallback);
+    fillQualificationSelect(previousQualification);
     if (currentView === 'compare') void render();
   };
 
   channelSelect.addEventListener('change', () => { void render(); });
   leftSelect.addEventListener('change', () => { void render(); });
   rightSelect.addEventListener('change', () => { void render(); });
-  refreshButton.addEventListener('click', () => { void render(); });
+  qualificationSelect.addEventListener('change', () => { void render(); });
+  refreshButton.addEventListener('click', () => { fillQualificationSelect(qualificationSelect.value); void render(); });
   viewSelect.addEventListener('change', () => {
     const view = viewSelect.value;
     if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
