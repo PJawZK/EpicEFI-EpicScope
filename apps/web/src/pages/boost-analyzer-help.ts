@@ -1,0 +1,58 @@
+import { addInlineHelpButton, createInlineHelpPresenter, matchingInlineHelp, type InlineHelpEntry } from '../components/inline-help';
+
+const CONTROL_HELP: readonly [RegExp, InlineHelpEntry][] = [
+  [/^Control mode$/i, { title: 'Control mode', text: 'Choose how the ECU controls boost in the analyzed data. Open Loop means wastegate duty is commanded directly and there is no meaningful Boost Target to track. Closed Loop means the ECU is actively trying to follow a Boost Target, so target error, attainment, overshoot and settling become valid controller-quality metrics. This choice changes which settings and results EpicScope enables; it does not change the log data.' }],
+  [/^Measured pressure$/i, { title: 'Measured pressure', text: 'The actual manifold/boost pressure channel produced by the engine. This is the primary response signal in both Open Loop and Closed Loop analysis. The useful end result is to relate the pressure achieved to RPM, load/TPS and wastegate duty, then judge spool, stability and control authority.' }],
+  [/^Target pressure$/i, { title: 'Target pressure · Closed Loop only', text: 'The boost pressure commanded by the closed-loop controller. Use this only when closed-loop boost control was active. EpicScope compares measured pressure with this channel to calculate tracking error, target attainment, overshoot and target-relative spool/settling behavior. It is not a substitute for an open-loop duty table.' }],
+  [/^RPM$/i, { title: 'RPM', text: 'Engine speed used as operating-point context. Boost and wastegate duty should be interpreted against RPM because the same duty can produce very different pressure at different engine speeds. RPM is also used to report where spool landmarks occur.' }],
+  [/^Upper duty$/i, { title: 'Upper wastegate duty', text: 'Command applied to the upper wastegate chamber when available. In an open-loop strategy this is one of the main tuning inputs. The intended result is to see what pressure response and spool behavior a given duty produces at a given RPM/load, and later to judge saturation/headroom.' }],
+  [/^Lower duty$/i, { title: 'Lower wastegate duty', text: 'Command applied to the lower wastegate chamber when available. Keep it separate from upper duty because the two chambers can contribute differently to wastegate force. The intended result is to compare their commanded values with the resulting boost response rather than collapsing them into one generic duty number.' }],
+  [/^Scope$/i, { title: 'Scope', text: 'Selects which part of the log is analyzed. Full Log uses the complete decoded source; Current A/B uses the active Logger selection; Saved Range uses a stored interval. Use matched scopes when comparing pulls or tune changes.' }],
+  [/^Qualification$/i, { title: 'Qualification', text: 'Applies a saved sample filter before Boost metrics are calculated. Use it to keep only comparable operating conditions such as high TPS, a chosen RPM/load region or a controller state. Rejected, invalid and unavailable samples remain visible in the evidence counts so filtering never silently removes provenance.' }],
+  [/^Target tolerance$/i, { title: 'Target tolerance · Closed Loop only', text: 'Defines how close measured pressure must be to Boost Target to count as on-target. The value uses the selected pressure channel native unit. The end result is Target attainment: the percentage of valid closed-loop samples inside ± this tolerance. Smaller tolerances are stricter.' }],
+  [/^Detect spool$/i, { title: 'Detect spool · Closed Loop currently', text: 'Enables the current target-relative spool detector. It starts below the configured start pressure and finishes when measured pressure reaches the configured fraction of Boost Target. This is meaningful only with a real closed-loop target. Open-loop spool will use pressure-rise landmarks in the next analysis layer instead.' }],
+  [/^Spool start pressure$/i, { title: 'Spool start pressure', text: 'Maximum measured pressure allowed when a target-relative spool event begins. Use it to define the pre-spool baseline region. The result is the start point from which spool duration and RPM landmarks are measured.' }],
+  [/^Minimum target pressure$/i, { title: 'Minimum target pressure · Closed Loop only', text: 'Prevents low-target regions from being treated as boost spool events. A spool event is only considered while commanded Boost Target is at least this value.' }],
+  [/^Completion fraction$/i, { title: 'Completion fraction · Closed Loop only', text: 'Fraction of Boost Target that measured pressure must reach before the current spool event is considered complete. 0.90 means 90% of the contemporaneous target. This affects event completion, while T10/T50/T90 report the first target-relative crossings.' }],
+  [/^Min spool duration ms$/i, { title: 'Minimum spool duration', text: 'Rejects target-relative spool events that complete faster than this duration. Use it mainly to suppress tiny/noisy threshold crossings rather than as a tuning target.' }],
+  [/^Detect steady state$/i, { title: 'Detect steady state · Closed Loop currently', text: 'Finds periods where target and measured pressure are changing slowly enough to treat the boost condition as stable. These windows are useful for judging sustained target error separately from spool/transients. Open-loop steady-state analysis will be based on measured-pressure stability without requiring a target.' }],
+  [/^Max target rate \/ s$/i, { title: 'Maximum target rate / s · Closed Loop only', text: 'Maximum allowed rate of change of Boost Target for a sample pair to qualify as steady. Lower values require a flatter commanded target; higher values accept more target movement. This setting changes which windows qualify, not the data itself.' }],
+  [/^Max measured rate \/ s$/i, { title: 'Maximum measured rate / s', text: 'Maximum allowed rate of change of measured pressure while identifying steady windows. Lower values demand flatter boost before a section is considered stable. The intended result is to separate sustained boost behavior from spool and oscillatory transients.' }],
+  [/^Min steady duration ms$/i, { title: 'Minimum steady duration', text: 'Minimum time a candidate stable region must persist before EpicScope reports it as a steady-state window. Increase it to focus on sustained behavior; decrease it when logs contain only short stable regions.' }],
+];
+
+const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
+  'Scope': { title: 'Scope', text: 'The source interval used by this result. Compare like-for-like scopes when judging changes.' },
+  'Coverage': { title: 'Coverage', text: 'Complete means all required decoded evidence covers the selected scope. Partial decoded means one or more selected traces do not fully cover it.' },
+  'Qualification': { title: 'Qualification', text: 'The saved sample filter applied before Boost calculations. Evidence counts below show exactly how many samples remained eligible.' },
+  'Measured mean': { title: 'Measured pressure mean', text: 'Average measured pressure over eligible samples. It provides operating-point context but is not a tuning recommendation by itself because spool and transient regions can dominate an average.' },
+  'Measured max': { title: 'Measured pressure maximum', text: 'Highest valid measured pressure in the qualified scope. Useful for identifying peak boost, but pair it with RPM/load and event context before deciding whether it represents overshoot or intended operation.' },
+  'Target mean': { title: 'Target mean · Closed Loop only', text: 'Average commanded Boost Target over eligible closed-loop samples. It is context for measured-vs-target tracking, not a standalone quality score.' },
+  'Mean error': { title: 'Mean target error · Closed Loop only', text: 'Average measured pressure minus Boost Target. Positive means average over-target; negative means average under-target. Opposing errors can cancel, so use MAE/RMSE as well.' },
+  'Mean abs error': { title: 'Mean absolute target error · Closed Loop only', text: 'Average absolute distance from Boost Target. Lower means tighter tracking and positive/negative errors cannot cancel.' },
+  'RMSE': { title: 'Target tracking RMSE · Closed Loop only', text: 'Root-mean-square pressure error relative to Boost Target. RMSE weights larger excursions more strongly than MAE; RMSE much larger than MAE indicates occasional larger deviations.' },
+  'Target attainment': { title: 'Target attainment · Closed Loop only', text: 'Percentage of valid measured-vs-target samples inside the configured ± Target tolerance. This answers how often closed-loop boost was acceptably close to the commanded target.' },
+  'Max overshoot': { title: 'Maximum overshoot · Closed Loop only', text: 'Largest positive measured-minus-target error. It identifies the worst over-target excursion in the qualified scope.' },
+  'Max undershoot': { title: 'Maximum undershoot · Closed Loop only', text: 'Largest negative measured-minus-target error. It identifies the worst under-target excursion in the qualified scope.' },
+  'Upper duty mean': { title: 'Upper duty mean', text: 'Average upper-chamber wastegate command across eligible samples. Use it as operating-point context; the useful tuning result comes from relating duty to RPM/load and resulting pressure, not from the mean alone.' },
+  'Lower duty mean': { title: 'Lower duty mean', text: 'Average lower-chamber wastegate command across eligible samples. Interpret together with upper duty and pressure response because the two chamber commands can have different physical effects.' },
+};
+
+export function ensureBoostAnalyzerHelp(root: HTMLElement): void {
+  const guidance = root.querySelector<HTMLElement>('.boost-analyzer-guidance');
+  const guidanceTitle = root.querySelector<HTMLElement>('[data-boost-help="title"]');
+  const guidanceText = root.querySelector<HTMLElement>('[data-boost-help="text"]');
+  if (!guidance || !guidanceTitle || !guidanceText) return;
+  const show = createInlineHelpPresenter(guidance, guidanceTitle, guidanceText);
+
+  for (const span of root.querySelectorAll<HTMLElement>('.boost-analyzer-controls label > span, .boost-analysis-options-grid label > span')) {
+    const help = matchingInlineHelp(span.textContent?.trim() ?? '', CONTROL_HELP);
+    if (help) addInlineHelpButton(span, help, show);
+  }
+  for (const card of root.querySelectorAll<HTMLElement>('.boost-analyzer-summary > div')) {
+    const label = card.querySelector<HTMLElement>(':scope > span')?.textContent?.trim();
+    if (!label) continue;
+    const help = SUMMARY_HELP[label];
+    if (help) addInlineHelpButton(card, help, show);
+  }
+}
