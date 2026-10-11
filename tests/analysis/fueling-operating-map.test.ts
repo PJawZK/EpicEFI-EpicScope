@@ -12,7 +12,7 @@ function range(values: readonly number[], stepMs = 100, startSampleIndex = 0, va
 }
 
 describe('steady-state Fueling operating map', () => {
-  it('bins only stable RPM/load evidence and reports AFR error distribution', () => {
+  it('bins only settled RPM/load evidence and reports AFR error distribution', () => {
     const result = buildFuelingOperatingMap({
       actualAfr: range([14.7, 14.9, 15.0, 14.8, 14.6, 13.8, 13.9, 14.0, 14.1, 14.0]),
       targetAfr: range([14.7, 14.7, 14.7, 14.7, 14.7, 14.2, 14.2, 14.2, 14.2, 14.2]),
@@ -21,38 +21,38 @@ describe('steady-state Fueling operating map', () => {
     }, {
       rpmBinSize: 250,
       loadBinSize: 10,
-      minimumSamplesPerBin: 4,
+      minimumSamplesPerBin: 3,
       maxRpmRatePerSecond: 300,
       maxLoadRatePerSecond: 10,
-      minimumStableDurationMs: 300,
+      minimumStableDurationMs: 200,
       errorDeadband: 0.15,
     });
 
     expect(result.operatingPoints).toHaveLength(2);
-    expect(result.stableEligibleSampleCount).toBe(10);
-    expect(result.transientRejectedSampleCount).toBe(1);
+    expect(result.stableEligibleSampleCount).toBe(6);
+    expect(result.transientRejectedSampleCount).toBe(4);
     expect(result.operatingPoints[0]).toMatchObject({
       rpmStart: 2000,
       loadStart: 50,
-      sampleCount: 5,
-      leanSampleCount: 2,
+      sampleCount: 3,
+      leanSampleCount: 1,
       richSampleCount: 0,
       bias: 'lean',
     });
-    expect(result.operatingPoints[0]?.errorMean).toBeCloseTo(0.06);
+    expect(result.operatingPoints[0]?.errorMean).toBeCloseTo(0.1);
     expect(result.operatingPoints[0]?.errorMedian).toBeCloseTo(0.1);
     expect(result.operatingPoints[1]).toMatchObject({
       rpmStart: 3000,
       loadStart: 90,
-      sampleCount: 5,
+      sampleCount: 3,
       leanSampleCount: 0,
-      richSampleCount: 4,
+      richSampleCount: 2,
       bias: 'rich',
     });
-    expect(result.operatingPoints[1]?.errorMean).toBeCloseTo(-0.24);
+    expect(result.operatingPoints[1]?.errorMean).toBeCloseTo(-1 / 6);
   });
 
-  it('rejects short stable fragments below the minimum stable duration', () => {
+  it('uses minimum stable duration as a settling period before samples become eligible', () => {
     const result = buildFuelingOperatingMap({
       actualAfr: range([14.7, 14.8, 14.9]),
       targetAfr: range([14.7, 14.7, 14.7]),
@@ -83,9 +83,9 @@ describe('steady-state Fueling operating map', () => {
       minimumStableDurationMs: 200,
     }, [0, 1, 2, 4, 5]);
 
-    expect(result.stableEligibleSampleCount).toBe(3);
-    expect(result.transientRejectedSampleCount).toBe(2);
-    expect(result.operatingPoints[0]?.sampleCount).toBe(3);
+    expect(result.stableEligibleSampleCount).toBe(1);
+    expect(result.transientRejectedSampleCount).toBe(4);
+    expect(result.operatingPoints[0]?.sampleCount).toBe(1);
   });
 
   it('keeps invalid and unavailable source evidence explicit', () => {
@@ -103,6 +103,7 @@ describe('steady-state Fueling operating map', () => {
 
     expect(result.invalidSampleCount).toBe(1);
     expect(result.unavailableSampleCount).toBe(1);
+    expect(result.stableEligibleSampleCount).toBe(1);
   });
 
   it('validates binning and stability thresholds', () => {
