@@ -1,0 +1,40 @@
+name: Temporary Boost open-loop copy
+on:
+  push:
+    branches:
+      - feature/boost-open-loop-ui
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/boost-open-loop-ui
+          fetch-depth: 0
+      - name: Refresh Boost copy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/src/pages/boost-analyzer-help.ts')
+          t = p.read_text()
+          old = "Open-loop spool will use pressure-rise landmarks in the next analysis layer instead."
+          new = "Open Loop uses the separate measured-pressure-rise spool detector instead, so no Boost Target is required."
+          assert t.count(old) == 1
+          p.write_text(t.replace(old, new, 1))
+
+          p = Path('apps/web/src/pages/boost-analyzer-view.ts')
+          t = p.read_text()
+          old = "RPM and wastegate duty channels are optional but strongly recommended. Boost Target is only used in Closed Loop mode."
+          new = "RPM, TPS/load and wastegate duty channels are optional but strongly recommended for useful Open Loop evidence. Boost Target is only used in Closed Loop mode."
+          assert t.count(old) == 1
+          p.write_text(t.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/pages/boost-analyzer-help.ts apps/web/src/pages/boost-analyzer-view.ts
+          git commit -m "Refresh open-loop Boost guidance"
+          git push origin HEAD:feature/boost-open-loop-ui
