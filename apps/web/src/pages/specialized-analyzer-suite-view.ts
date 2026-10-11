@@ -3,6 +3,7 @@ import { aggregateNumericSamples } from '../../../../core/analysis/numeric-aggre
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import { analyzeAfrDelay } from '../../../../core/analysis/afr-delay-analyzer';
+import { buildFuelingOperatingMap } from '../../../../core/analysis/fueling-operating-map';
 import {
   analyzeAeMapPredict,
   analyzeFueling,
@@ -113,7 +114,7 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
   },
   fueling: {
     title: 'Fueling',
-    description: 'AFR target/actual error plus observed AFR response-delay evidence from isolated fuel-command changes.',
+    description: 'Steady-state AFR error by RPM/load plus observed AFR response-delay evidence from isolated fuel-command changes.',
     roles: [
       { key: 'actual', label: 'Actual AFR', required: true },
       { key: 'target', label: 'Target AFR' },
@@ -124,6 +125,12 @@ const SPECS: Record<SpecializedAnalyzerDomain, DomainSpec> = {
     ],
     options: [
       { key: 'deadband', label: 'AFR error deadband', value: '0.2', step: '0.05' },
+      { key: 'mapRpmBin', label: 'Map RPM bin size', value: '250', step: '1' },
+      { key: 'mapLoadBin', label: 'Map load bin size', value: '10', step: 'any' },
+      { key: 'mapMinSamples', label: 'Map minimum samples / bin', value: '10', step: '1' },
+      { key: 'mapMaxRpmRate', label: 'Map max RPM rate / s', value: '500', step: '1' },
+      { key: 'mapMaxLoadRate', label: 'Map max load rate / s', value: '25', step: 'any' },
+      { key: 'mapSettleMs', label: 'Map stable settling ms', value: '300', step: '10' },
       { key: 'delayCommandDelta', label: 'Delay command Δ threshold', value: '0.5', step: 'any' },
       { key: 'delayAfrDelta', label: 'Delay AFR response threshold', value: '0.15', step: '0.01' },
       { key: 'delayWindow', label: 'Delay search window ms', value: '1200', step: '10' },
@@ -209,6 +216,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     </div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary"></div>
+      <section class="specialized-analyzer-events specialized-analyzer-map-section" hidden>
+        <header><strong data-specialized="map-title">Steady-state AFR operating points</strong><span data-specialized="map-count">0</span></header>
+        <div class="specialized-analyzer-table-wrap">
+          <table class="specialized-analyzer-table specialized-analyzer-map-table"><thead></thead><tbody></tbody></table>
+        </div>
+      </section>
       <section class="specialized-analyzer-evidence" hidden>
         <header><div><strong data-specialized="evidence-title">Event evidence</strong><span data-specialized="evidence-note">Median with 10–90% envelope · t=0 at event onset</span></div><button type="button" data-specialized="evidence-all">All events</button></header>
         <canvas class="specialized-analyzer-evidence-canvas" aria-label="Analyzer event-aligned evidence graph"></canvas>
@@ -228,12 +241,15 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const empty = root.querySelector<HTMLElement>('.specialized-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.specialized-analyzer-content');
   const summary = root.querySelector<HTMLElement>('.specialized-analyzer-summary');
+  const mapSection = root.querySelector<HTMLElement>('.specialized-analyzer-map-section');
+  const mapHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-map-table thead');
+  const mapBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-map-table tbody');
   const evidence = root.querySelector<HTMLElement>('.specialized-analyzer-evidence');
   const evidenceCanvas = root.querySelector<HTMLCanvasElement>('.specialized-analyzer-evidence-canvas');
   const evidenceAll = root.querySelector<HTMLButtonElement>('[data-specialized="evidence-all"]');
-  const tableHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table thead');
-  const tableBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table tbody');
-  if (!controls || !guidance || !optionsGrid || !empty || !content || !summary || !evidence || !evidenceCanvas || !evidenceAll || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
+  const tableHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-events:not(.specialized-analyzer-map-section) .specialized-analyzer-table thead');
+  const tableBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-events:not(.specialized-analyzer-map-section) .specialized-analyzer-table tbody');
+  if (!controls || !guidance || !optionsGrid || !empty || !content || !summary || !mapSection || !mapHead || !mapBody || !evidence || !evidenceCanvas || !evidenceAll || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
 
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-specialized="${name}"]`);
@@ -267,8 +283,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const updateIdleGuidance = (): void => {
     if (domain === 'fueling') {
       guidance.hidden = false;
-      field('guidance-title').textContent = 'Observed AFR response delay';
-      field('guidance-text').textContent = 'Delay analysis is optional. Select a fuel-command channel where a larger value means more commanded fuel (for example injector PW or an appropriate VE/fuel command). EpicScope then expects AFR to move in the opposite direction, rejects overlapping command changes and source/qualification gaps, and reports the observed response timing as evidence rather than a pure sensor-delay claim.';
+      field('guidance-title').textContent = 'Steady-state AFR evidence + observed response delay';
+      field('guidance-text').textContent = 'The steady-state map requires Target AFR, RPM and load. Samples only enter it after RPM/load remain inside the configured rate limits for the settling period. Delay analysis is separate and optional: select a fuel-command channel where a larger value means more commanded fuel (for example injector PW or an appropriate VE/fuel command). Delay is reported as observed response timing, not as a pure sensor-delay claim.';
       return;
     }
     if (domain !== 'idle') { guidance.hidden = true; return; }
@@ -384,6 +400,27 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }));
   };
 
+  const renderMapTable = (headers: readonly string[], rows: readonly (readonly string[])[]): void => {
+    mapSection.hidden = false;
+    field('map-count').textContent = rows.length.toLocaleString();
+    const headerRow = document.createElement('tr');
+    for (const header of headers) {
+      const th = document.createElement('th');
+      th.textContent = header;
+      headerRow.append(th);
+    }
+    mapHead.replaceChildren(headerRow);
+    mapBody.replaceChildren(...rows.slice(0, 300).map((values) => {
+      const tr = document.createElement('tr');
+      for (const value of values) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.append(td);
+      }
+      return tr;
+    }));
+  };
+
   const eventNavigation = (
     events: readonly { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number }[],
     label: string,
@@ -453,6 +490,9 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }
 
     try {
+      mapSection.hidden = true;
+      mapHead.replaceChildren();
+      mapBody.replaceChildren();
       evidence.hidden = true;
       restoreAllEvidence = undefined;
       if (domain === 'idle') {
@@ -588,7 +628,44 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const fuelCommand = traces.get('fuelCommand');
         const rpm = traces.get('rpm');
         const load = traces.get('load');
-        const result = analyzeFueling({ actualAfr: actual.range, ...(target ? { targetAfr: target.range } : {}), ...(ve ? { ve: ve.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, errorDeadband: optionNumber('deadband', 0.2) });
+        const deadband = optionNumber('deadband', 0.2);
+        const result = analyzeFueling({ actualAfr: actual.range, ...(target ? { targetAfr: target.range } : {}), ...(ve ? { ve: ve.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, errorDeadband: deadband });
+        const operatingMap = target && rpm && load ? buildFuelingOperatingMap({
+          actualAfr: actual.range,
+          targetAfr: target.range,
+          rpm: rpm.range,
+          load: load.range,
+        }, {
+          rpmBinSize: optionNumber('mapRpmBin', 250),
+          loadBinSize: optionNumber('mapLoadBin', 10),
+          minimumSamplesPerBin: optionNumber('mapMinSamples', 10),
+          errorDeadband: deadband,
+          maxRpmRatePerSecond: optionNumber('mapMaxRpmRate', 500),
+          maxLoadRatePerSecond: optionNumber('mapMaxLoadRate', 25),
+          minimumStableDurationMs: optionNumber('mapSettleMs', 300),
+        }, scoped.sampleIndices) : undefined;
+        if (operatingMap) {
+          renderMapTable(
+            ['RPM bin', 'Load bin', 'Samples', 'RPM mean', 'Load mean', 'Actual AFR', 'Target AFR', 'Error mean', 'Error median', 'P10', 'P90', 'MAE', 'SD', 'Lean / rich / band', 'Bias'],
+            operatingMap.operatingPoints.map((point) => [
+              `${numberText(point.rpmStart, 0)}–${numberText(point.rpmEnd, 0)}`,
+              `${numberText(point.loadStart)}–${numberText(point.loadEnd)}`,
+              point.sampleCount.toLocaleString(),
+              numberText(point.rpmMean, 0),
+              numberText(point.loadMean),
+              numberText(point.actualAfrMean),
+              numberText(point.targetAfrMean),
+              `${point.errorMean > 0 ? '+' : ''}${numberText(point.errorMean)}`,
+              `${point.errorMedian > 0 ? '+' : ''}${numberText(point.errorMedian)}`,
+              `${point.errorP10 > 0 ? '+' : ''}${numberText(point.errorP10)}`,
+              `${point.errorP90 > 0 ? '+' : ''}${numberText(point.errorP90)}`,
+              numberText(point.errorMeanAbsolute),
+              numberText(point.errorStdDev),
+              `${point.leanSampleCount} / ${point.richSampleCount} / ${point.withinDeadbandSampleCount}`,
+              point.bias === 'within-deadband' ? 'Within deadband' : point.bias === 'lean' ? 'Lean' : point.bias === 'rich' ? 'Rich' : 'Balanced',
+            ]),
+          );
+        }
         const delayWindow = optionNumber('delayWindow', 1200);
         const delay = fuelCommand ? analyzeAfrDelay({
           actualAfr: actual.range,
@@ -618,6 +695,10 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Max lean error', numberText(result.tracking?.maxPositiveError)], ['Max rich error', numberText(result.tracking?.maxNegativeError)],
           ['Lean samples', result.leanSampleCount.toLocaleString()], ['Rich samples', result.richSampleCount.toLocaleString()],
           ['VE mean', numberText(result.ve?.mean)], ['Valid AFR samples', result.actual.validSampleCount.toLocaleString()],
+          ['Steady map bins', operatingMap ? operatingMap.operatingPoints.length.toLocaleString() : 'Select target / RPM / load'],
+          ['Steady eligible / input', operatingMap ? `${operatingMap.stableEligibleSampleCount.toLocaleString()} / ${operatingMap.inputSampleCount.toLocaleString()}` : '—'],
+          ['Transient rejected', operatingMap ? operatingMap.transientRejectedSampleCount.toLocaleString() : '—'],
+          ['Map invalid / unavailable', operatingMap ? `${operatingMap.invalidSampleCount.toLocaleString()} / ${operatingMap.unavailableSampleCount.toLocaleString()}` : '—'],
           ['Observed AFR delay median', delay?.onsetDelay ? `${numberText(delay.onsetDelay.medianMs, 0)} ms` : fuelCommand ? 'No usable events' : 'Select fuel command'],
           ['Observed delay P10–P90', delay?.onsetDelay ? `${numberText(delay.onsetDelay.p10Ms, 0)}–${numberText(delay.onsetDelay.p90Ms, 0)} ms` : '—'],
           ['Delay median T50 / T90', delay ? `${numberText(delay.medianT50Ms, 0)} / ${numberText(delay.medianT90Ms, 0)} ms` : '—'],
