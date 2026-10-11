@@ -2,6 +2,7 @@ import { analyzeBoost, type BoostAnalyzerResult } from '../../../../core/analysi
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
+import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';
 
 export interface BoostAnalyzerViewController {
   readonly element: HTMLElement;
@@ -130,16 +131,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     return node;
   };
 
-  const selectedScope = (): { label: string; startMs: number; endMs: number } | undefined => {
-    if (scopeSelect.value === 'ab') {
-      if (context.aTimeMs === undefined || context.bTimeMs === undefined || context.aTimeMs === context.bTimeMs) return undefined;
-      return { label: 'Current A/B', startMs: context.aTimeMs, endMs: context.bTimeMs };
-    }
-    if (!scopeSelect.value.startsWith('saved:')) return undefined;
-    const index = Number(scopeSelect.value.slice(6));
-    const saved = Number.isInteger(index) ? context.savedRanges[index] : undefined;
-    return saved ? { label: saved.label, startMs: saved.startMs, endMs: saved.endMs } : undefined;
-  };
+  const selectedScope = (): AnalyzerScope | undefined => selectedAnalyzerScope(scopeSelect, context);
 
   const addOptionalTraceOptions = (select: HTMLSelectElement, preferred: string): void => {
     select.replaceChildren(new Option('(none)', ''));
@@ -148,10 +140,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   const fillScope = (preferred: string): void => {
-    scopeSelect.replaceChildren();
-    if (context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs) scopeSelect.add(new Option('Current A/B', 'ab'));
-    context.savedRanges.forEach((range, index) => scopeSelect.add(new Option(range.label, `saved:${index}`)));
-    if ([...scopeSelect.options].some((option) => option.value === preferred)) scopeSelect.value = preferred;
+    populateAnalyzerScopeSelect(scopeSelect, context, preferred);
   };
 
   const render = async (): Promise<void> => {
@@ -170,9 +159,14 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       return;
     }
 
-    const startMs = Math.min(scope.startMs, scope.endMs);
-    const endMs = Math.max(scope.startMs, scope.endMs);
-    const loaded = await context.loadTraces([measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined), startMs, endMs);
+    const bounds = analyzerScopeBounds(scope);
+    const startMs = bounds.startMs;
+    const endMs = bounds.endMs;
+    const loaded = await context.loadTraces(
+      [measuredId, targetId, rpmId, upperId, lowerId].filter((id): id is string => id !== undefined),
+      startMs,
+      endMs,
+    );
     if (generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const measured = byId.get(measuredId);
@@ -186,10 +180,12 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       referenceChannelId: measured.channel.id,
       channels,
       conditions: [],
-      timeRange: { startMs, endMs },
+      ...(scope.kind === 'range' && startMs !== undefined && endMs !== undefined ? { timeRange: { startMs, endMs } } : {}),
     });
     const selectedTraces = [measured, target, rpm, upper, lower].filter((trace): trace is LoggerAnalysisTraceContext => trace !== undefined);
-    const complete = scoped.complete && selectedTraces.every((trace) => trace.complete || numericRangeCoversTime(trace.range, startMs, endMs));
+    const complete = scoped.complete && selectedTraces.every((trace) =>
+      trace.complete || (startMs !== undefined && endMs !== undefined && numericRangeCoversTime(trace.range, startMs, endMs)),
+    );
 
     const spoolStartValue = optionalNumber(spoolStart);
     const spoolTargetValue = optionalNumber(spoolTarget);
@@ -239,7 +235,9 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     empty.hidden = true;
     content.hidden = false;
     refreshButton.disabled = false;
-    field('scope').textContent = `${scope.label} · ${((endMs - startMs) / 1000).toFixed(3)} s`;
+    field('scope').textContent = scope.kind === 'full'
+      ? `${scope.label} · entire source`
+      : `${scope.label} · ${(((endMs ?? 0) - (startMs ?? 0)) / 1000).toFixed(3)} s`;
     field('coverage').textContent = currentResult.complete ? 'Complete' : 'Partial decoded';
     field('measured-mean').textContent = formatNumber(currentResult.measured.mean);
     field('measured-max').textContent = formatNumber(currentResult.measured.max);
