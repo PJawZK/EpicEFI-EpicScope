@@ -1,4 +1,9 @@
-const BOOST_SORT_TABLES = ['.boost-operating-table', '.boost-open-spool-table'] as const;
+const SORTABLE_TABLES = [
+  '.boost-operating-table',
+  '.boost-open-spool-table',
+  '.specialized-analyzer-map-table',
+  '.specialized-analyzer-events:not(.specialized-analyzer-map-section) .specialized-analyzer-table',
+] as const;
 
 interface SortState {
   columnIndex: number;
@@ -9,7 +14,7 @@ const sortStates = new WeakMap<HTMLTableElement, SortState>();
 
 function targetTable(element: Element | null): HTMLTableElement | undefined {
   if (!(element instanceof HTMLTableElement)) return undefined;
-  return BOOST_SORT_TABLES.some((selector) => element.matches(selector)) ? element : undefined;
+  return SORTABLE_TABLES.some((selector) => element.matches(selector)) ? element : undefined;
 }
 
 function numericSortValue(text: string): number | undefined {
@@ -29,11 +34,15 @@ function compareCellText(leftText: string, rightText: string): number {
   return leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+function isEmptyStateRow(row: HTMLTableRowElement): boolean {
+  return row.dataset.boostEmptyState === 'true' || row.dataset.analyzerEmptyState === 'true';
+}
+
 function applySort(table: HTMLTableElement): void {
   const state = sortStates.get(table);
   const body = table.tBodies[0];
   if (!state || !body) return;
-  const rows = [...body.rows].filter((row) => row.dataset.boostEmptyState !== 'true');
+  const rows = [...body.rows].filter((row) => !isEmptyStateRow(row));
   if (rows.length < 2) return;
   const direction = state.direction === 'ascending' ? 1 : -1;
   const sorted = [...rows].sort((left, right) => {
@@ -67,11 +76,10 @@ function sortByHeader(header: HTMLTableCellElement): void {
 }
 
 function prepareSortableTable(table: HTMLTableElement): void {
-  table.classList.add('boost-sortable-table');
+  table.classList.add('boost-sortable-table', 'analyzer-sortable-table');
   for (const header of table.querySelectorAll<HTMLTableCellElement>('thead th')) {
     header.tabIndex = 0;
-    header.setAttribute('role', 'button');
-    header.title = 'Sort low to high / high to low';
+    header.title = 'Sort ascending / descending';
   }
   updateHeaderState(table);
   applySort(table);
@@ -119,7 +127,7 @@ function openSpoolFeedback(root: HTMLElement): void {
 }
 
 function apply(root: HTMLElement): void {
-  for (const selector of BOOST_SORT_TABLES) {
+  for (const selector of SORTABLE_TABLES) {
     const table = root.querySelector<HTMLTableElement>(selector);
     if (table) prepareSortableTable(table);
   }
@@ -132,7 +140,7 @@ export function installBoostTableEnhancements(root: HTMLElement): void {
   root.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const header = target.closest<HTMLTableCellElement>('.boost-sortable-table thead th');
+    const header = target.closest<HTMLTableCellElement>('.analyzer-sortable-table thead th');
     if (header) sortByHeader(header);
   });
 
@@ -140,7 +148,7 @@ export function installBoostTableEnhancements(root: HTMLElement): void {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const header = target.closest<HTMLTableCellElement>('.boost-sortable-table thead th');
+    const header = target.closest<HTMLTableCellElement>('.analyzer-sortable-table thead th');
     if (!header) return;
     event.preventDefault();
     sortByHeader(header);
