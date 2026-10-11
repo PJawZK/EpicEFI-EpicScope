@@ -27,34 +27,37 @@ jobs:
 
           start = text.index('export interface HistogramFilterConditionState {')
           end = text.index('export interface HistogramTablePresetState {')
-          replacement = (
+          text = text[:start] + (
               'export type HistogramFilterConditionState = AnalysisFilterConditionState;\n'
               'export type HistogramFilterSetState = AnalysisFilterSetState;\n\n'
-          )
-          text = text[:start] + replacement + text[end:]
+          ) + text[end:]
 
+          assert text.count("const FILTER_SET_KEY = 'epicscope.histogram.filter-sets.v1';\n") == 1
           text = text.replace("const FILTER_SET_KEY = 'epicscope.histogram.filter-sets.v1';\n", '', 1)
+          assert text.count("const qualificationOperators = new Set<NumericQualificationOperator>(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);\n") == 1
           text = text.replace("const qualificationOperators = new Set<NumericQualificationOperator>(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);\n", '', 1)
 
           start = text.index('function isFilterCondition(')
           end = text.index('function isTablePreset(')
           text = text[:start] + text[end:]
+          assert text.count('    && value.filters.every(isFilterCondition);') == 1
           text = text.replace('    && value.filters.every(isFilterCondition);', '    && value.filters.every(isAnalysisFilterCondition);', 1)
 
-          text = text.replace('let filterSetCache = readValidatedArray(FILTER_SET_KEY, isFilterSet);\n', '')
-          # isFilterSet sat between the removed filter-condition guard and table preset guard.
-          if 'function isFilterSet(' in text:
-              start = text.index('function isFilterSet(')
-              end = text.index('function isTablePreset(')
-              text = text[:start] + text[end:]
+          old_cache = 'let filterSetCache = readValidatedArray(FILTER_SET_KEY, isFilterSet);\n'
+          assert text.count(old_cache) == 1
+          text = text.replace(old_cache, '', 1)
 
-          old = "export const loadHistogramFilterSets = (): HistogramFilterSetState[] => [...filterSetCache];\nexport const saveHistogramFilterSets = (values: readonly HistogramFilterSetState[]): boolean => {\n  filterSetCache = values.filter(isFilterSet);\n  return writeArray(FILTER_SET_KEY, filterSetCache);\n};\n"
-          new = "export const loadHistogramFilterSets = loadAnalysisFilterSets;\nexport const saveHistogramFilterSets = saveAnalysisFilterSets;\n"
-          assert text.count(old) == 1
-          text = text.replace(old, new, 1)
+          export_start = text.index('export const loadHistogramFilterSets =')
+          export_end = text.index('export const loadHistogramTablePresets =')
+          text = text[:export_start] + (
+              'export const loadHistogramFilterSets = loadAnalysisFilterSets;\n'
+              'export const saveHistogramFilterSets = saveAnalysisFilterSets;\n'
+          ) + text[export_end:]
+
           assert 'FILTER_SET_KEY' not in text
           assert 'isFilterSet' not in text
           assert 'filterSetCache' not in text
+          assert 'NumericQualificationOperator' not in text
           path.write_text(text)
           PY
       - name: Commit patch
