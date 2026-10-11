@@ -1,9 +1,6 @@
-interface HelpEntry {
-  readonly title: string;
-  readonly text: string;
-}
+import { addInlineHelpButton, createInlineHelpPresenter, matchingInlineHelp, type InlineHelpEntry } from '../components/inline-help';
 
-const CONTROL_HELP: readonly [RegExp, HelpEntry][] = [
+const CONTROL_HELP: readonly [RegExp, InlineHelpEntry][] = [
   [/^Idle system$/i, { title: 'Idle system', text: 'Chooses which idle-control layer to focus on. Combined shows every available layer. RPM Control is the outer loop that decides requested idle-air position. DC Valve Control is the inner position loop that makes the physical DC valve follow that request. IAC, ETB and Ignition isolate those actuator/helper paths.' }],
   [/^RPM(?: · Engine)?$/i, { title: 'RPM', text: 'Measured engine speed. This is the actual value compared with Idle target. For idle quality, use RPM error, sag depth and recovery metrics rather than RPM mean alone.' }],
   [/^Idle target(?: · Engine)?$/i, { title: 'Idle target', text: 'The RPM target requested by the ECU. RPM error is calculated as actual RPM minus this target, so negative error means the engine is below target.' }],
@@ -31,7 +28,7 @@ const CONTROL_HELP: readonly [RegExp, HelpEntry][] = [
   [/^Settled band RPM$/i, { title: 'Settled band RPM', text: 'Defines recovery. Recovery is complete when RPM returns within ± this many RPM of target. A smaller band is stricter and usually produces longer recovery times.' }],
 ];
 
-const SUMMARY_HELP: Readonly<Record<string, HelpEntry>> = {
+const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
   'Idle system': { title: 'Idle system', text: 'The currently selected controller layer used to choose which optional evidence channels are included.' },
   'Scope': { title: 'Scope', text: 'The log interval used for this result. Compare like-for-like scopes when judging tune changes.' },
   'Coverage': { title: 'Coverage', text: 'Complete means the required decoded evidence covers the selected scope. Partial decoded means at least one selected trace does not fully cover it, so interpret aggregates with that limitation in mind.' },
@@ -60,84 +57,57 @@ const SUMMARY_HELP: Readonly<Record<string, HelpEntry>> = {
   'Input samples': { title: 'Input samples', text: 'Number of source samples presented to the Idle analysis after applying the selected scope. Use this with Coverage when judging whether two results have comparable evidence.' },
 };
 
-const GRAPH_HELP: HelpEntry = {
+const GRAPH_HELP: InlineHelpEntry = {
   title: 'Aligned evidence graph',
   text: 'Each event is aligned so t=0 is sag onset. The colored line is the median value at each relative time. E toggles the 10th–90th percentile envelope, showing event-to-event spread. Click a trace name to hide/show that line. Idle uses Engine response and Controller / actuator panes. Important: each trace is independently autoscaled vertically, so compare timing and shape between different signals, not their vertical height. RPM envelope is enabled by default; other Idle envelopes start off for readability.',
 };
 
-const STYLE_ID = 'idle-analyzer-inline-help-style';
 const ROOTS = new WeakSet<HTMLElement>();
+const LAYOUT_STYLE_ID = 'idle-analyzer-inline-help-layout';
 
-function ensureStyle(): void {
-  if (document.getElementById(STYLE_ID)) return;
+function ensureIdleHelpLayoutStyle(): void {
+  if (document.getElementById(LAYOUT_STYLE_ID)) return;
   const style = document.createElement('style');
-  style.id = STYLE_ID;
+  style.id = LAYOUT_STYLE_ID;
   style.textContent = `
-    .idle-analyzer-info { display:inline-grid; place-items:center; width:14px; height:14px; margin-left:4px; padding:0; border:1px solid #385465; border-radius:50%; background:#101d28; color:#8eabb9; font:700 9px/1 system-ui,sans-serif; cursor:pointer; vertical-align:middle; text-transform:none; letter-spacing:0; }
-    .idle-analyzer-info:hover, .idle-analyzer-info:focus-visible { border-color:#5d879c; color:#d9edf5; outline:none; background:#153040; }
     .specialized-analyzer-summary > div { position:relative; }
-    .specialized-analyzer-summary > div > .idle-analyzer-info { position:absolute; top:5px; right:5px; }
+    .specialized-analyzer-summary > div > .epicscope-inline-help { position:absolute; top:5px; right:5px; }
     .specialized-analyzer-controls label > span, .specialized-analyzer-options-grid label > span { display:inline-flex; align-items:center; }
   `;
   document.head.append(style);
-}
-
-function matchingHelp(text: string, entries: readonly [RegExp, HelpEntry][]): HelpEntry | undefined {
-  return entries.find(([pattern]) => pattern.test(text))?.[1];
-}
-
-function addButton(host: HTMLElement, help: HelpEntry, show: (help: HelpEntry) => void): void {
-  if (host.querySelector(':scope > .idle-analyzer-info')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'idle-analyzer-info';
-  button.textContent = 'i';
-  button.title = `Explain ${help.title}`;
-  button.setAttribute('aria-label', `Explain ${help.title}`);
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    show(help);
-  });
-  host.append(button);
 }
 
 export function ensureIdleAnalyzerHelp(canvas: HTMLCanvasElement): void {
   const root = canvas.closest<HTMLElement>('.specialized-analyzer-view');
   if (!root || ROOTS.has(root)) return;
   ROOTS.add(root);
-  ensureStyle();
+  ensureIdleHelpLayoutStyle();
 
   const guidance = root.querySelector<HTMLElement>('.specialized-analyzer-guidance');
   const guidanceTitle = root.querySelector<HTMLElement>('[data-specialized="guidance-title"]');
   const guidanceText = root.querySelector<HTMLElement>('[data-specialized="guidance-text"]');
   if (!guidance || !guidanceTitle || !guidanceText) return;
 
-  const show = (help: HelpEntry): void => {
-    guidance.hidden = false;
-    guidanceTitle.textContent = help.title;
-    guidanceText.textContent = help.text;
-    guidance.scrollIntoView({ block: 'nearest' });
-  };
+  const show = createInlineHelpPresenter(guidance, guidanceTitle, guidanceText);
 
   const decorate = (): void => {
     const title = root.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent ?? '';
     if (!/^Idle\b/i.test(title)) return;
 
     for (const span of root.querySelectorAll<HTMLElement>('.specialized-analyzer-controls label > span, .specialized-analyzer-options-grid label > span')) {
-      const help = matchingHelp(span.textContent?.trim() ?? '', CONTROL_HELP);
-      if (help) addButton(span, help, show);
+      const help = matchingInlineHelp(span.textContent?.trim() ?? '', CONTROL_HELP);
+      if (help) addInlineHelpButton(span, help, show);
     }
 
     for (const card of root.querySelectorAll<HTMLElement>('.specialized-analyzer-summary > div')) {
       const label = card.querySelector<HTMLElement>(':scope > span')?.textContent?.trim();
       if (!label) continue;
       const help = SUMMARY_HELP[label];
-      if (help) addButton(card, help, show);
+      if (help) addInlineHelpButton(card, help, show);
     }
 
     const evidenceHeader = root.querySelector<HTMLElement>('.specialized-analyzer-evidence > header > div');
-    if (evidenceHeader) addButton(evidenceHeader, GRAPH_HELP, show);
+    if (evidenceHeader) addInlineHelpButton(evidenceHeader, GRAPH_HELP, show);
     canvas.title = 'Idle aligned evidence: click a trace name to show/hide it; click E to toggle the 10–90% envelope.';
   };
 
