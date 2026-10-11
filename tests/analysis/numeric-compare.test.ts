@@ -29,6 +29,23 @@ describe('compareNumericCohorts', () => {
     expect(result.metrics['standard-deviation'].right).toBeCloseTo(2);
   });
 
+  it('adds interpolated P10, median and P90 cohort comparisons', () => {
+    const result = compareNumericCohorts(
+      { range: range(0, [0, 10, 20, 30, 40]), complete: true },
+      { range: range(0, [10, 20, 30, 40, 50]), complete: true },
+    );
+
+    expect(result.percentiles.p10.left).toBeCloseTo(4);
+    expect(result.percentiles.p10.right).toBeCloseTo(14);
+    expect(result.percentiles.p10.delta).toBeCloseTo(10);
+    expect(result.percentiles.p10.relativeDelta).toBeCloseTo(2.5);
+    expect(result.percentiles.median.left).toBe(20);
+    expect(result.percentiles.median.right).toBe(30);
+    expect(result.percentiles.median.delta).toBe(10);
+    expect(result.percentiles.p90.left).toBeCloseTo(36);
+    expect(result.percentiles.p90.right).toBeCloseTo(46);
+  });
+
   it('supports independent source-index cohorts on each side', () => {
     const result = compareNumericCohorts(
       { range: range(100, [10, 20, 30, 40]), sampleIndices: [100, 102], complete: true },
@@ -40,6 +57,8 @@ describe('compareNumericCohorts', () => {
     expect(result.metrics.mean.left).toBe(20);
     expect(result.metrics.mean.right).toBe(25);
     expect(result.metrics.mean.delta).toBe(5);
+    expect(result.percentiles.median.left).toBe(20);
+    expect(result.percentiles.median.right).toBe(25);
   });
 
   it('keeps invalid and unavailable evidence separate per side', () => {
@@ -52,6 +71,7 @@ describe('compareNumericCohorts', () => {
     expect(result.left.invalidSampleCount).toBe(1);
     expect(result.left.unavailableSampleCount).toBe(1);
     expect(result.right.validSampleCount).toBe(2);
+    expect(result.percentiles.median.left).toBe(1);
     expect(result.complete).toBe(false);
   });
 
@@ -73,6 +93,8 @@ describe('compareNumericCohorts', () => {
 
     expect(result.metrics.mean.delta).toBe(4);
     expect(result.metrics.mean.relativeDelta).toBeUndefined();
+    expect(result.percentiles.median.delta).toBe(4);
+    expect(result.percentiles.median.relativeDelta).toBeUndefined();
   });
 
   it('keeps missing numeric metrics undefined when a side has no valid samples', () => {
@@ -87,5 +109,7 @@ describe('compareNumericCohorts', () => {
     expect(result.metrics.mean.relativeDelta).toBeUndefined();
     expect(result.metrics.count.left).toBe(0);
     expect(result.metrics.count.delta).toBe(1);
+    expect(result.percentiles.median.left).toBeUndefined();
+    expect(result.percentiles.median.delta).toBeUndefined();
   });
 });

@@ -258,15 +258,18 @@ export function createAnalyzerPage(): AnalyzerPageController {
     field('qualification').textContent = filterSet?.name ?? 'None';
 
     const unit = trace.channel.unit ? ` ${trace.channel.unit}` : '';
-    const rows: Array<{ label: string; key: 'count' | 'mean' | 'min' | 'max' | 'standard-deviation'; unit: string }> = [
-      { label: 'Valid samples', key: 'count', unit: '' },
-      { label: 'Mean', key: 'mean', unit },
-      { label: 'Minimum', key: 'min', unit },
-      { label: 'Maximum', key: 'max', unit },
-      { label: 'Std dev', key: 'standard-deviation', unit },
+    const rows = [
+      { label: 'Valid samples', metric: currentResult.metrics.count, unit: '' },
+      { label: 'Mean', metric: currentResult.metrics.mean, unit },
+      { label: 'P10', metric: currentResult.percentiles.p10, unit },
+      { label: 'Median', metric: currentResult.percentiles.median, unit },
+      { label: 'P90', metric: currentResult.percentiles.p90, unit },
+      { label: 'Minimum', metric: currentResult.metrics.min, unit },
+      { label: 'Maximum', metric: currentResult.metrics.max, unit },
+      { label: 'Std dev', metric: currentResult.metrics['standard-deviation'], unit },
     ];
     tableBody.replaceChildren(...rows.map((row) => {
-      const metric = currentResult!.metrics[row.key];
+      const metric = row.metric;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <th>${row.label}</th>
