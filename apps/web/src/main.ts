@@ -11,6 +11,7 @@ import './styles/histogram-distribution.css';
 import './styles/scatter-mlv.css';
 import './styles/analyzer.css';
 import './styles/boost-analyzer.css';
+import './styles/boost-table-enhancements.css';
 import './styles/specialized-analyzer.css';
 import './styles/performance-diagnostics.css';
 import './styles/ui-refinements.css';
@@ -19,6 +20,7 @@ import { applyUiRefinements } from './app/ui-refinements';
 import { applyNavigationRefinements } from './app/ui-refinements-navigation';
 import { installShimLiveUi } from './app/shim-live-ui';
 import { installShimHttpUi } from './app/shim-http-ui';
+import { installBoostTableEnhancements } from './app/boost-table-enhancements';
 
 const root = document.querySelector<HTMLElement>('#app');
 
@@ -31,6 +33,7 @@ installShimLiveUi(root);
 installShimHttpUi(root);
 applyUiRefinements(root);
 applyNavigationRefinements(root);
+installBoostTableEnhancements(root);
 
 root.querySelector<HTMLElement>('.histogram-table-size')?.remove();
 const tableSizeSummary = root.querySelector<HTMLElement>('.histogram-table-options > summary');
