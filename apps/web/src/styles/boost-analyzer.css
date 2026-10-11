@@ -34,6 +34,24 @@
 .boost-analyzer-banner strong { color: #e7c17b; font-size: 10px; }
 .boost-analyzer-banner span { color: #79909f; font-size:9px; }
 
+.boost-analyzer-guidance {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #355268;
+  border-radius: 4px;
+  background: #0d1c27;
+}
+.boost-analyzer-guidance[hidden],
+.boost-closed-loop-only[hidden] { display: none !important; }
+.boost-analyzer-guidance strong { color: #cfe3ed; font-size:10px; }
+.boost-analyzer-guidance span { color: #8da4b1; font-size:9px; line-height:1.5; }
+
+.boost-analyzer-controls label > span,
+.boost-analysis-options-grid label > span { display:inline-flex; align-items:center; }
+.boost-analyzer-summary > div { position:relative; }
+.boost-analyzer-summary > div > .epicscope-inline-help { position:absolute; top:5px; right:5px; }
+
 .boost-analyzer-controls {
   display: flex;
   align-items: flex-end;
