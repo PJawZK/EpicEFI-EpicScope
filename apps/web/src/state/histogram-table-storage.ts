@@ -69,7 +69,7 @@ const qualificationLogic = new Set<NumericQualificationLogic>(['and', 'or']);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === 'string';
-const isBoolean = (value: unknown): value => typeof value === 'boolean';
+const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 function isCalculatedField(value: unknown): value is HistogramCalculatedFieldDefinition {
