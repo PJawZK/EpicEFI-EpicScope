@@ -269,28 +269,56 @@ export function mountAppShell(root: HTMLElement): void {
   bugReportButton.className = 'bug-report-button utility-action-button';
   bugReportButton.innerHTML = '<span class="utility-action-symbol" aria-hidden="true">⚑</span><span>Report</span><span class="bug-report-status" aria-hidden="true">—</span>';
   bugReportButton.title = 'Capture EpicScope runtime diagnostics';
+  bugReportButton.setAttribute('aria-haspopup', 'dialog');
+  bugReportButton.setAttribute('aria-expanded', 'false');
 
-  const bugReportDialog = document.createElement('dialog');
-  bugReportDialog.className = 'bug-report-dialog';
-  bugReportDialog.innerHTML = `
-    <form method="dialog" class="bug-report-panel">
+  const bugReportPopover = document.createElement('div');
+  bugReportPopover.className = 'bug-report-popover';
+  bugReportPopover.setAttribute('role', 'dialog');
+  bugReportPopover.setAttribute('aria-label', 'EpicScope report');
+  bugReportPopover.hidden = true;
+  bugReportPopover.innerHTML = `
+    <div class="bug-report-panel">
       <header>
         <div>
           <strong>EpicScope bug report</strong>
           <small>Runtime state, channel health, errors and performance evidence</small>
         </div>
-        <button type="submit" class="bug-report-close" aria-label="Close bug report">×</button>
+        <button type="button" class="bug-report-close" aria-label="Close report">×</button>
       </header>
       <div class="bug-report-health"></div>
       <textarea class="bug-report-text" readonly spellcheck="false" aria-label="EpicScope bug report text"></textarea>
       <footer>
         <button type="button" class="bug-report-copy">Copy report</button>
         <button type="button" class="bug-report-export">Export .txt</button>
-        <button type="submit">Close</button>
+        <button type="button" class="bug-report-footer-close">Close</button>
       </footer>
-    </form>
+    </div>
   `;
-  bugReportSlot.append(bugReportButton);
+  const bugReportWrap = document.createElement('div');
+  bugReportWrap.className = 'bug-report-wrap';
+  bugReportWrap.append(bugReportButton, bugReportPopover);
+  bugReportSlot.append(bugReportWrap);
+
+  const closeTransientSurface = (trigger: HTMLElement): void => {
+    trigger.setAttribute('aria-expanded', 'false');
+    const owner = trigger.parentElement;
+    if (!owner) return;
+    for (const surface of owner.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"]')) {
+      surface.hidden = true;
+    }
+    if (trigger.classList.contains('brand-button')) trigger.classList.remove('brand-button--open');
+  };
+
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]')) {
+      const owner = trigger.parentElement;
+      if (!owner || owner.contains(target)) continue;
+      closeTransientSurface(trigger);
+    }
+  }, true);
 
   loggerPage.onChannelPerformance((run) => {
     performanceDiagnostics.recordChannel({
@@ -398,17 +426,28 @@ export function mountAppShell(root: HTMLElement): void {
 
   type SourceLoadState = 'idle' | 'loading' | 'success' | 'restored' | 'issue';
 
-  bugReportButton.addEventListener('click', () => {
-    refreshBugReport();
-    bugReportDialog.showModal();
-  });
+  const closeBugReport = (): void => {
+    bugReportPopover.hidden = true;
+    bugReportButton.setAttribute('aria-expanded', 'false');
+  };
 
-  bugReportDialog.querySelector<HTMLButtonElement>('.bug-report-copy')?.addEventListener('click', () => {
+  bugReportButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const nextOpen = bugReportPopover.hidden;
+    if (nextOpen) refreshBugReport();
+    bugReportPopover.hidden = !nextOpen;
+    bugReportButton.setAttribute('aria-expanded', String(nextOpen));
+  });
+  bugReportPopover.addEventListener('click', (event) => event.stopPropagation());
+  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-close')?.addEventListener('click', closeBugReport);
+  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-footer-close')?.addEventListener('click', closeBugReport);
+
+  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-copy')?.addEventListener('click', () => {
     const report = buildBugReport().text;
     void navigator.clipboard.writeText(report).then(() => {
       appStatus.textContent = 'Bug report copied';
     }).catch(() => {
-      const textArea = bugReportDialog.querySelector<HTMLTextAreaElement>('.bug-report-text');
+      const textArea = bugReportPopover.querySelector<HTMLTextAreaElement>('.bug-report-text');
       if (textArea) {
         textArea.value = report;
         textArea.focus();
@@ -417,7 +456,7 @@ export function mountAppShell(root: HTMLElement): void {
     });
   });
 
-  bugReportDialog.querySelector<HTMLButtonElement>('.bug-report-export')?.addEventListener('click', () => {
+  bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-export')?.addEventListener('click', () => {
     const report = buildBugReport().text;
     const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -527,8 +566,8 @@ export function mountAppShell(root: HTMLElement): void {
 
   const refreshBugReport = (): void => {
     const report = buildBugReport();
-    const textArea = bugReportDialog.querySelector<HTMLTextAreaElement>('.bug-report-text');
-    const health = bugReportDialog.querySelector<HTMLElement>('.bug-report-health');
+    const textArea = bugReportPopover.querySelector<HTMLTextAreaElement>('.bug-report-text');
+    const health = bugReportPopover.querySelector<HTMLElement>('.bug-report-health');
     if (textArea) textArea.value = report.text;
     if (health) {
       health.textContent = report.issueCount > 0
@@ -1726,6 +1765,6 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput, bugReportDialog);
+  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput, bugReportPopover);
   root.append(app);
 }
