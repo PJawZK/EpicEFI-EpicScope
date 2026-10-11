@@ -321,6 +321,12 @@ export function mountAppShell(root: HTMLElement): void {
       if (!owner || owner.contains(target)) continue;
       closeTransientSurface(trigger);
     }
+    for (const details of app.querySelectorAll<HTMLDetailsElement>('details[open]')) {
+      if (details.contains(target)) continue;
+      const transient = details.classList.contains('timeline-maintenance-menu')
+        || details.querySelector(':scope > [class*="popover"]') !== null;
+      if (transient) details.open = false;
+    }
   }, true);
 
   loggerPage.onChannelPerformance((run) => {
