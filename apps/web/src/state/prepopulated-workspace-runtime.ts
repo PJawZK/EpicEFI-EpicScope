@@ -60,14 +60,14 @@ export function materializeBuiltInWorkspace(
       layout: template.layout,
       activePaneId,
       panes,
-      paneGeometry: previous?.paneGeometry,
-      minimizedPaneIds: previous?.minimizedPaneIds,
-      maximizedPaneId: previous?.maximizedPaneId,
-      freeformArrange: previous?.freeformArrange,
       viewport: previous?.viewport,
       cursorTimeMs: previous?.cursorTimeMs ?? 0,
       viewHistory: previous?.viewHistory ?? [],
       viewHistoryIndex: previous?.viewHistoryIndex ?? -1,
+      ...(previous?.paneGeometry ? { paneGeometry: previous.paneGeometry } : {}),
+      ...(previous?.minimizedPaneIds ? { minimizedPaneIds: previous.minimizedPaneIds } : {}),
+      ...(previous?.maximizedPaneId !== undefined ? { maximizedPaneId: previous.maximizedPaneId } : {}),
+      ...(previous?.freeformArrange ? { freeformArrange: previous.freeformArrange } : {}),
     },
   };
 }
