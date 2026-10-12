@@ -58,6 +58,8 @@ describe('bug report runtime health', () => {
   it('keeps unavailable channels, trace over-count and missing binding as warnings', () => {
     const snapshot = {
       ...cleanSnapshot(),
+      channelDefinitionCount: 8,
+      catalogChannelCount: 10,
       renderableAssignedChannelCount: 1,
       unavailableAssignedChannelCount: 2,
       activeTraceCount: 2,
@@ -75,5 +77,16 @@ describe('bug report runtime health', () => {
       'Active trace count exceeds renderable assigned visible-channel count.',
       'INI catalog and log are loaded but no current INI/MLG binding is recorded.',
     ]);
+  });
+
+  it('does not require an INI/MLG binding when the active source owns the current catalog', () => {
+    const health = evaluateBugReportHealth(cleanSnapshot(), {
+      logLoaded: true,
+      iniLoaded: true,
+      bindingActive: false,
+      runtimeErrorCount: 0,
+    });
+
+    expect(health).toEqual({ issues: [], warnings: [] });
   });
 });
