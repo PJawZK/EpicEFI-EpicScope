@@ -1,191 +1,148 @@
 # EpicScope ts_shim development proxy
 
-This development mode lets EpicScope run on its own Vite port while presenting the same browser-visible route structure that the final shim-hosted deployment will use.
+This development mode lets EpicScope run on its normal Vite development origin while presenting the same browser-visible relative routes intended for a final Shim-hosted deployment.
 
 ## Purpose
 
-The browser talks only to the EpicScope development origin:
+The browser talks only to EpicScope:
 
 ```text
 http://localhost:5173/
 ```
 
-Vite serves EpicScope and proxies the shim routes behind the same origin:
+Vite proxies Shim routes behind that same browser origin:
 
 ```text
-/telemetry   -> http://127.0.0.1:29002/telemetry
-/api/v1/*    -> http://127.0.0.1:29002/api/v1/*
+/telemetry  -> EPICSCOPE_SHIM_TARGET/telemetry
+/api/v1/*   -> EPICSCOPE_SHIM_TARGET/api/v1/*
 ```
 
-The WebSocket proxy rewrites both Host and WebSocket Origin toward the shim target so the shim's same-origin upgrade check sees a consistent upstream request.
+The WebSocket proxy rewrites Host/Origin as required so the Shim same-origin check sees a consistent upstream request.
 
-This is a development/test bridge only. Production/GitHub Pages build behavior is unchanged.
+This is a development/test bridge. GitHub Pages recorded-log behavior is unchanged.
 
-## Windows 10 test flow
+## Validated Linux + Pi Zero 2 W flow
 
-The current native `ts_shim` runtime is tested on Windows. The GitHub Pages site is not the correct page for this local proxy test; use a fresh local checkout/ZIP of current `main`.
+The real-ECU validation on 2026-10-12 used:
 
-### 1. Run ts_shim
+```text
+Mega144H7 USB CDC
+      ↓
+Pi Zero 2 W
+      ↓
+ts_shim :29002
+      ↓ Wi-Fi / LAN
+JZ-Main Linux PC
+      ↓
+Vite dev:shim proxy
+      ↓
+Browser http://localhost:5173/
+```
 
-Start the Windows `ts_shim` build normally.
+Validated Shim endpoint:
 
-The default EpicScope development target is:
+```text
+http://192.168.186.181:29002
+```
+
+From the EpicScope repository on the development PC:
+
+```bash
+cd ~/EpicEFI-EpicScope
+EPICSCOPE_SHIM_TARGET='http://192.168.186.181:29002' npm run dev:shim
+```
+
+Then open:
+
+```text
+http://localhost:5173/
+```
+
+Use **Load Data → Connect Shim…**.
+
+## Default target
+
+If `EPICSCOPE_SHIM_TARGET` is not set, the development target is:
 
 ```text
 http://127.0.0.1:29002
 ```
 
-In **PowerShell**, verify the port is listening:
+That is convenient when Shim runs on the same machine as Vite.
 
-```powershell
-Test-NetConnection 127.0.0.1 -Port 29002
+## Different Shim host
+
+Linux/macOS shell:
+
+```bash
+EPICSCOPE_SHIM_TARGET='http://192.168.1.50:29002' npm run dev:shim
 ```
 
-Expected result:
-
-```text
-TcpTestSucceeded : True
-```
-
-If using Command Prompt instead of PowerShell, use:
-
-```bat
-netstat -ano | findstr :29002
-```
-
-### 2. Download a fresh EpicScope main ZIP
-
-From the `PJawZK/EpicEFI-EpicScope` GitHub repository:
-
-```text
-Code → Download ZIP
-```
-
-Extract the complete repository. A normal Windows path is:
-
-```text
-C:\Users\<user>\Downloads\EpicEFI-EpicScope-main
-```
-
-The extracted folder must contain at least:
-
-```text
-package.json
-vite.config.ts
-apps\
-core\
-docs\
-tests\
-```
-
-Do not use an older extracted ZIP after shim work has moved forward. If the running page does not show **Connect Shim…**, first verify that the source copy is current.
-
-### 3. Install Node.js if needed
-
-EpicScope currently declares:
-
-```text
-Node ^20.19.0 or >=22.12.0
-```
-
-Use a normal current Node.js Windows x64 installation. Native-module build tools are not required by EpicScope's current dependency set.
-
-Open a **new** PowerShell window after installation and verify:
-
-```powershell
-node --version
-npm.cmd --version
-```
-
-PowerShell may block `npm.ps1` under the default Windows execution policy. Do not change policy just for EpicScope; use `npm.cmd` explicitly.
-
-### 4. Install EpicScope dependencies
-
-In PowerShell:
-
-```powershell
-cd "C:\Users\<user>\Downloads\EpicEFI-EpicScope-main"
-npm.cmd install
-```
-
-Run this before `dev:shim`. If `vite` is reported as not recognized, dependencies were not installed in the current extracted repository; run `npm.cmd install` and retry.
-
-### 5. Start shim-development mode
-
-```powershell
-npm.cmd run dev:shim
-```
-
-Vite should report a local URL similar to:
-
-```text
-http://localhost:5173/
-```
-
-Leave this terminal running.
-
-### 6. Open the local EpicScope page
-
-Open Brave/Chromium at:
-
-```text
-http://localhost:5173/
-```
-
-Do **not** use the GitHub Pages URL for this test.
-
-Open **Load Data**. Current shim-capable main should show:
-
-```text
-Connect Shim…
-```
-
-If only the traditional file-loading choices are present, the most likely cause is a stale source ZIP. In current source, `apps/web/src/main.ts` installs both the live shim UI and shim HTTP UI.
-
-### 7. Runtime test
-
-Use:
-
-```text
-Load Data → Connect Shim…
-```
-
-Then test, in order:
-
-- connection / schema status;
-- **Channels…**;
-- **Record**;
-- **View Live**;
-- **Follow** on/off;
-- **Stop**;
-- **Open Capture** where applicable;
-- **Shim HTTP…** for INIs, Objects and Trigger Log.
-
-The HTTP payloads are especially useful because typed read-only HTTP integration is intentionally waiting for real responses instead of guessing the native shim's response shapes.
-
-## Different shim host or port
-
-The default upstream target is:
-
-```text
-http://127.0.0.1:29002
-```
-
-Override it with the environment variable `EPICSCOPE_SHIM_TARGET` before starting Vite.
-
-PowerShell example:
+PowerShell:
 
 ```powershell
 $env:EPICSCOPE_SHIM_TARGET='http://192.168.1.50:29002'
 npm.cmd run dev:shim
 ```
 
-Command Prompt example:
+Command Prompt:
 
 ```bat
 set EPICSCOPE_SHIM_TARGET=http://192.168.1.50:29002
 npm run dev:shim
 ```
+
+## Current runtime workflow
+
+The primary Shim workflow no longer requires a separate capture-channel picker or a separate initial **View Live** step.
+
+```text
+Load Data → Connect Shim
+→ normal Logger Channel Browser / graph assignments
+→ Record
+→ live Logger view starts immediately
+→ Follow / inspect history
+→ Stop Recording
+```
+
+If a recorded MLG is already active, **Connect Shim** detaches it in-process first. The application is not reloaded; INI, MSQ, reusable workspace and report/performance state are retained.
+
+Opening a recorded MLG while Shim owns the temporary catalog releases Shim ownership first and restores the loaded INI catalog before normal MLG/INI binding proceeds.
+
+## Validation checklist
+
+For a real runtime test, verify:
+
+1. Shim connects and publishes a decodable schema.
+2. The normal Channel Browser shows the Shim schema.
+3. Existing stable graph assignments resolve to matching Shim channels.
+4. Record enables when at least one legal graph assignment exists.
+5. Record starts live Logger rendering immediately.
+6. Follow can be turned on/off without stopping recording.
+7. Stop Recording retains the capture.
+8. Opening a recorded MLG restores the INI catalog/binding and canonical `ini:*` workspace identities.
+9. Runtime Report shows no duplicate raw + `ini:*` assignments.
+10. Health is `0 ISSUE / 0 WARN` for a healthy source transition.
+
+## Current known narrow edge
+
+The source architecture is validated. One UI-level cleanup remains worth preserving in downstream implementations: **capture remains loaded** and **live refresh is paused** should be represented as separate states. Do not use one boolean for both concepts.
+
+## Windows development remains supported
+
+A Windows `ts_shim` instance can still be tested with the same proxy model.
+
+Typical PowerShell flow:
+
+```powershell
+npm.cmd install
+$env:EPICSCOPE_SHIM_TARGET='http://127.0.0.1:29002'
+npm.cmd run dev:shim
+```
+
+Then open `http://localhost:5173/` in Chromium/Brave.
+
+PowerShell may block `npm.ps1` under default execution policy; using `npm.cmd` avoids changing policy just for EpicScope.
 
 ## Final deployment relationship
 
@@ -194,12 +151,12 @@ Development:
 ```text
 Browser
   -> localhost:5173
-       -> EpicScope static/dev assets
+       -> EpicScope dev assets
        -> /telemetry -> ts_shim:29002
        -> /api/v1/*  -> ts_shim:29002
 ```
 
-Final shim-hosted deployment:
+Final Shim-hosted deployment:
 
 ```text
 Browser
@@ -209,4 +166,4 @@ Browser
        -> /api/v1/*
 ```
 
-The EpicScope networking code should not need to change when moving from the development proxy to shim-hosted deployment because it already addresses the routes relative to the current origin.
+EpicScope addresses Shim routes relative to the current browser origin, so final same-origin hosting should not require a networking rewrite.
