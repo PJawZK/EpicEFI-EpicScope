@@ -8,6 +8,7 @@ export interface ShimChannelCatalogEventDetail {
   readonly sourceName: string;
 }
 
+/** Publishes the temporary ts_shim schema catalog without changing the active Logger data source. */
 export function dispatchShimChannelCatalog(
   root: HTMLElement,
   detail: ShimChannelCatalogEventDetail,
