@@ -42,6 +42,7 @@ import {
   type WebWorkspaceState,
 } from '../state/workspace-state';
 import { SHIM_CAPTURE_SOURCE_EVENT, type ShimCaptureSourceEventDetail } from './shim-capture-source-event';
+import { SHIM_CHANNEL_CATALOG_EVENT, type ShimChannelCatalogEventDetail } from './shim-channel-catalog-event';
 
 function importErrorMessage(error: unknown): string {
   if (error instanceof MlgFormatError) {
@@ -511,6 +512,7 @@ export function mountAppShell(root: HTMLElement): void {
   let workspacePersistenceBlocked = false;
   let applicationWorkspacePersistenceBlocked = false;
   let reusableWorkspacePersistenceSuspended = false;
+  let shimCatalogActive = false;
 
   const buildBugReport = (): { readonly text: string; readonly issueCount: number } => {
     const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();
@@ -610,7 +612,6 @@ export function mountAppShell(root: HTMLElement): void {
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
   };
-
 
   const catalogDefinitions = (catalog: ChannelCatalog): ChannelDefinition[] =>
     catalog.entries.map((entry) => ({
@@ -778,10 +779,6 @@ export function mountAppShell(root: HTMLElement): void {
       );
       await restoreWorkspaceSnapshot(merged);
 
-      // If old exact-log state supplied source-local channel assignments, the
-      // migration above may have converted them to stable INI identities.
-      // Persist that application structure immediately so the next INI-only
-      // startup no longer depends on loading this MLG again.
       if (activeIniBinding && !reusableWorkspacePersistenceSuspended) {
         try {
           applicationWorkspaceStorage.save(captureWorkspaceState());
@@ -953,7 +950,14 @@ export function mountAppShell(root: HTMLElement): void {
     loggerToolsSlot.hidden = !loggerActive;
     undoButton.hidden = !loggerActive;
     redoButton.hidden = !loggerActive;
-    modeChip.textContent = loggerActive ? (modeChip.dataset.loggerSource === 'shim' ? 'CAPTURE · SHIM' : 'RECORDED') : analyzerActive ? 'ANALYZER' : 'HISTOGRAM';
+    const loggerSource = modeChip.dataset.loggerSource;
+    modeChip.textContent = loggerActive
+      ? loggerSource === 'shim'
+        ? 'CAPTURE · SHIM'
+        : loggerSource === 'shim-live'
+          ? 'LIVE · SHIM'
+          : 'RECORDED'
+      : analyzerActive ? 'ANALYZER' : 'HISTOGRAM';
 
     for (const choice of modeChoices) {
       const choiceMode = choice.dataset.epicscopeMode;
@@ -1055,9 +1059,6 @@ export function mountAppShell(root: HTMLElement): void {
     const unloadedSourceName = activeIniSourceName ?? 'INI';
     const stableWorkspaceBeforeUnload = captureWorkspaceState();
 
-    // Preserve the reusable INI-keyed workspace before entering temporary
-    // raw-MLG mode. Raw source-local IDs must never replace application
-    // workspace identity in persistence.
     try {
       applicationWorkspaceStorage.save(stableWorkspaceBeforeUnload);
     } catch (error) {
@@ -1087,7 +1088,7 @@ export function mountAppShell(root: HTMLElement): void {
     activeIniCatalog = undefined;
     activeIniSourceName = undefined;
     activeIniBinding = undefined;
-    loggerPage.clearChannelCatalog();
+    if (!shimCatalogActive) loggerPage.clearChannelCatalog();
 
     setSourceLoadState(
       loadIniButton,
@@ -1113,7 +1114,7 @@ export function mountAppShell(root: HTMLElement): void {
       void restoreWorkspaceSnapshot(stableWorkspaceBeforeUnload).then(() => {
         resetWorkspaceHistory();
       });
-      parserStatus.textContent = 'TUNE-INI · no catalog loaded';
+      if (!shimCatalogActive) parserStatus.textContent = 'TUNE-INI · no catalog loaded';
       appStatus.textContent = `${unloadedSourceName} unloaded`;
     }
   });
@@ -1199,7 +1200,7 @@ export function mountAppShell(root: HTMLElement): void {
               : 'INI catalog loaded but could not be saved locally.',
           );
         }
-        loggerPage.setChannelCatalog(definitions, imported.fileName);
+        if (!shimCatalogActive) loggerPage.setChannelCatalog(definitions, imported.fileName);
         unloadIniButton.disabled = false;
         iniStatus.textContent =
           `${imported.fileName} · ${imported.catalog.entries.length.toLocaleString()} channels · loaded this session`;
@@ -1264,9 +1265,11 @@ export function mountAppShell(root: HTMLElement): void {
             ? `INI loaded · ${warnings.toLocaleString()} warning${warnings === 1 ? '' : 's'}`
             : 'INI loaded';
 
-        parserStatus.textContent =
-          `INI · ${imported.catalog.entries.length.toLocaleString()} catalog channels · `
-          + `${imported.parsed.outputChannels.length.toLocaleString()} outputs · local only`;
+        if (!shimCatalogActive) {
+          parserStatus.textContent =
+            `INI · ${imported.catalog.entries.length.toLocaleString()} catalog channels · `
+            + `${imported.parsed.outputChannels.length.toLocaleString()} outputs · local only`;
+        }
         scheduleWorkspaceSave();
       })
       .catch((error: unknown) => {
@@ -1293,10 +1296,12 @@ export function mountAppShell(root: HTMLElement): void {
         activeIniSourceName = persistedCatalog.sourceName;
         reusableWorkspacePersistenceSuspended = false;
         activeIniBinding = undefined;
-        loggerPage.setChannelCatalog(
-          catalogDefinitions(persistedCatalog.catalog),
-          persistedCatalog.sourceName,
-        );
+        if (!shimCatalogActive) {
+          loggerPage.setChannelCatalog(
+            catalogDefinitions(persistedCatalog.catalog),
+            persistedCatalog.sourceName,
+          );
+        }
         setSourceLoadState(
           loadIniButton,
           'restored',
@@ -1306,8 +1311,10 @@ export function mountAppShell(root: HTMLElement): void {
         unloadIniButton.disabled = false;
         iniStatus.textContent =
           `${persistedCatalog.sourceName} · ${persistedCatalog.catalog.entries.length.toLocaleString()} channels · restored locally`;
-        parserStatus.textContent =
-          `INI · ${persistedCatalog.catalog.entries.length.toLocaleString()} catalog channels · restored locally`;
+        if (!shimCatalogActive) {
+          parserStatus.textContent =
+            `INI · ${persistedCatalog.catalog.entries.length.toLocaleString()} catalog channels · restored locally`;
+        }
       } else {
         activeIniSourceName = undefined;
         unloadIniButton.disabled = true;
@@ -1353,6 +1360,95 @@ export function mountAppShell(root: HTMLElement): void {
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
 
+  const detachRecordedSource = (): void => {
+    const source = currentRawLog?.summary.source;
+    if (!source || source.format === 'TS-SHIM') return;
+
+    if (workspaceSaveTimer !== undefined) {
+      window.clearTimeout(workspaceSaveTimer);
+      workspaceSaveTimer = undefined;
+    }
+    activeStagedImport?.cancel();
+    activeStagedImport = undefined;
+
+    try {
+      applicationWorkspaceStorage.save(captureWorkspaceState());
+      applicationWorkspacePersistenceBlocked = false;
+    } catch (error) {
+      setPersistenceStatus(
+        error instanceof Error
+          ? `Recorded log unloaded, but reusable workspace could not be saved: ${error.message}`
+          : 'Recorded log unloaded, but reusable workspace could not be saved.',
+      );
+    }
+
+    currentRawLog = undefined;
+    activeIniBinding = undefined;
+    activeWorkspaceSource = undefined;
+    workspacePersistenceBlocked = false;
+    reusableWorkspacePersistenceSuspended = false;
+    forgetWorkspaceButton.disabled = true;
+
+    loggerPage.setImportError('Recorded log unloaded.');
+    loggerPage.setDiagnostics([]);
+    if (!shimCatalogActive && activeIniCatalog) {
+      loggerPage.setChannelCatalog(
+        catalogDefinitions(activeIniCatalog),
+        activeIniSourceName ?? 'INI',
+      );
+    } else if (!shimCatalogActive) {
+      loggerPage.clearChannelCatalog();
+    }
+
+    loadedLog.textContent = 'No log loaded';
+    setSourceLoadState(openButton, 'idle', 'No recorded log loaded.');
+    modeChip.dataset.loggerSource = shimCatalogActive ? 'shim-live' : 'recorded';
+    if (activeMode === 'logger') {
+      modeChip.textContent = shimCatalogActive ? 'LIVE · SHIM' : 'RECORDED';
+    }
+    appStatus.textContent = `${source.displayName} unloaded`;
+    parserStatus.textContent = shimCatalogActive
+      ? 'TS-SHIM · live schema source'
+      : activeIniCatalog
+        ? `INI · ${activeIniCatalog.entries.length.toLocaleString()} catalog channels · no recorded log`
+        : 'LOG-MLG · no recorded log loaded';
+    setPersistenceStatus('Recorded log released · INI, MSQ, reusable workspace and runtime diagnostics retained.');
+    resetWorkspaceHistory();
+  };
+
+  root.addEventListener('epicscope:request-recorded-source-unload', detachRecordedSource);
+
+  root.addEventListener(SHIM_CHANNEL_CATALOG_EVENT, (event) => {
+    const detail = (event as CustomEvent<ShimChannelCatalogEventDetail>).detail;
+    if (!detail) return;
+
+    if (detail.mode === 'available') {
+      shimCatalogActive = true;
+      loggerPage.setChannelCatalog(detail.channels, detail.sourceName);
+      if (!currentRawLog) {
+        modeChip.dataset.loggerSource = 'shim-live';
+        if (activeMode === 'logger') modeChip.textContent = 'LIVE · SHIM';
+        appStatus.textContent = `Shim schema active · ${detail.channels.length.toLocaleString()} channels`;
+        parserStatus.textContent = `TS-SHIM · ${detail.channels.length.toLocaleString()} schema channels · live source`;
+      }
+      return;
+    }
+
+    shimCatalogActive = false;
+    if (activeIniCatalog) {
+      loggerPage.setChannelCatalog(
+        catalogDefinitions(activeIniCatalog),
+        activeIniSourceName ?? 'INI',
+      );
+    } else {
+      loggerPage.clearChannelCatalog();
+    }
+    if (!currentRawLog) {
+      modeChip.dataset.loggerSource = 'recorded';
+      if (activeMode === 'logger') modeChip.textContent = 'RECORDED';
+    }
+  });
+
   root.addEventListener(SHIM_CAPTURE_SOURCE_EVENT, (event) => {
     const detail = (event as CustomEvent<ShimCaptureSourceEventDetail>).detail;
     const source = detail?.source;
@@ -1379,7 +1475,14 @@ export function mountAppShell(root: HTMLElement): void {
     forgetWorkspaceButton.disabled = true;
     modeChip.dataset.loggerSource = 'shim';
 
-    loggerPage.setLog(source.summary, source.recordCount, source.channelData);
+    loggerPage.setLog(
+      source.summary,
+      source.recordCount,
+      source.channelData,
+      source.unavailableChannelIds.length > 0
+        ? { unavailableChannelIds: source.unavailableChannelIds }
+        : undefined,
+    );
     loadedLog.textContent = source.summary.source.displayName;
     loggerPage.setDiagnostics(source.summary.diagnostics);
     parserStatus.textContent = `TS-SHIM · ${source.recordCount.toLocaleString()} samples · ${source.summary.channels.length.toLocaleString()} channels · retained capture`;
@@ -1653,8 +1756,6 @@ export function mountAppShell(root: HTMLElement): void {
             );
           }
         } catch {
-          // The normal workspace restore path will report persistence failures.
-          // Priority planning should never prevent the log itself from loading.
         }
         const prioritizedSourceChannelIds = [...new Set([
           ...reusablePriorities,

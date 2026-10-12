@@ -60,7 +60,7 @@ function frame(streamId: number, generation: bigint, deliveryLoss = 0): ShimTele
 }
 
 describe('createShimCaptureSource', () => {
-  it('builds a Logger-compatible source using only captured schema channels', async () => {
+  it('keeps the full shim schema visible while marking uncaptured channels unavailable', async () => {
     const capture = new ShimCaptureSession();
     capture.beginSegment({ clockId: 'clock-a', definition, startTimeMs: 0 });
     capture.appendFrame(frame(7, 4n));
@@ -73,8 +73,15 @@ describe('createShimCaptureSource', () => {
 
     expect(source.recordCount).toBe(2);
     expect(source.summary.source.format).toBe('TS-SHIM');
-    expect(source.summary.channels.map((channel) => channel.id)).toEqual(['RPMValue', 'coolant']);
+    expect(source.summary.channels.map((channel) => channel.id)).toEqual([
+      'RPMValue',
+      'coolant',
+      'unused',
+    ]);
+    expect(source.unavailableChannelIds).toEqual(['unused']);
     expect(source.summary.timeRange).toEqual({ startMs: 0, endMs: 20, durationMs: 20 });
+
+    // Captured channels remain backed by the live numeric source; schema-only channels stay catalog-visible.
     const coolant = await source.channelData.readChannelRange('coolant', 0, 2);
     expect([...coolant.quality!]).toEqual([0, 2]);
     expect([...coolant.validity]).toEqual([1, 0]);

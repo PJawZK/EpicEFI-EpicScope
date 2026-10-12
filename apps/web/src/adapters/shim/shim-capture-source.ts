@@ -8,6 +8,7 @@ export interface ShimCaptureSource {
   readonly summary: ImportedLogSummary;
   readonly recordCount: number;
   readonly channelData: ShimLiveNumericChannelDataSource;
+  readonly unavailableChannelIds: readonly string[];
 }
 
 export interface CreateShimCaptureSourceOptions {
@@ -21,7 +22,10 @@ export function createShimCaptureSource(options: CreateShimCaptureSourceOptions)
   const { capture, channelData, schema } = options;
   const snapshot = capture.snapshot();
   const selected = new Set(snapshot.channelIds);
-  const channels = shimSchemaChannelDefinitions(schema).filter((channel) => selected.has(channel.id));
+  const channels = shimSchemaChannelDefinitions(schema);
+  const unavailableChannelIds = channels
+    .filter((channel) => !selected.has(channel.id))
+    .map((channel) => channel.id);
   const endMs = capture.endTimeMs ?? 0;
   const diagnostics: ParserDiagnostic[] = [];
 
@@ -58,5 +62,6 @@ export function createShimCaptureSource(options: CreateShimCaptureSourceOptions)
     },
     recordCount: snapshot.sampleCount,
     channelData,
+    unavailableChannelIds,
   };
 }

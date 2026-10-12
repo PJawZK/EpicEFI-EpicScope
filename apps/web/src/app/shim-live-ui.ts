@@ -1,8 +1,11 @@
 import { createShimCaptureSource } from '../adapters/shim/shim-capture-source';
+import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/application-workspace-local-storage';
+import { shimSchemaChannelDefinitions } from '../adapters/shim/shim-schema-adapter';
 import { ShimTelemetryClient, type ShimTelemetryClientEvent } from '../adapters/shim/shim-telemetry-client';
 import { ShimLiveSession } from '../adapters/shim/shim-live-session';
 import type { ShimSchema } from '../adapters/shim/shim-protocol';
 import { dispatchShimCaptureSource } from './shim-capture-source-event';
+import { dispatchShimChannelCatalog } from './shim-channel-catalog-event';
 
 const STYLE_ID = 'epicscope-shim-live-ui-style';
 
@@ -48,6 +51,18 @@ function setButtonText(button: HTMLButtonElement, strong: string, small: string)
   button.innerHTML = `<strong>${strong}</strong><small>${small}</small>`;
 }
 
+function shimChannelIdForWorkspaceId(
+  channelId: string,
+  available: ReadonlySet<string>,
+): string | undefined {
+  if (available.has(channelId)) return channelId;
+  if (channelId.startsWith('ini:')) {
+    const shimChannelId = channelId.slice(4);
+    if (available.has(shimChannelId)) return shimChannelId;
+  }
+  return undefined;
+}
+
 export function installShimLiveUi(root: HTMLElement): void {
   ensureStyles();
   const loadMenu = root.querySelector<HTMLElement>('.load-data-menu');
@@ -70,7 +85,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   toolbar.className = 'shim-live-toolbar';
   toolbar.hidden = true;
   toolbar.innerHTML = `
-    <button type="button" class="shim-live-channels">Channels…</button>
+    <button type="button" class="shim-live-channels" hidden>Capture Channels…</button>
     <button type="button" class="shim-live-record" disabled>Record</button>
     <button type="button" class="shim-live-open-capture" disabled>Open Capture</button>
     <button type="button" class="shim-live-follow" aria-pressed="true" disabled>Follow</button>
@@ -89,7 +104,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   dialog.innerHTML = `
     <div class="shim-channel-panel">
       <header>
-        <div class="shim-channel-title"><strong>Shim logging channels</strong><small>Select one-stream capture channels.</small></div>
+        <div class="shim-channel-title"><strong>Shim capture channels</strong><small>The normal Channel Browser is authoritative for the current recording set.</small></div>
         <span class="shim-channel-count">0 selected</span>
       </header>
       <input class="shim-channel-search" type="search" placeholder="Filter channels…" aria-label="Filter shim channels" />
@@ -106,6 +121,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   const count = dialog.querySelector<HTMLElement>('.shim-channel-count')!;
   const clear = dialog.querySelector<HTMLButtonElement>('.shim-channel-clear')!;
   const close = dialog.querySelector<HTMLButtonElement>('.shim-channel-close')!;
+  const workspaceStorage = createApplicationWorkspaceLocalStorageAdapter();
 
   let client: ShimTelemetryClient | undefined;
   let session: ShimLiveSession | undefined;
@@ -116,14 +132,47 @@ export function installShimLiveUi(root: HTMLElement): void {
   let captureId: string | undefined;
   let followLatest = true;
   let lastLiveDispatchMs = 0;
+  let captureOpened = false;
 
   const updateSelectionCount = (): void => {
     count.textContent = `${selected.size} selected${maxChannels > 0 ? ` / ${maxChannels} max` : ''}`;
-    recordButton.disabled = !connected || selected.size === 0 || selected.size > maxChannels || session?.isRecording === true;
+    const recording = session?.isRecording === true;
+    recordButton.disabled = recording ? false : (!connected || selected.size === 0 || selected.size > maxChannels);
     const canOpenCapture = Boolean(session?.capture && session.capture.sampleCount > 0 && session.dataSource && schema && client?.welcome);
-    openCaptureButton.disabled = !canOpenCapture;
-    openCaptureButton.textContent = session?.isRecording ? (captureOpened ? 'Viewing Live' : 'View Live') : 'Open Capture';
-    followButton.disabled = !captureOpened || !session?.isRecording;
+    openCaptureButton.disabled = !canOpenCapture || (!recording && captureOpened);
+    openCaptureButton.textContent = recording
+      ? (captureOpened ? 'Pause Live View' : 'View Live')
+      : (captureOpened ? 'Capture Open' : 'Open Capture');
+    followButton.disabled = !captureOpened || !recording;
+  };
+
+  const syncSelectedFromPersistedWorkspace = (): void => {
+    if (!connected || session?.isRecording || !schema) return;
+    try {
+      const persisted = workspaceStorage.load()?.workspace;
+      const activeWorkspace = persisted?.logger.workspaces.find(
+        (workspace) => workspace.id === persisted.logger.activeWorkspaceId,
+      );
+      if (!activeWorkspace) return;
+      const assigned = new Set<string>();
+      if (activeWorkspace.panes && activeWorkspace.panes.length > 0) {
+        for (const pane of activeWorkspace.panes) {
+          for (const channelId of pane.channelIds) assigned.add(channelId);
+        }
+      } else {
+        for (const channelId of activeWorkspace.channelIds) assigned.add(channelId);
+      }
+      const available = new Set(schema.channels.map((channel) => channel.id));
+      selected = new Set(
+        [...assigned]
+          .map((channelId) => shimChannelIdForWorkspaceId(channelId, available))
+          .filter((channelId): channelId is string => channelId !== undefined),
+      );
+      updateSelectionCount();
+      liveState.textContent = `${schema.channels.length} channels · ${selected.size} selected`;
+    } catch {
+      // Workspace persistence must never prevent a live shim connection.
+    }
   };
 
   const renderChannelList = (): void => {
@@ -137,12 +186,7 @@ export function installShimLiveUi(root: HTMLElement): void {
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = selected.has(channel.id);
-      input.disabled = !input.checked && selected.size >= maxChannels;
-      input.addEventListener('change', () => {
-        if (input.checked) selected.add(channel.id); else selected.delete(channel.id);
-        updateSelectionCount();
-        renderChannelList();
-      });
+      input.disabled = true;
       const name = document.createElement('span');
       name.textContent = channel.name || channel.id;
       name.title = channel.id;
@@ -155,7 +199,6 @@ export function installShimLiveUi(root: HTMLElement): void {
     updateSelectionCount();
   };
 
-  let captureOpened = false;
   const setHeaderLive = (detail: string): void => {
     if (captureOpened) return;
     modeChip.textContent = session?.isRecording ? 'LIVE · SHIM · RECORDING' : 'LIVE · SHIM';
@@ -171,6 +214,41 @@ export function installShimLiveUi(root: HTMLElement): void {
     modeChip.textContent = 'RECORDED';
     parserStatus.textContent = 'LOG-MLG · local file parsing';
   };
+
+  const syncSelectedFromLoggerToggle = (button: HTMLButtonElement): void => {
+    if (!connected || session?.isRecording || !schema) return;
+    const channelId = button.dataset.channelToggle;
+    if (!channelId) return;
+    const available = new Set(schema.channels.map((channel) => channel.id));
+    const shimChannelId = shimChannelIdForWorkspaceId(channelId, available);
+    if (!shimChannelId) return;
+    window.setTimeout(() => {
+      const active = button.getAttribute('aria-pressed') === 'true';
+      if (active) selected.add(shimChannelId); else selected.delete(shimChannelId);
+      updateSelectionCount();
+      liveState.textContent = `${schema?.channels.length ?? 0} channels · ${selected.size} selected`;
+    }, 0);
+  };
+
+  root.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const channelToggle = target.closest<HTMLButtonElement>('.channel-row-toggle[data-channel-toggle]');
+    if (channelToggle) {
+      syncSelectedFromLoggerToggle(channelToggle);
+      return;
+    }
+    if (!connected || session?.isRecording) return;
+    const paneAction = target.closest<HTMLButtonElement>('.graph-pane-action');
+    if (target.closest('.clear-graph') || paneAction?.textContent?.trim() === 'Clear pane') {
+      window.setTimeout(() => {
+        selected.clear();
+        updateSelectionCount();
+        if (schema) liveState.textContent = `${schema.channels.length} channels · 0 selected`;
+      }, 0);
+    }
+    window.setTimeout(syncSelectedFromPersistedWorkspace, 350);
+  });
 
   const handleClientEvent = (event: ShimTelemetryClientEvent): void => {
     if (event.type === 'welcome') {
@@ -189,7 +267,17 @@ export function installShimLiveUi(root: HTMLElement): void {
       const available = new Set(schema.channels.map((channel) => channel.id));
       selected = new Set([...selected].filter((id) => available.has(id)));
       renderChannelList();
-      liveState.textContent = schema.decodable ? `${schema.channels.length} channels` : 'Schema unavailable';
+      liveState.textContent = schema.decodable
+        ? `${schema.channels.length} channels · ${selected.size} selected`
+        : 'Schema unavailable';
+      dispatchShimChannelCatalog(root, schema.decodable
+        ? {
+            mode: 'available',
+            channels: shimSchemaChannelDefinitions(schema),
+            sourceName: client?.welcome?.ecu.signature || 'ts_shim live schema',
+          }
+        : { mode: 'clear', channels: [], sourceName: 'ts_shim' });
+      if (schema.decodable) syncSelectedFromPersistedWorkspace();
       return;
     }
     if (event.type === 'state') {
@@ -248,7 +336,7 @@ export function installShimLiveUi(root: HTMLElement): void {
       } else if (event.type === 'state') {
         recordButton.dataset.recording = String(event.state === 'recording' || event.state === 'waiting-stream' || event.state === 'waiting-reconnect');
         if (event.state === 'recording' || event.state === 'waiting-stream' || event.state === 'waiting-reconnect') {
-          recordButton.textContent = 'Stop';
+          recordButton.textContent = 'Stop Recording';
           recordButton.disabled = false;
           updateSelectionCount();
           modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : (captureOpened ? (followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW') : 'LIVE · SHIM · RECORDING');
@@ -275,6 +363,7 @@ export function installShimLiveUi(root: HTMLElement): void {
     if (session?.isRecording) session.stopRecording();
     session?.dispose();
     client.disconnect();
+    dispatchShimChannelCatalog(root, { mode: 'clear', channels: [], sourceName: 'ts_shim' });
     client = undefined;
     session = undefined;
     schema = undefined;
@@ -288,6 +377,13 @@ export function installShimLiveUi(root: HTMLElement): void {
     appStatus.textContent = captureOpened ? 'Shim disconnected · retained capture remains active' : 'Shim disconnected';
   };
 
+  root.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest('.open-log')) return;
+    if (client) disconnect();
+    else dispatchShimChannelCatalog(root, { mode: 'clear', channels: [], sourceName: 'ts_shim' });
+  }, true);
+
   connectButton.addEventListener('click', () => {
     if (client) disconnect(); else connect();
   });
@@ -297,7 +393,7 @@ export function installShimLiveUi(root: HTMLElement): void {
     search.focus();
   });
   search.addEventListener('input', renderChannelList);
-  clear.addEventListener('click', () => { selected.clear(); renderChannelList(); });
+  clear.addEventListener('click', () => undefined);
   close.addEventListener('click', () => dialog.close());
   recordButton.addEventListener('click', () => {
     if (!session || !client) return;
@@ -306,13 +402,13 @@ export function installShimLiveUi(root: HTMLElement): void {
       return;
     }
     if (selected.size === 0) {
-      appStatus.textContent = 'Select at least one shim channel before recording.';
+      appStatus.textContent = 'Add at least one shim channel to the active graph before recording.';
       return;
     }
     const welcome = client.welcome;
     if (!welcome) return;
     captureId = `shim:${Date.now()}:${welcome.generation}`;
-    captureOpened = false;
+    captureOpened = true;
     followLatest = true;
     followButton.setAttribute('aria-pressed', 'true');
     followButton.textContent = 'Follow';
@@ -324,10 +420,17 @@ export function installShimLiveUi(root: HTMLElement): void {
       rateHz: welcome.limits.maxRateHz,
       deliveryHz: shimDeliveryRate(welcome.limits.maxDeliveryHz),
     });
-    setHeaderLive(`${selected.size} channels · ${welcome.limits.maxRateHz} Hz`);
-    appStatus.textContent = `Shim recording armed · ${selected.size} channels`;
+    modeChip.textContent = 'LIVE · SHIM · FOLLOW';
+    appStatus.textContent = `Shim recording · live view armed · ${selected.size} channel${selected.size === 1 ? '' : 's'}`;
   });
   openCaptureButton.addEventListener('click', () => {
+    if (captureOpened && session?.isRecording) {
+      captureOpened = false;
+      modeChip.textContent = 'LIVE · SHIM · RECORDING';
+      appStatus.textContent = 'Live view paused · recording continues';
+      updateSelectionCount();
+      return;
+    }
     const capture = session?.capture;
     const dataSource = session?.dataSource;
     const welcome = client?.welcome;
@@ -346,6 +449,8 @@ export function installShimLiveUi(root: HTMLElement): void {
     followButton.setAttribute('aria-pressed', String(followLatest));
     followButton.textContent = followLatest ? 'Follow' : 'Follow Off';
     modeChip.textContent = followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW';
-    appStatus.textContent = followLatest ? 'Live follow enabled' : 'Live follow paused · inspect history freely';
+    appStatus.textContent = followLatest
+      ? 'Live follow enabled'
+      : 'Live follow paused · recording continues · inspect history freely';
   });
 }

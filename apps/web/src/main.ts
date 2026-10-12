@@ -21,6 +21,7 @@ import { applyUiRefinements } from './app/ui-refinements';
 import { applyNavigationRefinements } from './app/ui-refinements-navigation';
 import { installShimLiveUi } from './app/shim-live-ui';
 import { installShimHttpUi } from './app/shim-http-ui';
+import { installSourceTransitionUi } from './app/source-transition';
 import { installBoostTableEnhancements } from './app/boost-table-enhancements';
 import { installAnalyzerInformationHierarchy } from './app/analyzer-information-hierarchy';
 import { installAnalyzerHelp } from './app/analyzer-help-installer';
@@ -34,6 +35,7 @@ if (!root) {
 mountAppShell(root);
 installShimLiveUi(root);
 installShimHttpUi(root);
+installSourceTransitionUi(root);
 applyUiRefinements(root);
 applyNavigationRefinements(root);
 installBoostTableEnhancements(root);

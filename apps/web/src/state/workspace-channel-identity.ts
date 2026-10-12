@@ -5,6 +5,18 @@ export interface NormalizeWorkspaceChannelIdsOptions {
   readonly limit: number;
 }
 
+function resolveKnownChannelId(
+  channelId: string,
+  knownChannelIds: ReadonlySet<string>,
+): string {
+  if (knownChannelIds.has(channelId)) return channelId;
+  if (channelId.startsWith('ini:')) {
+    const shimChannelId = channelId.slice(4);
+    if (knownChannelIds.has(shimChannelId)) return shimChannelId;
+  }
+  return channelId;
+}
+
 export function normalizeWorkspaceChannelIds(
   channelIds: readonly string[],
   options: NormalizeWorkspaceChannelIdsOptions,
@@ -19,6 +31,8 @@ export function normalizeWorkspaceChannelIds(
     ) {
       candidate = alias;
     }
+
+    candidate = resolveKnownChannelId(candidate, options.knownChannelIds);
 
     if (!normalized.includes(candidate)) normalized.push(candidate);
     if (normalized.length >= options.limit) break;
