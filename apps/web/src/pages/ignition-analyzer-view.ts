@@ -92,7 +92,26 @@ const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
   'Dwell mean / range': { title: 'Dwell mean / range', text: 'Average plus minimum/maximum selected dwell. It is observational coil-command context, not a universal dwell recommendation.' },
 };
 
-const EVIDENCE_LIMIT = 80;
+const EVENT_PAGE_SIZE = 200;
+const EVIDENCE_EVENT_SERIES_BUDGET = 480;
+const EVIDENCE_MIN_EVENTS = 24;
+const EVIDENCE_MAX_EVENTS = 160;
+
+function evidenceEventLimit(seriesCount: number): number {
+  const budgetLimit = Math.floor(EVIDENCE_EVENT_SERIES_BUDGET / Math.max(1, seriesCount));
+  return Math.max(EVIDENCE_MIN_EVENTS, Math.min(EVIDENCE_MAX_EVENTS, budgetLimit));
+}
+
+function representativeEvents(events: readonly CombinedEvent[], maximum: number): readonly CombinedEvent[] {
+  if (events.length <= maximum) return events;
+  if (maximum <= 1) return [events[Math.floor(events.length / 2)]!];
+  const selected: CombinedEvent[] = [];
+  for (let position = 0; position < maximum; position += 1) {
+    const index = Math.round(position * (events.length - 1) / (maximum - 1));
+    selected.push(events[index]!);
+  }
+  return selected;
+}
 
 function numberText(value: number | undefined, precision = 3): string {
   if (value === undefined || !Number.isFinite(value)) return '—';
@@ -196,11 +215,19 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         </div>
       </details>
       <section class="specialized-analyzer-evidence" hidden>
-        <header><div><strong data-ignition="evidence-title">Ignition behavior · aligned evidence</strong><span data-ignition="evidence-note"></span></div><button type="button" data-ignition="evidence-all">All events</button></header>
+        <header><div><strong data-ignition="evidence-title">Ignition behavior · aligned evidence</strong><span data-ignition="evidence-note"></span></div><button type="button" data-ignition="evidence-all">Overview</button></header>
         <canvas class="specialized-analyzer-evidence-canvas" aria-label="Ignition event-aligned evidence graph"></canvas>
       </section>
       <section class="specialized-analyzer-events">
-        <header><strong>Observed ignition events</strong><span data-ignition="events-count">0</span></header>
+        <header>
+          <strong>Observed ignition events</strong>
+          <span data-ignition="events-count">0</span>
+          <div class="ignition-event-pagination">
+            <button type="button" data-ignition="events-prev">Previous</button>
+            <span data-ignition="events-page">0 events</span>
+            <button type="button" data-ignition="events-next">Next</button>
+          </div>
+        </header>
         <div class="specialized-analyzer-table-wrap">
           <table class="specialized-analyzer-table ignition-behavior-events-table"><thead></thead><tbody></tbody></table>
         </div>
@@ -221,8 +248,11 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   const eventsBody = root.querySelector<HTMLTableSectionElement>('.ignition-behavior-events-table tbody');
   const guidance = root.querySelector<HTMLElement>('[data-ignition="guidance"]');
   const eventsCount = root.querySelector<HTMLElement>('[data-ignition="events-count"]');
+  const eventsPrev = root.querySelector<HTMLButtonElement>('[data-ignition="events-prev"]');
+  const eventsNext = root.querySelector<HTMLButtonElement>('[data-ignition="events-next"]');
+  const eventsPage = root.querySelector<HTMLElement>('[data-ignition="events-page"]');
   const evidenceNote = root.querySelector<HTMLElement>('[data-ignition="evidence-note"]');
-  if (!controls || !optionsGrid || !empty || !content || !summary || !detailsBody || !evidence || !evidenceCanvas || !evidenceAll || !eventsHead || !eventsBody || !guidance || !eventsCount || !evidenceNote) {
+  if (!controls || !optionsGrid || !empty || !content || !summary || !detailsBody || !evidence || !evidenceCanvas || !evidenceAll || !eventsHead || !eventsBody || !guidance || !eventsCount || !eventsPrev || !eventsNext || !eventsPage || !evidenceNote) {
     throw new Error('Ignition Analyzer structure is incomplete.');
   }
 
@@ -272,10 +302,12 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       return;
     }
     evidence.hidden = false;
-    const evidenceEvents = events.slice(0, EVIDENCE_LIMIT).map(({ event }) => ({ startTimeMs: event.startTimeMs, endTimeMs: event.endTimeMs }));
+    const displayLimit = evidenceEventLimit(series.length);
+    const representative = representativeEvents(events, displayLimit);
+    const evidenceEvents = representative.map(({ event }) => ({ startTimeMs: event.startTimeMs, endTimeMs: event.endTimeMs }));
     const renderAll = (): void => {
-      evidenceNote.textContent = events.length > EVIDENCE_LIMIT
-        ? `First ${EVIDENCE_LIMIT} of ${events.length.toLocaleString()} events · median + 10–90% envelope · t=0 onset`
+      evidenceNote.textContent = representative.length < events.length
+        ? `Representative ${representative.length.toLocaleString()} of ${events.length.toLocaleString()} events across the full scope · median + 10–90% envelope · t=0 onset`
         : `${events.length.toLocaleString()} event${events.length === 1 ? '' : 's'} · median + 10–90% envelope · t=0 onset`;
       renderAlignedAnalyzerEvidence(evidenceCanvas, series, evidenceEvents, 200, 500);
     };
@@ -290,8 +322,22 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     renderAlignedAnalyzerEvidence(evidenceCanvas, series, [{ startTimeMs: event.event.startTimeMs, endTimeMs: event.event.endTimeMs }], 200, Math.max(400, duration + 250));
   };
 
-  const renderEvents = (events: readonly CombinedEvent[], series: readonly AnalyzerEvidenceSeries[]): void => {
-    eventsCount.textContent = events.length.toLocaleString();
+  let currentEvents: readonly CombinedEvent[] = [];
+  let currentEventSeries: readonly AnalyzerEvidenceSeries[] = [];
+  let currentEventPage = 0;
+
+  const renderEventPage = (): void => {
+    const pageCount = Math.max(1, Math.ceil(currentEvents.length / EVENT_PAGE_SIZE));
+    currentEventPage = Math.max(0, Math.min(currentEventPage, pageCount - 1));
+    const start = currentEventPage * EVENT_PAGE_SIZE;
+    const end = Math.min(currentEvents.length, start + EVENT_PAGE_SIZE);
+    eventsCount.textContent = currentEvents.length.toLocaleString();
+    eventsPage.textContent = currentEvents.length
+      ? `${(start + 1).toLocaleString()}–${end.toLocaleString()} of ${currentEvents.length.toLocaleString()}`
+      : '0 events';
+    eventsPrev.disabled = currentEventPage <= 0;
+    eventsNext.disabled = currentEventPage >= pageCount - 1 || currentEvents.length === 0;
+
     const headers = ['#', 'Type', 'Start', 'Duration', 'Advance Δ', 'Correction', 'Advance', 'Dwell', 'RPM', 'Load'];
     const headerRow = document.createElement('tr');
     for (const label of headers) {
@@ -300,13 +346,16 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       headerRow.append(th);
     }
     eventsHead.replaceChildren(headerRow);
-    eventsBody.replaceChildren(...events.slice(0, 200).map((entry, index) => {
+
+    const pageEvents = currentEvents.slice(start, end);
+    eventsBody.replaceChildren(...pageEvents.map((entry, localIndex) => {
+      const eventIndex = start + localIndex;
       const event = entry.event;
       const isStep = entry.kind === 'Timing step';
       const step = isStep ? event as IgnitionTimingStepEvent : undefined;
       const correction = isStep ? undefined : event as IgnitionCorrectionEvent;
       const values = [
-        String(index + 1),
+        String(eventIndex + 1),
         entry.kind,
         timeText(event.startTimeMs),
         `${event.durationMs.toFixed(0)} ms`,
@@ -329,12 +378,12 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       const select = (): void => {
         eventsBody.querySelectorAll('tr').forEach((row) => row.classList.remove('specialized-analyzer-event-row--selected'));
         tr.classList.add('specialized-analyzer-event-row--selected');
-        selectEvidenceEvent(entry, index, series);
+        selectEvidenceEvent(entry, eventIndex, currentEventSeries);
       };
       const open = (): void => context.openSamplesInLogger?.({
         sampleIndices: event.startSampleIndex === event.endSampleIndex ? [event.startSampleIndex] : [event.startSampleIndex, event.endSampleIndex],
         timeMs: event.startTimeMs === event.endTimeMs ? [event.startTimeMs] : [event.startTimeMs, event.endTimeMs],
-        label: `${entry.kind} ${index + 1}`,
+        label: `${entry.kind} ${eventIndex + 1}`,
       });
       tr.addEventListener('click', select);
       if (context.openSamplesInLogger) tr.addEventListener('dblclick', open);
@@ -344,6 +393,24 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       });
       return tr;
     }));
+  };
+
+  eventsPrev.addEventListener('click', () => {
+    if (currentEventPage <= 0) return;
+    currentEventPage -= 1;
+    renderEventPage();
+  });
+  eventsNext.addEventListener('click', () => {
+    if ((currentEventPage + 1) * EVENT_PAGE_SIZE >= currentEvents.length) return;
+    currentEventPage += 1;
+    renderEventPage();
+  });
+
+  const renderEvents = (events: readonly CombinedEvent[], series: readonly AnalyzerEvidenceSeries[]): void => {
+    currentEvents = events;
+    currentEventSeries = series;
+    currentEventPage = 0;
+    renderEventPage();
   };
 
   const selectedScope = () => {
@@ -446,10 +513,10 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['Load mean / max', load ? `${numberText(result.load?.mean)} / ${numberText(result.load?.max)}` : 'Not selected'],
       ]);
 
-      const combinedEvents: CombinedEvent[] = [
-        ...result.timingStepEvents.map((event) => ({ kind: 'Timing step' as const, event })),
-        ...result.correctionEvents.map((event) => ({ kind: 'Correction' as const, event })),
-      ].sort((left, right) => left.event.startTimeMs - right.event.startTimeMs || left.event.endTimeMs - right.event.endTimeMs);
+      const combinedEvents: CombinedEvent[] = [];
+      for (const event of result.timingStepEvents) combinedEvents.push({ kind: 'Timing step', event });
+      for (const event of result.correctionEvents) combinedEvents.push({ kind: 'Correction', event });
+      combinedEvents.sort((left, right) => left.event.startTimeMs - right.event.startTimeMs || left.event.endTimeMs - right.event.endTimeMs);
       const series: AnalyzerEvidenceSeries[] = [
         { label: 'Ignition advance', range: advance.range },
         ...(retard ? [{ label: 'Retard / correction', range: retard.range }] : []),
