@@ -32,14 +32,13 @@ function selectedIndices(reference: NumericChannelRange, sampleIndices?: ArrayLi
   return Array.from({ length: reference.values.length }, (_, index) => reference.startSampleIndex + index);
 }
 
-function percentile(values: readonly number[], p: number): number | undefined {
+function percentileSorted(values: readonly number[], p: number): number | undefined {
   if (!values.length) return undefined;
-  const sorted = [...values].sort((a, b) => a - b);
-  const position = (sorted.length - 1) * p;
+  const position = (values.length - 1) * p;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
-  const low = sorted[lower];
-  const high = sorted[upper];
+  const low = values[lower];
+  const high = values[upper];
   if (low === undefined) return undefined;
   if (high === undefined || lower === upper) return low;
   return low + (high - low) * (position - lower);
@@ -122,6 +121,7 @@ export function analyzeIgnitionBehavior(inputs: {
 
   const absoluteSteps: number[] = [];
   const timingStepEvents: IgnitionTimingStepEvent[] = [];
+  let sumAbsoluteSteps = 0;
   let skippedGapCount = 0;
   let invalidOrUnavailablePairCount = 0;
 
@@ -140,8 +140,10 @@ export function analyzeIgnitionBehavior(inputs: {
       continue;
     }
     const deltaAdvance = current.value - previous.value;
-    absoluteSteps.push(Math.abs(deltaAdvance));
-    if (Math.abs(deltaAdvance) < timingStepThreshold) continue;
+    const absoluteStep = Math.abs(deltaAdvance);
+    absoluteSteps.push(absoluteStep);
+    sumAbsoluteSteps += absoluteStep;
+    if (absoluteStep < timingStepThreshold) continue;
     const retard = sample(inputs.retardOrCorrection, currentIndex);
     const dwell = sample(inputs.dwell, currentIndex);
     const rpm = sample(inputs.rpm, currentIndex);
@@ -241,17 +243,18 @@ export function analyzeIgnitionBehavior(inputs: {
     }
   }
 
-  const meanAbsoluteStep = absoluteSteps.length
-    ? absoluteSteps.reduce((sum, value) => sum + value, 0) / absoluteSteps.length
-    : undefined;
+  const meanAbsoluteStep = absoluteSteps.length ? sumAbsoluteSteps / absoluteSteps.length : undefined;
+  if (absoluteSteps.length > 1) absoluteSteps.sort((left, right) => left - right);
+  const p95AbsoluteStep = percentileSorted(absoluteSteps, 0.95);
+  const maxAbsoluteStep = absoluteSteps.length ? absoluteSteps[absoluteSteps.length - 1] : undefined;
 
   return {
     advance: aggregateNumericSamples(inputs.advance, { sampleIndices: indices }),
     transitions: {
       transitionCount: absoluteSteps.length,
       meanAbsoluteStep,
-      p95AbsoluteStep: percentile(absoluteSteps, 0.95),
-      maxAbsoluteStep: absoluteSteps.length ? Math.max(...absoluteSteps) : undefined,
+      p95AbsoluteStep,
+      maxAbsoluteStep,
       skippedGapCount,
       invalidOrUnavailablePairCount,
     },
