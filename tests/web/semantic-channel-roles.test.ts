@@ -12,7 +12,6 @@ function channel(id: string, sourceName = id, displayName = sourceName): Channel
     sourceName,
     displayName,
     valueType: 'number',
-    unit: undefined,
   };
 }
 
