@@ -220,6 +220,19 @@ export function bindChannelCatalogToLog(
   }
 
   const workspaceChannelAliases = new Map(sourceToLogicalChannelId);
+
+  // ts_shim exposes matched INI output-channel identities without the `ini:`
+  // workspace prefix. Reusable workspaces created while a live shim source is
+  // active therefore contain bare logical keys such as `RPMValue`, `coolant`
+  // or `intake`. When the same workspace is later opened against an INI-bound
+  // MLG, migrate every currently bound bare logical key to the canonical stable
+  // INI identity. Logger workspace normalization will deduplicate entries when
+  // both the bare live identity and canonical offline identity are present.
+  for (const entry of catalog.entries) {
+    if (!boundByLogicalKey.has(entry.logicalKey)) continue;
+    workspaceChannelAliases.set(entry.logicalKey, stableId(entry.logicalKey));
+  }
+
   for (const entry of catalog.entries) {
     if (boundByLogicalKey.has(entry.logicalKey)) continue;
     const target = chooseWorkspaceAliasTarget(
