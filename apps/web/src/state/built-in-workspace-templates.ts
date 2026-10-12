@@ -48,13 +48,29 @@ export interface ResolvedBuiltInWorkspace {
   readonly unresolvedOptionalRoleIds: readonly SemanticChannelRoleId[];
 }
 
+/** Production Single-layout overview workspace. */
+export const GENERAL_SINGLE_WORKSPACE: BuiltInWorkspaceTemplate = {
+  id: 'general-single',
+  name: 'General · Single',
+  layout: 'single',
+  panes: [{
+    id: 'pane-1',
+    roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'engine.map', requirement: 'required' },
+      { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      { roleId: 'temperature.coolant', requirement: 'preferred' },
+      { roleId: 'temperature.intakeAir', requirement: 'optional' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+      { roleId: 'fuel.lambda', requirement: 'optional' },
+      { roleId: 'ignition.advance', requirement: 'optional' },
+    ],
+  }],
+};
+
 /**
- * First implementation fixture for the pre-populated workspace system.
- *
- * It intentionally exercises one required, two preferred and one optional role while keeping
- * geometry trivial. Once the semantic resolver and source transitions are proven in the real UI,
- * this fixture can be hidden/removed and the agreed production workspace catalog can use the same
- * template model.
+ * Development fixture retained for focused resolver regression tests.
+ * It is no longer exposed by Logger now that the production General Single preset uses the same path.
  */
 export const SINGLE_RESOLVER_TEST_WORKSPACE: BuiltInWorkspaceTemplate = {
   id: 'single-resolver-test',
