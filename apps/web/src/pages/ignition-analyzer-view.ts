@@ -4,7 +4,6 @@ import { numericRangeCoversTime } from '../../../../core/analysis/range-statisti
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import { addInlineHelpButton, showInlineHelpPopover, type InlineHelpEntry } from '../components/inline-help';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
-import { suggestAnalyzerChannel } from './analyzer-channel-roles';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { renderAlignedAnalyzerEvidence, type AnalyzerEvidenceSeries } from './analyzer-event-evidence';
 
@@ -149,16 +148,13 @@ function localSuggestion(key: RoleKey, channels: readonly ChannelDefinition[]): 
         pattern.lastIndex = 0;
         if (pattern.test(identity)) score = Math.max(score, 100 - index * 12);
       });
+      if (key === 'retard' && /knock/i.test(identity)) score = Number.NEGATIVE_INFINITY;
       if (key === 'dwell' && /table|target|crank|axis|bin/i.test(identity)) score = Number.NEGATIVE_INFINITY;
       if (key === 'load' && /target|predict|estimate/i.test(identity)) score = Number.NEGATIVE_INFINITY;
     }
     if (score > bestScore) { best = channel; bestScore = score; }
   }
   return Number.isFinite(bestScore) ? best : undefined;
-}
-
-function suggestedChannel(key: RoleKey, channels: readonly ChannelDefinition[]): ChannelDefinition | undefined {
-  return suggestAnalyzerChannel('ignition', key, channels) ?? localSuggestion(key, channels);
 }
 
 type CombinedEvent =
@@ -444,7 +440,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['Invalid / unavailable pairs', result.transitions.invalidOrUnavailablePairCount.toLocaleString()],
         ['Retard / correction mean', retard ? valueWithUnit(result.retardOrCorrection?.mean, retard.channel.unit) : 'Not selected'],
         ['Retard / correction min / max', retard ? rangeWithUnit(result.retardOrCorrection?.min, result.retardOrCorrection?.max, retard.channel.unit) : 'Not selected'],
-        ['Dwell valid / input', dwell ? `${result.dwell?.validSampleCount.toLocaleString()} / ${result.dwell?.inputSampleCount.toLocaleString()}` : 'Not selected'],
+        ['Dwell valid / input', dwell ? `${(result.dwell?.validSampleCount ?? 0).toLocaleString()} / ${(result.dwell?.inputSampleCount ?? 0).toLocaleString()}` : 'Not selected'],
         ['Dwell ≤ 0 samples', dwell ? result.nonPositiveDwellSampleCount.toLocaleString() : 'Not selected'],
         ['RPM mean / max', rpm ? `${numberText(result.rpm?.mean, 0)} / ${numberText(result.rpm?.max, 0)}` : 'Not selected'],
         ['Load mean / max', load ? `${numberText(result.load?.mean)} / ${numberText(result.load?.max)}` : 'Not selected'],
@@ -488,7 +484,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       if (remembered && [...select.options].some((option) => option.value === remembered)) {
         select.value = remembered;
       } else {
-        const suggested = suggestedChannel(role.key, context.channels);
+        const suggested = localSuggestion(role.key, context.channels);
         if (suggested) {
           select.value = suggested.id;
           select.dataset.autoSelected = 'true';
