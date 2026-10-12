@@ -25,9 +25,13 @@ interface LegendHit {
 }
 interface RenderState {
   visibility: Map<string, SeriesVisibility>;
+  seriesLabels: Map<string, string>;
   hits: LegendHit[];
   listenerAttached: boolean;
   typographyListenerAttached?: boolean;
+  resizeObserver?: ResizeObserver;
+  renderedWidth?: number;
+  renderedHeight?: number;
   lastRender?: () => void;
 }
 
@@ -97,6 +101,12 @@ function isIdleEvidence(series: readonly AnalyzerEvidenceSeries[]): boolean {
     && labels.some((label) => /idle|dc|iac|etb|ignition|position|control/.test(label));
 }
 
+function isIgnitionEvidence(series: readonly AnalyzerEvidenceSeries[]): boolean {
+  const labels = series.map((entry) => entry.label.toLowerCase());
+  return labels.some((label) => label === 'ignition advance')
+    && labels.some((label) => label === 'retard / correction' || label === 'ignition dwell' || label === 'load / map');
+}
+
 function idlePaneFor(entry: AnalyzerEvidenceSeries): 'engine' | 'control' {
   if (entry.group) return /engine|rpm|response/i.test(entry.group) ? 'engine' : 'control';
   return /^(rpm|target)$/i.test(entry.label) ? 'engine' : 'control';
@@ -105,7 +115,7 @@ function idlePaneFor(entry: AnalyzerEvidenceSeries): 'engine' | 'control' {
 function ensureState(canvas: HTMLCanvasElement): RenderState {
   let state = STATE.get(canvas);
   if (!state) {
-    state = { visibility: new Map(), hits: [], listenerAttached: false };
+    state = { visibility: new Map(), seriesLabels: new Map(), hits: [], listenerAttached: false };
     STATE.set(canvas, state);
   }
   if (!state.listenerAttached) {
@@ -129,6 +139,19 @@ function ensureState(canvas: HTMLCanvasElement): RenderState {
   if (!state.typographyListenerAttached) {
     window.addEventListener('epicscope:typography-change', () => STATE.get(canvas)?.lastRender?.());
     state.typographyListenerAttached = true;
+  }
+  if (!state.resizeObserver && typeof ResizeObserver !== 'undefined') {
+    state.resizeObserver = new ResizeObserver((entries) => {
+      const current = STATE.get(canvas);
+      if (!current?.lastRender) return;
+      const entry = entries[0];
+      if (!entry || entry.contentRect.width < 2 || entry.contentRect.height < 2) return;
+      const width = Math.round(entry.contentRect.width);
+      const height = Math.round(entry.contentRect.height);
+      if (width === current.renderedWidth && height === current.renderedHeight) return;
+      current.lastRender();
+    });
+    state.resizeObserver.observe(canvas);
   }
   return state;
 }
@@ -299,13 +322,23 @@ export function renderAlignedAnalyzerEvidence(
   afterMs: number,
 ): void {
   const idleSplit = isIdleEvidence(series);
+  const ignitionEvidence = isIgnitionEvidence(series);
   if (idleSplit) ensureIdleAnalyzerHelp(canvas);
   const scale = graphScale();
   const baseHeight = idleSplit ? 460 : 260;
   const scaledHeight = Math.round(baseHeight * Math.max(1, scale));
   canvas.style.height = `${scaledHeight}px`;
-  const width = Math.max(320, canvas.clientWidth || 900);
-  const height = Math.max(idleSplit ? 460 : 180, canvas.clientHeight || scaledHeight);
+
+  const state = ensureState(canvas);
+  state.lastRender = () => renderAlignedAnalyzerEvidence(canvas, series, events, beforeMs, afterMs);
+
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return;
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  state.renderedWidth = width;
+  state.renderedHeight = height;
+
   const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
@@ -316,22 +349,28 @@ export function renderAlignedAnalyzerEvidence(
   ctx.fillStyle = '#071119';
   ctx.fillRect(0, 0, width, height);
 
-  const state = ensureState(canvas);
   state.hits = [];
   series.forEach((entry, seriesIndex) => {
     const key = String(seriesIndex);
+    const previousLabel = state.seriesLabels.get(key);
+    if (previousLabel !== entry.label) {
+      state.visibility.delete(key);
+      state.seriesLabels.set(key, entry.label);
+    }
     if (!state.visibility.has(key)) {
+      const ignitionPrimary = /^(ignition advance|retard \/ correction)$/i.test(entry.label);
       state.visibility.set(key, {
-        visible: true,
-        envelope: idleSplit ? /^rpm$/i.test(entry.label) : true,
+        visible: ignitionEvidence ? ignitionPrimary : true,
+        envelope: idleSplit ? /^rpm$/i.test(entry.label) : ignitionEvidence ? false : true,
       });
     }
   });
   for (const key of [...state.visibility.keys()]) {
-    if (Number(key) >= series.length) state.visibility.delete(key);
+    if (Number(key) >= series.length) {
+      state.visibility.delete(key);
+      state.seriesLabels.delete(key);
+    }
   }
-
-  state.lastRender = () => renderAlignedAnalyzerEvidence(canvas, series, events, beforeMs, afterMs);
 
   if (idleSplit) {
     const indexed = series.map((entry, seriesIndex) => ({ entry, seriesIndex }));
