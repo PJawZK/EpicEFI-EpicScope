@@ -779,10 +779,6 @@ export function mountAppShell(root: HTMLElement): void {
       );
       await restoreWorkspaceSnapshot(merged);
 
-      // If old exact-log state supplied source-local channel assignments, the
-      // migration above may have converted them to stable INI identities.
-      // Persist that application structure immediately so the next INI-only
-      // startup no longer depends on loading this MLG again.
       if (activeIniBinding && !reusableWorkspacePersistenceSuspended) {
         try {
           applicationWorkspaceStorage.save(captureWorkspaceState());
@@ -1063,9 +1059,6 @@ export function mountAppShell(root: HTMLElement): void {
     const unloadedSourceName = activeIniSourceName ?? 'INI';
     const stableWorkspaceBeforeUnload = captureWorkspaceState();
 
-    // Preserve the reusable INI-keyed workspace before entering temporary
-    // raw-MLG mode. Raw source-local IDs must never replace application
-    // workspace identity in persistence.
     try {
       applicationWorkspaceStorage.save(stableWorkspaceBeforeUnload);
     } catch (error) {
@@ -1366,6 +1359,64 @@ export function mountAppShell(root: HTMLElement): void {
   void restoreReusableApplicationState();
 
   let activeStagedImport: StagedMlgImportHandle | undefined;
+
+  const detachRecordedSource = (): void => {
+    const source = currentRawLog?.summary.source;
+    if (!source || source.format === 'TS-SHIM') return;
+
+    if (workspaceSaveTimer !== undefined) {
+      window.clearTimeout(workspaceSaveTimer);
+      workspaceSaveTimer = undefined;
+    }
+    activeStagedImport?.cancel();
+    activeStagedImport = undefined;
+
+    try {
+      applicationWorkspaceStorage.save(captureWorkspaceState());
+      applicationWorkspacePersistenceBlocked = false;
+    } catch (error) {
+      setPersistenceStatus(
+        error instanceof Error
+          ? `Recorded log unloaded, but reusable workspace could not be saved: ${error.message}`
+          : 'Recorded log unloaded, but reusable workspace could not be saved.',
+      );
+    }
+
+    currentRawLog = undefined;
+    activeIniBinding = undefined;
+    activeWorkspaceSource = undefined;
+    workspacePersistenceBlocked = false;
+    reusableWorkspacePersistenceSuspended = false;
+    forgetWorkspaceButton.disabled = true;
+
+    loggerPage.setImportError('Recorded log unloaded.');
+    loggerPage.setDiagnostics([]);
+    if (!shimCatalogActive && activeIniCatalog) {
+      loggerPage.setChannelCatalog(
+        catalogDefinitions(activeIniCatalog),
+        activeIniSourceName ?? 'INI',
+      );
+    } else if (!shimCatalogActive) {
+      loggerPage.clearChannelCatalog();
+    }
+
+    loadedLog.textContent = 'No log loaded';
+    setSourceLoadState(openButton, 'idle', 'No recorded log loaded.');
+    modeChip.dataset.loggerSource = shimCatalogActive ? 'shim-live' : 'recorded';
+    if (activeMode === 'logger') {
+      modeChip.textContent = shimCatalogActive ? 'LIVE · SHIM' : 'RECORDED';
+    }
+    appStatus.textContent = `${source.displayName} unloaded`;
+    parserStatus.textContent = shimCatalogActive
+      ? 'TS-SHIM · live schema source'
+      : activeIniCatalog
+        ? `INI · ${activeIniCatalog.entries.length.toLocaleString()} catalog channels · no recorded log`
+        : 'LOG-MLG · no recorded log loaded';
+    setPersistenceStatus('Recorded log released · INI, MSQ, reusable workspace and runtime diagnostics retained.');
+    resetWorkspaceHistory();
+  };
+
+  root.addEventListener('epicscope:request-recorded-source-unload', detachRecordedSource);
 
   root.addEventListener(SHIM_CHANNEL_CATALOG_EVENT, (event) => {
     const detail = (event as CustomEvent<ShimChannelCatalogEventDetail>).detail;
@@ -1705,8 +1756,6 @@ export function mountAppShell(root: HTMLElement): void {
             );
           }
         } catch {
-          // The normal workspace restore path will report persistence failures.
-          // Priority planning should never prevent the log itself from loading.
         }
         const prioritizedSourceChannelIds = [...new Set([
           ...reusablePriorities,
