@@ -205,7 +205,7 @@ export function analyzeIgnitionBehavior(inputs: {
       const gapBreak = current && previous
         ? current.timeMs <= previous.timeMs || current.timeMs - previous.timeMs > maxTransitionGapMs
         : false;
-      const active = current !== undefined && !gapBreak && Math.abs(current.value) >= correctionThreshold;
+      const active = current !== undefined && !gapBreak && Math.abs(current.value) > correctionThreshold;
 
       if (active) {
         if (startPosition === undefined) startPosition = position;
@@ -224,7 +224,7 @@ export function analyzeIgnitionBehavior(inputs: {
       peakMagnitude = Number.NEGATIVE_INFINITY;
       peakValue = 0;
 
-      if (current && gapBreak && Math.abs(current.value) >= correctionThreshold) {
+      if (current && gapBreak && Math.abs(current.value) > correctionThreshold) {
         startPosition = position;
         peakPosition = position;
         peakMagnitude = Math.abs(current.value);
