@@ -1,185 +1,232 @@
 # EpicScope ts_shim current status
 
-This file is the present-tense implementation/status companion to [`TS_SHIM_INTEGRATION.md`](TS_SHIM_INTEGRATION.md). The integration-design document remains useful for architecture and protocol rationale, but its early planning/status wording is historical. Use this file plus current `main` for the implemented state.
+This file is the present-tense implementation and validation authority for EpicScope's `ts_shim` support. Use it together with current `main`. Older planning notes that describe the live path as unimplemented or hardware-blocked are historical.
 
-## Current implementation state
+## Current status — 2026-10-12
 
-EpicScope contains a complete first-pass read-only `ts_shim` telemetry path through the existing normalized Logger/Analyzer/Histogram architecture.
+The first-pass read-only `ts_shim` integration is implemented, real-ECU tested and merged to `main`.
 
-Implemented sequence:
+Authoritative merge:
 
-- **PR #249** — integration design documented;
-- **PR #250 / SHIM-1** — protocol-v1 JSON types and `epicefi-f64-v1` binary decoder with synthetic tests;
-- **PR #251 / SHIM-2** — WebSocket telemetry client/session state machine, reconnect ladder and subscription ownership;
-- **PR #252 / SHIM-3** — shim schema adapter plus additive rich quality states (`valid`, `invalid`, `stale`, `unavailable`, reserved/lost compatibility);
-- **PR #253 / SHIM-4** — live capture/session buffer and `NumericChannelDataSource` implementation;
-- **PR #254 / SHIM-5** — live recording/session coordinator connecting telemetry, reconnect segments and capture state;
-- **PR #255 / SHIM-6** — first Logger UI integration: Connect Shim, channel selection, Record/Stop and status;
-- **PR #256 / SHIM-7** — retained captures become normal EpicScope sources for Logger/Analyzer/Histogram;
-- **PR #257 / SHIM-8** — live Logger viewing and Follow mode while recording;
-- **PR #258 / SHIM-9 slice 1** — strict read-only HTTP inspector for `/api/v1/inis`, `/api/v1/objects` and `/api/v1/triggerlog`;
-- **PR #259** — same-origin Vite development proxy for testing a real Windows `ts_shim` without first embedding EpicScope into the shim package;
-- **PR #262** — fixed shim UI bootstrap after navigation refinement removed the mode-chip before shim UI installation. Current `main` correctly exposes **Load Data → Connect Shim…**.
+`ad6d6a5ed26939ce7d27e4e4a018be8b2bd88bdc` — **Integrate ts_shim live source with Logger workflow**
 
-The working data path is:
-
-```text
-ECU
-  ↓
-ts_shim
-  ↓ WebSocket /telemetry
-ShimTelemetryClient
-  ↓
-ShimLiveSession / ShimCaptureSession
-  ↓
-ShimLiveNumericChannelDataSource
-  ↓
-Logger / Analyzer / Histogram
-```
-
-The recorded MLG path remains intact and separate. Connecting to a shim does not silently replace an already loaded recorded log.
-
-## Live Logger behavior
-
-Current live workflow:
-
-```text
-Connect Shim… → choose channels → Record → View Live → Follow / inspect history → Stop
-```
-
-Current post-capture workflow:
-
-```text
-Connect Shim… → Record → Stop → Open Capture → Logger / Analyzer / Histogram
-```
-
-Important behavior:
-
-- selected-channel capture is currently the supported first-stage mode;
-- one stream is used, bounded by the shim-advertised `maxChannelsPerStream`;
-- `series` mode is used for logging;
-- `rateHz` is taken from the shim `welcome.limits.maxRateHz`, never assumed;
-- delivery is batched conservatively while retaining series samples;
-- reconnect/lifecycle changes invalidate old streams and create explicit capture segments;
-- unrelated `clockId` timestamp origins are never subtracted directly;
-- delivery-loss and rich per-sample quality are preserved as provenance;
-- Analyzer/Histogram operate through normal normalized-source reads, not a separate shim-only analysis stack;
-- live Logger refresh appends newly arrived samples; Follow keeps a rolling latest-data viewport;
-- turning Follow off keeps incoming recording active while allowing historical inspection;
-- stopping a live-viewed session turns it into a retained `CAPTURE · SHIM` source.
-
-## Rich quality model
-
-Shim telemetry quality is preserved additively instead of being collapsed permanently into binary validity:
-
-- `0` — valid;
-- `1` — invalid;
-- `2` — stale;
-- `3` — unavailable;
-- `4` — reserved/lost compatibility value (the current server reports queue loss separately rather than emitting this quality value).
-
-Existing MLG consumers continue to use the established `validity` projection. Shim/live ranges may additionally expose a `quality` byte array.
-
-## HTTP enrichment status
-
-The current HTTP integration is deliberately read-only.
-
-EpicScope can inspect:
-
-- `GET /api/v1/inis`;
-- `GET /api/v1/objects`;
-- `GET /api/v1/triggerlog`.
-
-The inspector reports HTTP status, timing, content type, JSON parse state, transport errors and a bounded payload preview. It intentionally does not invent response schemas that have not yet been observed from a real running shim.
-
-Next typed HTTP work depends on real runtime responses from the installed shim. Once captured, these may be promoted into proper read-only features for:
-
-- matching/staged INI inspection;
-- live tune-object lookup for Analyzer/Table context;
-- shared trigger/composite-log data for Trigger / Sync analysis.
-
-No tune writes, burns, firmware flashing, sensor mocks, ECU commands or CAN injection are part of the current EpicScope shim integration.
-
-## Development proxy
-
-The browser shim contract requires same-origin WebSocket access. Until EpicScope is served directly by the shim, development/testing uses the Vite proxy described in [`TS_SHIM_DEVELOPMENT_PROXY.md`](TS_SHIM_DEVELOPMENT_PROXY.md).
-
-Development layout:
-
-```text
-Browser → http://localhost:5173
-           ├─ EpicScope dev assets
-           ├─ /telemetry  → proxy → http://127.0.0.1:29002/telemetry
-           └─ /api/v1/*   → proxy → http://127.0.0.1:29002/api/v1/*
-```
-
-Final intended deployment:
-
-```text
-Browser → shim-host:29002
-           ├─ EpicScope static files
-           ├─ /telemetry
-           └─ /api/v1/*
-```
-
-EpicScope addresses these routes relative to the current origin, so moving from the development proxy to shim-hosted deployment should not require a networking rewrite.
-
-## Runtime-test checkpoint — PAUSED pending hardware
-
-The Windows development proxy and **Connect Shim…** UI are now known to start correctly. Full real-ECU runtime validation is intentionally paused because the required Pi Zero 2 W ↔ ECU USB adapter is not yet available.
-
-The intended physical/network arrangement has been checked against the current EpicEFI firmware/JZ-fork `ts_shim` implementation:
+The validated physical/runtime path is:
 
 ```text
 Mega144H7 USB CDC
       ↓
 Pi Zero 2 W
-Raspberry Pi OS Lite
-raw serial ↔ TCP bridge (planned: ser2net)
-      ↓ Wi-Fi / home LAN
-Windows PC
       ↓
-ts_shim.exe --upstream-tcp PI_HOST:PORT
+ts_shim
+      ↓ LAN / WebSocket telemetry
+EpicScope Vite same-origin proxy
       ↓
-EpicScope / tuning clients
+Logger / Analyzer / Histogram
 ```
 
-Current firmware-side `ts_shim` explicitly supports `--upstream-tcp H:PORT`, so the Pi does not need to run `ts_shim` or understand EpicEFI protocol. Its role is only to expose the ECU USB CDC byte stream over plain TCP.
+Real test firmware signature used during validation:
 
-Pi preparation reached the point where Raspberry Pi OS Lite is installed/configured and ready for the ECU-side USB check. Work stops there until the USB adapter arrives; do not speculate around missing hardware.
+`rusEFI master.2026.10.12.MEGA144H7.2957763282`
 
-When hardware is available, resume in this order:
+## Source model
 
-1. connect Mega144H7 to the Pi and confirm the actual `/dev/ttyACM*` / `/dev/serial/by-id/*` identity;
-2. freeze the exact minimal `ser2net` configuration from the installed OS/ser2net version;
-3. test Pi TCP exposure from Windows;
-4. start `ts_shim.exe --upstream-tcp PI_HOST:PORT`;
-5. establish EpicScope WebSocket connection;
-6. capture real `welcome`, schema and lifecycle behavior;
-7. record a small selected-channel live capture and verify View Live / Follow / Stop / Open Capture;
-8. inspect `/api/v1/inis`, `/api/v1/objects` and `/api/v1/triggerlog`;
-9. use those real payloads to define the next typed read-only HTTP slice.
+EpicScope has one authoritative Logger source family at a time:
 
-Until that hardware arrives, shim/runtime work is not the active development track.
+```text
+Recorded MLG + optional INI binding
+              ↕
+         INI catalog only
+              ↕
+      ts_shim live/capture
+```
 
-## Active work while shim runtime is paused
+The implementation intentionally does not run the MLG parser and live Shim source as competing active data sources.
 
-Continue browser-only EpicScope maturity using recorded MLG/INI/MSQ sources:
+The loaded INI and MSQ are application resources, not disposable source-session state. Source transitions must not restart the application or discard them.
 
-- codebase/static sanity and maintainability audits;
-- performance profiling and optimization on large recorded logs;
-- polish of existing Logger, Analyzer, Histogram/Table Generator and navigation/settings interactions;
-- shared Analyzer comparison/qualification/evidence refinement;
-- regression cleanup without destabilizing established MLG/INI/MSQ behavior.
+## Validated Logger workflow
 
-Do not build speculative shim protocol layers merely because the hardware test is paused.
+The tested round trip is:
 
-## Scope still intentionally deferred
+```text
+MLG + INI
+→ Connect Shim
+→ recorded MLG detached in-process
+→ Shim schema becomes the temporary Channel Browser catalog
+→ existing graph assignments map to matching Shim channels
+→ Record / live Logger view
+→ Stop
+→ Open Log
+→ Shim relinquishes catalog ownership
+→ INI catalog restored
+→ MLG/INI binding restored
+→ workspace IDs migrate back to canonical ini:* identities
+```
 
-Not yet implemented/approved as the next automatic step:
+No browser reload is used for the MLG → Shim transition.
 
-- multi-stream full-schema capture/joining;
-- automatic logging of every schema channel;
-- shim-host packaging/static-file embedding;
-- typed tune-object/INI/trigger-log HTTP integration before runtime responses are observed;
-- any ECU/tune write path.
+### Recorded-source unload
+
+**Unload Log** detaches only the active recorded MLG source. It retains:
+
+- loaded INI;
+- loaded MSQ / TuneModel;
+- reusable graph/workspace assignments;
+- application session;
+- runtime errors;
+- performance/report history.
+
+It releases the File-backed recorded source, active binding, traces and log-specific navigation/source ownership.
+
+### Shim catalog ownership
+
+When Shim connects, its complete decodable schema becomes the temporary Logger catalog.
+
+Validated schema size on the tested ECU/INI:
+
+`2,493 channels`
+
+When Shim disconnects or a recorded MLG becomes authoritative again, the temporary Shim catalog is released and the current INI catalog is restored.
+
+Validated INI catalog size:
+
+`2,519 channels`
+
+### Workspace channel identity
+
+Recorded INI-bound sessions use stable identities such as:
+
+```text
+ini:coolant
+ini:intake
+ini:MAPValue
+ini:RPMValue
+ini:TPSValue
+```
+
+Shim publishes the corresponding runtime IDs without the `ini:` prefix.
+
+EpicScope maps stable `ini:*` workspace assignments to matching raw Shim IDs while Shim is authoritative, then migrates them back to canonical `ini:*` identities when an INI-bound MLG becomes authoritative again.
+
+This prevents duplicate raw + `ini:*` traces and keeps graph presets reusable across source families.
+
+## Real validation evidence
+
+### Final MLG + INI state after full MLG → Shim → MLG round trip
+
+Observed runtime:
+
+```text
+Health: 0 ISSUE / 0 WARN
+logLoaded=yes
+iniLoaded=yes
+bindingActive=yes
+channelDefinitions=2544
+catalogChannels=2519
+assignedVisibleChannels=5
+renderableAssignedVisibleChannels=5
+unavailableAssignedVisibleChannels=0
+activeVisibleTraces=5
+```
+
+The five active workspace channels were restored as canonical `ini:*` identities.
+
+### Shim capture state
+
+Observed runtime:
+
+```text
+Health: 0 ISSUE / 0 WARN
+logName=Shim capture
+logChannels=2493
+catalogChannels=2493
+assignedVisibleChannels=5
+renderableAssignedVisibleChannels=5
+unavailableAssignedVisibleChannels=0
+activeVisibleTraces=5
+```
+
+The same five graph assignments became raw Shim channel IDs without duplicate unavailable `ini:*` entries.
+
+### Source lifetime
+
+The source-lifetime diagnostics showed old recorded/bound sources becoming collected when replaced. No obvious cross-source strong-reference leak was observed in the tested round trip.
+
+### Automated verification
+
+Local verification after the real runtime test:
+
+```text
+npm run typecheck  → pass
+npm test           → 67 test files passed
+                     344 tests passed
+                     0 failed
+```
+
+Relevant regression suites include Shim protocol/client/live session/capture/UI tests, workspace identity tests, Shim workspace alias tests, channel binding tests, bug-report health tests and application-workspace persistence tests.
+
+## Current live recording behavior
+
+The normal Logger Channel Browser is authoritative for the recording set. The old separate capture-channel picker is not part of the primary workflow.
+
+Primary workflow:
+
+```text
+Connect Shim
+→ assign channels in normal Logger graph
+→ Record
+→ live Logger view is armed immediately
+→ Follow / inspect history
+→ Stop Recording
+```
+
+The Shim schema remains visible while a capture contains only selected channels; uncaptured schema channels are represented as unavailable for that capture rather than disappearing from the catalog.
+
+The current first-stage capture model uses one `series` stream bounded by the Shim-advertised `maxChannelsPerStream`. `rateHz` comes from `welcome.limits.maxRateHz`; it is not hard-coded.
+
+## Protocol / deployment boundaries
+
+The integration remains read-only.
+
+EpicScope consumes the Shim's shared ECU snapshot and does not open a second ECU polling path.
+
+The browser integration uses same-origin telemetry. During development the Vite proxy exposes `/telemetry` and selected `/api/v1/*` paths relative to EpicScope's current origin. Final Shim-hosted deployment can serve EpicScope static assets from the Shim host without changing the browser networking model.
+
+Read-only HTTP inspection currently exists for:
+
+- `/api/v1/inis`;
+- `/api/v1/objects`;
+- `/api/v1/triggerlog`.
+
+No tune writes, burns, firmware flashing, mocks, ECU commands or CAN injection are part of this baseline.
+
+## Downstream / firmware implementation guidance
+
+The browser code is a validated reference implementation, not a requirement that firmware reproduce its UI architecture.
+
+The important reusable rules are:
+
+1. one telemetry/catalog owner at a time;
+2. source transitions are in-process and must preserve unrelated tune/catalog/session state;
+3. stable user/workspace channel identity must survive source changes;
+4. the live schema is authoritative while live telemetry owns Logger;
+5. returning to recorded analysis restores the recorded/INI catalog and binding cleanly;
+6. unavailable live/capture channels remain explicit rather than being fabricated;
+7. client code must obey Shim-advertised rate/channel limits and generation/stream identity.
+
+These rules are the useful baseline for firmware/native implementations that can implement the same behavior more directly.
+
+## Remaining narrow UI edge
+
+The core MLG ↔ Shim source round trip is validated.
+
+One older review finding remains worth treating explicitly in future cleanup: **"capture remains loaded"** and **"live refresh is paused"** should be separate UI states. A native/firmware implementation should not overload those concepts into one flag. This does not invalidate the validated source-ownership/identity round trip above.
+
+## Deferred scope
+
+Still intentionally deferred unless explicitly prioritized:
+
+- automatic full-schema multi-stream recording/joining;
+- write-capable tune/ECU operations;
+- speculative typed HTTP models without real response evidence;
+- broader firmware/package embedding details beyond the validated same-origin contract.
