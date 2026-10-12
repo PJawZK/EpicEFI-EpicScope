@@ -633,7 +633,9 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         selectEvidenceEvent(entry, eventIndex, currentEventSeries);
       };
       const open = (): void => context.openSamplesInLogger?.({
-        sampleIndices: event.startSampleIndex === event.endSampleIndex ? [event.startSampleIndex] : [event.endSampleIndex],
+        sampleIndices: event.startSampleIndex === event.endSampleIndex
+          ? [event.startSampleIndex]
+          : [event.startSampleIndex, event.endSampleIndex],
         timeMs: event.startTimeMs === event.endTimeMs ? [event.startTimeMs] : [event.startTimeMs, event.endTimeMs],
         label: `${entry.kind} ${eventIndex + 1}`,
       });
