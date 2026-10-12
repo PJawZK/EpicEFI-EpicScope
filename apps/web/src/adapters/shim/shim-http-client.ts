@@ -38,7 +38,14 @@ export class ShimHttpReadOnlyClient {
   readonly #baseOrigin: URL;
   readonly #fetch: ShimHttpFetch;
 
-  constructor(baseOrigin: string | URL, fetchImpl: ShimHttpFetch = fetch) {
+  constructor(
+    baseOrigin: string | URL,
+    // Bound (arrow-wrapped), never the bare `fetch` reference: the call site
+    // invokes this through the instance (`this.#fetch(...)`), and a bare
+    // native fetch would then run with the client as its receiver —
+    // "Failed to execute 'fetch' on 'Window': Illegal invocation".
+    fetchImpl: ShimHttpFetch = (...args) => fetch(...args),
+  ) {
     this.#baseOrigin = normalizeBaseOrigin(baseOrigin);
     this.#fetch = fetchImpl;
   }
