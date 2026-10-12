@@ -4,7 +4,11 @@ export type SemanticChannelRoleId =
   | 'engine.rpm'
   | 'engine.map'
   | 'engine.throttle.position'
-  | 'temperature.coolant';
+  | 'temperature.coolant'
+  | 'temperature.intakeAir'
+  | 'electrical.batteryVoltage'
+  | 'fuel.lambda'
+  | 'ignition.advance';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -78,6 +82,41 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     aliases: ['coolant', 'CLT', 'ECT', 'Coolant Temp', 'Coolant Temperature', 'Engine Temp'],
     include: [/^clt$/i, /^ect$/i, /coolant.*temp/i, /engine.*temp/i],
     exclude: [/target/i, /warning/i, /limit/i],
+  },
+  'temperature.intakeAir': {
+    id: 'temperature.intakeAir',
+    displayName: 'Intake Air Temp',
+    aliases: ['intake', 'IAT', 'MAT', 'Intake Air Temp', 'Intake Air Temperature', 'Manifold Air Temp'],
+    include: [/^iat$/i, /^mat$/i, /intake.*air.*temp/i, /manifold.*air.*temp/i],
+    exclude: [/target/i, /correction/i, /limit/i],
+  },
+  'electrical.batteryVoltage': {
+    id: 'electrical.batteryVoltage',
+    displayName: 'Battery Voltage',
+    aliases: ['VBatt', 'Battery Voltage', 'Battery', 'Batt V', 'BattV', 'BatteryVoltage'],
+    include: [/^vbatt$/i, /battery.*voltage/i, /^batt\s*v$/i],
+    exclude: [/target/i, /minimum/i, /maximum/i, /limit/i],
+  },
+  'fuel.lambda': {
+    id: 'fuel.lambda',
+    displayName: 'Lambda',
+    aliases: ['lambdaValue', 'Lambda', 'Lambda 1', 'Lambda1'],
+    include: [/^lambda(?:\s*(?:value|1))?$/i],
+    exclude: [/target/i, /error/i, /correction/i, /bank\s*2/i, /lambda\s*2/i],
+  },
+  'ignition.advance': {
+    id: 'ignition.advance',
+    displayName: 'Ignition Advance',
+    aliases: [
+      'correctedIgnitionAdvance',
+      'Ignition Advance',
+      'Spark Advance',
+      'Timing Advance',
+      'Ignition Timing',
+      'SparkAdv',
+    ],
+    include: [/corrected.*ignition.*advance/i, /ignition.*advance/i, /spark.*advance/i, /timing.*advance/i],
+    exclude: [/base/i, /target/i, /correction/i, /table/i, /retard/i],
   },
 };
 
