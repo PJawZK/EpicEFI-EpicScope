@@ -1,8 +1,10 @@
 import { createShimCaptureSource } from '../adapters/shim/shim-capture-source';
+import { shimSchemaChannelDefinitions } from '../adapters/shim/shim-schema-adapter';
 import { ShimTelemetryClient, type ShimTelemetryClientEvent } from '../adapters/shim/shim-telemetry-client';
 import { ShimLiveSession } from '../adapters/shim/shim-live-session';
 import type { ShimSchema } from '../adapters/shim/shim-protocol';
 import { dispatchShimCaptureSource } from './shim-capture-source-event';
+import { dispatchShimChannelCatalog } from './shim-channel-catalog-event';
 
 const STYLE_ID = 'epicscope-shim-live-ui-style';
 
@@ -70,7 +72,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   toolbar.className = 'shim-live-toolbar';
   toolbar.hidden = true;
   toolbar.innerHTML = `
-    <button type="button" class="shim-live-channels">Channels…</button>
+    <button type="button" class="shim-live-channels">Capture Channels…</button>
     <button type="button" class="shim-live-record" disabled>Record</button>
     <button type="button" class="shim-live-open-capture" disabled>Open Capture</button>
     <button type="button" class="shim-live-follow" aria-pressed="true" disabled>Follow</button>
@@ -89,7 +91,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   dialog.innerHTML = `
     <div class="shim-channel-panel">
       <header>
-        <div class="shim-channel-title"><strong>Shim logging channels</strong><small>Select one-stream capture channels.</small></div>
+        <div class="shim-channel-title"><strong>Shim capture channels</strong><small>Select the one-stream channels retained by this capture.</small></div>
         <span class="shim-channel-count">0 selected</span>
       </header>
       <input class="shim-channel-search" type="search" placeholder="Filter channels…" aria-label="Filter shim channels" />
@@ -193,6 +195,13 @@ export function installShimLiveUi(root: HTMLElement): void {
       selected = new Set([...selected].filter((id) => available.has(id)));
       renderChannelList();
       liveState.textContent = schema.decodable ? `${schema.channels.length} channels` : 'Schema unavailable';
+      dispatchShimChannelCatalog(root, schema.decodable
+        ? {
+            mode: 'available',
+            channels: shimSchemaChannelDefinitions(schema),
+            sourceName: client?.welcome?.ecu.signature || 'ts_shim live schema',
+          }
+        : { mode: 'clear', channels: [], sourceName: 'ts_shim' });
       return;
     }
     if (event.type === 'state') {
@@ -278,6 +287,7 @@ export function installShimLiveUi(root: HTMLElement): void {
     if (session?.isRecording) session.stopRecording();
     session?.dispose();
     client.disconnect();
+    dispatchShimChannelCatalog(root, { mode: 'clear', channels: [], sourceName: 'ts_shim' });
     client = undefined;
     session = undefined;
     schema = undefined;
