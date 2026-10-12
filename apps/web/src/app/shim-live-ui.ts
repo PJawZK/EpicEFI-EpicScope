@@ -377,6 +377,13 @@ export function installShimLiveUi(root: HTMLElement): void {
     appStatus.textContent = captureOpened ? 'Shim disconnected · retained capture remains active' : 'Shim disconnected';
   };
 
+  root.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest('.open-log')) return;
+    if (client) disconnect();
+    else dispatchShimChannelCatalog(root, { mode: 'clear', channels: [], sourceName: 'ts_shim' });
+  }, true);
+
   connectButton.addEventListener('click', () => {
     if (client) disconnect(); else connect();
   });
