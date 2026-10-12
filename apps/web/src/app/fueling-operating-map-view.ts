@@ -195,7 +195,7 @@ function renderHeatmap(view: HTMLElement, section: HTMLElement, table: HTMLTable
   const deadband = errorDeadband(view);
   const scale = mixtureScale(view);
 
-  ui.grid.style.gridTemplateColumns = `minmax(76px, auto) repeat(${rpms.length}, minmax(32px, 1fr))`;
+  ui.grid.style.gridTemplateColumns = `minmax(76px, max-content) repeat(${rpms.length}, minmax(32px, max-content))`;
   const nodes: HTMLElement[] = [];
   const corner = document.createElement('span');
   corner.className = 'fueling-heatmap-axis fueling-heatmap-axis--corner';
