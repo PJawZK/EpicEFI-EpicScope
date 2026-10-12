@@ -405,7 +405,10 @@ export function createAnalyzerPage(): AnalyzerPageController {
     element: root,
     headerControl,
     setContext,
-    setTuneModel: (model, sourceName) => tuneTableView.setTuneModel(model, sourceName),
+    setTuneModel: (model, sourceName) => {
+      tuneTableView.setTuneModel(model, sourceName);
+      ignitionView.setTuneModel(model, sourceName);
+    },
     openRangeCompareScope: (scopeValue) => {
       setView('compare');
       const leftHasScope = [...leftSelect.options].some((option) => option.value === scopeValue);

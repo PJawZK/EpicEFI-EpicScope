@@ -112,6 +112,48 @@
   padding: 0 7px;
 }
 
+.ignition-tune-setup {
+  margin: 0 10px 9px;
+  padding: 8px 0 9px;
+  border-bottom: 1px solid #203340;
+}
+
+.ignition-tune-setup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ignition-tune-setup-head strong {
+  color: #a6b8c3;
+  font-size: 9px;
+}
+
+.ignition-tune-setup-head > span {
+  color: #6f8795;
+  font-size: 8px;
+}
+
+.ignition-tune-setup-grid {
+  padding: 0;
+}
+
+.ignition-tune-setup-grid select {
+  min-width: 190px;
+  min-height: 29px;
+  padding: 0 7px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+  font-size: 10px;
+}
+
+.ignition-tune-setup-grid select:disabled {
+  opacity: .55;
+}
+
 .specialized-analyzer-empty {
   display: grid;
   place-items: center;
@@ -249,6 +291,8 @@
   .specialized-analyzer-controls select { min-width: 130px; }
   .analyzer-view-switch { justify-content: flex-start; }
   .ignition-behavior-details-table { width: 100%; }
+  .ignition-tune-setup-head { align-items: flex-start; flex-direction: column; }
+  .ignition-tune-setup-grid select { min-width: 160px; }
 }
 
 .specialized-analyzer-controls select[data-auto-selected='true'] {
