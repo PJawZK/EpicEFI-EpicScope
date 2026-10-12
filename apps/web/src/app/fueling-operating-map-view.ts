@@ -6,10 +6,10 @@ interface ParsedPoint {
   readonly rpmBin: string;
   readonly loadBin: string;
   readonly stableSamples: number;
-  readonly actualMixture?: number;
-  readonly targetMixture?: number;
-  readonly errorMean?: number;
-  readonly mae?: number;
+  readonly actualMixture: number | undefined;
+  readonly targetMixture: number | undefined;
+  readonly errorMean: number | undefined;
+  readonly mae: number | undefined;
   readonly evidence: 'weak' | 'moderate' | 'strong';
   readonly bias: string;
 }
