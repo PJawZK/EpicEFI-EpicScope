@@ -5,17 +5,24 @@ import {
   type IgnitionReviewReason,
   type IgnitionReviewRegionResult,
 } from '../../../../core/analysis/ignition-review-regions';
+import {
+  analyzeIgnitionTuneAttribution,
+  type IgnitionTuneAreaAttribution,
+} from '../../../../core/analysis/ignition-tune-attribution';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
+import type { TuneModel } from '../../../../core/tune/tune-model';
 import { addInlineHelpButton, showInlineHelpPopover, type InlineHelpEntry } from '../components/inline-help';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { renderAlignedAnalyzerEvidence, type AnalyzerEvidenceSeries } from './analyzer-event-evidence';
+import { createIgnitionTuneSetup } from './ignition-tune-setup';
 
 export interface IgnitionAnalyzerController {
   readonly element: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
+  setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
 }
 
@@ -82,7 +89,7 @@ const OPTIONS: readonly OptionSpec[] = [
     label: 'Large timing step threshold',
     value: '5',
     step: '0.1',
-    help: { title: 'Large timing step threshold', text: 'Minimum absolute adjacent-sample ignition-advance change reported as a timing-step event. Areas to review use the same visible threshold when looking for repeated stable-context timing steps, timing spread and adjacent-region differences. It is not a safe/unsafe limit.' },
+    help: { title: 'Large timing step threshold', text: 'Minimum absolute adjacent-sample ignition-advance change reported as a timing-step event. Areas to review and base-table source clues use the same visible threshold. It is not a safe/unsafe limit.' },
   },
   {
     key: 'correctionThreshold',
@@ -160,7 +167,7 @@ const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
 
 const REVIEW_HELP: InlineHelpEntry = {
   title: 'Areas to review',
-  text: 'Ranks repeated ignition behavior inside RPM/load regions after a trailing stability window rejects moving operating conditions. A region can surface for repeated large timing steps, timing spread across repeated stable visits, repeated ECU correction activity, or a supported advance difference versus an adjacent region. The visible Review focus minimum RPM keeps lower-RPM start/idle-like regions out of the shortlist without removing them from analysis. These are places to inspect next, not automatic tuning changes or timing-safety judgments.',
+  text: 'Ranks repeated ignition behavior inside RPM/load regions after a trailing stability window rejects moving operating conditions. With a mapped MSQ base ignition table, Source clue compares each region’s representative stable evidence with the interpolated base-table advance and selected correction channel. It identifies where the table follows the movement, where correction activity overlaps, or where the selected evidence does not account for the behavior. It does not prove the correct timing value or a combustion cause.',
 };
 
 const EVENT_PAGE_SIZE = 200;
@@ -278,6 +285,45 @@ function reviewSupport(area: IgnitionReviewArea, advanceUnit: string | undefined
   return details.slice(0, 2).join(' · ');
 }
 
+function reviewSourceClue(
+  area: IgnitionReviewArea,
+  attribution: IgnitionTuneAreaAttribution | undefined,
+  timingStepThreshold: number,
+  advanceUnit: string | undefined,
+): string {
+  if (!attribution) return 'No base-table comparison';
+  if (attribution.mappedSampleCount === 0) return 'Representative evidence not mapped to base table';
+  if (area.reasons.includes('adjacent-transition')
+    && attribution.adjacentBaseAdvanceDifference !== undefined
+    && attribution.adjacentBaseAdvanceDifference >= timingStepThreshold) {
+    return `Base table contains adjacent Δ ${valueWithUnit(attribution.adjacentBaseAdvanceDifference, advanceUnit)}`;
+  }
+  if (attribution.observedTimingStepCount > 0) {
+    if (attribution.baseAlignedTimingStepCount === attribution.observedTimingStepCount) {
+      return `Base table follows ${attribution.baseAlignedTimingStepCount}/${attribution.observedTimingStepCount} representative step${attribution.observedTimingStepCount === 1 ? '' : 's'}`;
+    }
+    if (attribution.baseAlignedTimingStepCount > 0) {
+      return `Base table follows ${attribution.baseAlignedTimingStepCount}/${attribution.observedTimingStepCount} steps · ${attribution.residualTimingStepCount} residual`;
+    }
+  }
+  if (attribution.correctionEpisodeCount > 0 || area.reasons.includes('correction-activity')) {
+    const residual = attribution.meanResidual === undefined ? '' : ` · final−base ${signedNumber(attribution.meanResidual)}${advanceUnit ? ` ${advanceUnit}` : ''}`;
+    return `Correction activity overlaps${residual}`;
+  }
+  if (attribution.residualSpread !== undefined && attribution.residualSpread >= timingStepThreshold) {
+    return `Base table leaves residual spread ${valueWithUnit(attribution.residualSpread, advanceUnit)}`;
+  }
+  if (attribution.meanResidual !== undefined && Math.abs(attribution.meanResidual) >= timingStepThreshold) {
+    return `Final advance differs from base by ${signedNumber(attribution.meanResidual)}${advanceUnit ? ` ${advanceUnit}` : ''} mean`;
+  }
+  if (area.reasons.includes('timing-variability')
+    && attribution.baseLocalSpread !== undefined
+    && attribution.baseLocalSpread >= timingStepThreshold) {
+    return `Base table varies ${valueWithUnit(attribution.baseLocalSpread, advanceUnit)} inside region`;
+  }
+  return 'No strong base-table/correction clue in representative evidence';
+}
+
 type CombinedEvent =
   | { readonly kind: 'Timing step'; readonly event: IgnitionTimingStepEvent }
   | { readonly kind: 'Correction'; readonly event: IgnitionCorrectionEvent };
@@ -286,6 +332,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let analysisGeneration = 0;
   const rememberedSelections = new Map<string, string>();
+  let analyzeCurrent: () => Promise<void> = async () => {};
+  const tuneSetup = createIgnitionTuneSetup(() => { void analyzeCurrent(); });
 
   const root = document.createElement('section');
   root.className = 'specialized-analyzer-view ignition-behavior-analyzer-view';
@@ -301,7 +349,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       <span data-ignition="guidance"></span>
     </div>
     <details class="specialized-analyzer-options">
-      <summary>Analysis thresholds</summary>
+      <summary>Analysis setup & thresholds</summary>
+      <div data-ignition="tune-setup"></div>
       <div class="specialized-analyzer-options-grid"></div>
     </details>
     <div class="specialized-analyzer-empty">
@@ -345,6 +394,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
 
   const controls = root.querySelector<HTMLElement>('.specialized-analyzer-controls');
   const optionsGrid = root.querySelector<HTMLElement>('.specialized-analyzer-options-grid');
+  const tuneSetupHost = root.querySelector<HTMLElement>('[data-ignition="tune-setup"]');
   const empty = root.querySelector<HTMLElement>('.specialized-analyzer-empty');
   const content = root.querySelector<HTMLElement>('.specialized-analyzer-content');
   const summary = root.querySelector<HTMLElement>('.specialized-analyzer-summary');
@@ -365,9 +415,10 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   const eventsNext = root.querySelector<HTMLButtonElement>('[data-ignition="events-next"]');
   const eventsPage = root.querySelector<HTMLElement>('[data-ignition="events-page"]');
   const evidenceNote = root.querySelector<HTMLElement>('[data-ignition="evidence-note"]');
-  if (!controls || !optionsGrid || !empty || !content || !summary || !reviewSection || !reviewTitle || !reviewNote || !reviewHead || !reviewBody || !detailsBody || !evidence || !evidenceCanvas || !evidenceAll || !eventsHead || !eventsBody || !guidance || !eventsCount || !eventsPrev || !eventsNext || !eventsPage || !evidenceNote) {
+  if (!controls || !optionsGrid || !tuneSetupHost || !empty || !content || !summary || !reviewSection || !reviewTitle || !reviewNote || !reviewHead || !reviewBody || !detailsBody || !evidence || !evidenceCanvas || !evidenceAll || !eventsHead || !eventsBody || !guidance || !eventsCount || !eventsPrev || !eventsNext || !eventsPage || !evidenceNote) {
     throw new Error('Ignition Analyzer structure is incomplete.');
   }
+  tuneSetupHost.append(tuneSetup.element);
   addInlineHelpButton(reviewTitle, REVIEW_HELP, showInlineHelpPopover);
 
   const roleSelect = (key: RoleKey): HTMLSelectElement | undefined => controls.querySelector<HTMLSelectElement>(`select[data-role="${key}"]`) ?? undefined;
@@ -409,9 +460,11 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     loadUnit: string | undefined,
     correctionUnit: string | undefined,
     minimumFocusRpm: number,
+    timingStepThreshold: number,
+    attributionByArea: ReadonlyMap<IgnitionReviewArea, IgnitionTuneAreaAttribution>,
   ): void => {
     reviewSection.hidden = false;
-    const headers = ['Area', 'Finding', 'Evidence', 'What supports it', 'Inspect next'];
+    const headers = ['Area', 'Finding', 'Evidence', 'Source clue', 'What supports it', 'Inspect next'];
     const headerRow = document.createElement('tr');
     for (const label of headers) {
       const th = document.createElement('th');
@@ -449,7 +502,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     const heldBack = lowerRpmAreaCount > 0
       ? ` · ${lowerRpmAreaCount.toLocaleString()} lower-RPM area${lowerRpmAreaCount === 1 ? '' : 's'} held back by ≥ ${numberText(minimumFocusRpm, 0)} rpm focus`
       : '';
-    reviewNote.textContent = `${prefix} focused region${focusedAreas.length === 1 ? '' : 's'} · ${result.evaluatedRegionCount.toLocaleString()} supported regions evaluated · ${percentageText(stableCoverage)} stable-context coverage${heldBack} · ranked for inspection, not automatic tuning changes.`;
+    const tableNote = attributionByArea.size ? ' · source clues compare representative stable evidence with the mapped base table' : ' · load/map an MSQ base ignition table for source clues';
+    reviewNote.textContent = `${prefix} focused region${focusedAreas.length === 1 ? '' : 's'} · ${result.evaluatedRegionCount.toLocaleString()} supported regions evaluated · ${percentageText(stableCoverage)} stable-context coverage${heldBack}${tableNote} · ranked for inspection, not automatic tuning changes.`;
     reviewBody.replaceChildren(...shown.map((area) => {
       const tr = document.createElement('tr');
       tr.className = 'specialized-analyzer-event-row--navigable';
@@ -457,7 +511,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       const areaText = `${numberText(area.rpmStart, 0)}–${numberText(area.rpmEnd, 0)} rpm · ${numberText(area.loadStart)}–${numberText(area.loadEnd)}${loadSuffix}`;
       const findings = area.reasons.slice(0, 2).map(reviewReasonLabel).join(' · ');
       const evidenceText = `${area.evidenceStrength === 'strong' ? 'Strong' : 'Moderate'} · ${area.stableSampleCount.toLocaleString()} stable · ${area.visitCount.toLocaleString()} visit${area.visitCount === 1 ? '' : 's'}`;
-      const values = [areaText, findings, evidenceText, reviewSupport(area, advanceUnit, correctionUnit)];
+      const sourceClue = reviewSourceClue(area, attributionByArea.get(area), timingStepThreshold, advanceUnit);
+      const values = [areaText, findings, evidenceText, sourceClue, reviewSupport(area, advanceUnit, correctionUnit)];
       for (const value of values) {
         const td = document.createElement('td');
         td.textContent = value;
@@ -578,7 +633,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         selectEvidenceEvent(entry, eventIndex, currentEventSeries);
       };
       const open = (): void => context.openSamplesInLogger?.({
-        sampleIndices: event.startSampleIndex === event.endSampleIndex ? [event.startSampleIndex] : [event.startSampleIndex, event.endSampleIndex],
+        sampleIndices: event.startSampleIndex === event.endSampleIndex ? [event.startSampleIndex] : [event.endSampleIndex],
         timeMs: event.startTimeMs === event.endTimeMs ? [event.startTimeMs] : [event.startTimeMs, event.endTimeMs],
         label: `${entry.kind} ${eventIndex + 1}`,
       });
@@ -634,10 +689,10 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
 
   const updateGuidance = (): void => {
     const reviewFocusMinRpm = Math.max(0, optionNumber('reviewFocusMinRpm', 1000));
-    guidance.textContent = `Large timing steps are adjacent advance changes ≥ ${numberText(optionNumber('timingStepThreshold', 5))}; correction events use |Retard / correction| > ${numberText(optionNumber('correctionThreshold', 0.5))}. Sample pairs separated by more than ${numberText(optionNumber('maxGapMs', 100), 0)} ms are not compared. With RPM + Load / MAP selected, Areas to review rank repeated behavior after a ${numberText(optionNumber('reviewStableMs', 300), 0)} ms stability window and default the shortlist to regions at or above ${numberText(reviewFocusMinRpm, 0)} rpm. Lower-RPM evidence remains analyzed. These are observational filters only—EpicScope does not infer knock, timing safety, or the correct ignition value.`;
+    guidance.textContent = `Large timing steps are adjacent advance changes ≥ ${numberText(optionNumber('timingStepThreshold', 5))}; correction events use |Retard / correction| > ${numberText(optionNumber('correctionThreshold', 0.5))}. Sample pairs separated by more than ${numberText(optionNumber('maxGapMs', 100), 0)} ms are not compared. With RPM + Load / MAP selected, Areas to review rank repeated behavior after a ${numberText(optionNumber('reviewStableMs', 300), 0)} ms stability window and default the shortlist to regions at or above ${numberText(reviewFocusMinRpm, 0)} rpm. A mapped MSQ base table adds source clues from representative stable evidence. These are observational filters only—EpicScope does not infer knock, timing safety, or the correct ignition value.`;
   };
 
-  const analyzeCurrent = async (): Promise<void> => {
+  analyzeCurrent = async (): Promise<void> => {
     const generation = ++analysisGeneration;
     const advanceId = roleSelect('advance')?.value;
     const scope = selectedScope();
@@ -708,6 +763,22 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
           maxTransitionGapMs: maxGapMs,
         }, scoped.sampleIndices)
         : undefined;
+      const baseTable = rpm && load ? tuneSetup.selectedTable() : undefined;
+      const tuneAttribution = reviewResult && baseTable && rpm && load
+        ? analyzeIgnitionTuneAttribution(reviewResult.areas, baseTable, {
+          advance: advance.range,
+          rpm: rpm.range,
+          load: load.range,
+          ...(retard ? { correction: retard.range } : {}),
+        }, {
+          timingStepThreshold,
+          correctionThreshold,
+          maxTransitionGapMs: maxGapMs,
+        })
+        : undefined;
+      const attributionByArea = new Map<IgnitionReviewArea, IgnitionTuneAreaAttribution>(
+        tuneAttribution?.areas.map((entry) => [entry.area, entry]) ?? [],
+      );
       const focusedReviewAreaCount = reviewResult
         ? reviewResult.areas.filter((area) => area.rpmStart >= reviewFocusMinRpm).length
         : undefined;
@@ -725,7 +796,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['Correction events', retard ? result.correctionEvents.length.toLocaleString() : 'No channel selected'],
         ['Dwell mean / range', dwell ? `${valueWithUnit(result.dwell?.mean, dwellUnit)} · ${rangeWithUnit(result.dwell?.min, result.dwell?.max, dwellUnit)}` : 'No channel selected'],
       ]);
-      renderReviewAreas(reviewResult, advanceUnit, load?.channel.unit, retard?.channel.unit, reviewFocusMinRpm);
+      renderReviewAreas(reviewResult, advanceUnit, load?.channel.unit, retard?.channel.unit, reviewFocusMinRpm, timingStepThreshold, attributionByArea);
 
       renderDetails([
         ['Scope', scoped.scope.label],
@@ -745,6 +816,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['Review focus minimum RPM', reviewResult ? `${numberText(reviewFocusMinRpm, 0)} rpm` : 'Requires RPM + Load / MAP'],
         ['Review regions / focused', reviewResult && focusedReviewAreaCount !== undefined ? `${reviewResult.evaluatedRegionCount.toLocaleString()} / ${focusedReviewAreaCount.toLocaleString()}` : 'Requires RPM + Load / MAP'],
         ['Review low-RPM areas held back', lowerRpmReviewAreaCount !== undefined ? lowerRpmReviewAreaCount.toLocaleString() : 'Requires RPM + Load / MAP'],
+        ['Base table comparison', tuneSetup.description()],
+        ['Base table review areas mapped', tuneAttribution ? `${tuneAttribution.mappedAreaCount.toLocaleString()} / ${tuneAttribution.areaCount.toLocaleString()}` : 'Not active'],
       ]);
 
       const combinedEvents: CombinedEvent[] = [];
@@ -842,6 +915,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   return {
     element: root,
     setContext(nextContext) { context = nextContext; rebuild(); },
+    setTuneModel(model, sourceName) { tuneSetup.setTuneModel(model, sourceName); },
     refresh: () => { void analyzeCurrent(); },
   };
 }
