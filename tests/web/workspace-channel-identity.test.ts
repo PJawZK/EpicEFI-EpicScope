@@ -67,6 +67,19 @@ describe('reusable workspace channel identity normalization', () => {
     expect(result).toEqual(['ini:RPMValue', 'ini:MAPValue']);
   });
 
+  it('maps stable INI identities directly onto matching live shim channel IDs', () => {
+    const result = renderableWorkspaceChannelIds(
+      ['ini:RPMValue', 'ini:MAPValue', 'ini:TPSValue', 'RPMValue'],
+      {
+        knownChannelIds: new Set(['RPMValue', 'MAPValue', 'TPSValue']),
+        iniCatalogActive: true,
+        limit: 8,
+      },
+    );
+
+    expect(result).toEqual(['RPMValue', 'MAPValue', 'TPSValue']);
+  });
+
   it('keeps raw mlg IDs when no INI catalog is active', () => {
     const result = renderableWorkspaceChannelIds(
       ['mlg:0', 'mlg:1'],
