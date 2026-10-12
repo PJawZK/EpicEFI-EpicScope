@@ -19,9 +19,7 @@ describe('semantic channel roles', () => {
   it('keeps TPS as the EpicScope display name while accepting legacy TP', () => {
     expect(semanticChannelRole('engine.throttle.position').displayName).toBe('TPS');
 
-    const result = resolveSemanticChannelRole('engine.throttle.position', [
-      channel('TP'),
-    ]);
+    const result = resolveSemanticChannelRole('engine.throttle.position', [channel('TP')]);
 
     expect(result.channel?.id).toBe('TP');
     expect(result.source).toBe('exact-alias');
@@ -74,5 +72,29 @@ describe('semantic channel roles', () => {
 
     expect(result.channel).toBeUndefined();
     expect(result.source).toBe('unresolved');
+  });
+
+  it('uses the EpicEFI intake and battery channels for the General overview', () => {
+    expect(resolveSemanticChannelRole('temperature.intakeAir', [
+      channel('intake', 'intake', 'Intake air temp'),
+    ]).channel?.id).toBe('intake');
+
+    expect(resolveSemanticChannelRole('electrical.batteryVoltage', [
+      channel('VBatt', 'VBatt', 'Battery'),
+    ]).channel?.id).toBe('VBatt');
+  });
+
+  it('uses measured lambda and corrected ignition advance rather than targets/base timing', () => {
+    const lambda = resolveSemanticChannelRole('fuel.lambda', [
+      channel('targetLambda', 'targetLambda', 'Fuel: target lambda'),
+      channel('lambdaValue', 'lambdaValue', 'Lambda'),
+    ]);
+    expect(lambda.channel?.id).toBe('lambdaValue');
+
+    const ignition = resolveSemanticChannelRole('ignition.advance', [
+      channel('baseIgnitionAdvance', 'baseIgnitionAdvance', 'Timing: base ignition'),
+      channel('correctedIgnitionAdvance', 'correctedIgnitionAdvance', 'Timing: ignition'),
+    ]);
+    expect(ignition.channel?.id).toBe('correctedIgnitionAdvance');
   });
 });
