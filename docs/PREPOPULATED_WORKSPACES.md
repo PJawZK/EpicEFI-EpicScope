@@ -71,14 +71,18 @@ Each workspace role slot is classified as:
 
 A workspace remains loadable when roles are unresolved. Missing preferred/optional roles must not invalidate the layout. Missing required roles are reported explicitly so the user can map or replace them.
 
-## First implementation slice: Single
+## First production implementation: General · Single
 
-The first development fixture is **Single · Resolver Test**. It intentionally keeps geometry trivial while exercising all resolver states:
+The validated **Single · Resolver Test** path has been promoted to the first production preset, **General · Single**. It uses one full-width pane and up to the Logger's eight active traces:
 
 - required: RPM;
-- preferred: MAP;
+- required: MAP;
 - preferred: TPS;
-- optional: Coolant Temp.
+- preferred: Coolant Temp;
+- optional: Intake Air Temp;
+- optional: Battery Voltage;
+- optional: Lambda;
+- optional: Ignition Advance.
 
 Its semantic identities are:
 
@@ -86,37 +90,38 @@ Its semantic identities are:
 - `engine.map`
 - `engine.throttle.position`
 - `temperature.coolant`
+- `temperature.intakeAir`
+- `electrical.batteryVoltage`
+- `fuel.lambda`
+- `ignition.advance`
 
-The fixture resolves to the currently authoritative source identity rather than embedding ECU-specific IDs. For the current EpicEFI validation path this means the same semantic workspace can resolve approximately as:
-
-```text
-MLG + INI                 ts_shim
-ini:RPMValue              RPMValue
-ini:MAPValue              MAPValue
-ini:TPSValue              TPSValue
-ini:coolant               coolant
-```
-
-The visible semantic names remain:
+For the current EpicEFI validation path these resolve to the authoritative source identities:
 
 ```text
-RPM
-MAP
-TPS
-Coolant Temp
+MLG + INI                          ts_shim
+ini:RPMValue                       RPMValue
+ini:MAPValue                       MAPValue
+ini:TPSValue                       TPSValue
+ini:coolant                        coolant
+ini:intake                         intake
+ini:VBatt                          VBatt
+ini:lambdaValue                    lambdaValue
+ini:correctedIgnitionAdvance       correctedIgnitionAdvance
 ```
 
-### Logger integration
+The EpicEFI names above are backed by the current INI/channel catalog. Cross-ECU aliases remain resolver inputs rather than user-facing naming authority.
 
-The development fixture is exposed through the normal Logger graph selector using the reserved runtime ID `built-in:single-resolver-test`.
+### Logger integration and migration
 
-The Logger refreshes only that reserved built-in when its authoritative channel set changes:
+Logger continues to use the already-validated built-in runtime path. The validation-era internal id `built-in:single-resolver-test` is temporarily retained so an existing persisted validation workspace upgrades in place rather than leaving a stale duplicate. This is an internal compatibility detail; the visible preset name is **General · Single**.
+
+The existing editable workspace named **General** is intentionally preserved. It is not silently converted, renamed or overwritten. Until an explicit migration policy for that legacy default is chosen, the immutable production preset is therefore shown as **General · Single** to keep the two entries unambiguous.
+
+When the authoritative channel set changes, only the reserved built-in is refreshed:
 
 - catalog-only INI state resolves against catalog channels;
 - recorded MLG + INI resolves against canonical bound `ini:*` identities;
 - Shim/live capture resolves against raw Shim channel identities;
 - returning to MLG resolves back to canonical `ini:*` identities.
 
-Normal user workspaces are never name-matched or repopulated. A user workspace can therefore have the same visible name without being modified. Rename/delete actions are disabled for the development built-in, while duplication remains available so a resolved built-in can be copied into a normal editable workspace.
-
-The fixture is development-only and can be hidden or removed once source switching, missing-role behavior and override handling have been proven. Production workspaces use the same template/resolver model.
+Normal user workspaces are never name-matched or repopulated. Rename/delete remain disabled for built-ins, while duplication remains available so a resolved preset can be copied into a normal editable workspace.
