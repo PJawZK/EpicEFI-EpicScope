@@ -102,6 +102,27 @@ describe('Ignition behavior analyzer', () => {
     expect(result.nonPositiveDwellSampleCount).toBe(2);
   });
 
+  it('handles large transition sets without argument-spread stack overflow', () => {
+    const sampleCount = 200_000;
+    const timeMs = new Float64Array(sampleCount);
+    const values = new Float64Array(sampleCount);
+    const validity = new Uint8Array(sampleCount);
+    for (let index = 0; index < sampleCount; index += 1) {
+      timeMs[index] = index * 10;
+      values[index] = index % 2;
+      validity[index] = 1;
+    }
+    const advance: NumericChannelRange = { startSampleIndex: 0, timeMs, values, validity };
+
+    const result = analyzeIgnitionBehavior({ advance }, { timingStepThreshold: 2, maxTransitionGapMs: 20 });
+
+    expect(result.transitions.transitionCount).toBe(sampleCount - 1);
+    expect(result.transitions.meanAbsoluteStep).toBe(1);
+    expect(result.transitions.p95AbsoluteStep).toBe(1);
+    expect(result.transitions.maxAbsoluteStep).toBe(1);
+    expect(result.timingStepEvents).toHaveLength(0);
+  });
+
   it('validates thresholds', () => {
     expect(() => analyzeIgnitionBehavior({ advance: range([10]) }, { timingStepThreshold: 0 })).toThrow(RangeError);
     expect(() => analyzeIgnitionBehavior({ advance: range([10]) }, { correctionThreshold: -1 })).toThrow(RangeError);
