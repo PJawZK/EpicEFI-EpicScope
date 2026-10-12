@@ -55,7 +55,7 @@
 .scatter-controls--mlv button:focus-visible,
 .scatter-controls--mlv select:focus-visible { outline: 1px solid #8bc8ed; outline-offset: 1px; }
 
-.scatter-scope { width: 112px; }
+.scatter-scope { width: clamp(120px, 18vw, 230px); }
 .scatter-layout { width: 86px; }
 .scatter-trace-mode { width: 86px; }
 
@@ -92,7 +92,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 34px minmax(0, 1fr) 23px;
+  grid-template-rows: 34px minmax(0, 1fr) 23px auto;
   overflow: hidden;
   background: #030608;
 }
@@ -197,6 +197,39 @@
   white-space: nowrap;
 }
 
+.scatter-point-detail {
+  min-width: 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 7px;
+  border-top: 1px solid #203441;
+  background: #0a151d;
+}
+.scatter-point-detail[hidden] { display: none !important; }
+.scatter-point-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #bed1dc;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scatter-point-detail button {
+  flex: 0 0 auto;
+  height: 24px;
+  border: 1px solid #2b4554;
+  border-radius: 3px;
+  background: #0f1d27;
+  color: #dce9ef;
+  padding: 0 8px;
+  font-size: 9px;
+}
+.scatter-point-detail button:hover:not(:disabled) { background: #142938; }
+.scatter-point-detail button:disabled { opacity: .5; }
+
 .scatter-shared-timeline-slot {
   position: relative;
   z-index: 5;
@@ -255,4 +288,5 @@
   .scatter-controls--mlv label > span { display: none; }
   .scatter-pane-toolbar label > span { display: none; }
   .scatter-pane-toolbar select { width: 96px; }
+  .scatter-point-label { display: none; }
 }

@@ -50,15 +50,41 @@ function placeLayoutAfterGraph(root: HTMLElement): void {
   new MutationObserver(sync).observe(loggerPage, { attributes: true, attributeFilter: ['hidden'] });
 }
 
+function normalizeHistogramScopeLabels(root: HTMLElement): void {
+  const tableScope = root.querySelector<HTMLSelectElement>('.histogram-table-scope');
+  const scatterScope = root.querySelector<HTMLSelectElement>('.scatter-scope');
+  const normalize = (): void => {
+    const tableAb = tableScope ? [...tableScope.options].find((option) => option.value === 'ab') : undefined;
+    const tableFull = tableScope ? [...tableScope.options].find((option) => option.value === 'full') : undefined;
+    if (tableAb) tableAb.textContent = 'Current A/B';
+    if (tableFull) tableFull.textContent = 'Full Log';
+    const scatterRange = scatterScope ? [...scatterScope.options].find((option) => option.value === 'range') : undefined;
+    const scatterFull = scatterScope ? [...scatterScope.options].find((option) => option.value === 'full') : undefined;
+    if (scatterRange) scatterRange.textContent = 'Current A/B';
+    if (scatterFull) scatterFull.textContent = 'Full Log';
+  };
+  normalize();
+  if (tableScope) new MutationObserver(normalize).observe(tableScope, { childList: true });
+}
+
 function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
   const timeline = root.querySelector<HTMLElement>('.logger-page .timeline-shell');
   const timelineToggle = root.querySelector<HTMLButtonElement>('.logger-page .edge-toggle--timeline');
   const histogramPage = root.querySelector<HTMLElement>('.histogram-page');
   const histogramSelect = root.querySelector<HTMLSelectElement>('.histogram-view-select');
+  const tableView = root.querySelector<HTMLElement>('.histogram-table-generator-view');
+  const tableStage = tableView?.querySelector<HTMLElement>('.histogram-table-stage');
   const scatterSlot = root.querySelector<HTMLElement>('.scatter-shared-timeline-slot');
   const distributionSlot = root.querySelector<HTMLElement>('.distribution-shared-timeline-slot');
   if (!timeline || !timeline.parentNode || !timelineToggle || !timelineToggle.parentNode
-    || !histogramPage || !histogramSelect || !scatterSlot || !distributionSlot) return;
+    || !histogramPage || !histogramSelect || !tableView || !tableStage || !scatterSlot || !distributionSlot) return;
+
+  let tableSlot = tableView.querySelector<HTMLElement>('.histogram-table-shared-timeline-slot');
+  if (!tableSlot) {
+    tableSlot = document.createElement('div');
+    tableSlot.className = 'histogram-table-shared-timeline-slot';
+    tableStage.after(tableSlot);
+  }
 
   const timelineHomeMarker = document.createComment('EpicScope Logger timeline home');
   const toggleHomeMarker = document.createComment('EpicScope Logger timeline toggle home');
@@ -87,7 +113,8 @@ function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
       restore();
       return;
     }
-    if (histogramSelect.value === 'scatter') dock(scatterSlot);
+    if (histogramSelect.value === 'table') dock(tableSlot!);
+    else if (histogramSelect.value === 'scatter') dock(scatterSlot);
     else if (histogramSelect.value === 'distribution') dock(distributionSlot);
     else restore();
   };
@@ -101,5 +128,6 @@ export function applyNavigationRefinements(root: HTMLElement): void {
   refineValueSearch(root);
   normalizeGraphWorkspaceLabels(root);
   placeLayoutAfterGraph(root);
+  normalizeHistogramScopeLabels(root);
   dockLoggerTimelineInHistogramAnalysis(root);
 }
