@@ -180,7 +180,9 @@ export function analyzeIgnitionTuneAttribution(
         const residualDelta = observedDelta - baseDelta;
         if (Math.abs(observedDelta) >= timingStepThreshold) {
           observedTimingStepCount += 1;
-          if (Math.abs(baseDelta) >= timingStepThreshold && Math.sign(baseDelta) === Math.sign(observedDelta)) {
+          if (Math.abs(baseDelta) >= timingStepThreshold
+            && Math.sign(baseDelta) === Math.sign(observedDelta)
+            && Math.abs(residualDelta) < timingStepThreshold) {
             baseAlignedTimingStepCount += 1;
           }
         }
@@ -197,6 +199,7 @@ export function analyzeIgnitionTuneAttribution(
       previousCorrectionActive = correctionActive;
     }
 
+    const adjacentDifference = adjacentBaseDifference(table, area);
     return {
       area,
       representativeSampleCount: Math.max(0, area.evidenceEndSampleIndex - area.evidenceStartSampleIndex + 1),
@@ -215,9 +218,7 @@ export function analyzeIgnitionTuneAttribution(
       residualTimingStepCount,
       correctionActiveSampleCount,
       correctionEpisodeCount,
-      ...(adjacentBaseDifference(table, area) !== undefined
-        ? { adjacentBaseAdvanceDifference: adjacentBaseDifference(table, area)! }
-        : {}),
+      ...(adjacentDifference !== undefined ? { adjacentBaseAdvanceDifference: adjacentDifference } : {}),
     };
   });
 
