@@ -1,11 +1,10 @@
 const AUTO_CONNECT_SHIM_KEY = 'epicscope.auto-connect-shim-after-source-unload.v1';
+const SOURCE_RESET_PARAM = '__epicscope_source_reset';
 
 function recordedLogIsActive(root: HTMLElement): boolean {
-  const modeChip = root.querySelector<HTMLElement>('.mode-chip');
   const loadedLog = root.querySelector<HTMLElement>('.loaded-log strong');
-  const sourceMode = modeChip?.dataset.loggerSource;
   const label = loadedLog?.textContent?.trim() ?? '';
-  return sourceMode === 'recorded' && label.length > 0 && label !== 'No log loaded';
+  return label.toLowerCase().endsWith('.mlg');
 }
 
 function setAutoConnectShim(): void {
@@ -26,18 +25,28 @@ function consumeAutoConnectShim(): boolean {
   }
 }
 
+function clearSourceResetParam(): void {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(SOURCE_RESET_PARAM)) return;
+  url.searchParams.delete(SOURCE_RESET_PARAM);
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 function reloadWithoutRecordedSource(autoConnectShim: boolean): void {
   if (autoConnectShim) setAutoConnectShim();
-  window.location.reload();
+  const url = new URL(window.location.href);
+  url.searchParams.set(SOURCE_RESET_PARAM, String(Date.now()));
+  window.location.replace(url.toString());
 }
 
 export function installSourceTransitionUi(root: HTMLElement): void {
   const loadMenu = root.querySelector<HTMLElement>('.load-data-menu');
   const openLogButton = loadMenu?.querySelector<HTMLButtonElement>('.open-log');
-  const modeChip = root.querySelector<HTMLElement>('.mode-chip');
   const loadedLog = root.querySelector<HTMLElement>('.loaded-log strong');
-  if (!loadMenu || !openLogButton || !modeChip || !loadedLog) return;
+  if (!loadMenu || !openLogButton || !loadedLog) return;
   if (loadMenu.querySelector('.unload-log')) return;
+
+  clearSourceResetParam();
 
   const unloadLogButton = document.createElement('button');
   unloadLogButton.type = 'button';
@@ -52,7 +61,7 @@ export function installSourceTransitionUi(root: HTMLElement): void {
     unloadLogButton.disabled = !active;
     unloadLogButton.title = active
       ? 'Unload the current recorded log while preserving locally saved workspace and INI state.'
-      : 'No recorded log is currently loaded.';
+      : 'No recorded MLG log is currently loaded.';
   };
 
   unloadLogButton.addEventListener('click', (event) => {
@@ -79,7 +88,6 @@ export function installSourceTransitionUi(root: HTMLElement): void {
   }, true);
 
   const observer = new MutationObserver(refreshUnloadState);
-  observer.observe(modeChip, { attributes: true, attributeFilter: ['data-logger-source'] });
   observer.observe(loadedLog, { childList: true, characterData: true, subtree: true });
   refreshUnloadState();
 
@@ -88,6 +96,6 @@ export function installSourceTransitionUi(root: HTMLElement): void {
       const shimButton = root.querySelector<HTMLButtonElement>('.shim-source-button');
       const action = shimButton?.querySelector('strong')?.textContent?.trim() ?? '';
       if (shimButton && action.startsWith('Connect Shim')) shimButton.click();
-    }, 0);
+    }, 250);
   }
 }
