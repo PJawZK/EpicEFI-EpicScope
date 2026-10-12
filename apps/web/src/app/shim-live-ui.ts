@@ -91,7 +91,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   dialog.innerHTML = `
     <div class="shim-channel-panel">
       <header>
-        <div class="shim-channel-title"><strong>Shim capture channels</strong><small>Select channels retained by this capture. Use the normal Channel Browser to browse and assign the full live schema.</small></div>
+        <div class="shim-channel-title"><strong>Shim capture channels</strong><small>Select channels retained by this capture. Browse the full live schema in the normal Channel Browser.</small></div>
         <span class="shim-channel-count">0 selected</span>
       </header>
       <input class="shim-channel-search" type="search" placeholder="Filter channels…" aria-label="Filter shim channels" />
