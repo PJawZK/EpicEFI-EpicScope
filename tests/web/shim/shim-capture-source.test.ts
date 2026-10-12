@@ -80,6 +80,8 @@ describe('createShimCaptureSource', () => {
     ]);
     expect(source.unavailableChannelIds).toEqual(['unused']);
     expect(source.summary.timeRange).toEqual({ startMs: 0, endMs: 20, durationMs: 20 });
+
+    // Captured channels remain backed by the live numeric source; schema-only channels stay catalog-visible.
     const coolant = await source.channelData.readChannelRange('coolant', 0, 2);
     expect([...coolant.quality!]).toEqual([0, 2]);
     expect([...coolant.validity]).toEqual([1, 0]);
