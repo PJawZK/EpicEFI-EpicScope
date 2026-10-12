@@ -198,6 +198,43 @@
 
 .specialized-analyzer-table td { color: #d9e7ee; }
 
+.ignition-behavior-details .specialized-analyzer-table-wrap {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0 10px 10px;
+}
+
+.ignition-behavior-details-table {
+  width: min(100%, 640px);
+  table-layout: fixed;
+  background: #09141c;
+}
+
+.ignition-behavior-details-table th,
+.ignition-behavior-details-table td {
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+}
+
+.ignition-behavior-details-table th {
+  width: 58%;
+  color: #8ea5b2;
+  font-weight: 600;
+}
+
+.ignition-behavior-details-table td {
+  width: 42%;
+  color: #e1edf3;
+  font-weight: 700;
+}
+
+.ignition-behavior-details-table tbody tr:nth-child(even) {
+  background: #0d1b24;
+}
+
 .analyzer-view-switch {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -211,6 +248,7 @@
   .specialized-analyzer-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .specialized-analyzer-controls select { min-width: 130px; }
   .analyzer-view-switch { justify-content: flex-start; }
+  .ignition-behavior-details-table { width: 100%; }
 }
 
 .specialized-analyzer-controls select[data-auto-selected='true'] {
