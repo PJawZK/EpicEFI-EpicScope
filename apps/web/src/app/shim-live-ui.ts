@@ -51,6 +51,18 @@ function setButtonText(button: HTMLButtonElement, strong: string, small: string)
   button.innerHTML = `<strong>${strong}</strong><small>${small}</small>`;
 }
 
+function shimChannelIdForWorkspaceId(
+  channelId: string,
+  available: ReadonlySet<string>,
+): string | undefined {
+  if (available.has(channelId)) return channelId;
+  if (channelId.startsWith('ini:')) {
+    const shimChannelId = channelId.slice(4);
+    if (available.has(shimChannelId)) return shimChannelId;
+  }
+  return undefined;
+}
+
 export function installShimLiveUi(root: HTMLElement): void {
   ensureStyles();
   const loadMenu = root.querySelector<HTMLElement>('.load-data-menu');
@@ -151,7 +163,11 @@ export function installShimLiveUi(root: HTMLElement): void {
         for (const channelId of activeWorkspace.channelIds) assigned.add(channelId);
       }
       const available = new Set(schema.channels.map((channel) => channel.id));
-      selected = new Set([...assigned].filter((channelId) => available.has(channelId)));
+      selected = new Set(
+        [...assigned]
+          .map((channelId) => shimChannelIdForWorkspaceId(channelId, available))
+          .filter((channelId): channelId is string => channelId !== undefined),
+      );
       updateSelectionCount();
       liveState.textContent = `${schema.channels.length} channels · ${selected.size} selected`;
     } catch {
@@ -203,11 +219,12 @@ export function installShimLiveUi(root: HTMLElement): void {
     if (!connected || session?.isRecording || !schema) return;
     const channelId = button.dataset.channelToggle;
     if (!channelId) return;
-    const available = schema.channels.some((channel) => channel.id === channelId);
-    if (!available) return;
+    const available = new Set(schema.channels.map((channel) => channel.id));
+    const shimChannelId = shimChannelIdForWorkspaceId(channelId, available);
+    if (!shimChannelId) return;
     window.setTimeout(() => {
       const active = button.getAttribute('aria-pressed') === 'true';
-      if (active) selected.add(channelId); else selected.delete(channelId);
+      if (active) selected.add(shimChannelId); else selected.delete(shimChannelId);
       updateSelectionCount();
       liveState.textContent = `${schema?.channels.length ?? 0} channels · ${selected.size} selected`;
     }, 0);
