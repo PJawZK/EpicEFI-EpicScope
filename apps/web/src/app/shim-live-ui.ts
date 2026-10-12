@@ -116,14 +116,18 @@ export function installShimLiveUi(root: HTMLElement): void {
   let captureId: string | undefined;
   let followLatest = true;
   let lastLiveDispatchMs = 0;
+  let captureOpened = false;
 
   const updateSelectionCount = (): void => {
     count.textContent = `${selected.size} selected${maxChannels > 0 ? ` / ${maxChannels} max` : ''}`;
     recordButton.disabled = !connected || selected.size === 0 || selected.size > maxChannels || session?.isRecording === true;
     const canOpenCapture = Boolean(session?.capture && session.capture.sampleCount > 0 && session.dataSource && schema && client?.welcome);
-    openCaptureButton.disabled = !canOpenCapture;
-    openCaptureButton.textContent = session?.isRecording ? (captureOpened ? 'Viewing Live' : 'View Live') : 'Open Capture';
-    followButton.disabled = !captureOpened || !session?.isRecording;
+    const recording = session?.isRecording === true;
+    openCaptureButton.disabled = !canOpenCapture || (!recording && captureOpened);
+    openCaptureButton.textContent = recording
+      ? (captureOpened ? 'Pause Live View' : 'View Live')
+      : (captureOpened ? 'Capture Open' : 'Open Capture');
+    followButton.disabled = !captureOpened || !recording;
   };
 
   const renderChannelList = (): void => {
@@ -155,7 +159,6 @@ export function installShimLiveUi(root: HTMLElement): void {
     updateSelectionCount();
   };
 
-  let captureOpened = false;
   const setHeaderLive = (detail: string): void => {
     if (captureOpened) return;
     modeChip.textContent = session?.isRecording ? 'LIVE · SHIM · RECORDING' : 'LIVE · SHIM';
@@ -248,7 +251,7 @@ export function installShimLiveUi(root: HTMLElement): void {
       } else if (event.type === 'state') {
         recordButton.dataset.recording = String(event.state === 'recording' || event.state === 'waiting-stream' || event.state === 'waiting-reconnect');
         if (event.state === 'recording' || event.state === 'waiting-stream' || event.state === 'waiting-reconnect') {
-          recordButton.textContent = 'Stop';
+          recordButton.textContent = 'Stop Recording';
           recordButton.disabled = false;
           updateSelectionCount();
           modeChip.textContent = event.state === 'waiting-reconnect' ? 'LIVE · SHIM · RECONNECTING' : (captureOpened ? (followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW') : 'LIVE · SHIM · RECORDING');
@@ -328,6 +331,13 @@ export function installShimLiveUi(root: HTMLElement): void {
     appStatus.textContent = `Shim recording armed · ${selected.size} channels`;
   });
   openCaptureButton.addEventListener('click', () => {
+    if (captureOpened && session?.isRecording) {
+      captureOpened = false;
+      modeChip.textContent = 'LIVE · SHIM · RECORDING';
+      appStatus.textContent = 'Live view paused · recording continues';
+      updateSelectionCount();
+      return;
+    }
     const capture = session?.capture;
     const dataSource = session?.dataSource;
     const welcome = client?.welcome;
@@ -346,6 +356,8 @@ export function installShimLiveUi(root: HTMLElement): void {
     followButton.setAttribute('aria-pressed', String(followLatest));
     followButton.textContent = followLatest ? 'Follow' : 'Follow Off';
     modeChip.textContent = followLatest ? 'LIVE · SHIM · FOLLOW' : 'LIVE · SHIM · VIEW';
-    appStatus.textContent = followLatest ? 'Live follow enabled' : 'Live follow paused · inspect history freely';
+    appStatus.textContent = followLatest
+      ? 'Live follow enabled'
+      : 'Live follow paused · recording continues · inspect history freely';
   });
 }
