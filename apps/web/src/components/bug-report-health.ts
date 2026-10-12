@@ -46,7 +46,12 @@ export function evaluateBugReportHealth(
   if (context.runtimeErrorCount > 0) {
     issues.push(`${context.runtimeErrorCount} runtime error/unhandled rejection event(s) captured.`);
   }
-  if (context.logLoaded && context.iniLoaded && !context.bindingActive) {
+  if (
+    context.logLoaded
+    && context.iniLoaded
+    && !context.bindingActive
+    && snapshot.channelDefinitionCount !== snapshot.catalogChannelCount
+  ) {
     warnings.push('INI catalog and log are loaded but no current INI/MLG binding is recorded.');
   }
 
