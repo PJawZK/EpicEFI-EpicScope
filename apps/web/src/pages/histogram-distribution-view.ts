@@ -2,7 +2,6 @@ import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
 
-type DistributionScope = 'range' | 'full';
 type DistributionMetric = 'count' | 'percent' | 'time';
 type DistributionBinMode = 'auto' | 'manual';
 type DistributionDisplay = 'histogram' | 'cumulative';
@@ -34,6 +33,12 @@ interface SelectedBin {
   readonly lower: number;
   readonly upper: number;
   readonly includesUpper: boolean;
+}
+
+interface ResolvedScope {
+  readonly label: string;
+  readonly startMs?: number;
+  readonly endMs?: number;
 }
 
 export interface HistogramDistributionViewController {
@@ -95,25 +100,33 @@ function statsFor(range: NumericChannelRange, localIndices: readonly number[]): 
   };
 }
 
-function autoBinCount(range: NumericChannelRange, localIndices: readonly number[]): number {
-  const values: number[] = [];
-  for (const localIndex of localIndices) {
-    const value = range.values[localIndex];
-    if (range.validity[localIndex] === 1 && value !== undefined && Number.isFinite(value)) values.push(value);
-  }
+function autoBinCountFromValues(values: readonly number[]): number {
   if (values.length < 2) return 10;
-  values.sort((a, b) => a - b);
-  const min = values[0]!;
-  const max = values[values.length - 1]!;
+  const sorted = [...values].sort((a, b) => a - b);
+  const min = sorted[0]!;
+  const max = sorted[sorted.length - 1]!;
   if (min === max) return 1;
-  const q1 = percentile(values, .25) ?? min;
-  const q3 = percentile(values, .75) ?? max;
+  const q1 = percentile(sorted, .25) ?? min;
+  const q3 = percentile(sorted, .75) ?? max;
   const iqr = q3 - q1;
   if (iqr > 0) {
-    const width = (2 * iqr) / Math.cbrt(values.length);
+    const width = (2 * iqr) / Math.cbrt(sorted.length);
     if (width > 0) return Math.max(8, Math.min(80, Math.ceil((max - min) / width)));
   }
-  return Math.max(8, Math.min(80, Math.ceil(Math.sqrt(values.length))));
+  return Math.max(8, Math.min(80, Math.ceil(Math.sqrt(sorted.length))));
+}
+
+function finiteExtent(values: readonly number[]): { min: number; max: number } | undefined {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let count = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+    count += 1;
+  }
+  return count > 0 ? { min, max } : undefined;
 }
 
 function matchingLocalIndices(trace: HistogramTraceContext, startMs?: number, endMs?: number): number[] {
@@ -130,10 +143,30 @@ function matchingLocalIndices(trace: HistogramTraceContext, startMs?: number, en
   return indices;
 }
 
+function continuityThresholdMs(trace: HistogramTraceContext, localIndices: readonly number[]): number | undefined {
+  const deltas: number[] = [];
+  const stride = Math.max(1, Math.floor(localIndices.length / 4096));
+  for (let position = 0; position + stride < localIndices.length; position += stride) {
+    const localIndex = localIndices[position];
+    const nextLocalIndex = localIndices[position + stride];
+    if (localIndex === undefined || nextLocalIndex === undefined || nextLocalIndex !== localIndex + stride) continue;
+    const time = trace.range.timeMs[localIndex];
+    const nextTime = trace.range.timeMs[nextLocalIndex];
+    if (time === undefined || nextTime === undefined || !Number.isFinite(time) || !Number.isFinite(nextTime)) continue;
+    const delta = (nextTime - time) / stride;
+    if (delta > 0 && Number.isFinite(delta)) deltas.push(delta);
+  }
+  if (deltas.length === 0) return undefined;
+  deltas.sort((a, b) => a - b);
+  const median = percentile(deltas, .5);
+  return median === undefined ? undefined : Math.max(1, median * 5);
+}
+
 function metricBins(trace: HistogramTraceContext, localIndices: readonly number[], binCount: number, rangeMin: number, rangeMax: number, metric: DistributionMetric): number[] {
   const counts = new Array<number>(binCount).fill(0);
   const durations = new Array<number>(binCount).fill(0);
   const span = Math.max(Number.EPSILON, rangeMax - rangeMin);
+  const maxContinuousDeltaMs = metric === 'time' ? continuityThresholdMs(trace, localIndices) : undefined;
   let validCount = 0;
 
   for (let position = 0; position < localIndices.length; position += 1) {
@@ -146,11 +179,14 @@ function metricBins(trace: HistogramTraceContext, localIndices: readonly number[
     counts[binIndex] = (counts[binIndex] ?? 0) + 1;
     validCount += 1;
 
+    if (metric !== 'time') continue;
     const nextLocalIndex = localIndices[position + 1];
-    const nextTime = nextLocalIndex === undefined ? undefined : trace.range.timeMs[nextLocalIndex];
-    if (nextTime !== undefined && Number.isFinite(nextTime)) {
-      durations[binIndex] = (durations[binIndex] ?? 0) + Math.max(0, nextTime - time);
-    }
+    if (nextLocalIndex === undefined || nextLocalIndex !== localIndex + 1) continue;
+    const nextTime = trace.range.timeMs[nextLocalIndex];
+    if (nextTime === undefined || !Number.isFinite(nextTime)) continue;
+    const delta = nextTime - time;
+    if (delta <= 0 || (maxContinuousDeltaMs !== undefined && delta > maxContinuousDeltaMs)) continue;
+    durations[binIndex] = (durations[binIndex] ?? 0) + delta;
   }
 
   if (metric === 'count') return counts;
@@ -158,21 +194,12 @@ function metricBins(trace: HistogramTraceContext, localIndices: readonly number[
   return durations.map((duration) => duration / 1000);
 }
 
-function savedRangeOption(range: SavedTimelineRangeState, index: number): HTMLOptionElement {
-  const duration = Math.abs(range.endMs - range.startMs) / 1000;
-  return new Option(`${range.label || `Range ${index + 1}`} · ${duration.toFixed(2)} s`, String(index));
-}
-
-function sameChannelCatalog(
-  left: HistogramPageContext['channels'],
-  right: HistogramPageContext['channels'],
-): boolean {
+function sameChannelCatalog(left: HistogramPageContext['channels'], right: HistogramPageContext['channels']): boolean {
   return left.length === right.length && left.every((channel, index) => channel === right[index]);
 }
 
 export function createHistogramDistributionView(): HistogramDistributionViewController {
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
-  let scope: DistributionScope = 'range';
   let metric: DistributionMetric = 'count';
   let binMode: DistributionBinMode = 'auto';
   let display: DistributionDisplay = 'histogram';
@@ -189,23 +216,21 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   root.innerHTML = `
     <div class="distribution-controls">
       <label><span>Channel</span><select class="distribution-channel"></select></label>
-      <label><span>Scope</span><select class="distribution-scope"><option value="range">Range A/B</option><option value="full">Full Log</option></select></label>
+      <label><span>Scope</span><select class="distribution-scope"></select></label>
       <label><span>Y Axis</span><select class="distribution-metric"><option value="count">Count</option><option value="percent">% Samples</option><option value="time">Time</option></select></label>
       <label><span>Bins</span><select class="distribution-bin-mode"><option value="auto">Auto</option><option value="manual">Manual</option></select></label>
       <input class="distribution-bin-count" type="number" min="1" max="512" step="1" value="20" aria-label="Manual bin count" hidden />
       <label><span>View</span><select class="distribution-display"><option value="histogram">Histogram</option><option value="cumulative">Cumulative</option></select></label>
       <label class="distribution-compare-toggle"><input type="checkbox" /><span>Compare</span></label>
-      <button type="button" class="distribution-refresh">Refresh</button>
     </div>
     <div class="distribution-compare-controls" hidden>
-      <label><span>Range A</span><select class="distribution-range-a"></select></label>
-      <label><span>Range B</span><select class="distribution-range-b"></select></label>
-      <span class="distribution-compare-note">Saved timeline ranges are compared on shared bin boundaries.</span>
+      <label><span>Compare scope</span><select class="distribution-compare-scope"></select></label>
+      <span class="distribution-compare-note">Primary and compare scopes use the same bin boundaries.</span>
     </div>
     <div class="distribution-main">
       <div class="distribution-empty" hidden>
         <strong>Distribution needs numeric samples.</strong>
-        <span>Choose Full Log, set A/B on the timeline, or select saved ranges for Compare.</span>
+        <span>Choose Full Log, Current A/B, or a Saved Range.</span>
       </div>
       <div class="distribution-chart-wrap">
         <canvas class="distribution-chart" aria-label="Distribution histogram"></canvas>
@@ -229,10 +254,8 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   const binCountInput = root.querySelector<HTMLInputElement>('.distribution-bin-count')!;
   const displaySelect = root.querySelector<HTMLSelectElement>('.distribution-display')!;
   const compareToggle = root.querySelector<HTMLInputElement>('.distribution-compare-toggle input')!;
-  const refreshButton = root.querySelector<HTMLButtonElement>('.distribution-refresh')!;
   const compareControls = root.querySelector<HTMLElement>('.distribution-compare-controls')!;
-  const rangeASelect = root.querySelector<HTMLSelectElement>('.distribution-range-a')!;
-  const rangeBSelect = root.querySelector<HTMLSelectElement>('.distribution-range-b')!;
+  const compareScopeSelect = root.querySelector<HTMLSelectElement>('.distribution-compare-scope')!;
   const empty = root.querySelector<HTMLElement>('.distribution-empty')!;
   const canvas = root.querySelector<HTMLCanvasElement>('.distribution-chart')!;
   const legend = root.querySelector<HTMLElement>('.distribution-legend')!;
@@ -245,22 +268,42 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
   const hasValidCurrentRange = (): boolean => context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
 
-  const refreshRangeSelectors = (): void => {
-    const ranges = context.savedRanges ?? [];
-    const previousA = rangeASelect.value;
-    const previousB = rangeBSelect.value;
-    rangeASelect.replaceChildren();
-    rangeBSelect.replaceChildren();
-    ranges.forEach((range, index) => {
-      rangeASelect.add(savedRangeOption(range, index));
-      rangeBSelect.add(savedRangeOption(range, index));
-    });
-    if (ranges.length > 0) {
-      rangeASelect.value = ranges[Number(previousA)] ? previousA : '0';
-      rangeBSelect.value = ranges[Number(previousB)] ? previousB : String(Math.min(1, ranges.length - 1));
+  const populateScopeSelect = (select: HTMLSelectElement, previous: string, fallback: 'ab' | 'full'): void => {
+    select.replaceChildren(new Option('Full Log', 'full'), new Option('Current A/B', 'ab'));
+    for (const [index, range] of (context.savedRanges ?? []).entries()) {
+      const seconds = Math.abs(range.endMs - range.startMs) / 1000;
+      select.add(new Option(`${range.label || `Range ${index + 1}`} · ${seconds.toFixed(seconds >= 10 ? 1 : 3)} s`, `saved:${index}`));
     }
-    rangeASelect.disabled = ranges.length === 0;
-    rangeBSelect.disabled = ranges.length < 2;
+    const abOption = [...select.options].find((option) => option.value === 'ab');
+    if (abOption) abOption.disabled = !hasValidCurrentRange();
+    if (previous && [...select.options].some((option) => option.value === previous && !option.disabled)) select.value = previous;
+    else select.value = fallback === 'ab' && hasValidCurrentRange() ? 'ab' : 'full';
+  };
+
+  const refreshScopeSelectors = (): void => {
+    const previousPrimary = scopeSelect.value;
+    const previousCompare = compareScopeSelect.value;
+    populateScopeSelect(scopeSelect, previousPrimary, 'ab');
+    populateScopeSelect(compareScopeSelect, previousCompare, 'full');
+    if (compareScopeSelect.value === scopeSelect.value && compareScopeSelect.options.length > 1) {
+      const alternative = [...compareScopeSelect.options].find((option) => !option.disabled && option.value !== scopeSelect.value);
+      if (alternative) compareScopeSelect.value = alternative.value;
+    }
+  };
+
+  const resolveScope = (value: string, fallbackLabel: string): ResolvedScope | undefined => {
+    if (value === 'full') return { label: 'Full Log' };
+    if (value === 'ab') {
+      if (!hasValidCurrentRange()) return undefined;
+      return { label: 'Current A/B', startMs: Math.min(context.aTimeMs!, context.bTimeMs!), endMs: Math.max(context.aTimeMs!, context.bTimeMs!) };
+    }
+    if (value.startsWith('saved:')) {
+      const index = Number(value.slice(6));
+      const saved: SavedTimelineRangeState | undefined = context.savedRanges?.[index];
+      if (!saved) return undefined;
+      return { label: saved.label || fallbackLabel, startMs: Math.min(saved.startMs, saved.endMs), endMs: Math.max(saved.startMs, saved.endMs) };
+    }
+    return undefined;
   };
 
   const configureCanvas = (): { ctx: CanvasRenderingContext2D; width: number; height: number } | undefined => {
@@ -335,12 +378,10 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       if (display === 'histogram') return [...item.binValues];
       const total = item.binValues.reduce((sum, value) => sum + value, 0);
       let running = 0;
-      return item.binValues.map((value) => {
-        running += value;
-        return total > 0 ? (running / total) * 100 : 0;
-      });
+      return item.binValues.map((value) => { running += value; return total > 0 ? (running / total) * 100 : 0; });
     });
-    const maxValue = display === 'cumulative' ? 100 : Math.max(1, ...plotted.flat());
+    let maxValue = display === 'cumulative' ? 100 : 1;
+    if (display !== 'cumulative') for (const values of plotted) for (const value of values) maxValue = Math.max(maxValue, value);
     const slotWidth = chartWidth / binCount;
 
     if (display === 'histogram') {
@@ -398,21 +439,9 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     ctx.fillText(`${channelLabel(series[0]!.trace)}${unit ? ` · ${unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 22);
   };
 
-  const selectedRangeFor = (select: HTMLSelectElement): SavedTimelineRangeState | undefined => {
-    const index = Number(select.value);
-    return Number.isInteger(index) ? context.savedRanges?.[index] : undefined;
-  };
-
-  const buildSeries = (trace: HistogramTraceContext, label: string, startMs: number | undefined, endMs: number | undefined, binCount: number, rangeMin: number, rangeMax: number, color: string): DistributionSeries => {
-    const localIndices = matchingLocalIndices(trace, startMs, endMs);
-    return {
-      label,
-      trace,
-      localIndices,
-      stats: statsFor(trace.range, localIndices),
-      binValues: metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric),
-      color,
-    };
+  const buildSeries = (trace: HistogramTraceContext, scope: ResolvedScope, binCount: number, rangeMin: number, rangeMax: number, color: string): DistributionSeries => {
+    const localIndices = matchingLocalIndices(trace, scope.startMs, scope.endMs);
+    return { label: scope.label, trace, localIndices, stats: statsFor(trace.range, localIndices), binValues: metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric), color };
   };
 
   const render = async (): Promise<void> => {
@@ -421,96 +450,56 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     binDetail.hidden = true;
     const channelId = channelSelect.value || context.channels[0]?.id;
     if (!channelId) {
-      empty.hidden = false;
-      canvas.hidden = true;
-      statsPanel.replaceChildren();
-      legend.replaceChildren();
-      return;
+      empty.hidden = false; canvas.hidden = true; statsPanel.replaceChildren(); legend.replaceChildren(); return;
     }
 
-    const ranges = context.savedRanges ?? [];
-    const compareReady = compare && ranges.length >= 2;
-    if (!compareReady && scope === 'range' && !hasValidCurrentRange()) {
-      empty.hidden = false;
-      canvas.hidden = true;
-      statsPanel.replaceChildren();
-      legend.replaceChildren();
-      return;
+    const primaryScope = resolveScope(scopeSelect.value, 'Saved Range');
+    const compareScope = compare ? resolveScope(compareScopeSelect.value, 'Compare Range') : undefined;
+    if (!primaryScope || (compare && !compareScope)) {
+      empty.hidden = false; canvas.hidden = true; statsPanel.replaceChildren(); legend.replaceChildren(); return;
     }
 
-    let requests: { label: string; startMs?: number; endMs?: number; color: string }[];
-    if (compareReady) {
-      const a = selectedRangeFor(rangeASelect);
-      const b = selectedRangeFor(rangeBSelect);
-      if (!a || !b) {
-        empty.hidden = false;
-        canvas.hidden = true;
-        return;
-      }
-      requests = [
-        { label: a.label || 'Range A', startMs: Math.min(a.startMs, a.endMs), endMs: Math.max(a.startMs, a.endMs), color: '#49aef4' },
-        { label: b.label || 'Range B', startMs: Math.min(b.startMs, b.endMs), endMs: Math.max(b.startMs, b.endMs), color: '#f0a44b' },
-      ];
-    } else if (scope === 'range') {
-      requests = [{ label: 'A/B Range', startMs: Math.min(context.aTimeMs!, context.bTimeMs!), endMs: Math.max(context.aTimeMs!, context.bTimeMs!), color: '#49aef4' }];
-    } else {
-      requests = [{ label: 'Full Log', color: '#49aef4' }];
-    }
+    const requests: { scope: ResolvedScope; color: string }[] = [{ scope: primaryScope, color: '#49aef4' }];
+    if (compareScope) requests.push({ scope: compareScope, color: '#f0a44b' });
 
     const loaded = await Promise.all(requests.map(async (request) => {
-      const [trace] = await context.loadTraces([channelId], request.startMs, request.endMs);
+      const [trace] = await context.loadTraces([channelId], request.scope.startMs, request.scope.endMs);
       return trace ? { trace, request } : undefined;
     }));
     if (generation !== renderGeneration) return;
     const available = loaded.filter((item): item is NonNullable<typeof item> => item !== undefined);
-    if (available.length === 0) {
-      empty.hidden = false;
-      canvas.hidden = true;
-      return;
-    }
+    if (available.length === 0) { empty.hidden = false; canvas.hidden = true; return; }
 
     const allValues: number[] = [];
-    const indexSets: { trace: HistogramTraceContext; indices: number[] }[] = [];
     for (const item of available) {
-      const indices = matchingLocalIndices(item.trace, item.request.startMs, item.request.endMs);
-      indexSets.push({ trace: item.trace, indices });
+      const indices = matchingLocalIndices(item.trace, item.request.scope.startMs, item.request.scope.endMs);
       for (const index of indices) {
         const value = item.trace.range.values[index];
         if (value !== undefined && Number.isFinite(value)) allValues.push(value);
       }
     }
-    if (allValues.length === 0) {
-      empty.hidden = false;
-      canvas.hidden = true;
-      return;
-    }
+    const extent = finiteExtent(allValues);
+    if (!extent) { empty.hidden = false; canvas.hidden = true; return; }
 
-    const rangeMin = Math.min(...allValues);
-    const rangeMax = Math.max(...allValues);
-    const reference = indexSets[0]!;
     const resolvedBinCount = binMode === 'manual'
       ? Math.max(1, Math.min(512, Math.floor(Number(binCountInput.value) || 20)))
-      : autoBinCount(reference.trace.range, reference.indices);
+      : autoBinCountFromValues(allValues);
     binCountInput.value = String(resolvedBinCount);
 
-    const series = available.map((item) => buildSeries(item.trace, item.request.label, item.request.startMs, item.request.endMs, resolvedBinCount, rangeMin, rangeMax, item.request.color));
+    const series = available.map((item) => buildSeries(item.trace, item.request.scope, resolvedBinCount, extent.min, extent.max, item.request.color));
     if (generation !== renderGeneration) return;
-
     lastSeries = series;
-    lastRangeMin = rangeMin;
-    lastRangeMax = rangeMax;
+    lastRangeMin = extent.min;
+    lastRangeMax = extent.max;
     empty.hidden = true;
     canvas.hidden = false;
     renderLegend(series);
     renderStats(series);
-    renderChart(series, rangeMin, rangeMax);
+    renderChart(series, extent.min, extent.max);
   };
 
   const updateBinDetail = (): void => {
-    if (!selectedBin || lastSeries.length === 0) {
-      binDetail.hidden = true;
-      return;
-    }
+    if (!selectedBin || lastSeries.length === 0) { binDetail.hidden = true; return; }
     const unit = lastSeries[0]?.trace.channel.unit ?? '';
     binLabel.textContent = `${formatNumber(selectedBin.lower)}–${formatNumber(selectedBin.upper)}${unit ? ` ${unit}` : ''}`;
     binCountLabel.textContent = lastSeries.map((series) => {
@@ -534,12 +523,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     if (x < padLeft || x > padLeft + chartWidth) return;
     const index = Math.min(binCount - 1, Math.max(0, Math.floor(((x - padLeft) / chartWidth) * binCount)));
     const width = (lastRangeMax - lastRangeMin) / binCount;
-    selectedBin = {
-      index,
-      lower: lastRangeMin + width * index,
-      upper: index === binCount - 1 ? lastRangeMax : lastRangeMin + width * (index + 1),
-      includesUpper: index === binCount - 1,
-    };
+    selectedBin = { index, lower: lastRangeMin + width * index, upper: index === binCount - 1 ? lastRangeMax : lastRangeMin + width * (index + 1), includesUpper: index === binCount - 1 };
     updateBinDetail();
     renderChart(lastSeries, lastRangeMin, lastRangeMax);
   });
@@ -568,28 +552,14 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     if (lastSeries.length > 0) renderChart(lastSeries, lastRangeMin, lastRangeMax);
   });
 
-  const wireRefresh = (element: HTMLElement): void => {
-    element.addEventListener('change', () => { void render(); });
-  };
-  wireRefresh(channelSelect);
-  scopeSelect.addEventListener('change', () => { scope = scopeSelect.value === 'full' ? 'full' : 'range'; void render(); });
+  channelSelect.addEventListener('change', () => { void render(); });
+  scopeSelect.addEventListener('change', () => { if (compare && compareScopeSelect.value === scopeSelect.value) refreshScopeSelectors(); void render(); });
+  compareScopeSelect.addEventListener('change', () => { void render(); });
   metricSelect.addEventListener('change', () => { metric = metricSelect.value === 'percent' ? 'percent' : metricSelect.value === 'time' ? 'time' : 'count'; void render(); });
-  binModeSelect.addEventListener('change', () => {
-    binMode = binModeSelect.value === 'manual' ? 'manual' : 'auto';
-    binCountInput.hidden = binMode !== 'manual';
-    void render();
-  });
+  binModeSelect.addEventListener('change', () => { binMode = binModeSelect.value === 'manual' ? 'manual' : 'auto'; binCountInput.hidden = binMode !== 'manual'; void render(); });
   binCountInput.addEventListener('change', () => { void render(); });
   displaySelect.addEventListener('change', () => { display = displaySelect.value === 'cumulative' ? 'cumulative' : 'histogram'; void render(); });
-  compareToggle.addEventListener('change', () => {
-    compare = compareToggle.checked;
-    compareControls.hidden = !compare;
-    scopeSelect.disabled = compare;
-    void render();
-  });
-  wireRefresh(rangeASelect);
-  wireRefresh(rangeBSelect);
-  refreshButton.addEventListener('click', () => { void render(); });
+  compareToggle.addEventListener('change', () => { compare = compareToggle.checked; compareControls.hidden = !compare; refreshScopeSelectors(); void render(); });
 
   new ResizeObserver(() => {
     if (!root.hidden && !canvas.hidden && lastSeries.length > 0) renderChart(lastSeries, lastRangeMin, lastRangeMax);
@@ -604,9 +574,10 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
       if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
     }
-    refreshRangeSelectors();
+    refreshScopeSelectors();
     void render();
   };
 
+  refreshScopeSelectors();
   return { element: root, setContext, refresh: () => { void render(); } };
 }
