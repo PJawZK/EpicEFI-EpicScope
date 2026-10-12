@@ -1,7 +1,13 @@
 import { buildNumericScatter, type NumericScatterResult } from '../../../../core/analysis/scatter';
-import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
+import {
+  histogramQualificationChannelIds,
+  loadHistogramQualificationSets,
+  populateHistogramQualificationSelect,
+  qualifyHistogramSamples,
+  selectedHistogramQualification,
+} from './histogram-qualification';
 
 const MAX_RENDERED_POINTS = 28_000;
 
@@ -256,6 +262,7 @@ export function createScatterView(): ScatterViewController {
   let analysisB = context.bTimeMs;
   let fullStartMs: number | undefined;
   let fullEndMs: number | undefined;
+  let qualificationSets = loadHistogramQualificationSets();
 
   const root = document.createElement('section');
   root.className = 'scatter-view scatter-view--mlv';
@@ -263,6 +270,7 @@ export function createScatterView(): ScatterViewController {
   root.innerHTML = `
     <div class="scatter-controls scatter-controls--mlv">
       <label><span>Scope</span><select class="scatter-scope"></select></label>
+      <label><span>Qualification</span><select class="scatter-qualification"><option value="">None</option></select></label>
       <label><span>View</span><select class="scatter-layout"><option value="single">Single</option><option value="dual">Dual</option></select></label>
       <label><span>Trace</span><select class="scatter-trace-mode"><option value="dots">Dots</option><option value="lines">Lines</option></select></label>
       <span class="scatter-scope-note"></span>
@@ -278,13 +286,14 @@ export function createScatterView(): ScatterViewController {
   `;
 
   const scopeSelect = root.querySelector<HTMLSelectElement>('.scatter-scope');
+  const qualificationSelect = root.querySelector<HTMLSelectElement>('.scatter-qualification');
   const layoutSelect = root.querySelector<HTMLSelectElement>('.scatter-layout');
   const traceModeSelect = root.querySelector<HTMLSelectElement>('.scatter-trace-mode');
   const scopeNote = root.querySelector<HTMLElement>('.scatter-scope-note');
   const empty = root.querySelector<HTMLElement>('.scatter-empty');
   const content = root.querySelector<HTMLElement>('.scatter-content');
   const paneHost = root.querySelector<HTMLElement>('.scatter-panes');
-  if (!scopeSelect || !layoutSelect || !traceModeSelect || !scopeNote || !empty || !content || !paneHost) {
+  if (!scopeSelect || !qualificationSelect || !layoutSelect || !traceModeSelect || !scopeNote || !empty || !content || !paneHost) {
     throw new Error('Scatter view structure is incomplete.');
   }
 
@@ -505,12 +514,14 @@ export function createScatterView(): ScatterViewController {
       return;
     }
 
+    const filterSet = selectedHistogramQualification(qualificationSelect, qualificationSets);
+    const filterChannelIds = histogramQualificationChannelIds(filterSet);
     empty.hidden = true;
     content.hidden = false;
     syncLayout();
     scopeNote.textContent = resolvedScope.startMs !== undefined && resolvedScope.endMs !== undefined
-      ? `${resolvedScope.label} · ${((resolvedScope.endMs - resolvedScope.startMs) / 1000).toFixed(3)} s`
-      : resolvedScope.label;
+      ? `${resolvedScope.label} · ${((resolvedScope.endMs - resolvedScope.startMs) / 1000).toFixed(3)} s${filterSet ? ` · ${filterSet.name}` : ''}`
+      : `${resolvedScope.label}${filterSet ? ` · ${filterSet.name}` : ''}`;
 
     await Promise.all(visiblePanes.map(async (pane) => {
       const xId = pane.xSelect.value;
@@ -525,9 +536,10 @@ export function createScatterView(): ScatterViewController {
       pane.canvas.getContext('2d')?.clearRect(0, 0, pane.canvas.width, pane.canvas.height);
       if (!xId || !yId) { pane.status.textContent = 'Select X and Y channels.'; return; }
 
+      const requestedIds = [...new Set([xId, yId, ...filterChannelIds])];
       let loaded: Awaited<ReturnType<HistogramPageContext['loadTraces']>>;
       try {
-        loaded = await context.loadTraces([xId, yId], resolvedScope.startMs, resolvedScope.endMs);
+        loaded = await context.loadTraces(requestedIds, resolvedScope.startMs, resolvedScope.endMs);
       } catch (error) {
         if (generation !== renderGeneration) return;
         pane.status.textContent = error instanceof Error ? `Unable to load selected channels: ${error.message}` : 'Unable to load selected channels.';
@@ -539,24 +551,24 @@ export function createScatterView(): ScatterViewController {
       const yTrace = byId.get(yId);
       if (!xTrace || !yTrace) { pane.status.textContent = 'Selected channel data is unavailable.'; return; }
 
-      let result: NumericScatterResult;
-      let complete: boolean;
-      if (resolvedScope.startMs !== undefined && resolvedScope.endMs !== undefined) {
-        const channels = new Map([[xTrace.channel.id, { range: xTrace.range, complete: xTrace.complete }]]);
-        const qualified = qualifyNumericSamples({ referenceChannelId: xTrace.channel.id, channels, conditions: [], timeRange: { startMs: resolvedScope.startMs, endMs: resolvedScope.endMs } });
-        result = buildNumericScatter(xTrace.range, yTrace.range, { sampleIndices: qualified.eligibleSampleIndices });
-        complete = qualified.complete
-          && (yTrace.complete || numericRangeCoversTime(yTrace.range, resolvedScope.startMs, resolvedScope.endMs))
-          && result.unavailableSampleCount === 0;
-      } else {
-        result = buildNumericScatter(xTrace.range, yTrace.range);
-        complete = xTrace.complete && yTrace.complete && result.unavailableSampleCount === 0;
+      const qualification = qualifyHistogramSamples(xTrace, loaded, filterSet, resolvedScope.startMs, resolvedScope.endMs);
+      if (!qualification) {
+        pane.status.textContent = 'Selected qualification references unavailable channels.';
+        return;
       }
+
+      const result = buildNumericScatter(xTrace.range, yTrace.range, { sampleIndices: qualification.eligibleSampleIndices });
+      const yComplete = resolvedScope.startMs !== undefined && resolvedScope.endMs !== undefined
+        ? yTrace.complete || numericRangeCoversTime(yTrace.range, resolvedScope.startMs, resolvedScope.endMs)
+        : yTrace.complete;
+      const complete = qualification.complete && yComplete && result.unavailableSampleCount === 0;
 
       pane.result = result;
       pane.xTrace = xTrace;
       pane.yTrace = yTrace;
       renderPane(pane, result, xTrace, yTrace);
+      pane.status.textContent += ` · eligible ${qualification.eligibleSampleCount.toLocaleString()} / ${qualification.inputSampleCount.toLocaleString()}`;
+      if (qualification.rejectedSampleCount > 0) pane.status.textContent += ` · rejected ${qualification.rejectedSampleCount.toLocaleString()}`;
       pane.status.textContent += complete ? ' · complete' : ' · partial decoded';
     }));
   };
@@ -642,6 +654,7 @@ export function createScatterView(): ScatterViewController {
     if (scopeSelect.value === 'ab') void syncRangeFromSharedTimeline().then(() => render());
     else void render();
   });
+  qualificationSelect.addEventListener('change', () => { void render(); });
   layoutSelect.addEventListener('change', () => { layout = layoutSelect.value === 'dual' ? 'dual' : 'single'; syncLayout(); void render(); });
   traceModeSelect.addEventListener('change', () => { traceMode = traceModeSelect.value === 'lines' ? 'lines' : 'dots'; refreshCanvasOnly(); });
 
@@ -661,13 +674,16 @@ export function createScatterView(): ScatterViewController {
 
   const setContext = (nextContext: HistogramPageContext): void => {
     const previous = panes.map((pane) => ({ x: pane.xSelect.value, y: pane.ySelect.value }));
+    const previousQualification = qualificationSelect.value;
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     analysisA = nextContext.aTimeMs;
     analysisB = nextContext.bTimeMs;
     fullStartMs = undefined;
     fullEndMs = undefined;
+    qualificationSets = loadHistogramQualificationSets();
     populateScopeOptions();
+    populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels, previousQualification);
     if (channelsChanged) {
       fillSelect(panes[0]!.xSelect, previous[0]?.x ?? '', 0);
       fillSelect(panes[0]!.ySelect, previous[0]?.y ?? '', 1);
@@ -678,6 +694,7 @@ export function createScatterView(): ScatterViewController {
   };
 
   populateScopeOptions();
+  populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels);
   syncLayout();
   return { element: root, setContext, refresh: () => scopeSelect.value === 'ab' ? void syncRangeFromSharedTimeline().then(() => render()) : void render() };
 }

@@ -1,6 +1,14 @@
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
+import {
+  histogramQualificationChannelIds,
+  loadHistogramQualificationSets,
+  populateHistogramQualificationSelect,
+  qualifyHistogramSamples,
+  selectedHistogramQualification,
+  type HistogramQualificationState,
+} from './histogram-qualification';
 
 type DistributionMetric = 'count' | 'percent' | 'time';
 type DistributionBinMode = 'auto' | 'manual';
@@ -26,6 +34,7 @@ interface DistributionSeries {
   readonly stats: DistributionStats;
   readonly binValues: readonly number[];
   readonly color: string;
+  readonly qualification: HistogramQualificationState;
 }
 
 interface SelectedBin {
@@ -129,16 +138,14 @@ function finiteExtent(values: readonly number[]): { min: number; max: number } |
   return count > 0 ? { min, max } : undefined;
 }
 
-function matchingLocalIndices(trace: HistogramTraceContext, startMs?: number, endMs?: number): number[] {
+function localIndicesForSourceIndices(trace: HistogramTraceContext, sampleIndices: ArrayLike<number>): number[] {
   const indices: number[] = [];
-  const minTime = startMs === undefined || endMs === undefined ? undefined : Math.min(startMs, endMs);
-  const maxTime = startMs === undefined || endMs === undefined ? undefined : Math.max(startMs, endMs);
-  for (let index = 0; index < trace.range.values.length; index += 1) {
-    const value = trace.range.values[index];
-    const time = trace.range.timeMs[index];
-    if (trace.range.validity[index] !== 1 || value === undefined || time === undefined || !Number.isFinite(value) || !Number.isFinite(time)) continue;
-    if (minTime !== undefined && maxTime !== undefined && (time < minTime || time > maxTime)) continue;
-    indices.push(index);
+  for (let position = 0; position < sampleIndices.length; position += 1) {
+    const sampleIndex = sampleIndices[position];
+    if (sampleIndex === undefined) continue;
+    const localIndex = sampleIndex - trace.range.startSampleIndex;
+    if (!Number.isSafeInteger(localIndex) || localIndex < 0 || localIndex >= trace.range.values.length) continue;
+    indices.push(localIndex);
   }
   return indices;
 }
@@ -209,6 +216,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   let lastSeries: readonly DistributionSeries[] = [];
   let lastRangeMin = 0;
   let lastRangeMax = 1;
+  let qualificationSets = loadHistogramQualificationSets();
 
   const root = document.createElement('section');
   root.className = 'histogram-distribution-view';
@@ -217,6 +225,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     <div class="distribution-controls">
       <label><span>Channel</span><select class="distribution-channel"></select></label>
       <label><span>Scope</span><select class="distribution-scope"></select></label>
+      <label><span>Qualification</span><select class="distribution-qualification"><option value="">None</option></select></label>
       <label><span>Y Axis</span><select class="distribution-metric"><option value="count">Count</option><option value="percent">% Samples</option><option value="time">Time</option></select></label>
       <label><span>Bins</span><select class="distribution-bin-mode"><option value="auto">Auto</option><option value="manual">Manual</option></select></label>
       <input class="distribution-bin-count" type="number" min="1" max="512" step="1" value="20" aria-label="Manual bin count" hidden />
@@ -225,7 +234,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     </div>
     <div class="distribution-compare-controls" hidden>
       <label><span>Compare scope</span><select class="distribution-compare-scope"></select></label>
-      <span class="distribution-compare-note">Primary and compare scopes use the same bin boundaries.</span>
+      <span class="distribution-compare-note">Primary and compare scopes use the same bin boundaries and qualification.</span>
     </div>
     <div class="distribution-main">
       <div class="distribution-empty" hidden>
@@ -249,6 +258,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.distribution-channel')!;
   const scopeSelect = root.querySelector<HTMLSelectElement>('.distribution-scope')!;
+  const qualificationSelect = root.querySelector<HTMLSelectElement>('.distribution-qualification')!;
   const metricSelect = root.querySelector<HTMLSelectElement>('.distribution-metric')!;
   const binModeSelect = root.querySelector<HTMLSelectElement>('.distribution-bin-mode')!;
   const binCountInput = root.querySelector<HTMLInputElement>('.distribution-bin-count')!;
@@ -326,7 +336,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       const section = document.createElement('section');
       section.className = 'distribution-stat-series';
       section.innerHTML = `
-        <header><i style="--series-color:${item.color}"></i><strong>${item.label}</strong><small>${item.stats.count.toLocaleString()} samples</small></header>
+        <header><i style="--series-color:${item.color}"></i><strong>${item.label}</strong><small>${item.stats.count.toLocaleString()} samples · eligible ${item.qualification.eligibleSampleCount.toLocaleString()} / ${item.qualification.inputSampleCount.toLocaleString()}</small></header>
         <dl>
           <div><dt>Mean</dt><dd>${formatNumber(item.stats.mean)}</dd></div>
           <div><dt>Median</dt><dd>${formatNumber(item.stats.median)}</dd></div>
@@ -439,9 +449,25 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     ctx.fillText(`${channelLabel(series[0]!.trace)}${unit ? ` · ${unit}` : ''}`, padLeft + chartWidth / 2, padTop + chartHeight + 22);
   };
 
-  const buildSeries = (trace: HistogramTraceContext, scope: ResolvedScope, binCount: number, rangeMin: number, rangeMax: number, color: string): DistributionSeries => {
-    const localIndices = matchingLocalIndices(trace, scope.startMs, scope.endMs);
-    return { label: scope.label, trace, localIndices, stats: statsFor(trace.range, localIndices), binValues: metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric), color };
+  const buildSeries = (
+    trace: HistogramTraceContext,
+    scope: ResolvedScope,
+    qualification: HistogramQualificationState,
+    binCount: number,
+    rangeMin: number,
+    rangeMax: number,
+    color: string,
+  ): DistributionSeries => {
+    const localIndices = localIndicesForSourceIndices(trace, qualification.eligibleSampleIndices);
+    return {
+      label: scope.label,
+      trace,
+      localIndices,
+      stats: statsFor(trace.range, localIndices),
+      binValues: metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric),
+      color,
+      qualification,
+    };
   };
 
   const render = async (): Promise<void> => {
@@ -459,34 +485,56 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       empty.hidden = false; canvas.hidden = true; statsPanel.replaceChildren(); legend.replaceChildren(); return;
     }
 
+    const filterSet = selectedHistogramQualification(qualificationSelect, qualificationSets);
+    const filterChannelIds = histogramQualificationChannelIds(filterSet);
+    const requestedChannelIds = [channelId, ...filterChannelIds.filter((id) => id !== channelId)];
     const requests: { scope: ResolvedScope; color: string }[] = [{ scope: primaryScope, color: '#49aef4' }];
     if (compareScope) requests.push({ scope: compareScope, color: '#f0a44b' });
 
     const loaded = await Promise.all(requests.map(async (request) => {
-      const [trace] = await context.loadTraces([channelId], request.scope.startMs, request.scope.endMs);
-      return trace ? { trace, request } : undefined;
+      const traces = await context.loadTraces(requestedChannelIds, request.scope.startMs, request.scope.endMs);
+      const trace = traces.find((candidate) => candidate.channel.id === channelId);
+      if (!trace) return undefined;
+      const qualification = qualifyHistogramSamples(trace, traces, filterSet, request.scope.startMs, request.scope.endMs);
+      return qualification ? { trace, qualification, request } : undefined;
     }));
     if (generation !== renderGeneration) return;
     const available = loaded.filter((item): item is NonNullable<typeof item> => item !== undefined);
-    if (available.length === 0) { empty.hidden = false; canvas.hidden = true; return; }
+    if (available.length !== requests.length) {
+      empty.hidden = false;
+      empty.querySelector('strong')!.textContent = 'Distribution qualification data is unavailable.';
+      empty.querySelector('span')!.textContent = 'The selected saved qualification references channels that are unavailable in this source.';
+      canvas.hidden = true;
+      statsPanel.replaceChildren();
+      legend.replaceChildren();
+      return;
+    }
 
     const allValues: number[] = [];
     for (const item of available) {
-      const indices = matchingLocalIndices(item.trace, item.request.scope.startMs, item.request.scope.endMs);
+      const indices = localIndicesForSourceIndices(item.trace, item.qualification.eligibleSampleIndices);
       for (const index of indices) {
         const value = item.trace.range.values[index];
         if (value !== undefined && Number.isFinite(value)) allValues.push(value);
       }
     }
     const extent = finiteExtent(allValues);
-    if (!extent) { empty.hidden = false; canvas.hidden = true; return; }
+    if (!extent) {
+      empty.hidden = false;
+      empty.querySelector('strong')!.textContent = 'No eligible Distribution samples.';
+      empty.querySelector('span')!.textContent = filterSet ? `Qualification “${filterSet.name}” rejected or invalidated all samples in the selected scope.` : 'The selected scope has no finite numeric samples.';
+      canvas.hidden = true;
+      statsPanel.replaceChildren();
+      legend.replaceChildren();
+      return;
+    }
 
     const resolvedBinCount = binMode === 'manual'
       ? Math.max(1, Math.min(512, Math.floor(Number(binCountInput.value) || 20)))
       : autoBinCountFromValues(allValues);
     binCountInput.value = String(resolvedBinCount);
 
-    const series = available.map((item) => buildSeries(item.trace, item.request.scope, resolvedBinCount, extent.min, extent.max, item.request.color));
+    const series = available.map((item) => buildSeries(item.trace, item.request.scope, item.qualification, resolvedBinCount, extent.min, extent.max, item.request.color));
     if (generation !== renderGeneration) return;
     lastSeries = series;
     lastRangeMin = extent.min;
@@ -555,6 +603,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   channelSelect.addEventListener('change', () => { void render(); });
   scopeSelect.addEventListener('change', () => { if (compare && compareScopeSelect.value === scopeSelect.value) refreshScopeSelectors(); void render(); });
   compareScopeSelect.addEventListener('change', () => { void render(); });
+  qualificationSelect.addEventListener('change', () => { void render(); });
   metricSelect.addEventListener('change', () => { metric = metricSelect.value === 'percent' ? 'percent' : metricSelect.value === 'time' ? 'time' : 'count'; void render(); });
   binModeSelect.addEventListener('change', () => { binMode = binModeSelect.value === 'manual' ? 'manual' : 'auto'; binCountInput.hidden = binMode !== 'manual'; void render(); });
   binCountInput.addEventListener('change', () => { void render(); });
@@ -567,17 +616,21 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
   const setContext = (nextContext: HistogramPageContext): void => {
     const previousChannel = channelSelect.value;
+    const previousQualification = qualificationSelect.value;
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
+    qualificationSets = loadHistogramQualificationSets();
     if (channelsChanged) {
       channelSelect.replaceChildren();
       for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
       if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
     }
+    populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels, previousQualification);
     refreshScopeSelectors();
     void render();
   };
 
+  populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels);
   refreshScopeSelectors();
   return { element: root, setContext, refresh: () => { void render(); } };
 }
