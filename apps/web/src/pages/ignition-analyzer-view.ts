@@ -25,6 +25,7 @@ type OptionKey =
   | 'correctionThreshold'
   | 'maxGapMs'
   | 'reviewRpmBin'
+  | 'reviewFocusMinRpm'
   | 'reviewLoadBin'
   | 'reviewMinSamples'
   | 'reviewStableMs'
@@ -105,6 +106,13 @@ const OPTIONS: readonly OptionSpec[] = [
     help: { title: 'Review RPM bin size', text: 'Groups stable-context evidence into RPM regions for Areas to review. Smaller bins are more specific but need more data.' },
   },
   {
+    key: 'reviewFocusMinRpm',
+    label: 'Review focus minimum RPM',
+    value: '1000',
+    step: '50',
+    help: { title: 'Review focus minimum RPM', text: 'Only affects the ranked Areas to review shortlist. Regions below this RPM remain analyzed and remain in the raw ignition evidence, but are kept out of the shortlist so cranking/start/idle-like contexts do not crowd out higher-RPM regions. Set this to 0 to include all RPM regions. This is a presentation focus, not an ECU-state classifier.' },
+  },
+  {
     key: 'reviewLoadBin',
     label: 'Review load bin size',
     value: '10',
@@ -152,7 +160,7 @@ const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
 
 const REVIEW_HELP: InlineHelpEntry = {
   title: 'Areas to review',
-  text: 'Ranks repeated ignition behavior inside RPM/load regions after a trailing stability window rejects moving operating conditions. A region can surface for repeated large timing steps, timing spread across repeated stable visits, repeated ECU correction activity, or a supported advance difference versus an adjacent region. These are places to inspect next, not automatic tuning changes or timing-safety judgments.',
+  text: 'Ranks repeated ignition behavior inside RPM/load regions after a trailing stability window rejects moving operating conditions. A region can surface for repeated large timing steps, timing spread across repeated stable visits, repeated ECU correction activity, or a supported advance difference versus an adjacent region. The visible Review focus minimum RPM keeps lower-RPM start/idle-like regions out of the shortlist without removing them from analysis. These are places to inspect next, not automatic tuning changes or timing-safety judgments.',
 };
 
 const EVENT_PAGE_SIZE = 200;
@@ -400,6 +408,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     advanceUnit: string | undefined,
     loadUnit: string | undefined,
     correctionUnit: string | undefined,
+    minimumFocusRpm: number,
   ): void => {
     reviewSection.hidden = false;
     const headers = ['Area', 'Finding', 'Evidence', 'What supports it', 'Inspect next'];
@@ -424,9 +433,23 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       return;
     }
 
-    const shown = result.areas.slice(0, REVIEW_DISPLAY_LIMIT);
-    const prefix = result.areas.length > shown.length ? `Top ${shown.length} of ${result.areas.length}` : `${shown.length}`;
-    reviewNote.textContent = `${prefix} surfaced region${result.areas.length === 1 ? '' : 's'} · ${result.evaluatedRegionCount.toLocaleString()} supported regions evaluated · ${percentageText(stableCoverage)} stable-context coverage · ranked for inspection, not automatic tuning changes.`;
+    const focusedAreas = result.areas.filter((area) => area.rpmStart >= minimumFocusRpm);
+    const lowerRpmAreaCount = result.areas.length - focusedAreas.length;
+    if (!focusedAreas.length) {
+      const heldBack = lowerRpmAreaCount > 0
+        ? ` ${lowerRpmAreaCount.toLocaleString()} lower-RPM review area${lowerRpmAreaCount === 1 ? '' : 's'} remain available by lowering Review focus minimum RPM.`
+        : '';
+      reviewNote.textContent = `No review areas surfaced at or above ${numberText(minimumFocusRpm, 0)} rpm · ${result.evaluatedRegionCount.toLocaleString()} supported regions evaluated · ${percentageText(stableCoverage)} stable-context coverage.${heldBack}`;
+      reviewBody.replaceChildren();
+      return;
+    }
+
+    const shown = focusedAreas.slice(0, REVIEW_DISPLAY_LIMIT);
+    const prefix = focusedAreas.length > shown.length ? `Top ${shown.length} of ${focusedAreas.length}` : `${shown.length}`;
+    const heldBack = lowerRpmAreaCount > 0
+      ? ` · ${lowerRpmAreaCount.toLocaleString()} lower-RPM area${lowerRpmAreaCount === 1 ? '' : 's'} held back by ≥ ${numberText(minimumFocusRpm, 0)} rpm focus`
+      : '';
+    reviewNote.textContent = `${prefix} focused region${focusedAreas.length === 1 ? '' : 's'} · ${result.evaluatedRegionCount.toLocaleString()} supported regions evaluated · ${percentageText(stableCoverage)} stable-context coverage${heldBack} · ranked for inspection, not automatic tuning changes.`;
     reviewBody.replaceChildren(...shown.map((area) => {
       const tr = document.createElement('tr');
       tr.className = 'specialized-analyzer-event-row--navigable';
@@ -610,7 +633,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   };
 
   const updateGuidance = (): void => {
-    guidance.textContent = `Large timing steps are adjacent advance changes ≥ ${numberText(optionNumber('timingStepThreshold', 5))}; correction events use |Retard / correction| > ${numberText(optionNumber('correctionThreshold', 0.5))}. Sample pairs separated by more than ${numberText(optionNumber('maxGapMs', 100), 0)} ms are not compared. With RPM + Load / MAP selected, Areas to review rank repeated behavior after a ${numberText(optionNumber('reviewStableMs', 300), 0)} ms stability window. These are observational filters only—EpicScope does not infer knock, timing safety, or the correct ignition value.`;
+    const reviewFocusMinRpm = Math.max(0, optionNumber('reviewFocusMinRpm', 1000));
+    guidance.textContent = `Large timing steps are adjacent advance changes ≥ ${numberText(optionNumber('timingStepThreshold', 5))}; correction events use |Retard / correction| > ${numberText(optionNumber('correctionThreshold', 0.5))}. Sample pairs separated by more than ${numberText(optionNumber('maxGapMs', 100), 0)} ms are not compared. With RPM + Load / MAP selected, Areas to review rank repeated behavior after a ${numberText(optionNumber('reviewStableMs', 300), 0)} ms stability window and default the shortlist to regions at or above ${numberText(reviewFocusMinRpm, 0)} rpm. Lower-RPM evidence remains analyzed. These are observational filters only—EpicScope does not infer knock, timing safety, or the correct ignition value.`;
   };
 
   const analyzeCurrent = async (): Promise<void> => {
@@ -650,6 +674,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       const timingStepThreshold = optionNumber('timingStepThreshold', 5);
       const correctionThreshold = optionNumber('correctionThreshold', 0.5);
       const maxGapMs = optionNumber('maxGapMs', 100);
+      const reviewFocusMinRpm = Math.max(0, optionNumber('reviewFocusMinRpm', 1000));
       const result = analyzeIgnitionBehavior({
         advance: advance.range,
         ...(retard ? { retardOrCorrection: retard.range } : {}),
@@ -683,6 +708,12 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
           maxTransitionGapMs: maxGapMs,
         }, scoped.sampleIndices)
         : undefined;
+      const focusedReviewAreaCount = reviewResult
+        ? reviewResult.areas.filter((area) => area.rpmStart >= reviewFocusMinRpm).length
+        : undefined;
+      const lowerRpmReviewAreaCount = reviewResult && focusedReviewAreaCount !== undefined
+        ? reviewResult.reviewAreaCount - focusedReviewAreaCount
+        : undefined;
 
       const advanceUnit = advance.channel.unit;
       const dwellUnit = dwell?.channel.unit;
@@ -694,7 +725,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['Correction events', retard ? result.correctionEvents.length.toLocaleString() : 'No channel selected'],
         ['Dwell mean / range', dwell ? `${valueWithUnit(result.dwell?.mean, dwellUnit)} · ${rangeWithUnit(result.dwell?.min, result.dwell?.max, dwellUnit)}` : 'No channel selected'],
       ]);
-      renderReviewAreas(reviewResult, advanceUnit, load?.channel.unit, retard?.channel.unit);
+      renderReviewAreas(reviewResult, advanceUnit, load?.channel.unit, retard?.channel.unit, reviewFocusMinRpm);
 
       renderDetails([
         ['Scope', scoped.scope.label],
@@ -711,7 +742,9 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['RPM mean / max', rpm ? `${numberText(result.rpm?.mean, 0)} / ${numberText(result.rpm?.max, 0)}` : 'Not selected'],
         ['Load mean / max', load ? `${numberText(result.load?.mean)} / ${numberText(result.load?.max)}` : 'Not selected'],
         ['Review stable / aligned', reviewResult ? `${reviewResult.stableSampleCount.toLocaleString()} / ${reviewResult.validAlignedSampleCount.toLocaleString()}` : 'Requires RPM + Load / MAP'],
-        ['Review regions / surfaced', reviewResult ? `${reviewResult.evaluatedRegionCount.toLocaleString()} / ${reviewResult.reviewAreaCount.toLocaleString()}` : 'Requires RPM + Load / MAP'],
+        ['Review focus minimum RPM', reviewResult ? `${numberText(reviewFocusMinRpm, 0)} rpm` : 'Requires RPM + Load / MAP'],
+        ['Review regions / focused', reviewResult && focusedReviewAreaCount !== undefined ? `${reviewResult.evaluatedRegionCount.toLocaleString()} / ${focusedReviewAreaCount.toLocaleString()}` : 'Requires RPM + Load / MAP'],
+        ['Review low-RPM areas held back', lowerRpmReviewAreaCount !== undefined ? lowerRpmReviewAreaCount.toLocaleString() : 'Requires RPM + Load / MAP'],
       ]);
 
       const combinedEvents: CombinedEvent[] = [];
