@@ -1,5 +1,16 @@
+.specialized-analyzer-view,
+.specialized-analyzer-content,
+.specialized-analyzer-map-section,
+.fueling-operating-heatmap,
+.fueling-operating-heatmap-scroll {
+  min-width: 0;
+}
+
 .fueling-operating-heatmap {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   gap: 8px;
   margin: 8px 0 10px;
   padding: 10px;
@@ -78,16 +89,18 @@
 .fueling-operating-heatmap-legend i[data-kind="strong"] { background: #315d4a; }
 
 .fueling-operating-heatmap-scroll {
+  width: 100%;
   max-width: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 3px;
 }
 
 .fueling-operating-heatmap-grid {
   display: grid;
-  grid-template-columns: minmax(76px, auto) repeat(calc(var(--fueling-heatmap-columns) - 1), minmax(32px, 1fr));
+  width: max-content;
+  max-width: none;
   gap: 2px;
-  min-width: max-content;
   align-items: stretch;
 }
 
@@ -155,6 +168,7 @@ button.fueling-heatmap-cell:focus-visible {
 
 .fueling-operating-heatmap-detail {
   display: grid;
+  min-width: 0;
   grid-template-columns: auto 1fr;
   gap: 5px 10px;
   align-items: baseline;
@@ -166,15 +180,17 @@ button.fueling-heatmap-cell:focus-visible {
 
 .fueling-operating-heatmap-detail[hidden] { display: none; }
 .fueling-operating-heatmap-detail strong { color: #d7e6ed; font-size: 10px; }
-.fueling-operating-heatmap-detail span { color: #8fa5af; font-size: 9px; line-height: 1.45; }
+.fueling-operating-heatmap-detail span { min-width: 0; color: #8fa5af; font-size: 9px; line-height: 1.45; }
 
 .fueling-operating-map-table-details {
+  min-width: 0;
   margin-top: 7px;
   border-top: 1px solid #1f333d;
 }
 
 .fueling-operating-map-table-details > summary {
   width: max-content;
+  max-width: 100%;
   padding: 8px 2px 5px;
   color: #78919d;
   font-size: 9px;

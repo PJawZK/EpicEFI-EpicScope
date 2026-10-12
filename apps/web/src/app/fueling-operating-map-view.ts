@@ -195,7 +195,7 @@ function renderHeatmap(view: HTMLElement, section: HTMLElement, table: HTMLTable
   const deadband = errorDeadband(view);
   const scale = mixtureScale(view);
 
-  ui.grid.style.setProperty('--fueling-heatmap-columns', String(rpms.length + 1));
+  ui.grid.style.gridTemplateColumns = `minmax(76px, max-content) repeat(${rpms.length}, minmax(32px, max-content))`;
   const nodes: HTMLElement[] = [];
   const corner = document.createElement('span');
   corner.className = 'fueling-heatmap-axis fueling-heatmap-axis--corner';
@@ -261,15 +261,10 @@ function apply(root: HTMLElement): void {
 export function installFuelingOperatingMapView(root: HTMLElement): void {
   if (INSTALLED.has(root)) return;
   INSTALLED.add(root);
-  const observe = (observer: MutationObserver): void => observer.observe(root, { childList: true, subtree: true, characterData: true });
-  const observer = new MutationObserver(() => {
-    observer.disconnect();
-    try {
-      apply(root);
-    } finally {
-      observe(observer);
-    }
-  });
+  const table = root.querySelector<HTMLTableElement>('.specialized-analyzer-map-table');
+  if (!table) return;
+
+  const observer = new MutationObserver(() => apply(root));
+  observer.observe(table, { childList: true, subtree: true });
   apply(root);
-  observe(observer);
 }
