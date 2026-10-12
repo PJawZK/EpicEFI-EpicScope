@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { ChannelDefinition } from '../../core/log-model/log-types';
 import {
+  GENERAL_SINGLE_WORKSPACE,
   resolveBuiltInWorkspaceTemplate,
-  SINGLE_RESOLVER_TEST_WORKSPACE,
 } from '../../apps/web/src/state/built-in-workspace-templates';
 import { builtInWorkspaceRuntimeId } from '../../apps/web/src/state/prepopulated-workspace-runtime';
 
@@ -16,22 +16,30 @@ function channel(id: string, sourceName = id, displayName = sourceName): Channel
   };
 }
 
-describe('Logger pre-populated Single integration contract', () => {
+describe('Logger pre-populated General Single integration contract', () => {
   it('uses one stable reserved workspace identity across recorded and Shim sources', () => {
-    expect(builtInWorkspaceRuntimeId(SINGLE_RESOLVER_TEST_WORKSPACE))
+    expect(builtInWorkspaceRuntimeId(GENERAL_SINGLE_WORKSPACE))
       .toBe('built-in:single-resolver-test');
 
-    const recorded = resolveBuiltInWorkspaceTemplate(SINGLE_RESOLVER_TEST_WORKSPACE, [
+    const recorded = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('ini:RPMValue', 'RPMValue', 'RPM'),
       channel('ini:MAPValue', 'MAPValue', 'MAP'),
       channel('ini:TPSValue', 'TPSValue', 'TPS'),
-      channel('ini:coolant', 'coolant', 'Coolant'),
+      channel('ini:coolant', 'coolant', 'Coolant temp'),
+      channel('ini:intake', 'intake', 'Intake air temp'),
+      channel('ini:VBatt', 'VBatt', 'Battery'),
+      channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
+      channel('ini:correctedIgnitionAdvance', 'correctedIgnitionAdvance', 'Timing: ignition'),
     ]);
-    const live = resolveBuiltInWorkspaceTemplate(SINGLE_RESOLVER_TEST_WORKSPACE, [
+    const live = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('RPMValue'),
       channel('MAPValue'),
       channel('TPSValue'),
       channel('coolant'),
+      channel('intake'),
+      channel('VBatt'),
+      channel('lambdaValue'),
+      channel('correctedIgnitionAdvance'),
     ]);
 
     expect(recorded.panes[0]?.channelIds).toEqual([
@@ -39,12 +47,20 @@ describe('Logger pre-populated Single integration contract', () => {
       'ini:MAPValue',
       'ini:TPSValue',
       'ini:coolant',
+      'ini:intake',
+      'ini:VBatt',
+      'ini:lambdaValue',
+      'ini:correctedIgnitionAdvance',
     ]);
     expect(live.panes[0]?.channelIds).toEqual([
       'RPMValue',
       'MAPValue',
       'TPSValue',
       'coolant',
+      'intake',
+      'VBatt',
+      'lambdaValue',
+      'correctedIgnitionAdvance',
     ]);
   });
 });
