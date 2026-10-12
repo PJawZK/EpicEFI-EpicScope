@@ -779,6 +779,10 @@ export function mountAppShell(root: HTMLElement): void {
       );
       await restoreWorkspaceSnapshot(merged);
 
+      // If old exact-log state supplied source-local channel assignments, the
+      // migration above may have converted them to stable INI identities.
+      // Persist that application structure immediately so the next INI-only
+      // startup no longer depends on loading this MLG again.
       if (activeIniBinding && !reusableWorkspacePersistenceSuspended) {
         try {
           applicationWorkspaceStorage.save(captureWorkspaceState());
@@ -1059,6 +1063,9 @@ export function mountAppShell(root: HTMLElement): void {
     const unloadedSourceName = activeIniSourceName ?? 'INI';
     const stableWorkspaceBeforeUnload = captureWorkspaceState();
 
+    // Preserve the reusable INI-keyed workspace before entering temporary
+    // raw-MLG mode. Raw source-local IDs must never replace application
+    // workspace identity in persistence.
     try {
       applicationWorkspaceStorage.save(stableWorkspaceBeforeUnload);
     } catch (error) {
@@ -1114,7 +1121,7 @@ export function mountAppShell(root: HTMLElement): void {
       void restoreWorkspaceSnapshot(stableWorkspaceBeforeUnload).then(() => {
         resetWorkspaceHistory();
       });
-      parserStatus.textContent = shimCatalogActive ? parserStatus.textContent : 'TUNE-INI · no catalog loaded';
+      if (!shimCatalogActive) parserStatus.textContent = 'TUNE-INI · no catalog loaded';
       appStatus.textContent = `${unloadedSourceName} unloaded`;
     }
   });
@@ -1698,6 +1705,8 @@ export function mountAppShell(root: HTMLElement): void {
             );
           }
         } catch {
+          // The normal workspace restore path will report persistence failures.
+          // Priority planning should never prevent the log itself from loading.
         }
         const prioritizedSourceChannelIds = [...new Set([
           ...reusablePriorities,
