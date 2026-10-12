@@ -59,12 +59,12 @@ const ROLES: readonly RoleSpec[] = [
     key: 'advance',
     label: 'Ignition advance',
     required: true,
-    help: { title: 'Ignition advance', text: 'Primary timing trace. EpicScope summarizes its range and adjacent-sample changes, but does not decide whether the timing value is safe or optimal.' },
+    help: { title: 'Ignition advance', text: 'Primary final timing trace. EpicScope prefers the ECU corrected ignition advance when available, summarizes its range and adjacent-sample changes, but does not decide whether the timing value is safe or optimal.' },
   },
   {
     key: 'retard',
     label: 'Retard / correction',
-    help: { title: 'Retard / correction', text: 'Optional ECU timing-correction channel. Nonzero activity is grouped for inspection without assigning a cause. The selected channel definition remains authoritative.' },
+    help: { title: 'Retard / correction', text: 'Optional ECU timing-correction channel. EpicScope prefers the aggregate ignition-correction output when available. Nonzero activity is grouped for inspection without assigning a cause. Knock-named channels are not auto-selected.' },
   },
   {
     key: 'dwell',
@@ -74,12 +74,12 @@ const ROLES: readonly RoleSpec[] = [
   {
     key: 'rpm',
     label: 'RPM',
-    help: { title: 'RPM', text: 'Optional engine-speed context attached to timing-step and correction events. RPM plus Load / MAP also enable stable-context Areas to review.' },
+    help: { title: 'RPM', text: 'Optional engine-speed context attached to timing-step and correction events. RPM plus Ignition load / MAP also enable stable-context Areas to review.' },
   },
   {
     key: 'load',
-    label: 'Load / MAP',
-    help: { title: 'Load / MAP', text: 'Optional engine-load or manifold-pressure context attached to ignition events. RPM plus this channel enable stable-context Areas to review; select the load channel that best represents the active ignition strategy.' },
+    label: 'Ignition load / MAP',
+    help: { title: 'Ignition load / MAP', text: 'Operating-load context for ignition review. EpicScope prefers the ECU ignition-table dot/load channel when available because the ignition table load strategy does not have to be MAP. For base-table comparison, this runtime channel must represent the same quantity as the selected MSQ load axis.' },
   },
 ];
 
@@ -124,7 +124,7 @@ const OPTIONS: readonly OptionSpec[] = [
     label: 'Review load bin size',
     value: '10',
     step: 'any',
-    help: { title: 'Review load bin size', text: 'Groups stable-context evidence along the selected Load / MAP channel. The value uses that channel’s source units.' },
+    help: { title: 'Review load bin size', text: 'Groups stable-context evidence along the selected Ignition load / MAP channel. The value uses that channel’s source units.' },
   },
   {
     key: 'reviewMinSamples',
@@ -167,7 +167,7 @@ const SUMMARY_HELP: Readonly<Record<string, InlineHelpEntry>> = {
 
 const REVIEW_HELP: InlineHelpEntry = {
   title: 'Areas to review',
-  text: 'Ranks repeated ignition behavior inside RPM/load regions after a trailing stability window rejects moving operating conditions. With a mapped MSQ base ignition table, Source clue compares each region’s representative stable evidence with the interpolated base-table advance and selected correction channel. It identifies where the table follows the movement, where correction activity overlaps, or where the selected evidence does not account for the behavior. It does not prove the correct timing value or a combustion cause.',
+  text: 'Ranks repeated ignition behavior inside RPM/load regions after a trailing stability window rejects moving operating conditions. With a mapped MSQ base ignition table, Source clue compares each region’s representative stable evidence with the interpolated base-table advance and selected correction channel. It identifies where the table follows the movement, where correction activity overlaps the representative visit, or where the selected evidence does not account for the behavior. It does not prove the correct timing value or a combustion cause.',
 };
 
 const EVENT_PAGE_SIZE = 200;
@@ -228,15 +228,29 @@ function normalizedIdentity(channel: ChannelDefinition): string {
 
 function localSuggestion(key: RoleKey, channels: readonly ChannelDefinition[]): ChannelDefinition | undefined {
   const patterns: Readonly<Record<RoleKey, readonly RegExp[]>> = {
-    advance: [/ignition.*advance/i, /spark.*advance/i, /ign.*adv/i],
-    retard: [/ignition.*retard/i, /spark.*retard/i, /timing.*correction/i, /ignition.*correction/i, /(^|\b)retard(\b|$)/i],
-    dwell: [/ignition.*dwell/i, /spark.*dwell/i, /coil.*dwell/i, /(^|\b)dwell(\b|$)/i],
+    advance: [/corrected.*ignition.*advance/i, /timing.*ignition/i, /running.*advance/i, /ignition.*advance/i, /spark.*advance/i, /ign.*timing/i, /ign.*adv/i],
+    retard: [/ignition.*advance.*correction/i, /ignition.*correction/i, /timing.*correction/i, /ignition.*retard/i, /spark.*retard/i, /(^|\b)retard(\b|$)/i],
+    dwell: [/spark.*dwell/i, /ignition.*dwell/i, /coil.*dwell/i, /(^|\b)dwell(\b|$)/i],
     rpm: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i],
-    load: [/^map(value)?$/i, /manifold.*pressure/i, /ignition.*load/i, /engine.*load/i, /ve.*table.*y.*axis/i],
+    load: [/load.*ignition.*table.*dot/i, /ignition.*load/i, /load.*ignition/i, /manifold.*pressure/i, /^map(value)?$/i, /engine.*load/i, /ve.*table.*y.*axis/i],
   };
   const exact: Readonly<Partial<Record<RoleKey, readonly string[]>>> = {
+    advance: [
+      'ini:correctedIgnitionAdvance', 'correctedIgnitionAdvance',
+      'ini:runningAdvance', 'runningAdvance',
+    ],
+    retard: [
+      'ini:ignitionAdvanceCorrections', 'ignitionAdvanceCorrections',
+      'ini:ignitionCorrections', 'ignitionCorrections',
+    ],
+    dwell: ['ini:sparkDwell', 'sparkDwell'],
     rpm: ['ini:RPMValue', 'RPMValue'],
-    load: ['ini:MAPValue', 'MAPValue', 'ini:veTableYAxis', 'veTableYAxis'],
+    load: [
+      'ini:loadForIgnitionTableDot', 'loadForIgnitionTableDot',
+      'ini:ignitionLoad', 'ignitionLoad',
+      'ini:MAPValue', 'MAPValue',
+      'ini:veTableYAxis', 'veTableYAxis',
+    ],
   };
   let best: ChannelDefinition | undefined;
   let bestScore = Number.NEGATIVE_INFINITY;
@@ -306,9 +320,12 @@ function reviewSourceClue(
       return `Base table follows ${attribution.baseAlignedTimingStepCount}/${attribution.observedTimingStepCount} steps · ${attribution.residualTimingStepCount} residual`;
     }
   }
-  if (attribution.correctionEpisodeCount > 0 || area.reasons.includes('correction-activity')) {
+  if (attribution.correctionEpisodeCount > 0) {
     const residual = attribution.meanResidual === undefined ? '' : ` · final−base ${signedNumber(attribution.meanResidual)}${advanceUnit ? ` ${advanceUnit}` : ''}`;
-    return `Correction activity overlaps${residual}`;
+    return `Correction activity overlaps representative visit${residual}`;
+  }
+  if (area.reasons.includes('correction-activity')) {
+    return 'Correction activity occurs elsewhere in region; not in representative visit';
   }
   if (attribution.residualSpread !== undefined && attribution.residualSpread >= timingStepThreshold) {
     return `Base table leaves residual spread ${valueWithUnit(attribution.residualSpread, advanceUnit)}`;
@@ -474,7 +491,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     reviewHead.replaceChildren(headerRow);
 
     if (!result) {
-      reviewNote.textContent = 'Select RPM and Load / MAP above to enable stable-context operating-region review.';
+      reviewNote.textContent = 'Select RPM and Ignition load / MAP above to enable stable-context operating-region review.';
       reviewBody.replaceChildren();
       return;
     }
@@ -691,7 +708,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
 
   const updateGuidance = (): void => {
     const reviewFocusMinRpm = Math.max(0, optionNumber('reviewFocusMinRpm', 1000));
-    guidance.textContent = `Large timing steps are adjacent advance changes ≥ ${numberText(optionNumber('timingStepThreshold', 5))}; correction events use |Retard / correction| > ${numberText(optionNumber('correctionThreshold', 0.5))}. Sample pairs separated by more than ${numberText(optionNumber('maxGapMs', 100), 0)} ms are not compared. With RPM + Load / MAP selected, Areas to review rank repeated behavior after a ${numberText(optionNumber('reviewStableMs', 300), 0)} ms stability window and default the shortlist to regions at or above ${numberText(reviewFocusMinRpm, 0)} rpm. A mapped MSQ base table adds source clues from representative stable evidence. These are observational filters only—EpicScope does not infer knock, timing safety, or the correct ignition value.`;
+    guidance.textContent = `Large timing steps are adjacent advance changes ≥ ${numberText(optionNumber('timingStepThreshold', 5))}; correction events use |Retard / correction| > ${numberText(optionNumber('correctionThreshold', 0.5))}. Sample pairs separated by more than ${numberText(optionNumber('maxGapMs', 100), 0)} ms are not compared. With RPM + Ignition load / MAP selected, Areas to review rank repeated behavior after a ${numberText(optionNumber('reviewStableMs', 300), 0)} ms stability window and default the shortlist to regions at or above ${numberText(reviewFocusMinRpm, 0)} rpm. A mapped MSQ base table adds source clues from representative stable evidence. These are observational filters only—EpicScope does not infer knock, timing safety, or the correct ignition value.`;
   };
 
   analyzeCurrent = async (): Promise<void> => {
@@ -814,10 +831,10 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ['Dwell ≤ 0 samples', dwell ? result.nonPositiveDwellSampleCount.toLocaleString() : 'Not selected'],
         ['RPM mean / max', rpm ? `${numberText(result.rpm?.mean, 0)} / ${numberText(result.rpm?.max, 0)}` : 'Not selected'],
         ['Load mean / max', load ? `${numberText(result.load?.mean)} / ${numberText(result.load?.max)}` : 'Not selected'],
-        ['Review stable / aligned', reviewResult ? `${reviewResult.stableSampleCount.toLocaleString()} / ${reviewResult.validAlignedSampleCount.toLocaleString()}` : 'Requires RPM + Load / MAP'],
-        ['Review focus minimum RPM', reviewResult ? `${numberText(reviewFocusMinRpm, 0)} rpm` : 'Requires RPM + Load / MAP'],
-        ['Review regions / focused', reviewResult && focusedReviewAreaCount !== undefined ? `${reviewResult.evaluatedRegionCount.toLocaleString()} / ${focusedReviewAreaCount.toLocaleString()}` : 'Requires RPM + Load / MAP'],
-        ['Review low-RPM areas held back', lowerRpmReviewAreaCount !== undefined ? lowerRpmReviewAreaCount.toLocaleString() : 'Requires RPM + Load / MAP'],
+        ['Review stable / aligned', reviewResult ? `${reviewResult.stableSampleCount.toLocaleString()} / ${reviewResult.validAlignedSampleCount.toLocaleString()}` : 'Requires RPM + Ignition load / MAP'],
+        ['Review focus minimum RPM', reviewResult ? `${numberText(reviewFocusMinRpm, 0)} rpm` : 'Requires RPM + Ignition load / MAP'],
+        ['Review regions / focused', reviewResult && focusedReviewAreaCount !== undefined ? `${reviewResult.evaluatedRegionCount.toLocaleString()} / ${focusedReviewAreaCount.toLocaleString()}` : 'Requires RPM + Ignition load / MAP'],
+        ['Review low-RPM areas held back', lowerRpmReviewAreaCount !== undefined ? lowerRpmReviewAreaCount.toLocaleString() : 'Requires RPM + Ignition load / MAP'],
         ['Base table comparison', tuneSetup.description()],
         ['Base table review areas mapped', tuneAttribution ? `${tuneAttribution.mappedAreaCount.toLocaleString()} / ${tuneAttribution.areaCount.toLocaleString()}` : 'Not active'],
       ]);
@@ -831,7 +848,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
         ...(retard ? [{ label: 'Retard / correction', range: retard.range }] : []),
         ...(dwell ? [{ label: 'Ignition dwell', range: dwell.range }] : []),
         ...(rpm ? [{ label: 'RPM', range: rpm.range }] : []),
-        ...(load ? [{ label: 'Load / MAP', range: load.range }] : []),
+        ...(load ? [{ label: 'Ignition load / MAP', range: load.range }] : []),
       ];
       renderEvidence(series, combinedEvents);
       renderEvents(combinedEvents, series);
