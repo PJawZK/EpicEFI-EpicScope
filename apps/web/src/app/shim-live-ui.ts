@@ -195,7 +195,8 @@ export function installShimLiveUi(root: HTMLElement): void {
       return;
     }
     if (!connected || session?.isRecording) return;
-    if (target.closest('.clear-graph') || target.closest('.graph-pane-action')) {
+    const paneAction = target.closest<HTMLButtonElement>('.graph-pane-action');
+    if (target.closest('.clear-graph') || paneAction?.textContent?.trim() === 'Clear pane') {
       window.setTimeout(() => {
         selected.clear();
         updateSelectionCount();
