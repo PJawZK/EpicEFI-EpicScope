@@ -120,9 +120,9 @@ export function installShimLiveUi(root: HTMLElement): void {
 
   const updateSelectionCount = (): void => {
     count.textContent = `${selected.size} selected${maxChannels > 0 ? ` / ${maxChannels} max` : ''}`;
-    recordButton.disabled = !connected || selected.size === 0 || selected.size > maxChannels || session?.isRecording === true;
-    const canOpenCapture = Boolean(session?.capture && session.capture.sampleCount > 0 && session.dataSource && schema && client?.welcome);
     const recording = session?.isRecording === true;
+    recordButton.disabled = recording ? false : (!connected || selected.size === 0 || selected.size > maxChannels);
+    const canOpenCapture = Boolean(session?.capture && session.capture.sampleCount > 0 && session.dataSource && schema && client?.welcome);
     openCaptureButton.disabled = !canOpenCapture || (!recording && captureOpened);
     openCaptureButton.textContent = recording
       ? (captureOpened ? 'Pause Live View' : 'View Live')
