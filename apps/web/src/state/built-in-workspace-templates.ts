@@ -25,7 +25,6 @@ export interface BuiltInWorkspaceTemplate {
   readonly name: string;
   readonly layout: GraphWorkspaceLayout;
   readonly panes: readonly BuiltInWorkspacePaneTemplate[];
-  /** Development fixtures are not intended to become permanent user-facing presets. */
   readonly developmentOnly?: boolean;
 }
 
@@ -48,9 +47,14 @@ export interface ResolvedBuiltInWorkspace {
   readonly unresolvedOptionalRoleIds: readonly SemanticChannelRoleId[];
 }
 
-/** Production Single-layout overview workspace. */
+/**
+ * First production pre-populated workspace. The legacy internal id is deliberately retained for
+ * this branch so an already-persisted validation workspace upgrades in place instead of creating
+ * a duplicate reserved workspace. The id can be migrated separately once legacy workspace
+ * persistence has an explicit migration path.
+ */
 export const GENERAL_SINGLE_WORKSPACE: BuiltInWorkspaceTemplate = {
-  id: 'general-single',
+  id: 'single-resolver-test',
   name: 'General · Single',
   layout: 'single',
   panes: [{
@@ -68,25 +72,8 @@ export const GENERAL_SINGLE_WORKSPACE: BuiltInWorkspaceTemplate = {
   }],
 };
 
-/**
- * Development fixture retained for focused resolver regression tests.
- * It is no longer exposed by Logger now that the production General Single preset uses the same path.
- */
-export const SINGLE_RESOLVER_TEST_WORKSPACE: BuiltInWorkspaceTemplate = {
-  id: 'single-resolver-test',
-  name: 'Single · Resolver Test',
-  layout: 'single',
-  developmentOnly: true,
-  panes: [{
-    id: 'pane-1',
-    roles: [
-      { roleId: 'engine.rpm', requirement: 'required' },
-      { roleId: 'engine.map', requirement: 'preferred' },
-      { roleId: 'engine.throttle.position', requirement: 'preferred' },
-      { roleId: 'temperature.coolant', requirement: 'optional' },
-    ],
-  }],
-};
+/** Compatibility export while Logger/tests still refer to the validation-era symbol name. */
+export const SINGLE_RESOLVER_TEST_WORKSPACE = GENERAL_SINGLE_WORKSPACE;
 
 export function resolveBuiltInWorkspaceTemplate(
   template: BuiltInWorkspaceTemplate,
