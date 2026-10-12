@@ -56,7 +56,7 @@ export interface ResolvedBuiltInWorkspace {
  * this fixture can be hidden/removed and the agreed production workspace catalog can use the same
  * template model.
  */
-export const SINGLE_RESOLVER_TEST_WORKSPACE: BuiltInWorkspaceTemplate = Object.freeze({
+export const SINGLE_RESOLVER_TEST_WORKSPACE: BuiltInWorkspaceTemplate = {
   id: 'single-resolver-test',
   name: 'Single · Resolver Test',
   layout: 'single',
@@ -70,7 +70,7 @@ export const SINGLE_RESOLVER_TEST_WORKSPACE: BuiltInWorkspaceTemplate = Object.f
       { roleId: 'temperature.coolant', requirement: 'optional' },
     ],
   }],
-});
+};
 
 export function resolveBuiltInWorkspaceTemplate(
   template: BuiltInWorkspaceTemplate,
