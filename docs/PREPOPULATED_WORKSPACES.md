@@ -87,7 +87,7 @@ Its semantic identities are:
 - `engine.throttle.position`
 - `temperature.coolant`
 
-The fixture must resolve to the currently authoritative source identity rather than embedding ECU-specific IDs. For the current EpicEFI validation path this means the same semantic workspace can resolve approximately as:
+The fixture resolves to the currently authoritative source identity rather than embedding ECU-specific IDs. For the current EpicEFI validation path this means the same semantic workspace can resolve approximately as:
 
 ```text
 MLG + INI                 ts_shim
@@ -106,4 +106,17 @@ TPS
 Coolant Temp
 ```
 
-This fixture is development-only and can be hidden or removed once source switching, missing-role behavior and override handling have been proven. Production workspaces use the same template/resolver model.
+### Logger integration
+
+The development fixture is exposed through the normal Logger graph selector using the reserved runtime ID `built-in:single-resolver-test`.
+
+The Logger refreshes only that reserved built-in when its authoritative channel set changes:
+
+- catalog-only INI state resolves against catalog channels;
+- recorded MLG + INI resolves against canonical bound `ini:*` identities;
+- Shim/live capture resolves against raw Shim channel identities;
+- returning to MLG resolves back to canonical `ini:*` identities.
+
+Normal user workspaces are never name-matched or repopulated. A user workspace can therefore have the same visible name without being modified. Rename/delete actions are disabled for the development built-in, while duplication remains available so a resolved built-in can be copied into a normal editable workspace.
+
+The fixture is development-only and can be hidden or removed once source switching, missing-role behavior and override handling have been proven. Production workspaces use the same template/resolver model.
