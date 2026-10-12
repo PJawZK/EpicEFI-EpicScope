@@ -1,4 +1,5 @@
 import { createShimCaptureSource } from '../adapters/shim/shim-capture-source';
+import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/application-workspace-local-storage';
 import { shimSchemaChannelDefinitions } from '../adapters/shim/shim-schema-adapter';
 import { ShimTelemetryClient, type ShimTelemetryClientEvent } from '../adapters/shim/shim-telemetry-client';
 import { ShimLiveSession } from '../adapters/shim/shim-live-session';
@@ -108,6 +109,7 @@ export function installShimLiveUi(root: HTMLElement): void {
   const count = dialog.querySelector<HTMLElement>('.shim-channel-count')!;
   const clear = dialog.querySelector<HTMLButtonElement>('.shim-channel-clear')!;
   const close = dialog.querySelector<HTMLButtonElement>('.shim-channel-close')!;
+  const workspaceStorage = createApplicationWorkspaceLocalStorageAdapter();
 
   let client: ShimTelemetryClient | undefined;
   let session: ShimLiveSession | undefined;
@@ -130,6 +132,31 @@ export function installShimLiveUi(root: HTMLElement): void {
       ? (captureOpened ? 'Pause Live View' : 'View Live')
       : (captureOpened ? 'Capture Open' : 'Open Capture');
     followButton.disabled = !captureOpened || !recording;
+  };
+
+  const syncSelectedFromPersistedWorkspace = (): void => {
+    if (!connected || session?.isRecording || !schema) return;
+    try {
+      const persisted = workspaceStorage.load()?.workspace;
+      const activeWorkspace = persisted?.logger.workspaces.find(
+        (workspace) => workspace.id === persisted.logger.activeWorkspaceId,
+      );
+      if (!activeWorkspace) return;
+      const assigned = new Set<string>();
+      if (activeWorkspace.panes && activeWorkspace.panes.length > 0) {
+        for (const pane of activeWorkspace.panes) {
+          for (const channelId of pane.channelIds) assigned.add(channelId);
+        }
+      } else {
+        for (const channelId of activeWorkspace.channelIds) assigned.add(channelId);
+      }
+      const available = new Set(schema.channels.map((channel) => channel.id));
+      selected = new Set([...assigned].filter((channelId) => available.has(channelId)));
+      updateSelectionCount();
+      liveState.textContent = `${schema.channels.length} channels · ${selected.size} selected`;
+    } catch {
+      // Workspace persistence must never prevent a live shim connection.
+    }
   };
 
   const renderChannelList = (): void => {
@@ -203,6 +230,7 @@ export function installShimLiveUi(root: HTMLElement): void {
         if (schema) liveState.textContent = `${schema.channels.length} channels · 0 selected`;
       }, 0);
     }
+    window.setTimeout(syncSelectedFromPersistedWorkspace, 350);
   });
 
   const handleClientEvent = (event: ShimTelemetryClientEvent): void => {
@@ -232,6 +260,7 @@ export function installShimLiveUi(root: HTMLElement): void {
             sourceName: client?.welcome?.ecu.signature || 'ts_shim live schema',
           }
         : { mode: 'clear', channels: [], sourceName: 'ts_shim' });
+      if (schema.decodable) syncSelectedFromPersistedWorkspace();
       return;
     }
     if (event.type === 'state') {
