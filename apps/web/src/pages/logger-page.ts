@@ -51,7 +51,7 @@ import {
   type GraphPaneState,
 } from '../state/logger-pane-layout';
 import {
-  STARTER_WORKSPACE_TEMPLATES,
+  availableStarterWorkspaceTemplates,
   resolveStarterWorkspaceTemplate,
   starterWorkspaceTemplate,
   SINGLE_RESOLVER_TEST_WORKSPACE,
@@ -242,6 +242,7 @@ interface GraphWorkspaceState extends GraphWorkspaceSummary {
 interface GraphSelectorController {
   readonly element: HTMLElement;
   setWorkspaces(workspaces: readonly GraphWorkspaceSummary[], activeId: string): void;
+  setTemplates(templates: readonly StarterWorkspaceTemplate[]): void;
   setEnabled(enabled: boolean): void;
   onSelect(listener: (workspaceId: string) => void): void;
   onCreate(listener: (templateId: string | undefined) => void): void;
@@ -253,6 +254,7 @@ interface GraphSelectorController {
 function createGraphSelector(): GraphSelectorController {
   let workspaces: readonly GraphWorkspaceSummary[] = [{ id: SINGLE_RESOLVER_RUNTIME_ID, name: 'General' }];
   let activeId = SINGLE_RESOLVER_RUNTIME_ID;
+  let templates: readonly StarterWorkspaceTemplate[] = availableStarterWorkspaceTemplates([]);
   let enabled = false;
   let selectListener: ((workspaceId: string) => void) | undefined;
   let createListener: ((templateId: string | undefined) => void) | undefined;
@@ -305,23 +307,26 @@ function createGraphSelector(): GraphSelectorController {
     throw new Error('Graph selector structure is incomplete.');
   }
 
-  const templateFragment = document.createDocumentFragment();
-  for (const template of STARTER_WORKSPACE_TEMPLATES) {
-    const templateButton = document.createElement('button');
-    templateButton.type = 'button';
-    templateButton.dataset.workspaceTemplateId = template.id;
-    const label = document.createElement('span');
-    label.textContent = template.name;
-    templateButton.append(label);
-    if (template.description) {
-      const detail = document.createElement('small');
-      detail.className = 'graph-selector-template-detail';
-      detail.textContent = template.description;
-      templateButton.append(detail);
+  const renderTemplates = (): void => {
+    const templateFragment = document.createDocumentFragment();
+    for (const template of templates) {
+      const templateButton = document.createElement('button');
+      templateButton.type = 'button';
+      templateButton.dataset.workspaceTemplateId = template.id;
+      const label = document.createElement('span');
+      label.textContent = template.name;
+      templateButton.append(label);
+      if (template.description) {
+        const detail = document.createElement('small');
+        detail.className = 'graph-selector-template-detail';
+        detail.textContent = template.description;
+        templateButton.append(detail);
+      }
+      templateFragment.append(templateButton);
     }
-    templateFragment.append(templateButton);
-  }
-  templateList.replaceChildren(templateFragment);
+    templateList.replaceChildren(templateFragment);
+  };
+  renderTemplates();
 
   const setTemplatePanelOpen = (open: boolean): void => {
     templatePanel.hidden = !open;
@@ -430,6 +435,10 @@ function createGraphSelector(): GraphSelectorController {
       workspaces = nextWorkspaces;
       activeId = nextActiveId;
       render();
+    },
+    setTemplates: (nextTemplates) => {
+      templates = nextTemplates;
+      renderTemplates();
     },
     setEnabled: (nextEnabled) => {
       enabled = nextEnabled;
@@ -2018,6 +2027,7 @@ export function createLoggerPage(): LoggerPageController {
     catalogSourceName = sourceName;
 
     if (!channelDataSource) {
+      graphSelector.setTemplates(availableStarterWorkspaceTemplates(channels));
       graphSelector.setEnabled(loggerWorkspaceEditingAvailable(channels.length));
       channelDefinitions = new Map(catalogChannelDefinitions);
       unavailableChannelIds.clear();
@@ -2037,6 +2047,7 @@ export function createLoggerPage(): LoggerPageController {
     catalogChannelDefinitions.clear();
     catalogSourceName = '';
     if (!channelDataSource) {
+      graphSelector.setTemplates(availableStarterWorkspaceTemplates([]));
       channelDefinitions.clear();
       unavailableChannelIds.clear();
       invalidateAnalysisChannels();
@@ -2084,6 +2095,7 @@ export function createLoggerPage(): LoggerPageController {
 
     const channelModelStarted = now();
     channelDefinitions = new Map(summary.channels.map((channel) => [channel.id, channel]));
+    graphSelector.setTemplates(availableStarterWorkspaceTemplates(summary.channels));
     channelIdAliases = new Map(options.channelIdAliases ?? []);
     unavailableChannelIds.clear();
     for (const channelId of options.unavailableChannelIds ?? []) unavailableChannelIds.add(channelId);

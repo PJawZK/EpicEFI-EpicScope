@@ -20,12 +20,19 @@ export interface BuiltInWorkspacePaneTemplate {
   readonly roles: readonly BuiltInWorkspaceRoleSlot[];
 }
 
+export interface StarterWorkspaceAvailability {
+  /** Every listed semantic capability must resolve before this starter is offered. */
+  readonly allOfRoleIds: readonly SemanticChannelRoleId[];
+}
+
 export interface BuiltInWorkspaceTemplate {
   readonly id: string;
   readonly name: string;
   readonly layout: GraphWorkspaceLayout;
   readonly panes: readonly BuiltInWorkspacePaneTemplate[];
   readonly description?: string;
+  readonly tier?: 'generic' | 'epicefi';
+  readonly availability?: StarterWorkspaceAvailability;
   readonly developmentOnly?: boolean;
 }
 
@@ -355,6 +362,41 @@ export const VEHICLE_DRIVELINE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-map-predict-wall-wetting-dual',
+  name: 'EpicEFI · MAP Predict + Wall Wetting',
+  description: 'EpicEFI predictive-MAP and intake-wall fuel model diagnostics.',
+  tier: 'epicefi',
+  availability: {
+    allOfRoleIds: [
+      'transient.predictedMap',
+      'transient.effectiveMap',
+      'transient.mapPredictionActive',
+      'transient.wallFuelAmount',
+      'transient.wallFuelCorrection',
+    ],
+  },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'engine.throttle.position', requirement: 'required' },
+      { roleId: 'transient.tpsDelta', requirement: 'preferred' },
+      { roleId: 'engine.map', requirement: 'required' },
+      { roleId: 'transient.predictedMap', requirement: 'required' },
+      { roleId: 'transient.effectiveMap', requirement: 'required' },
+      { roleId: 'transient.mapPredictionActive', requirement: 'required' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'fuel.lambda', requirement: 'preferred' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+      { roleId: 'transient.aeFuel', requirement: 'preferred' },
+      { roleId: 'transient.wallFuelAmount', requirement: 'required' },
+      { roleId: 'transient.wallFuelCorrection', requirement: 'required' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -368,7 +410,24 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   STARTUP_WARMUP_DUAL_WORKSPACE,
   ELECTRICAL_DUAL_WORKSPACE,
   VEHICLE_DRIVELINE_DUAL_WORKSPACE,
+  EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE,
 ]);
+
+export function starterWorkspaceAvailable(
+  template: StarterWorkspaceTemplate,
+  channels: readonly ChannelDefinition[],
+  options: SemanticChannelResolveOptions = {},
+): boolean {
+  const capabilities = template.availability?.allOfRoleIds ?? [];
+  return capabilities.every((roleId) => Boolean(resolveSemanticChannelRole(roleId, channels, options).channel));
+}
+
+export function availableStarterWorkspaceTemplates(
+  channels: readonly ChannelDefinition[],
+  options: SemanticChannelResolveOptions = {},
+): readonly StarterWorkspaceTemplate[] {
+  return STARTER_WORKSPACE_TEMPLATES.filter((template) => starterWorkspaceAvailable(template, channels, options));
+}
 
 export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {
   return STARTER_WORKSPACE_TEMPLATES.find((template) => template.id === id);

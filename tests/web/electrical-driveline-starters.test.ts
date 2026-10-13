@@ -4,7 +4,7 @@ import { ELECTRICAL_DUAL_WORKSPACE, VEHICLE_DRIVELINE_DUAL_WORKSPACE, STARTER_WO
 import { resolveSemanticChannelRole } from '../../apps/web/src/state/semantic-channel-roles';
 function channel(id: string, sourceName = id, displayName = sourceName): ChannelDefinition { return { id, sourceName, displayName, valueType: 'number' }; }
 describe('Electrical and Vehicle / Driveline starters', () => {
-  it('completes the generic starter catalog', () => expect(STARTER_WORKSPACE_TEMPLATES.slice(-2).map((t) => t.name)).toEqual(['Electrical', 'Vehicle / Driveline']));
+  it('completes the generic starter catalog', () => expect(STARTER_WORKSPACE_TEMPLATES.filter((t) => t.tier !== 'epicefi').slice(-2).map((t) => t.name)).toEqual(['Electrical', 'Vehicle / Driveline']));
   it('resolves Electrical onto canonical EpicEFI INI identities', () => {
     const r = resolveStarterWorkspaceTemplate(ELECTRICAL_DUAL_WORKSPACE, [
       channel('ini:VBatt','VBatt','Battery'), channel('ini:RPMValue','RPMValue','RPM'), channel('ini:actualLastInjection','actualLastInjection','Fuel: Last inj pulse width'), channel('ini:sparkDwell','sparkDwell','Ignition: coil charge time'), channel('ini:injectorDutyCycle','injectorDutyCycle','Fuel: injector duty cycle'), channel('ini:isFuelPumpOn','isFuelPumpOn','Fuel pump on'), channel('ini:alternatorDutyCycle','alternatorDutyCycle','Alternator duty'), channel('ini:rawSst1Volts','rawSst1Volts','Sensor supply 1'), channel('ini:sst1Fault','sst1Fault','SST1: Fault'),
