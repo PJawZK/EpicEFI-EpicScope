@@ -353,6 +353,8 @@ Resolution preference is:
 
 Missing roles remain explicit and must not fabricate values. Required/preferred/optional role levels control graceful degradation.
 
+See `PREPOPULATED_WORKSPACES.md`, `ARCHITECTURE.md` and `DATA_MODEL.md` for the current catalog/model details.
+
 ## D-052 — Compatibility aliases are not display-name authority
 **Status:** Approved
 
