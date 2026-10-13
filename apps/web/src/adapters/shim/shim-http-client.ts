@@ -38,7 +38,10 @@ export class ShimHttpReadOnlyClient {
   readonly #baseOrigin: URL;
   readonly #fetch: ShimHttpFetch;
 
-  constructor(baseOrigin: string | URL, fetchImpl: ShimHttpFetch = fetch) {
+  constructor(
+    baseOrigin: string | URL,
+    fetchImpl: ShimHttpFetch = (...args) => fetch(...args),
+  ) {
     this.#baseOrigin = normalizeBaseOrigin(baseOrigin);
     this.#fetch = fetchImpl;
   }
