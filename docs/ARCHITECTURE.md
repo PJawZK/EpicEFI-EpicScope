@@ -10,11 +10,11 @@ EpicScope must support rapid Web feature development without coupling product be
 
 The architecture separates **what the application does** from **how each platform executes it**.
 
-Related authority for semantic built-ins:
+Related authority for semantic starter templates:
 
-- `PREPOPULATED_WORKSPACES.md` — workspace catalog and implementation status;
+- `PREPOPULATED_WORKSPACES.md` — starter catalog and implementation status;
 - `DATA_MODEL.md` — semantic role/template entities;
-- `DECISIONS.md` — D-051–D-054 approved rules.
+- `DECISIONS.md` — D-051–D-055 approved rules.
 
 ## Primary layers
 
@@ -97,7 +97,7 @@ The source-identity layer must prevent duplicate raw + `ini:*` traces during the
 
 ### Semantic channel-role and capability layer
 
-Built-in workspaces and analyzers must not become hard-coded lists of one ECU vendor's channel names.
+Starter templates and analyzers must not become hard-coded lists of one ECU vendor's channel names.
 
 Conceptual identity chain:
 
@@ -133,26 +133,31 @@ Compatibility aliases and EpicScope display names are separate. Legacy/MLV `TP` 
 
 MegaLogViewer `FieldMaps/*.properties` are useful compatibility/alias evidence but are not semantic vocabulary authority.
 
-Future workspace availability should prefer capability/role presence over board-name conditionals. For example, a Dual Chamber Boost workspace should depend on upper/lower wastegate semantics being present rather than `ECU == Mega144H7`.
+Future starter availability should prefer capability/role presence over board-name conditionals. For example, a Dual Chamber Boost starter should depend on upper/lower wastegate semantics being present rather than `ECU == Mega144H7`.
 
-### Built-in workspace materialization
+### Starter-template materialization
 
-EpicScope separates **layout** from **workspace**:
+EpicScope separates **layout**, **starter template** and **workspace**:
 
 ```text
 Layout
   graph geometry only
 
-Workspace
+Starter template
   tuning/diagnostic purpose
   + layout reference
   + panes
   + semantic role slots
   + requirement levels
   + optional ECU/schema specialization
+
+Workspace
+  user-owned materialized graph state
+  + concrete channel assignments
+  + editable layout/pane state
 ```
 
-Built-in workspace templates are immutable product definitions. Materialization resolves semantic roles against the authoritative current channel set and produces concrete source-specific channel assignments.
+Starter-template definitions are controlled product data. Materialization resolves semantic roles against the current authoritative channel set and creates an ordinary editable workspace.
 
 Role requirement levels are:
 
@@ -162,9 +167,13 @@ Role requirement levels are:
 
 Missing roles degrade explicitly rather than fabricating values or failing the entire workspace.
 
-Built-ins use reserved identities such as `built-in:*` so they cannot overwrite an editable user workspace with the same visible name. Duplicating a built-in creates a normal editable workspace and stops automatic repopulation.
+Materialization is one-time. After creation, template logic has no continuing ownership of the workspace. Rename, delete, duplication, channel edits and layout edits are ordinary workspace operations. Template updates affect future materializations only.
 
-The first validated implementation used the Single layout to prove this source-independent materialization path before adding multi-pane geometry.
+Source transitions may normalize the user's concrete channel assignments between stable forms such as `ini:RPMValue` and `RPMValue`; this identity translation is separate from starter-template resolution and must not repopulate channels the user removed.
+
+Historical persisted `built-in:*` IDs are compatibility data only and confer no protected runtime semantics.
+
+The first validated implementation used the Single layout to prove source-independent semantic resolution before adding multi-pane geometry. The later lifecycle correction retains that resolver architecture while removing protected built-in workspace instances.
 
 ### Generic analysis primitives
 
@@ -226,7 +235,7 @@ Browser/Linux/Android storage are adapters around these contracts.
 
 Persistence must distinguish reusable application workspace from recording-specific analysis state.
 
-Built-in template identity and user workspace identity are also distinct; visible workspace name is not sufficient identity for migration/repopulation.
+Template identity and materialized workspace identity are distinct. A template may be used repeatedly to create separate user workspaces, and a historical internal ID must never imply protected ownership by itself.
 
 ### Specialized analyzers
 
@@ -266,7 +275,7 @@ Recorded MLG + optional INI binding
 
 Loaded INI and MSQ are independent application resources and survive source transitions.
 
-The real MLG + INI → Shim → MLG path has been validated on Mega144H7 → Pi Zero 2 W → LAN → browser. The semantic-workspace layer sits above this already-validated source transition mechanism rather than replacing it.
+The real MLG + INI → Shim → MLG path has been validated on Mega144H7 → Pi Zero 2 W → LAN → browser. The semantic-role layer sits above this already-validated source transition mechanism rather than replacing it.
 
 ## Current Web large-log data path
 
@@ -291,7 +300,7 @@ Current performance posture:
 
 This sidecar/cache design is a **Web implementation strategy**, not a Linux architecture mandate. Linux remains free to use mmap/indexed/columnar/native approaches while preserving product semantics.
 
-Semantic-role resolution and built-in workspace materialization are metadata operations and must not force source-sized sample duplication.
+Semantic-role resolution and starter materialization are metadata operations and must not force source-sized sample duplication.
 
 ## Current Web presentation composition
 
@@ -303,8 +312,8 @@ The Web application currently separates responsibilities across:
 - `graph-viewport.ts` — graph presentation lifecycle;
 - `inspector-panel.ts` — channel browser/detail interaction;
 - `semantic-channel-roles.ts` — semantic role definitions and source-name resolution;
-- `built-in-workspace-templates.ts` — immutable task templates and role requirements;
-- `prepopulated-workspace-runtime.ts` — source-aware materialization/refresh of built-ins;
+- `built-in-workspace-templates.ts` — starter-template definitions and role requirements (legacy filename retained for now);
+- `prepopulated-workspace-runtime.ts` — one-time starter materialization plus historical-ID compatibility;
 - focused components/state helpers extracted during the repository audit for parser diagnostics, performance-report formatting, Bug report health/formatting and pane-layout state.
 
 The repository audit is complete for now. Large files may remain when responsibilities are still coherent; file size alone is not an architecture violation.
@@ -327,7 +336,7 @@ Linux UI → Native optimized analysis/data implementation
 
 without redesigning every workflow/analyzer.
 
-Semantic workspace contracts should therefore remain platform-neutral even when Web materialization/persistence implementation details differ from Linux or Android.
+Semantic starter/template contracts should therefore remain platform-neutral even when Web materialization/persistence implementation details differ from Linux or Android.
 
 The exact Linux runtime directory structure remains intentionally undecided until Linux architecture is explicitly approved.
 
@@ -356,9 +365,9 @@ Missing data should degrade only affected functions where possible. Malformed in
 
 Architecture claims should move from proposed to validated only after automated checks and representative runtime evidence.
 
-The four-role **Single · Resolver Test** path is runtime-validated through MLG + INI → Shim → MLG with stable built-in identity and correct source-specific channel re-resolution.
+The four-role **Single · Resolver Test** path is runtime-validated through MLG + INI → Shim → MLG and proves source-specific semantic resolution.
 
-The expanded eight-role **General · Single** preset is implemented on the active feature branch but is not yet runtime-validated at the time of this document update.
+The expanded eight-role **General** starter has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing every role as runtime-validated.
 
 ## Network/privacy boundary
 
