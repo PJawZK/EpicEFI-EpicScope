@@ -343,6 +343,8 @@ Most important current-state documents:
 - [`PERFORMANCE.md`](docs/PERFORMANCE.md) — performance/memory requirements and evidence.
 - [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation/refinement plan.
 
+The semantic workspace documents above were refreshed together on `feat/single-prepopulated-workspace` after the first Single resolver runtime validation.
+
 When historical/current-state wording conflicts, use current `main`, `HANDOFF.md`, the active feature branch where applicable, and the latest verified test/runtime state.
 
 ## Web delivery
