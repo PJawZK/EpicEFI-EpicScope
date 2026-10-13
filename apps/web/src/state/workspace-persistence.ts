@@ -47,6 +47,7 @@ const isGraphWorkspace = (value: unknown): value is GraphWorkspaceSnapshot => {
   const workspace = value as Record<string, unknown>;
   const validLayout = workspace.layout === undefined
     || workspace.layout === 'single'
+    || workspace.layout === 'dual'
     || workspace.layout === 'grid4'
     || workspace.layout === 'grid5'
     || workspace.layout === 'grid6'
