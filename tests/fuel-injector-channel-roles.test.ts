@@ -15,7 +15,9 @@ describe('Fuel Pressure / Injector analyzer channel roles', () => {
   const channels = [
     channel('RPMValue', 'RPM'),
     channel('MAPValue', 'MAP'),
-    channel('fuelPressure', 'Fuel pressure'),
+    channel('fuelPressure_low', 'Fuel pressure low'),
+    channel('fuelPressure_high', 'Fuel pressure high'),
+    channel('cel_fuel_pressure', 'CEL fuel pressure'),
     channel('fuelPressureDelta', 'Fuel: Injector pressure delta'),
     channel('actualLastInjection', 'Fuel: Last inj pulse width'),
     channel('injectorDutyCycle', 'Fuel: injector duty cycle'),
@@ -31,9 +33,23 @@ describe('Fuel Pressure / Injector analyzer channel roles', () => {
     expect(suggestAnalyzerChannel('fuel-injector', 'railDiff', [channel('MAPValue', 'MAP')])).toBeUndefined();
   });
 
-  it('keeps the RPM sample grid and fuel-system roles distinct', () => {
+  it('uses low-side fuel pressure for conventional fuel-system analysis', () => {
+    expect(suggestAnalyzerChannel('fuel-injector', 'fuelPressure', channels)?.sourceName).toBe('fuelPressure_low');
+  });
+
+  it('keeps high-side GDI fuel pressure separate from low-side pressure', () => {
+    expect(suggestAnalyzerChannel('fuel-injector', 'fuelPressureHigh', channels)?.sourceName).toBe('fuelPressure_high');
+    expect(suggestAnalyzerChannel('fuel-injector', 'fuelPressure', [channel('fuelPressure_high', 'Fuel pressure high')])).toBeUndefined();
+  });
+
+  it('never treats CEL/check-engine fuel-pressure status as measured pressure', () => {
+    expect(suggestAnalyzerChannel('fuel-injector', 'fuelPressure', [channel('cel_fuel_pressure', 'CEL fuel pressure')])).toBeUndefined();
+    expect(suggestAnalyzerChannel('fuel-injector', 'fuelPressureHigh', [channel('cel_fuel_pressure', 'Check Engine fuel pressure')])).toBeUndefined();
+    expect(suggestAnalyzerChannel('fuel-injector', 'railDiff', [channel('cel_fuel_pressure_delta', 'CEL fuel pressure delta')])).toBeUndefined();
+  });
+
+  it('keeps the RPM sample grid and injector roles distinct', () => {
     expect(suggestAnalyzerChannel('fuel-injector', 'reference', channels)?.sourceName).toBe('RPMValue');
-    expect(suggestAnalyzerChannel('fuel-injector', 'fuelPressure', channels)?.sourceName).toBe('fuelPressure');
     expect(suggestAnalyzerChannel('fuel-injector', 'pw', channels)?.sourceName).toBe('actualLastInjection');
     expect(suggestAnalyzerChannel('fuel-injector', 'duty', channels)?.sourceName).toBe('injectorDutyCycle');
     expect(suggestAnalyzerChannel('fuel-injector', 'deadtime', channels)?.sourceName).toBe('injectorDeadtime');
