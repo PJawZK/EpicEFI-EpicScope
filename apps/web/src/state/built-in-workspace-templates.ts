@@ -28,6 +28,10 @@ export interface BuiltInWorkspaceTemplate {
   readonly developmentOnly?: boolean;
 }
 
+export type StarterWorkspaceRoleSlot = BuiltInWorkspaceRoleSlot;
+export type StarterWorkspacePaneTemplate = BuiltInWorkspacePaneTemplate;
+export type StarterWorkspaceTemplate = BuiltInWorkspaceTemplate;
+
 export interface ResolvedWorkspaceRoleSlot extends BuiltInWorkspaceRoleSlot {
   readonly displayName: string;
   readonly resolution: SemanticChannelResolution;
@@ -47,15 +51,16 @@ export interface ResolvedBuiltInWorkspace {
   readonly unresolvedOptionalRoleIds: readonly SemanticChannelRoleId[];
 }
 
+export type ResolvedStarterWorkspace = ResolvedBuiltInWorkspace;
+
 /**
- * First production pre-populated workspace. The legacy internal id is deliberately retained for
- * this branch so an already-persisted validation workspace upgrades in place instead of creating
- * a duplicate reserved workspace. The id can be migrated separately once legacy workspace
- * persistence has an explicit migration path.
+ * First production starter template. The legacy template id is retained only as internal
+ * compatibility data for already-persisted validation state. Applying this template creates an
+ * ordinary user-owned workspace; the template does not own or refresh that workspace afterward.
  */
-export const GENERAL_SINGLE_WORKSPACE: BuiltInWorkspaceTemplate = {
+export const GENERAL_SINGLE_WORKSPACE: StarterWorkspaceTemplate = {
   id: 'single-resolver-test',
-  name: 'General · Single',
+  name: 'General',
   layout: 'single',
   panes: [{
     id: 'pane-1',
@@ -75,11 +80,11 @@ export const GENERAL_SINGLE_WORKSPACE: BuiltInWorkspaceTemplate = {
 /** Compatibility export while Logger/tests still refer to the validation-era symbol name. */
 export const SINGLE_RESOLVER_TEST_WORKSPACE = GENERAL_SINGLE_WORKSPACE;
 
-export function resolveBuiltInWorkspaceTemplate(
-  template: BuiltInWorkspaceTemplate,
+export function resolveStarterWorkspaceTemplate(
+  template: StarterWorkspaceTemplate,
   channels: readonly ChannelDefinition[],
   options: SemanticChannelResolveOptions = {},
-): ResolvedBuiltInWorkspace {
+): ResolvedStarterWorkspace {
   const unresolvedRequiredRoleIds: SemanticChannelRoleId[] = [];
   const unresolvedPreferredRoleIds: SemanticChannelRoleId[] = [];
   const unresolvedOptionalRoleIds: SemanticChannelRoleId[] = [];
@@ -114,3 +119,6 @@ export function resolveBuiltInWorkspaceTemplate(
     unresolvedOptionalRoleIds,
   };
 }
+
+/** Compatibility alias; new code should use starter-template terminology. */
+export const resolveBuiltInWorkspaceTemplate = resolveStarterWorkspaceTemplate;
