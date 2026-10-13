@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../../core/log-model/log-types';
 import {
   GENERAL_SINGLE_WORKSPACE,
-  resolveBuiltInWorkspaceTemplate,
+  resolveStarterWorkspaceTemplate,
 } from '../../apps/web/src/state/built-in-workspace-templates';
-import { builtInWorkspaceRuntimeId } from '../../apps/web/src/state/prepopulated-workspace-runtime';
 
 function channel(id: string, sourceName = id, displayName = sourceName): ChannelDefinition {
   return {
@@ -16,12 +15,11 @@ function channel(id: string, sourceName = id, displayName = sourceName): Channel
   };
 }
 
-describe('Logger pre-populated General Single integration contract', () => {
-  it('uses one stable reserved workspace identity across recorded and Shim sources', () => {
-    expect(builtInWorkspaceRuntimeId(GENERAL_SINGLE_WORKSPACE))
-      .toBe('built-in:single-resolver-test');
+describe('Logger pre-populated General starter integration contract', () => {
+  it('resolves the General starter against recorded and Shim source catalogs', () => {
+    expect(GENERAL_SINGLE_WORKSPACE.name).toBe('General');
 
-    const recorded = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
+    const recorded = resolveStarterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('ini:RPMValue', 'RPMValue', 'RPM'),
       channel('ini:MAPValue', 'MAPValue', 'MAP'),
       channel('ini:TPSValue', 'TPSValue', 'TPS'),
@@ -31,7 +29,7 @@ describe('Logger pre-populated General Single integration contract', () => {
       channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
       channel('ini:correctedIgnitionAdvance', 'correctedIgnitionAdvance', 'Timing: ignition'),
     ]);
-    const live = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
+    const live = resolveStarterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('RPMValue'),
       channel('MAPValue'),
       channel('TPSValue'),
