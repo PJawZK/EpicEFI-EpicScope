@@ -32,9 +32,13 @@ PR #348 makes starter application explicit in the Logger graph selector:
 ```text
 New graph
 ├─ Blank graph
-└─ From template
-   ├─ General
-   └─ Idle
+└─ From template   ›
+                   ├─ General
+                   ├─ Idle
+                   ├─ Boost
+                   ├─ Fuel
+                   ├─ Ignition
+                   └─ Cooling
 ```
 
 The **From template** list is generated from the starter catalog. It is not a second workspace store and it does not create protected instances.
@@ -150,15 +154,15 @@ Longer-term starter geometry vocabulary may still include Triple, Quad, Focus + 
 Implemented production starters:
 
 - **General** — Single layout; RPM, MAP, TPS, coolant temp, intake-air temp, battery voltage, Lambda and ignition advance;
-- **Idle** — Dual layout; RPM, idle target, MAP, TPS, idle-air command, ignition advance, coolant temp and Lambda.
+- **Idle** — Dual layout; RPM, idle target, MAP, TPS, idle-air command, ignition advance, coolant temp and Lambda;
+- **Boost** — Dual layout; RPM, MAP, TPS, boost target, wastegate command, boost error, intake-air temp and EMAP;
+- **Fuel** — Dual layout; RPM, MAP, Lambda, Lambda target, injector pulse width, injector duty, fuel pressure and fuel correction;
+- **Ignition** — Dual layout; RPM, MAP, ignition advance, knock retard, dwell, knock level, Lambda and intake-air temp;
+- **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage.
 
 Planned generic starter families remain:
 
-- **Fuel** — RPM, MAP, TPS, AFR/Lambda, target, injector pulse width, injector duty, fuel correction, VE and fuel pressure where available;
-- **Ignition** — RPM, MAP/load, TPS, ignition advance, knock evidence where available, battery voltage, AFR/Lambda, coolant temp and intake-air temp;
-- **Boost** — RPM, MAP, TPS/load, boost target, wastegate command, upper/lower wastegate duty where available, boost error, EMAP and intake-air temp where available;
 - **Transient / AE** — RPM, TPS, TPS rate/change, MAP, MAP rate/prediction, AFR/Lambda, injector pulse width, acceleration-enrichment contribution and wall-wetting channels where available;
-- **Cooling** — coolant temp, intake-air temp, RPM, MAP/load, vehicle speed, fan command/state, oil temp and EGT where available;
 - **Fuel System** — RPM, MAP, TPS, fuel pressure, rail differential pressure, injector pulse width, injector duty, battery voltage, AFR/Lambda and fuel-pump command/state where available;
 - **Trigger / Sync** — RPM, sync state, sync-loss count/reason, trigger/crank error, cam state/phase, trigger runtime channels and battery voltage where available;
 - **Startup / Warmup** — RPM, coolant temp, intake-air temp, MAP, TPS, AFR/Lambda, target, warmup correction, after-start enrichment, injector pulse width, idle target and idle actuator command;
@@ -356,13 +360,11 @@ Existing persisted workspaces using a historical `built-in:*` ID are retained wi
 
 ## Next implementation direction
 
-With explicit starter creation and the first multi-pane starter now merged:
+With the reusable workspace lifecycle, INI-only editing, cascading template menu and first six generic starters now merged:
 
-1. smoke-test **New graph → Blank graph / From template → General / Idle** in the hosted/local browser;
-2. confirm an Idle workspace created from recorded MLG + INI retains its user-owned assignments through MLG + INI → Shim → MLG transitions without template reapplication;
-3. extend semantic roles only as required by the next agreed starter;
-4. add further generic starters through the same catalog/materialization path;
-5. add EpicEFI-specific starters behind capability checks;
-6. add persistent user/schema semantic overrides where automatic mapping is genuinely ambiguous.
+1. browser-smoke-test **Fuel**, **Ignition** and **Cooling** against the current INI catalog and representative recorded data;
+2. implement the remaining generic starter families through the same semantic catalog/materialization path, starting with Transient / AE and Fuel System;
+3. keep ECU-specific detail out of generic starters and add richer EpicEFI-specific starters behind capability checks;
+4. add persistent user/schema semantic overrides where automatic mapping is genuinely ambiguous.
 
 All future starter implementations must reuse the same semantic resolver/materialization path rather than creating layout-specific resolver logic.
