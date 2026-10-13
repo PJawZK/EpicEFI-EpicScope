@@ -7,6 +7,7 @@ import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope
 import { createTuneTableView } from './tune-table-view';
 import { createBoostAnalyzerView } from './boost-analyzer-view';
 import { createIgnitionAnalyzerView } from './ignition-analyzer-view';
+import { createFuelInjectorAnalyzerView } from './fuel-injector-analyzer-view';
 import {
   createSpecializedAnalyzerSuiteView,
   type SpecializedAnalyzerDomain,
@@ -59,6 +60,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const tuneTableView = createTuneTableView();
   const boostView = createBoostAnalyzerView();
   const ignitionView = createIgnitionAnalyzerView();
+  const fuelInjectorView = createFuelInjectorAnalyzerView();
   const specializedView = createSpecializedAnalyzerSuiteView();
 
   const headerControl = document.createElement('label');
@@ -137,7 +139,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
   `;
-  root.append(tuneTableView.element, boostView.element, ignitionView.element, specializedView.element);
+  root.append(tuneTableView.element, boostView.element, ignitionView.element, fuelInjectorView.element, specializedView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
@@ -315,7 +317,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     'ae-map': ['AE / MAP Predict analysis', 'Tip-in/decel events, measured/predicted MAP response and AFR excursion.'],
     fueling: ['Fueling analysis', 'AFR target/actual error, lean/rich evidence and optional VE context.'],
     ignition: ['Ignition analysis', 'Advance behavior, timing-step stability, dwell and ECU correction context without knock inference.'],
-    'fuel-injector': ['Fuel pressure / injector analysis', 'Rail pressure, injector PW/duty/deadtime and threshold-event evidence.'],
+    'fuel-injector': ['Fuel pressure / injector analysis', 'Architecture-aware low-side, rail-differential or GDI high-side pressure evidence with injector headroom and threshold events.'],
     'trigger-sync': ['Trigger / sync analysis', 'Synchronization dropouts, trigger errors and sync-loss counter events.'],
   };
 
@@ -326,11 +328,13 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const tuneActive = view === 'tune-table';
     const boostActive = view === 'boost';
     const ignitionActive = view === 'ignition';
-    const specializedActive = !compareActive && !tuneActive && !boostActive && !ignitionActive;
+    const fuelInjectorActive = view === 'fuel-injector';
+    const specializedActive = !compareActive && !tuneActive && !boostActive && !ignitionActive && !fuelInjectorActive;
     compareControls.hidden = !compareActive;
     tuneTableView.element.hidden = !tuneActive;
     boostView.element.hidden = !boostActive;
     ignitionView.element.hidden = !ignitionActive;
+    fuelInjectorView.element.hidden = !fuelInjectorActive;
     specializedView.element.hidden = !specializedActive;
     viewSelect.value = view;
     if (compareActive) {
@@ -359,6 +363,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
       ignitionView.setContext(context);
       return;
     }
+    if (fuelInjectorActive) {
+      heading.textContent = specializedTitles['fuel-injector'][0];
+      description.textContent = specializedTitles['fuel-injector'][1];
+      fuelInjectorView.setContext(context);
+      return;
+    }
     const [title, detail] = specializedTitles[view];
     heading.textContent = title;
     description.textContent = detail;
@@ -380,6 +390,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (currentView === 'tune-table') tuneTableView.setContext(nextContext);
     else if (currentView === 'boost') boostView.setContext(nextContext);
     else if (currentView === 'ignition') ignitionView.setContext(nextContext);
+    else if (currentView === 'fuel-injector') fuelInjectorView.setContext(nextContext);
     specializedView.setContext(nextContext);
     if (channelsChanged) fillChannelSelect(previousChannel);
     const hasCurrentAb = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
@@ -426,6 +437,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       else if (currentView === 'tune-table') tuneTableView.refresh();
       else if (currentView === 'boost') boostView.refresh();
       else if (currentView === 'ignition') ignitionView.refresh();
+      else if (currentView === 'fuel-injector') fuelInjectorView.refresh();
       else specializedView.refresh();
     },
   };
