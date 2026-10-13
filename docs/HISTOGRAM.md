@@ -169,8 +169,8 @@ Scatter currently supports:
 - line breaks across large source-index discontinuities;
 - rendered point selection and point → Logger navigation;
 - drag-box region selection evaluated against the full qualified pair population, not only rendered/downsampled points;
-- selected-region pair count and X/Y bounds;
-- selected-region → Logger navigation with the complete selected source evidence;
+- prominent in-plot region summary with pair share, X/Y bounds and contiguous-visit count;
+- selected-region → Logger navigation focused on the strongest contiguous visit instead of the full first-to-last hit envelope;
 - shared Logger timeline.
 
 ### Scatter worthwhile future work

@@ -33,6 +33,18 @@ export interface NumericScatterRegionSelection {
   readonly selectedPairCount: number;
 }
 
+export interface NumericScatterRegionRun {
+  readonly startSampleIndex: number;
+  readonly endSampleIndex: number;
+  readonly sampleCount: number;
+}
+
+export interface NumericScatterRegionRunSummary {
+  readonly runs: readonly NumericScatterRegionRun[];
+  readonly runCount: number;
+  readonly strongestRun: NumericScatterRegionRun | undefined;
+}
+
 function localIndexForSample(range: NumericChannelRange, sampleIndex: number): number | undefined {
   const localIndex = sampleIndex - range.startSampleIndex;
   if (!Number.isSafeInteger(localIndex) || localIndex < 0 || localIndex >= range.values.length) return undefined;
@@ -147,4 +159,40 @@ export function selectNumericScatterRegion(
     sampleIndices: Uint32Array.from(selected),
     selectedPairCount: selected.length,
   };
+}
+
+/** Group selected source samples into contiguous visits through a scatter region. */
+export function summarizeNumericScatterRegionRuns(
+  selection: NumericScatterRegionSelection,
+  maxGapSamples = 1,
+): NumericScatterRegionRunSummary {
+  const indices = [...selection.sampleIndices].sort((left, right) => left - right);
+  const runs: NumericScatterRegionRun[] = [];
+  const allowedGap = Math.max(1, Math.floor(maxGapSamples));
+  let start: number | undefined;
+  let previous: number | undefined;
+  let count = 0;
+
+  const flush = (): void => {
+    if (start === undefined || previous === undefined || count === 0) return;
+    runs.push({ startSampleIndex: start, endSampleIndex: previous, sampleCount: count });
+  };
+
+  for (const sampleIndex of indices) {
+    if (start === undefined || previous === undefined) {
+      start = sampleIndex; previous = sampleIndex; count = 1; continue;
+    }
+    if (sampleIndex - previous <= allowedGap) {
+      previous = sampleIndex; count += 1; continue;
+    }
+    flush();
+    start = sampleIndex; previous = sampleIndex; count = 1;
+  }
+  flush();
+
+  let strongestRun: NumericScatterRegionRun | undefined;
+  for (const run of runs) {
+    if (!strongestRun || run.sampleCount > strongestRun.sampleCount) strongestRun = run;
+  }
+  return { runs, runCount: runs.length, strongestRun };
 }

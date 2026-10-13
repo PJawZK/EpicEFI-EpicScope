@@ -1,4 +1,4 @@
-import { buildNumericScatter, selectNumericScatterRegion, type NumericScatterRegionSelection, type NumericScatterResult } from '../../../../core/analysis/scatter';
+import { buildNumericScatter, selectNumericScatterRegion, summarizeNumericScatterRegionRuns, type NumericScatterRegionSelection, type NumericScatterResult } from '../../../../core/analysis/scatter';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import {
@@ -54,6 +54,12 @@ interface ScatterPaneState {
   readonly pointOpenLogger: HTMLButtonElement;
   readonly pointClear: HTMLButtonElement;
   readonly regionDragOverlay: HTMLElement;
+  readonly regionCard: HTMLElement;
+  readonly regionCardCount: HTMLElement;
+  readonly regionCardBounds: HTMLElement;
+  readonly regionCardVisits: HTMLElement;
+  readonly regionOpenLogger: HTMLButtonElement;
+  readonly regionClear: HTMLButtonElement;
   result: NumericScatterResult | undefined;
   xTrace: HistogramTraceContext | undefined;
   yTrace: HistogramTraceContext | undefined;
@@ -182,6 +188,16 @@ function createPane(label: string): ScatterPaneState {
       <canvas class="scatter-pane-chart" aria-label="Scatter plot"></canvas>
       <div class="scatter-region-drag" hidden></div>
       <div class="scatter-pane-title"></div>
+      <aside class="scatter-region-card" hidden aria-live="polite">
+        <strong>Region evidence</strong>
+        <div class="scatter-region-card-count">—</div>
+        <div class="scatter-region-card-bounds">—</div>
+        <div class="scatter-region-card-visits">—</div>
+        <div class="scatter-region-card-actions">
+          <button type="button" class="scatter-region-open-logger">Open strongest visit in Logger</button>
+          <button type="button" class="scatter-region-clear">Clear</button>
+        </div>
+      </aside>
     </div>
     <div class="scatter-pane-status"></div>
     <div class="scatter-point-detail" hidden>
@@ -200,11 +216,18 @@ function createPane(label: string): ScatterPaneState {
   const pointOpenLogger = root.querySelector<HTMLButtonElement>('.scatter-point-open-logger');
   const pointClear = root.querySelector<HTMLButtonElement>('.scatter-point-clear');
   const regionDragOverlay = root.querySelector<HTMLElement>('.scatter-region-drag');
-  if (!xSelect || !ySelect || !canvas || !title || !status || !pointDetail || !pointLabel || !pointOpenLogger || !pointClear || !regionDragOverlay) {
+  const regionCard = root.querySelector<HTMLElement>('.scatter-region-card');
+  const regionCardCount = root.querySelector<HTMLElement>('.scatter-region-card-count');
+  const regionCardBounds = root.querySelector<HTMLElement>('.scatter-region-card-bounds');
+  const regionCardVisits = root.querySelector<HTMLElement>('.scatter-region-card-visits');
+  const regionOpenLogger = root.querySelector<HTMLButtonElement>('.scatter-region-open-logger');
+  const regionClear = root.querySelector<HTMLButtonElement>('.scatter-region-clear');
+  if (!xSelect || !ySelect || !canvas || !title || !status || !pointDetail || !pointLabel || !pointOpenLogger || !pointClear || !regionDragOverlay || !regionCard || !regionCardCount || !regionCardBounds || !regionCardVisits || !regionOpenLogger || !regionClear) {
     throw new Error('Scatter pane structure is incomplete.');
   }
   return {
     root, xSelect, ySelect, canvas, title, status, pointDetail, pointLabel, pointOpenLogger, pointClear, regionDragOverlay,
+    regionCard, regionCardCount, regionCardBounds, regionCardVisits, regionOpenLogger, regionClear,
     result: undefined, xTrace: undefined, yTrace: undefined, renderedPointCount: 0, plotLayout: undefined, selectedResultIndex: undefined,
     selectedRegion: undefined, dragState: undefined, suppressNextClick: false,
   };
@@ -544,7 +567,7 @@ export function createScatterView(): ScatterViewController {
     const resolvedScope = resolveScope();
     if (context.channels.length < 2 || !resolvedScope) {
       for (const pane of panes) {
-        pane.result = undefined; pane.xTrace = undefined; pane.yTrace = undefined; pane.plotLayout = undefined; pane.selectedResultIndex = undefined; pane.selectedRegion = undefined; pane.dragState = undefined; pane.regionDragOverlay.hidden = true; pane.pointDetail.hidden = true;
+        pane.result = undefined; pane.xTrace = undefined; pane.yTrace = undefined; pane.plotLayout = undefined; pane.selectedResultIndex = undefined; pane.selectedRegion = undefined; pane.dragState = undefined; pane.regionDragOverlay.hidden = true; pane.regionCard.hidden = true; pane.pointDetail.hidden = true;
       }
       empty.hidden = false;
       content.hidden = true;
@@ -573,6 +596,7 @@ export function createScatterView(): ScatterViewController {
       pane.selectedRegion = undefined;
       pane.dragState = undefined;
       pane.regionDragOverlay.hidden = true;
+      pane.regionCard.hidden = true;
       pane.pointDetail.hidden = true;
       pane.canvas.getContext('2d')?.clearRect(0, 0, pane.canvas.width, pane.canvas.height);
       if (!xId || !yId) { pane.status.textContent = 'Select X and Y channels.'; return; }
@@ -681,21 +705,36 @@ export function createScatterView(): ScatterViewController {
     pane.regionDragOverlay.hidden = false;
   };
 
+  const sampleTime = (trace: HistogramTraceContext, sampleIndex: number): number | undefined => {
+    const localIndex = sampleIndex - trace.range.startSampleIndex;
+    const time = localIndex >= 0 && localIndex < trace.range.timeMs.length ? trace.range.timeMs[localIndex] : undefined;
+    return time !== undefined && Number.isFinite(time) ? time : undefined;
+  };
+
   const updateSelectionDetail = (pane: ScatterPaneState): void => {
     const result = pane.result;
     const xTrace = pane.xTrace;
     const yTrace = pane.yTrace;
-    if (!result || !xTrace || !yTrace) { pane.pointDetail.hidden = true; return; }
+    if (!result || !xTrace || !yTrace) { pane.regionCard.hidden = true; pane.pointDetail.hidden = true; return; }
 
     if (pane.selectedRegion) {
       const region = pane.selectedRegion;
-      pane.pointLabel.textContent = `${region.selection.selectedPairCount.toLocaleString()} / ${result.validPairSampleCount.toLocaleString()} pairs · ${channelLabel(xTrace)} ${formatNumber(region.xMin)}–${formatNumber(region.xMax)} · ${channelLabel(yTrace)} ${formatNumber(region.yMin)}–${formatNumber(region.yMax)}`;
-      pane.pointOpenLogger.textContent = 'Open region in Logger';
-      pane.pointOpenLogger.disabled = !context.openSamplesInLogger || region.selection.selectedPairCount === 0;
-      pane.pointDetail.hidden = false;
+      const visits = summarizeNumericScatterRegionRuns(region.selection);
+      const strongest = visits.strongestRun;
+      const firstTime = strongest ? sampleTime(xTrace, strongest.startSampleIndex) : undefined;
+      const lastTime = strongest ? sampleTime(xTrace, strongest.endSampleIndex) : undefined;
+      const duration = firstTime !== undefined && lastTime !== undefined ? Math.max(0, lastTime - firstTime) : undefined;
+      const share = result.validPairSampleCount > 0 ? (region.selection.selectedPairCount / result.validPairSampleCount) * 100 : 0;
+      pane.regionCardCount.textContent = `${region.selection.selectedPairCount.toLocaleString()} of ${result.validPairSampleCount.toLocaleString()} pairs · ${share.toFixed(1)}%`;
+      pane.regionCardBounds.textContent = `${channelLabel(xTrace)} ${formatNumber(region.xMin)}–${formatNumber(region.xMax)}${xTrace.channel.unit ? ` ${xTrace.channel.unit}` : ''} · ${channelLabel(yTrace)} ${formatNumber(region.yMin)}–${formatNumber(region.yMax)}${yTrace.channel.unit ? ` ${yTrace.channel.unit}` : ''}`;
+      pane.regionCardVisits.textContent = `${visits.runCount.toLocaleString()} contiguous visit${visits.runCount === 1 ? '' : 's'}${strongest ? ` · strongest ${strongest.sampleCount.toLocaleString()} samples${duration !== undefined ? ` · ${(duration / 1000).toFixed(duration >= 1000 ? 2 : 3)} s` : ''}` : ''}`;
+      pane.regionOpenLogger.disabled = !context.openSamplesInLogger || !strongest;
+      pane.regionCard.hidden = false;
+      pane.pointDetail.hidden = true;
       return;
     }
 
+    pane.regionCard.hidden = true;
     const index = pane.selectedResultIndex;
     if (index === undefined) { pane.pointDetail.hidden = true; return; }
     const sampleIndex = result.sampleIndices[index];
@@ -762,6 +801,7 @@ export function createScatterView(): ScatterViewController {
       const index = nearestRenderedPoint(pane, event);
       if (index === undefined) return;
       pane.selectedRegion = undefined;
+      pane.regionCard.hidden = true;
       pane.selectedResultIndex = index;
       updateSelectionDetail(pane);
       if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
@@ -769,34 +809,43 @@ export function createScatterView(): ScatterViewController {
     pane.pointClear.addEventListener('click', () => {
       pane.selectedResultIndex = undefined;
       pane.selectedRegion = undefined;
+      pane.regionCard.hidden = true;
       pane.pointDetail.hidden = true;
       if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
+    });
+    pane.regionClear.addEventListener('click', () => {
+      pane.selectedRegion = undefined;
+      pane.regionCard.hidden = true;
+      if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
+    });
+    pane.regionOpenLogger.addEventListener('click', () => {
+      const region = pane.selectedRegion;
+      const xTrace = pane.xTrace;
+      const yTrace = pane.yTrace;
+      if (!region || !xTrace || !yTrace || !context.openSamplesInLogger) return;
+      const strongest = summarizeNumericScatterRegionRuns(region.selection).strongestRun;
+      if (!strongest) return;
+      const sampleIndices: number[] = [];
+      const timeMs: number[] = [];
+      for (const sampleIndex of region.selection.sampleIndices) {
+        if (sampleIndex < strongest.startSampleIndex || sampleIndex > strongest.endSampleIndex) continue;
+        const time = sampleTime(xTrace, sampleIndex);
+        if (time === undefined) continue;
+        sampleIndices.push(sampleIndex);
+        timeMs.push(time);
+      }
+      if (timeMs.length === 0) return;
+      void context.openSamplesInLogger({
+        sampleIndices,
+        timeMs,
+        label: `${channelLabel(yTrace)} vs ${channelLabel(xTrace)} region · strongest visit · ${sampleIndices.length.toLocaleString()} pairs`,
+      });
     });
     pane.pointOpenLogger.addEventListener('click', () => {
       const result = pane.result;
       const xTrace = pane.xTrace;
       const yTrace = pane.yTrace;
       if (!result || !xTrace || !yTrace || !context.openSamplesInLogger) return;
-
-      if (pane.selectedRegion) {
-        const sampleIndices: number[] = [];
-        const timeMs: number[] = [];
-        for (const sampleIndex of pane.selectedRegion.selection.sampleIndices) {
-          const localIndex = sampleIndex - xTrace.range.startSampleIndex;
-          const time = localIndex >= 0 && localIndex < xTrace.range.timeMs.length ? xTrace.range.timeMs[localIndex] : undefined;
-          if (time === undefined || !Number.isFinite(time)) continue;
-          sampleIndices.push(sampleIndex);
-          timeMs.push(time);
-        }
-        if (timeMs.length === 0) return;
-        void context.openSamplesInLogger({
-          sampleIndices,
-          timeMs,
-          label: `${channelLabel(yTrace)} vs ${channelLabel(xTrace)} region · ${sampleIndices.length.toLocaleString()} pairs`,
-        });
-        return;
-      }
-
       const index = pane.selectedResultIndex;
       if (index === undefined) return;
       const sampleIndex = result.sampleIndices[index];
