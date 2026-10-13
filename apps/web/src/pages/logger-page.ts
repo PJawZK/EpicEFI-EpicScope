@@ -51,13 +51,13 @@ import {
   type GraphPaneState,
 } from '../state/logger-pane-layout';
 import {
-  resolveBuiltInWorkspaceTemplate,
+  resolveStarterWorkspaceTemplate,
   SINGLE_RESOLVER_TEST_WORKSPACE,
 } from '../state/built-in-workspace-templates';
-import { builtInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';
+import { legacyBuiltInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
-const SINGLE_RESOLVER_RUNTIME_ID = builtInWorkspaceRuntimeId(SINGLE_RESOLVER_TEST_WORKSPACE);
+const SINGLE_RESOLVER_RUNTIME_ID = legacyBuiltInWorkspaceRuntimeId(SINGLE_RESOLVER_TEST_WORKSPACE);
 
 export interface LoggerChannelPerformance extends GraphChannelPerformance {
   readonly channelName: string;
@@ -247,8 +247,8 @@ interface GraphSelectorController {
 }
 
 function createGraphSelector(): GraphSelectorController {
-  let workspaces: readonly GraphWorkspaceSummary[] = [{ id: 'general', name: 'General' }];
-  let activeId = 'general';
+  let workspaces: readonly GraphWorkspaceSummary[] = [{ id: SINGLE_RESOLVER_RUNTIME_ID, name: 'General' }];
+  let activeId = SINGLE_RESOLVER_RUNTIME_ID;
   let enabled = false;
   let selectListener: ((workspaceId: string) => void) | undefined;
   let createListener: (() => void) | undefined;
@@ -305,23 +305,13 @@ function createGraphSelector(): GraphSelectorController {
       const label = document.createElement('span');
       label.textContent = workspace.name;
       const detail = document.createElement('small');
-      if (workspace.id.startsWith('built-in:')) {
-        detail.textContent = workspace.id === activeId ? 'Current built-in workspace' : 'Built-in workspace';
-      } else {
-        detail.textContent = workspace.id === activeId ? 'Current graph workspace' : 'Switch workspace';
-      }
+      detail.textContent = workspace.id === activeId ? 'Current graph workspace' : 'Switch workspace';
       choice.append(label, detail);
       fragment.append(choice);
     }
     list.replaceChildren(fragment);
 
-    const activeBuiltIn = active?.id.startsWith('built-in:') ?? false;
-    for (const actionButton of actionButtons) {
-      const action = actionButton.dataset.workspaceAction;
-      actionButton.disabled = !enabled
-        || ((action === 'rename' || action === 'delete') && activeBuiltIn)
-        || (action === 'delete' && workspaces.length <= 1);
-    }
+    for (const actionButton of actionButtons) actionButton.disabled = !enabled;
   };
 
   button.addEventListener('click', (event) => {
@@ -410,9 +400,9 @@ export function createLoggerPage(): LoggerPageController {
   let previousCursorTimeMs = 0;
   let workspaceCounter = 1;
   let workspaceGeneration = 0;
-  let activeWorkspaceId = 'general';
+  let starterWorkspaceMaterialized = false;
+  let activeWorkspaceId = SINGLE_RESOLVER_RUNTIME_ID;
   let workspaces: GraphWorkspaceState[] = [
-    createInitialWorkspace('general', 'General'),
     createInitialWorkspace(
       SINGLE_RESOLVER_RUNTIME_ID,
       SINGLE_RESOLVER_TEST_WORKSPACE.name,
@@ -742,21 +732,15 @@ export function createLoggerPage(): LoggerPageController {
     );
   };
 
-  const refreshSingleResolverWorkspace = (
+  const materializeInitialStarterWorkspace = (
     channels: readonly ChannelDefinition[],
     refreshSelector = true,
   ): void => {
-    const resolution = resolveBuiltInWorkspaceTemplate(SINGLE_RESOLVER_TEST_WORKSPACE, channels);
-    let workspace = workspaces.find((candidate) => candidate.id === SINGLE_RESOLVER_RUNTIME_ID);
-    if (!workspace) {
-      workspace = createInitialWorkspace(
-        SINGLE_RESOLVER_RUNTIME_ID,
-        SINGLE_RESOLVER_TEST_WORKSPACE.name,
-        SINGLE_RESOLVER_TEST_WORKSPACE.layout,
-      );
-      workspaces.push(workspace);
-    }
+    if (starterWorkspaceMaterialized || channels.length === 0) return;
+    const workspace = workspaces.find((candidate) => candidate.id === SINGLE_RESOLVER_RUNTIME_ID);
+    if (!workspace) return;
 
+    const resolution = resolveStarterWorkspaceTemplate(SINGLE_RESOLVER_TEST_WORKSPACE, channels);
     const panes = createEmptyPaneStates();
     for (const resolvedPane of resolution.panes) {
       const pane = panes.find((candidate) => candidate.id === resolvedPane.id);
@@ -768,6 +752,7 @@ export function createLoggerPage(): LoggerPageController {
     if (!workspace.panes.some((pane) => pane.id === workspace.activePaneId)) {
       workspace.activePaneId = workspace.panes[0]?.id ?? 'pane-1';
     }
+    starterWorkspaceMaterialized = true;
     if (refreshSelector) refreshWorkspaceSelector();
   };
 
@@ -1859,7 +1844,7 @@ export function createLoggerPage(): LoggerPageController {
 
   graphSelector.onRename(() => {
     const workspace = activeWorkspace();
-    if (!workspace || workspace.id.startsWith('built-in:')) return;
+    if (!workspace) return;
     const entered = window.prompt('Graph workspace name', workspace.name);
     if (entered === null) return;
     const name = entered.trim();
@@ -1895,11 +1880,14 @@ export function createLoggerPage(): LoggerPageController {
   });
 
   graphSelector.onDelete(() => {
-    if (workspaces.length <= 1 || activeWorkspaceId.startsWith('built-in:')) return;
     const deletedIndex = workspaces.findIndex((workspace) => workspace.id === activeWorkspaceId);
     if (deletedIndex < 0) return;
     const nextIndex = Math.max(0, deletedIndex - 1);
     workspaces.splice(deletedIndex, 1);
+    if (workspaces.length === 0) {
+      workspaceCounter += 1;
+      workspaces.push(createInitialWorkspace(`graph-${workspaceCounter}`, `Graph ${workspaceCounter}`));
+    }
     const next = workspaces[Math.min(nextIndex, workspaces.length - 1)];
     if (!next) return;
     activeWorkspaceId = '';
@@ -1920,7 +1908,7 @@ export function createLoggerPage(): LoggerPageController {
       channelDefinitions = new Map(catalogChannelDefinitions);
       unavailableChannelIds.clear();
       for (const channel of channels) unavailableChannelIds.add(channel.id);
-      refreshSingleResolverWorkspace(channels);
+      materializeInitialStarterWorkspace(channels);
       invalidateAnalysisChannels();
       inspector.setCatalogChannels(channels, sourceName);
       paneRuntimes.forEach((runtime, index) => {
@@ -1937,7 +1925,6 @@ export function createLoggerPage(): LoggerPageController {
     if (!channelDataSource) {
       channelDefinitions.clear();
       unavailableChannelIds.clear();
-      refreshSingleResolverWorkspace([]);
       invalidateAnalysisChannels();
       inspector.setChannels([], 'No source channels');
       paneRuntimes.forEach((runtime, index) => {
@@ -1974,7 +1961,7 @@ export function createLoggerPage(): LoggerPageController {
       lastHistoryMutationMs: 0,
     }));
     if (!workspaces.some((workspace) => workspace.id === activeWorkspaceId)) {
-      activeWorkspaceId = workspaces[0]?.id ?? 'general';
+      activeWorkspaceId = workspaces[0]?.id ?? '';
     }
     refreshWorkspaceSelector();
     graphSelector.setEnabled(Boolean(summary.timeRange));
@@ -1986,7 +1973,7 @@ export function createLoggerPage(): LoggerPageController {
     channelIdAliases = new Map(options.channelIdAliases ?? []);
     unavailableChannelIds.clear();
     for (const channelId of options.unavailableChannelIds ?? []) unavailableChannelIds.add(channelId);
-    refreshSingleResolverWorkspace(summary.channels);
+    materializeInitialStarterWorkspace(summary.channels);
     invalidateAnalysisChannels();
     channelDataSource = channelData;
     logMarkers = summary.markers;
@@ -2089,10 +2076,9 @@ export function createLoggerPage(): LoggerPageController {
     logMarkers = [];
     if (catalogChannelDefinitions.size > 0) {
       channelDefinitions = new Map(catalogChannelDefinitions);
-      refreshSingleResolverWorkspace([...catalogChannelDefinitions.values()]);
+      materializeInitialStarterWorkspace([...catalogChannelDefinitions.values()]);
       inspector.setCatalogChannels([...catalogChannelDefinitions.values()], catalogSourceName || 'INI');
     } else {
-      refreshSingleResolverWorkspace([]);
       inspector.setError(message);
     }
     invalidateAnalysisChannels();
@@ -2138,6 +2124,7 @@ export function createLoggerPage(): LoggerPageController {
     restoringWorkspaceState = true;
     workspaceGeneration += 1;
     try {
+      const hadPersistedWorkspaces = state.workspaces.length > 0;
       workspaces = state.workspaces.map((workspace) => {
         const layout = workspace.layout ?? 'single';
         const panes = normalizePaneStates(workspace.panes, workspace.channelIds).map((pane) => ({
@@ -2150,7 +2137,9 @@ export function createLoggerPage(): LoggerPageController {
           : panes[0]!.id;
         return {
           id: workspace.id,
-          name: workspace.name,
+          name: workspace.id === SINGLE_RESOLVER_RUNTIME_ID && workspace.name === 'General · Single'
+            ? 'General'
+            : workspace.name,
           layout,
           activePaneId,
           panes,
@@ -2166,9 +2155,17 @@ export function createLoggerPage(): LoggerPageController {
           lastHistoryMutationMs: 0,
         };
       });
-      if (workspaces.length === 0) workspaces = [createInitialWorkspace('general', 'General')];
-
-      refreshSingleResolverWorkspace([...channelDefinitions.values()], false);
+      if (workspaces.length === 0) {
+        workspaces = [createInitialWorkspace(
+          SINGLE_RESOLVER_RUNTIME_ID,
+          SINGLE_RESOLVER_TEST_WORKSPACE.name,
+          SINGLE_RESOLVER_TEST_WORKSPACE.layout,
+        )];
+      }
+      starterWorkspaceMaterialized = hadPersistedWorkspaces;
+      if (!hadPersistedWorkspaces) {
+        materializeInitialStarterWorkspace([...channelDefinitions.values()], false);
+      }
 
       workspaceCounter = Math.max(
         1,

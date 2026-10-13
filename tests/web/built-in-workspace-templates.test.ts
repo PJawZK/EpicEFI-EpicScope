@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../../core/log-model/log-types';
 import {
   GENERAL_SINGLE_WORKSPACE,
-  resolveBuiltInWorkspaceTemplate,
+  resolveStarterWorkspaceTemplate,
 } from '../../apps/web/src/state/built-in-workspace-templates';
 
 function channel(id: string, sourceName = id, displayName = sourceName): ChannelDefinition {
@@ -15,9 +15,9 @@ function channel(id: string, sourceName = id, displayName = sourceName): Channel
   };
 }
 
-describe('built-in workspace templates', () => {
-  it('defines General Single as one pane with the agreed overview roles', () => {
-    expect(GENERAL_SINGLE_WORKSPACE.name).toBe('General · Single');
+describe('starter workspace templates', () => {
+  it('defines General as one pane with the agreed overview roles', () => {
+    expect(GENERAL_SINGLE_WORKSPACE.name).toBe('General');
     expect(GENERAL_SINGLE_WORKSPACE.layout).toBe('single');
     expect(GENERAL_SINGLE_WORKSPACE.panes).toHaveLength(1);
     expect(GENERAL_SINGLE_WORKSPACE.panes[0]?.roles).toEqual([
@@ -32,8 +32,8 @@ describe('built-in workspace templates', () => {
     ]);
   });
 
-  it('resolves General Single onto EpicEFI live Shim channel IDs', () => {
-    const result = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
+  it('resolves General onto EpicEFI live Shim channel IDs', () => {
+    const result = resolveStarterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('RPMValue'),
       channel('MAPValue'),
       channel('TPSValue'),
@@ -59,8 +59,8 @@ describe('built-in workspace templates', () => {
     expect(result.unresolvedOptionalRoleIds).toEqual([]);
   });
 
-  it('resolves General Single onto canonical INI identities', () => {
-    const result = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
+  it('resolves General onto canonical INI identities', () => {
+    const result = resolveStarterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('ini:RPMValue', 'RPMValue', 'RPM'),
       channel('ini:MAPValue', 'MAPValue', 'MAP'),
       channel('ini:TPSValue', 'TPSValue', 'TPS'),
@@ -84,7 +84,7 @@ describe('built-in workspace templates', () => {
   });
 
   it('loads gracefully when preferred and optional roles are missing', () => {
-    const result = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
+    const result = resolveStarterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('RPMValue'),
       channel('MAPValue'),
     ]);
@@ -103,8 +103,8 @@ describe('built-in workspace templates', () => {
     ]);
   });
 
-  it('reports missing required roles without rejecting the workspace', () => {
-    const result = resolveBuiltInWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
+  it('reports missing required roles without rejecting starter creation', () => {
+    const result = resolveStarterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE, [
       channel('TPSValue'),
       channel('coolant'),
     ]);

@@ -327,7 +327,7 @@ A same-page 295 MB → 1.2 GB log replacement test showed the previous source co
 Do not impose a new LRU/byte budget solely because retained caches exist. Revisit eviction when a concrete single-log many-channel stress test or regression demonstrates harmful growth.
 
 ## D-051 — Built-in workspaces are semantic, source-independent templates
-**Status:** Approved
+**Status:** Approved; lifecycle refined by D-055
 
 Built-in task workspaces are defined primarily by **semantic channel roles**, not by EpicEFI/rusEFI/MegaSquirt/etc. source channel IDs.
 
@@ -380,19 +380,43 @@ Initial layout vocabulary is Single, Dual, Triple, Quad, Focus + 2, Focus + 3 an
 Generic and ECU-native workspaces may coexist. ECU-native workspace availability should be capability-driven rather than hard-coded by board name.
 
 ## D-054 — Built-in workspace identity never relies on visible name
-**Status:** Approved
+**Status:** Superseded in lifecycle behavior by D-055
 
-Built-ins use reserved identities such as `built-in:*` and may re-resolve automatically as authoritative channel sets change.
+This decision recorded the first implementation, where built-ins used reserved identities such as `built-in:*`, automatically re-resolved as channel catalogs changed, and could disable rename/delete while duplication produced an editable copy.
 
-Normal user workspaces are not name-matched or automatically repopulated. A duplicated built-in becomes a normal editable workspace.
+That protected-instance lifecycle is no longer the product model. The historical wording remains represented here for traceability; D-055 is authoritative for starter-template ownership and lifecycle.
 
-Rename/delete may be disabled for immutable built-ins while duplication remains available.
+## D-055 — Pre-populated graph workspaces are editable starter templates
+**Status:** Approved; supersedes the protected-instance lifecycle in D-054 and refines D-051
 
-Visible-name migration must be explicit. The existing editable `General` workspace is therefore not silently converted to the new built-in `General · Single` preset.
+Pre-populated graph definitions are **starter templates**, not permanent or protected workspace objects.
+
+Applying a starter template follows this model:
+
+```text
+starter template
+      ↓ semantic role resolution against the current ECU/source catalog
+ordinary user-owned workspace
+```
+
+Rules:
+
+- semantic resolution occurs when the starter is materialized;
+- the resulting workspace is ordinary user data and may be edited, renamed, duplicated or deleted;
+- changing channels, pane geometry, layout or name never detaches a hidden protected object because no such runtime ownership exists;
+- template logic must not silently repopulate, reset or restore channels after materialization;
+- source transitions may translate the user's chosen stable channel identities between canonical `ini:*` and raw Shim forms, but this is identity normalization, not template reapplication;
+- missing required roles are reported explicitly while missing preferred/optional roles degrade gracefully;
+- applying the same template again creates another ordinary workspace rather than resetting an existing one;
+- template updates affect future materializations only and never mutate existing user workspaces;
+- deleting the last workspace may create a blank ordinary workspace so Logger remains usable, but must not resurrect a starter template automatically;
+- historical persisted `built-in:*` IDs are compatibility data only and confer no rename/delete/protection semantics.
+
+The template catalog and its software definitions may remain controlled application data. What is deliberately **not** immutable is the workspace created from them.
 
 ## Superseding/refining decisions
 
-Decisions are not silently deleted when refined. A later numbered decision should state what it changes and why. D-045 refines the mode-switcher interpretation inside D-033 while preserving the rest of the EpicHub-reference boundary. D-046 records later Table Generator behavior. D-047–D-050 record the Logger/Analyzer/memory refinements from the October 2026 maturity pass. D-051–D-054 record the semantic pre-populated-workspace architecture and naming/identity rules validated during the first Single-layout implementation.
+Decisions are not silently deleted when refined. A later numbered decision should state what it changes and why. D-045 refines the mode-switcher interpretation inside D-033 while preserving the rest of the EpicHub-reference boundary. D-046 records later Table Generator behavior. D-047–D-050 record the Logger/Analyzer/memory refinements from the October 2026 maturity pass. D-051–D-054 record the original semantic pre-populated-workspace architecture and first protected-instance implementation; D-055 preserves the semantic resolver architecture while replacing that runtime lifecycle with editable starter templates.
 
 ### Table Generator MLV weighted-mean parity note
 
