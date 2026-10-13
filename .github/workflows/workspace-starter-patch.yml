@@ -24,10 +24,6 @@ jobs:
           path = Path('apps/web/src/pages/logger-page.ts')
           text = path.read_text()
 
-          if 'data-workspace-template-id' in text and '<option value="dual">Dual · 2 graphs</option>' in text:
-              print('Logger starter picker already applied.')
-              raise SystemExit(0)
-
           def replace_once(old: str, new: str, label: str) -> None:
               global text
               count = text.count(old)
@@ -35,7 +31,8 @@ jobs:
                   raise RuntimeError(f'{label}: expected exactly one match, got {count}')
               text = text.replace(old, new, 1)
 
-          replace_once(
+          if 'data-workspace-template-id' not in text:
+              replace_once(
           """import {
             resolveStarterWorkspaceTemplate,
             SINGLE_RESOLVER_TEST_WORKSPACE,
@@ -51,7 +48,7 @@ jobs:
           """,
           'starter imports')
 
-          replace_once(
+              replace_once(
           """  onSelect(listener: (workspaceId: string) => void): void;
             onCreate(listener: () => void): void;
             onRename(listener: () => void): void;
@@ -62,7 +59,7 @@ jobs:
           """,
           'selector interface')
 
-          replace_once(
+              replace_once(
           """  let selectListener: ((workspaceId: string) => void) | undefined;
             let createListener: (() => void) | undefined;
             let renameListener: (() => void) | undefined;
@@ -73,43 +70,38 @@ jobs:
           """,
           'selector listeners')
 
-          replace_once(
-          """      <div class=\"graph-selector-actions\">
-                <button type=\"button\" data-workspace-action=\"new\">＋ New graph</button>
-                <button type=\"button\" data-workspace-action=\"rename\">Rename</button>
-                <button type=\"button\" data-workspace-action=\"duplicate\">Duplicate</button>
-                <button type=\"button\" data-workspace-action=\"delete\">Delete</button>
-              </div>
+              replace_once(
+          """        <button type="button" data-workspace-action="new">＋ New graph</button>
           """,
-          """      <div class=\"graph-selector-actions\">
-                <button type=\"button\" data-workspace-action=\"new\">＋ New graph</button>
-                <div class=\"graph-selector-new-options\" hidden>
-                  <button type=\"button\" data-workspace-create=\"blank\">Blank graph</button>
-                  <span class=\"graph-selector-new-label\">From template</span>
-                  <div class=\"graph-selector-template-list\"></div>
-                </div>
-                <button type=\"button\" data-workspace-action=\"rename\">Rename</button>
-                <button type=\"button\" data-workspace-action=\"duplicate\">Duplicate</button>
-                <button type=\"button\" data-workspace-action=\"delete\">Delete</button>
-              </div>
+          """        <button type="button" data-workspace-action="new">＋ New graph</button>
+                  <div class="graph-selector-new-options" hidden>
+                    <button type="button" data-workspace-create="blank">Blank graph</button>
+                    <span class="graph-selector-new-label">From template</span>
+                    <div class="graph-selector-template-list"></div>
+                  </div>
           """,
           'selector new graph UI')
 
-          replace_once(
+              replace_once(
           """  const list = root.querySelector<HTMLElement>('.graph-selector-list');
             const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];
-            if (!button || !buttonLabel || !menu || !list) throw new Error('Graph selector structure is incomplete.');
+          """,
+          """  const list = root.querySelector<HTMLElement>('.graph-selector-list');
+            const newOptions = root.querySelector<HTMLElement>('.graph-selector-new-options');
+            const templateList = root.querySelector<HTMLElement>('.graph-selector-template-list');
+            const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];
+          """,
+          'selector queries')
+
+              replace_once(
+          """  if (!button || !buttonLabel || !menu || !list) throw new Error('Graph selector structure is incomplete.');
 
             const close = (): void => {
               menu.hidden = true;
               button.setAttribute('aria-expanded', 'false');
             };
           """,
-          """  const list = root.querySelector<HTMLElement>('.graph-selector-list');
-            const newOptions = root.querySelector<HTMLElement>('.graph-selector-new-options');
-            const templateList = root.querySelector<HTMLElement>('.graph-selector-template-list');
-            const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];
-            if (!button || !buttonLabel || !menu || !list || !newOptions || !templateList) {
+          """  if (!button || !buttonLabel || !menu || !list || !newOptions || !templateList) {
               throw new Error('Graph selector structure is incomplete.');
             }
 
@@ -139,7 +131,7 @@ jobs:
           """,
           'selector template catalog')
 
-          replace_once(
+              replace_once(
           """    const actionButton = target.closest<HTMLButtonElement>('[data-workspace-action]');
               if (!actionButton || actionButton.disabled) return;
               close();
@@ -150,7 +142,7 @@ jobs:
                 case 'delete': deleteListener?.(); break;
               }
           """,
-          """    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create=\"blank\"]');
+          """    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');
               if (blankButton) {
                 close();
                 createListener?.(undefined);
@@ -177,19 +169,19 @@ jobs:
           """,
           'selector click handling')
 
-          replace_once(
-          """    <option value=\"single\">Single graph</option>
-              <option value=\"grid4\">2 × 2 · 4 graphs</option>
+              replace_once(
+          """    <option value="single">Single graph</option>
+              <option value="grid4">2 × 2 · 4 graphs</option>
           """,
-          """    <option value=\"single\">Single graph</option>
-              <option value=\"dual\">Dual · 2 graphs</option>
-              <option value=\"grid4\">2 × 2 · 4 graphs</option>
+          """    <option value="single">Single graph</option>
+              <option value="dual">Dual · 2 graphs</option>
+              <option value="grid4">2 × 2 · 4 graphs</option>
           """,
           'dual layout option')
 
-          marker = """  const channelIdentityOptions = () => ({
+              marker = """  const channelIdentityOptions = () => ({
           """
-          helper = """  const createWorkspaceFromStarter = (
+              helper = """  const createWorkspaceFromStarter = (
               template: StarterWorkspaceTemplate,
               workspaceId: string,
             ): GraphWorkspaceState => {
@@ -218,9 +210,9 @@ jobs:
             };
 
           """
-          replace_once(marker, helper + marker, 'starter workspace factory')
+              replace_once(marker, helper + marker, 'starter workspace factory')
 
-          replace_once(
+              replace_once(
           """  graphSelector.onCreate(() => {
               saveCurrentWorkspace();
               workspaceCounter += 1;
@@ -273,14 +265,29 @@ jobs:
           """,
           'workspace creation handler')
 
-          path.write_text(text)
-          print('Patched', path)
+              path.write_text(text)
+              print('Patched', path)
+          else:
+              print('Logger starter picker already applied.')
+
+          semantic_path = Path('apps/web/src/state/semantic-channel-roles.ts')
+          semantic = semantic_path.read_text()
+          old = """      /idle.*(?:air|valve|iac).*(?:command|duty|position)/i,
+                /(?:valve|iac).*idle.*(?:command|duty|position)/i,
+          """
+          new = """      /idle.*(?:air|valve|iac).*(?:command|duty)/i,
+                /(?:valve|iac).*idle.*(?:command|duty)/i,
+          """
+          if old in semantic:
+              semantic_path.write_text(semantic.replace(old, new, 1))
+              print('Tightened idle air-command fallback.')
       - name: Verify patch shape
         run: |
           git diff --check
           grep -q 'data-workspace-template-id' apps/web/src/pages/logger-page.ts
           grep -q '<option value="dual">Dual · 2 graphs</option>' apps/web/src/pages/logger-page.ts
           grep -q 'createWorkspaceFromStarter' apps/web/src/pages/logger-page.ts
+          ! grep -q 'command|duty|position' apps/web/src/state/semantic-channel-roles.ts
       - name: Commit patch
         run: |
           if git diff --quiet; then
@@ -288,6 +295,6 @@ jobs:
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/web/src/pages/logger-page.ts
+          git add apps/web/src/pages/logger-page.ts apps/web/src/state/semantic-channel-roles.ts
           git commit -m 'feat: add workspace starter picker'
           git push origin HEAD:feat/workspace-template-picker-idle
