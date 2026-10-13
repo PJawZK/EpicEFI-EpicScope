@@ -121,9 +121,7 @@ function cleanup(view: HTMLElement): void {
   view.querySelector('[data-fuel-injector-empty-state="true"]')?.remove();
 }
 
-export function ensureFuelInjectorAnalyzerPresentation(root: HTMLElement): void {
-  const view = root.querySelector<HTMLElement>('.specialized-analyzer-view');
-  if (!view) return;
+function applyFuelInjectorAnalyzerPresentation(view: HTMLElement): void {
   const title = view.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent?.trim() ?? '';
   if (!title.startsWith('Fuel Pressure / Injector')) {
     cleanup(view);
@@ -202,4 +200,10 @@ export function ensureFuelInjectorAnalyzerPresentation(root: HTMLElement): void 
     : 'No injector-duty review events were found. Select a valid rail-differential channel and threshold to add pressure-event evidence.';
   row.append(cell);
   eventBody.append(row);
+}
+
+export function ensureFuelInjectorAnalyzerPresentation(root: HTMLElement): void {
+  for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) {
+    applyFuelInjectorAnalyzerPresentation(view);
+  }
 }
