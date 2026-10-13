@@ -103,6 +103,8 @@
 .distribution-metric { width: 104px; }
 .distribution-bin-mode { width: 80px; }
 .distribution-bin-count { width: 58px; padding: 0 6px; }
+.distribution-fixed-control[hidden] { display: none !important; }
+.distribution-fixed-control input { width: 66px; padding: 0 6px; }
 .distribution-display { width: 102px; }
 .distribution-range-a,
 .distribution-range-b { width: clamp(150px, 22vw, 230px); }
