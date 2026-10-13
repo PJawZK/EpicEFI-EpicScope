@@ -32,7 +32,17 @@ export type SemanticChannelRoleId =
   | 'transient.aeFuel'
   | 'transient.wallFuelCorrection'
   | 'fuel.pressureDelta'
-  | 'fuel.pumpCommand';
+  | 'fuel.pumpCommand'
+  | 'trigger.syncState'
+  | 'trigger.errorActive'
+  | 'trigger.errorCount'
+  | 'trigger.resyncCount'
+  | 'trigger.phaseSynchronized'
+  | 'trigger.enginePhase'
+  | 'startup.crankingFuel'
+  | 'startup.afterStartCorrection'
+  | 'startup.warmupCorrection'
+  | 'startup.engineCycles';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -327,6 +337,16 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     include: [/fuel.*pump.*(?:command|state|on)/i],
     exclude: [/prime/i, /force/i, /button/i, /duration/i, /threshold/i, /config/i, /pin/i],
   },
+  'trigger.syncState': { id: 'trigger.syncState', displayName: 'Trigger Sync State', aliases: ['triggerSyncState', 'Trigger Sync State', 'Sync State', 'Engine Sync State'], include: [/trigger.*sync.*state/i, /engine.*sync.*state/i], exclude: [/config/i, /mode/i, /target/i, /threshold/i] },
+  'trigger.errorActive': { id: 'trigger.errorActive', displayName: 'Trigger Error', aliases: ['isTriggerError', 'Trigger Error', 'Error: Trigger'], include: [/trigger.*error/i], exclude: [/count/i, /counter/i, /threshold/i, /code/i, /ordering/i] },
+  'trigger.errorCount': { id: 'trigger.errorCount', displayName: 'Trigger Error Count', aliases: ['totalTriggerErrorCounter', 'Trigger Error Count', 'Trigger Errors'], include: [/trigger.*error.*(?:count|counter)/i], exclude: [/ordering/i, /recent/i, /code/i, /threshold/i] },
+  'trigger.resyncCount': { id: 'trigger.resyncCount', displayName: 'Resync Count', aliases: ['camResyncCounter', 'Resync Count', 'Resync Counter', 'Cam Resync Count'], include: [/(?:cam.*)?resync.*(?:count|counter)/i], exclude: [/config/i, /threshold/i, /limit/i] },
+  'trigger.phaseSynchronized': { id: 'trigger.phaseSynchronized', displayName: 'Phase Synchronized', aliases: ['m_hasSynchronizedPhase', 'Phase Synchronized', 'Fully Synchronized'], include: [/(?:phase.*synchron|fully.*synchron)/i], exclude: [/target/i, /config/i, /attempt/i] },
+  'trigger.enginePhase': { id: 'trigger.enginePhase', displayName: 'Engine Phase', aliases: ['currentEngineDecodedPhase', 'Engine Phase', 'Decoded Engine Phase'], include: [/engine.*(?:decoded.*)?phase/i], exclude: [/target/i, /offset/i, /config/i, /attempt/i] },
+  'startup.crankingFuel': { id: 'startup.crankingFuel', displayName: 'Cranking Fuel', aliases: ['crankingFuel_fuel', 'Cranking Fuel', 'Fuel: Cranking cycle mass', 'Fuel: cranking'], include: [/cranking.*fuel/i], exclude: [/base/i, /coefficient/i, /mult/i, /table/i, /curve/i, /config/i] },
+  'startup.afterStartCorrection': { id: 'startup.afterStartCorrection', displayName: 'After-start Correction', aliases: ['running_postCrankingFuelCorrection', 'After-start Correction', 'Post Cranking Fuel Correction', 'Fuel: Post cranking mult'], include: [/(?:after.*start|post.*cranking).*?(?:fuel.*)?(?:correction|mult)/i], exclude: [/table/i, /curve/i, /target/i, /config/i] },
+  'startup.warmupCorrection': { id: 'startup.warmupCorrection', displayName: 'Warmup Correction', aliases: ['running_coolantTemperatureCoefficient', 'Warmup Correction', 'CLT Fuel Correction', 'Fuel: CLT correction'], include: [/(?:warmup|coolant|clt).*(?:fuel.*)?(?:correction|coefficient|mult)/i], exclude: [/cranking/i, /table/i, /curve/i, /target/i, /config/i, /afr/i, /lambda/i] },
+  'startup.engineCycles': { id: 'startup.engineCycles', displayName: 'Engine Cycles Since Start', aliases: ['revolutionCounterSinceStart', 'Engine Cycle Count', 'Engine Cycles Since Start'], include: [/(?:engine.*cycle|revolution).*since.*start/i, /engine.*cycle.*count/i], exclude: [/table/i, /bin/i, /target/i] },
 };
 
 export const semanticChannelRoles: readonly SemanticChannelRoleDefinition[] = Object.freeze(

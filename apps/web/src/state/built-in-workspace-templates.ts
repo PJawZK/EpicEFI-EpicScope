@@ -276,6 +276,44 @@ export const FUEL_SYSTEM_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const TRIGGER_SYNC_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'trigger-sync-dual', name: 'Trigger / Sync', description: 'Dual-pane crank/cam synchronization and trigger health overview.', layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'trigger.syncState', requirement: 'required' },
+      { roleId: 'trigger.phaseSynchronized', requirement: 'preferred' },
+      { roleId: 'trigger.errorActive', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'trigger.errorCount', requirement: 'preferred' },
+      { roleId: 'trigger.resyncCount', requirement: 'optional' },
+      { roleId: 'trigger.enginePhase', requirement: 'optional' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const STARTUP_WARMUP_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'startup-warmup-dual', name: 'Startup / Warmup', description: 'Dual-pane cranking, after-start and warmup fueling overview.', layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'temperature.coolant', requirement: 'required' },
+      { roleId: 'temperature.intakeAir', requirement: 'preferred' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'preferred' },
+      { roleId: 'startup.engineCycles', requirement: 'optional' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'startup.crankingFuel', requirement: 'preferred' },
+      { roleId: 'startup.afterStartCorrection', requirement: 'preferred' },
+      { roleId: 'startup.warmupCorrection', requirement: 'preferred' },
+      { roleId: 'fuel.lambda', requirement: 'preferred' },
+      { roleId: 'idle.target', requirement: 'optional' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -285,6 +323,8 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   COOLING_DUAL_WORKSPACE,
   TRANSIENT_AE_DUAL_WORKSPACE,
   FUEL_SYSTEM_DUAL_WORKSPACE,
+  TRIGGER_SYNC_DUAL_WORKSPACE,
+  STARTUP_WARMUP_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {
