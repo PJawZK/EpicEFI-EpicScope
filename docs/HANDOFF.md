@@ -6,11 +6,11 @@ Repository: `PJawZK/EpicEFI-EpicScope`
 
 Authoritative production branch: `main`
 
-Current authoritative `main` baseline:
+Current authoritative product merge baseline:
 
-`df5641895c05476c01e578e7bf94cee8d8bfc4f4`
+`452bca0655f11befe978f042f37a6d3c67ac9a99`
 
-That squash merge is PR #347, **Make pre-populated graph workspaces editable starters**. It replaces PR #343's protected built-in workspace lifecycle while retaining the semantic resolver/source-identity architecture.
+That squash merge is PR #348, **Add explicit workspace starter picker and Idle Dual starter**. It builds on PR #347's editable one-time starter lifecycle.
 
 Hosted application:
 
@@ -26,7 +26,7 @@ The large recorded-log performance campaign remains complete unless a measured r
 
 The validated real ECU/Pi/`ts_shim` source workflow is part of `main`.
 
-The active product-development track is **semantic, multi-ECU Logger starter templates**. The first production starter is **General** using a Single layout.
+The active product-development track is **semantic, multi-ECU Logger starter templates**. Production starter creation is now explicit through **New graph → Blank graph / From template**. The current starter catalog contains **General** and **Idle**.
 
 Do not restart broad Histogram redesign, reopen mature Fueling/Ignition work, or begin a new platform phase without a concrete user-visible need, measured regression or explicit project-owner direction.
 
@@ -169,9 +169,25 @@ Detailed authority:
 - `docs/DATA_MODEL.md`
 - `docs/DECISIONS.md` — D-055 supersedes the protected-instance lifecycle from D-054.
 
+## Workspace creation — merged production behavior
+
+PR #348 adds an explicit creation choice under **New graph**:
+
+```text
+New graph
+├─ Blank graph
+└─ From template
+   ├─ General
+   └─ Idle
+```
+
+The template list is generated from the starter catalog. Selecting a starter resolves its semantic roles against the current authoritative channel set and creates a normal `graph-*` workspace. There is no persistent template ownership after creation.
+
+The normal layout selector now also exposes **Dual · 2 graphs**. `dual` is a first-class Logger layout with two vertically stacked panes; it is not a special Idle-only rendering path.
+
 ## General starter
 
-The first production starter is **General**. `Single` describes its initial geometry, not its permanent workspace name.
+**General** uses a Single layout.
 
 Roles:
 
@@ -205,7 +221,42 @@ ini:lambdaValue                    lambdaValue
 ini:correctedIgnitionAdvance       correctedIgnitionAdvance
 ```
 
-### Validation status
+## Idle starter
+
+**Idle** is the first production multi-pane starter and uses the generic Dual layout.
+
+Pane 1 — speed/load context:
+
+```text
+Required
+- RPM
+- Idle Target
+
+Preferred
+- MAP
+- TPS
+```
+
+Pane 2 — control/combustion context:
+
+```text
+Preferred
+- Idle Air Command
+- Ignition Advance
+- Coolant Temp
+
+Optional
+- Lambda
+```
+
+New generic semantic roles:
+
+- `idle.target` — current preferred EpicEFI identity `idleTarget`;
+- `idle.airCommand` — current preferred EpicEFI identity `currentIdlePosition`.
+
+The generic starter deliberately does **not** fold controller-specific details such as `dcIdleTarget` or `IdlePosition` into those generic roles. DC-valve/IAC/ETB-specific target, feedback and PID evidence remain the responsibility of the Idle analyzer and future capability-specific starters.
+
+## Validation status
 
 The original four-role Single resolver path was real-runtime validated through:
 
@@ -218,6 +269,10 @@ with correct source-specific resolution, zero unavailable assigned channels, `0 
 The expanded eight-role General resolver has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing all eight roles as fully runtime-validated.
 
 PR #347's editable-starter lifecycle correction passed Web CI with type-check, full tests and production build before merge.
+
+PR #348's explicit starter picker, `dual` layout, Idle semantic roles, Idle two-pane resolution and caller-owned materialization all passed Web CI run #1262 with type-check, full tests and production build before merge.
+
+A browser/real-source confirmation of creating General/Idle through the new picker is still useful as a product-level smoke test, especially Idle across recorded MLG + INI and Shim source states.
 
 ## Shim HTTP fix
 
@@ -233,10 +288,12 @@ Mature behavior includes:
 - INI-backed channel catalog/binding;
 - optional MSQ tune enrichment;
 - reusable named graph workspaces plus exact-log navigation persistence;
-- fixed/freeform multi-pane Logger;
+- fixed/freeform multi-pane Logger plus the generic Dual layout;
 - A/B ranges, markers and saved ranges;
 - stable channel identity across recorded and Shim transitions;
 - semantic starter-template resolution;
+- explicit Blank / From template workspace creation;
+- General and Idle starter templates;
 - fully editable/deletable materialized starter workspaces;
 - explicit unavailable-channel handling;
 - retained-memory, parser, performance and runtime-health diagnostics.
@@ -296,9 +353,9 @@ Broad cleanup/optimization remains deliberately deferred until feature coverage 
 
 ## Current Git / workflow state
 
-Current authoritative `main` merge baseline:
+Current authoritative product merge baseline:
 
-`df5641895c05476c01e578e7bf94cee8d8bfc4f4`
+`452bca0655f11befe978f042f37a6d3c67ac9a99`
 
 Relevant milestones:
 
@@ -309,7 +366,8 @@ Relevant milestones:
 - #345 — unified Histogram help;
 - #346 — current-state documentation refresh;
 - #343 — semantic channel-role layer and first General pre-populated implementation, including Shim HTTP binding fix;
-- #347 — editable one-time starter materialization; protected built-in lifecycle removed.
+- #347 — editable one-time starter materialization; protected built-in lifecycle removed;
+- #348 — explicit Blank / From template creation, first-class Dual layout, and Idle as the first multi-pane starter.
 
 Before new work from a local clone:
 
@@ -321,4 +379,8 @@ npm run typecheck
 npm test
 ```
 
-Next product work should be a deliberate **New graph/workspace → From template…** path, followed by the first multi-pane starter (Idle is the preferred architecture test).
+Recommended next work:
+
+1. smoke-test **New graph → From template → General / Idle** in the browser with a representative MLG + INI source;
+2. confirm Idle assignments survive MLG + INI → Shim → MLG source transitions without template reapplication;
+3. then extend the starter catalog deliberately, using the same one-time materialization path rather than adding workspace-specific lifecycle logic.
