@@ -99,6 +99,15 @@ export type SemanticChannelRoleId =
   | 'vvt.primary.pControl'
   | 'vvt.primary.iControl'
   | 'vvt.primary.dControl'
+  | 'als.triggered'
+  | 'als.conditionActive'
+  | 'als.latchActive'
+  | 'als.timedOut'
+  | 'als.timeRemaining'
+  | 'als.fuelCorrection'
+  | 'als.timingCorrection'
+  | 'als.sparkSkip'
+  | 'als.etbAirAdd'
   | 'cooling.coolantPressure';
 
 export interface SemanticChannelRoleDefinition {
@@ -460,6 +469,15 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'vvt.primary.pControl': { id: 'vvt.primary.pControl', displayName: 'VVT 1 P', aliases: ['vvtStatus1_pTerm', 'VVT 1 P Term'], include: [/^vvt.*status.*1.*p.*term$/i], exclude: [/config/i] },
   'vvt.primary.iControl': { id: 'vvt.primary.iControl', displayName: 'VVT 1 I', aliases: ['vvtStatus1_iTerm', 'VVT 1 I Term'], include: [/^vvt.*status.*1.*i.*term$/i], exclude: [/config/i] },
   'vvt.primary.dControl': { id: 'vvt.primary.dControl', displayName: 'VVT 1 D', aliases: ['vvtStatus1_dTerm', 'VVT 1 D Term'], include: [/^vvt.*status.*1.*d.*term$/i], exclude: [/config/i] },
+  'als.triggered': { id: 'als.triggered', displayName: 'ALS Triggered', aliases: ['antilagTriggered', 'Antilag triggered', 'Anti-Lag Triggered'], include: [/anti.?lag.*triggered/i, /^antilag.*triggered$/i], exclude: [/enable/i, /button/i, /mode/i, /config/i] },
+  'als.conditionActive': { id: 'als.conditionActive', displayName: 'ALS Condition Active', aliases: ['isAntilagCondition', 'ALS Condition Active', 'Anti-Lag Condition Active'], include: [/^is.*antilag.*condition$/i, /(?:als|anti.?lag).*condition.*active/i], exclude: [/min/i, /max/i, /switch/i, /timer/i, /start/i, /end/i, /enable/i, /config/i] },
+  'als.latchActive': { id: 'als.latchActive', displayName: 'ALS Latch Active', aliases: ['ALSLatchActive', 'ALS Latch Active'], include: [/als.*latch.*active/i], exclude: [/enable/i, /config/i] },
+  'als.timedOut': { id: 'als.timedOut', displayName: 'ALS Timed Out', aliases: ['ALSTimedOut', 'ALS Timed Out'], include: [/als.*timed.*out/i], exclude: [/duration/i, /timeout.*setting/i, /config/i] },
+  'als.timeRemaining': { id: 'als.timeRemaining', displayName: 'ALS Time Remaining', aliases: ['ALSTimeRemaining', 'ALS Time Remaining'], include: [/als.*time.*remaining/i], exclude: [/duration/i, /maximum/i, /max/i, /minimum/i, /min/i, /config/i] },
+  'als.fuelCorrection': { id: 'als.fuelCorrection', displayName: 'ALS Fuel Correction', aliases: ['fuelALSCorrection', 'ALS Fuel Correction'], include: [/(?:als|anti.?lag).*fuel.*correction/i, /fuel.*als.*correction/i], exclude: [/table/i, /adjustment/i, /bin/i, /axis/i, /config/i] },
+  'als.timingCorrection': { id: 'als.timingCorrection', displayName: 'ALS Timing Correction', aliases: ['timingALSCorrection', 'ALS Timing Correction'], include: [/(?:als|anti.?lag).*timing.*correction/i, /timing.*als.*correction/i], exclude: [/table/i, /retard.*table/i, /bin/i, /axis/i, /config/i] },
+  'als.sparkSkip': { id: 'als.sparkSkip', displayName: 'ALS Spark Skip', aliases: ['ALSHardSparkSkip', 'ALS Hard Spark Skip', 'ALS Spark Skip'], include: [/als.*(?:hard.*)?spark.*skip/i], exclude: [/table/i, /ratio/i, /setting/i, /bin/i, /axis/i, /config/i] },
+  'als.etbAirAdd': { id: 'als.etbAirAdd', displayName: 'ALS ETB Air Add', aliases: ['alsEtbAddValue', 'ALS ETB Air Add'], include: [/als.*etb.*(?:air.*)?add.*value/i, /anti.?lag.*etb.*air.*add/i], exclude: [/table/i, /position/i, /setting/i, /bin/i, /axis/i, /config/i] },
   'cooling.coolantPressure': { id: 'cooling.coolantPressure', displayName: 'Coolant Pressure', aliases: ['coolantPressure', 'Coolant Pressure'], include: [/^coolant.*pressure$/i], exclude: [/raw/i, /minimum/i, /maximum/i, /limit/i, /sensor.*config/i] },
 
 };
