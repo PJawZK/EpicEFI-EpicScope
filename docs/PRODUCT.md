@@ -8,7 +8,7 @@
 
 EpicScope is an ECU log analysis and tuning-diagnostics application intended to help a tuner **scope a tune**: inspect recorded behaviour, find faults, quantify weak areas, compare changes, and identify opportunities for improvement.
 
-It is not intended to be only a generic graph viewer. Generic log-viewing functions are the foundation for higher-level, tune-aware analysis.
+It is not intended to be only a generic graph viewer. Generic log-viewing/statistical functions are the foundation for higher-level, tune-aware analysis.
 
 ## Product stages
 
@@ -42,18 +42,38 @@ After Web behaviour and Linux performance mature, proven analysis concepts/core 
 
 ## Current Web implementation state
 
-EpicScope Web is now a usable hosted large-log analysis foundation with:
+EpicScope Web is now a usable hosted large-log analysis reference with three active top-level surfaces:
+
+- **Logger**
+- **Analyzer**
+- **Histogram**
+
+Current implemented foundations include:
 
 - MLG v1/v2 import/index/staged CRC validation;
 - OPFS MLG sidecar/native-column access for large-log reuse;
 - INI-backed stable channel identity and MLG binding;
+- optional MSQ tune enrichment;
 - reusable named graph workspaces and pane assignments;
 - exact-log viewport/cursor/A-B/marker/range persistence kept separate from reusable workspace state;
 - multi-pane graph/timeline navigation;
-- channel search/filter/statistics and standardized live-value display;
-- performance/source diagnostics and tested report formatting.
+- shared A/B and saved-range analysis scopes;
+- shared Qualification/filter semantics;
+- Histogram Table Generator, Distribution, Scatter and Math Channels;
+- Analyzer Range Compare, Tune Table and specialized analyzer surfaces;
+- direct evidence navigation back to Logger;
+- read-only validated real-ECU/Pi/`ts_shim` source workflow;
+- performance/source/retained-memory diagnostics.
 
-The earlier Web performance campaign and repository structural audit are considered good enough for now. The active product milestone is UI hierarchy, followed by generic analysis primitives.
+The earlier broad Web performance campaign is considered complete unless a measured regression appears.
+
+The most recent product work has focused on:
+
+- maturing Fueling and non-knock Ignition analyzers to useful checkpoints;
+- making Analyzer presentation less dense through progressive disclosure and anchored local help;
+- making Histogram's Scope/Qualification/Math Channel/evidence flow consistent across Table Generator, Distribution and Scatter.
+
+Analyzer feature work is currently paused. Histogram's broad consistency pass is also substantially complete. The next work should be driven by concrete user value, remaining coverage gaps or measured defects rather than continuous deepening of already-mature paths.
 
 ## Primary user workflow
 
@@ -65,9 +85,12 @@ This is the product-level interaction order. UI controls should make this progre
 
 ### 1. Load Data
 
-- Open Log and Load INI are grouped under **Load Data ▾**.
-- INI remains optional for ordinary log analysis.
-- MLG remains authoritative for recorded samples/validity.
+- open recorded log or connect an approved read-only live source;
+- load INI when available;
+- load MSQ when tune/calibration context is useful;
+- preserve source ownership and stable channel identity explicitly.
+
+INI remains optional for ordinary log analysis. MLG remains authoritative for recorded samples/validity. MSQ supplies calibration/tune context rather than runtime samples.
 
 ### 2. Channels
 
@@ -75,7 +98,8 @@ This is the product-level interaction order. UI controls should make this progre
 - preserve Active/Favorites/Recent semantics;
 - show current unit-aware values directly where useful;
 - keep known-but-unlogged channels explicit;
-- keep usable log-only channels accessible.
+- keep usable log-only channels accessible;
+- reuse stable channel identity across source transitions.
 
 ### 3. Navigate
 
@@ -83,25 +107,36 @@ This is the product-level interaction order. UI controls should make this progre
 - zoom/pan/Fit;
 - playback/step;
 - synchronized graph panes;
-- previous/next view history.
+- previous/next view history;
+- shared Logger timeline where analysis views need A/B editing.
 
 ### 4. Select / qualify range
 
 - A/B boundaries;
 - saved ranges;
 - markers;
-- future sample filters/qualification criteria.
+- shared saved Qualification/filter sets;
+- grouped ALL/ANY qualification semantics.
 
 ### 5. Analyze
 
-Generic tools should come before specialized analyzers:
+Generic analysis comes before specialized interpretation:
 
 - range statistics;
-- histogram;
-- 2D histogram/heatmap/table;
-- scatter;
-- generic event analysis;
-- later specialized analyzers.
+- Table Generator / 2D binned analysis;
+- Distribution;
+- Scatter;
+- Math Channels;
+- Range Compare / Tune Table;
+- specialized analyzers.
+
+Histogram's current preferred sub-flow is:
+
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
+
+Analyzer's current preferred model is:
+
+> **Scope/roles → qualification → relevant events/conditions → decision-facing result → supporting evidence → Logger**
 
 ### 6. Compare / Export
 
@@ -111,19 +146,31 @@ Compare/export are result-stage capabilities. Empty or disabled top-level placeh
 
 The **EpicScope logo dropdown** is the approved in-product mode/surface switcher.
 
-Current entries:
+Current real entries:
 
-- Logger — active;
-- Analyzer — planned;
-- Histogram — planned.
+- Logger;
+- Analyzer;
+- Histogram.
 
-Future real capabilities may justify Scatter, Histogram/Table, Math Channels, or specialized Analyzer surfaces. This mode switcher is not the full EpicHub Dashboard/Tuner/Diagnostics shell.
+Analyzer and Histogram each use compact secondary selectors for their own subviews. This mode switcher is not the broader EpicHub Dashboard/Tuner/Diagnostics shell.
+
+## Information hierarchy
+
+EpicScope should calculate enough evidence for correctness without forcing every value onto the first screen.
+
+Current UI principle:
+
+- keep a small set of decision-facing results visible;
+- move provenance, distributions and supporting diagnostics behind **More details**, expandable sections or optional columns;
+- preserve source evidence and drill-down;
+- use one consistent anchored round-`i` help interaction for non-obvious semantics;
+- avoid help-icon/value clutter on self-explanatory controls.
 
 ## Graph workspace model
 
-Global workspace context is presented as **Graphs · <workspace>** rather than an unexplained bare name such as `General`.
+Global workspace context is presented as graph preset/workspace selection. Active pane identity remains local to the pane so the global header does not duplicate graph/pane information.
 
-The global shell communicates the active graph workspace. Active pane identity remains local to the pane so the header does not duplicate graph/pane information.
+Visible assigned channels that are available/renderable must remain active after restore/switch/layout changes.
 
 ## Analysis principles
 
@@ -131,95 +178,91 @@ The global shell communicates the active graph workspace. Active pane identity r
 
 EpicScope should expose evidence behind findings:
 
-- qualifying sample count;
+- qualifying sample/event count;
 - event/range selection;
 - statistical/aggregation method;
 - variance/spread where relevant;
-- exact source region used.
+- exact source region used;
+- calibration/context layer when tune-aware attribution is possible.
 
 Recommendations must not appear as unexplained conclusions.
+
+### Do not overstate causation
+
+Observed association is not automatically causal proof.
+
+Examples:
+
+- wastegate duty/pressure association is not an automatic duty-direction instruction;
+- Fueling mixture error is not automatically a VE-table error;
+- Ignition timing movement does not prove knock/detonation or safe/unsafe timing;
+- base-table/correction attribution is a clue to inspect a tuning layer, not proof of engine preference.
 
 ### Tune awareness
 
 When source/tune context exists:
 
-- INI establishes firmware identity and stable known runtime/output-channel definitions;
+- INI establishes firmware identity and stable runtime/output-channel definitions;
 - MLG remains authoritative for recorded samples and validity;
-- MSQ later supplies actual tune/calibration values, tables, curves and scalars.
+- MSQ supplies actual tune/calibration values, tables, curves and scalars.
 
-Examples of later tune-aware workflows:
-
-- map RPM/load samples into tune-table cells;
-- compare target vs actual behavior;
-- show tune value, observed result, error, sample count and stability together;
-- compare tune revisions against resulting behavior.
+Current tune-aware workflows include loaded table geometry/correlation and Ignition base-table attribution. Future tune-aware work should reuse normalized tune services rather than parse source formats inside UI/analyzers.
 
 ### Explicit binned-analysis semantics
 
-Every table/histogram/heatmap must visibly state:
+Every table/histogram/heatmap must visibly state or make discoverable:
 
-- X axis;
-- Y axis where applicable;
+- scope;
+- axes/channels;
 - value/cell meaning;
 - aggregation method;
-- active filters;
-- sample count.
+- active Qualification;
+- sample/evidence count.
 
-The user must never need to guess whether a cell represents MAP, duty, error, average, maximum, or another quantity.
+The user must never need to guess whether a cell represents MAP, duty, error, average, maximum or another quantity.
 
-## Event system
+## Generic Histogram analysis model
 
-EpicScope should develop reusable event detection for examples such as:
+Table Generator, Distribution and Scatter now share:
 
-- WOT pulls;
-- tip-in/acceleration events;
-- gear changes;
-- throttle closures;
-- boost overshoot/undershoot;
-- idle entry/sag/disturbance;
-- DFCO entry/exit;
-- transient fuel events.
+- Full Log / Current A/B / Saved Range scope vocabulary;
+- shared Logger timeline where useful;
+- shared saved Qualification;
+- first-class saved Math Channels;
+- anchored round-`i` help for non-obvious calculations;
+- evidence navigation toward Logger where implemented.
 
-Event detection must remain separate from presentation so analyzers/comparison/reporting can reuse it.
+Table Generator remains the most feature-rich individual generic analysis tool. Distribution/Scatter should continue converging through shared concepts rather than private parallel systems.
 
-## Comparison system
+See `docs/HISTOGRAM.md` for current detail.
 
-Comparison is a first-class product capability.
+## Specialized Analyzer model
 
-Expected later support:
+Specialized analyzers must build on generic scope/Qualification/evidence/tune services rather than privately reimplementing them.
 
-- before/after log comparison;
-- aligned comparable events/ranges;
-- tune-revision comparison;
-- aggregate metric deltas;
-- trace overlays;
-- analyzer-specific comparisons.
-
-## Initial specialized analyzers
-
-Planned families:
+Current families:
 
 - Boost control;
 - Idle / PID;
 - Acceleration enrichment / MAP Predict;
-- Fueling / VE / AFR error;
-- Ignition / knock;
+- Fueling / VE / mixture error;
+- Ignition behavior/context;
 - Fuel pressure / injector behavior;
 - Trigger / sync.
 
-Specialized analyzers must build on generic analysis/events/compare/tune services rather than privately reimplementing them.
+Fueling and non-knock Ignition have reached current maturity checkpoints and are intentionally paused unless defects appear. Other analyzers should later be brought toward similar practical coverage before a broad code-consolidation phase.
 
-### Boost analyzer scope
+## Cleanup/consolidation strategy
 
-Boost analysis must remain capability-driven and support, where channels permit:
+Do not destabilize mature user-facing paths solely to make implementation code prettier while major coverage remains uneven.
 
-- single-solenoid/single-duty;
-- dual-solenoid;
-- upper/lower chamber;
-- open-loop;
-- closed-loop;
-- target vs actual behavior;
-- spool/overshoot/undershoot/steady-state metrics.
+The approved direction is:
+
+1. establish useful feature coverage across generic analysis and analyzers;
+2. stop mature surfaces at sensible checkpoints;
+3. then run a deliberate cleanup/consolidation/optimization phase.
+
+That later phase should remove dormant duplicate editors, reduce unnecessary DOM enhancement/MutationObserver layers, replace DOM state bridges with explicit state/contracts, consolidate shared table/event/help/rendering code, simplify CSS/runtime UI surgery and re-profile representative large logs.
 
 ## Local-first privacy
 
@@ -244,8 +287,9 @@ Current Web development does not need to solve:
 - final native memory mapping;
 - final Linux thread-pool/runtime design;
 - final Linux packaging;
-- direct ECU serial/CAN acquisition;
+- arbitrary write/control access to the ECU;
 - Android integration;
-- decorative polish that conflicts with clarity/performance.
+- decorative polish that conflicts with clarity/performance;
+- premature deep refactoring of mature paths before the planned consolidation phase.
 
-The immediate product priority is to finish the Logger navigation/range UI hierarchy, then build the first generic analysis workflow on top of it.
+The immediate product priority is no longer first-time Logger/Histogram/Analyzer construction. It is selective maturity: close concrete high-value gaps, broaden analyzer usefulness where still thin, then consolidate the Web reference implementation before Linux becomes the primary engineering focus.
