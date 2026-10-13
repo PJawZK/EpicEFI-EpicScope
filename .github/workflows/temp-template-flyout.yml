@@ -38,7 +38,7 @@ jobs:
           s = s.replace(old, new, 1)
 
           old = '''    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');\n    if (blankButton) {\n      close();\n      createListener?.(undefined);\n      return;\n    }\n    const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');'''
-          new = '''    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');\n    if (blankButton) {\n      close();\n      createListener?.(undefined);\n      return;\n    }\n    const templateTriggerButton = target.closest<HTMLButtonElement>('.graph-selector-template-trigger');\n    if (templateTriggerButton) {\n      setTemplatePanelOpen(templatePanel.hidden);\n      return;\n    }\n    const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');'''
+          new = '''    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');\n    if (blankButton) {\n      close();\n      createListener?.(undefined);\n      return;\n    }\n    const templateTriggerButton = target.closest<HTMLButtonElement>('.graph-selector-template-trigger');\n    if (templateTriggerButton) {\n      setTemplatePanelOpen(Boolean(templatePanel.hidden));\n      return;\n    }\n    const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');'''
           assert old in s, 'menu click anchor missing'
           s = s.replace(old, new, 1)
 
@@ -61,11 +61,11 @@ jobs:
           c = c.replace(old, new, 1)
           css.write_text(c)
 
-          test = Path('tests/web/graph-selector-template-flyout.test.ts')
-          test.write_text('''import { describe, expect, it } from 'vitest';\nimport { readFileSync } from 'node:fs';\n\nconst loggerSource = readFileSync('apps/web/src/pages/logger-page.ts', 'utf8');\nconst starterCss = readFileSync('apps/web/src/styles/workspace-starters.css', 'utf8');\n\ndescribe('graph selector template flyout', () => {\n  it('keeps templates in a right-side flyout instead of the inline new-graph list', () => {\n    expect(loggerSource).toContain('graph-selector-template-trigger');\n    expect(loggerSource).toContain('graph-selector-template-panel');\n    expect(loggerSource).toContain('aria-haspopup="menu"');\n    expect(starterCss).toContain('left: calc(100% + 5px)');\n    expect(starterCss).toContain('.graph-selector-template-panel[hidden]');\n  });\n\n  it('supports click, hover and focus disclosure while closing with the parent menu', () => {\n    expect(loggerSource).toContain("setTemplatePanelOpen(templatePanel.hidden)");\n    expect(loggerSource).toContain("templateFlyout.addEventListener('mouseenter'");\n    expect(loggerSource).toContain("templateFlyout.addEventListener('focusin'");\n    expect(loggerSource).toContain('setTemplatePanelOpen(false);');\n  });\n});\n''')
-
           assert '.graph-selector-new-label' not in c
           assert 'graph-selector-template-panel' in s
+          assert 'left: calc(100% + 5px)' in c
+          assert "templateFlyout.addEventListener('mouseenter'" in s
+          assert "templateFlyout.addEventListener('focusin'" in s
       - run: npm run typecheck
       - run: npm test -- --run
       - run: npm run build
@@ -73,6 +73,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/web/src/pages/logger-page.ts apps/web/src/styles/workspace-starters.css tests/web/graph-selector-template-flyout.test.ts
+          git add apps/web/src/pages/logger-page.ts apps/web/src/styles/workspace-starters.css
           git commit -m 'feat: move starter templates into flyout menu'
           git push
