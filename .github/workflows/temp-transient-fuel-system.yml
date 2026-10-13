@@ -1,0 +1,92 @@
+name: Temporary Transient and Fuel System starter transform
+on:
+  push:
+    branches: [feat/transient-fuel-system-starters]
+permissions:
+  contents: write
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply guarded starter transform
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('apps/web/src/state/semantic-channel-roles.ts')
+          s = p.read_text()
+          old = "  | 'engine.oilPressure'\n  | 'cooling.fanCommand';"
+          new = """  | 'engine.oilPressure'\n  | 'cooling.fanCommand'\n  | 'transient.tpsDelta'\n  | 'transient.effectiveMap'\n  | 'transient.aeFuel'\n  | 'transient.wallFuelCorrection'\n  | 'fuel.pressureDelta'\n  | 'fuel.pumpCommand';"""
+          assert old in s, 'semantic role union anchor missing'
+          s = s.replace(old, new, 1)
+
+          anchor = """  'cooling.fanCommand': {\n    id: 'cooling.fanCommand',\n    displayName: 'Fan Command',\n    aliases: ['fan1Pwm', 'fan1m_state', 'Fan Command', 'Cooling Fan Duty', 'Radiator Fan Duty', 'Fan Duty'],\n    include: [/fan.*(?:pwm|duty|command|state|on)/i],\n    exclude: [/fan\\s*2/i, /frequency/i, /min/i, /max/i, /threshold/i, /temperature/i, /button/i, /broken/i, /inhibit/i],\n  },\n};"""
+          replacement = """  'cooling.fanCommand': {\n    id: 'cooling.fanCommand',\n    displayName: 'Fan Command',\n    aliases: ['fan1Pwm', 'fan1m_state', 'Fan Command', 'Cooling Fan Duty', 'Radiator Fan Duty', 'Fan Duty'],\n    include: [/fan.*(?:pwm|duty|command|state|on)/i],\n    exclude: [/fan\\s*2/i, /frequency/i, /min/i, /max/i, /threshold/i, /temperature/i, /button/i, /broken/i, /inhibit/i],\n  },\n  'transient.tpsDelta': {\n    id: 'transient.tpsDelta',\n    displayName: 'TPS Change',\n    aliases: ['deltaTps', 'TPS Change', 'TPS Delta', 'dTPS', 'AE: TPS change'],\n    include: [/^delta.*tps$/i, /^tps.*(?:change|delta|rate)$/i, /^dtps$/i],\n    exclude: [/threshold/i, /average/i, /smoothed/i, /table/i, /bin/i],\n  },\n  'transient.effectiveMap': {\n    id: 'transient.effectiveMap',\n    displayName: 'Effective MAP',\n    aliases: ['effectiveMap', 'Effective MAP', 'Predicted MAP'],\n    include: [/^effective.*map$/i, /^predicted.*map$/i],\n    exclude: [/fallback/i, /instant/i, /target/i, /table/i, /bin/i, /duration/i],\n  },\n  'transient.aeFuel': {\n    id: 'transient.aeFuel',\n    displayName: 'AE Fuel',\n    aliases: ['tpsAccelFuel', 'AE Fuel', 'TPS AE Fuel', 'Acceleration Enrichment', 'Fuel: TPS AE add fuel ms'],\n    include: [/tps.*(?:accel|ae).*fuel/i, /accel(?:eration)?.*enrich(?:ment)?/i],\n    exclude: [/enable/i, /table/i, /curve/i, /threshold/i, /multiplier/i, /retard/i],\n  },\n  'transient.wallFuelCorrection': {\n    id: 'transient.wallFuelCorrection',\n    displayName: 'Wall Fuel Correction',\n    aliases: ['wallFuelCorrection', 'Wall Fuel Correction', 'Wall Wetting Correction', 'AE: wall correction extra'],\n    include: [/wall.*fuel.*correction/i, /wall.*wetting.*correction/i],\n    exclude: [/value$/i, /table/i, /tau/i, /beta/i, /amount/i],\n  },\n  'fuel.pressureDelta': {\n    id: 'fuel.pressureDelta',\n    displayName: 'Fuel Pressure Delta',\n    aliases: ['pressureDelta', 'Fuel Pressure Delta', 'Rail Differential Pressure', 'Injector Pressure Delta', 'Fuel: Injector pressure delta'],\n    include: [/(?:fuel|rail|injector).*pressure.*(?:delta|differential)/i, /pressure.*delta/i],\n    exclude: [/target/i, /reference/i, /ratio/i, /raw/i, /table/i, /minimum/i, /maximum/i],\n  },\n  'fuel.pumpCommand': {\n    id: 'fuel.pumpCommand',\n    displayName: 'Fuel Pump Command',\n    aliases: ['isFuelPumpOn', 'Fuel Pump Command', 'Fuel Pump State', 'Fuel Pump On'],\n    include: [/fuel.*pump.*(?:command|state|on)/i],\n    exclude: [/prime/i, /force/i, /button/i, /duration/i, /threshold/i, /config/i, /pin/i],\n  },\n};"""
+          assert anchor in s, 'semantic role definition anchor missing'
+          s = s.replace(anchor, replacement, 1)
+          p.write_text(s)
+
+          p = Path('apps/web/src/state/built-in-workspace-templates.ts')
+          s = p.read_text()
+          anchor = """export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([\n  GENERAL_SINGLE_WORKSPACE,\n  IDLE_DUAL_WORKSPACE,\n  BOOST_DUAL_WORKSPACE,\n  FUEL_DUAL_WORKSPACE,\n  IGNITION_DUAL_WORKSPACE,\n  COOLING_DUAL_WORKSPACE,\n]);"""
+          inserted = """export const TRANSIENT_AE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {\n  id: 'transient-ae-dual',\n  name: 'Transient / AE',\n  description: 'Dual-pane throttle transient, MAP response and enrichment overview.',\n  layout: 'dual',\n  panes: [\n    {\n      id: 'pane-1',\n      roles: [\n        { roleId: 'engine.rpm', requirement: 'required' },\n        { roleId: 'engine.throttle.position', requirement: 'required' },\n        { roleId: 'transient.tpsDelta', requirement: 'preferred' },\n        { roleId: 'engine.map', requirement: 'preferred' },\n      ],\n    },\n    {\n      id: 'pane-2',\n      roles: [\n        { roleId: 'transient.effectiveMap', requirement: 'preferred' },\n        { roleId: 'fuel.lambda', requirement: 'preferred' },\n        { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },\n        { roleId: 'transient.aeFuel', requirement: 'optional' },\n        { roleId: 'transient.wallFuelCorrection', requirement: 'optional' },\n      ],\n    },\n  ],\n};\n\nexport const FUEL_SYSTEM_DUAL_WORKSPACE: StarterWorkspaceTemplate = {\n  id: 'fuel-system-dual',\n  name: 'Fuel System',\n  description: 'Dual-pane fuel delivery, injector loading and pump-state overview.',\n  layout: 'dual',\n  panes: [\n    {\n      id: 'pane-1',\n      roles: [\n        { roleId: 'engine.rpm', requirement: 'required' },\n        { roleId: 'fuel.pressure', requirement: 'required' },\n        { roleId: 'engine.map', requirement: 'preferred' },\n        { roleId: 'engine.throttle.position', requirement: 'preferred' },\n      ],\n    },\n    {\n      id: 'pane-2',\n      roles: [\n        { roleId: 'fuel.pressureDelta', requirement: 'preferred' },\n        { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },\n        { roleId: 'fuel.injectorDuty', requirement: 'optional' },\n        { roleId: 'fuel.pumpCommand', requirement: 'optional' },\n        { roleId: 'electrical.batteryVoltage', requirement: 'optional' },\n        { roleId: 'fuel.lambda', requirement: 'optional' },\n      ],\n    },\n  ],\n};\n\nexport const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([\n  GENERAL_SINGLE_WORKSPACE,\n  IDLE_DUAL_WORKSPACE,\n  BOOST_DUAL_WORKSPACE,\n  FUEL_DUAL_WORKSPACE,\n  IGNITION_DUAL_WORKSPACE,\n  COOLING_DUAL_WORKSPACE,\n  TRANSIENT_AE_DUAL_WORKSPACE,\n  FUEL_SYSTEM_DUAL_WORKSPACE,\n]);"""
+          assert anchor in s, 'starter catalog anchor missing'
+          s = s.replace(anchor, inserted, 1)
+          p.write_text(s)
+
+          p = Path('tests/web/semantic-channel-roles.test.ts')
+          s = p.read_text()
+          anchor = """  it('keeps generic idle roles separate from DC valve target/feedback detail', () => {"""
+          tests = """  it('resolves transient roles to live EpicEFI measurements rather than configuration channels', () => {\n    const channels = [\n      channel('deltaTps', 'deltaTps', 'AE: TPS change'),\n      channel('deltaTpsAverageThreshold', 'deltaTpsAverageThreshold', 'AE: TPS dynamic threshold'),\n      channel('effectiveMap', 'effectiveMap', 'Effective MAP'),\n      channel('fallbackMap', 'fallbackMap', 'fallbackMap'),\n      channel('tpsAccelFuel', 'tpsAccelFuel', 'Fuel: TPS AE add fuel ms'),\n      channel('tpsAccelAeEnabled', 'tpsAccelAeEnabled', 'Enable TPS Acceleration Enrichment'),\n      channel('wallFuelCorrection', 'wallFuelCorrection', 'AE: wall correction extra'),\n      channel('wallFuelAmount', 'wallFuelAmount', 'AE: wall amount'),\n    ];\n\n    expect(resolveSemanticChannelRole('transient.tpsDelta', channels).channel?.id).toBe('deltaTps');\n    expect(resolveSemanticChannelRole('transient.effectiveMap', channels).channel?.id).toBe('effectiveMap');\n    expect(resolveSemanticChannelRole('transient.aeFuel', channels).channel?.id).toBe('tpsAccelFuel');\n    expect(resolveSemanticChannelRole('transient.wallFuelCorrection', channels).channel?.id).toBe('wallFuelCorrection');\n  });\n\n  it('resolves generic fuel-system pressure delta and pump state without raw/config aliases', () => {\n    const channels = [\n      channel('pressureDelta', 'pressureDelta', 'Fuel: Injector pressure delta'),\n      channel('pressureCorrectionReference', 'pressureCorrectionReference', 'Fuel: corr reference pressure'),\n      channel('isFuelPumpOn', 'isFuelPumpOn', 'isFuelPumpOn'),\n      channel('fuelPumpForceState', 'fuelPumpForceState', 'fuelPumpForceState'),\n      channel('tpsFuelPumpPrime', 'tpsFuelPumpPrime', 'tpsFuelPumpPrime'),\n    ];\n\n    expect(resolveSemanticChannelRole('fuel.pressureDelta', channels).channel?.id).toBe('pressureDelta');\n    expect(resolveSemanticChannelRole('fuel.pumpCommand', channels).channel?.id).toBe('isFuelPumpOn');\n  });\n\n""" + anchor
+          assert anchor in s, 'semantic tests anchor missing'
+          s = s.replace(anchor, tests, 1)
+          p.write_text(s)
+
+          p = Path('tests/web/built-in-workspace-templates.test.ts')
+          s = p.read_text()
+          old = """  COOLING_DUAL_WORKSPACE,\n  FUEL_DUAL_WORKSPACE,"""
+          new = """  COOLING_DUAL_WORKSPACE,\n  FUEL_DUAL_WORKSPACE,\n  FUEL_SYSTEM_DUAL_WORKSPACE,"""
+          assert old in s, 'import anchor 1 missing'
+          s = s.replace(old, new, 1)
+          old = """  IGNITION_DUAL_WORKSPACE,\n  STARTER_WORKSPACE_TEMPLATES,"""
+          new = """  IGNITION_DUAL_WORKSPACE,\n  STARTER_WORKSPACE_TEMPLATES,\n  TRANSIENT_AE_DUAL_WORKSPACE,"""
+          assert old in s, 'import anchor 2 missing'
+          s = s.replace(old, new, 1)
+          old = """      'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling',\n    ]);"""
+          new = """      'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling', 'Transient / AE', 'Fuel System',\n    ]);"""
+          assert old in s, 'catalog order anchor missing'
+          s = s.replace(old, new, 1)
+          old = """    expect(starterWorkspaceTemplate(IGNITION_DUAL_WORKSPACE.id)).toBe(IGNITION_DUAL_WORKSPACE);\n    expect(starterWorkspaceTemplate('missing')).toBeUndefined();"""
+          new = """    expect(starterWorkspaceTemplate(IGNITION_DUAL_WORKSPACE.id)).toBe(IGNITION_DUAL_WORKSPACE);\n    expect(starterWorkspaceTemplate(TRANSIENT_AE_DUAL_WORKSPACE.id)).toBe(TRANSIENT_AE_DUAL_WORKSPACE);\n    expect(starterWorkspaceTemplate(FUEL_SYSTEM_DUAL_WORKSPACE.id)).toBe(FUEL_SYSTEM_DUAL_WORKSPACE);\n    expect(starterWorkspaceTemplate('missing')).toBeUndefined();"""
+          assert old in s, 'catalog lookup anchor missing'
+          s = s.replace(old, new, 1)
+          anchor = """  it('resolves General onto EpicEFI live Shim channel IDs', () => {"""
+          tests = """  it('resolves Transient / AE onto canonical EpicEFI INI identities', () => {\n    const result = resolveStarterWorkspaceTemplate(TRANSIENT_AE_DUAL_WORKSPACE, [\n      channel('ini:RPMValue', 'RPMValue', 'RPM'),\n      channel('ini:TPSValue', 'TPSValue', 'TPS'),\n      channel('ini:deltaTps', 'deltaTps', 'AE: TPS change'),\n      channel('ini:MAPValue', 'MAPValue', 'MAP'),\n      channel('ini:effectiveMap', 'effectiveMap', 'Effective MAP'),\n      channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),\n      channel('ini:actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),\n      channel('ini:tpsAccelFuel', 'tpsAccelFuel', 'Fuel: TPS AE add fuel ms'),\n      channel('ini:wallFuelCorrection', 'wallFuelCorrection', 'AE: wall correction extra'),\n    ]);\n    expect(result.panes[0]?.channelIds).toEqual([\n      'ini:RPMValue', 'ini:TPSValue', 'ini:deltaTps', 'ini:MAPValue',\n    ]);\n    expect(result.panes[1]?.channelIds).toEqual([\n      'ini:effectiveMap', 'ini:lambdaValue', 'ini:actualLastInjection', 'ini:tpsAccelFuel', 'ini:wallFuelCorrection',\n    ]);\n    expect(result.unresolvedRequiredRoleIds).toEqual([]);\n  });\n\n  it('resolves Fuel System onto canonical EpicEFI INI identities', () => {\n    const result = resolveStarterWorkspaceTemplate(FUEL_SYSTEM_DUAL_WORKSPACE, [\n      channel('ini:RPMValue', 'RPMValue', 'RPM'),\n      channel('ini:lowFuelPressure', 'lowFuelPressure', 'Fuel pressure'),\n      channel('ini:MAPValue', 'MAPValue', 'MAP'),\n      channel('ini:TPSValue', 'TPSValue', 'TPS'),\n      channel('ini:pressureDelta', 'pressureDelta', 'Fuel: Injector pressure delta'),\n      channel('ini:actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),\n      channel('ini:injectorDutyCycle', 'injectorDutyCycle', 'Fuel: injector duty cycle'),\n      channel('ini:isFuelPumpOn', 'isFuelPumpOn', 'isFuelPumpOn'),\n      channel('ini:VBatt', 'VBatt', 'Battery'),\n      channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),\n    ]);\n    expect(result.panes[0]?.channelIds).toEqual([\n      'ini:RPMValue', 'ini:lowFuelPressure', 'ini:MAPValue', 'ini:TPSValue',\n    ]);\n    expect(result.panes[1]?.channelIds).toEqual([\n      'ini:pressureDelta', 'ini:actualLastInjection', 'ini:injectorDutyCycle', 'ini:isFuelPumpOn', 'ini:VBatt', 'ini:lambdaValue',\n    ]);\n    expect(result.unresolvedRequiredRoleIds).toEqual([]);\n  });\n\n""" + anchor
+          assert anchor in s, 'workspace tests anchor missing'
+          s = s.replace(anchor, tests, 1)
+          p.write_text(s)
+
+          p = Path('docs/PREPOPULATED_WORKSPACES.md')
+          s = p.read_text()
+          old = """- **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage.\n\nPlanned generic starter families remain:\n\n- **Transient / AE** — RPM, TPS, TPS rate/change, MAP, MAP rate/prediction, AFR/Lambda, injector pulse width, acceleration-enrichment contribution and wall-wetting channels where available;\n- **Fuel System** — RPM, MAP, TPS, fuel pressure, rail differential pressure, injector pulse width, injector duty, battery voltage, AFR/Lambda and fuel-pump command/state where available;"""
+          new = """- **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage;\n- **Transient / AE** — Dual layout; RPM, TPS, TPS change, MAP, effective/predicted MAP, Lambda, injector pulse width, AE fuel contribution and wall-fuel correction;\n- **Fuel System** — Dual layout; RPM, fuel pressure, MAP, TPS, fuel-pressure delta, injector pulse width, injector duty, fuel-pump command, battery voltage and Lambda.\n\nPlanned generic starter families remain:"""
+          assert old in s, 'docs catalog anchor missing'
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Commit product changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/state/semantic-channel-roles.ts apps/web/src/state/built-in-workspace-templates.ts tests/web/semantic-channel-roles.test.ts tests/web/built-in-workspace-templates.test.ts docs/PREPOPULATED_WORKSPACES.md
+          git diff --cached --quiet && exit 1
+          git commit -m "feat: add Transient AE and Fuel System starters"
+          git push
