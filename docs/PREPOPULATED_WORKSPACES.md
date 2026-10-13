@@ -160,11 +160,11 @@ Implemented production starters:
 - **Ignition** — Dual layout; RPM, MAP, ignition advance, knock retard, dwell, knock level, Lambda and intake-air temp;
 - **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage;
 - **Transient / AE** — Dual layout; RPM, TPS, TPS change, MAP, effective/predicted MAP, Lambda, injector pulse width, AE fuel contribution and wall-fuel correction;
-- **Fuel System** — Dual layout; RPM, fuel pressure, MAP, TPS, fuel-pressure delta, injector pulse width, injector duty, fuel-pump command, battery voltage and Lambda.
+- **Fuel System** — Dual layout; RPM, fuel pressure, MAP, TPS, fuel-pressure delta, injector pulse width, injector duty, fuel-pump command, battery voltage and Lambda;
+- **Trigger / Sync** — Dual layout; RPM, trigger sync state, phase synchronization, active trigger error, trigger error count, resync count, decoded engine phase and battery voltage;
+- **Startup / Warmup** — Dual layout; RPM, coolant temp, intake-air temp, battery voltage, engine cycles since start, cranking fuel, after-start correction, warmup correction, Lambda and idle target.
 
 Planned generic starter families remain:
-- **Trigger / Sync** — RPM, sync state, sync-loss count/reason, trigger/crank error, cam state/phase, trigger runtime channels and battery voltage where available;
-- **Startup / Warmup** — RPM, coolant temp, intake-air temp, MAP, TPS, AFR/Lambda, target, warmup correction, after-start enrichment, injector pulse width, idle target and idle actuator command;
 - **Electrical** — battery voltage, RPM, injector pulse width/duty, ignition dwell, fuel-pump state, ECU/sensor supply voltage and relevant electrical fault/status channels where available;
 - **Vehicle / Driveline** — RPM, vehicle speed, TPS, MAP, gear, clutch/brake state, wheel speeds and longitudinal acceleration where available.
 
