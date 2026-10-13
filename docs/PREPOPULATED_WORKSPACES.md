@@ -9,6 +9,8 @@ Related authority:
 - [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
 - [`DECISIONS.md`](DECISIONS.md) — approved semantic workspace/naming/identity decisions.
 
+These documents were refreshed together from the validated Single semantic-workspace state established on `feat/single-prepopulated-workspace`.
+
 ## Core architecture
 
 Built-in workspaces bind to **semantic channel roles**, not hard-coded ECU channel IDs.
