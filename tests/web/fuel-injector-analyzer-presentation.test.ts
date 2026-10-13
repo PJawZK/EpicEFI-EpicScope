@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { describeFuelInjectorPresentation } from '../../apps/web/src/pages/fuel-injector-analyzer-presentation';
+import {
+  describeFuelInjectorPresentation,
+  isHighSideFuelPressureIdentity,
+} from '../../apps/web/src/pages/fuel-injector-analyzer-presentation';
 
 describe('Fuel Pressure / Injector decision presentation', () => {
   it('reports comfortable injector headroom without inventing a pressure verdict', () => {
@@ -62,5 +65,14 @@ describe('Fuel Pressure / Injector decision presentation', () => {
     expect(result.headroom).toBe('6%');
     expect(result.pressure).toBe('3 events below 270');
     expect(result.review).toBe('5 threshold events to inspect');
+  });
+
+  it('recognizes high-side / GDI pressure identities without accepting CEL or differential channels', () => {
+    expect(isHighSideFuelPressureIdentity('fuelPressure_high Fuel pressure high')).toBe(true);
+    expect(isHighSideFuelPressureIdentity('highFuelPressure High fuel pressure')).toBe(true);
+    expect(isHighSideFuelPressureIdentity('gdiRailPressure GDI rail pressure')).toBe(true);
+    expect(isHighSideFuelPressureIdentity('cel_fuel_pressure CEL fuel pressure')).toBe(false);
+    expect(isHighSideFuelPressureIdentity('fuelPressure_low Fuel pressure low')).toBe(false);
+    expect(isHighSideFuelPressureIdentity('fuelPressureDelta Fuel pressure delta')).toBe(false);
   });
 });
