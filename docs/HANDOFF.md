@@ -6,11 +6,13 @@ Repository: `PJawZK/EpicEFI-EpicScope`
 
 Authoritative production branch: `main`
 
-Current authoritative product merge baseline:
+Current authoritative **product behavior** merge baseline:
 
-`6ed132c11e4760c9e8240360ccba1a6bb7704d84`
+`6da6257d0fc049cec85b520895ea63dc8ee48adb`
 
-That squash merge is PR #379, **Complete Math Channels research parity**. It includes the preceding Table Generator (#377) and Distribution (#378) research-parity passes.
+That squash merge is PR #381, **Fix Histogram hide-controls docking**. It sits on top of the generic Histogram research-parity sequence through PR #379 and the documentation close-out in PR #380.
+
+Subsequent documentation-only/housekeeping commits do not supersede PR #381 as the runtime behavior checkpoint unless they intentionally change product code.
 
 Hosted application:
 
@@ -22,7 +24,7 @@ This file is the present-tense continuation authority. If older wording elsewher
 
 EpicScope Web remains the functional reference/validation implementation for Logger, Histogram and Analyzer behavior.
 
-The semantic Logger starter-template track is now **feature-complete for the current validation phase**:
+The semantic Logger starter-template track is **feature-complete for the current validation phase**:
 
 - 12 portable generic starters;
 - 12 capability-gated EpicEFI-specific starters;
@@ -34,7 +36,9 @@ The semantic Logger starter-template track is now **feature-complete for the cur
 
 Do not continue adding starter templates by default. Staged Injection and Closed-loop Fuel / STFT / LTFT remain secondary future candidates. Per-cylinder/EGT work remains deferred until the semantic layer can represent indexed channel families cleanly.
 
-The generic Histogram research-parity track is now complete at its intended checkpoint. Table Generator, Distribution, Scatter and Math Channels cover the mature behaviors identified in the MegaLogViewer reference research. Do not continue generic Histogram expansion by default; choose the next larger product track deliberately from concrete user-visible gaps, analyzer coverage, source/firmware integration needs or measured regressions.
+The generic Histogram research-parity track is also **closed at its intended checkpoint**. Table Generator, Distribution, Scatter and Math Channels now cover the mature behaviors selected from the MegaLogViewer reference research and have been manually exercised against a real large MLG/INI workload.
+
+Do not continue generic Histogram feature expansion by default. Future Histogram work should be correctness/regression maintenance or deliberate cleanup unless a concrete field-use gap appears.
 
 ## Product/workflow invariant
 
@@ -186,9 +190,9 @@ EpicEFI · Traction Control
 EpicEFI · Transmission Control
 ```
 
-The MAP Predict + Wall Wetting starter now emphasizes the actual MAP-model and wall-film signals: measured MAP, Instant MAP, fallback/predicted MAP, Effective MAP, wall fuel amount and the mass-domain `wallFuelCorrectionValue`, with fueling/mixture context. It no longer centers generic TPS-AE triggering or the simple map-prediction-active flag.
+The MAP Predict + Wall Wetting starter emphasizes measured MAP, Instant MAP, fallback/predicted MAP, Effective MAP, wall fuel amount and the mass-domain `wallFuelCorrectionValue`, with fueling/mixture context. It no longer centers generic TPS-AE triggering or the simple map-prediction-active flag.
 
-## Recent starter-track milestones
+## Recent milestones
 
 - #348 — explicit Blank / From template creation and first-class Dual layout.
 - #349 — dual workspace persistence validation.
@@ -216,29 +220,45 @@ The MAP Predict + Wall Wetting starter now emphasizes the actual MAP-model and w
 - #377 — Table Generator exact Median + aligned X/Y/Z/reference/delta cell evidence.
 - #378 — Distribution exact fixed min/max/bin-width geometry + outside-geometry provenance.
 - #379 — Math Channels historical references, comparisons/logical expressions, lazy conditionals and temporal helpers.
+- #380 — Histogram parity handoff/roadmap close-out.
+- #381 — shared Histogram timeline wrapper docking; Table Generator, Distribution and Scatter now place the Hide/Show controls edge tab exactly through the same `.timeline-wrap` positioning context as Logger.
 
 ## Generic Histogram research-parity checkpoint
 
-The mature-reference gaps identified during MegaLogViewer research are now closed for the current generic analysis scope:
+The mature-reference gaps identified during MegaLogViewer research are closed for the current generic analysis scope:
 
 - **Table Generator** — Full Log / Current A/B / Saved Range, shared Qualification, physical + Math Channels, tune/custom/automatic geometry, Count/Mean/Median/Min/Max/Sum/StdDev/Variance/Weighted Mean, Z reference/subtraction, MLV-style weighted breakpoint-node behavior, exact cell evidence with X/Y/Z/reference/delta values, Logger navigation and CSV/provenance.
 - **Distribution** — shared scopes/Qualification/Math Channels, Count/% Samples/Time, Histogram/Cumulative, descriptive statistics, two-scope comparison on shared geometry, saved setups, CSV, bin → Logger evidence, time-gap correctness and exact repeatable Fixed Min/Max/Width geometry. Values outside fixed geometry are excluded rather than edge-clamped and remain visible as provenance.
 - **Scatter** — shared scopes/Qualification/Math Channels, Single/Dual, Dots/Lines, density heat, bounded rendering, point/box evidence, strongest contiguous Logger visit, saved setups and complete qualified/region CSV export. The targeted Scatter maturity track is closed.
 - **Math Channels** — saved named formulas with preview; arithmetic, comparisons and logical expressions; lazy `if()`; exact-name-first MLV-style `[Channel-N]` historical references; sample-aware `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()`; reusable as numeric inputs and Qualification dependencies. Nested saved Math Channel references remain deliberately unsupported.
 
-Do not reopen these surfaces for broad feature expansion without a concrete use case. Later cleanup may consolidate dormant/refinement code and replace the remaining Scatter timeline text/DOM bridge if it becomes a correctness or maintenance problem.
+Manual browser validation after the parity work confirmed that Table Generator, Distribution and Math Channel expressions all behaved as intended. This includes historical/window/rate/logical Math expressions rather than only simple arithmetic.
+
+### Shared Histogram timeline/docking invariant
+
+Logger owns the authoritative timeline component. Table Generator, Distribution and Scatter reuse it by moving the **entire `.timeline-wrap`** intact.
+
+Do not move `.timeline-shell` and `.edge-toggle--timeline` separately. The wrapper is the positioning context for the centered Hide/Show controls edge tab; splitting them recreates the bug where Table Generator places the tab incorrectly and Scatter/Distribution can hide it behind the analysis surface.
+
+The intended visible behavior is identical across Logger, Table Generator, Distribution and Scatter: the Hide/Show controls tab is centered on the upper edge of the timeline/control panel.
+
+Do not reopen these Histogram surfaces for broad feature expansion without a concrete use case. Later cleanup may consolidate dormant/refinement code and replace remaining text/DOM bridges if they become correctness or maintenance problems.
 
 ## Validation status
 
-The following are established:
+Established validation includes:
 
-- full branch/main type-check, test and production-build validation through PR #379;
+- full branch/main type-check, test and production-build validation through PR #381;
 - real browser confirmation of fresh-state generic workspace seeding after site-local storage/cache reset;
 - user confirmation that the fresh baseline and Single layout presentation look correct;
+- manual confirmation that Table Generator parity behavior, Distribution fixed geometry and the expanded Math Channel expression language pass practical testing;
+- manual confirmation after PR #381 that Logger, Table Generator, Distribution and Scatter present the Hide/Show controls tab correctly through the shared timeline wrapper;
 - prior real MLG + INI ↔ `ts_shim` source-transition validation;
 - automated coverage for semantic resolution, capability gating, workspace identity normalization and starter definitions.
 
-`docs/STARTER_SYSTEM_VALIDATION.md` records the close-out matrix for this track.
+A representative real browser workload remains the ~1.19 GB `2026-07-14_22.07.05.mlg` with 320,458 records and 1,389 log channels plus `mainController.ini`. Its known CRC/counter diagnostics are source-log properties rather than EpicScope regressions.
+
+`docs/STARTER_SYSTEM_VALIDATION.md` records the close-out matrix for the starter track.
 
 ## Logger checkpoint
 
@@ -260,15 +280,19 @@ Mature behavior includes:
 
 Do not resume broad Logger/performance micro-optimization without a concrete measured problem.
 
-## Histogram checkpoint / next likely track
+## Histogram checkpoint
 
-Histogram coherence remains complete through the shared Scope, Qualification, Math Channels and help work. Current surfaces are Table Generator, Distribution, Scatter and Math Channels.
+Histogram is closed at the current research-parity checkpoint. The shared analysis contract is:
 
-The most useful next extension remains **richer Scatter region selection and evidence navigation**. Saved setups/exports for Distribution and Scatter are also valid later work. Do not restart a broad Histogram rewrite.
+> **Scope → Channels → Qualification → tool-specific controls → evidence → Logger / Export**
 
-## Analyzer checkpoint
+Current surfaces are Table Generator, Distribution, Scatter and Math Channels. Further work is maintenance/cleanup unless field use identifies a concrete missing behavior.
 
-Analyzer feature expansion remains paused after useful maturity checkpoints in Fueling and non-knock Ignition. Prefer practical coverage of less-mature analyzers before deepening mature Fueling/Ignition again.
+## Analyzer checkpoint / next likely product track
+
+Analyzer feature expansion remains paused after useful maturity checkpoints in Fueling and non-knock Ignition.
+
+When deliberate feature work resumes, the best broad-coverage candidates remain **Fuel / Injector** and **Trigger / Sync**, followed by the remaining practical gaps in AE / MAP Predict and Idle. Prefer bringing thinner analyzers toward the same evidence/navigation usefulness as Fueling/Ignition before deepening already-mature analyzers again.
 
 ## Before new work from a local clone
 
@@ -282,6 +306,7 @@ npm test
 
 Recommended continuation:
 
-1. use `docs/STARTER_SYSTEM_VALIDATION.md` if a starter regression appears;
-2. otherwise treat the starter-template track as closed for now;
-3. begin the next deliberate product track, currently expected to be richer Scatter region selection/evidence navigation.
+1. treat starter-template and generic Histogram parity work as closed unless a regression appears;
+2. preserve the shared Histogram timeline-wrapper docking invariant from PR #381;
+3. choose the next deliberate product track from less-mature Analyzer coverage, source/firmware integration needs, or a concrete measured regression;
+4. do not restart broad Logger/Histogram/performance polish without evidence.

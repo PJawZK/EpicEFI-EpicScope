@@ -4,24 +4,22 @@ Histogram is EpicScope's general-purpose statistical/relationship analysis works
 
 The current user-facing flow is intentionally shared across its analysis views:
 
-> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger**
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
-This document describes the current implemented state on `main`, the invariants established during the October 2026 consistency pass, and the remaining worthwhile work. For repository-wide continuation state, `docs/HANDOFF.md` remains authoritative.
+This document describes the implemented state on `main`, the invariants established during the October 2026 consistency/research-parity passes, and the remaining maintenance direction. For repository-wide continuation state, `docs/HANDOFF.md` remains authoritative.
 
 ## Current surfaces
 
-Histogram currently contains four subviews:
+Histogram contains four subviews:
 
 - **Table Generator**
 - **Distribution**
 - **Scatter**
 - **Math Channels**
 
-Table Generator is the most mature individual tool. The current consistency work deliberately brought Distribution and Scatter onto the same shared scope, qualification, evidence and Math Channel contracts instead of growing independent one-off workflows.
+The generic Histogram research-parity track is closed at the current checkpoint. Table Generator, Distribution, Scatter and Math Channels have been brought onto the same shared scope, Qualification, evidence and reusable calculated-channel contracts rather than growing separate one-off workflows.
 
 ## Current Histogram milestones
-
-The current coherent baseline was established through four merged milestones:
 
 ### PR #339 — Scope and evidence flow
 
@@ -56,12 +54,12 @@ Implemented one Histogram qualification contract around the existing saved analy
 
 ### PR #344 — Shared Math Channels
 
-Saved Math Channels are now first-class Histogram analysis inputs:
+Saved Math Channels became first-class Histogram analysis inputs:
 
-- Table Generator retains its mature existing formula path;
+- Table Generator retains its mature formula path;
 - Distribution and Scatter publish saved Math Channels as ordinary selectable logical channels;
 - calculated traces are materialized on demand from physical dependencies while retaining source-sample alignment;
-- qualification sets that reference Math Channels now work in Distribution and Scatter;
+- qualification sets that reference Math Channels work across Histogram;
 - the logical channel catalog refreshes when Math Channels change;
 - formula references remain physical-channel based rather than silently introducing nested formulas.
 
@@ -69,25 +67,23 @@ The old compact calculated-field editor still exists internally in Table Generat
 
 ### PR #345 — Unified help
 
-Histogram now uses the same shared anchored round-`i` help interaction as Analyzer.
+Histogram uses the same shared anchored round-`i` help interaction as Analyzer. Help is intentionally limited to non-obvious calculations/semantics.
 
-Current local help covers only non-obvious semantics, including:
+### PRs #372–#381 — maturity close-out
 
-- Table Generator cell statistics;
-- Z subtraction/reference behavior;
-- shared Qualification;
-- Distribution Count / % Samples / Time;
-- Distribution Auto/Manual bins;
-- Histogram vs Cumulative view;
-- Distribution Compare;
-- Scatter Dots vs Lines;
-- Scatter density heat behavior.
-
-The earlier bespoke Table Generator help surface is no longer the visible user path.
+- #372 — Scatter box-region evidence selection.
+- #373 — prominent region evidence and strongest contiguous Logger visit.
+- #374 — saved Scatter setups.
+- #375 — Scatter qualified/region CSV export.
+- #376 — Distribution saved setups + CSV bins/summary export.
+- #377 — Table Generator exact Median + aligned X/Y/Z/reference/delta cell evidence.
+- #378 — Distribution fixed min/max/bin-width geometry + outside-geometry provenance.
+- #379 — Math Channels historical references, comparisons/logical expressions, lazy conditionals and temporal helpers.
+- #381 — shared timeline-wrapper docking fix so Logger, Table Generator, Distribution and Scatter present the Hide/Show controls edge tab in the same position.
 
 ## Table Generator — current state
 
-Table Generator is the current reference implementation for rich generic binned analysis.
+Table Generator is the reference implementation for rich generic binned analysis.
 
 Implemented behavior includes:
 
@@ -117,25 +113,25 @@ The loaded MSQ table supplies geometry/breakpoints only. It must not silently re
 A few mature-path implementation details are intentionally deferred:
 
 - the dormant duplicate mini calculated-field editor can be removed/consolidated later;
-- runtime refinements that rewrite older internal wording/layout should move into their owning component during cleanup;
+- runtime refinements that rewrite older internal wording/layout should move into their owning component during cleanup.
 
 Do not reopen these merely for code aesthetics while broader feature coverage remains the higher priority.
 
 ## Distribution — current state
 
-Distribution currently supports:
+Distribution supports:
 
 - Full Log / Current A/B / Saved Range;
 - physical channels and saved Math Channels;
 - shared Qualification;
 - Count / % Samples / Time Y-axis modes;
-- automatic/manual bin count plus explicit fixed min/max/bin-width geometry for reproducible repeated tests;
+- automatic/manual bin count plus explicit **Fixed Min / Max / Width** geometry for reproducible repeated tests;
 - Histogram/Cumulative presentation;
 - mean, median, standard deviation, min/max and percentile summaries;
 - optional second scope comparison;
 - one shared bin geometry for both compared scopes;
-- saved Distribution setup presets retaining channel, scope, Qualification, metric, bins, view and compare scope;
-- CSV export of shared bin geometry/values plus per-series summary statistics and eligibility provenance;
+- saved Distribution setup presets retaining channel, scope, Qualification, metric, bins/geometry, view and compare scope;
+- CSV export of shared bin geometry/values plus per-series summary statistics and eligibility/outside-geometry provenance;
 - bin → Logger evidence navigation;
 - shared Logger timeline.
 
@@ -144,14 +140,16 @@ Distribution currently supports:
 - **Time** integrates only contiguous/reasonable recorded intervals; large recording/decoding gaps are not counted as time spent at the preceding value.
 - comparison Auto bins are determined from the combined compared population so the first scope is not geometrically authoritative.
 - comparison scopes share the same channel, Qualification and bin boundaries.
+- fixed geometry is exact and repeatable; values below Min or above Max are **outside geometry**, not edge-clamped into the first/last bin.
+- fixed geometry remains bounded to the supported bin-count limit and invalid Min/Max/Width combinations must fail explicitly.
 
-### Distribution worthwhile future work
+### Distribution future work
 
-The research-driven Distribution maturity pass is complete, including reproducible fixed geometry. Remaining work is implementation cleanup only, such as deeper consolidation around shared histogram-core primitives where that reduces duplicate definitions without changing behavior.
+The research-driven Distribution maturity pass is complete. Remaining work is implementation cleanup only, such as deeper consolidation around shared histogram-core primitives where that reduces duplicate definitions without changing behavior.
 
 ## Scatter — current state
 
-Scatter currently supports:
+Scatter supports:
 
 - Full Log / Current A/B / Saved Range;
 - physical channels and saved Math Channels;
@@ -168,13 +166,12 @@ Scatter currently supports:
 - drag-box region selection evaluated against the full qualified pair population, not only rendered/downsampled points;
 - prominent in-plot region summary with pair share, X/Y bounds and contiguous-visit count;
 - selected-region → Logger navigation focused on the strongest contiguous visit instead of the full first-to-last hit envelope;
-- saved view/setup presets covering scope, Qualification, layout, trace mode and pane X/Y selections;
 - CSV export of all qualified pairs or the complete selected-region evidence, including source sample/time provenance;
 - shared Logger timeline.
 
 ### Scatter maturity checkpoint
 
-The planned Scatter maturity track is complete at this checkpoint. Further statistical overlays such as correlation/linear-fit summaries are intentionally not part of the active plan. The remaining timeline text/DOM bridge may be replaced during later cleanup/consolidation if it becomes a correctness or maintenance problem.
+The planned Scatter maturity track is complete at this checkpoint. Further statistical overlays such as correlation/linear-fit summaries are intentionally not part of the active plan. Additive/lasso region selection is also not planned unless real field use shows a concrete need.
 
 ## Math Channels — current state
 
@@ -184,7 +181,7 @@ Current behavior includes:
 
 - saved named formulas;
 - source-channel browser/search;
-- arithmetic plus comparison/logical expressions (`>`, `<`, `>=`, `<=`, `==`, `!=`, `AND`, `OR`, `NOT`);
+- arithmetic plus comparison/logical expressions (`>`, `<`, `>=`, `<=`, `==`, `!=`, `AND`, `OR`, `NOT`), including symbolic logical forms where supported;
 - lazy `if(condition, true, false)` conditionals;
 - MLV-style historical sample references such as `[RPM-1]`;
 - sample-aware `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()` helpers;
@@ -198,7 +195,7 @@ Historical suffixes are resolved exact-name first: a real physical channel liter
 
 Math formulas continue to resolve physical channel dependencies. Nested saved Math Channel references are not silently introduced; composition remains explicit and cycle-free.
 
-At this checkpoint the research-driven generic Histogram maturity gaps are closed across Table Generator, Distribution, Scatter and Math Channels.
+Manual testing after PR #379 confirmed the expanded expression paths work in practice, including historical references, window functions, rate calculations and conditional/logical expressions.
 
 ## Shared UI and interaction rules
 
@@ -235,9 +232,28 @@ Current evidence navigation:
 - Table Generator cell → Logger;
 - Distribution bin → Logger;
 - Scatter point → Logger;
-- Scatter selected region → Logger.
+- Scatter selected region → strongest contiguous Logger visit.
 
 Scatter region selection deliberately uses the complete qualified pair population even when visible plotting is stride-reduced.
+
+### Shared timeline and Hide/Show controls docking
+
+Logger owns the authoritative timeline implementation. Table Generator, Distribution and Scatter reuse it.
+
+The invariant established by PR #381 is:
+
+> Re-parent the complete Logger `.timeline-wrap` intact.
+
+Do **not** move `.timeline-shell` and `.edge-toggle--timeline` independently. `.timeline-wrap` is the positioning context for the centered Hide/Show controls edge tab. Splitting the wrapper recreates the bug where Table Generator places the control in the wrong area and Scatter/Distribution can hide it behind the plot.
+
+Expected visible behavior is the same on all four timeline-backed surfaces:
+
+- Logger;
+- Table Generator;
+- Distribution;
+- Scatter.
+
+The Hide/Show controls tab sits centered on the upper edge of the timeline/control panel.
 
 ### Help
 
@@ -253,6 +269,18 @@ The individual tools do not need identical layouts, but shared concepts should a
 
 Math Channels is a reusable input-definition workspace rather than a result analysis flow, so it remains intentionally different.
 
+## Validation checkpoint
+
+The generic Histogram parity work has practical browser validation in addition to automated tests:
+
+- Table Generator parity behavior passed manual testing;
+- Distribution fixed geometry and related behavior passed manual testing;
+- the expanded Math Channel expression language passed manual testing;
+- Scatter box selection, region summary and strongest-visit Logger navigation were manually confirmed useful;
+- after PR #381 the Hide/Show controls tab placement was confirmed fixed across the timeline-backed Histogram views.
+
+The representative large-log workload remains the ~1.19 GB / 320,458-record MLG with `mainController.ini` used throughout the project performance/runtime validation.
+
 ## Current deferred cleanup policy
 
 Do not perform a broad Histogram refactor solely because duplicate/dormant implementation details are visible internally.
@@ -265,14 +293,15 @@ The project-owner direction is:
 
 That later phase is the correct place to remove dormant duplicate editors, replace runtime UI surgery with owner-component behavior, remove unnecessary DOM bridges/observers, consolidate shared rendering/helpers, simplify CSS and re-profile large-log behavior.
 
-## Immediate remaining Histogram priorities
+## Remaining Histogram priorities
 
-The broad coherence pass is complete. Remaining work is narrower and should be justified by user value:
+There is no active Histogram feature-expansion queue at this checkpoint.
 
-1. **saved setups/presets for Distribution and Scatter**;
-2. **exports for Distribution and Scatter**;
-3. optional further Scatter selection ergonomics (for example additive or freeform/lasso selection) only if field use justifies them;
-4. eventually replace the remaining Scatter timeline text bridge with direct state propagation;
-5. later cleanup/consolidation of dormant duplicate/runtime-refinement code.
+Only do Histogram work for:
 
-Do not restart a broad Histogram rewrite. The current shared analysis contract is useful and should be preserved.
+1. a concrete correctness or field-use regression;
+2. maintenance of the shared Scope / Qualification / Math / evidence contracts;
+3. preservation of the shared `.timeline-wrap` docking invariant;
+4. later cleanup/consolidation after broader analyzer maturity work.
+
+Do not restart a broad Histogram rewrite.

@@ -31,7 +31,7 @@ Established foundations include:
 
 The broad recorded-log performance campaign is complete unless a measured regression appears.
 
-Analyzer maturity work reached sensible checkpoints in Fueling and non-knock Ignition and is deliberately paused for now. The latest completed product track is the **generic Histogram research-parity close-out**, culminating in PRs #372–#379 after the earlier consistency milestones #339, #340, #344 and #345.
+Analyzer maturity work reached sensible checkpoints in Fueling and non-knock Ignition and is deliberately paused for now. The latest completed product track is the **generic Histogram research-parity close-out**, culminating in PRs #372–#381 after the earlier consistency milestones #339, #340, #344 and #345. PR #381 fixed the final shared Hide/Show-controls docking mismatch by keeping the authoritative Logger `.timeline-wrap` intact when reused by Table Generator, Distribution and Scatter.
 
 Do not begin Phase 5, restart broad Histogram redesign, or reopen mature analyzers automatically. Continue from concrete user-visible gaps, missing analyzer coverage, firmware/source integration needs, or measured regressions.
 
@@ -81,7 +81,7 @@ See `docs/HANDOFF.md` and the `TS_SHIM_*` documents for the validated runtime to
 
 ## Phase 2 — Channel catalog, UI workflow and generic analysis foundation
 
-Status: **Complete for the currently approved scope; targeted maturity continues**
+Status: **Complete for the currently approved scope; targeted maintenance only**
 
 Implemented:
 
@@ -114,7 +114,7 @@ Implemented:
 
 ## Histogram maturity — current authoritative state
 
-The broad consistency pass is complete through four milestones.
+The broad consistency and research-parity passes are complete.
 
 ### PR #339 — Scope / evidence flow
 
@@ -133,7 +133,7 @@ Implemented:
 
 ### PR #340 — Shared Qualification
 
-The same saved grouped ALL/ANY Qualification sets now work across Table Generator, Distribution and Scatter, including visible eligibility provenance and explicit missing dependencies.
+The same saved grouped ALL/ANY Qualification sets work across Table Generator, Distribution and Scatter, including visible eligibility provenance and explicit missing dependencies.
 
 ### PR #344 — Shared Math Channels
 
@@ -141,23 +141,25 @@ Saved Math Channels are first-class Histogram inputs in Distribution and Scatter
 
 ### PR #345 — Unified help
 
-Histogram now uses the same shared anchored round-`i` information popover as Analyzer. Help is intentionally limited to non-obvious calculations/semantics.
+Histogram uses the same shared anchored round-`i` information popover as Analyzer. Help is intentionally limited to non-obvious calculations/semantics.
 
-Detailed current behavior is documented in `docs/HISTOGRAM.md`.
-
-### Histogram research-parity checkpoint
+### PRs #372–#381 — research-parity and final UI consistency
 
 The generic Histogram maturity work is complete at the intended checkpoint:
 
-- Scatter: saved setups, box-region evidence, strongest-visit Logger navigation and qualified/region CSV export;
+- Scatter: box-region evidence, strongest contiguous-visit Logger navigation, saved setups and qualified/region CSV export;
 - Table Generator: exact Median plus richer aligned X/Y/Z/reference/delta cell evidence, on top of weighted tune-table-node behavior;
 - Distribution: saved setups/CSV plus exact fixed min/max/bin-width geometry for reproducible repeated tests and explicit outside-geometry provenance;
-- Math Channels: historical references, comparisons/logical expressions, lazy conditionals and sample-aware lag/delta/moving-average/rate helpers.
+- Math Channels: historical references, comparisons/logical expressions, lazy conditionals and sample-aware `lag()` / `delta()` / moving `avg()` / timestamp-based `rate()` helpers;
+- shared Histogram timeline docking: Logger, Table Generator, Distribution and Scatter preserve the same Hide/Show-controls edge-tab placement by re-parenting the complete `.timeline-wrap`, not the shell/toggle separately.
+
+Manual browser testing confirmed the Table Generator, Distribution and expanded Math Channel behaviors pass practical use. The post-#381 docking fix was also confirmed visually across Logger and all timeline-backed Histogram surfaces.
 
 Remaining Histogram work is cleanup/maintenance only unless a concrete user-visible gap is demonstrated:
 
 1. later consolidate dormant duplicate/runtime-refinement code during the dedicated cleanup phase;
-2. replace the remaining Scatter timeline text/DOM bridge during cleanup only if it becomes a correctness or maintenance problem.
+2. replace remaining text/DOM state bridges during cleanup only if they become correctness or maintenance problems;
+3. preserve the shared timeline-wrapper docking invariant.
 
 Do **not** start another broad Histogram rewrite.
 
@@ -277,10 +279,11 @@ Analyzer feature work is paused.
 
 When resumed, the preferred order is:
 
-1. improve practical coverage of the less-mature analyzers;
+1. improve practical coverage of the less-mature analyzers, beginning with Fuel / Injector and Trigger / Sync;
 2. validate the same user-facing evidence/Logger-navigation principles across them;
-3. stop each at a sensible maturity checkpoint;
-4. then begin the dedicated code cleanup/consolidation/optimization phase.
+3. address remaining practical AE / MAP Predict and Idle gaps;
+4. stop each at a sensible maturity checkpoint;
+5. then begin the dedicated code cleanup/consolidation/optimization phase.
 
 Do not keep deepening one analyzer indefinitely while others remain thin.
 

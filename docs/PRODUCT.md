@@ -52,12 +52,16 @@ EpicScope Web is a usable large-log/live-source analysis foundation with:
 - exact-log viewport/cursor/A-B/marker/range persistence kept separate from reusable workspace state;
 - multi-pane graph/timeline navigation;
 - Logger, Analyzer and Histogram product surfaces;
+- 12 generic semantic starter workspaces that seed only a genuinely fresh state and become ordinary editable user workspaces;
+- 12 capability-gated EpicEFI-specific starter templates;
 - specialized Analyzer surfaces for Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel / Injector and Trigger / Sync;
+- mature generic Histogram surfaces for Table Generator, Distribution, Scatter and Math Channels;
 - runtime-health, parser, retained-memory and performance diagnostics;
-- validated `ts_shim` live/retained-source integration on the real Mega144H7 → Pi Zero 2 W → LAN → browser path;
-- semantic channel-role resolution and built-in pre-populated workspace infrastructure on the current feature branch.
+- validated `ts_shim` live/retained-source integration on the real Mega144H7 → Pi Zero 2 W → LAN → browser path.
 
-The earlier Web performance campaign is considered good enough unless a measured regression appears. Current active product work is semantic pre-populated workspaces and their cross-source/cross-ECU behavior.
+The earlier Web performance campaign is considered good enough unless a measured regression appears. The starter-template and generic Histogram research-parity tracks are closed at their current checkpoints.
+
+When deliberate feature work resumes, prefer broader practical maturity in the thinner Analyzer surfaces — especially Fuel / Injector and Trigger / Sync, followed by remaining AE / MAP Predict and Idle gaps — rather than reopening broad Histogram expansion or deepening already-mature Fueling/Ignition without a concrete reason.
 
 ## Primary user workflow
 
@@ -96,16 +100,17 @@ This is the product-level interaction order. UI controls should make this progre
 - A/B boundaries;
 - saved ranges;
 - markers;
-- sample filters/qualification criteria.
+- sample filters/Qualification criteria.
 
 ### 5. Analyze
 
 Generic tools and reusable analysis primitives support specialized analyzers:
 
 - range statistics;
-- histogram;
-- 2D histogram/heatmap/table;
-- scatter;
+- Table Generator;
+- Distribution;
+- Scatter;
+- reusable Math Channels;
 - generic event analysis;
 - specialized analyzers.
 
@@ -123,39 +128,49 @@ Current primary entries:
 - Analyzer;
 - Histogram.
 
-Analyzer and Histogram may use compact secondary selectors for their own subviews. This mode switcher is not the full EpicHub Dashboard/Tuner/Diagnostics shell.
+Analyzer and Histogram use compact secondary selectors for their own subviews. This mode switcher is not the full EpicHub Dashboard/Tuner/Diagnostics shell.
 
 ## Graph workspace model
 
-Global workspace context is presented as **Graphs · <workspace>** rather than an unexplained bare name.
-
-EpicScope now distinguishes:
+EpicScope distinguishes:
 
 - **Layout** — graph geometry only;
-- **Workspace** — a tuning/diagnostic task that references a layout and channel roles.
+- **Starter template** — a task-oriented semantic recipe;
+- **Workspace** — ordinary user-owned materialized state.
 
-Initial layout vocabulary:
+Layout vocabulary includes Single, Dual and larger fixed/freeform multi-pane forms.
 
-- Single;
-- Dual;
-- Triple;
-- Quad;
-- Focus + 2;
-- Focus + 3;
-- Six Pane.
+Workspace names describe purpose, not geometry.
 
-Workspace names describe purpose, not geometry. Initial generic targets include General, Idle, Fuel, Ignition, Boost, Transient / AE, Cooling, Fuel System, Trigger / Sync, Startup / Warmup, Electrical and Vehicle / Driveline.
+### Fresh-state generic workspace set
 
-The global shell communicates the active graph workspace. Active pane identity remains local to the pane so the header does not duplicate graph/pane information.
+A genuinely fresh Logger state seeds:
 
-## Semantic channel roles for built-ins
+```text
+General
+Idle
+Boost
+Fuel
+Ignition
+Cooling
+Transient / AE
+Fuel System
+Trigger / Sync
+Startup / Warmup
+Electrical
+Vehicle / Driveline
+```
 
-Built-in task workspaces should not embed one ECU family's channel IDs.
+These are not protected built-ins. Once materialized they can be edited, renamed, duplicated or deleted, and user decisions persist.
+
+### Semantic channel roles
+
+Starter templates do not embed one ECU family's source IDs.
 
 Product model:
 
 ```text
-built-in workspace
+starter template
       ↓
 semantic channel roles
       ↓
@@ -189,44 +204,90 @@ The same principle applies to historical abbreviations such as `PW`, `Batt V`, `
 
 ### Required / preferred / optional roles
 
-Each built-in workspace role is classified as:
+Each starter role is classified as:
 
 - **required** — central to the workspace purpose;
 - **preferred** — expected and materially useful;
 - **optional** — enhancement when the ECU exposes it.
 
-A workspace should remain loadable with unresolved roles. Missing data is shown explicitly rather than fabricated.
+A workspace should remain loadable with unresolved non-required roles. Missing data is shown explicitly rather than fabricated.
 
-### Generic vs ECU-native workspaces
+### Generic vs ECU-native starters
 
-Generic workspaces should resolve across ECU families where possible.
+Generic starters resolve across ECU families where possible.
 
-ECU-native workspaces may also exist when a schema exposes richer capabilities. EpicEFI examples include Dual Chamber Boost, MAP Predict + Wall Wetting, ETB Control, Fuel Rail Diagnostics, Trigger + Sync Detailed, Injector / Ignition Timing and Engine Protection.
+ECU-native starters coexist where schema capabilities justify them. The current EpicEFI tier covers MAP Predict + Wall Wetting, Fuel Rail Diagnostics, ETB Control, Dual Chamber Boost, Trigger + Sync Detailed, Injector + Ignition Timing, Engine Protection, VVT Control, Anti-Lag, Launch Control, Traction Control and Transmission Control.
 
-Availability should be capability-driven rather than hard-coded by board name.
+Availability is capability-driven rather than hard-coded by board name.
 
 Related authority:
 
 - [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) — detailed workspace catalog and implementation status;
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — semantic/capability layer and source-aware materialization;
 - [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
-- [`DECISIONS.md`](DECISIONS.md) — D-051–D-054 naming, identity and built-in behavior.
+- [`DECISIONS.md`](DECISIONS.md) — naming, identity and workspace behavior.
 
-## First semantic workspace validation
+## Generic Histogram product contract
 
-The first validation intentionally used the simplest **Single** layout with one pane and four roles: RPM, MAP, TPS and Coolant Temp.
+Histogram is the reusable relationship/statistical layer between Logger and question-specific Analyzer surfaces.
 
-The same built-in workspace identity was verified across:
+Shared flow:
 
-```text
-MLG + INI → ts_shim → MLG + INI
-```
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
-with canonical recorded identities changing to raw Shim identities and back while the workspace remained stable.
+### Table Generator
 
-That proof is the basis for the first production preset, **General · Single**, which expands the overview to RPM, MAP, TPS, Coolant Temp, Intake Air Temp, Battery Voltage, Lambda and Ignition Advance.
+Current mature capability includes:
 
-The expanded eight-role preset is implemented on the active feature branch but must not be considered runtime-validated until its local typecheck/test and real source round trip are completed.
+- Full Log / Current A/B / Saved Range;
+- physical + Math Channel X/Y/Z inputs;
+- shared Qualification;
+- automatic/custom/MSQ geometry;
+- Count/Mean/Median/Min/Max/Sum/StdDev/Variance/Weighted Mean;
+- Z reference/subtraction;
+- MLV-style weighted breakpoint-node behavior;
+- exact cell evidence including source/time and X/Y/Z/reference/delta;
+- Logger navigation and CSV export.
+
+### Distribution
+
+Current mature capability includes:
+
+- shared scopes/Qualification/Math Channels;
+- Count / % Samples / Time;
+- Histogram/Cumulative;
+- comparison on shared geometry;
+- saved setups and CSV;
+- exact Fixed Min/Max/Width geometry for reproducible tests;
+- explicit outside-geometry provenance rather than edge clamping;
+- bin → Logger evidence.
+
+### Scatter
+
+Current targeted maturity includes:
+
+- shared scopes/Qualification/Math Channels;
+- Single/Dual, Dots/Lines and density heat;
+- bounded large-log rendering;
+- point and box-region evidence;
+- prominent selected-region summary;
+- strongest contiguous selected-region visit → Logger;
+- saved setups;
+- qualified/region CSV export.
+
+### Math Channels
+
+Current expression language includes arithmetic, comparison/logical expressions, lazy `if()`, MLV-style `[Channel-N]` history and `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()`.
+
+Formulas resolve physical source dependencies; nested saved Math Channel references remain deliberately unsupported.
+
+The research-driven generic Histogram maturity gaps selected from the MegaLogViewer reference work are closed at this checkpoint and have practical browser validation.
+
+## Shared timeline UI contract
+
+Logger owns the authoritative timeline. Table Generator, Distribution and Scatter reuse it.
+
+The complete `.timeline-wrap` must move intact between those surfaces. It provides the positioning context for the centered Hide/Show-controls edge tab. Moving the timeline shell and edge toggle independently is not allowed because it recreates the placement/overlap bug fixed in PR #381.
 
 ## Analysis principles
 
@@ -265,8 +326,8 @@ Every table/histogram/heatmap must visibly state:
 - Y axis where applicable;
 - value/cell meaning;
 - aggregation method;
-- active filters;
-- sample count.
+- active Qualification;
+- sample count/provenance.
 
 The user must never need to guess whether a cell represents MAP, duty, error, average, maximum, or another quantity.
 

@@ -144,9 +144,22 @@ Conceptual groups:
 
 Range/event context should naturally feed analysis without creating a permanent button for every tool.
 
-The shared Logger timeline is also reused in Scatter and Distribution where those modes need the same A/B/range context. Re-parent the authoritative component rather than create divergent copies.
+The shared Logger timeline is reused in Table Generator, Distribution and Scatter where those modes need the same A/B/range context. Re-parent the authoritative component rather than create divergent copies.
 
-The existing Hide/Show controls edge tab remains shared with timeline-based analysis surfaces; only its silhouette was widened to fit the longer wording.
+### Shared docking invariant — PR #381
+
+The timeline's Hide/Show controls edge tab is positioned by the Logger `.timeline-wrap` container.
+
+When docking the shared timeline into Histogram, move the **entire `.timeline-wrap` intact**. Do not move `.timeline-shell` and `.edge-toggle--timeline` separately.
+
+Expected visible behavior is identical across:
+
+- Logger;
+- Table Generator;
+- Distribution;
+- Scatter.
+
+The Hide/Show controls tab sits centered on the upper edge of the timeline/control panel. Splitting the wrapper from the toggle recreates the observed bug where Table Generator places the tab in the wrong location and Distribution/Scatter can cover it with the plot surface.
 
 ## Histogram mode hierarchy
 
@@ -159,46 +172,73 @@ Histogram secondary selector:
 
 The former separate Heatmap / Dual Heatmap modes are not restored as separate primary modes.
 
+Shared Histogram flow:
+
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
+
+Shared scope wording is:
+
+- **Full Log**
+- **Current A/B**
+- **Saved Range**
+
 ### Table Generator
 
 Important current UI rules:
 
 - visible statistic wording is **Weighted Mean**, not `MLV Weighted Mean`;
+- **Median** is a first-class statistic;
 - standalone **Size** button is removed;
 - the remaining geometry button is **Table Size**;
 - Table Size owns Auto/custom/MSQ geometry controls;
 - Presets mean complete saved Table Generator setups;
-- grouped Filters use the existing saved-library/editor model;
-- cell evidence can open contributing samples in Logger.
+- grouped Qualification uses the shared saved-library/editor model;
+- cell evidence exposes sample/time and aligned X/Y/Z/reference/delta values;
+- cell evidence can open contributing samples in Logger;
+- CSV export remains available.
 
 Loaded MSQ table selection changes geometry only and must not silently rewrite selected analysis X/Y/Z channels.
 
 ### Distribution
 
-Distribution is a real analysis workspace, not a placeholder histogram.
+Distribution is a mature analysis workspace, not a placeholder histogram.
 
 Current controls/features include:
 
-- Full Log / Range A/B;
+- Full Log / Current A/B / Saved Range;
+- shared Qualification;
+- physical and Math Channels;
 - Count / % Samples / Time;
-- Automatic / Manual bins;
+- Auto / Manual-count / **Fixed Min-Max-Width** geometry;
 - Histogram / Cumulative;
 - statistical summary;
-- saved-range A-vs-B comparison;
-- clickable bin evidence;
+- Primary-vs-Compare scope comparison on shared geometry;
+- saved setup presets;
+- CSV export with summary/provenance;
+- clickable bin evidence → Logger;
 - shared Logger timeline.
+
+Fixed geometry must not clamp outside values into edge bins. Outside-geometry evidence remains explicit.
 
 ### Scatter
 
 Current controls/features include:
 
-- Full Log / Range A/B;
+- Full Log / Current A/B / Saved Range;
+- shared Qualification;
+- physical and Math Channels;
 - Single / Dual;
 - Dots / Lines;
-- X/Y selectors per pane;
+- independent X/Y selectors per pane;
 - density heat encoding and legend;
+- saved Scatter setups;
+- rendered point → Logger navigation;
+- drag-box region selection against the full qualified population;
+- prominent in-plot region evidence card;
+- strongest contiguous region visit → Logger;
+- qualified/selected-region CSV export;
 - shared Logger timeline;
-- Hide/Show controls tab.
+- Hide/Show controls tab following the shared docking invariant above.
 
 Per-pane coverage/status belongs outside the plot overlay when possible. Stale previous plots must be cleared if a new selection cannot load.
 
@@ -206,7 +246,18 @@ Per-pane coverage/status belongs outside the plot overlay when possible. Stale p
 
 Math Channels is a dedicated editor, not a tiny formula popover.
 
+Current expression capability includes:
+
+- arithmetic;
+- comparisons;
+- logical AND/OR/NOT;
+- lazy `if()` conditionals;
+- MLV-style `[Channel-N]` historical references;
+- `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()` helpers.
+
 Dynamic imported/saved labels are text data and must not be interpolated into executable HTML.
+
+Nested saved Math Channel references remain deliberately unsupported; formulas resolve physical source dependencies.
 
 ## Analyzer mode hierarchy
 
@@ -227,7 +278,7 @@ Current subviews:
 ### Shared Analyzer interaction
 
 - semantic role mapping is visible and manually overridable;
-- scope is explicit (Full Log / Current A-B / Saved Range where supported);
+- scope is explicit (Full Log / Current A/B / Saved Range where supported);
 - event rows select evidence in Analyzer;
 - double-click/Enter can open event evidence in Logger;
 - aligned-event graphs use a common interaction model where applicable.
@@ -286,6 +337,7 @@ Log-specific warnings must not imply a log problem before a log exists.
 12. Secondary Analyzer/Histogram functions belong in dropdowns rather than permanent button rows.
 13. Shared timeline/range components should be reused across analysis surfaces rather than duplicated.
 14. Analysis controls should state what entered thresholds/values actually do.
+15. Shared controls must preserve their owning positioning/context wrapper when re-parented between modes.
 
 ## Reference change control
 

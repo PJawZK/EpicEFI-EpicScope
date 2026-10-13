@@ -12,7 +12,7 @@ EpicScope is developed in three deliberate stages:
 2. **Linux** — primary production application target for speed, low RAM use, very large logs and native file handling.
 3. **Android / EpicHub** — later reuse of proven analysis concepts and core logic.
 
-The Web implementation establishes **what EpicScope should do** and is now also the validated reference client for the EpicEFI `ts_shim` live telemetry contract.
+The Web implementation establishes **what EpicScope should do** and is also the validated reference client for the EpicEFI `ts_shim` live telemetry contract.
 
 ## Core principles
 
@@ -37,25 +37,26 @@ The Web implementation establishes **what EpicScope should do** and is now also 
 
 ## Current Web state
 
-EpicScope Web has functional foundations through the existing Logger / Histogram / Analyzer scope and continues as a maturity/refinement platform.
+EpicScope Web has mature functional foundations across Logger, Histogram and Analyzer and continues as the product-semantics/reference implementation.
 
 Implemented foundations include:
 
 - MLG v1/v2 import, indexing, staged CRC validation and source-integrity diagnostics;
 - INI-backed channel catalog/binding and optional MSQ tune enrichment;
 - reusable named graph workspaces plus exact-log navigation persistence;
-- multi-pane fixed/freeform graphs, timeline/cursor, A/B ranges, markers and saved ranges;
+- multi-pane fixed/freeform graphs, Single/Dual layouts, timeline/cursor, A/B ranges, markers and saved ranges;
 - persistent/retained channel reuse plus OPFS column-sidecar/native-column access;
-- Histogram surfaces for Table Generator, Distribution, Scatter and Math Channels;
+- semantic channel-role resolution and capability-gated workspace starters;
+- 12 generic starter workspaces that seed only a genuinely fresh state and remain fully editable/deletable;
+- 12 capability-gated EpicEFI-specific starters exposed through **New graph → From template**;
+- Histogram surfaces for Table Generator, Distribution, Scatter and Math Channels at the current research-parity checkpoint;
 - Analyzer surfaces for Range Compare, Tune Table, Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel / Injector and Trigger / Sync;
 - evidence navigation back to Logger;
 - runtime-health, parser, retained-memory and performance diagnostics;
 - `ts_shim` protocol/binary decoding, schema discovery, reconnect/lifecycle handling and selected-channel series recording;
 - live/retained Shim captures exposed through the same normalized source path used by recorded analysis;
 - read-only Shim HTTP inspection for INIs, tune objects and trigger-log routes;
-- same-origin Vite proxy for local/LAN Shim testing;
-- semantic channel-role resolution and reserved built-in workspace identities on the current pre-population feature branch;
-- the validated one-pane semantic workspace path used as the basis for the first production **General · Single** preset.
+- same-origin Vite proxy for local/LAN Shim testing.
 
 ## Current source model
 
@@ -117,9 +118,9 @@ While Shim is authoritative, stable `ini:*` assignments resolve to matching raw 
 
 This avoids duplicate raw + `ini:*` traces and keeps graph presets reusable across source families.
 
-## Semantic pre-populated workspaces
+## Semantic starter workspaces
 
-The current pre-population architecture adds a semantic layer above raw/source channel IDs:
+The starter architecture adds a semantic layer above raw/source channel IDs:
 
 ```text
 semantic role
@@ -136,7 +137,7 @@ engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
 engine.rpm → RPMValue → RPMValue      (ts_shim)
 ```
 
-Built-ins therefore describe what a workspace **needs**, not what one ECU happens to call a field.
+Starters describe what a workspace **needs**, not what one ECU happens to call a field.
 
 Resolution preference is:
 
@@ -152,92 +153,116 @@ Compatibility aliases are separate from display names. For example, legacy/MLV `
 
 MegaLogViewer HD `FieldMaps/*.properties` were inspected as cross-ECU alias evidence. EpicScope uses that material as a compatibility/reference dataset rather than copying its historical normalized vocabulary directly.
 
-### Layouts vs workspaces
+### Fresh-state generic workspaces
 
-- **Layout** describes graph geometry only: Single, Dual, Triple, Quad, Focus + 2, Focus + 3, Six Pane.
-- **Workspace** describes a tuning/diagnostic task and assigns semantic roles to one of those layouts.
+A genuinely fresh Logger state seeds these ordinary editable workspaces once a usable channel catalog exists:
 
-Initial generic workspace targets include General, Idle, Fuel, Ignition, Boost, Transient / AE, Cooling, Fuel System, Trigger / Sync, Startup / Warmup, Electrical and Vehicle / Driveline.
+```text
+General
+Idle
+Boost
+Fuel
+Ignition
+Cooling
+Transient / AE
+Fuel System
+Trigger / Sync
+Startup / Warmup
+Electrical
+Vehicle / Driveline
+```
 
-EpicEFI-specific workspaces may coexist where schema capabilities justify them.
+They are not locked system presets. Users may edit, rename, duplicate or delete them, and EpicScope must not recreate them after user-owned state exists.
+
+### EpicEFI-specific starter tier
+
+Capability-gated starters are offered only when their runtime semantic requirements resolve:
+
+```text
+EpicEFI · MAP Predict + Wall Wetting
+EpicEFI · Fuel Rail Diagnostics
+EpicEFI · ETB Control
+EpicEFI · Dual Chamber Boost
+EpicEFI · Trigger + Sync Detailed
+EpicEFI · Injector + Ignition Timing
+EpicEFI · Engine Protection
+EpicEFI · VVT Control
+EpicEFI · Anti-Lag
+EpicEFI · Launch Control
+EpicEFI · Traction Control
+EpicEFI · Transmission Control
+```
 
 Detailed authority:
 
 - [`docs/PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) — workspace catalog, role contents and implementation status;
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — semantic/capability layer and source-aware materialization boundaries;
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — semantic role/template entities;
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — approved naming, identity and built-in workspace rules.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — approved naming, identity and workspace rules.
 
-## Validated Single semantic-workspace baseline
+## Histogram research-parity checkpoint
 
-The first implementation deliberately used the one-pane **Single · Resolver Test** fixture to remove multi-pane geometry as a variable.
+The generic Histogram suite is closed at its current maturity checkpoint.
 
-The same reserved built-in workspace was validated through:
+### Table Generator
 
-```text
-MLG + INI
-→ ts_shim live/capture
-→ MLG + INI
-```
+Current mature behavior includes:
 
-Recorded source resolved:
+- Full Log / Current A/B / Saved Range;
+- shared Qualification and Math Channels;
+- automatic/custom/MSQ-derived geometry;
+- Count, Mean, Median, Min, Max, Sum, Standard Deviation, Variance and Weighted Mean;
+- Z-reference/subtraction;
+- MLV-style weighted breakpoint-node behavior;
+- exact cell evidence with X/Y/Z/reference/delta values;
+- Logger navigation and CSV/provenance.
 
-```text
-ini:RPMValue
-ini:MAPValue
-ini:TPSValue
-ini:coolant
-```
+### Distribution
 
-Shim resolved:
+Current mature behavior includes:
 
-```text
-RPMValue
-MAPValue
-TPSValue
-coolant
-```
+- shared scopes/Qualification/Math Channels;
+- Count / % Samples / Time;
+- Histogram/Cumulative;
+- two-scope comparison on shared geometry;
+- saved setups and CSV export;
+- exact Fixed Min/Max/Width geometry for repeatable tests;
+- outside-geometry evidence reported explicitly rather than clamped to edge bins;
+- bin → Logger navigation.
 
-In both source states the built-in remained `built-in:single-resolver-test`, all four assignments were renderable/active, unavailable assigned channels were zero, runtime health was `0 ISSUE / 0 WARN`, and runtime errors were zero.
+### Scatter
 
-Automated validation for that resolver/UI slice reached:
+Current targeted maturity includes:
 
-```text
-npm run typecheck  → pass
-npm test           → 71 test files / 362 tests passed
-```
+- shared scopes/Qualification/Math Channels;
+- Single/Dual and Dots/Lines;
+- density heat and bounded large-log rendering;
+- point and box-region evidence;
+- strongest contiguous selected-region visit → Logger;
+- saved setups;
+- complete qualified/selected-region CSV export.
 
-This proves the important part of the architecture: **semantic workspace identity survives while source-specific channel identities change underneath it**.
+### Math Channels
 
-## General · Single production preset — feature branch status
+Current expression support includes:
 
-Draft PR #343 on `feat/single-prepopulated-workspace` promotes the validated Single path to the first production preset, **General · Single**.
+- arithmetic;
+- comparisons and logical expressions;
+- lazy `if()`;
+- exact-name-first MLV-style `[Channel-N]` historical references;
+- `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()`.
 
-Target roles:
+Math Channels remain based on physical source dependencies; nested saved Math Channel references are deliberately unsupported.
 
-```text
-Required:   RPM, MAP
-Preferred:  TPS, Coolant Temp
-Optional:   Intake Air Temp, Battery Voltage, Lambda, Ignition Advance
-```
+The Table Generator, Distribution and expanded Math Channel behavior have passed practical browser testing after the parity implementation.
 
-Current EpicEFI target mapping:
+## Shared Histogram timeline UI
 
-```text
-MLG + INI                          ts_shim
-ini:RPMValue                       RPMValue
-ini:MAPValue                       MAPValue
-ini:TPSValue                       TPSValue
-ini:coolant                        coolant
-ini:intake                         intake
-ini:VBatt                          VBatt
-ini:lambdaValue                    lambdaValue
-ini:correctedIgnitionAdvance       correctedIgnitionAdvance
-```
+Logger owns the authoritative timeline component. Table Generator, Distribution and Scatter reuse the complete Logger `.timeline-wrap`.
 
-The eight-role expansion is implemented on the feature branch but must not be described as runtime-validated until the local typecheck/test and real MLG → Shim → MLG pass are completed.
+This is an explicit invariant from PR #381. The Hide/Show controls edge tab must appear in the same centered position on the upper edge of the timeline/control panel in all four surfaces.
 
-The existing editable `General` workspace is intentionally preserved. The immutable production preset is therefore named **General · Single** for now so the two entries remain unambiguous.
+Do not move `.timeline-shell` and `.edge-toggle--timeline` independently when docking Histogram views; doing so breaks the positioning context and can place the control inside or behind the analysis surface.
 
 ## Validated real-ECU Shim baseline
 
@@ -268,10 +293,6 @@ MLG + INI
 → MLG/INI binding restored
 → canonical workspace IDs restored
 ```
-
-The validated live-source implementation entered `main` through the squash merge:
-
-`ad6d6a5ed26939ce7d27e4e4a018be8b2bd88bdc`
 
 ## Current Shim Logger workflow
 
@@ -322,7 +343,13 @@ See [`docs/TS_SHIM_DEVELOPMENT_PROXY.md`](docs/TS_SHIM_DEVELOPMENT_PROXY.md) for
 
 The intensive large-log architecture campaign is complete for now. Reopen performance work only for a concrete regression or measured new workload issue.
 
-The long-used ~1.19 GB / 320,458-record MLG remains a useful reference workload. Its known source properties include 291 recovered retry artifacts, 8 unrecovered CRC records and 9 counter anomalies; these are source-log properties, not Shim or semantic-workspace regressions.
+The long-used ~1.19 GB / 320,458-record MLG remains a useful reference workload. Its known source properties include recovered retry artifacts plus a small set of unrecovered CRC/counter anomalies; these are source-log properties, not Shim, workspace or Histogram regressions.
+
+## Current product direction
+
+The starter-template and generic Histogram feature tracks are closed at their current checkpoints.
+
+When deliberate feature work resumes, prefer broader maturity of the thinner Analyzer surfaces — especially **Fuel / Injector** and **Trigger / Sync**, then remaining AE / MAP Predict and Idle gaps — rather than adding more generic Histogram features or deepening already-mature Fueling/Ignition without a concrete reason.
 
 ## Documentation authority
 
@@ -331,25 +358,25 @@ Current project documentation lives under [`docs/`](docs/).
 Most important current-state documents:
 
 - [`HANDOFF.md`](docs/HANDOFF.md) — **exact latest continuation state**.
-- [`PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) — semantic-role, layout and built-in workspace product/implementation target.
-- [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system/dependency architecture, including semantic workspace materialization.
-- [`DATA_MODEL.md`](docs/DATA_MODEL.md) — normalized source/channel/event/session and semantic-role/template concepts.
-- [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions, including D-051–D-054 for semantic built-ins.
-- [`TS_SHIM_STATUS.md`](docs/TS_SHIM_STATUS.md) — **validated live Shim implementation/runtime status**.
-- [`TS_SHIM_INTEGRATION.md`](docs/TS_SHIM_INTEGRATION.md) — implemented Shim architecture/protocol/invariants.
+- [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation/refinement plan and current execution position.
+- [`HISTOGRAM.md`](docs/HISTOGRAM.md) — current generic analysis behavior/invariants.
+- [`PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) — semantic-role/layout/starter catalog.
+- [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system/dependency architecture.
+- [`DATA_MODEL.md`](docs/DATA_MODEL.md) — normalized source/channel/event/session concepts.
+- [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions.
+- [`TS_SHIM_STATUS.md`](docs/TS_SHIM_STATUS.md) — validated live Shim implementation/runtime status.
+- [`TS_SHIM_INTEGRATION.md`](docs/TS_SHIM_INTEGRATION.md) — Shim architecture/protocol/invariants.
 - [`TS_SHIM_DEVELOPMENT_PROXY.md`](docs/TS_SHIM_DEVELOPMENT_PROXY.md) — local/LAN same-origin test flow.
 - [`PRODUCT.md`](docs/PRODUCT.md) — product scope and feature map.
 - [`ANALYZER.md`](docs/ANALYZER.md) — Analyzer semantics and maturity direction.
 - [`PERFORMANCE.md`](docs/PERFORMANCE.md) — performance/memory requirements and evidence.
-- [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation/refinement plan.
+- [`UI_REFERENCE.md`](docs/UI_REFERENCE.md) — approved current interaction hierarchy/invariants.
 
-The semantic workspace documents above were refreshed together on `feat/single-prepopulated-workspace` after the first Single resolver runtime validation.
-
-When historical/current-state wording conflicts, use current `main`, `HANDOFF.md`, the active feature branch where applicable, and the latest verified test/runtime state.
+When historical/current-state wording conflicts, use current `main` plus `docs/HANDOFF.md` and the latest verified test/runtime state.
 
 ## Web delivery
 
-The normal public Web application is deployed from `main` to GitHub Pages:
+The public Web application is deployed from `main` to GitHub Pages:
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
