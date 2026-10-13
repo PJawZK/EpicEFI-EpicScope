@@ -135,6 +135,8 @@ Distribution currently supports:
 - mean, median, standard deviation, min/max and percentile summaries;
 - optional second scope comparison;
 - one shared bin geometry for both compared scopes;
+- saved Distribution setup presets retaining channel, scope, Qualification, metric, bins, view and compare scope;
+- CSV export of shared bin geometry/values plus per-series summary statistics and eligibility provenance;
 - bin → Logger evidence navigation;
 - shared Logger timeline.
 
@@ -146,10 +148,8 @@ Distribution currently supports:
 
 ### Distribution worthwhile future work
 
-Useful remaining improvements include:
+The setup-persistence and export maturity pass is complete. Remaining improvements are narrower:
 
-- saved view/setup presets;
-- CSV export of bins plus summary statistics;
 - explicit fixed min/max/bin-width geometry for reproducible repeated tests;
 - deeper consolidation around shared histogram-core primitives where that reduces duplicate definitions without changing behavior.
 
