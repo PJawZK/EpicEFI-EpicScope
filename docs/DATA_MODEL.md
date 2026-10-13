@@ -20,6 +20,15 @@ Log sources such as MLG, CSV, future MDF4 support, and later log formats normali
 
 Tune/configuration sources such as INI and MSQ normalize into source-context/tune concepts rather than being forced into the log model. INI may also contribute the stable runtime/output-channel catalog used to bind logs into persistent workspaces.
 
+Built-in graph workspaces add a semantic role layer above source-local/logical channel identities so task definitions are not tied to one ECU vendor or one acquisition source.
+
+Related authority:
+
+- `HANDOFF.md` — latest runtime/continuation state;
+- `PREPOPULATED_WORKSPACES.md` — product catalog and current built-in implementation;
+- `ARCHITECTURE.md` — semantic/capability/materialization boundaries;
+- `DECISIONS.md` — D-051–D-054 approved semantic workspace rules.
+
 This document defines the initial authority. Exact TypeScript/native structures may evolve through approved decisions while preserving these responsibilities.
 
 ## Core concepts
@@ -55,6 +64,7 @@ EpicScope distinguishes two persistence scopes inside presentation state:
 - named graph workspaces;
 - pane layout/geometry and active-pane identity;
 - stable logical channel assignments;
+- built-in workspace/template identity;
 - favorites and display preferences;
 - panel visibility/sizing;
 - reusable UI configuration that should survive opening/closing different logs.
@@ -67,7 +77,7 @@ EpicScope distinguishes two persistence scopes inside presentation state:
 - source-specific navigation state;
 - UI filters that only make sense for that recording.
 
-The Web implementation now uses the split above: `epicscope.web-application-workspace` v1 stores reusable presentation structure independently of log identity, while `epicscope.web-workspace` v1 remains keyed to an exact log for recording-specific navigation/annotation state. A separate normalized INI channel-catalog artifact allows stable channel definitions to be restored without storing raw INI text.
+The Web implementation uses the split above: `epicscope.web-application-workspace` v1 stores reusable presentation structure independently of log identity, while `epicscope.web-workspace` v1 remains keyed to an exact log for recording-specific navigation/annotation state. A separate normalized INI channel-catalog artifact allows stable channel definitions to be restored without storing raw INI text.
 
 Workspace state may also be persisted alongside a session artifact for convenience, but it remains conceptually separate from the domain Session so `core/session/` does not become coupled to a particular UI implementation.
 
@@ -126,6 +136,73 @@ Source names should be preserved so EpicScope can show exact TunerStudio/MegaLog
 
 Once an INI-backed catalog is available, a channel may additionally have a **stable logical key** intended to survive changes in MLG field ordering. A source-local identifier such as `mlg:<field-index>` remains useful for a specific recording but should not become the sole long-term persisted identity of a workspace channel assignment.
 
+### Semantic channel role
+
+A **SemanticChannelRole** describes what a channel means to EpicScope independently of how an ECU/source names it.
+
+Examples:
+
+```text
+engine.rpm
+engine.map
+engine.throttle.position
+temperature.coolant
+temperature.intakeAir
+electrical.batteryVoltage
+fuel.lambda
+ignition.advance
+```
+
+Semantic roles are intentionally separate from:
+
+- source-local IDs such as `mlg:31`;
+- stable logical/catalog IDs such as `ini:RPMValue`;
+- raw Shim runtime IDs such as `RPMValue`;
+- legacy/vendor/import aliases such as `TP`, `CLT`, `ECT`, `PW` or `Batt V`;
+- preferred EpicScope display names.
+
+Conceptual identity stack:
+
+```text
+semantic role
+      ↓
+logical ECU channel
+      ↓
+current source identity
+```
+
+Example:
+
+```text
+engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
+engine.rpm → RPMValue → RPMValue      (ts_shim)
+```
+
+The semantic layer allows a built-in workspace/analyzer to express intent without becoming a source-format or vendor-name parser.
+
+A role definition may contain:
+
+- stable semantic ID;
+- preferred EpicScope display name;
+- ordered exact aliases;
+- conservative pattern fallbacks;
+- exclusions that prevent obvious false matches;
+- optional ECU-family/schema specialization;
+- optional user/schema override;
+- optional capability/category metadata.
+
+Resolution preference is:
+
+1. explicit user/schema override;
+2. exact native/known alias;
+3. ECU-family/cross-ECU alias;
+4. conservative normalized-name fallback;
+5. unresolved.
+
+User/schema overrides take precedence over automatic inference.
+
+Legacy aliases are compatibility input only and do not determine the preferred display name. For example, `TP` may resolve `engine.throttle.position`, but the visible EpicScope name is **TPS**.
+
 ### Channel catalog
 
 A **ChannelCatalog** represents the set of logical channels known to the current ECU/firmware context independently of one recording.
@@ -134,13 +211,16 @@ It may be built from:
 
 - normalized INI runtime/output-channel definitions;
 - channels discovered from an opened log;
+- Shim schema channels while Shim owns the live source;
 - approved user aliases/derived-channel metadata later.
 
 Catalog entries must expose availability state without fabricating data. At minimum the model must distinguish:
 
-- **known + data** — catalog channel successfully bound to the current log;
-- **known, no data** — channel exists in the catalog but is absent from the current log;
+- **known + data** — catalog channel successfully bound to the current source;
+- **known, no data** — channel exists in the catalog but is absent from the current source;
 - **log-only** — current log contains a usable channel not known by the loaded INI.
+
+Semantic-role resolution operates over the authoritative current catalog/channel set; it does not make unavailable source values appear.
 
 ### Channel binding
 
@@ -173,6 +253,38 @@ The conceptual API should allow bounded queries such as:
 - sample count and validity information.
 
 The data model must not require all values to be resident in memory.
+
+### Built-in workspace template
+
+A **BuiltInWorkspaceTemplate** is an immutable product-defined task template.
+
+It conceptually contains:
+
+- stable template identity;
+- visible name/category;
+- layout reference;
+- pane definitions;
+- semantic role slots per pane;
+- role requirement level (`required`, `preferred`, `optional`);
+- optional ECU-family/schema specialization.
+
+The template does not persist one source's concrete channel IDs as its product meaning.
+
+Materialization resolves semantic role slots against the authoritative channel set and produces the concrete channel assignments for the current source.
+
+A built-in should use a reserved runtime identity (for example `built-in:*`) so it cannot overwrite or collide with an editable user workspace that happens to have the same visible name.
+
+A duplicated built-in becomes a normal editable user workspace and must stop auto-repopulating.
+
+### Workspace role requirement
+
+Role requirement levels are:
+
+- **required** — central to the workspace purpose;
+- **preferred** — normally expected and materially useful;
+- **optional** — enhancement when available.
+
+Unresolved preferred/optional roles do not invalidate a workspace. Unresolved required roles are reported explicitly, but the workspace still degrades rather than fabricating data.
 
 ### Timebase
 
@@ -240,7 +352,7 @@ It may include:
 
 Tune context is optional. Generic log analysis must still work without it.
 
-INI and MSQ have different responsibilities: INI may define firmware/channel/table metadata and stable logical channel identity; MSQ later supplies actual tune/calibration values. Neither source replaces MLG as the authority for recorded sample values.
+INI and MSQ have different responsibilities: INI may define firmware/channel/table metadata and stable logical channel identity; MSQ supplies actual tune/calibration values. Neither source replaces MLG as the authority for recorded sample values.
 
 ### Tune table
 
@@ -296,6 +408,7 @@ Consumers should be able to distinguish:
 - missing value;
 - invalid/corrupt value;
 - channel unavailable;
+- semantic role unresolved;
 - derived result unavailable because dependencies are missing.
 
 ## Units
@@ -312,6 +425,8 @@ Normalized data must retain enough provenance to answer questions such as:
 
 - Which source file produced this channel?
 - What was the original channel name?
+- Which source identity is currently backing this semantic role?
+- Was a semantic mapping exact, overridden, family-based or heuristic?
 - Was this value imported or derived?
 - Which detector/analyzer version created this event/result?
 
@@ -327,6 +442,8 @@ Schema changes must follow one of these paths:
 
 Silent incompatibility is prohibited.
 
+Built-in template identity and user workspace identity must remain separate. Visible names are not sufficient identity for automatic migration or repopulation.
+
 ## Performance constraint on model design
 
 The conceptual data model must not force a memory representation proportional to source file size plus multiple full duplicates.
@@ -340,6 +457,8 @@ The Web prototype may initially use simpler implementations, but public contract
 - lazy decoding;
 - bounded viewport queries;
 - multiresolution/downsample caches.
+
+Semantic-role resolution is metadata work and must not require duplicating channel sample arrays.
 
 ## Change control
 

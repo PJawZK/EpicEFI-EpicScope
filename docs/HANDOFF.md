@@ -4,19 +4,30 @@
 
 Repository: `PJawZK/EpicEFI-EpicScope`
 
-Authoritative branch: `main`
+Authoritative production branch: `main`
 
-Current authoritative main baseline:
+Current validated `main` live-source baseline entered through PR #341 / squash merge:
 
-`6b048b5a77dfc2cfe0d050e1da334a92a147b591`
+`ad6d6a5ed26939ce7d27e4e4a018be8b2bd88bdc`
 
-That merge is PR #345, the Histogram help-consistency milestone.
+Current in-progress pre-populated-workspace branch:
 
-Hosted application:
+`feat/single-prepopulated-workspace`
 
-`https://pjawzk.github.io/EpicEFI-EpicScope/`
+Draft PR:
 
-This file is the compact present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, current `main`, this file and current CI/test state win.
+`#343 — Add General Single pre-populated workspace`
+
+This file is the compact present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, current `main`, this file, the active feature branch, and the latest verified tests/runtime evidence win.
+
+Related semantic-workspace authority:
+
+- [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) — product catalog, role contents and implementation status;
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — semantic/capability layer and materialization boundaries;
+- [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
+- [`DECISIONS.md`](DECISIONS.md) — D-051–D-054 naming, identity and built-in workspace decisions.
+
+These repository docs were refreshed together on the active feature branch from the validated EpicScope-specific state established during the Single semantic-workspace work.
 
 ## Current project position — 2026-10-13
 
@@ -24,25 +35,11 @@ EpicScope Web remains the functional reference/validation implementation for Log
 
 The large recorded-log performance campaign is complete unless a measured regression appears.
 
-The real ECU/Pi/`ts_shim` source workflow has been validated and merged into `main`; it is not currently the active product-development focus.
+The `ts_shim` source architecture is validated on the real ECU/Pi/LAN path and is part of `main`.
 
-The latest active product work moved from Analyzer maturity into a Histogram consistency pass. That pass is now substantially complete through PRs #339, #340, #344 and #345.
+The current active product-development track is **multi-ECU pre-populated Logger workspaces** built on a semantic channel-role layer.
 
-Analyzer feature expansion is deliberately paused for now. Fueling and non-knock Ignition reached sensible maturity checkpoints; other analyzers should later be brought to similar practical coverage before a broad cleanup/consolidation/optimization phase is started.
-
-Do not automatically reopen Fueling/Ignition, restart broad Histogram redesign, or begin a new platform phase without a concrete user-visible need, measured regression, or explicit project-owner direction.
-
-## Product/workflow invariant
-
-The approved visible workflow remains:
-
-> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
-
-For generic Histogram analysis, the current shared sub-flow is:
-
-> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
-
-Shared concepts should use shared names and semantics rather than diverging per page.
+The first implementation deliberately used the simplest **Single** graph layout to prove the architecture before adding multi-pane geometry.
 
 ## Validated real runtime topology
 
@@ -66,7 +63,7 @@ Firmware signature observed during the validated run:
 
 `rusEFI master.2026.10.12.MEGA144H7.2957763282`
 
-Local development command used on JZ-Main:
+Local development command on JZ-Main:
 
 ```bash
 cd ~/EpicEFI-EpicScope
@@ -97,11 +94,7 @@ Loaded INI and MSQ are independent application resources and survive source tran
 - No page reload is used.
 - INI, MSQ, reusable workspace, runtime errors and performance/report history remain.
 - Shim's decodable schema becomes the temporary Channel Browser catalog.
-- Existing stable graph assignments map onto matching raw Shim runtime IDs.
-
-### Unload Log
-
-**Unload Log** releases only the active recorded MLG source/binding/log-specific source ownership. It does not reset the application.
+- Stable graph assignments can map onto matching raw Shim runtime IDs.
 
 ### Shim → MLG
 
@@ -109,9 +102,9 @@ Opening a recorded MLG makes Shim relinquish temporary catalog ownership first. 
 
 Workspace identities migrate back to canonical `ini:*` IDs.
 
-## Stable channel identity rule
+## Stable source identity rule
 
-Recorded INI-bound workspaces use canonical stable IDs such as:
+Recorded INI-bound identities use canonical IDs such as:
 
 ```text
 ini:coolant
@@ -121,7 +114,7 @@ ini:RPMValue
 ini:TPSValue
 ```
 
-Shim publishes the matching raw IDs:
+Shim publishes matching raw IDs:
 
 ```text
 coolant
@@ -131,234 +124,374 @@ RPMValue
 TPSValue
 ```
 
-While Shim is authoritative, stable assignments resolve to raw Shim channels. When an INI-bound MLG returns, the workspace returns to canonical `ini:*` identities.
-
 Do not reintroduce raw + `ini:*` duplicate traces.
 
-## Real source-validation checkpoint
+## Semantic workspace architecture — approved direction
 
-The full source round trip was tested:
+Built-in task workspaces are defined primarily in terms of **semantic channel roles**, not EpicEFI channel names.
+
+Identity layers:
+
+```text
+semantic role
+      ↓
+logical ECU channel
+      ↓
+current source identity
+```
+
+Example:
+
+```text
+engine.rpm
+    ↓
+RPMValue
+    ↓
+ini:RPMValue  (MLG + INI)
+
+engine.rpm
+    ↓
+RPMValue
+    ↓
+RPMValue      (Shim)
+```
+
+Resolution order:
+
+1. explicit user/schema override;
+2. exact EpicEFI/native alias;
+3. ECU-family/cross-ECU alias;
+4. conservative normalized-name matching;
+5. unresolved.
+
+User override wins over automatic mapping.
+
+Missing channels remain explicit. Built-ins degrade gracefully rather than fabricating data or failing the entire workspace.
+
+### Display naming rule
+
+Compatibility aliases never dictate the visible EpicScope name.
+
+Important locked example:
+
+```text
+legacy/import alias: TP
+semantic role:       engine.throttle.position
+visible name:        TPS
+```
+
+`TP` may be accepted for compatibility but must not be used as the preferred display name.
+
+## MLV FieldMaps evidence
+
+MegaLogViewer HD's `FieldMaps/*.properties` set was inspected as compatibility evidence.
+
+Observed dataset:
+
+- 29 ECU/software-specific field-map files;
+- 132 unique normalized keys;
+- broad coverage for common RPM/MAP/TPS/temperature/fueling concepts;
+- historical/awkward normalized keys such as `TP`, `coolantTemp`, `yAxisFuel`;
+- semantic inconsistencies such as `egoCorrection` across ECU families;
+- vendor-specific numeric keys in some maps.
+
+Decision: use MLV FieldMaps as an alias/compatibility source and architectural precedent, **not** as EpicScope's semantic vocabulary or display-name authority.
+
+## Layout vs workspace
+
+- **Layout** = graph geometry only.
+- **Workspace** = task-oriented configuration using a layout plus semantic channel slots.
+
+Initial layout names:
+
+- Single
+- Dual
+- Triple
+- Quad
+- Focus + 2
+- Focus + 3
+- Six Pane
+
+Initial generic workspace catalog:
+
+- General
+- Idle
+- Fuel
+- Ignition
+- Boost
+- Transient / AE
+- Cooling
+- Fuel System
+- Trigger / Sync
+- Startup / Warmup
+- Electrical
+- Vehicle / Driveline
+
+EpicEFI-specific workspaces may coexist behind capability checks, e.g. Dual Chamber Boost, MAP Predict + Wall Wetting, ETB Control, Fuel Rail Diagnostics, Trigger + Sync Detailed, Injector / Ignition Timing and Engine Protection.
+
+## Validated first slice — Single · Resolver Test
+
+The first development fixture intentionally used one pane and only four semantic roles:
+
+```text
+Required
+- RPM
+
+Preferred
+- MAP
+- TPS
+
+Optional
+- Coolant Temp
+```
+
+The same reserved built-in workspace was tested through the real browser source round trip:
 
 ```text
 MLG + INI
-→ Connect Shim
-→ live schema
-→ Record / live Logger view
-→ Stop Recording
-→ Open MLG
-→ INI catalog restored
-→ MLG/INI binding restored
-→ canonical workspace identities restored
+→ Shim live/capture
+→ MLG + INI
 ```
 
-Source-lifetime diagnostics showed replaced recorded/bound sources becoming collected; no obvious cross-source strong-reference leak was observed.
+Recorded identities:
 
-The Web implementation remains read-only with respect to ECU control. No tune writes, burns, flashing, mocks, ECU commands or CAN injection are part of this baseline.
+```text
+ini:RPMValue
+ini:MAPValue
+ini:TPSValue
+ini:coolant
+```
 
-For source/protocol details use the `TS_SHIM_*` documents in `docs/`.
+Shim identities:
 
-## Logger — current authority
+```text
+RPMValue
+MAPValue
+TPSValue
+coolant
+```
 
-Mature behavior includes:
+Validated runtime evidence in both source states:
 
-- MLG v1/v2 staged import, CRC/source diagnostics and large-log reuse;
-- INI-backed channel catalog/binding;
-- optional MSQ tune enrichment;
-- reusable named graph workspaces plus exact-log navigation persistence;
-- fixed/freeform multi-pane Logger;
-- A/B ranges, markers and saved ranges;
-- stable channel identity across recorded and Shim source transitions;
-- explicit unavailable-channel handling;
-- retained-memory, parser, performance and runtime-health diagnostics.
+```text
+activeWorkspace=built-in:single-resolver-test
+visiblePanes=1
+assignedVisibleChannels=4
+renderableAssignedVisibleChannels=4
+unavailableAssignedVisibleChannels=0
+activeVisibleTraces=4
+Health=0 ISSUE / 0 WARN
+Runtime errors=0
+```
 
-The long-used 1.19 GB / 320,458-record MLG remains the main large-log stress/reference file.
+This proves the central architecture: **workspace meaning/identity remains stable while source-specific channel IDs re-resolve underneath it**.
 
-Do not resume broad Logger/performance micro-optimization without a concrete measured problem.
+The editable `General` workspace remained independent during this test. Built-ins use reserved `built-in:*` IDs and are never name-matched onto user workspaces.
 
-## Analyzer — current checkpoint
+Validated automated baseline for this slice:
 
-Analyzer work is deliberately paused after a substantial maturity pass.
+```text
+npm run typecheck  → pass
+npm test           → 71 test files passed
+                     362 tests passed
+                     0 failed
+```
 
-Current surfaces remain:
+## First production preset — General · Single
 
-- Range Compare;
-- Tune Table;
-- Boost;
-- Idle;
-- AE / MAP Predict;
-- Fueling;
-- Ignition;
-- Fuel / Injector;
-- Trigger / Sync.
+The validated Single resolver path is now being promoted to **General · Single** on `feat/single-prepopulated-workspace`.
 
-### Shared Analyzer presentation/interaction
+Target roles:
 
-Current conventions include:
+```text
+Required
+- RPM
+- MAP
 
-- Full Log / Current A/B / Saved Range scopes;
-- shared Qualification where appropriate;
-- evidence navigation back to Logger;
-- progressive disclosure: a small decision-facing default summary with secondary diagnostics behind **More details**;
-- sortable evidence tables where useful;
-- one standardized anchored round-`i` help interaction;
-- aligned-evidence canvases render at real displayed size and respond to layout resize rather than relying on CSS stretching;
-- avoid dense all-signals/all-envelopes defaults; optional context can be enabled deliberately.
+Preferred
+- TPS
+- Coolant Temp
 
-### Fueling checkpoint
+Optional
+- Intake Air Temp
+- Battery Voltage
+- Lambda
+- Ignition Advance
+```
 
-Fueling is mature enough to freeze unless a concrete defect appears.
+Current EpicEFI native resolution target:
 
-Current important behavior includes:
+```text
+MLG + INI                          ts_shim
+ini:RPMValue                       RPMValue
+ini:MAPValue                       MAPValue
+ini:TPSValue                       TPSValue
+ini:coolant                        coolant
+ini:intake                         intake
+ini:VBatt                          VBatt
+ini:lambdaValue                    lambdaValue
+ini:correctedIgnitionAdvance       correctedIgnitionAdvance
+```
 
-- lambda-first actual/target semantics (`lambdaValue` / `targetLambda`);
-- Gas Scale AFR before generic AFR as fallback;
-- `veValue` as current live effective VE, distinct from the VE table and `Fuel: Tuned VE`;
-- `actualLastInjection` as preferred command signal for observed mixture-response delay;
-- `veTableYAxis` as preferred VE/load coordinate;
-- DFCO and other fuel cuts explicitly identified/excluded from ordinary steady calibration conclusions;
-- AE/decel transient context separated from steady evidence;
-- rolling/trailing-window stability rather than brittle adjacent-sample derivatives;
-- low-count bins remain visible as Weak/Moderate/Strong evidence instead of disappearing;
-- scale-aware Lambda/AFR thresholds;
-- STFT/LTFT/total-correction context;
-- observed mixture-response-delay analysis;
-- compact/progressive UI and Logger evidence navigation.
+The current INI confirms the EpicEFI runtime names used above.
 
-A Fueling heatmap experiment was rolled back after it caused page-load/graph-resize regressions. Do not reintroduce a DOM-heavy overview implementation without a safer architecture and measured validation.
+### Verification status of General · Single
 
-See `docs/FUELING_ANALYZER.md` for the detailed authoritative Fueling semantics.
+The eight-role expansion is implemented on the feature branch and documented in draft PR #343.
 
-### Ignition checkpoint — non-knock scope
-
-Current Ignition work intentionally avoids knock diagnosis because the current validation path does not include trusted knock hardware/evidence.
-
-Current non-knock behavior includes:
-
-- final ignition advance as the primary required signal;
-- optional aggregate correction/retard, dwell, RPM and ignition-load context;
-- large timing-step and correction-activity event evidence;
-- large-log-safe statistics/event presentation;
-- clean default aligned evidence (decision-facing traces only, percentile envelopes/context opt-in);
-- ranked **Areas to review** built from repeated stable RPM/load regions;
-- configurable normal-running review focus (default minimum 1000 rpm) so cranking/start/very-low-RPM regions do not dominate the shortlist;
-- optional MSQ base-ignition-table comparison using the actual ignition table axes;
-- **Source clue** attribution that distinguishes behavior substantially explained by the base table, overlapping correction activity, residual/unexplained timing movement, or insufficient evidence.
-
-Preferred EpicEFI automatic roles now prioritize canonical channels such as:
-
-- `correctedIgnitionAdvance` for final timing;
-- `ignitionAdvanceCorrections` / `ignitionCorrections` for aggregate correction context;
-- `sparkDwell` for dwell;
-- `RPMValue` for RPM;
-- `loadForIgnitionTableDot` / `ignitionLoad` before generic MAP for ignition-table load.
-
-Ignition remains observational. It does not claim knock/detonation, declare timing safe/unsafe, or recommend adding/removing a specific number of degrees from log evidence alone.
-
-## Histogram — current authoritative checkpoint
-
-Histogram coherence is substantially improved and is the latest completed product track.
-
-Current surfaces:
-
-- Table Generator;
-- Distribution;
-- Scatter;
-- Math Channels.
-
-Four milestones are confirmed on current `main`:
-
-### PR #339 — Scope/evidence flow
-
-- Full Log / Current A/B / Saved Range consistency;
-- shared Logger timeline including Table Generator;
-- Distribution correctness fixes for comparison geometry and Time gaps;
-- Scatter Full Log/A-B/Saved Range support;
-- full-qualified-data density with bounded visible rendering;
-- line-gap handling;
-- rendered Scatter point → Logger evidence navigation;
-- redundant manual Refresh controls removed from auto-updating flows.
-
-### PR #340 — Shared Qualification
-
-- the same saved grouped ALL/ANY Qualification sets work in Table Generator, Distribution and Scatter;
-- Qualification is applied before Distribution/Scatter analysis;
-- eligible/input provenance remains visible;
-- missing dependencies remain explicit rather than silently changing filter meaning.
-
-### PR #344 — Shared Math Channels
-
-- saved Math Channels are first-class inputs in Distribution and Scatter as well as Table Generator;
-- calculated traces retain source alignment;
-- Qualification may use Math Channels;
-- the old compact Table Generator formula editor remains internally dormant/hidden and is deferred to cleanup.
-
-### PR #345 — Unified help
-
-- Histogram now uses the shared Analyzer-style anchored round-`i` information popup;
-- Distribution/Scatter gained focused explanations for non-obvious calculations;
-- Table Generator's bespoke help surface is no longer the visible path;
-- help density remains intentionally restrained.
-
-Detailed current Histogram behavior and remaining work are documented in `docs/HISTOGRAM.md`.
-
-### Histogram remaining useful work
-
-The broad coherence pass is complete. Remaining worthwhile functionality is narrower:
-
-1. saved setups/presets for Distribution and Scatter;
-2. exports for Distribution and Scatter;
-3. richer Scatter region selection rather than only individual points;
-4. eventually replace the remaining Scatter timeline text/DOM bridge with direct shared state propagation;
-5. later remove dormant duplicate/runtime-refinement code during the planned cleanup phase.
-
-Do not restart a broad Histogram rewrite.
-
-## Cleanup/consolidation policy
-
-A dedicated cleanup/optimization phase is intentionally deferred until analyzer coverage is broader.
-
-When that phase begins, it should explicitly review:
-
-- dormant/duplicate editor paths;
-- analyzer-local/shared DOM enhancement code;
-- unnecessary MutationObservers;
-- direct DOM state bridges/lookups that should become explicit state/contracts;
-- Boost-specific utilities that have become generic;
-- duplicate table/event/help/rendering logic;
-- canvas resize ownership;
-- CSS duplication and runtime UI surgery;
-- dead/unreachable branches and compatibility leftovers;
-- large-log performance after consolidation.
-
-Until then, do not destabilize mature paths solely to make code prettier.
-
-## Current Git / workflow state
-
-Current authoritative `main`:
-
-`6b048b5a77dfc2cfe0d050e1da334a92a147b591`
-
-Recent merged milestones relevant to this handoff:
-
-- #338 — Ignition base-table/source attribution;
-- #339 — Histogram scope/evidence flow;
-- #340 — shared Histogram Qualification;
-- #341 — validated `ts_shim` live/recorded source workflow promoted to `main`;
-- #344 — shared Histogram Math Channels;
-- #345 — unified Histogram help.
-
-Post-merge type-check, full tests, production build and GitHub Pages deployment are green at the current Histogram baseline.
-
-PR #342 (Shim HTTP fetch binding) and draft PR #343 (General · Single pre-populated workspace) are not part of the current `main` baseline unless they are later merged/reconciled.
-
-If continuing from a local clone:
+It is **not yet runtime-validated** at the time of this handoff update. Do not replace the validated four-role checkpoint with the eight-role claim until the user has run:
 
 ```bash
-cd ~/EpicEFI-EpicScope
-git switch main
 git pull
 npm run typecheck
 npm test
 ```
 
-Continue from current `main`, not an older Analyzer/Histogram feature branch.
+and then verified real:
+
+```text
+MLG + INI → Shim → MLG
+```
+
+with all available General roles resolving as expected.
+
+## Built-in/user workspace behavior
+
+Built-ins are immutable templates with reserved runtime IDs.
+
+Rules:
+
+- built-ins may automatically re-resolve when authoritative channel catalogs change;
+- normal user workspaces are never automatically repopulated;
+- rename/delete are disabled for built-ins;
+- Duplicate creates a normal editable workspace;
+- a user workspace may have the same visible name without collision because identity is not name-based.
+
+The validation-era internal ID `built-in:single-resolver-test` is temporarily retained during promotion so already-persisted validation state upgrades in place rather than creating a duplicate.
+
+The existing editable default workspace named `General` is intentionally preserved. Until explicit migration policy is chosen, the immutable preset remains visibly named **General · Single**.
+
+## Capability-driven future work
+
+Do not hard-code board-name conditions such as `if ECU == Mega144H7` for workspace availability.
+
+Prefer semantic capabilities such as:
+
+```text
+engine.rpm
+engine.map
+engine.throttle.position
+temperature.coolant
+temperature.intakeAir
+fuel.lambda
+boost.target
+boost.wg.upper
+boost.wg.lower
+fuel.pressure
+fuel.railDifferential
+idle.target
+idle.command
+ignition.advance
+knock.level
+```
+
+Generic and ECU-native workspaces may coexist. Required/preferred/optional role levels decide how gracefully each workspace degrades on a given schema.
+
+## Shim Logger UX — current
+
+The normal Logger Channel Browser is authoritative for the Shim recording set.
+
+Primary workflow:
+
+```text
+Connect Shim
+→ assign channels in Logger
+→ Record
+→ live Logger view starts immediately
+→ Follow / inspect history
+→ Stop Recording
+```
+
+The Shim schema remains visible while uncaptured channels are explicitly unavailable in a selected-channel capture.
+
+One narrow UI edge remains: **capture remains loaded** and **live refresh is paused** should eventually be modeled as separate states.
+
+## ts_shim implementation boundaries
+
+EpicScope's live integration is read-only.
+
+EpicScope consumes Shim's shared output snapshot rather than polling the ECU independently.
+
+Current HTTP inspection remains read-only for:
+
+- `/api/v1/inis`;
+- `/api/v1/objects`;
+- `/api/v1/triggerlog`.
+
+No tune writes, burns, flashing, mocks, ECU commands or CAN injection are part of this baseline.
+
+For architecture/protocol details use:
+
+- [`TS_SHIM_INTEGRATION.md`](TS_SHIM_INTEGRATION.md)
+- [`TS_SHIM_STATUS.md`](TS_SHIM_STATUS.md)
+- [`TS_SHIM_DEVELOPMENT_PROXY.md`](TS_SHIM_DEVELOPMENT_PROXY.md)
+
+## Recorded-log performance/parser evidence
+
+The long-used 1.19 GB / 320,458-record MLG remains the main large test log.
+
+Known source properties:
+
+- 291 recovered retry artifacts;
+- 8 unrecovered CRC records;
+- 9 counter anomalies.
+
+Those are source-log properties, not regressions introduced by Shim or semantic-workspace work.
+
+Do not reopen general micro-optimization without a concrete measured problem.
+
+## Logger / Analyzer / Histogram authority
+
+Existing mature behavior remains intact:
+
+- MLG v1/v2 staged import/CRC/source diagnostics;
+- INI-backed channel catalog/binding;
+- optional MSQ tune enrichment;
+- reusable named graph workspaces and per-log navigation persistence;
+- fixed/freeform multi-pane Logger;
+- A/B ranges, markers and saved ranges;
+- Histogram Table Generator / Distribution / Scatter / Math Channels;
+- Analyzer Range Compare, Tune Table, Boost, Idle, AE/MAP Predict, Fueling, Ignition, Fuel/Injector and Trigger/Sync surfaces;
+- evidence navigation back to Logger;
+- retained-memory, parser, performance and runtime-health diagnostics.
+
+Do not build parallel live-only Analyzer/Histogram logic. Live/retained Shim sources continue through the same normalized analysis contracts.
+
+## Development guidance
+
+Preserve these invariants:
+
+1. one authoritative telemetry/catalog owner at a time;
+2. source transitions are in-process;
+3. unrelated INI/MSQ/workspace/report state survives source changes;
+4. stable source identity survives source changes;
+5. semantic workspace meaning is source-independent;
+6. live schema ownership is explicit and temporary;
+7. returning to recorded analysis restores the recorded/INI catalog and binding;
+8. unavailable channels remain explicit;
+9. built-ins never overwrite user workspaces by visible name;
+10. user/schema semantic overrides win over automatic mapping;
+11. negotiated Shim limits/generation/stream identity are obeyed.
+
+## Git / workflow state
+
+Validated live-source baseline is on `main` through PR #341.
+
+Current semantic/pre-populated workspace work is on:
+
+```text
+feat/single-prepopulated-workspace
+PR #343 (draft)
+```
+
+Continue that branch until the General · Single expansion passes local typecheck/tests and real runtime validation. Do not merge without explicit project-owner approval.
