@@ -92,6 +92,13 @@ export type SemanticChannelRoleId =
   | 'protection.totalSparkCut'
   | 'protection.criticalError'
   | 'protection.warningActive'
+  | 'vvt.primary.actual'
+  | 'vvt.primary.target'
+  | 'vvt.primary.output'
+  | 'vvt.primary.error'
+  | 'vvt.primary.pControl'
+  | 'vvt.primary.iControl'
+  | 'vvt.primary.dControl'
   | 'cooling.coolantPressure';
 
 export interface SemanticChannelRoleDefinition {
@@ -446,6 +453,13 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'protection.totalSparkCut': { id: 'protection.totalSparkCut', displayName: 'Total Spark Cut', aliases: ['totalSparkCut', 'Total Spark Cut'], include: [/^total.*spark.*cut$/i], exclude: [/config/i, /enable/i] },
   'protection.criticalError': { id: 'protection.criticalError', displayName: 'Critical Error', aliases: ['hasCriticalError', 'Error: Active', 'Critical Error'], include: [/critical.*error/i, /^error.*active$/i], exclude: [/code/i, /count/i, /config/i] },
   'protection.warningActive': { id: 'protection.warningActive', displayName: 'Warning Active', aliases: ['isWarnNow', 'Warning: Active', 'Warning Active'], include: [/warning.*active/i, /^is.*warn.*now$/i], exclude: [/counter/i, /code/i, /config/i] },
+  'vvt.primary.actual': { id: 'vvt.primary.actual', displayName: 'VVT 1 Actual', aliases: ['vvtPositionB1I', 'VVT 1 in actual', 'VVT 1 Actual', 'Bank 1 Intake VVT Actual'], include: [/^vvt.*(?:1|bank\s*1).*intake.*actual$/i, /^vvt.*position.*b1i$/i], exclude: [/target/i, /table/i, /channel/i, /config/i] },
+  'vvt.primary.target': { id: 'vvt.primary.target', displayName: 'VVT 1 Target', aliases: ['vvtTargets1', 'VVT 1 in target', 'VVT 1 Target', 'Bank 1 Intake VVT Target'], include: [/^vvt.*(?:target|targets).*1$/i, /^vvt.*(?:1|bank\s*1).*intake.*target$/i], exclude: [/table/i, /blend/i, /config/i] },
+  'vvt.primary.output': { id: 'vvt.primary.output', displayName: 'VVT 1 Output', aliases: ['vvtStatus1_output', 'VVT 1 Output'], include: [/^vvt.*status.*1.*output$/i, /^vvt.*1.*output$/i], exclude: [/table/i, /pin/i, /channel/i, /config/i] },
+  'vvt.primary.error': { id: 'vvt.primary.error', displayName: 'VVT 1 Error', aliases: ['vvtStatus1_error', 'VVT 1 Error'], include: [/^vvt.*status.*1.*error$/i, /^vvt.*1.*error$/i], exclude: [/counter/i, /code/i, /config/i] },
+  'vvt.primary.pControl': { id: 'vvt.primary.pControl', displayName: 'VVT 1 P', aliases: ['vvtStatus1_pTerm', 'VVT 1 P Term'], include: [/^vvt.*status.*1.*p.*term$/i], exclude: [/config/i] },
+  'vvt.primary.iControl': { id: 'vvt.primary.iControl', displayName: 'VVT 1 I', aliases: ['vvtStatus1_iTerm', 'VVT 1 I Term'], include: [/^vvt.*status.*1.*i.*term$/i], exclude: [/config/i] },
+  'vvt.primary.dControl': { id: 'vvt.primary.dControl', displayName: 'VVT 1 D', aliases: ['vvtStatus1_dTerm', 'VVT 1 D Term'], include: [/^vvt.*status.*1.*d.*term$/i], exclude: [/config/i] },
   'cooling.coolantPressure': { id: 'cooling.coolantPressure', displayName: 'Coolant Pressure', aliases: ['coolantPressure', 'Coolant Pressure'], include: [/^coolant.*pressure$/i], exclude: [/raw/i, /minimum/i, /maximum/i, /limit/i, /sensor.*config/i] },
 
 };
