@@ -8,6 +8,12 @@ The feature is deliberately **evidence-first**. Analysis output is a proposal, n
 
 Research inputs for this specification include mature behavior observed in MegaLogViewer HD VE Analyze and ECUMaster EMU PRO VE Tuner. Those products are behavioral references, not implementation authorities. EpicScope should preserve useful mature safeguards while using its existing qualification, source-evidence, timestamp and semantic-channel architecture.
 
+Detailed supporting research is preserved in:
+
+- `research/MLV_BEHAVIORAL_RESEARCH.md`;
+- `research/VE_AUTOTUNE_REFERENCE_RESEARCH.md`;
+- `research/MLG_V3_RESEARCH.md` for the related MLG compatibility side-track.
+
 ## Product workflow
 
 Visible workflow:
