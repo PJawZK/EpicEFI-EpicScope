@@ -37,3 +37,4 @@ jobs:
             git commit -m 'improve Scatter region inspection and Logger focus'
             git push
           fi
+# trigger validation after workflow creation
