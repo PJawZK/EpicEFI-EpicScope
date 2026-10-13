@@ -1,0 +1,78 @@
+name: Temporary template flyout transform
+on:
+  push:
+    branches: [feat/template-flyout]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Apply guarded flyout transform
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('apps/web/src/pages/logger-page.ts')
+          s = p.read_text()
+          old = '''        <div class="graph-selector-new-options" hidden>\n          <button type="button" data-workspace-create="blank">Blank graph</button>\n          <span class="graph-selector-new-label">From template</span>\n          <div class="graph-selector-template-list"></div>\n        </div>'''
+          new = '''        <div class="graph-selector-new-options" hidden>\n          <button type="button" data-workspace-create="blank">Blank graph</button>\n          <div class="graph-selector-template-flyout">\n            <button type="button" class="graph-selector-template-trigger" aria-haspopup="menu" aria-expanded="false">\n              <span>From template</span>\n              <span class="graph-selector-template-arrow" aria-hidden="true">›</span>\n            </button>\n            <div class="graph-selector-template-panel" role="menu" hidden>\n              <div class="graph-selector-template-list"></div>\n            </div>\n          </div>\n        </div>'''
+          assert old in s, 'new-options markup anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = '''  const newOptions = root.querySelector<HTMLElement>('.graph-selector-new-options');\n  const templateList = root.querySelector<HTMLElement>('.graph-selector-template-list');\n  const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];\n  if (!button || !buttonLabel || !menu || !list || !newOptions || !templateList) {\n    throw new Error('Graph selector structure is incomplete.');\n  }'''
+          new = '''  const newOptions = root.querySelector<HTMLElement>('.graph-selector-new-options');\n  const templateFlyout = root.querySelector<HTMLElement>('.graph-selector-template-flyout');\n  const templateTrigger = root.querySelector<HTMLButtonElement>('.graph-selector-template-trigger');\n  const templatePanel = root.querySelector<HTMLElement>('.graph-selector-template-panel');\n  const templateList = root.querySelector<HTMLElement>('.graph-selector-template-list');\n  const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];\n  if (!button || !buttonLabel || !menu || !list || !newOptions || !templateFlyout || !templateTrigger || !templatePanel || !templateList) {\n    throw new Error('Graph selector structure is incomplete.');\n  }'''
+          assert old in s, 'selector-query anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = '''  const close = (): void => {\n    menu.hidden = true;\n    newOptions.hidden = true;\n    button.setAttribute('aria-expanded', 'false');\n  };'''
+          new = '''  const setTemplatePanelOpen = (open: boolean): void => {\n    templatePanel.hidden = !open;\n    templateTrigger.setAttribute('aria-expanded', String(open));\n  };\n\n  const close = (): void => {\n    menu.hidden = true;\n    newOptions.hidden = true;\n    setTemplatePanelOpen(false);\n    button.setAttribute('aria-expanded', 'false');\n  };'''
+          assert old in s, 'close anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = '''    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');\n    if (blankButton) {\n      close();\n      createListener?.(undefined);\n      return;\n    }\n    const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');'''
+          new = '''    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');\n    if (blankButton) {\n      close();\n      createListener?.(undefined);\n      return;\n    }\n    const templateTriggerButton = target.closest<HTMLButtonElement>('.graph-selector-template-trigger');\n    if (templateTriggerButton) {\n      setTemplatePanelOpen(templatePanel.hidden);\n      return;\n    }\n    const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');'''
+          assert old in s, 'menu click anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = '''    if (actionButton.dataset.workspaceAction === 'new') {\n      newOptions.hidden = !newOptions.hidden;\n      return;\n    }'''
+          new = '''    if (actionButton.dataset.workspaceAction === 'new') {\n      newOptions.hidden = !newOptions.hidden;\n      setTemplatePanelOpen(false);\n      return;\n    }'''
+          assert old in s, 'new-action anchor missing'
+          s = s.replace(old, new, 1)
+
+          anchor = '''  document.addEventListener('click', close);\n'''
+          insert = '''  templateFlyout.addEventListener('mouseenter', () => {\n    if (!newOptions.hidden) setTemplatePanelOpen(true);\n  });\n  templateFlyout.addEventListener('mouseleave', () => setTemplatePanelOpen(false));\n  templateFlyout.addEventListener('focusin', () => {\n    if (!newOptions.hidden) setTemplatePanelOpen(true);\n  });\n  templateFlyout.addEventListener('focusout', (event) => {\n    const next = event.relatedTarget;\n    if (!(next instanceof Node) || !templateFlyout.contains(next)) setTemplatePanelOpen(false);\n  });\n''' + anchor
+          assert anchor in s, 'document-close anchor missing'
+          s = s.replace(anchor, insert, 1)
+          p.write_text(s)
+
+          css = Path('apps/web/src/styles/workspace-starters.css')
+          c = css.read_text()
+          old = '''.graph-selector-new-label {\n  padding: 3px 6px 1px;\n  color: #718796;\n  font-size: 9px;\n  font-weight: 700;\n  text-transform: uppercase;\n  letter-spacing: .05em;\n}\n\n.graph-selector-new-options button {\n  width: 100%;\n  text-align: left;\n}\n\n.graph-selector-template-detail {'''
+          new = '''.graph-selector-new-options button {\n  width: 100%;\n  text-align: left;\n}\n\n.graph-selector-template-flyout {\n  position: relative;\n}\n\n.graph-selector-template-trigger {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n}\n\n.graph-selector-template-arrow {\n  flex: 0 0 auto;\n  color: #8aa0ae;\n  font-size: 14px;\n  font-weight: 800;\n  line-height: 1;\n}\n\n.graph-selector-template-panel {\n  position: absolute;\n  z-index: 40;\n  left: calc(100% + 5px);\n  top: -5px;\n  min-width: 220px;\n  padding: 5px;\n  border: 1px solid #385064;\n  border-radius: 5px;\n  background: #0d1822;\n  box-shadow: 0 16px 38px rgba(0, 0, 0, .52);\n}\n\n.graph-selector-template-panel[hidden] {\n  display: none;\n}\n\n.graph-selector-template-list {\n  display: grid;\n  gap: 2px;\n}\n\n.graph-selector-template-detail {'''
+          assert old in c, 'workspace-starters css anchor missing'
+          c = c.replace(old, new, 1)
+          css.write_text(c)
+
+          test = Path('tests/web/graph-selector-template-flyout.test.ts')
+          test.write_text('''import { describe, expect, it } from 'vitest';\nimport { readFileSync } from 'node:fs';\n\nconst loggerSource = readFileSync('apps/web/src/pages/logger-page.ts', 'utf8');\nconst starterCss = readFileSync('apps/web/src/styles/workspace-starters.css', 'utf8');\n\ndescribe('graph selector template flyout', () => {\n  it('keeps templates in a right-side flyout instead of the inline new-graph list', () => {\n    expect(loggerSource).toContain('graph-selector-template-trigger');\n    expect(loggerSource).toContain('graph-selector-template-panel');\n    expect(loggerSource).toContain('aria-haspopup="menu"');\n    expect(starterCss).toContain('left: calc(100% + 5px)');\n    expect(starterCss).toContain('.graph-selector-template-panel[hidden]');\n  });\n\n  it('supports click, hover and focus disclosure while closing with the parent menu', () => {\n    expect(loggerSource).toContain("setTemplatePanelOpen(templatePanel.hidden)");\n    expect(loggerSource).toContain("templateFlyout.addEventListener('mouseenter'");\n    expect(loggerSource).toContain("templateFlyout.addEventListener('focusin'");\n    expect(loggerSource).toContain('setTemplatePanelOpen(false);');\n  });\n});\n''')
+
+          assert '.graph-selector-new-label' not in c
+          assert 'graph-selector-template-panel' in s
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Commit product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/pages/logger-page.ts apps/web/src/styles/workspace-starters.css tests/web/graph-selector-template-flyout.test.ts
+          git commit -m 'feat: move starter templates into flyout menu'
+          git push
