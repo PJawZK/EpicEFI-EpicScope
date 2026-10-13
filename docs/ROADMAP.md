@@ -8,11 +8,11 @@
 
 The roadmap describes intended capability and implementation order. It does not authorize code to bypass `FILE_ARCHITECTURE.md`.
 
-Each implementation task should identify goal, architectural owner/location, dependencies, expected validation, and completion criteria. Large features should be split into reviewable tasks before coding.
+Each implementation task should identify goal, architectural owner/location, dependencies, expected validation and completion criteria. Large features should be split into reviewable tasks before coding.
 
-## Current execution position — 2026-10-11
+## Current execution position — 2026-10-13
 
-EpicScope Web has completed the originally approved implementation scope through **Phase 4**.
+EpicScope Web has completed the originally approved implementation scope through **Phase 4** and remains the functional reference for Logger, Histogram and Analyzer behavior.
 
 Established foundations include:
 
@@ -21,25 +21,27 @@ Established foundations include:
 - INI-backed channel catalog/binding and optional MSQ tune enrichment;
 - reusable graph workspaces/presets plus separate exact-log navigation persistence;
 - multi-pane fixed/freeform graphs and timeline/range/marker tooling;
-- generic range statistics, qualification, Histogram/Table Generator, Distribution, Scatter, Events and Compare foundations;
+- generic range statistics, Qualification, Table Generator, Distribution and Scatter;
+- shared Math Channels;
 - Analyzer Range Compare and Tune Table;
-- Experimental Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel / Injector and Trigger / Sync analyzers;
-- full analysis channel catalog with on-demand decode;
-- Weighted Mean Table Generator, presets, grouped filters, Math Channels and cell-to-Logger traceability;
-- shared Analyzer scope / qualification / comparison / inline-help infrastructure;
-- contextual Logger A/B → Analyzer workflow.
+- Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel / Injector and Trigger / Sync analyzer surfaces;
+- evidence navigation back to Logger;
+- validated read-only real-ECU/Pi/`ts_shim` source workflow;
+- retained-memory, performance and runtime-health diagnostics.
 
-The broad recorded-log performance campaign is now complete. The active product work is **Analyzer maturity/refinement**, currently centered on Boost repeated-event/repeatability analysis.
+The broad recorded-log performance campaign is complete unless a measured regression appears.
 
-Logger and Histogram are not frozen, but should only be reopened for concrete defects or required integration hooks.
+Analyzer maturity work reached sensible checkpoints in Fueling and non-knock Ignition and is deliberately paused for now. The latest completed product track was **Histogram consistency/maturity**, through PRs #339, #340, #344 and #345.
 
-Approved workflow:
+Do not begin Phase 5, restart broad Histogram redesign, or reopen mature analyzers automatically. Continue from concrete user-visible gaps, missing analyzer coverage, firmware/source integration needs, or measured regressions.
+
+Approved product workflow:
 
 > **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
-Do **not** begin Phase 5 unless the project owner explicitly requests it.
+Current generic Histogram sub-flow:
 
-The Pi Zero 2 W / real-ECU `ts_shim` validation path remains paused until the required USB adapter is available.
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
 ## Phase 0 — Foundation
 
@@ -47,33 +49,39 @@ Status: **Complete**
 
 Established product identity/scope, architecture/file ownership, normalized data model, performance/platform requirements, workflow/handoff/decision process and privacy/security/input rules.
 
-## Phase 1 — Web log and navigation foundation
+## Phase 1 — Web log, navigation and source foundation
 
 Status: **Complete as a functional foundation; regression maintenance continues**
 
 Implemented:
 
-- MLVLG v1/v2 parsing and staged validation;
+- MLG v1/v2 parsing and staged validation;
 - bounded/random-access source access;
 - Worker import and deferred CRC validation;
 - Blob caching, multi-channel decoding, OPFS column sidecar and sparse native per-channel persistence;
-- synchronized timeline/cursor, zoom/pan, A/B, markers, saved ranges and view history;
+- synchronized timeline/cursor, zoom/pan/Fit;
+- A/B, markers, saved ranges and view history;
 - multi-pane fixed/freeform graph workspaces;
-- exact-log and reusable-application persistence.
+- exact-log and reusable-application persistence;
+- read-only `ts_shim` live/capture source integration;
+- in-process recorded ↔ Shim source ownership transitions;
+- stable channel identity across `ini:*` recorded identities and raw Shim runtime IDs.
 
-### Logger graph presets — current invariant
+### Logger graph preset invariant
 
 Named workspaces behave as real graph presets. Every available channel assigned to a visible pane must be active/rendered. The same rule applies after workspace restore/switch, Single→multi-pane layout changes and Freeform visibility changes.
 
 Unavailable channels remain assigned but are not falsely activated. Pending loads must not be cancelled by duplicate reconciliation.
 
-Out-of-layout panes preserve assignments but do not retain/reacquire active graph traces. Freeform maximize/hide behavior must not be confused with leaving the layout.
+### Source ownership invariant
 
-Freeform exposes five panes and safely ignores geometry for hidden/out-of-layout pane 6.
+One Logger source family is authoritative at a time. INI/MSQ/workspace/report state survives source transitions. Returning from Shim to an INI-bound recorded log restores canonical recorded identities and binding.
 
-## Phase 2 — Channel catalog, UI workflow, and generic analysis foundation
+See `docs/HANDOFF.md` and the `TS_SHIM_*` documents for the validated runtime topology.
 
-Status: **Complete for the currently approved scope; refinement continues**
+## Phase 2 — Channel catalog, UI workflow and generic analysis foundation
+
+Status: **Complete for the currently approved scope; targeted maturity continues**
 
 Implemented:
 
@@ -81,17 +89,16 @@ Implemented:
 - known+data / known-no-data / log-only states;
 - full available-log analysis catalog with on-demand decode;
 - channel search/group/favorite/recent semantics;
-- range statistics and qualification;
+- range statistics and shared Qualification;
 - Table Generator;
 - Distribution;
 - Scatter;
-- Events and comparison foundations;
-- saved presets/filters;
-- Math Channels/calculated fields;
+- saved presets/filters where currently supported;
+- Math Channels;
 - linked evidence back to Logger;
 - shared saved analysis-filter storage;
 - grouped ALL/ANY qualification semantics;
-- shared Analyzer scopes and numeric cohort comparison.
+- shared analysis scopes.
 
 ### Current UI hierarchy
 
@@ -100,19 +107,55 @@ Implemented:
 - Logger Layout menu owns layout/arrange/reset/clear;
 - Undo/Redo is one compact split control;
 - Settings is organized by current mode/interface/data-storage context;
-- Table Generator uses **Table Size**, not a separate Size button;
-- visible weighted statistic wording is **Weighted Mean**;
+- Table Generator uses **Table Size** and **Weighted Mean** terminology;
 - transient menus/popovers close on outside interaction or when another transient control opens;
-- Diag / Perf / Report use the same anchored footer-popout interaction style;
-- reusable inline `i` help is the standard pattern for non-obvious controls/results.
+- Diag / Perf / Report use anchored footer-popout interaction;
+- reusable anchored round-`i` help is the standard pattern for non-obvious controls/results.
 
-### Distribution
+## Histogram maturity — current authoritative state
 
-Now includes Full Log / A-B scope, shared Logger timeline, Count/%/Time modes, automatic/manual bins, Histogram/Cumulative views, percentile statistics, saved-range comparison and bin→Logger evidence navigation.
+The broad consistency pass is complete through four milestones.
 
-### Scatter
+### PR #339 — Scope / evidence flow
 
-Now includes Full Log / A-B, Single/Dual, Dots/Lines, density heat encoding, shared Logger timeline and shared Hide/Show controls.
+Implemented:
+
+- **Full Log / Current A/B / Saved Range** consistency across Table Generator, Distribution and Scatter;
+- shared Logger timeline including Table Generator;
+- removal of redundant manual Refresh controls from auto-updating Histogram analysis views;
+- Distribution comparison using arbitrary Primary/Compare scopes on shared boundaries;
+- Distribution Auto comparison bins from combined populations;
+- Distribution Time-gap correctness;
+- Scatter Full Log / Current A/B / Saved Range;
+- full-qualified-data density with bounded point rendering;
+- Scatter line-gap handling;
+- rendered Scatter point → Logger navigation.
+
+### PR #340 — Shared Qualification
+
+The same saved grouped ALL/ANY Qualification sets now work across Table Generator, Distribution and Scatter, including visible eligibility provenance and explicit missing dependencies.
+
+### PR #344 — Shared Math Channels
+
+Saved Math Channels are first-class Histogram inputs in Distribution and Scatter as well as Table Generator. Qualification may depend on Math Channels. The dormant hidden mini calculated-field editor inside Table Generator is intentionally deferred to later cleanup.
+
+### PR #345 — Unified help
+
+Histogram now uses the same shared anchored round-`i` information popover as Analyzer. Help is intentionally limited to non-obvious calculations/semantics.
+
+Detailed current behavior is documented in `docs/HISTOGRAM.md`.
+
+### Remaining Histogram work
+
+The worthwhile remaining gaps are narrower:
+
+1. saved setups/presets for Distribution and Scatter;
+2. exports for Distribution and Scatter;
+3. richer Scatter region/box/lasso selection with evidence → Logger;
+4. eventually replace the remaining Scatter timeline text/DOM bridge with direct shared state propagation;
+5. later consolidate dormant duplicate/runtime-refinement code during the dedicated cleanup phase.
+
+Do **not** start another broad Histogram rewrite.
 
 ## Phase 3 — MSQ tune enrichment and table correlation
 
@@ -126,172 +169,151 @@ Implemented:
 - tune table interpolation/correlation;
 - observed/tune evidence and sample population.
 
-**Table Generator rule:** Loaded MSQ table is geometry-only. It supplies X/Y breakpoint vectors/dimensions and must not rewrite selected runtime analysis channels.
+**Table Generator rule:** a loaded MSQ table supplies geometry/breakpoint vectors/dimensions. It must not silently rewrite selected runtime analysis channels.
 
-Future Analyzer work may deliberately consume tune/MSQ calibration context where required, e.g. the real Idle DC Bias curve/current operating point.
+Tune/MSQ context is now also used deliberately where Analyzer questions require calibration context, including Ignition base-table attribution.
 
 ## Phase 4 — Specialized analyzers
 
-Status: **Originally complete as Experimental foundations; active maturity/refinement underway**
+Status: **Experimental foundations implemented; maturity uneven; current feature expansion paused**
 
-The earlier Phase-4 completion meant that each planned analyzer existed with real calculations/evidence, not that each was fully mature for tuning work.
+The earlier Phase-4 completion meant that each planned analyzer existed with real calculations/evidence. It did not mean that each analyzer had equal practical tuning maturity.
 
 ### Shared Analyzer foundation — implemented
 
 - semantic channel-role suggestions with manual override;
-- Full Log / Current A-B / Saved Range scopes;
+- Full Log / Current A/B / Saved Range scopes;
 - contextual Logger A/B → Analyzer handoff;
 - event/source navigation back to Logger;
 - event-aligned evidence renderer;
-- median + 10–90% event envelope;
 - individual event selection vs aggregate view;
-- shared saved qualification filters;
+- shared saved Qualification where appropriate;
 - grouped ALL/ANY qualification;
-- per-scope provenance counts;
-- shared numeric comparison with P10 / Median / P90;
-- shared inline information/help component.
+- per-scope provenance;
+- shared numeric comparison;
+- progressive disclosure of decision-facing vs secondary diagnostics;
+- anchored round-`i` information/help;
+- aligned-evidence canvas sizing tied to actual displayed dimensions.
 
-### IDLE — mature foundation, further refinement later
+### BOOST — mature experimental foundation, currently paused
 
-Implemented:
+Implemented capability-driven Open Loop / Closed Loop analysis, target-independent Open Loop pressure-rise spool, RPM×TPS/load operating points, evidence strength/consistency, matched-scope comparison, upper/lower chamber response summaries, sortable evidence tables and conservative observed interpretations.
 
-- canonical `RPMValue` preference for RPM role;
-- required RPM + Idle Target;
-- Idle system selector: Combined / DC Idle / IAC Valve / ETB / Ignition;
-- subsystem-specific role presentation;
-- explicit runtime-vs-calibration DC Bias distinction;
-- sag/recovery threshold explanation;
-- aligned sag/recovery evidence;
-- worst sag and median recovery metrics;
-- rich controller/actuator evidence and shared inline help.
+Critical invariant remains:
 
-Later:
+> Boost interpretation is descriptive and polarity-agnostic. Do not infer an automatic duty-direction recommendation from observational duty/pressure association.
 
-- richer idle phases and settling/oscillation/headroom metrics;
-- tune/MSQ DC Bias curve/current-point context;
-- shared comparison/repeatability work where useful.
+Repeated-pull/repeatability maturity remains a viable later step, but Boost is not the active work track now.
 
-### AE / MAP PREDICT — active refinement later
+### IDLE — mature foundation, later parity/refinement
 
-Implemented:
+Implemented subsystem-aware Combined / DC Idle / IAC / ETB / Ignition views, canonical RPM/target semantics, runtime-vs-calibration DC Bias distinction, sag/recovery evidence and rich controller/actuator context.
 
-- aligned transient evidence using available TPS / MAP / predicted MAP / AFR;
-- event selection and Logger navigation;
-- prediction mean/MAE and lean/rich excursion metrics.
+Later useful work includes richer phase/settling/headroom metrics and tune/MSQ DC Bias curve context.
 
-Next maturity when resumed:
+### AE / MAP PREDICT — useful foundation, later parity/refinement
 
-- richer timing/integrated-error metrics;
-- event classification by RPM/load/TPS movement;
-- comparison between event sets;
-- shared qualification controls.
+Implemented aligned transient evidence, prediction mean/MAE, lean/rich excursion metrics and Logger navigation.
 
-### BOOST — current active analyzer
+Later useful work includes richer event classification/timing/error metrics and comparison between event sets.
 
-Boost is now explicitly **control-mode aware**.
+### FUELING — maturity checkpoint reached; freeze unless bug/regression
 
-Open Loop:
+Fueling now includes:
 
-> RPM / TPS-load / operating state → WG command → measured pressure response
+- lambda-first actual/target semantics with Gas Scale AFR fallback;
+- `veValue` as current effective VE and `veTableYAxis` as preferred VE/load coordinate;
+- `actualLastInjection` as preferred command for observed mixture response delay;
+- DFCO/other fuel-cut explanation and exclusion from ordinary steady-fueling conclusions;
+- AE/decel transient context;
+- trailing-window RPM/load stability rather than adjacent-sample jitter sensitivity;
+- visible low-count bins with Weak/Moderate/Strong evidence;
+- scale-aware mixture thresholds;
+- STFT/LTFT/total-correction context;
+- observed mixture-response-delay evidence;
+- sortable evidence tables and Logger navigation;
+- restrained/progressive presentation.
 
-Closed Loop adds:
+A Fueling heatmap experiment was rolled back because its DOM/layout integration caused page-load and graph-stretch regressions. Do not reintroduce a similar overview without a safer architecture and measured validation.
 
-> Boost Target → tracking / error / attainment / over/undershoot / settling
+See `docs/FUELING_ANALYZER.md`.
 
-Implemented maturity slices through PR #317:
+### IGNITION — non-knock maturity checkpoint reached; freeze unless bug/regression
 
-- explicit Open Loop / Closed Loop mode with Open Loop default;
-- target-only settings/results restricted to Closed Loop;
-- target-relative T10/T50/T90 and target attainment for Closed Loop;
-- TPS/load as first-class Boost context;
-- target-independent Open Loop measured-pressure-rise spool T10/T50/T90;
-- peak pressure with RPM/TPS/upper/lower duty context;
-- qualified RPM × TPS/load operating points;
-- pressure mean/min/max/SD and upper/lower duty means;
-- evidence strength + pressure consistency + compact assessment;
-- adjacent RPM and load trend comparisons;
-- optional high-load quick gate layered on shared Qualification;
-- conservative `What this suggests` evidence interpretation;
-- matched Primary vs Compare scopes using Full Log / Current A/B / Saved Range;
-- matched-bin pressure + duty deltas;
-- upper/lower chamber response summaries that attempt to isolate one chamber while holding the other steady;
-- explicit opposite-chamber-unavailable accounting;
-- minimum two usable comparisons before a directional association;
-- inline help for controls and result interpretation.
+The current validation scope deliberately excludes knock diagnosis until trusted knock hardware/evidence is available.
 
-**Critical rule:** Boost interpretation remains descriptive and polarity-agnostic. Do not infer that increasing a duty value must increase/decrease boost, and do not emit automatic duty-direction recommendations from the current evidence layer.
+Implemented non-knock behavior includes:
 
-Immediate next Boost target:
+- final ignition advance as the primary signal;
+- aggregate correction/retard, dwell, RPM and ignition-load context;
+- timing-step/correction events;
+- large-log-safe statistics/event paging;
+- clean default event evidence with optional extra traces/envelopes;
+- ranked stable-context **Areas to review**;
+- configurable default review focus above 1000 rpm so cranking/start regions do not crowd the shortlist;
+- Logger navigation;
+- optional MSQ base-ignition-table comparison;
+- source clues indicating base-table alignment, correction overlap, residual timing movement or insufficient explanatory evidence.
 
-1. automatic repeated-pull/event grouping from existing qualification/high-load evidence;
-2. inspectable detected-pull list with source ranges and Logger navigation;
-3. compare only pulls with overlapping trustworthy RPM × TPS/load regions;
-4. quantify pull-to-pull repeatability/spread and observed duty→pressure response;
-5. then revisit duty saturation/headroom;
-6. then Closed Loop settling/controller-quality maturity.
+Ignition does **not** claim knock/detonation, judge timing as safe/unsafe, or recommend a specific advance change from observational logs alone.
 
-### FUELING — next major analyzer after Boost repeated-pull maturity
+### FUEL / INJECTOR and TRIGGER / SYNC — next broad-coverage candidates when Analyzer work resumes
 
-Move from aggregate AFR summaries to stable-state error/correction analysis with RPM×MAP/TPS context, transient/AE/DFCO qualification, confidence/sample population and correction proposals.
+These analyzers exist but have not received the same maturity depth as Fueling/Ignition.
 
-### IGNITION / FUEL-INJECTOR / TRIGGER-SYNC / RANGE COMPARE
+When Analyzer work resumes, prefer bringing these and the remaining AE/Idle gaps toward similar practical usefulness before adding another deep layer to already-mature Fueling/Ignition.
 
-Continue later using the same evidence graph, qualification, comparison and Logger-navigation framework rather than separate one-off UI systems.
+### Range Compare / Tune Table
 
-Range Compare already supports shared scopes, shared qualification filters and P10/Median/P90 statistics; future work should extend that common model rather than fork it.
+Continue extending shared scope/Qualification/tune-correlation infrastructure rather than forking analyzer-local equivalents.
 
-## Current refinement track — Analyzer maturity
+## Analyzer development policy — current
 
-### Shared remaining layer
+Analyzer feature work is paused.
 
-Much of the earlier shared comparison/qualification work is now implemented. Remaining common maturity should focus on:
+When resumed, the preferred order is:
 
-1. reusable contiguous-event/cohort grouping where appropriate;
-2. independent event counts and repeatability/confidence warnings;
-3. shared derived analysis signals;
-4. analyzer presets for role mappings/thresholds/qualification;
-5. deliberate tune/MSQ context where calibration data is required.
+1. improve practical coverage of the less-mature analyzers;
+2. validate the same user-facing evidence/Logger-navigation principles across them;
+3. stop each at a sensible maturity checkpoint;
+4. then begin the dedicated code cleanup/consolidation/optimization phase.
 
-### Product principle
+Do not keep deepening one analyzer indefinitely while others remain thin.
 
-> **An analyzer should find the relevant operating events/conditions, show the evidence that produced the result, quantify repeatability/error, and let the user move directly between analysis and the original log.**
+## Dedicated cleanup/consolidation phase — deferred but approved direction
 
-Tune Table's useful tune-aware capability should converge with mature Table Generator infrastructure instead of becoming a second competing cell-analysis system.
+Once broader analyzer coverage is achieved, run an explicit cleanup pass across Logger/Analyzer/Histogram.
 
-## Correctness and safety refinement — completed current batches
+Candidate work includes:
 
-Accepted audit findings and follow-up maturity issues now include fixes for:
+- remove dormant duplicate editor paths;
+- reduce analyzer-local/shared DOM enhancement layers;
+- remove unnecessary MutationObservers;
+- replace direct DOM state bridges with explicit state/contracts;
+- rename Boost-specific helpers that became generic;
+- consolidate shared table/event/help/rendering infrastructure;
+- centralize canvas sizing/resize ownership;
+- simplify CSS and runtime UI surgery;
+- remove dead/unreachable branches and obsolete compatibility paths;
+- re-profile representative large logs after consolidation.
 
-- dynamic external/saved text execution through identified `innerHTML` paths;
-- pending channel activation obeying current assignment/removal state;
-- histogram persistence failure retaining session state and reporting failure;
-- malformed stored histogram entries being validated/skipped;
-- Scatter clearing stale results on unavailable/rejected selections;
-- Report health being log-aware;
-- unrecovered CRC status being reported truthfully;
-- out-of-layout panes not staying graph-active;
-- Report/Diag/Perf transient interaction consistency.
+Until then, do not destabilize mature behavior solely for internal tidiness.
+
+## Correctness and safety refinement — current policy
+
+Accepted correctness work includes defensive untrusted-input handling, explicit unavailable/missing data, source integrity reporting, large-array safety, timestamp-gap handling, controlled rendering of large evidence sets and local-first privacy.
+
+Missing/ambiguous evidence must degrade the affected capability rather than fabricate a result.
 
 ## Performance / retained-memory status
 
-The dedicated recorded-log performance campaign is **complete for the current architecture**.
+The dedicated recorded-log performance campaign is complete for the current architecture.
 
-Implemented recent improvements include captured viewport slices, batched deferred graph materialization, detailed render instrumentation, authoritative post-CRC statistics refresh and hidden-pane graph lifecycle cleanup.
+Representative controlled 1.19 GB-log behavior remains sufficient for the current Web reference implementation. Retained-memory/source-lifetime diagnostics show no current cross-log strong-reference leak.
 
-Representative controlled 1.19 GB-log results on the test PC were approximately:
+Do not resume broad micro-optimization or impose new retention policies without a concrete measured workload/regression.
 
-- 1.27–1.30 s initial import;
-- 56–59 ms controlled eight-channel viewport workspace restore;
-- zero physical reads on the captured viewport restore path;
-- roughly 30 ms deferred full materialization after removal of redundant statistics work.
-
-Remaining graph time is mainly legitimate envelope + trace rendering. Do not resume broad micro-optimization unless a concrete regression or new workload justifies it.
-
-Retained-memory diagnostics continue to measure persistent decoded columns, bound full ranges, graph-active ranges and live source lifetimes. No cross-log strong-reference leak is currently evidenced.
-
-No LRU/byte-budget change is approved yet. Revisit only if a concrete single-log many-channel stress test shows problematic retained growth or another measured regression appears.
-
-## Phase 5 — Sessions, sharing, and reporting
+## Phase 5 — Sessions, sharing and reporting
 
 Status: **Not started — explicit owner approval required**
 
@@ -302,9 +324,10 @@ Potential future scope includes versioned full-session persistence, annotations/
 Before Linux becomes primary focus:
 
 - review feature completeness and workflow clarity;
+- complete the deliberate cleanup/consolidation phase;
 - consolidate duplicate concepts;
 - freeze/version key contracts;
-- profile representative workloads;
+- profile representative workloads after cleanup;
 - define Linux benchmark/hardware baselines;
 - decide which Web internals are retained/replaced/ported.
 
