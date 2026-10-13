@@ -52,6 +52,7 @@ import {
 } from '../state/logger-pane-layout';
 import {
   availableStarterWorkspaceTemplates,
+  GENERIC_STARTER_WORKSPACE_TEMPLATES,
   resolveStarterWorkspaceTemplate,
   starterWorkspaceTemplate,
   SINGLE_RESOLVER_TEST_WORKSPACE,
@@ -827,21 +828,29 @@ export function createLoggerPage(): LoggerPageController {
     refreshSelector = true,
   ): void => {
     if (starterWorkspaceMaterialized || channels.length === 0) return;
-    const workspace = workspaces.find((candidate) => candidate.id === SINGLE_RESOLVER_RUNTIME_ID);
-    if (!workspace) return;
 
-    const resolution = resolveStarterWorkspaceTemplate(SINGLE_RESOLVER_TEST_WORKSPACE, channels);
-    const panes = createEmptyPaneStates();
-    for (const resolvedPane of resolution.panes) {
-      const pane = panes.find((candidate) => candidate.id === resolvedPane.id);
-      if (pane) pane.channelIds = [...resolvedPane.channelIds];
-    }
-    workspace.name = SINGLE_RESOLVER_TEST_WORKSPACE.name;
-    workspace.layout = SINGLE_RESOLVER_TEST_WORKSPACE.layout;
-    workspace.panes = panes;
-    if (!workspace.panes.some((pane) => pane.id === workspace.activePaneId)) {
-      workspace.activePaneId = workspace.panes[0]?.id ?? 'pane-1';
-    }
+    const seed = activeWorkspace();
+    const seededViewport = seed?.viewport ? { ...seed.viewport } : undefined;
+    const seededHistory = seed?.viewHistory.map((item) => ({ ...item })) ?? [];
+    const seededHistoryIndex = seed?.viewHistoryIndex ?? -1;
+    const seededCursorTimeMs = seed?.cursorTimeMs ?? timeline.getCursorTime();
+
+    workspaces = GENERIC_STARTER_WORKSPACE_TEMPLATES.map((template, index) => {
+      const workspace = createInitialWorkspace(`graph-${index + 1}`, template.name, template.layout);
+      const resolution = resolveStarterWorkspaceTemplate(template, channels);
+      for (const resolvedPane of resolution.panes) {
+        const pane = workspace.panes.find((candidate) => candidate.id === resolvedPane.id);
+        if (pane) pane.channelIds = [...resolvedPane.channelIds];
+      }
+      workspace.viewport = seededViewport ? { ...seededViewport } : undefined;
+      workspace.cursorTimeMs = seededCursorTimeMs;
+      workspace.viewHistory = seededHistory.map((item) => ({ ...item }));
+      workspace.viewHistoryIndex = seededHistoryIndex;
+      return workspace;
+    });
+
+    workspaceCounter = Math.max(workspaceCounter, workspaces.length);
+    activeWorkspaceId = workspaces[0]?.id ?? '';
     starterWorkspaceMaterialized = true;
     if (refreshSelector) refreshWorkspaceSelector();
   };
@@ -974,7 +983,7 @@ export function createLoggerPage(): LoggerPageController {
     graphHost.className = `graph-workspace graph-workspace--${workspace.layout}`;
 
     paneRuntimes.forEach((runtime) => {
-      runtime.graph.setDisplayMode(workspace.layout === 'single' ? 'stacked' : 'overlay');
+      runtime.graph.setDisplayMode('overlay');
     });
 
     paneRuntimes.forEach((runtime, index) => {

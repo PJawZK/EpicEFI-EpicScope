@@ -168,6 +168,10 @@ Implemented production starters:
 
 The planned generic starter catalog is now complete.
 
+On a brand-new EpicScope workspace state, the full generic starter set is materialized automatically as ordinary editable `graph-*` workspaces as soon as the first channel schema/catalog is available. Existing/restored workspace state is never re-seeded, so deleting or customizing those defaults remains a user-owned choice. ECU-specific starters are not auto-created.
+
+The **Single** layout uses the normal overlay readout presentation (channel names plus NOW / MIN / MAX context), matching the information model used by multi-pane graphs. The legacy stacked-lane canvas labels are not used for the Single starter view.
+
 ## EpicEFI-specific starter tier
 
 Generic starters remain portable across ECU families. Specialized starters are capability-gated: they are offered only when every semantic role in the starter's availability bundle resolves against the active channel schema. Detection is therefore based on runtime/schema capabilities rather than hard-coded board names such as `if ECU == Mega144H7`.
