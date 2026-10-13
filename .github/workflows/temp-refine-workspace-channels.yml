@@ -16,7 +16,15 @@ jobs:
         with:
           ref: refine/generic-and-map-ww-channels
       - name: Apply guarded transform
-        run: python .github/scripts/temp_refine_workspace_channels.py
+        run: |
+          set +e
+          python .github/scripts/temp_refine_workspace_channels.py
+          status=$?
+          set -e
+          if [ "$status" -ne 1 ]; then
+            exit "$status"
+          fi
+          python .github/scripts/temp_refine_workspace_channels_finish.py
       - uses: actions/setup-node@v4
         with:
           node-version: 22
