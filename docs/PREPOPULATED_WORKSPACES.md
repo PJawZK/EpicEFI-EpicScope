@@ -1,70 +1,54 @@
 # Pre-populated graph starter templates
 
-This document is the current product and implementation target for EpicScope's pre-populated Logger layouts and task-oriented starter templates.
+This document is the current product/implementation authority for EpicScope Logger starter templates.
 
 Related authority:
 
-- [`HANDOFF.md`](HANDOFF.md) — present-tense continuation/runtime status;
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — semantic/capability layer and materialization boundaries;
-- [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
-- [`DECISIONS.md`](DECISIONS.md) — approved semantic workspace/naming/lifecycle decisions.
+- [`HANDOFF.md`](HANDOFF.md)
+- [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- [`DATA_MODEL.md`](DATA_MODEL.md)
+- [`DECISIONS.md`](DECISIONS.md) — D-055 is the starter/workspace ownership invariant.
+- [`STARTER_SYSTEM_VALIDATION.md`](STARTER_SYSTEM_VALIDATION.md)
 
 ## Core product model
 
-A starter template is **not** a permanent workspace object.
-
-Applying a starter follows this lifecycle:
+A starter template is application data, not a persistent workspace owner.
 
 ```text
 starter template
-      ↓ semantic role resolution against the current source/ECU catalog
-ordinary editable workspace
+      ↓ semantic resolution against current catalog
+ordinary editable graph-* workspace
 ```
 
-After materialization, the resulting workspace is fully user-owned. It may be edited, renamed, duplicated or deleted. Template logic does not continue to own it and must not silently restore channels or layout choices later.
+Once materialized, the workspace is user-owned. It may be renamed, edited, duplicated or deleted. Template logic must not silently restore channels, names or layout choices later.
 
-Template definitions remain reusable application data so a user can create another fresh workspace from the same starting point at any time.
+Source transitions may normalize stable assignments between `ini:*` and matching raw Shim identities. That is identity translation only; it is not permission to reapply a starter.
 
-## Current creation flow
-
-PR #348 makes starter application explicit in the Logger graph selector:
+## Creation flow
 
 ```text
 New graph
 ├─ Blank graph
 └─ From template   ›
-                   ├─ General
-                   ├─ Idle
-                   ├─ Boost
-                   ├─ Fuel
-                   ├─ Ignition
-                   └─ Cooling
+                   ├─ generic starters
+                   └─ capability-gated EpicEFI starters
 ```
 
-The **From template** list is generated from the starter catalog. It is not a second workspace store and it does not create protected instances.
+The flyout is viewport-bounded and vertically scrollable. Selecting a template creates a normal workspace. No template metadata is required for ownership afterward.
 
-Each selection creates a normal `graph-*` workspace. After creation there is no special rename/delete/refresh behavior attached to the starter origin.
+## Fresh-state seeding
+
+On a genuinely fresh EpicScope workspace state, the 12 generic starters are materialized automatically when the first usable channel catalog becomes available.
+
+Existing/restored workspace state is never re-seeded. Deleted defaults stay deleted and user edits remain authoritative.
+
+EpicEFI-specific starters are never auto-created.
 
 ## Semantic resolution
 
-Starter templates bind to **semantic channel roles**, not hard-coded ECU channel IDs.
+Starters bind to semantic channel roles rather than hard-coded ECU channel IDs.
 
-```text
-semantic role
-      ↓
-logical ECU channel
-      ↓
-current source identity
-```
-
-Example:
-
-```text
-engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
-engine.rpm → RPMValue → RPMValue      (ts_shim)
-```
-
-Resolution preference is:
+Resolution preference:
 
 1. explicit user/schema override;
 2. exact EpicEFI/native alias;
@@ -72,312 +56,266 @@ Resolution preference is:
 4. conservative normalized-name fallback;
 5. unresolved.
 
-Missing data remains explicit. EpicScope must never fabricate a value merely to fill a starter slot.
+Missing values remain explicit. Required/preferred/optional slots degrade gracefully; EpicScope never fabricates a channel merely to fill a template.
 
-### Resolution is one-time template materialization
+Compatibility aliases never define the visible EpicScope vocabulary. For example, legacy `TP` may resolve throttle position while EpicScope displays **TPS**.
 
-The semantic resolver chooses the initial channel assignments when a starter is created. Once that workspace exists, it behaves like any other workspace.
+## Layout model
 
-Source changes may still normalize the user's selected stable identities between forms such as `ini:RPMValue` and `RPMValue`. That is source-identity translation and **not** permission to reapply the starter template.
-
-If a user removes TPS from a workspace created from the General starter, TPS stays removed. Loading another log, connecting Shim, or returning to an MLG must not put it back.
-
-## Display names and aliases
-
-Compatibility aliases do not define EpicScope's user-facing vocabulary.
-
-```text
-legacy/vendor/import alias
-          ↓
-EpicScope semantic role
-          ↓
-preferred EpicScope display name
-```
-
-Examples:
-
-- legacy/MLV `TP` may resolve `engine.throttle.position`, while EpicScope displays **TPS**;
-- `PW` may resolve injector pulse width, while EpicScope displays **Injector Pulse Width**;
-- `VBatt` may resolve battery voltage, while EpicScope displays **Battery Voltage**;
-- `CLT`/`ECT` may resolve coolant temperature, while EpicScope displays **Coolant Temp**.
-
-Established technical abbreviations such as RPM, MAP, TPS, AFR and Lambda may remain visible where clearer than expanded wording.
-
-MegaLogViewer HD `FieldMaps/*.properties` remain compatibility/reference evidence rather than EpicScope naming authority.
-
-## Layout vs starter vs workspace
-
-These are three distinct concepts:
-
-- **Layout** — graph geometry only.
-- **Starter template** — task-oriented recipe containing a layout plus semantic role slots.
-- **Workspace** — the user's editable materialized graph configuration.
-
-Conceptually:
-
-```text
-Starter template
- ├─ name
- ├─ category
- ├─ layout
- ├─ pane definitions
- │    └─ semantic channel slots
- └─ optional ECU-family specialization
-
-        materialize once
-              ↓
-
-User workspace
- ├─ name
- ├─ layout
- ├─ pane geometry
- └─ concrete channel assignments
-```
-
-The template catalog is controlled application data. The generated workspace is not immutable.
-
-## Layout catalog
-
-Implemented production layouts relevant to starter work:
+Layout describes geometry only. Current production starter use centers on:
 
 - **Single** — one full graph pane;
-- **Dual** — two vertically stacked graph panes.
+- **Dual** — two vertically stacked panes.
 
-Existing Logger layouts also include 2×2 / 4 graphs, 2×3 / 5 graphs, 3×2 / 6 graphs and Freeform / 5 graphs.
-
-Longer-term starter geometry vocabulary may still include Triple, Quad, Focus + 2, Focus + 3 and Six Pane where a concrete starter benefits from them. Layout names describe geometry; starter/workspace names describe diagnostic purpose.
-
-`Dual` is a normal Logger layout, not an Idle-only rendering mode.
+Single uses the normal overlay readout presentation with channel names and NOW / MIN / MAX context. The old stretched lane-label presentation is not used.
 
 ## Generic starter catalog
 
-Implemented production starters:
+The portable generic catalog is complete at 12 starters.
 
-- **General** — Single layout; RPM, MAP, TPS, coolant temp, intake-air temp, battery voltage, Lambda and ignition advance;
-- **Idle** — Dual layout; RPM, idle target, MAP, TPS, idle-air command, ignition advance, coolant temp and Lambda;
-- **Boost** — Dual layout; RPM, MAP, TPS, boost target, wastegate command, boost error, intake-air temp and EMAP;
-- **Fuel** — Dual layout; RPM, MAP, Lambda, Lambda target, injector pulse width, injector duty, fuel pressure and fuel correction;
-- **Ignition** — Dual layout; RPM, MAP, ignition advance, knock retard, dwell, knock level, Lambda and intake-air temp;
-- **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage;
-- **Transient / AE** — Dual layout; RPM, TPS, TPS change, MAP, effective/predicted MAP, Lambda, injector pulse width, AE fuel contribution and wall-fuel correction;
-- **Fuel System** — Dual layout; RPM, fuel pressure, MAP, TPS, fuel-pressure delta, injector pulse width, injector duty, fuel-pump command, battery voltage and Lambda;
-- **Trigger / Sync** — Dual layout; RPM, trigger sync state, phase synchronization, active trigger error, trigger error count, resync count, decoded engine phase and battery voltage;
-- **Startup / Warmup** — Dual layout; RPM, coolant temp, intake-air temp, battery voltage, engine cycles since start, cranking fuel, after-start correction, warmup correction, Lambda and idle target;
-- **Electrical** — Dual layout; battery voltage, RPM, injector pulse width/duty, ignition dwell, fuel-pump state, alternator duty, sensor-supply voltage and sensor-supply fault where available;
-- **Vehicle / Driveline** — Dual layout; RPM, vehicle speed, TPS, MAP, gear, clutch/brake state, four wheel speeds and longitudinal acceleration where available.
+### General
+Single broad engine overview:
 
-The planned generic starter catalog is now complete.
-
-On a brand-new EpicScope workspace state, the full generic starter set is materialized automatically as ordinary editable `graph-*` workspaces as soon as the first channel schema/catalog is available. Existing/restored workspace state is never re-seeded, so deleting or customizing those defaults remains a user-owned choice. ECU-specific starters are not auto-created.
-
-The **Single** layout uses the normal overlay readout presentation (channel names plus NOW / MIN / MAX context), matching the information model used by multi-pane graphs. The legacy stacked-lane canvas labels are not used for the Single starter view.
-
-## EpicEFI-specific starter tier
-
-Generic starters remain portable across ECU families. Specialized starters are capability-gated: they are offered only when every semantic role in the starter's availability bundle resolves against the active channel schema. Detection is therefore based on runtime/schema capabilities rather than hard-coded board names such as `if ECU == Mega144H7`.
-
-Implemented specialized starters:
-
-- **EpicEFI · MAP Predict + Wall Wetting** — predictive-MAP and wall-film transient diagnostics;
-- **EpicEFI · Fuel Rail Diagnostics** — high-pressure rail target/actual and HPFP control diagnostics;
-- **EpicEFI · ETB Control** — pedal/target/actual/error and ETB actuator diagnostics;
-- **EpicEFI · Dual Chamber Boost** — upper/lower wastegate plus open/closed-loop boost-control diagnostics;
-- **EpicEFI · Trigger + Sync Detailed** — tooth-angle, edge-counter and cam-sync diagnostics;
-- **EpicEFI · Injector + Ignition Timing** — injection SOI plus ignition timing-attribution diagnostics;
-- **EpicEFI · Engine Protection** — dynamic rev-limit, cut-reason and protection-state diagnostics.
-- **EpicEFI · VVT Control** — primary bank-1 intake cam target/actual tracking with controller output, error and PID contributions;
-- **EpicEFI · Anti-Lag** — ALS latch/timeout state with fuel, ignition, spark-skip and ETB-air intervention diagnostics;
-- **EpicEFI · Launch Control** — launch gating, pre-launch/launch state, RPM lock and spark-skip diagnostics;
-- **EpicEFI · Traction Control** — slip/reference-speed calculations and timing/spark/ETB intervention diagnostics;
-- **EpicEFI · Transmission Control** — focused shift, shaft-speed, torque, cut/blip and fault diagnostics.
-
-The generic catalog and the evidence-ranked specialized Tier A catalog are now complete. Template expansion stops here for the validation phase. Staged Injection and Closed-loop Fuel / STFT / LTFT remain secondary future candidates, while per-cylinder/EGT work remains deferred until the semantic layer can represent indexed channel families cleanly.
-
-Capability gating affects only starter discovery. Once materialized, the resulting workspace is still an ordinary editable workspace and is not owned by the capability detector.
-
-## Role requirement levels
-
-Each starter role is classified as:
-
-- **required** — central to the starter's purpose;
-- **preferred** — normally expected and materially useful;
-- **optional** — useful enhancement when available.
-
-Missing preferred/optional roles do not invalidate starter creation. Missing required roles are reported explicitly so the user can map or replace them; the workspace still remains usable.
-
-Example Boost requirement model:
-
-```text
-Required
 - RPM
 - MAP
-
-Preferred
-- TPS / load
-- Wastegate command
-
-Optional
-- Boost target
-- Boost error
-- Upper wastegate duty
-- Lower wastegate duty
-- EMAP
-- Intake Air Temp
-- Turbo speed
-```
-
-## Validated resolver architecture
-
-The first development slice used a one-pane **Single · Resolver Test** fixture to prove semantic matching independently of multi-pane geometry.
-
-That path was real-runtime validated through:
-
-```text
-MLG + INI → ts_shim live/capture → MLG + INI
-```
-
-Recorded identities included:
-
-```text
-ini:RPMValue
-ini:MAPValue
-ini:TPSValue
-ini:coolant
-```
-
-Shim identities included:
-
-```text
-RPMValue
-MAPValue
-TPSValue
-coolant
-```
-
-The historical validation implementation used `built-in:single-resolver-test` as a protected runtime identity. That prefix is now compatibility data only; it is not part of the current product lifecycle.
-
-The validated result still proves the useful architectural point: semantic roles can resolve correctly against recorded and live source families. What no longer follows from that proof is that a template must remain attached to a protected workspace instance.
-
-## Production starter — General
-
-General uses a Single layout and these semantic roles:
-
-```text
-Required
-- RPM
-- MAP
-
-Preferred
 - TPS
 - Coolant Temp
-
-Optional
 - Intake Air Temp
 - Battery Voltage
 - Lambda
 - Ignition Advance
-```
 
-Current EpicEFI mapping target:
-
-```text
-MLG + INI                          ts_shim
-ini:RPMValue                       RPMValue
-ini:MAPValue                       MAPValue
-ini:TPSValue                       TPSValue
-ini:coolant                        coolant
-ini:intake                         intake
-ini:VBatt                          VBatt
-ini:lambdaValue                    lambdaValue
-ini:correctedIgnitionAdvance       correctedIgnitionAdvance
-```
-
-The visible starter/workspace name is simply **General**. `Single` describes its initial geometry rather than a permanent product identity.
-
-The expanded eight-role General resolver has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing all eight roles as runtime-validated.
-
-## Production starter — Idle
-
-Idle is the first multi-pane starter and the first production use of the Dual layout.
+### Idle
+Dual idle-speed/control overview:
 
 Pane 1:
-
-```text
-Required
 - RPM
 - Idle Target
-
-Preferred
 - MAP
 - TPS
-```
 
 Pane 2:
-
-```text
-Preferred
 - Idle Air Command
 - Ignition Advance
 - Coolant Temp
-
-Optional
 - Lambda
-```
 
-The generic semantic identities added for this starter are:
+### Boost
+Dual general-purpose boost response view with no closed-loop-control or special-sensor assumptions.
 
-```text
-idle.target
-idle.airCommand
-```
+Pane 1:
+- RPM
+- MAP
+- TPS
+- Intake Air Temp
 
-For the current EpicEFI schema, the preferred channel identities are:
+Pane 2:
+- Ignition Advance
+- Injector Pulse Width
+- Injector Duty
+- Battery Voltage
 
-```text
-MLG + INI                    ts_shim
-ini:idleTarget               idleTarget
-ini:currentIdlePosition      currentIdlePosition
-```
+Generic Boost deliberately does **not** require Boost Target, Wastegate Command, Boost Error or EMAP. Those belong in capability-specific control diagnostics.
 
-The generic Idle starter intentionally does not use `dcIdleTarget` as `idle.target` and does not use `IdlePosition` as `idle.airCommand`. Those are controller-specific target/feedback concepts and remain available to the specialized Idle analyzer or future capability-specific starters.
+### Fuel
+Pane 1:
+- RPM
+- MAP
+- Lambda
+- Lambda Target
 
-PR #348 added automated coverage for:
+Pane 2:
+- Injector Pulse Width
+- Injector Duty
+- Fuel Pressure
+- Fuel Correction
 
-- the two new generic idle semantic roles;
-- exclusion of the DC-specific target/feedback identities from those generic roles;
-- the Idle two-pane template definition;
-- recorded EpicEFI resolution into both panes;
-- caller-owned materialization with `layout: 'dual'`;
-- `dual` visible-pane count behavior.
+### Ignition
+Generic ignition must not assume knock hardware.
 
-Web CI run #1262 passed type-check, full tests and production build before merge.
+Pane 1:
+- RPM
+- MAP
+- TPS
+- Ignition Advance
 
-## Ownership and persistence rules
+Pane 2:
+- Dwell
+- Battery Voltage
+- Intake Air Temp
+- Coolant Temp
 
-Once a starter has produced a workspace:
+### Cooling
+Pane 1:
+- Coolant Temp
+- Intake Air Temp
+- RPM
+- Vehicle Speed
 
-- channels can be added, removed, reordered or replaced;
-- layout and pane geometry can be changed;
-- the workspace can be renamed;
-- it can be duplicated;
-- it can be deleted;
-- template updates do not mutate it;
-- source changes do not silently restore starter content.
+Pane 2:
+- Fan Active
+- Oil Temp
+- Oil Pressure
+- Coolant Pressure when available
+- Battery Voltage
 
-Applying a starter again creates another ordinary workspace rather than resetting an existing one.
+`Fan Active` is the generic binary state. PWM fan duty remains a separate controller-specific semantic and is not required here.
 
-If the final workspace is deleted, Logger may create a blank ordinary workspace to remain immediately usable. It must not resurrect the General starter automatically.
+### Transient / AE
+Pane 1:
+- RPM
+- TPS
+- TPS Change
+- MAP
 
-Existing persisted workspaces using a historical `built-in:*` ID are retained without destructive migration. The ID no longer grants special UI behavior; such a workspace is editable and deletable like every other workspace. A historical `General · Single` label may be normalized to `General` when restored.
+Pane 2:
+- Effective MAP
+- Lambda
+- Lambda Target
+- Injector Pulse Width
+- AE Fuel
+- Wall Fuel Correction
 
-## Next implementation direction
+### Fuel System
+Pane 1:
+- RPM
+- Fuel Pressure
+- MAP
+- TPS
 
-The generic starter catalog is complete and nine capability-gated EpicEFI starters are merged. The next work should follow the evidence-ranked audit in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md):
+Pane 2:
+- Fuel Pressure Delta
+- Injector Pulse Width
+- Injector Duty
+- Fuel Pump Command
+- Battery Voltage
+- Lambda
 
-1. implement **EpicEFI · Launch Control** next;
-2. then consider **Traction Control** and **Transmission Control** in that order, re-checking the user-visible gap after each addition;
-3. keep Staged Injection and Closed-loop Fuel / STFT / LTFT as secondary candidates;
-4. do not model per-cylinder/EGT families as dozens of fixed roles — add indexed semantic channel-family support first;
-5. continue to add persistent user/schema semantic overrides only where automatic mapping is genuinely ambiguous.
+### Trigger / Sync
+Pane 1:
+- RPM
+- Trigger Sync State
+- Phase Synchronized
+- Trigger Error
 
-All future starter implementations must reuse the same semantic resolver/materialization path rather than creating layout-specific resolver logic.
+Pane 2:
+- Trigger Error Count
+- Resync Count
+- Engine Phase
+- Battery Voltage
+
+### Startup / Warmup
+Pane 1:
+- RPM
+- Coolant Temp
+- Intake Air Temp
+- Battery Voltage
+- Engine Cycles Since Start
+
+Pane 2:
+- Cranking Fuel
+- After-start Correction
+- Warmup Correction
+- Injector Pulse Width
+- Lambda
+- Idle Target
+
+### Electrical
+Pane 1:
+- Battery Voltage
+- RPM
+- Injector Pulse Width
+- Dwell
+
+Pane 2:
+- Injector Duty
+- Fuel Pump Command
+- Fan Active
+- Alternator Duty
+- Sensor Supply Voltage
+- Sensor Supply Fault
+
+### Vehicle / Driveline
+Pane 1:
+- RPM
+- Vehicle Speed
+- TPS
+- MAP
+- Gear
+
+Pane 2:
+- Clutch State
+- Brake State
+- Wheel Speed FL / FR / RL / RR
+- Longitudinal Acceleration
+
+## EpicEFI-specific starter tier
+
+These are capability-gated from runtime/schema semantics, not board names.
+
+Current production set:
+
+- **EpicEFI · MAP Predict + Wall Wetting**
+- **EpicEFI · Fuel Rail Diagnostics**
+- **EpicEFI · ETB Control**
+- **EpicEFI · Dual Chamber Boost**
+- **EpicEFI · Trigger + Sync Detailed**
+- **EpicEFI · Injector + Ignition Timing**
+- **EpicEFI · Engine Protection**
+- **EpicEFI · VVT Control**
+- **EpicEFI · Anti-Lag**
+- **EpicEFI · Launch Control**
+- **EpicEFI · Traction Control**
+- **EpicEFI · Transmission Control**
+
+Capability gating affects discovery only. Once materialized, the workspace is ordinary user-owned state.
+
+### MAP Predict + Wall Wetting current definition
+
+This starter is intentionally more model-focused than the generic Transient / AE workspace.
+
+Pane 1 — MAP model:
+- RPM
+- TPS
+- MAP
+- Instant MAP
+- Predicted / Fallback MAP
+- Effective MAP
+
+Pane 2 — wall-film/fueling response:
+- Wall Fuel Amount
+- Wall Fuel Correction
+- Injector Pulse Width
+- Lambda
+- Lambda Target
+- Coolant Temp
+
+The semantic `Wall Fuel Correction` prefers EpicEFI `wallFuelCorrectionValue` / **Fuel: wall correction** (mass-domain correction) rather than the separate `wallFuelCorrection` wall-wetting injection-time telemetry.
+
+The specialized view deliberately no longer centers `MAP Prediction Active`, TPS Delta or generic TPS-AE fuel contribution.
+
+## Deferred candidates
+
+Template expansion is stopped for the validation phase.
+
+Potential future candidates:
+
+- Staged Injection;
+- Closed-loop Fuel / STFT / LTFT.
+
+Per-cylinder/EGT work remains deferred until the semantic layer supports indexed channel families cleanly. Do not create dozens of fixed `cyl1`, `cyl2`, etc. roles as a shortcut.
+
+## Validation/ownership guardrails
+
+The following must remain true:
+
+- generic starters are portable and always discoverable;
+- only generic starters seed fresh state;
+- EpicEFI-specific starters appear only when their complete capability bundle resolves;
+- materialized workspaces use normal `graph-*` ownership;
+- user edits/deletions persist and are not re-seeded;
+- MLG/INI/Shim source transitions normalize identities only;
+- unavailable channels remain explicit rather than being silently substituted;
+- template updates affect future materializations only.
+
+See [`STARTER_SYSTEM_VALIDATION.md`](STARTER_SYSTEM_VALIDATION.md) for the close-out validation matrix.
