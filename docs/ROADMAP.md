@@ -31,7 +31,7 @@ Established foundations include:
 
 The broad recorded-log performance campaign is complete unless a measured regression appears.
 
-Analyzer maturity work reached sensible checkpoints in Fueling and non-knock Ignition and is deliberately paused for now. The latest completed product track was **Histogram consistency/maturity**, through PRs #339, #340, #344 and #345.
+Analyzer maturity work reached sensible checkpoints in Fueling and non-knock Ignition and is deliberately paused for now. The latest completed product track is the **generic Histogram research-parity close-out**, culminating in PRs #372–#379 after the earlier consistency milestones #339, #340, #344 and #345.
 
 Do not begin Phase 5, restart broad Histogram redesign, or reopen mature analyzers automatically. Continue from concrete user-visible gaps, missing analyzer coverage, firmware/source integration needs, or measured regressions.
 
@@ -145,15 +145,19 @@ Histogram now uses the same shared anchored round-`i` information popover as Ana
 
 Detailed current behavior is documented in `docs/HISTOGRAM.md`.
 
-### Remaining Histogram work
+### Histogram research-parity checkpoint
 
-Scatter has completed its targeted maturity pass: saved setups, box-region evidence inspection, useful region → Logger navigation and CSV export are implemented. Distribution has now also completed its setup-persistence/export maturity pass with saved setups and CSV bins/summary export.
+The generic Histogram maturity work is complete at the intended checkpoint:
 
-The worthwhile remaining Histogram gaps are narrower:
+- Scatter: saved setups, box-region evidence, strongest-visit Logger navigation and qualified/region CSV export;
+- Table Generator: exact Median plus richer aligned X/Y/Z/reference/delta cell evidence, on top of weighted tune-table-node behavior;
+- Distribution: saved setups/CSV plus exact fixed min/max/bin-width geometry for reproducible repeated tests and explicit outside-geometry provenance;
+- Math Channels: historical references, comparisons/logical expressions, lazy conditionals and sample-aware lag/delta/moving-average/rate helpers.
 
-1. explicit fixed min/max/bin-width Distribution geometry if reproducible repeated-test workflows require it;
-2. later consolidate dormant duplicate/runtime-refinement code during the dedicated cleanup phase;
-3. replace the remaining Scatter timeline text/DOM bridge during cleanup only if it becomes a correctness or maintenance problem.
+Remaining Histogram work is cleanup/maintenance only unless a concrete user-visible gap is demonstrated:
+
+1. later consolidate dormant duplicate/runtime-refinement code during the dedicated cleanup phase;
+2. replace the remaining Scatter timeline text/DOM bridge during cleanup only if it becomes a correctness or maintenance problem.
 
 Do **not** start another broad Histogram rewrite.
 
