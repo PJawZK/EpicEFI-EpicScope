@@ -274,8 +274,15 @@ function createGraphSelector(): GraphSelectorController {
         <button type="button" data-workspace-action="new">＋ New graph</button>
         <div class="graph-selector-new-options" hidden>
           <button type="button" data-workspace-create="blank">Blank graph</button>
-          <span class="graph-selector-new-label">From template</span>
-          <div class="graph-selector-template-list"></div>
+          <div class="graph-selector-template-flyout">
+            <button type="button" class="graph-selector-template-trigger" aria-haspopup="menu" aria-expanded="false">
+              <span>From template</span>
+              <span class="graph-selector-template-arrow" aria-hidden="true">›</span>
+            </button>
+            <div class="graph-selector-template-panel" role="menu" hidden>
+              <div class="graph-selector-template-list"></div>
+            </div>
+          </div>
         </div>
         <button type="button" data-workspace-action="rename">Rename</button>
         <button type="button" data-workspace-action="duplicate">Duplicate</button>
@@ -289,9 +296,12 @@ function createGraphSelector(): GraphSelectorController {
   const menu = root.querySelector<HTMLElement>('.graph-selector-menu');
   const list = root.querySelector<HTMLElement>('.graph-selector-list');
   const newOptions = root.querySelector<HTMLElement>('.graph-selector-new-options');
+  const templateFlyout = root.querySelector<HTMLElement>('.graph-selector-template-flyout');
+  const templateTrigger = root.querySelector<HTMLButtonElement>('.graph-selector-template-trigger');
+  const templatePanel = root.querySelector<HTMLElement>('.graph-selector-template-panel');
   const templateList = root.querySelector<HTMLElement>('.graph-selector-template-list');
   const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];
-  if (!button || !buttonLabel || !menu || !list || !newOptions || !templateList) {
+  if (!button || !buttonLabel || !menu || !list || !newOptions || !templateFlyout || !templateTrigger || !templatePanel || !templateList) {
     throw new Error('Graph selector structure is incomplete.');
   }
 
@@ -313,9 +323,15 @@ function createGraphSelector(): GraphSelectorController {
   }
   templateList.replaceChildren(templateFragment);
 
+  const setTemplatePanelOpen = (open: boolean): void => {
+    templatePanel.hidden = !open;
+    templateTrigger.setAttribute('aria-expanded', String(open));
+  };
+
   const close = (): void => {
     menu.hidden = true;
     newOptions.hidden = true;
+    setTemplatePanelOpen(false);
     button.setAttribute('aria-expanded', 'false');
   };
 
@@ -369,6 +385,11 @@ function createGraphSelector(): GraphSelectorController {
       createListener?.(undefined);
       return;
     }
+    const templateTriggerButton = target.closest<HTMLButtonElement>('.graph-selector-template-trigger');
+    if (templateTriggerButton) {
+      setTemplatePanelOpen(Boolean(templatePanel.hidden));
+      return;
+    }
     const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');
     if (templateButton?.dataset.workspaceTemplateId) {
       close();
@@ -379,6 +400,7 @@ function createGraphSelector(): GraphSelectorController {
     if (!actionButton || actionButton.disabled) return;
     if (actionButton.dataset.workspaceAction === 'new') {
       newOptions.hidden = !newOptions.hidden;
+      setTemplatePanelOpen(false);
       return;
     }
     close();
@@ -387,6 +409,17 @@ function createGraphSelector(): GraphSelectorController {
       case 'duplicate': duplicateListener?.(); break;
       case 'delete': deleteListener?.(); break;
     }
+  });
+  templateFlyout.addEventListener('mouseenter', () => {
+    if (!newOptions.hidden) setTemplatePanelOpen(true);
+  });
+  templateFlyout.addEventListener('mouseleave', () => setTemplatePanelOpen(false));
+  templateFlyout.addEventListener('focusin', () => {
+    if (!newOptions.hidden) setTemplatePanelOpen(true);
+  });
+  templateFlyout.addEventListener('focusout', (event) => {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !templateFlyout.contains(next)) setTemplatePanelOpen(false);
   });
   document.addEventListener('click', close);
 
