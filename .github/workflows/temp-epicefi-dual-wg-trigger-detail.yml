@@ -1,7 +1,8 @@
 name: Temporary EpicEFI dual-WG and trigger-detail transform
 on:
   push:
-    branches: [feat/epicefi-dual-wg-trigger-detail]
+    branches:
+      - feat/epicefi-dual-wg-trigger-detail
 permissions:
   contents: write
 jobs:
@@ -15,10 +16,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply specialized starter slice
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
-
           p=Path('apps/web/src/state/semantic-channel-roles.ts'); s=p.read_text()
           old="  | 'etb.feedForward'\n  | 'etb.jamDetected';"
           new="""  | 'etb.feedForward'\n  | 'etb.jamDetected'\n  | 'boost.lowerWastegateCommand'\n  | 'boost.openLoopPart'\n  | 'boost.closedLoopPart'\n  | 'boost.spooledLevel'\n  | 'boost.controlActive'\n  | 'trigger.toothAngleError'\n  | 'trigger.ignoredToothCount'\n  | 'trigger.primaryRiseCount'\n  | 'trigger.primaryFallCount'\n  | 'trigger.camRiseCount'\n  | 'trigger.camFallCount';"""
@@ -30,13 +30,13 @@ jobs:
   'boost.openLoopPart': { id: 'boost.openLoopPart', displayName: 'Boost Open Loop', aliases: ['openLoopPart', 'Boost: Open loop', 'Boost Open Loop'], include: [/boost.*open.*loop/i, /^open.*loop.*part$/i], exclude: [/table/i, /adder/i, /mult/i, /blend/i, /config/i] },
   'boost.closedLoopPart': { id: 'boost.closedLoopPart', displayName: 'Boost Closed Loop', aliases: ['boostControllerClosedLoopPart', 'Boost: Closed loop', 'Boost Closed Loop'], include: [/boost.*closed.*loop/i], exclude: [/table/i, /target/i, /blend/i, /config/i, /mode/i] },
   'boost.spooledLevel': { id: 'boost.spooledLevel', displayName: 'Spooled Level', aliases: ['spooledLevel', 'Spooled Level'], include: [/spooled.*level/i], exclude: [/curve/i, /table/i, /enable/i, /config/i] },
-  'boost.controlActive': { id: 'boost.controlActive', displayName: 'Boost Control Active', aliases: ['isBoostControlled', 'Boost Control Active', 'isBoostControlled'], include: [/boost.*control.*active/i, /is.*boost.*controlled/i], exclude: [/enable/i, /config/i, /pin/i] },
+  'boost.controlActive': { id: 'boost.controlActive', displayName: 'Boost Control Active', aliases: ['isBoostControlled', 'Boost Control Active'], include: [/boost.*control.*active/i, /is.*boost.*controlled/i], exclude: [/enable/i, /config/i, /pin/i] },
   'trigger.toothAngleError': { id: 'trigger.toothAngleError', displayName: 'Trigger Tooth Angle Error', aliases: ['triggerToothAngleError', 'Sync: trigger angle error', 'Trigger Tooth Angle Error'], include: [/trigger.*tooth.*angle.*error/i, /trigger.*angle.*error/i], exclude: [/window/i, /config/i, /threshold/i] },
   'trigger.ignoredToothCount': { id: 'trigger.ignoredToothCount', displayName: 'Ignored Tooth Count', aliases: ['triggerIgnoredToothCount', 'Ignored Tooth Count'], include: [/trigger.*ignored.*tooth.*count/i, /ignored.*tooth.*count/i], exclude: [/config/i, /limit/i] },
   'trigger.primaryRiseCount': { id: 'trigger.primaryRiseCount', displayName: 'Primary Rise Count', aliases: ['triggerPrimaryRise', 'Primary Trigger Rise Count'], include: [/trigger.*primary.*rise/i], exclude: [/pin/i, /mode/i, /config/i] },
   'trigger.primaryFallCount': { id: 'trigger.primaryFallCount', displayName: 'Primary Fall Count', aliases: ['triggerPrimaryFall', 'Primary Trigger Fall Count'], include: [/trigger.*primary.*fall/i], exclude: [/pin/i, /mode/i, /config/i] },
-  'trigger.camRiseCount': { id: 'trigger.camRiseCount', displayName: 'Cam Rise Count', aliases: ['vvtEventRiseCounter1', 'triggerVvtRise', 'Cam Rise Count'], include: [/(?:vvt|cam).*rise.*(?:count|counter)/i], exclude: [/2|3|4/, /config/i] },
-  'trigger.camFallCount': { id: 'trigger.camFallCount', displayName: 'Cam Fall Count', aliases: ['vvtEventFallCounter1', 'triggerVvtFall', 'Cam Fall Count'], include: [/(?:vvt|cam).*fall.*(?:count|counter)/i], exclude: [/2|3|4/, /config/i] },
+  'trigger.camRiseCount': { id: 'trigger.camRiseCount', displayName: 'Cam Rise Count', aliases: ['vvtEventRiseCounter1', 'triggerVvtRise', 'Cam Rise Count'], include: [/(?:vvt|cam).*rise.*(?:count|counter)/i], exclude: [/config/i] },
+  'trigger.camFallCount': { id: 'trigger.camFallCount', displayName: 'Cam Fall Count', aliases: ['vvtEventFallCounter1', 'triggerVvtFall', 'Cam Fall Count'], include: [/(?:vvt|cam).*fall.*(?:count|counter)/i], exclude: [/config/i] },
 };"""
           assert old in s
           p.write_text(s.replace(old,new,1))
@@ -49,12 +49,10 @@ jobs:
   availability: { allOfRoleIds: ['boost.wastegateCommand', 'boost.lowerWastegateCommand', 'boost.openLoopPart', 'boost.closedLoopPart'] }, layout: 'dual',
   panes: [
     { id: 'pane-1', roles: [
-      { roleId: 'engine.rpm', requirement: 'required' }, { roleId: 'engine.map', requirement: 'required' }, { roleId: 'boost.target', requirement: 'preferred' },
-      { roleId: 'boost.wastegateCommand', requirement: 'required' }, { roleId: 'boost.lowerWastegateCommand', requirement: 'required' },
+      { roleId: 'engine.rpm', requirement: 'required' }, { roleId: 'engine.map', requirement: 'required' }, { roleId: 'boost.target', requirement: 'preferred' }, { roleId: 'boost.wastegateCommand', requirement: 'required' }, { roleId: 'boost.lowerWastegateCommand', requirement: 'required' },
     ] },
     { id: 'pane-2', roles: [
-      { roleId: 'boost.openLoopPart', requirement: 'required' }, { roleId: 'boost.closedLoopPart', requirement: 'required' },
-      { roleId: 'boost.spooledLevel', requirement: 'optional' }, { roleId: 'boost.controlActive', requirement: 'optional' }, { roleId: 'boost.error', requirement: 'optional' },
+      { roleId: 'boost.openLoopPart', requirement: 'required' }, { roleId: 'boost.closedLoopPart', requirement: 'required' }, { roleId: 'boost.spooledLevel', requirement: 'optional' }, { roleId: 'boost.controlActive', requirement: 'optional' }, { roleId: 'boost.error', requirement: 'optional' },
     ] },
   ],
 };
@@ -64,12 +62,10 @@ export const EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE: StarterWorkspaceTempl
   availability: { allOfRoleIds: ['trigger.toothAngleError', 'trigger.primaryRiseCount', 'trigger.primaryFallCount', 'trigger.camRiseCount', 'trigger.camFallCount'] }, layout: 'dual',
   panes: [
     { id: 'pane-1', roles: [
-      { roleId: 'engine.rpm', requirement: 'required' }, { roleId: 'trigger.syncState', requirement: 'required' }, { roleId: 'trigger.errorActive', requirement: 'preferred' },
-      { roleId: 'trigger.errorCount', requirement: 'preferred' }, { roleId: 'trigger.resyncCount', requirement: 'preferred' }, { roleId: 'trigger.phaseSynchronized', requirement: 'preferred' },
+      { roleId: 'engine.rpm', requirement: 'required' }, { roleId: 'trigger.syncState', requirement: 'required' }, { roleId: 'trigger.errorActive', requirement: 'preferred' }, { roleId: 'trigger.errorCount', requirement: 'preferred' }, { roleId: 'trigger.resyncCount', requirement: 'preferred' }, { roleId: 'trigger.phaseSynchronized', requirement: 'preferred' },
     ] },
     { id: 'pane-2', roles: [
-      { roleId: 'trigger.enginePhase', requirement: 'preferred' }, { roleId: 'trigger.toothAngleError', requirement: 'required' }, { roleId: 'trigger.ignoredToothCount', requirement: 'optional' },
-      { roleId: 'trigger.primaryRiseCount', requirement: 'required' }, { roleId: 'trigger.primaryFallCount', requirement: 'required' }, { roleId: 'trigger.camRiseCount', requirement: 'required' }, { roleId: 'trigger.camFallCount', requirement: 'required' },
+      { roleId: 'trigger.enginePhase', requirement: 'preferred' }, { roleId: 'trigger.toothAngleError', requirement: 'required' }, { roleId: 'trigger.ignoredToothCount', requirement: 'optional' }, { roleId: 'trigger.primaryRiseCount', requirement: 'required' }, { roleId: 'trigger.primaryFallCount', requirement: 'required' }, { roleId: 'trigger.camRiseCount', requirement: 'required' }, { roleId: 'trigger.camFallCount', requirement: 'required' },
     ] },
   ],
 };
@@ -87,8 +83,7 @@ export const EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE: StarterWorkspaceTempl
           assert old in s
           p.write_text(s.replace(old,new,1))
 
-          p=Path('tests/web/epicefi-dual-wg-trigger-detail-starters.test.ts')
-          p.write_text("""import { describe, expect, it } from 'vitest';
+          Path('tests/web/epicefi-dual-wg-trigger-detail-starters.test.ts').write_text("""import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../../core/log-model/log-types';
 import { EPICEFI_DUAL_CHAMBER_BOOST_DUAL_WORKSPACE, EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE, resolveStarterWorkspaceTemplate, starterWorkspaceAvailable } from '../../apps/web/src/state/built-in-workspace-templates';
 import { resolveSemanticChannelRole } from '../../apps/web/src/state/semantic-channel-roles';
@@ -101,6 +96,7 @@ describe('EpicEFI dual chamber boost and detailed trigger starters',()=>{
   it('rejects configuration-only lookalikes',()=>{ expect(resolveSemanticChannelRole('boost.lowerWastegateCommand',[c('lowerWastegatePin','Lower WG Output (Advanced)'),c('lowerWgTableOpenLoop','Lower wastegate duty (open loop)')]).channel).toBeUndefined(); expect(resolveSemanticChannelRole('trigger.toothAngleError',[c('triggerToothAngleWindow','Tooth angle rejection window')]).channel).toBeUndefined(); });
 });
 """)
+          PY
       - run: npm run typecheck
       - run: npm test -- --run
       - run: npm run build
