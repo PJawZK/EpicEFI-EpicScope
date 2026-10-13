@@ -1,5 +1,6 @@
 import { buildNumericHeatmap, type NumericHeatmapResult } from '../../../../core/analysis/heatmap';
 import { buildCellCenteredWeightedMean } from '../../../../core/analysis/weighted-cell-mean';
+import { buildTableCellEvidenceRows } from '../../../../core/analysis/table-cell-evidence';
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import { subtractNumericRanges } from '../../../../core/analysis/numeric-range-arithmetic';
 import { compileCalculatedField, evaluateCalculatedFieldRange } from '../../../../core/analysis/calculated-field';
@@ -86,6 +87,7 @@ function aggregationLabel(method: HistogramTableAggregation): string {
   if (method === 'weighted-mean') return 'MLV weighted mean';
   if (method === 'count') return 'Count';
   if (method === 'mean') return 'Mean';
+  if (method === 'median') return 'Median';
   if (method === 'min') return 'Minimum';
   if (method === 'max') return 'Maximum';
   if (method === 'sum') return 'Sum';
@@ -151,7 +153,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   let currentScope: ResolvedScope | undefined;
   let currentFilterDescription = 'None';
   let layout: ChartLayout | undefined;
-  let selectedCell: { readonly cellIndex: number; readonly xIndex: number; readonly yIndex: number; readonly sampleIndices: readonly number[]; readonly timeMs: readonly number[]; readonly label: string } | undefined;
+  let selectedCell: { readonly cellIndex: number; readonly xIndex: number; readonly yIndex: number; readonly sampleIndices: readonly number[]; readonly timeMs: readonly number[]; readonly label: string; readonly copyText: string } | undefined;
   let calculatedFields = loadHistogramCalculatedFields();
   let filterSets = loadHistogramFilterSets();
   let tablePresets = loadHistogramTablePresets();
@@ -168,6 +170,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       <label><span>Cell</span><select class="histogram-table-aggregation">
         <option value="weighted-mean" selected>MLV weighted mean</option>
         <option value="mean">Mean</option>
+        <option value="median">Median</option>
         <option value="count">Count</option>
         <option value="min">Minimum</option>
         <option value="max">Maximum</option>
@@ -1334,15 +1337,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     return { xIndex, yIndex, cellIndex: yIndex * result.xBins.length + xIndex };
   };
 
-  const timeForSourceIndex = (sampleIndex: number): number | undefined => {
-    const trace = currentXTrace;
-    if (!trace) return undefined;
-    const localIndex = sampleIndex - trace.range.startSampleIndex;
-    if (!Number.isSafeInteger(localIndex) || localIndex < 0 || localIndex >= trace.range.timeMs.length) return undefined;
-    const time = trace.range.timeMs[localIndex];
-    return time !== undefined && Number.isFinite(time) ? time : undefined;
-  };
-
   const closeCellInspector = (): void => {
     selectedCell = undefined;
     cellInspector.hidden = true;
@@ -1355,30 +1349,73 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const cell = cellAtPointer(event);
     if (!result || !xTrace || !yTrace || !cell) return;
     const sourceIndices = [...(result.cellSampleIndices[cell.cellIndex] ?? new Uint32Array(0))];
-    const times = sourceIndices.flatMap((sampleIndex) => {
-      const time = timeForSourceIndex(sampleIndex);
-      return time === undefined ? [] : [time];
+    const evidenceRows = buildTableCellEvidenceRows({
+      sampleIndices: sourceIndices,
+      xRange: xTrace.range,
+      yRange: yTrace.range,
+      ...(currentZTrace ? { zRange: currentZTrace.range } : {}),
+      ...(currentDeltaTrace ? { referenceRange: currentDeltaTrace.range } : {}),
     });
+    const timedRows = evidenceRows.filter((row) => row.timeMs !== undefined);
     const xBin = result.xBins[cell.xIndex]!;
     const yBin = result.yBins[cell.yIndex]!;
     const value = result.cellValues[cell.cellIndex];
     const count = result.counts[cell.cellIndex] ?? 0;
     const label = `${traceLabel(xTrace)} ${formatNumber(xBin.centerValue)} × ${traceLabel(yTrace)} ${formatNumber(yBin.centerValue)}`;
-    selectedCell = { cellIndex: cell.cellIndex, xIndex: cell.xIndex, yIndex: cell.yIndex, sampleIndices: sourceIndices, timeMs: times, label };
+    const copyHeader = ['sampleIndex', 'timeMs', traceLabel(xTrace), traceLabel(yTrace)];
+    if (currentZTrace) copyHeader.push(traceLabel(currentZTrace));
+    if (currentDeltaTrace) copyHeader.push(traceLabel(currentDeltaTrace), `${traceLabel(currentZTrace!)} - ${traceLabel(currentDeltaTrace)}`);
+    const copyRows = evidenceRows.map((row) => {
+      const values: (string | number)[] = [row.sampleIndex, row.timeMs ?? '', row.x ?? '', row.y ?? ''];
+      if (currentZTrace) values.push(row.z ?? '');
+      if (currentDeltaTrace) values.push(row.reference ?? '', row.delta ?? '');
+      return values.join('\t');
+    });
+    selectedCell = {
+      cellIndex: cell.cellIndex,
+      xIndex: cell.xIndex,
+      yIndex: cell.yIndex,
+      sampleIndices: timedRows.map((row) => row.sampleIndex),
+      timeMs: timedRows.map((row) => row.timeMs!),
+      label,
+      copyText: [copyHeader.join('\t'), ...copyRows].join('\n'),
+    };
     cellInspectorTitle.textContent = label;
     const totalWeight = currentCellTotalWeights?.[cell.cellIndex];
     cellInspectorSubtitle.textContent = `${aggregationLabel(currentAggregation)} ${formatCellValue(value, currentAggregation, 120)} · ${count.toLocaleString()} hits${currentAggregation === 'weighted-mean' ? ` · weight ${formatNumber(totalWeight, 3)}` : ''}`;
-    cellInspectorSummary.innerHTML = `<span>${traceLabel(xTrace)} ${formatNumber(xBin.lowerBound)}–${formatNumber(xBin.upperBound)}</span><span>${traceLabel(yTrace)} ${formatNumber(yBin.lowerBound)}–${formatNumber(yBin.upperBound)}</span>`;
-    const shown = sourceIndices.slice(0, 200);
-    cellSampleList.replaceChildren(...shown.map((sampleIndex, index) => {
+    const summaryItems = [
+      `${traceLabel(xTrace)} ${formatNumber(xBin.lowerBound)}–${formatNumber(xBin.upperBound)}`,
+      `${traceLabel(yTrace)} ${formatNumber(yBin.lowerBound)}–${formatNumber(yBin.upperBound)}`,
+    ];
+    if (currentZTrace) summaryItems.push(`Z · ${traceLabel(currentZTrace)}${currentZTrace.channel.unit ? ` (${currentZTrace.channel.unit})` : ''}`);
+    if (currentDeltaTrace) summaryItems.push(`Reference · ${traceLabel(currentDeltaTrace)}${currentDeltaTrace.channel.unit ? ` (${currentDeltaTrace.channel.unit})` : ''}`);
+    cellInspectorSummary.replaceChildren(...summaryItems.map((text) => {
+      const span = document.createElement('span');
+      span.textContent = text;
+      return span;
+    }));
+    const shown = evidenceRows.slice(0, 200);
+    cellSampleList.replaceChildren(...shown.map((evidence) => {
       const row = document.createElement('div');
-      const time = times[index];
-      row.innerHTML = `<span>#${sampleIndex.toLocaleString()}</span><strong>${time === undefined ? '—' : `${(time / 1000).toFixed(3)} s`}</strong>`;
+      const meta = document.createElement('span');
+      meta.textContent = `#${evidence.sampleIndex.toLocaleString()} · ${evidence.timeMs === undefined ? '—' : `${(evidence.timeMs / 1000).toFixed(3)} s`}`;
+      const values = document.createElement('strong');
+      const parts = [
+        `X ${formatNumber(evidence.x)}${xTrace.channel.unit ? ` ${xTrace.channel.unit}` : ''}`,
+        `Y ${formatNumber(evidence.y)}${yTrace.channel.unit ? ` ${yTrace.channel.unit}` : ''}`,
+      ];
+      if (currentZTrace) parts.push(`Z ${formatNumber(evidence.z)}${currentZTrace.channel.unit ? ` ${currentZTrace.channel.unit}` : ''}`);
+      if (currentDeltaTrace) {
+        parts.push(`Ref ${formatNumber(evidence.reference)}${currentDeltaTrace.channel.unit ? ` ${currentDeltaTrace.channel.unit}` : ''}`);
+        parts.push(`Δ ${formatNumber(evidence.delta)}${currentZTrace?.channel.unit ? ` ${currentZTrace.channel.unit}` : ''}`);
+      }
+      values.textContent = parts.join(' · ');
+      row.replaceChildren(meta, values);
       return row;
     }));
-    cellListNote.textContent = sourceIndices.length > 200 ? `Showing 200 of ${sourceIndices.length.toLocaleString()} exact hits` : `${sourceIndices.length.toLocaleString()} exact hits`;
-    cellOpenLoggerButton.disabled = times.length === 0 || !context.openSamplesInLogger;
-    cellCopyButton.disabled = sourceIndices.length === 0;
+    cellListNote.textContent = evidenceRows.length > 200 ? `Showing 200 of ${evidenceRows.length.toLocaleString()} exact hits` : `${evidenceRows.length.toLocaleString()} exact hits`;
+    cellOpenLoggerButton.disabled = timedRows.length === 0 || !context.openSamplesInLogger;
+    cellCopyButton.disabled = evidenceRows.length === 0;
     cellInspector.hidden = false;
   };
 
@@ -1527,8 +1564,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   cellInspectorClose.addEventListener('click', closeCellInspector);
   cellCopyButton.addEventListener('click', () => {
     if (!selectedCell) return;
-    const lines = selectedCell.sampleIndices.map((sampleIndex, index) => `${sampleIndex}\t${selectedCell!.timeMs[index] ?? ''}`);
-    void navigator.clipboard.writeText(['sampleIndex\ttimeMs', ...lines].join('\n'));
+    void navigator.clipboard.writeText(selectedCell.copyText);
   });
   cellOpenLoggerButton.addEventListener('click', () => {
     if (!selectedCell || !context.openSamplesInLogger || selectedCell.timeMs.length === 0) return;

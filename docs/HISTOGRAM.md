@@ -94,7 +94,7 @@ Implemented behavior includes:
 - Full Log / Current A/B / Saved Range scope;
 - X/Y/Z channel selection;
 - physical channels and saved Math Channels;
-- Count, Mean, Min, Max, Sum, Standard Deviation, Variance and **Weighted Mean**;
+- Count, Mean, **Median**, Min, Max, Sum, Standard Deviation, Variance and **Weighted Mean**;
 - optional sample-by-sample Z subtraction/reference channel;
 - automatic geometry, custom breakpoints and loaded-MSQ table geometry;
 - saved presets;
@@ -103,7 +103,7 @@ Implemented behavior includes:
 - value- or hit-weight-based coloring;
 - hit counts;
 - cell hover/details;
-- cell sample inspection;
+- cell sample inspection with aligned source/time plus actual X/Y/Z/reference/delta values;
 - exact cell evidence → Logger navigation;
 - CSV export;
 - visible input/eligible/filtered/binned/outside provenance.
@@ -118,7 +118,6 @@ A few mature-path implementation details are intentionally deferred:
 
 - the dormant duplicate mini calculated-field editor can be removed/consolidated later;
 - runtime refinements that rewrite older internal wording/layout should move into their owning component during cleanup;
-- the cell inspector could later show X/Y/Z/reference values directly, not only source/time identity.
 
 Do not reopen these merely for code aesthetics while broader feature coverage remains the higher priority.
 
