@@ -110,6 +110,29 @@ describe('semantic channel roles', () => {
     expect(resolveSemanticChannelRole('idle.airCommand', channels).channel?.id).toBe('currentIdlePosition');
   });
 
+  it('resolves the generic boost roles to the EpicEFI runtime channels', () => {
+    const channels = [
+      channel('boostControlTarget', 'boostControlTarget', 'Boost: Target'),
+      channel('boostOutput', 'boostOutput', 'Boost: Output'),
+      channel('boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),
+      channel('boostStatus_error', 'boostStatus_error', 'Boost PID error'),
+      channel('emapKpa', 'emapKpa', 'EMAP'),
+      channel('lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),
+    ];
+
+    expect(resolveSemanticChannelRole('boost.target', channels).channel?.id).toBe('boostControlTarget');
+    expect(resolveSemanticChannelRole('boost.wastegateCommand', channels).channel?.id).toBe('boostOutput');
+    expect(resolveSemanticChannelRole('boost.error', channels).channel?.id).toBe('boostStatus_error');
+    expect(resolveSemanticChannelRole('exhaust.emap', channels).channel?.id).toBe('emapKpa');
+  });
+
+  it('does not substitute PID contribution or lower-WG output for generic wastegate command', () => {
+    expect(resolveSemanticChannelRole('boost.wastegateCommand', [
+      channel('boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),
+      channel('lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),
+    ]).channel).toBeUndefined();
+  });
+
   it('keeps generic idle roles separate from DC valve target/feedback detail', () => {
     expect(resolveSemanticChannelRole('idle.target', [
       channel('dcIdleTarget', 'dcIdleTarget', 'DC idle target'),
