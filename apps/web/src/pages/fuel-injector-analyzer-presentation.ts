@@ -67,6 +67,17 @@ export function describeFuelInjectorPresentation(input: FuelInjectorPresentation
   return { capacity, headroom, pressure: pressure.trim(), review };
 }
 
+export function isHighSideFuelPressureIdentity(identity: string): boolean {
+  const normalized = identity
+    .replace(/[_:./\\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return false;
+  if (/(^|\b)cel(\b|$)|check engine|diff|delta|differential/.test(normalized)) return false;
+  return /fuel.*pressure.*high|high.*fuel.*pressure|gdi.*pressure|high.*rail.*pressure/.test(normalized);
+}
+
 function ownText(element: Element | null): string {
   if (!element) return '';
   return [...element.childNodes]
@@ -74,6 +85,16 @@ function ownText(element: Element | null): string {
     .map((node) => node.textContent ?? '')
     .join(' ')
     .trim();
+}
+
+function setOwnText(element: HTMLElement | null, text: string): void {
+  if (!element) return;
+  const textNode = [...element.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+  if (textNode) {
+    if (textNode.textContent !== text) textNode.textContent = text;
+    return;
+  }
+  element.prepend(document.createTextNode(text));
 }
 
 function summaryValue(summary: HTMLElement, label: string): string | undefined {
@@ -115,10 +136,62 @@ function addDecisionCard(host: HTMLElement, label: string, value: string, help: 
   host.append(card);
 }
 
+function preferredHighSideValue(select: HTMLSelectElement): string {
+  const option = [...select.options].find((candidate) => isHighSideFuelPressureIdentity(`${candidate.value} ${candidate.textContent ?? ''}`));
+  return option?.value ?? '';
+}
+
+function optionSignature(select: HTMLSelectElement): string {
+  return [...select.options].map((option) => `${option.value}\u0000${option.textContent ?? ''}`).join('\u0001');
+}
+
+function ensureFuelPressureRoleSplit(view: HTMLElement): void {
+  const lowSelect = view.querySelector<HTMLSelectElement>('select[data-role="fuelPressure"]');
+  const lowLabel = lowSelect?.closest<HTMLLabelElement>('label');
+  if (!lowSelect || !lowLabel) return;
+
+  setOwnText(lowLabel.querySelector<HTMLElement>(':scope > span'), 'Low-side fuel pressure');
+  lowSelect.setAttribute('aria-label', 'Low-side fuel pressure');
+  lowSelect.title = 'Conventional / port-injected low-side fuel pressure. This is the pressure channel used by the current non-GDI pressure analysis.';
+
+  const controls = lowLabel.parentElement;
+  if (!controls) return;
+  let highLabel = controls.querySelector<HTMLLabelElement>('label[data-fuel-injector-high-side-context="true"]');
+  let highSelect = highLabel?.querySelector<HTMLSelectElement>('select[data-role="fuelPressureHighContext"]');
+
+  if (!highLabel || !highSelect) {
+    highLabel = document.createElement('label');
+    highLabel.dataset.fuelInjectorHighSideContext = 'true';
+    const caption = document.createElement('span');
+    caption.textContent = 'High-side / GDI fuel pressure';
+    highSelect = document.createElement('select');
+    highSelect.dataset.role = 'fuelPressureHighContext';
+    highSelect.setAttribute('aria-label', 'High-side / GDI fuel pressure');
+    highSelect.title = 'High-pressure direct-injection rail context. Kept separate from low-side pressure and not used by the current low-side pressure event analysis.';
+    highSelect.addEventListener('change', () => {
+      highSelect!.dataset.userSelected = 'true';
+    });
+    highLabel.append(caption, highSelect);
+    lowLabel.after(highLabel);
+  }
+
+  const nextSignature = optionSignature(lowSelect);
+  if (highSelect.dataset.optionSignature !== nextSignature) {
+    const previousValue = highSelect.value;
+    highSelect.replaceChildren(...[...lowSelect.options].map((option) => option.cloneNode(true)));
+    highSelect.dataset.optionSignature = nextSignature;
+    if (previousValue && [...highSelect.options].some((option) => option.value === previousValue)) highSelect.value = previousValue;
+    else highSelect.value = preferredHighSideValue(highSelect);
+  } else if (highSelect.dataset.userSelected !== 'true' && !highSelect.value) {
+    highSelect.value = preferredHighSideValue(highSelect);
+  }
+}
+
 function cleanup(view: HTMLElement): void {
   view.querySelector('.fuel-injector-decision-summary')?.remove();
   view.querySelector('.fuel-injector-mapping-warning')?.remove();
   view.querySelector('[data-fuel-injector-empty-state="true"]')?.remove();
+  view.querySelector('[data-fuel-injector-high-side-context="true"]')?.remove();
 }
 
 function applyFuelInjectorAnalyzerPresentation(view: HTMLElement): void {
@@ -127,6 +200,8 @@ function applyFuelInjectorAnalyzerPresentation(view: HTMLElement): void {
     cleanup(view);
     return;
   }
+
+  ensureFuelPressureRoleSplit(view);
 
   const summary = view.querySelector<HTMLElement>('.specialized-analyzer-summary:not(.fuel-injector-decision-summary)');
   if (!summary) return;
