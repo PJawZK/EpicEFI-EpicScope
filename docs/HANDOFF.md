@@ -8,9 +8,9 @@ Authoritative production branch: `main`
 
 Current authoritative product merge baseline:
 
-`a7e08bfa3a8b5f451fd4b8710b1f956b8f3635cd`
+`6ed132c11e4760c9e8240360ccba1a6bb7704d84`
 
-That squash merge is PR #370, **Refine generic starter channels and MAP wall-wetting diagnostics**.
+That squash merge is PR #379, **Complete Math Channels research parity**. It includes the preceding Table Generator (#377) and Distribution (#378) research-parity passes.
 
 Hosted application:
 
@@ -34,7 +34,7 @@ The semantic Logger starter-template track is now **feature-complete for the cur
 
 Do not continue adding starter templates by default. Staged Injection and Closed-loop Fuel / STFT / LTFT remain secondary future candidates. Per-cylinder/EGT work remains deferred until the semantic layer can represent indexed channel families cleanly.
 
-The next larger product track should be chosen deliberately. The strongest current candidate is richer Histogram Scatter region selection/evidence navigation.
+The generic Histogram research-parity track is now complete at its intended checkpoint. Table Generator, Distribution, Scatter and Math Channels cover the mature behaviors identified in the MegaLogViewer reference research. Do not continue generic Histogram expansion by default; choose the next larger product track deliberately from concrete user-visible gaps, analyzer coverage, source/firmware integration needs or measured regressions.
 
 ## Product/workflow invariant
 
@@ -207,12 +207,32 @@ The MAP Predict + Wall Wetting starter now emphasizes the actual MAP-model and w
 - #368 — scrollable template flyout.
 - #369 — fresh-state generic seeding + Single-layout readout fix.
 - #370 — generic channel audit refinements + MAP/WW semantic correction.
+- #371 — starter-template close-out documentation and regression matrix.
+- #372 — Scatter box-region evidence selection.
+- #373 — prominent Scatter region evidence + strongest contiguous Logger visit.
+- #374 — saved Scatter setups.
+- #375 — Scatter qualified/region CSV evidence export; targeted Scatter maturity complete.
+- #376 — Distribution saved setups + CSV bins/summary export.
+- #377 — Table Generator exact Median + aligned X/Y/Z/reference/delta cell evidence.
+- #378 — Distribution exact fixed min/max/bin-width geometry + outside-geometry provenance.
+- #379 — Math Channels historical references, comparisons/logical expressions, lazy conditionals and temporal helpers.
+
+## Generic Histogram research-parity checkpoint
+
+The mature-reference gaps identified during MegaLogViewer research are now closed for the current generic analysis scope:
+
+- **Table Generator** — Full Log / Current A/B / Saved Range, shared Qualification, physical + Math Channels, tune/custom/automatic geometry, Count/Mean/Median/Min/Max/Sum/StdDev/Variance/Weighted Mean, Z reference/subtraction, MLV-style weighted breakpoint-node behavior, exact cell evidence with X/Y/Z/reference/delta values, Logger navigation and CSV/provenance.
+- **Distribution** — shared scopes/Qualification/Math Channels, Count/% Samples/Time, Histogram/Cumulative, descriptive statistics, two-scope comparison on shared geometry, saved setups, CSV, bin → Logger evidence, time-gap correctness and exact repeatable Fixed Min/Max/Width geometry. Values outside fixed geometry are excluded rather than edge-clamped and remain visible as provenance.
+- **Scatter** — shared scopes/Qualification/Math Channels, Single/Dual, Dots/Lines, density heat, bounded rendering, point/box evidence, strongest contiguous Logger visit, saved setups and complete qualified/region CSV export. The targeted Scatter maturity track is closed.
+- **Math Channels** — saved named formulas with preview; arithmetic, comparisons and logical expressions; lazy `if()`; exact-name-first MLV-style `[Channel-N]` historical references; sample-aware `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()`; reusable as numeric inputs and Qualification dependencies. Nested saved Math Channel references remain deliberately unsupported.
+
+Do not reopen these surfaces for broad feature expansion without a concrete use case. Later cleanup may consolidate dormant/refinement code and replace the remaining Scatter timeline text/DOM bridge if it becomes a correctness or maintenance problem.
 
 ## Validation status
 
 The following are established:
 
-- full branch/main type-check, test and production-build validation through PR #370;
+- full branch/main type-check, test and production-build validation through PR #379;
 - real browser confirmation of fresh-state generic workspace seeding after site-local storage/cache reset;
 - user confirmation that the fresh baseline and Single layout presentation look correct;
 - prior real MLG + INI ↔ `ts_shim` source-transition validation;
