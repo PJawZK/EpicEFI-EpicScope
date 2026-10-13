@@ -1,5 +1,6 @@
 import { ensureAdditionalAnalyzerHelp } from '../pages/analyzer-additional-help';
 import { ensureAnalyzerSectionHelp } from '../pages/analyzer-section-help';
+import { ensureFuelInjectorAnalyzerPresentation } from '../pages/fuel-injector-analyzer-presentation';
 
 const INSTALLED = new WeakSet<HTMLElement>();
 
@@ -8,6 +9,7 @@ export function installAnalyzerHelp(root: HTMLElement): void {
   INSTALLED.add(root);
 
   const apply = (): void => {
+    ensureFuelInjectorAnalyzerPresentation(root);
     ensureAdditionalAnalyzerHelp(root);
     ensureAnalyzerSectionHelp(root);
   };
