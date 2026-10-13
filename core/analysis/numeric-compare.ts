@@ -43,6 +43,7 @@ const METHODS: readonly NumericAggregationMethod[] = [
   'min',
   'max',
   'mean',
+  'median',
   'variance',
   'standard-deviation',
 ];
@@ -88,8 +89,8 @@ function compareMetric(
 
 function aggregateSide(side: NumericCompareSide): NumericAggregationResult {
   return side.sampleIndices === undefined
-    ? aggregateNumericSamples(side.range)
-    : aggregateNumericSamples(side.range, { sampleIndices: side.sampleIndices });
+    ? aggregateNumericSamples(side.range, { includeMedian: true })
+    : aggregateNumericSamples(side.range, { sampleIndices: side.sampleIndices, includeMedian: true });
 }
 
 function validValues(side: NumericCompareSide): number[] {

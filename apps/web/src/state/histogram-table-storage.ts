@@ -60,6 +60,7 @@ const aggregationValues = new Set<HistogramTableAggregation>([
   'min',
   'max',
   'mean',
+  'median',
   'variance',
   'standard-deviation',
   'weighted-mean',

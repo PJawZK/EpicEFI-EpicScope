@@ -434,7 +434,10 @@ export function buildNumericHeatmap(
       continue;
     }
 
-    const aggregate = aggregateNumericSamples(options.valueRange!, { sampleIndices });
+    const aggregate = aggregateNumericSamples(options.valueRange!, {
+      sampleIndices,
+      ...(aggregationMethod === 'median' ? { includeMedian: true } : {}),
+    });
     const value = numericAggregationValue(aggregate, aggregationMethod);
     cellValueSampleCounts[cellIndex] = aggregate.validSampleCount;
     valueValidSampleCount += aggregate.validSampleCount;

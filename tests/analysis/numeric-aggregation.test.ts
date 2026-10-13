@@ -28,6 +28,7 @@ describe('aggregateNumericSamples', () => {
     expect(result.min).toBe(-2);
     expect(result.max).toBe(2);
     expect(result.mean).toBe(0);
+    expect(result.median).toBeUndefined();
     expect(result.meanAbsolute).toBe(1.5);
     expect(result.rootMeanSquare).toBeCloseTo(Math.sqrt(2.5));
     expect(result.variance).toBeCloseTo(10 / 3);
@@ -81,14 +82,21 @@ describe('aggregateNumericSamples', () => {
     expect(result.standardDeviation).toBeUndefined();
   });
 
+  it('computes exact odd/even medians only when requested', () => {
+    expect(aggregateNumericSamples(range(0, [9, 1, 5]), { includeMedian: true }).median).toBe(5);
+    expect(aggregateNumericSamples(range(0, [9, 1, 5, 3]), { includeMedian: true }).median).toBe(4);
+    expect(aggregateNumericSamples(range(0, [9, 1, 5])).median).toBeUndefined();
+  });
+
   it('maps selectable aggregation methods to their explicit result values', () => {
-    const result = aggregateNumericSamples(range(0, [-1, 2, 3]));
+    const result = aggregateNumericSamples(range(0, [-1, 2, 3]), { includeMedian: true });
     const expected: Record<NumericAggregationMethod, number | undefined> = {
       count: 3,
       sum: 4,
       min: -1,
       max: 3,
       mean: 4 / 3,
+      median: 2,
       variance: 13 / 3,
       'standard-deviation': Math.sqrt(13 / 3),
     };

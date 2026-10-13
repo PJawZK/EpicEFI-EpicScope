@@ -6,12 +6,15 @@ export type NumericAggregationMethod =
   | 'min'
   | 'max'
   | 'mean'
+  | 'median'
   | 'variance'
   | 'standard-deviation';
 
 export interface NumericAggregationOptions {
   /** Optional source sample indices, for example qualification output. */
   readonly sampleIndices?: ArrayLike<number>;
+  /** Collect/sort valid values only when an exact median is requested. */
+  readonly includeMedian?: boolean;
 }
 
 export interface NumericAggregationResult {
@@ -23,6 +26,7 @@ export interface NumericAggregationResult {
   readonly min: number | undefined;
   readonly max: number | undefined;
   readonly mean: number | undefined;
+  readonly median: number | undefined;
   /** Mean magnitude around zero, useful for signed correction/control signals. */
   readonly meanAbsolute: number | undefined;
   /** Root-mean-square magnitude around zero, emphasizing larger excursions. */
@@ -71,6 +75,7 @@ export function aggregateNumericSamples(
   let max = Number.NEGATIVE_INFINITY;
   let mean = 0;
   let m2 = 0;
+  const medianValues = options.includeMedian ? [] as number[] : undefined;
 
   const inputSampleCount = forEachSelectedSample(range, options.sampleIndices, (localIndex) => {
     if (localIndex === undefined) {
@@ -84,6 +89,7 @@ export function aggregateNumericSamples(
     }
 
     validSampleCount += 1;
+    medianValues?.push(value);
     sum += value;
     sumAbsolute += Math.abs(value);
     sumSquares += value * value;
@@ -97,6 +103,14 @@ export function aggregateNumericSamples(
   const variance = validSampleCount > 1
     ? m2 / (validSampleCount - 1)
     : validSampleCount === 1 ? 0 : undefined;
+  let median: number | undefined;
+  if (medianValues && medianValues.length > 0) {
+    medianValues.sort((left, right) => left - right);
+    const middle = Math.floor(medianValues.length / 2);
+    median = medianValues.length % 2 === 1
+      ? medianValues[middle]
+      : (medianValues[middle - 1]! + medianValues[middle]!) / 2;
+  }
 
   return {
     inputSampleCount,
@@ -107,6 +121,7 @@ export function aggregateNumericSamples(
     min: validSampleCount > 0 ? min : undefined,
     max: validSampleCount > 0 ? max : undefined,
     mean: validSampleCount > 0 ? mean : undefined,
+    median,
     meanAbsolute: validSampleCount > 0 ? sumAbsolute / validSampleCount : undefined,
     rootMeanSquare: validSampleCount > 0 ? Math.sqrt(sumSquares / validSampleCount) : undefined,
     variance,
@@ -123,6 +138,7 @@ export function numericAggregationValue(
   if (method === 'min') return result.min;
   if (method === 'max') return result.max;
   if (method === 'mean') return result.mean;
+  if (method === 'median') return result.median;
   if (method === 'variance') return result.variance;
   return result.standardDeviation;
 }
