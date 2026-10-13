@@ -27,6 +27,8 @@ Related semantic-workspace authority:
 - [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
 - [`DECISIONS.md`](DECISIONS.md) — D-051–D-054 naming, identity and built-in workspace decisions.
 
+These repository docs were refreshed together on the active feature branch from the validated EpicScope-specific state established during the Single semantic-workspace work.
+
 ## Current project position — 2026-10-13
 
 EpicScope Web remains the functional reference/validation implementation for Logger, Histogram and Analyzer behavior.
