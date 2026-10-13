@@ -6,7 +6,7 @@
 
 ## Purpose
 
-EpicScope is an ECU log analysis and tuning-diagnostics application intended to help a tuner **scope a tune**: inspect recorded behaviour, find faults, quantify weak areas, compare changes, and identify opportunities for improvement.
+EpicScope is an ECU log analysis and tuning-diagnostics application intended to help a tuner **scope a tune**: inspect recorded/live behaviour, find faults, quantify weak areas, compare changes, and identify opportunities for improvement.
 
 It is not intended to be only a generic graph viewer. Generic log-viewing functions are the foundation for higher-level, tune-aware analysis.
 
@@ -42,18 +42,22 @@ After Web behaviour and Linux performance mature, proven analysis concepts/core 
 
 ## Current Web implementation state
 
-EpicScope Web is now a usable hosted large-log analysis foundation with:
+EpicScope Web is a usable large-log/live-source analysis foundation with:
 
 - MLG v1/v2 import/index/staged CRC validation;
 - OPFS MLG sidecar/native-column access for large-log reuse;
 - INI-backed stable channel identity and MLG binding;
+- optional MSQ tune enrichment;
 - reusable named graph workspaces and pane assignments;
 - exact-log viewport/cursor/A-B/marker/range persistence kept separate from reusable workspace state;
 - multi-pane graph/timeline navigation;
-- channel search/filter/statistics and standardized live-value display;
-- performance/source diagnostics and tested report formatting.
+- Logger, Analyzer and Histogram product surfaces;
+- specialized Analyzer surfaces for Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel / Injector and Trigger / Sync;
+- runtime-health, parser, retained-memory and performance diagnostics;
+- validated `ts_shim` live/retained-source integration on the real Mega144H7 → Pi Zero 2 W → LAN → browser path;
+- semantic channel-role resolution and built-in pre-populated workspace infrastructure on the current feature branch.
 
-The earlier Web performance campaign and repository structural audit are considered good enough for now. The active product milestone is UI hierarchy, followed by generic analysis primitives.
+The earlier Web performance campaign is considered good enough unless a measured regression appears. Current active product work is semantic pre-populated workspaces and their cross-source/cross-ECU behavior.
 
 ## Primary user workflow
 
@@ -68,6 +72,7 @@ This is the product-level interaction order. UI controls should make this progre
 - Open Log and Load INI are grouped under **Load Data ▾**.
 - INI remains optional for ordinary log analysis.
 - MLG remains authoritative for recorded samples/validity.
+- Shim may temporarily become the authoritative live/capture source without forcing an application reload.
 
 ### 2. Channels
 
@@ -75,7 +80,8 @@ This is the product-level interaction order. UI controls should make this progre
 - preserve Active/Favorites/Recent semantics;
 - show current unit-aware values directly where useful;
 - keep known-but-unlogged channels explicit;
-- keep usable log-only channels accessible.
+- keep usable log-only channels accessible;
+- preserve source identity while allowing semantic role resolution above it.
 
 ### 3. Navigate
 
@@ -90,18 +96,18 @@ This is the product-level interaction order. UI controls should make this progre
 - A/B boundaries;
 - saved ranges;
 - markers;
-- future sample filters/qualification criteria.
+- sample filters/qualification criteria.
 
 ### 5. Analyze
 
-Generic tools should come before specialized analyzers:
+Generic tools and reusable analysis primitives support specialized analyzers:
 
 - range statistics;
 - histogram;
 - 2D histogram/heatmap/table;
 - scatter;
 - generic event analysis;
-- later specialized analyzers.
+- specialized analyzers.
 
 ### 6. Compare / Export
 
@@ -111,19 +117,111 @@ Compare/export are result-stage capabilities. Empty or disabled top-level placeh
 
 The **EpicScope logo dropdown** is the approved in-product mode/surface switcher.
 
-Current entries:
+Current primary entries:
 
-- Logger — active;
-- Analyzer — planned;
-- Histogram — planned.
+- Logger;
+- Analyzer;
+- Histogram.
 
-Future real capabilities may justify Scatter, Histogram/Table, Math Channels, or specialized Analyzer surfaces. This mode switcher is not the full EpicHub Dashboard/Tuner/Diagnostics shell.
+Analyzer and Histogram may use compact secondary selectors for their own subviews. This mode switcher is not the full EpicHub Dashboard/Tuner/Diagnostics shell.
 
 ## Graph workspace model
 
-Global workspace context is presented as **Graphs · <workspace>** rather than an unexplained bare name such as `General`.
+Global workspace context is presented as **Graphs · <workspace>** rather than an unexplained bare name.
+
+EpicScope now distinguishes:
+
+- **Layout** — graph geometry only;
+- **Workspace** — a tuning/diagnostic task that references a layout and channel roles.
+
+Initial layout vocabulary:
+
+- Single;
+- Dual;
+- Triple;
+- Quad;
+- Focus + 2;
+- Focus + 3;
+- Six Pane.
+
+Workspace names describe purpose, not geometry. Initial generic targets include General, Idle, Fuel, Ignition, Boost, Transient / AE, Cooling, Fuel System, Trigger / Sync, Startup / Warmup, Electrical and Vehicle / Driveline.
 
 The global shell communicates the active graph workspace. Active pane identity remains local to the pane so the header does not duplicate graph/pane information.
+
+## Semantic channel roles for built-ins
+
+Built-in task workspaces should not embed one ECU family's channel IDs.
+
+Product model:
+
+```text
+built-in workspace
+      ↓
+semantic channel roles
+      ↓
+ECU/schema alias/capability resolution
+      ↓
+source-specific channel identity
+```
+
+Example:
+
+```text
+engine.rpm → RPMValue → ini:RPMValue  (MLG + INI)
+engine.rpm → RPMValue → RPMValue      (ts_shim)
+```
+
+This lets the same task workspace survive source changes and makes multi-ECU support tractable.
+
+### Naming policy
+
+Source aliases and display names are deliberately separate.
+
+Legacy/vendor naming may be accepted for matching, but EpicScope chooses a modern, stable user-facing name. Example:
+
+```text
+legacy alias: TP
+semantic role: engine.throttle.position
+EpicScope display: TPS
+```
+
+The same principle applies to historical abbreviations such as `PW`, `Batt V`, `CLT`, `ECT`, etc. Established clear abbreviations such as RPM, MAP, TPS, AFR and Lambda may remain visible.
+
+### Required / preferred / optional roles
+
+Each built-in workspace role is classified as:
+
+- **required** — central to the workspace purpose;
+- **preferred** — expected and materially useful;
+- **optional** — enhancement when the ECU exposes it.
+
+A workspace should remain loadable with unresolved roles. Missing data is shown explicitly rather than fabricated.
+
+### Generic vs ECU-native workspaces
+
+Generic workspaces should resolve across ECU families where possible.
+
+ECU-native workspaces may also exist when a schema exposes richer capabilities. EpicEFI examples include Dual Chamber Boost, MAP Predict + Wall Wetting, ETB Control, Fuel Rail Diagnostics, Trigger + Sync Detailed, Injector / Ignition Timing and Engine Protection.
+
+Availability should be capability-driven rather than hard-coded by board name.
+
+See [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) for the detailed catalog and implementation status.
+
+## First semantic workspace validation
+
+The first validation intentionally used the simplest **Single** layout with one pane and four roles: RPM, MAP, TPS and Coolant Temp.
+
+The same built-in workspace identity was verified across:
+
+```text
+MLG + INI → ts_shim → MLG + INI
+```
+
+with canonical recorded identities changing to raw Shim identities and back while the workspace remained stable.
+
+That proof is the basis for the first production preset, **General · Single**, which expands the overview to RPM, MAP, TPS, Coolant Temp, Intake Air Temp, Battery Voltage, Lambda and Ignition Advance.
+
+The expanded eight-role preset is implemented on the active feature branch but must not be considered runtime-validated until its local typecheck/test and real source round trip are completed.
 
 ## Analysis principles
 
@@ -145,9 +243,9 @@ When source/tune context exists:
 
 - INI establishes firmware identity and stable known runtime/output-channel definitions;
 - MLG remains authoritative for recorded samples and validity;
-- MSQ later supplies actual tune/calibration values, tables, curves and scalars.
+- MSQ supplies actual tune/calibration values, tables, curves and scalars.
 
-Examples of later tune-aware workflows:
+Examples of tune-aware workflows:
 
 - map RPM/load samples into tune-table cells;
 - compare target vs actual behavior;
@@ -186,7 +284,7 @@ Event detection must remain separate from presentation so analyzers/comparison/r
 
 Comparison is a first-class product capability.
 
-Expected later support:
+Expected support includes:
 
 - before/after log comparison;
 - aligned comparable events/ranges;
@@ -195,9 +293,9 @@ Expected later support:
 - trace overlays;
 - analyzer-specific comparisons.
 
-## Initial specialized analyzers
+## Specialized analyzers
 
-Planned families:
+Current/planned families include:
 
 - Boost control;
 - Idle / PID;
@@ -244,8 +342,8 @@ Current Web development does not need to solve:
 - final native memory mapping;
 - final Linux thread-pool/runtime design;
 - final Linux packaging;
-- direct ECU serial/CAN acquisition;
+- direct ECU serial/CAN acquisition outside the validated Shim path;
 - Android integration;
 - decorative polish that conflicts with clarity/performance.
 
-The immediate product priority is to finish the Logger navigation/range UI hierarchy, then build the first generic analysis workflow on top of it.
+Current Web work should continue to use measured behavior and concrete tuning/diagnostic usefulness as its guide.
