@@ -1,0 +1,75 @@
+name: Temporary boost starter transform
+on:
+  push:
+    branches: [feat/boost-starter]
+permissions:
+  contents: write
+jobs:
+  transform:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/boost-starter
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply guarded boost starter transform
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('apps/web/src/state/semantic-channel-roles.ts')
+          s = p.read_text()
+          old = "  | 'idle.target'\n  | 'idle.airCommand';"
+          new = "  | 'idle.target'\n  | 'idle.airCommand'\n  | 'boost.target'\n  | 'boost.wastegateCommand'\n  | 'boost.error'\n  | 'exhaust.emap';"
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+
+          anchor = "  'idle.airCommand': {\n    id: 'idle.airCommand',\n    displayName: 'Idle Air Command',"
+          assert s.count(anchor) == 1
+          insert_after = "  'idle.airCommand': {\n    id: 'idle.airCommand',\n    displayName: 'Idle Air Command',\n    aliases: [\n      'currentIdlePosition',\n      'Idle Air Command',\n      'Idle Valve Duty',\n      'IAC Duty',\n      'Idle Position Command',\n      'Idle Valve Command',\n    ],\n    include: [\n      /current.*idle.*position/i,\n      /idle.*(?:air|valve|iac).*(?:command|duty)/i,\n      /(?:valve|iac).*idle.*(?:command|duty)/i,\n    ],\n    exclude: [/target/i, /actual/i, /feedback/i, /status/i, /term/i, /bias/i],\n  },"
+          assert s.count(insert_after) == 1
+          boost_roles = insert_after + "\n  'boost.target': {\n    id: 'boost.target',\n    displayName: 'Boost Target',\n    aliases: ['boostControlTarget', 'Boost Target', 'Boost: Target', 'Target Boost', 'Boost Pressure Target'],\n    include: [/boost.*target/i, /target.*boost/i, /target.*(?:map|pressure)/i],\n    exclude: [/cut/i, /limit/i, /adder/i, /mult/i],\n  },\n  'boost.wastegateCommand': {\n    id: 'boost.wastegateCommand',\n    displayName: 'Wastegate Command',\n    aliases: ['boostOutput', 'Wastegate Command', 'Wastegate Duty', 'WG Duty', 'Boost Duty'],\n    include: [/boost.*output/i, /wastegate.*(?:command|duty)/i, /(?:wg|boost).*duty/i],\n    exclude: [/lower/i, /secondary/i, /pid/i, /closed.*loop/i, /open.*loop/i, /target/i],\n  },\n  'boost.error': {\n    id: 'boost.error',\n    displayName: 'Boost Error',\n    aliases: ['boostStatus_error', 'Boost Error', 'Boost PID Error'],\n    include: [/boost.*(?:pid.*)?error/i],\n    exclude: [/wastegate.*dc/i, /position/i],\n  },\n  'exhaust.emap': {\n    id: 'exhaust.emap',\n    displayName: 'EMAP',\n    aliases: ['emapKpa', 'EMAP', 'Exhaust Manifold Pressure', 'Exhaust MAP'],\n    include: [/^emap(?:\\s*kpa)?$/i, /exhaust.*(?:manifold.*)?pressure/i, /exhaust.*map/i],\n    exclude: [/raw/i, /voltage/i, /sensor.*config/i],\n  },"
+          s = s.replace(insert_after, boost_roles, 1)
+          p.write_text(s)
+
+          p = Path('apps/web/src/state/built-in-workspace-templates.ts')
+          s = p.read_text()
+          anchor = "export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([\n  GENERAL_SINGLE_WORKSPACE,\n  IDLE_DUAL_WORKSPACE,\n]);"
+          assert s.count(anchor) == 1
+          boost_template = """export const BOOST_DUAL_WORKSPACE: StarterWorkspaceTemplate = {\n  id: 'boost-dual',\n  name: 'Boost',\n  description: 'Dual-pane boost response and control overview.',\n  layout: 'dual',\n  panes: [\n    {\n      id: 'pane-1',\n      roles: [\n        { roleId: 'engine.rpm', requirement: 'required' },\n        { roleId: 'engine.map', requirement: 'required' },\n        { roleId: 'engine.throttle.position', requirement: 'preferred' },\n        { roleId: 'boost.target', requirement: 'optional' },\n      ],\n    },\n    {\n      id: 'pane-2',\n      roles: [\n        { roleId: 'boost.wastegateCommand', requirement: 'preferred' },\n        { roleId: 'boost.error', requirement: 'optional' },\n        { roleId: 'temperature.intakeAir', requirement: 'optional' },\n        { roleId: 'exhaust.emap', requirement: 'optional' },\n      ],\n    },\n  ],\n};\n\nexport const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([\n  GENERAL_SINGLE_WORKSPACE,\n  IDLE_DUAL_WORKSPACE,\n  BOOST_DUAL_WORKSPACE,\n]);"""
+          s = s.replace(anchor, boost_template, 1)
+          p.write_text(s)
+
+          p = Path('tests/web/semantic-channel-roles.test.ts')
+          s = p.read_text()
+          anchor = "  it('keeps generic idle roles separate from DC valve target/feedback detail', () => {"
+          assert s.count(anchor) == 1
+          addition = """  it('resolves the generic boost roles to the EpicEFI runtime channels', () => {\n    const channels = [\n      channel('boostControlTarget', 'boostControlTarget', 'Boost: Target'),\n      channel('boostOutput', 'boostOutput', 'Boost: Output'),\n      channel('boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),\n      channel('boostStatus_error', 'boostStatus_error', 'Boost PID error'),\n      channel('emapKpa', 'emapKpa', 'EMAP'),\n      channel('lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),\n    ];\n\n    expect(resolveSemanticChannelRole('boost.target', channels).channel?.id).toBe('boostControlTarget');\n    expect(resolveSemanticChannelRole('boost.wastegateCommand', channels).channel?.id).toBe('boostOutput');\n    expect(resolveSemanticChannelRole('boost.error', channels).channel?.id).toBe('boostStatus_error');\n    expect(resolveSemanticChannelRole('exhaust.emap', channels).channel?.id).toBe('emapKpa');\n  });\n\n  it('does not substitute PID contribution or lower-WG output for generic wastegate command', () => {\n    expect(resolveSemanticChannelRole('boost.wastegateCommand', [\n      channel('boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),\n      channel('lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),\n    ]).channel).toBeUndefined();\n  });\n\n""" + anchor
+          s = s.replace(anchor, addition, 1)
+          p.write_text(s)
+
+          p = Path('tests/web/built-in-workspace-templates.test.ts')
+          s = p.read_text()
+          s = s.replace("  GENERAL_SINGLE_WORKSPACE,\n  IDLE_DUAL_WORKSPACE,", "  BOOST_DUAL_WORKSPACE,\n  GENERAL_SINGLE_WORKSPACE,\n  IDLE_DUAL_WORKSPACE,", 1)
+          s = s.replace("it('exposes General and Idle through the production starter catalog'", "it('exposes General, Idle and Boost through the production starter catalog'", 1)
+          s = s.replace("expect(STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual(['General', 'Idle']);", "expect(STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual(['General', 'Idle', 'Boost']);\n    expect(starterWorkspaceTemplate(BOOST_DUAL_WORKSPACE.id)).toBe(BOOST_DUAL_WORKSPACE);", 1)
+          anchor = "  it('resolves General onto EpicEFI live Shim channel IDs', () => {"
+          assert s.count(anchor) == 1
+          addition = """  it('defines Boost as a portable two-pane starter', () => {\n    expect(BOOST_DUAL_WORKSPACE.name).toBe('Boost');\n    expect(BOOST_DUAL_WORKSPACE.layout).toBe('dual');\n    expect(BOOST_DUAL_WORKSPACE.panes[0]?.roles).toEqual([\n      { roleId: 'engine.rpm', requirement: 'required' },\n      { roleId: 'engine.map', requirement: 'required' },\n      { roleId: 'engine.throttle.position', requirement: 'preferred' },\n      { roleId: 'boost.target', requirement: 'optional' },\n    ]);\n    expect(BOOST_DUAL_WORKSPACE.panes[1]?.roles).toEqual([\n      { roleId: 'boost.wastegateCommand', requirement: 'preferred' },\n      { roleId: 'boost.error', requirement: 'optional' },\n      { roleId: 'temperature.intakeAir', requirement: 'optional' },\n      { roleId: 'exhaust.emap', requirement: 'optional' },\n    ]);\n  });\n\n  it('resolves Boost onto canonical EpicEFI INI identities', () => {\n    const result = resolveStarterWorkspaceTemplate(BOOST_DUAL_WORKSPACE, [\n      channel('ini:RPMValue', 'RPMValue', 'RPM'),\n      channel('ini:MAPValue', 'MAPValue', 'MAP'),\n      channel('ini:TPSValue', 'TPSValue', 'TPS'),\n      channel('ini:boostControlTarget', 'boostControlTarget', 'Boost: Target'),\n      channel('ini:boostOutput', 'boostOutput', 'Boost: Output'),\n      channel('ini:boostStatus_error', 'boostStatus_error', 'Boost PID error'),\n      channel('ini:intake', 'intake', 'Intake air temp'),\n      channel('ini:emapKpa', 'emapKpa', 'EMAP'),\n      channel('ini:boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),\n      channel('ini:lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),\n    ]);\n\n    expect(result.panes[0]?.channelIds).toEqual([\n      'ini:RPMValue', 'ini:MAPValue', 'ini:TPSValue', 'ini:boostControlTarget',\n    ]);\n    expect(result.panes[1]?.channelIds).toEqual([\n      'ini:boostOutput', 'ini:boostStatus_error', 'ini:intake', 'ini:emapKpa',\n    ]);\n    expect(result.unresolvedRequiredRoleIds).toEqual([]);\n    expect(result.unresolvedPreferredRoleIds).toEqual([]);\n    expect(result.unresolvedOptionalRoleIds).toEqual([]);\n  });\n\n""" + anchor
+          s = s.replace(anchor, addition, 1)
+          p.write_text(s)
+          PY
+          rm .github/workflows/temp-boost-starter.yml
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: add generic Boost workspace starter"
+          git push origin HEAD:feat/boost-starter
