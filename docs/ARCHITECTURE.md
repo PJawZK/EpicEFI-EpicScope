@@ -10,6 +10,12 @@ EpicScope must support rapid Web feature development without coupling product be
 
 The architecture separates **what the application does** from **how each platform executes it**.
 
+Related authority for semantic built-ins:
+
+- `PREPOPULATED_WORKSPACES.md` — workspace catalog and implementation status;
+- `DATA_MODEL.md` — semantic role/template entities;
+- `DECISIONS.md` — D-051–D-054 approved rules.
+
 ## Primary layers
 
 ```text
