@@ -1,0 +1,38 @@
+name: Temporary workspace channel refinement
+
+on:
+  push:
+    branches:
+      - refine/generic-and-map-ww-channels
+
+permissions:
+  contents: write
+
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refine/generic-and-map-ww-channels
+      - name: Apply guarded transform
+        run: python .github/scripts/temp_refine_workspace_channels.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Commit product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/state/semantic-channel-roles.ts apps/web/src/state/built-in-workspace-templates.ts tests/web/built-in-workspace-templates.test.ts tests/web/epicefi-capability-starters.test.ts tests/web/semantic-channel-roles.test.ts docs/PREPOPULATED_WORKSPACES.md
+          if git diff --cached --quiet; then
+            echo 'No product changes to commit'
+          else
+            git commit -m 'refine generic and MAP wall-wetting workspace channels'
+            git push
+          fi
