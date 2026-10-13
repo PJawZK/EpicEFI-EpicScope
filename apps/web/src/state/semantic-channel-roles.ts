@@ -108,6 +108,39 @@ export type SemanticChannelRoleId =
   | 'als.timingCorrection'
   | 'als.sparkSkip'
   | 'als.etbAirAdd'
+  | 'launch.preLaunchActive'
+  | 'launch.active'
+  | 'launch.switchActive'
+  | 'launch.clutchActive'
+  | 'launch.speedCondition'
+  | 'launch.tpsCondition'
+  | 'launch.rpmCondition'
+  | 'launch.rpmLocked'
+  | 'launch.lockedRpm'
+  | 'launch.sparkSkip'
+  | 'traction.disabled'
+  | 'traction.speedRefLeftRight'
+  | 'traction.speedRefFrontRear'
+  | 'traction.slipLeftRight'
+  | 'traction.slipFrontRear'
+  | 'traction.timingReduction'
+  | 'traction.sparkSkip'
+  | 'traction.etbReduction'
+  | 'transmission.currentGear'
+  | 'transmission.targetGear'
+  | 'transmission.nextGear'
+  | 'transmission.inputShaftSpeed'
+  | 'transmission.inputShaftSpeedTarget'
+  | 'transmission.outputShaftSpeed'
+  | 'transmission.targetEngineRpm'
+  | 'transmission.calculatedTorque'
+  | 'transmission.targetTorque'
+  | 'transmission.fastTorqueRequest'
+  | 'transmission.cutTarget'
+  | 'transmission.blipTarget'
+  | 'transmission.clutchSlip'
+  | 'transmission.torqueReductionRequested'
+  | 'transmission.faultStatus'
   | 'cooling.coolantPressure';
 
 export interface SemanticChannelRoleDefinition {
@@ -478,6 +511,40 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'als.timingCorrection': { id: 'als.timingCorrection', displayName: 'ALS Timing Correction', aliases: ['timingALSCorrection', 'ALS Timing Correction'], include: [/(?:als|anti.?lag).*timing.*correction/i, /timing.*als.*correction/i], exclude: [/table/i, /retard.*table/i, /bin/i, /axis/i, /config/i] },
   'als.sparkSkip': { id: 'als.sparkSkip', displayName: 'ALS Spark Skip', aliases: ['ALSHardSparkSkip', 'ALS Hard Spark Skip', 'ALS Spark Skip'], include: [/als.*(?:hard.*)?spark.*skip/i], exclude: [/table/i, /ratio/i, /setting/i, /bin/i, /axis/i, /config/i] },
   'als.etbAirAdd': { id: 'als.etbAirAdd', displayName: 'ALS ETB Air Add', aliases: ['alsEtbAddValue', 'ALS ETB Air Add'], include: [/als.*etb.*(?:air.*)?add.*value/i, /anti.?lag.*etb.*air.*add/i], exclude: [/table/i, /position/i, /setting/i, /bin/i, /axis/i, /config/i] },
+  'launch.preLaunchActive': { id: 'launch.preLaunchActive', displayName: 'Pre-Launch Active', aliases: ['isPreLaunchCondition', 'Pre-Launch Active'], include: [/^is.*pre.*launch.*condition$/i, /^pre.*launch.*active$/i], exclude: [/enable/i, /window/i, /table/i, /config/i] },
+  'launch.active': { id: 'launch.active', displayName: 'Launch Active', aliases: ['isLaunchCondition', 'Launch: isLaunchCondition', 'Launch Active'], include: [/^is.*launch.*condition$/i, /^launch.*active$/i], exclude: [/pre/i, /enable/i, /table/i, /config/i] },
+  'launch.switchActive': { id: 'launch.switchActive', displayName: 'Launch Switch Active', aliases: ['isSwitchActivated', 'Launch: isSwitchActivated', 'Launch Switch Active'], include: [/^is.*switch.*activated$/i, /launch.*switch.*active/i], exclude: [/pin/i, /mode/i, /config/i] },
+  'launch.clutchActive': { id: 'launch.clutchActive', displayName: 'Launch Clutch Active', aliases: ['isClutchActivated', 'Launch: isClutchActivated', 'Launch Clutch Active'], include: [/^is.*clutch.*activated$/i, /launch.*clutch.*active/i], exclude: [/up/i, /pin/i, /mode/i, /config/i] },
+  'launch.speedCondition': { id: 'launch.speedCondition', displayName: 'Launch Speed Condition', aliases: ['speedCondition', 'Launch: speedCondition', 'Launch Speed Condition'], include: [/^launch.*speed.*condition$/i, /^speed.*condition$/i], exclude: [/threshold/i, /limit/i, /table/i, /config/i] },
+  'launch.tpsCondition': { id: 'launch.tpsCondition', displayName: 'Launch TPS Condition', aliases: ['tpsCondition', 'Launch: tpsCondition', 'Launch TPS Condition'], include: [/^launch.*tps.*condition$/i, /^tps.*condition$/i], exclude: [/threshold/i, /limit/i, /table/i, /config/i] },
+  'launch.rpmCondition': { id: 'launch.rpmCondition', displayName: 'Launch RPM Condition', aliases: ['rpmLaunchCondition', 'Launch RPM Condition'], include: [/^rpm.*launch.*condition$/i, /^launch.*rpm.*condition$/i], exclude: [/pre/i, /threshold/i, /limit/i, /table/i, /config/i] },
+  'launch.rpmLocked': { id: 'launch.rpmLocked', displayName: 'Launch RPM Locked', aliases: ['isRpmLaunchLocked', 'Launch RPM Locked'], include: [/^is.*rpm.*launch.*locked$/i, /^launch.*rpm.*locked$/i], exclude: [/adder/i, /table/i, /config/i] },
+  'launch.lockedRpm': { id: 'launch.lockedRpm', displayName: 'Locked Launch RPM', aliases: ['rpmLaunchLockedRpm', 'Locked Launch RPM'], include: [/^rpm.*launch.*locked.*rpm$/i, /^locked.*launch.*rpm$/i], exclude: [/adder/i, /table/i, /config/i] },
+  'launch.sparkSkip': { id: 'launch.sparkSkip', displayName: 'Launch Spark Skip', aliases: ['launchSparkSkipRatio', 'Launch Spark Skip'], include: [/^launch.*spark.*skip.*ratio$/i, /^launch.*spark.*skip$/i], exclude: [/table/i, /initial/i, /final/i, /enable/i, /config/i] },
+  'traction.disabled': { id: 'traction.disabled', displayName: 'Traction Disabled', aliases: ['tracDisabled', 'Traction Disabled'], include: [/^trac.*disabled$/i, /^traction.*disabled$/i], exclude: [/button/i, /enable/i, /config/i] },
+  'traction.speedRefLeftRight': { id: 'traction.speedRefLeftRight', displayName: 'Traction L/R Speed Ref', aliases: ['tracSpeedLeftRightREF', 'LeftRightSpeedRef', 'Traction Left/Right Speed Reference'], include: [/^trac.*speed.*left.*right.*ref$/i, /^left.*right.*speed.*ref$/i], exclude: [/bin/i, /table/i, /config/i] },
+  'traction.speedRefFrontRear': { id: 'traction.speedRefFrontRear', displayName: 'Traction F/R Speed Ref', aliases: ['tracSpeedFrontRearREF', 'FrontRearSpeedRef', 'Traction Front/Rear Speed Reference'], include: [/^trac.*speed.*front.*rear.*ref$/i, /^front.*rear.*speed.*ref$/i], exclude: [/bin/i, /table/i, /config/i] },
+  'traction.slipLeftRight': { id: 'traction.slipLeftRight', displayName: 'Traction L/R Slip', aliases: ['wheelSlipRatioLeftRightREF', 'Traction Left/Right Slip'], include: [/^wheel.*slip.*ratio.*left.*right.*ref$/i, /^traction.*left.*right.*slip$/i], exclude: [/bin/i, /table/i, /front$/i, /rear$/i, /config/i] },
+  'traction.slipFrontRear': { id: 'traction.slipFrontRear', displayName: 'Traction F/R Slip', aliases: ['wheelSlipRatioFrontRear', 'Wheel Slip Ratio Front/Rear', 'Traction Front/Rear Slip'], include: [/^wheel.*slip.*ratio.*front.*rear$/i, /^traction.*front.*rear.*slip$/i], exclude: [/bin/i, /table/i, /config/i] },
+  'traction.timingReduction': { id: 'traction.timingReduction', displayName: 'Traction Timing Reduction', aliases: ['tractionAdvanceDrop', 'Traction: timing correction', 'Traction Timing Reduction'], include: [/^traction.*advance.*drop$/i, /^traction.*timing.*correction$/i], exclude: [/table/i, /left/i, /right/i, /front/i, /rear/i, /config/i] },
+  'traction.sparkSkip': { id: 'traction.sparkSkip', displayName: 'Traction Spark Skip', aliases: ['tractionControlSparkSkip', 'Traction Spark Skip'], include: [/^traction.*control.*spark.*skip$/i, /^traction.*spark.*skip$/i], exclude: [/table/i, /left/i, /right/i, /front/i, /rear/i, /config/i] },
+  'traction.etbReduction': { id: 'traction.etbReduction', displayName: 'Traction ETB Reduction', aliases: ['etb1tcEtbDrop', 'etb1ETB traction control', 'Traction ETB Reduction'], include: [/^etb.*traction.*control$/i, /^etb.*tc.*etb.*drop$/i, /^traction.*etb.*reduction$/i], exclude: [/table/i, /config/i, /enable/i] },
+  'transmission.currentGear': { id: 'transmission.currentGear', displayName: 'Trans Current Gear', aliases: ['transCurrentGear', 'Trans: current gear', 'Transmission Current Gear'], include: [/^trans.*current.*gear$/i], exclude: [/table/i, /ratio/i, /config/i] },
+  'transmission.targetGear': { id: 'transmission.targetGear', displayName: 'Trans Target Gear', aliases: ['transTargetGear', 'Trans: target gear', 'Transmission Target Gear'], include: [/^trans.*target.*gear$/i], exclude: [/table/i, /config/i] },
+  'transmission.nextGear': { id: 'transmission.nextGear', displayName: 'Trans Next Gear', aliases: ['transNextGear', 'Trans: next gear', 'Transmission Next Gear'], include: [/^trans.*next.*gear$/i], exclude: [/rpm/i, /table/i, /config/i] },
+  'transmission.inputShaftSpeed': { id: 'transmission.inputShaftSpeed', displayName: 'Trans Input Shaft Speed', aliases: ['transInputShaftSpeed', 'Trans: input shaft speed'], include: [/^trans.*input.*shaft.*speed$/i], exclude: [/target/i, /table/i, /config/i] },
+  'transmission.inputShaftSpeedTarget': { id: 'transmission.inputShaftSpeedTarget', displayName: 'Trans Input Shaft Target', aliases: ['transInputShaftSpeedTarget', 'Trans: input shaft speed target'], include: [/^trans.*input.*shaft.*speed.*target$/i], exclude: [/table/i, /config/i] },
+  'transmission.outputShaftSpeed': { id: 'transmission.outputShaftSpeed', displayName: 'Trans Output Shaft Speed', aliases: ['transOutputShaftSpeed', 'Trans: output shaft speed'], include: [/^trans.*output.*shaft.*speed$/i], exclude: [/table/i, /config/i] },
+  'transmission.targetEngineRpm': { id: 'transmission.targetEngineRpm', displayName: 'Trans Target Engine RPM', aliases: ['transTargetEngineRpm', 'Trans: target engine RPM'], include: [/^trans.*target.*engine.*rpm$/i], exclude: [/table/i, /config/i] },
+  'transmission.calculatedTorque': { id: 'transmission.calculatedTorque', displayName: 'Trans Calculated Torque', aliases: ['transCalculatedTorque', 'Trans: calculated engine torque'], include: [/^trans.*calculated.*(?:engine.*)?torque$/i], exclude: [/table/i, /config/i] },
+  'transmission.targetTorque': { id: 'transmission.targetTorque', displayName: 'Trans Target Torque', aliases: ['transTargetTorque', 'Trans: target engine torque'], include: [/^trans.*target.*(?:engine.*)?torque$/i], exclude: [/table/i, /config/i, /limit/i] },
+  'transmission.fastTorqueRequest': { id: 'transmission.fastTorqueRequest', displayName: 'Trans Fast Torque Request', aliases: ['transTorqueRequestFast', 'Trans: fast torque request'], include: [/^trans.*fast.*torque.*request$/i, /^trans.*torque.*request.*fast$/i], exclude: [/table/i, /config/i] },
+  'transmission.cutTarget': { id: 'transmission.cutTarget', displayName: 'Trans Cut Target', aliases: ['transCutPercent', 'Trans: cut target'], include: [/^trans.*cut.*(?:target|percent)$/i], exclude: [/table/i, /config/i, /current/i] },
+  'transmission.blipTarget': { id: 'transmission.blipTarget', displayName: 'Trans Blip Target', aliases: ['transBlipPercent', 'Trans: blip target'], include: [/^trans.*blip.*(?:target|percent)$/i], exclude: [/rpm/i, /throttle/i, /ignition/i, /table/i, /config/i] },
+  'transmission.clutchSlip': { id: 'transmission.clutchSlip', displayName: 'Trans Clutch Slip', aliases: ['transClutchSlipPercent', 'Trans: clutch slip'], include: [/^trans.*clutch.*slip$/i, /^trans.*clutch.*slip.*percent$/i], exclude: [/table/i, /config/i] },
+  'transmission.torqueReductionRequested': { id: 'transmission.torqueReductionRequested', displayName: 'Trans Torque Reduction Requested', aliases: ['transTorqueReductionRequested', 'Trans: torque reduction requested'], include: [/^trans.*torque.*reduction.*requested$/i], exclude: [/enable/i, /table/i, /config/i] },
+  'transmission.faultStatus': { id: 'transmission.faultStatus', displayName: 'Trans Fault Status', aliases: ['transFaultStatus', 'Trans: fault status'], include: [/^trans.*fault.*status$/i], exclude: [/enable/i, /table/i, /config/i] },
+
   'cooling.coolantPressure': { id: 'cooling.coolantPressure', displayName: 'Coolant Pressure', aliases: ['coolantPressure', 'Coolant Pressure'], include: [/^coolant.*pressure$/i], exclude: [/raw/i, /minimum/i, /maximum/i, /limit/i, /sensor.*config/i] },
 
 };

@@ -1,6 +1,6 @@
 # EpicEFI specialized workspace coverage audit
 
-Status: 2026-10-13, after PR #363 (`116ee68750806b5c2686a1888eedb0ae86b843fd`).
+Status: 2026-10-13, catalog expansion complete through Launch, Traction and Transmission Control.
 
 This document audits the current EpicEFI runtime channel catalog against EpicScope's existing generic and capability-gated Logger starters. Its purpose is to prevent the specialized starter catalog from growing mechanically: a new starter should exist only when the ECU exposes a coherent live diagnostic/control bundle that adds a materially different workflow.
 
@@ -18,7 +18,7 @@ A large number of channels alone is not sufficient.
 
 ## Current specialized coverage
 
-Nine EpicEFI-specific starters are already implemented:
+Twelve EpicEFI-specific starters are implemented:
 
 - **EpicEFI · MAP Predict + Wall Wetting**
 - **EpicEFI · Fuel Rail Diagnostics**
@@ -29,94 +29,29 @@ Nine EpicEFI-specific starters are already implemented:
 - **EpicEFI · Engine Protection**
 - **EpicEFI · VVT Control**
 - **EpicEFI · Anti-Lag**
+- **EpicEFI · Launch Control**
+- **EpicEFI · Traction Control**
+- **EpicEFI · Transmission Control**
 
 Together with the twelve generic starters, these already cover most ordinary engine-state, fuel, ignition, cooling, transient, electrical, driveline, trigger and startup workflows.
 
-## Tier A — strong next specialized candidates
+## Tier A — implementation complete; validation cutoff reached
 
-### 1. EpicEFI · Launch Control — highest priority
+The evidence-ranked Tier A candidates are now implemented. No further ordinary specialized starters should be added before product validation.
 
-The schema exposes launch activation, pre-launch/launch state, switch/clutch/brake/TPS/speed/RPM conditions, locked launch RPM and spark-skip output.
-
-Representative channels:
+The next phase is deliberately:
 
 ```text
-launchTriggered
-isPreLaunchCondition
-isLaunchCondition
-isSwitchActivated
-isClutchActivated
-isClutchUpActivated
-isBrakePedalActivated
-isTpsActivated
-speedCondition
-tpsCondition
-rpmLaunchCondition
-rpmPreLaunchCondition
-isRpmLaunchLocked
-rpmLaunchLockedRpm
-launchSparkSkipRatio
+INI-only catalog/discovery smoke test
+→ materialize every generic and supported EpicEFI starter
+→ refresh/persistence test
+→ MLG + INI resolution test
+→ source transition test
+→ ts_shim/live schema test when available
+→ fix resolver or lifecycle defects exposed by evidence
 ```
 
-Why it deserves a starter: the data explains *why* launch did or did not engage and what cut action was applied. A generic Vehicle/Driveline graph cannot answer that.
-
-### 2. EpicEFI · Traction Control — high priority
-
-The current runtime data includes four wheel speeds, multiple slip calculations/references, timing reduction, spark skip and ETB traction reduction.
-
-Representative channels:
-
-```text
-vehicleSpeedKph1..4
-vehicleSpeedKphFrontAvg
-vehicleSpeedKphRearAvg
-wheelSlipRatio
-wheelSlipRatioLeftRightFRONT
-wheelSlipRatioLeftRightREAR
-wheelSlipRatioFrontRear
-tractionAdvanceDrop
-tractionControlSparkSkip
-etb1tcEtbDrop
-```
-
-Why it deserves a starter: it connects measured slip to the ECU's torque-reduction actions. Vehicle / Driveline provides the raw road-state context but deliberately does not expose traction-controller intervention.
-
-### 3. EpicEFI · Transmission Control — strong, but lower immediate priority
-
-The INI exposes an unusually rich transmission runtime set: current/target/next gear, input/output shaft speeds, target RPM, torque requests and limits, cut/blip requests, clutch/converter slip, lockup, pressures, temperature, modes, fault state and CAN freshness diagnostics.
-
-Representative channels:
-
-```text
-transCurrentGear
-transTargetGear
-transNextGear
-transInputShaftSpeed
-transOutputShaftSpeed
-transInputShaftSpeedTarget
-transTargetEngineRpm
-transBlipTargetRpm
-transCalculatedTorque
-transTargetTorque
-transTorqueRequestFast
-transTorqueRequestSlow
-transTorqueProtectionLimit
-transCutPercent
-transBlipPercent
-transClutchSlipPercent
-transConverterSlipPercent
-transTccSlipPercent
-transLockupPercent
-transClutchAPressure
-transClutchBPressure
-transTemp
-transErrorCode
-transFaultStatus
-```
-
-Why it deserves a starter: this is far beyond the generic Vehicle / Driveline starter. It should be capability-gated to actual transmission-control telemetry rather than merely `detectedGear` or vehicle speed.
-
-Because the channel set is large, the first implementation should be one focused **shift/torque-control** workspace rather than trying to graph every TCU diagnostic at once.
+Only after that validation pass should Tier B be reconsidered.
 
 ## Tier B — valid candidates after Tier A
 

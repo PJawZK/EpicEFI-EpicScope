@@ -182,9 +182,12 @@ Implemented specialized starters:
 - **EpicEFI · Injector + Ignition Timing** — injection SOI plus ignition timing-attribution diagnostics;
 - **EpicEFI · Engine Protection** — dynamic rev-limit, cut-reason and protection-state diagnostics.
 - **EpicEFI · VVT Control** — primary bank-1 intake cam target/actual tracking with controller output, error and PID contributions;
-- **EpicEFI · Anti-Lag** — ALS latch/timeout state with fuel, ignition, spark-skip and ETB-air intervention diagnostics.
+- **EpicEFI · Anti-Lag** — ALS latch/timeout state with fuel, ignition, spark-skip and ETB-air intervention diagnostics;
+- **EpicEFI · Launch Control** — launch gating, pre-launch/launch state, RPM lock and spark-skip diagnostics;
+- **EpicEFI · Traction Control** — slip/reference-speed calculations and timing/spark/ETB intervention diagnostics;
+- **EpicEFI · Transmission Control** — focused shift, shaft-speed, torque, cut/blip and fault diagnostics.
 
-The current specialized coverage audit is maintained in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md). Its current highest-value next candidates are **Launch Control**, **Traction Control** and **Transmission Control**. Per-cylinder/EGT work is deliberately deferred until the semantic layer can represent indexed channel families cleanly.
+The generic catalog and the evidence-ranked specialized Tier A catalog are now complete. Template expansion stops here for the validation phase. Staged Injection and Closed-loop Fuel / STFT / LTFT remain secondary future candidates, while per-cylinder/EGT work remains deferred until the semantic layer can represent indexed channel families cleanly.
 
 Capability gating affects only starter discovery. Once materialized, the resulting workspace is still an ordinary editable workspace and is not owned by the capability detector.
 

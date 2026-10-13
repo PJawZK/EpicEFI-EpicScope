@@ -581,6 +581,92 @@ export const EPICEFI_ANTI_LAG_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const EPICEFI_LAUNCH_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-launch-control-dual',
+  name: 'EpicEFI · Launch Control',
+  description: 'EpicEFI launch arming, state, RPM-lock and spark-skip diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['launch.preLaunchActive', 'launch.active', 'launch.lockedRpm', 'launch.sparkSkip'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      { roleId: 'vehicle.speed', requirement: 'preferred' },
+      { roleId: 'launch.preLaunchActive', requirement: 'required' },
+      { roleId: 'launch.active', requirement: 'required' },
+      { roleId: 'launch.speedCondition', requirement: 'preferred' },
+      { roleId: 'launch.tpsCondition', requirement: 'preferred' },
+      { roleId: 'launch.rpmCondition', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'launch.rpmLocked', requirement: 'preferred' },
+      { roleId: 'launch.lockedRpm', requirement: 'required' },
+      { roleId: 'launch.sparkSkip', requirement: 'required' },
+      { roleId: 'ignition.advance', requirement: 'preferred' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const EPICEFI_TRACTION_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-traction-control-dual',
+  name: 'EpicEFI · Traction Control',
+  description: 'EpicEFI wheel-slip reference and torque-reduction intervention diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['traction.speedRefLeftRight', 'traction.slipLeftRight', 'traction.timingReduction', 'traction.sparkSkip'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'preferred' },
+      { roleId: 'vehicle.speed', requirement: 'preferred' },
+      { roleId: 'traction.speedRefLeftRight', requirement: 'required' },
+      { roleId: 'traction.speedRefFrontRear', requirement: 'preferred' },
+      { roleId: 'traction.slipLeftRight', requirement: 'required' },
+      { roleId: 'traction.slipFrontRear', requirement: 'preferred' },
+      { roleId: 'traction.disabled', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'traction.timingReduction', requirement: 'required' },
+      { roleId: 'traction.sparkSkip', requirement: 'required' },
+      { roleId: 'traction.etbReduction', requirement: 'optional' },
+      { roleId: 'ignition.advance', requirement: 'preferred' },
+      { roleId: 'engine.throttle.position', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const EPICEFI_TRANSMISSION_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-transmission-control-dual',
+  name: 'EpicEFI · Transmission Control',
+  description: 'EpicEFI transmission shift, shaft-speed and torque-intervention diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['transmission.currentGear', 'transmission.targetGear', 'transmission.inputShaftSpeed', 'transmission.outputShaftSpeed', 'transmission.cutTarget', 'transmission.blipTarget'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'preferred' },
+      { roleId: 'transmission.currentGear', requirement: 'required' },
+      { roleId: 'transmission.targetGear', requirement: 'required' },
+      { roleId: 'transmission.nextGear', requirement: 'preferred' },
+      { roleId: 'transmission.inputShaftSpeed', requirement: 'required' },
+      { roleId: 'transmission.inputShaftSpeedTarget', requirement: 'preferred' },
+      { roleId: 'transmission.outputShaftSpeed', requirement: 'required' },
+      { roleId: 'transmission.targetEngineRpm', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'transmission.calculatedTorque', requirement: 'preferred' },
+      { roleId: 'transmission.targetTorque', requirement: 'preferred' },
+      { roleId: 'transmission.fastTorqueRequest', requirement: 'optional' },
+      { roleId: 'transmission.cutTarget', requirement: 'required' },
+      { roleId: 'transmission.blipTarget', requirement: 'required' },
+      { roleId: 'transmission.clutchSlip', requirement: 'preferred' },
+      { roleId: 'transmission.torqueReductionRequested', requirement: 'preferred' },
+      { roleId: 'transmission.faultStatus', requirement: 'preferred' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -603,6 +689,9 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   EPICEFI_ENGINE_PROTECTION_DUAL_WORKSPACE,
   EPICEFI_VVT_CONTROL_DUAL_WORKSPACE,
   EPICEFI_ANTI_LAG_DUAL_WORKSPACE,
+  EPICEFI_LAUNCH_CONTROL_DUAL_WORKSPACE,
+  EPICEFI_TRACTION_CONTROL_DUAL_WORKSPACE,
+  EPICEFI_TRANSMISSION_CONTROL_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceAvailable(
