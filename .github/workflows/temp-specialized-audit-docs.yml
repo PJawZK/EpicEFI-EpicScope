@@ -1,0 +1,20 @@
+name: Temporary specialized audit docs alignment
+on:
+  push:
+    branches:
+      - docs/specialized-workspace-coverage-alignment
+permissions:
+  contents: write
+jobs:
+  transform:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/scripts/temp_specialized_audit_docs.py
+      - name: Commit docs changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/HANDOFF.md docs/PREPOPULATED_WORKSPACES.md
+          git commit -m "docs: align handoff and starter coverage"
+          git push
