@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNumericScatter, selectNumericScatterRegion } from '../../core/analysis/scatter';
+import { buildNumericScatter, selectNumericScatterRegion, summarizeNumericScatterRegionRuns } from '../../core/analysis/scatter';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
 
 function range(startSampleIndex: number, values: readonly number[], validity?: readonly number[]): NumericChannelRange {
@@ -109,6 +109,27 @@ describe('buildNumericScatter', () => {
 
     expect(selected.selectedPairCount).toBe(7);
     expect([...selected.sampleIndices]).toEqual([3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it('groups discontiguous region hits into visits and identifies the strongest visit', () => {
+    const summary = summarizeNumericScatterRegionRuns({
+      sampleIndices: Uint32Array.from([10, 11, 12, 20, 21, 30]),
+      selectedPairCount: 6,
+    });
+
+    expect(summary.runCount).toBe(3);
+    expect(summary.runs).toEqual([
+      { startSampleIndex: 10, endSampleIndex: 12, sampleCount: 3 },
+      { startSampleIndex: 20, endSampleIndex: 21, sampleCount: 2 },
+      { startSampleIndex: 30, endSampleIndex: 30, sampleCount: 1 },
+    ]);
+    expect(summary.strongestRun).toEqual({ startSampleIndex: 10, endSampleIndex: 12, sampleCount: 3 });
+  });
+
+  it('returns an empty visit summary for an empty region selection', () => {
+    const summary = summarizeNumericScatterRegionRuns({ sampleIndices: new Uint32Array(), selectedPairCount: 0 });
+    expect(summary.runCount).toBe(0);
+    expect(summary.strongestRun).toBeUndefined();
   });
 
   it('returns an empty evidence set when no pair lies inside the region', () => {

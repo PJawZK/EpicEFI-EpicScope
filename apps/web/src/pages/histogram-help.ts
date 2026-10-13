@@ -55,7 +55,7 @@ const SCATTER_HEAT_HELP: InlineHelpEntry = {
 
 const SCATTER_SELECTION_HELP: InlineHelpEntry = {
   title: 'Scatter evidence selection',
-  text: 'Drag a box inside the plot to select every qualified X/Y pair in that value region, including points omitted from the reduced visible drawing. The region count and bounds remain visible and the full selected evidence can be opened in Logger. A simple click still selects one rendered point.',
+  text: 'Drag a box inside the plot to select every qualified X/Y pair in that value region, including points omitted from the reduced visible drawing. A prominent card shows pair share, X/Y bounds and how many contiguous visits crossed the region. Open strongest visit focuses Logger on the densest continuous occurrence instead of fitting every scattered hit across the whole log. A simple click still selects one rendered point.',
 };
 
 function addSelectHelp(root: HTMLElement, selector: string, help: InlineHelpEntry): void {

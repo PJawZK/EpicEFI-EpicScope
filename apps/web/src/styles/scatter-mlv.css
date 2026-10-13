@@ -181,6 +181,40 @@
 }
 .scatter-region-drag[hidden] { display: none !important; }
 
+.scatter-region-card {
+  position: absolute;
+  z-index: 4;
+  top: 44px;
+  left: 74px;
+  width: min(360px, calc(100% - 160px));
+  box-sizing: border-box;
+  padding: 9px 10px 8px;
+  border: 1px solid #4e849f;
+  border-radius: 4px;
+  background: rgba(5, 16, 24, .94);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .42);
+  color: #dce9ef;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.scatter-region-card[hidden] { display: none !important; }
+.scatter-region-card > strong { display: block; margin-bottom: 4px; color: #f4f8fa; font-size: 12px; }
+.scatter-region-card-count { color: #bfe3f7; font-size: 11px; font-weight: 800; }
+.scatter-region-card-bounds { margin-top: 3px; color: #d0dde4; }
+.scatter-region-card-visits { margin-top: 3px; color: #91a9b6; }
+.scatter-region-card-actions { display: flex; gap: 6px; margin-top: 8px; }
+.scatter-region-card button {
+  min-height: 27px;
+  border: 1px solid #31566b;
+  border-radius: 3px;
+  background: #0f2533;
+  color: #e2edf2;
+  padding: 0 9px;
+  font-size: 9px;
+}
+.scatter-region-card button:hover:not(:disabled) { background: #163447; }
+.scatter-region-card button:disabled { opacity: .5; }
+
 .scatter-pane-title {
   position: absolute;
   z-index: 2;
@@ -307,4 +341,6 @@
   .scatter-pane-toolbar label > span { display: none; }
   .scatter-pane-toolbar select { width: 96px; }
   .scatter-point-label { display: none; }
+  .scatter-region-card { left: 62px; width: calc(100% - 128px); }
 }
+
