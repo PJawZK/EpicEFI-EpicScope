@@ -694,6 +694,11 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   EPICEFI_TRANSMISSION_CONTROL_DUAL_WORKSPACE,
 ]);
 
+/** Portable starter set used only to seed a brand-new Logger workspace collection. */
+export const GENERIC_STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze(
+  STARTER_WORKSPACE_TEMPLATES.filter((template) => template.tier !== 'epicefi' && !template.developmentOnly),
+);
+
 export function starterWorkspaceAvailable(
   template: StarterWorkspaceTemplate,
   channels: readonly ChannelDefinition[],

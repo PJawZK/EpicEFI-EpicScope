@@ -7,6 +7,7 @@ import {
   FUEL_DUAL_WORKSPACE,
   FUEL_SYSTEM_DUAL_WORKSPACE,
   GENERAL_SINGLE_WORKSPACE,
+  GENERIC_STARTER_WORKSPACE_TEMPLATES,
   IDLE_DUAL_WORKSPACE,
   IGNITION_DUAL_WORKSPACE,
   STARTER_WORKSPACE_TEMPLATES,
@@ -44,6 +45,14 @@ describe('starter workspace templates', () => {
     expect(starterWorkspaceTemplate(TRANSIENT_AE_DUAL_WORKSPACE.id)).toBe(TRANSIENT_AE_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate(FUEL_SYSTEM_DUAL_WORKSPACE.id)).toBe(FUEL_SYSTEM_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate('missing')).toBeUndefined();
+  });
+
+  it('exposes exactly the portable generic starters used to seed a fresh install', () => {
+    expect(GENERIC_STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual([
+      'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling', 'Transient / AE', 'Fuel System',
+      'Trigger / Sync', 'Startup / Warmup', 'Electrical', 'Vehicle / Driveline',
+    ]);
+    expect(GENERIC_STARTER_WORKSPACE_TEMPLATES.every((template) => template.tier !== 'epicefi')).toBe(true);
   });
 
   it('defines General as one pane with the agreed overview roles', () => {
