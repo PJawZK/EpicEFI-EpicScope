@@ -18,7 +18,7 @@ A large number of channels alone is not sufficient.
 
 ## Current specialized coverage
 
-Eight EpicEFI-specific starters are already implemented:
+Nine EpicEFI-specific starters are already implemented:
 
 - **EpicEFI · MAP Predict + Wall Wetting**
 - **EpicEFI · Fuel Rail Diagnostics**
@@ -28,40 +28,13 @@ Eight EpicEFI-specific starters are already implemented:
 - **EpicEFI · Injector + Ignition Timing**
 - **EpicEFI · Engine Protection**
 - **EpicEFI · VVT Control**
+- **EpicEFI · Anti-Lag**
 
 Together with the twelve generic starters, these already cover most ordinary engine-state, fuel, ignition, cooling, transient, electrical, driveline, trigger and startup workflows.
 
 ## Tier A — strong next specialized candidates
 
-### 1. EpicEFI · Anti-Lag — highest priority
-
-The runtime schema exposes an anti-lag trigger, full condition state, latch/timeout state, fuel/timing corrections, spark skip, ETB add and remaining time.
-
-Representative channels:
-
-```text
-antilagTriggered
-isAntilagCondition
-ALSMinRPMCondition / ALSMaxRPMCondition
-ALSMinCLTCondition / ALSMaxCLTCondition
-ALSMaxEGTCondition
-ALSMinThrottleIntentCondition / ALSMaxThrottleIntentCondition
-isALSSwitchActivated
-ALSTimerCondition
-ALSMinMapCondition / ALSMaxMapCondition
-ALSTimedOut
-ALSLatchActive
-fuelALSCorrection
-timingALSCorrection
-timingALSSkip
-ALSHardSparkSkip
-alsEtbAddValue
-ALSTimeRemaining
-```
-
-Why it deserves a starter: it has a strong condition → active state → actuator/correction chain and is not represented by Boost, Ignition or Engine Protection individually.
-
-### 2. EpicEFI · Launch Control — high priority
+### 1. EpicEFI · Launch Control — highest priority
 
 The schema exposes launch activation, pre-launch/launch state, switch/clutch/brake/TPS/speed/RPM conditions, locked launch RPM and spark-skip output.
 
@@ -87,7 +60,7 @@ launchSparkSkipRatio
 
 Why it deserves a starter: the data explains *why* launch did or did not engage and what cut action was applied. A generic Vehicle/Driveline graph cannot answer that.
 
-### 3. EpicEFI · Traction Control — high priority
+### 2. EpicEFI · Traction Control — high priority
 
 The current runtime data includes four wheel speeds, multiple slip calculations/references, timing reduction, spark skip and ETB traction reduction.
 
@@ -108,7 +81,7 @@ etb1tcEtbDrop
 
 Why it deserves a starter: it connects measured slip to the ECU's torque-reduction actions. Vehicle / Driveline provides the raw road-state context but deliberately does not expose traction-controller intervention.
 
-### 4. EpicEFI · Transmission Control — strong, but lower immediate priority
+### 3. EpicEFI · Transmission Control — strong, but lower immediate priority
 
 The INI exposes an unusually rich transmission runtime set: current/target/next gear, input/output shaft speeds, target RPM, torque requests and limits, cut/blip requests, clutch/converter slip, lockup, pressures, temperature, modes, fault state and CAN freshness diagnostics.
 
@@ -246,12 +219,11 @@ A specialized variant needs a distinct diagnostic question, not just more channe
 ## Recommended implementation order
 
 ```text
-1. EpicEFI · Anti-Lag
-2. EpicEFI · Launch Control
-3. EpicEFI · Traction Control
-4. EpicEFI · Transmission Control
-5. Staged Injection
-6. Closed-loop Fuel / STFT / LTFT
+1. EpicEFI · Launch Control
+2. EpicEFI · Traction Control
+3. EpicEFI · Transmission Control
+4. Staged Injection
+5. Closed-loop Fuel / STFT / LTFT
 ```
 
 Per-cylinder/EGT work should wait for indexed semantic channel families.

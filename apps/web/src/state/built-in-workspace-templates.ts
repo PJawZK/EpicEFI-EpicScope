@@ -553,6 +553,34 @@ export const EPICEFI_VVT_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const EPICEFI_ANTI_LAG_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-anti-lag-dual',
+  name: 'EpicEFI · Anti-Lag',
+  description: 'EpicEFI anti-lag latch, timeout and actuator-correction diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['als.conditionActive', 'als.latchActive', 'als.timeRemaining', 'als.fuelCorrection', 'als.timingCorrection'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'engine.map', requirement: 'preferred' },
+      { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      { roleId: 'als.triggered', requirement: 'optional' },
+      { roleId: 'als.conditionActive', requirement: 'required' },
+      { roleId: 'als.latchActive', requirement: 'required' },
+      { roleId: 'als.timedOut', requirement: 'preferred' },
+      { roleId: 'als.timeRemaining', requirement: 'required' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'als.fuelCorrection', requirement: 'required' },
+      { roleId: 'als.timingCorrection', requirement: 'required' },
+      { roleId: 'als.sparkSkip', requirement: 'preferred' },
+      { roleId: 'als.etbAirAdd', requirement: 'optional' },
+      { roleId: 'ignition.advance', requirement: 'preferred' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -574,6 +602,7 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   EPICEFI_INJECTOR_IGNITION_TIMING_DUAL_WORKSPACE,
   EPICEFI_ENGINE_PROTECTION_DUAL_WORKSPACE,
   EPICEFI_VVT_CONTROL_DUAL_WORKSPACE,
+  EPICEFI_ANTI_LAG_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceAvailable(
