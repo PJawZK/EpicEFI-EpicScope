@@ -6,15 +6,11 @@ Repository: `PJawZK/EpicEFI-EpicScope`
 
 Authoritative production branch: `main`
 
-Current production baseline before this focused correction:
+Current authoritative `main` baseline:
 
-`90f68c121d98e33e57ea09e04e139eb233432f08`
+`df5641895c05476c01e578e7bf94cee8d8bfc4f4`
 
-Active branch:
-
-`fix/editable-starter-workspaces`
-
-This branch corrects the lifecycle introduced with PR #343: pre-populated graph definitions are starter templates, not protected persistent workspace objects.
+That squash merge is PR #347, **Make pre-populated graph workspaces editable starters**. It replaces PR #343's protected built-in workspace lifecycle while retaining the semantic resolver/source-identity architecture.
 
 Hosted application:
 
@@ -221,7 +217,7 @@ with correct source-specific resolution, zero unavailable assigned channels, `0 
 
 The expanded eight-role General resolver has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing all eight roles as fully runtime-validated.
 
-The editable-starter lifecycle correction is deterministic UI/state work and should be gated by typecheck/full tests/CI before merge.
+PR #347's editable-starter lifecycle correction passed Web CI with type-check, full tests and production build before merge.
 
 ## Shim HTTP fix
 
@@ -241,6 +237,7 @@ Mature behavior includes:
 - A/B ranges, markers and saved ranges;
 - stable channel identity across recorded and Shim transitions;
 - semantic starter-template resolution;
+- fully editable/deletable materialized starter workspaces;
 - explicit unavailable-channel handling;
 - retained-memory, parser, performance and runtime-health diagnostics.
 
@@ -299,13 +296,9 @@ Broad cleanup/optimization remains deliberately deferred until feature coverage 
 
 ## Current Git / workflow state
 
-Production `main` before this correction:
+Current authoritative `main` merge baseline:
 
-`90f68c121d98e33e57ea09e04e139eb233432f08`
-
-Active correction branch:
-
-`fix/editable-starter-workspaces`
+`df5641895c05476c01e578e7bf94cee8d8bfc4f4`
 
 Relevant milestones:
 
@@ -316,9 +309,9 @@ Relevant milestones:
 - #345 — unified Histogram help;
 - #346 — current-state documentation refresh;
 - #343 — semantic channel-role layer and first General pre-populated implementation, including Shim HTTP binding fix;
-- current branch — replaces PR #343's protected built-in lifecycle with editable one-time starter materialization.
+- #347 — editable one-time starter materialization; protected built-in lifecycle removed.
 
-Before new work from a local clone after this branch lands:
+Before new work from a local clone:
 
 ```bash
 cd ~/EpicEFI-EpicScope
@@ -328,4 +321,4 @@ npm run typecheck
 npm test
 ```
 
-Next product work after this correction is green should be a deliberate **New graph/workspace → From template…** path, followed by the first multi-pane starter (Idle is the preferred architecture test).
+Next product work should be a deliberate **New graph/workspace → From template…** path, followed by the first multi-pane starter (Idle is the preferred architecture test).
