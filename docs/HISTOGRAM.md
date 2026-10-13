@@ -172,17 +172,13 @@ Scatter currently supports:
 - drag-box region selection evaluated against the full qualified pair population, not only rendered/downsampled points;
 - prominent in-plot region summary with pair share, X/Y bounds and contiguous-visit count;
 - selected-region → Logger navigation focused on the strongest contiguous visit instead of the full first-to-last hit envelope;
+- saved view/setup presets covering scope, Qualification, layout, trace mode and pane X/Y selections;
+- CSV export of all qualified pairs or the complete selected-region evidence, including source sample/time provenance;
 - shared Logger timeline.
 
-### Scatter worthwhile future work
+### Scatter maturity checkpoint
 
-The initial richer evidence-selection slice is complete with box selection. Useful later additions include:
-
-- CSV export of selected/all X/Y evidence;
-- optional compact correlation/linear-fit summary where genuinely useful;
-- replacement of the remaining timeline text/DOM bridge with direct shared state propagation.
-
-The timeline-state replacement belongs with the planned cleanup/consolidation work unless it becomes a correctness problem earlier.
+The planned Scatter maturity track is complete at this checkpoint. Further statistical overlays such as correlation/linear-fit summaries are intentionally not part of the active plan. The remaining timeline text/DOM bridge may be replaced during later cleanup/consolidation if it becomes a correctness or maintenance problem.
 
 ## Math Channels — current state
 
