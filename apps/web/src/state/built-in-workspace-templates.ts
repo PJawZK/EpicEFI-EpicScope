@@ -111,9 +111,37 @@ export const IDLE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const BOOST_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'boost-dual',
+  name: 'Boost',
+  description: 'Dual-pane boost response and control overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'engine.rpm', requirement: 'required' },
+        { roleId: 'engine.map', requirement: 'required' },
+        { roleId: 'engine.throttle.position', requirement: 'preferred' },
+        { roleId: 'boost.target', requirement: 'optional' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'boost.wastegateCommand', requirement: 'preferred' },
+        { roleId: 'boost.error', requirement: 'optional' },
+        { roleId: 'temperature.intakeAir', requirement: 'optional' },
+        { roleId: 'exhaust.emap', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
+  BOOST_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ChannelDefinition } from '../../core/log-model/log-types';
 import {
+  BOOST_DUAL_WORKSPACE,
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
   STARTER_WORKSPACE_TEMPLATES,
@@ -19,8 +20,9 @@ function channel(id: string, sourceName = id, displayName = sourceName): Channel
 }
 
 describe('starter workspace templates', () => {
-  it('exposes General and Idle through the production starter catalog', () => {
-    expect(STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual(['General', 'Idle']);
+  it('exposes General, Idle and Boost through the production starter catalog', () => {
+    expect(STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual(['General', 'Idle', 'Boost']);
+    expect(starterWorkspaceTemplate(BOOST_DUAL_WORKSPACE.id)).toBe(BOOST_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE.id)).toBe(GENERAL_SINGLE_WORKSPACE);
     expect(starterWorkspaceTemplate(IDLE_DUAL_WORKSPACE.id)).toBe(IDLE_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate('missing')).toBeUndefined();
@@ -58,6 +60,48 @@ describe('starter workspace templates', () => {
       { roleId: 'temperature.coolant', requirement: 'preferred' },
       { roleId: 'fuel.lambda', requirement: 'optional' },
     ]);
+  });
+
+  it('defines Boost as a portable two-pane starter', () => {
+    expect(BOOST_DUAL_WORKSPACE.name).toBe('Boost');
+    expect(BOOST_DUAL_WORKSPACE.layout).toBe('dual');
+    expect(BOOST_DUAL_WORKSPACE.panes[0]?.roles).toEqual([
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'engine.map', requirement: 'required' },
+      { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      { roleId: 'boost.target', requirement: 'optional' },
+    ]);
+    expect(BOOST_DUAL_WORKSPACE.panes[1]?.roles).toEqual([
+      { roleId: 'boost.wastegateCommand', requirement: 'preferred' },
+      { roleId: 'boost.error', requirement: 'optional' },
+      { roleId: 'temperature.intakeAir', requirement: 'optional' },
+      { roleId: 'exhaust.emap', requirement: 'optional' },
+    ]);
+  });
+
+  it('resolves Boost onto canonical EpicEFI INI identities', () => {
+    const result = resolveStarterWorkspaceTemplate(BOOST_DUAL_WORKSPACE, [
+      channel('ini:RPMValue', 'RPMValue', 'RPM'),
+      channel('ini:MAPValue', 'MAPValue', 'MAP'),
+      channel('ini:TPSValue', 'TPSValue', 'TPS'),
+      channel('ini:boostControlTarget', 'boostControlTarget', 'Boost: Target'),
+      channel('ini:boostOutput', 'boostOutput', 'Boost: Output'),
+      channel('ini:boostStatus_error', 'boostStatus_error', 'Boost PID error'),
+      channel('ini:intake', 'intake', 'Intake air temp'),
+      channel('ini:emapKpa', 'emapKpa', 'EMAP'),
+      channel('ini:boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),
+      channel('ini:lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),
+    ]);
+
+    expect(result.panes[0]?.channelIds).toEqual([
+      'ini:RPMValue', 'ini:MAPValue', 'ini:TPSValue', 'ini:boostControlTarget',
+    ]);
+    expect(result.panes[1]?.channelIds).toEqual([
+      'ini:boostOutput', 'ini:boostStatus_error', 'ini:intake', 'ini:emapKpa',
+    ]);
+    expect(result.unresolvedRequiredRoleIds).toEqual([]);
+    expect(result.unresolvedPreferredRoleIds).toEqual([]);
+    expect(result.unresolvedOptionalRoleIds).toEqual([]);
   });
 
   it('resolves General onto EpicEFI live Shim channel IDs', () => {

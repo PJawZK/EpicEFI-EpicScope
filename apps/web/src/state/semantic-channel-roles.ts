@@ -10,7 +10,11 @@ export type SemanticChannelRoleId =
   | 'fuel.lambda'
   | 'ignition.advance'
   | 'idle.target'
-  | 'idle.airCommand';
+  | 'idle.airCommand'
+  | 'boost.target'
+  | 'boost.wastegateCommand'
+  | 'boost.error'
+  | 'exhaust.emap';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -150,6 +154,34 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
       /(?:valve|iac).*idle.*(?:command|duty)/i,
     ],
     exclude: [/target/i, /actual/i, /feedback/i, /status/i, /term/i, /bias/i],
+  },
+  'boost.target': {
+    id: 'boost.target',
+    displayName: 'Boost Target',
+    aliases: ['boostControlTarget', 'Boost Target', 'Boost: Target', 'Target Boost', 'Boost Pressure Target'],
+    include: [/boost.*target/i, /target.*boost/i, /target.*(?:map|pressure)/i],
+    exclude: [/cut/i, /limit/i, /adder/i, /mult/i],
+  },
+  'boost.wastegateCommand': {
+    id: 'boost.wastegateCommand',
+    displayName: 'Wastegate Command',
+    aliases: ['boostOutput', 'Wastegate Command', 'Wastegate Duty', 'WG Duty', 'Boost Duty'],
+    include: [/boost.*output/i, /wastegate.*(?:command|duty)/i, /(?:wg|boost).*duty/i],
+    exclude: [/lower/i, /secondary/i, /pid/i, /closed.*loop/i, /open.*loop/i, /target/i],
+  },
+  'boost.error': {
+    id: 'boost.error',
+    displayName: 'Boost Error',
+    aliases: ['boostStatus_error', 'Boost Error', 'Boost PID Error'],
+    include: [/boost.*(?:pid.*)?error/i],
+    exclude: [/wastegate.*dc/i, /position/i],
+  },
+  'exhaust.emap': {
+    id: 'exhaust.emap',
+    displayName: 'EMAP',
+    aliases: ['emapKpa', 'EMAP', 'Exhaust Manifold Pressure', 'Exhaust MAP'],
+    include: [/^emap(?:\s*kpa)?$/i, /exhaust.*(?:manifold.*)?pressure/i, /exhaust.*map/i],
+    exclude: [/raw/i, /voltage/i, /sensor.*config/i],
   },
 };
 
