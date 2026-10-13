@@ -205,7 +205,12 @@ ECU-native workspaces may also exist when a schema exposes richer capabilities. 
 
 Availability should be capability-driven rather than hard-coded by board name.
 
-See [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) for the detailed catalog and implementation status.
+Related authority:
+
+- [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) — detailed workspace catalog and implementation status;
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — semantic/capability layer and source-aware materialization;
+- [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
+- [`DECISIONS.md`](DECISIONS.md) — D-051–D-054 naming, identity and built-in behavior.
 
 ## First semantic workspace validation
 
