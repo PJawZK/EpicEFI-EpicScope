@@ -56,7 +56,19 @@ export type SemanticChannelRoleId =
   | 'vehicle.longitudinalAcceleration'
   | 'transient.predictedMap'
   | 'transient.mapPredictionActive'
-  | 'transient.wallFuelAmount';
+  | 'transient.wallFuelAmount'
+  | 'fuel.highPressure'
+  | 'fuel.highPressureTarget'
+  | 'fuel.hpfpActive'
+  | 'fuel.hpfpValveState'
+  | 'fuel.hpfpPControl'
+  | 'fuel.hpfpIControl'
+  | 'etb.pedalPosition'
+  | 'etb.target'
+  | 'etb.error'
+  | 'etb.duty'
+  | 'etb.feedForward'
+  | 'etb.jamDetected';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -375,6 +387,18 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'transient.predictedMap': { id: 'transient.predictedMap', displayName: 'Predicted MAP', aliases: ['fallbackMap', 'Predicted MAP', 'MAP Estimate', 'Estimated MAP'], include: [/fallback.*map/i, /predicted.*map/i, /estimated.*map/i], exclude: [/use.*(?:map.*estimate|estimate.*map)/i, /enable/i, /during.*transient/i, /blend/i, /table/i, /target/i, /error/i, /duration/i, /config/i, /raw/i] },
   'transient.mapPredictionActive': { id: 'transient.mapPredictionActive', displayName: 'MAP Prediction Active', aliases: ['isMapPredictionActive', 'MAP Prediction Active', 'Prediction Active'], include: [/map.*prediction.*active/i, /prediction.*active.*map/i], exclude: [/enable/i, /table/i, /config/i, /duration/i] },
   'transient.wallFuelAmount': { id: 'transient.wallFuelAmount', displayName: 'Wall Fuel Amount', aliases: ['wallFuelAmount', 'Fuel: wall amount', 'Wall Fuel Amount', 'Fuel on the wall'], include: [/wall.*fuel.*amount/i, /fuel.*wall.*amount/i, /^fuel on the wall$/i], exclude: [/correction/i, /tau/i, /beta/i, /table/i, /config/i] },
+  'fuel.highPressure': { id: 'fuel.highPressure', displayName: 'High Fuel Pressure', aliases: ['highFuelPressure', 'Fuel pressure (high)', 'Fuel Pressure High', 'High Fuel Pressure'], include: [/(?:high.*fuel|fuel.*high).*pressure/i, /fuel.*pressure.*high/i], exclude: [/raw/i, /bank.*2/i, /high2/i, /target/i, /table/i, /config/i, /minimum/i, /maximum/i] },
+  'fuel.highPressureTarget': { id: 'fuel.highPressureTarget', displayName: 'High Fuel Pressure Target', aliases: ['m_pressureTarget_kPa', 'GDI: target pressure', 'HPFP Pressure Target', 'Fuel Rail Pressure Target'], include: [/(?:gdi|hpfp|fuel|rail).*target.*pressure/i, /pressure.*target.*(?:fuel|rail|hpfp)/i], exclude: [/table/i, /config/i, /decay/i, /reference/i, /minimum/i, /maximum/i] },
+  'fuel.hpfpActive': { id: 'fuel.hpfpActive', displayName: 'HPFP Active', aliases: ['isHpfpActive', 'GDI: HPFP Active', 'HPFP Active'], include: [/hpfp.*active/i], exclude: [/enable/i, /config/i, /table/i] },
+  'fuel.hpfpValveState': { id: 'fuel.hpfpValveState', displayName: 'HPFP Valve State', aliases: ['HpfpValveState', 'GDI: HPFP Valve state', 'HPFP Valve State'], include: [/hpfp.*valve.*state/i], exclude: [/pin/i, /mode/i, /config/i, /table/i] },
+  'fuel.hpfpPControl': { id: 'fuel.hpfpPControl', displayName: 'HPFP P Control', aliases: ['hpfp_p_control_percent', 'HPFP P Control', 'HPFP P Term'], include: [/hpfp.*(?:p.*control|p.*term)/i], exclude: [/pid.*factor/i, /config/i, /table/i] },
+  'fuel.hpfpIControl': { id: 'fuel.hpfpIControl', displayName: 'HPFP I Control', aliases: ['hpfp_i_control_percent', 'HPFP I Control', 'HPFP I Term'], include: [/hpfp.*(?:i.*control|i.*term)/i], exclude: [/pid.*factor/i, /min/i, /max/i, /config/i, /table/i] },
+  'etb.pedalPosition': { id: 'etb.pedalPosition', displayName: 'Pedal Position', aliases: ['throttlePedalPosition', 'Throttle pedal position', 'Accelerator Pedal', 'Pedal Position'], include: [/(?:throttle|accelerator).*pedal.*position/i, /^pedal.*position$/i], exclude: [/raw/i, /primary/i, /secondary/i, /target/i, /table/i, /config/i] },
+  'etb.target': { id: 'etb.target', displayName: 'ETB Target', aliases: ['etb1m_adjustedTarget', 'ETB: position target', 'ETB 1 target', 'ETB Target'], include: [/etb.*(?:position.*)?target/i], exclude: [/table/i, /bias/i, /min/i, /max/i, /config/i, /target.*table/i] },
+  'etb.error': { id: 'etb.error', displayName: 'ETB Error', aliases: ['etbStatus_error', 'ETB: position error', 'ETB 1 PID error', 'ETB Error'], include: [/etb.*(?:position.*|pid.*)?error/i], exclude: [/counter/i, /code/i, /timer/i, /threshold/i, /config/i] },
+  'etb.duty': { id: 'etb.duty', displayName: 'ETB Duty', aliases: ['etb1DutyCycle', 'ETB: Duty', 'ETB 1 duty', 'ETB Duty'], include: [/etb.*(?:duty|duty.*cycle)/i], exclude: [/test/i, /bias/i, /table/i, /config/i] },
+  'etb.feedForward': { id: 'etb.feedForward', displayName: 'ETB Feed Forward', aliases: ['etb1etbFeedForward', 'ETB Feed Forward', 'ETB Feedforward'], include: [/etb.*feed.*forward/i], exclude: [/table/i, /curve/i, /config/i] },
+  'etb.jamDetected': { id: 'etb.jamDetected', displayName: 'ETB Jam Detected', aliases: ['etb1jamDetected', 'ETB Jam Detected', 'ETB control fault/jam'], include: [/etb.*jam.*(?:detected|fault)/i, /jam.*detected/i], exclude: [/enable/i, /threshold/i, /timeout/i, /config/i] },
 };
 
 export const semanticChannelRoles: readonly SemanticChannelRoleDefinition[] = Object.freeze(

@@ -397,6 +397,56 @@ export const EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE: StarterWorkspaceTe
   ],
 };
 
+export const EPICEFI_FUEL_RAIL_DIAGNOSTICS_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-fuel-rail-diagnostics-dual',
+  name: 'EpicEFI · Fuel Rail Diagnostics',
+  description: 'EpicEFI high-pressure fuel rail and HPFP control diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['fuel.highPressure', 'fuel.highPressureTarget', 'fuel.hpfpActive', 'fuel.hpfpValveState'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'fuel.highPressure', requirement: 'required' },
+      { roleId: 'fuel.highPressureTarget', requirement: 'required' },
+      { roleId: 'fuel.pressureDelta', requirement: 'preferred' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+      { roleId: 'fuel.lambda', requirement: 'optional' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'fuel.hpfpActive', requirement: 'required' },
+      { roleId: 'fuel.hpfpValveState', requirement: 'required' },
+      { roleId: 'fuel.hpfpPControl', requirement: 'preferred' },
+      { roleId: 'fuel.hpfpIControl', requirement: 'preferred' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const EPICEFI_ETB_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-etb-control-dual',
+  name: 'EpicEFI · ETB Control',
+  description: 'EpicEFI electronic-throttle demand, tracking and motor-control diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['etb.pedalPosition', 'etb.target', 'engine.throttle.position', 'etb.error', 'etb.duty', 'etb.feedForward'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'preferred' },
+      { roleId: 'etb.pedalPosition', requirement: 'required' },
+      { roleId: 'etb.target', requirement: 'required' },
+      { roleId: 'engine.throttle.position', requirement: 'required' },
+      { roleId: 'etb.error', requirement: 'required' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'etb.duty', requirement: 'required' },
+      { roleId: 'etb.feedForward', requirement: 'required' },
+      { roleId: 'etb.jamDetected', requirement: 'optional' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'preferred' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -411,6 +461,8 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   ELECTRICAL_DUAL_WORKSPACE,
   VEHICLE_DRIVELINE_DUAL_WORKSPACE,
   EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE,
+  EPICEFI_FUEL_RAIL_DIAGNOSTICS_DUAL_WORKSPACE,
+  EPICEFI_ETB_CONTROL_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceAvailable(
