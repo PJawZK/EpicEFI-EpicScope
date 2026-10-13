@@ -127,10 +127,24 @@ const RULES: Readonly<Record<string, RoleRule>> = {
     include: [/^map(value)?$/i, /manifold.*(?:absolute.*)?pressure/i, /(^|\b)map(\b|$)/i],
     exclude: [/predict/i, /estimate/i, /target/i, /diff/i, /differential/i],
   },
-  'fuel-injector:fuelPressure': { include: [/fuel.*pressure/i, /rail.*pressure/i], exclude: [/diff/i, /differential/i, /delta/i] },
+  // Port-injected / conventional systems use the low-side pressure channel. Keep GDI high-side
+  // pressure and CEL/check-engine status channels out of this role instead of treating every
+  // "fuel pressure" string as equivalent evidence.
+  'fuel-injector:fuelPressure': {
+    exact: ['ini:fuelPressure_low', 'fuelPressure_low', 'ini:fuelPressureLow', 'fuelPressureLow'],
+    include: [/fuel.*pressure.*low/i, /low.*fuel.*pressure/i, /fuel.*pressure/i, /rail.*pressure/i],
+    exclude: [/diff/i, /differential/i, /delta/i, /fuel.*pressure.*high/i, /high.*fuel.*pressure/i, /gdi/i, /(^|\b)cel(\b|$)/i, /check.*engine/i],
+  },
+  // High-side pressure is a separate GDI evidence domain. It is deliberately not a fallback for
+  // the conventional low-side role above.
+  'fuel-injector:fuelPressureHigh': {
+    exact: ['ini:fuelPressure_high', 'fuelPressure_high', 'ini:fuelPressureHigh', 'fuelPressureHigh'],
+    include: [/fuel.*pressure.*high/i, /high.*fuel.*pressure/i, /gdi.*(?:fuel|rail).*pressure/i, /(?:fuel|rail).*pressure.*gdi/i],
+    exclude: [/diff/i, /differential/i, /delta/i, /(^|\b)cel(\b|$)/i, /check.*engine/i],
+  },
   'fuel-injector:railDiff': {
     include: [/rail.*diff/i, /rail.*delta/i, /fuel.*pressure.*diff/i, /fuel.*pressure.*delta/i, /pressure.*delta/i, /differential.*pressure/i],
-    exclude: [/manifold/i, /(^|\b)map(\b|$)/i],
+    exclude: [/manifold/i, /(^|\b)map(\b|$)/i, /(^|\b)cel(\b|$)/i, /check.*engine/i],
   },
   'fuel-injector:pw': { include: [/injector.*(pw|pulse)/i, /pulse.*width/i, /inj.*pw/i] },
   'fuel-injector:duty': { include: [/injector.*duty/i, /inj.*duty/i] },
