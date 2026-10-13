@@ -162,11 +162,11 @@ Implemented production starters:
 - **Transient / AE** — Dual layout; RPM, TPS, TPS change, MAP, effective/predicted MAP, Lambda, injector pulse width, AE fuel contribution and wall-fuel correction;
 - **Fuel System** — Dual layout; RPM, fuel pressure, MAP, TPS, fuel-pressure delta, injector pulse width, injector duty, fuel-pump command, battery voltage and Lambda;
 - **Trigger / Sync** — Dual layout; RPM, trigger sync state, phase synchronization, active trigger error, trigger error count, resync count, decoded engine phase and battery voltage;
-- **Startup / Warmup** — Dual layout; RPM, coolant temp, intake-air temp, battery voltage, engine cycles since start, cranking fuel, after-start correction, warmup correction, Lambda and idle target.
+- **Startup / Warmup** — Dual layout; RPM, coolant temp, intake-air temp, battery voltage, engine cycles since start, cranking fuel, after-start correction, warmup correction, Lambda and idle target;
+- **Electrical** — Dual layout; battery voltage, RPM, injector pulse width/duty, ignition dwell, fuel-pump state, alternator duty, sensor-supply voltage and sensor-supply fault where available;
+- **Vehicle / Driveline** — Dual layout; RPM, vehicle speed, TPS, MAP, gear, clutch/brake state, four wheel speeds and longitudinal acceleration where available.
 
-Planned generic starter families remain:
-- **Electrical** — battery voltage, RPM, injector pulse width/duty, ignition dwell, fuel-pump state, ECU/sensor supply voltage and relevant electrical fault/status channels where available;
-- **Vehicle / Driveline** — RPM, vehicle speed, TPS, MAP, gear, clutch/brake state, wheel speeds and longitudinal acceleration where available.
+The planned generic starter catalog is now complete.
 
 ## EpicEFI-specific starter tier
 

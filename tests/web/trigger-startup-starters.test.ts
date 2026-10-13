@@ -4,7 +4,7 @@ import { STARTUP_WARMUP_DUAL_WORKSPACE, TRIGGER_SYNC_DUAL_WORKSPACE, STARTER_WOR
 import { resolveSemanticChannelRole } from '../../apps/web/src/state/semantic-channel-roles';
 function channel(id: string, sourceName = id, displayName = sourceName): ChannelDefinition { return { id, sourceName, displayName, valueType: 'number' }; }
 describe('Trigger / Sync and Startup / Warmup starters', () => {
-  it('appends both starters to the production catalog', () => expect(STARTER_WORKSPACE_TEMPLATES.slice(-2).map((t) => t.name)).toEqual(['Trigger / Sync', 'Startup / Warmup']));
+  it('includes both starters in the production catalog', () => { expect(STARTER_WORKSPACE_TEMPLATES.map((t) => t.name)).toEqual(expect.arrayContaining(['Trigger / Sync', 'Startup / Warmup'])); });
   it('resolves Trigger / Sync onto canonical EpicEFI INI identities', () => {
     const r = resolveStarterWorkspaceTemplate(TRIGGER_SYNC_DUAL_WORKSPACE, [
       channel('ini:RPMValue','RPMValue','RPM'), channel('ini:triggerSyncState','triggerSyncState','Trigger sync state'),

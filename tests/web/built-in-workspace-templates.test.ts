@@ -28,7 +28,7 @@ describe('starter workspace templates', () => {
   it('exposes the production starter catalog in deliberate menu order', () => {
     expect(STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual([
       'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling', 'Transient / AE', 'Fuel System',
-      'Trigger / Sync', 'Startup / Warmup',
+      'Trigger / Sync', 'Startup / Warmup', 'Electrical', 'Vehicle / Driveline',
     ]);
     expect(starterWorkspaceTemplate(BOOST_DUAL_WORKSPACE.id)).toBe(BOOST_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate(COOLING_DUAL_WORKSPACE.id)).toBe(COOLING_DUAL_WORKSPACE);
