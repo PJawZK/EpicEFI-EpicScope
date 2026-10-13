@@ -40,6 +40,29 @@ describe('calculated fields', () => {
     expect(() => compileCalculatedField('2 + 3')).toThrow(/reference at least one channel/);
   });
 
+  it('supports comparisons, word/symbol logic and lazy conditional branches', () => {
+    const logical = compileCalculatedField('[TPS] > 50 AND [RPM] >= 3000 OR NOT [Enabled]');
+    expect(logical.evaluate((reference) => ({ TPS: 60, RPM: 3200, Enabled: 1 }[reference] ?? 0))).toBe(1);
+    expect(logical.evaluate((reference) => ({ TPS: 10, RPM: 3200, Enabled: 1 }[reference] ?? 0))).toBe(0);
+    const conditional = compileCalculatedField('if([A] > 0, sqrt([A]), 0)');
+    expect(conditional.evaluate(() => -4)).toBe(0);
+  });
+
+  it('supports historical bindings and temporal lag/delta/average/rate helpers', () => {
+    const source = range(0, [10, 20, 40, 70]);
+    const historical = evaluateCalculatedFieldRange(compileCalculatedField('[A] - [A-1]'), new Map<string, NumericChannelRange | { range: NumericChannelRange; sampleOffset: number }>([
+      ['A', source],
+      ['A-1', { range: source, sampleOffset: 1 }],
+    ]));
+    expect([...historical.validity]).toEqual([0, 1, 1, 1]);
+    expect([...historical.values].slice(1)).toEqual([10, 20, 30]);
+
+    const temporal = evaluateCalculatedFieldRange(compileCalculatedField('lag([A], 1) + delta([A], 1) + avg([A], 2) + rate([A], 1)'), new Map([['A', source]]));
+    expect([...temporal.validity]).toEqual([0, 1, 1, 1]);
+    expect(temporal.values[1]).toBeCloseTo(10 + 10 + 15 + 1000);
+    expect(temporal.values[2]).toBeCloseTo(20 + 20 + 30 + 2000);
+  });
+
   it('rejects malformed references', () => {
     expect(() => compileCalculatedField('[AFR')).toThrow(/closing/);
     expect(() => compileCalculatedField('[] + 1')).toThrow(/must not be empty/);

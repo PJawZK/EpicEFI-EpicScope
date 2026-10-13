@@ -1,4 +1,4 @@
-import { compileCalculatedField, evaluateCalculatedFieldRange } from '../../../../core/analysis/calculated-field';
+import { compileCalculatedField, evaluateCalculatedFieldRange, splitCalculatedFieldOffsetReference, type CalculatedFieldRangeBinding } from '../../../../core/analysis/calculated-field';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import {
@@ -24,16 +24,31 @@ function virtualDefinition(field: HistogramCalculatedFieldDefinition): ChannelDe
   };
 }
 
-function resolvePhysicalReference(reference: string, channels: readonly ChannelDefinition[]): ChannelDefinition {
+interface ResolvedPhysicalReference {
+  readonly channel: ChannelDefinition;
+  readonly sampleOffset: number;
+}
+
+function exactPhysicalReference(reference: string, channels: readonly ChannelDefinition[]): ChannelDefinition | undefined {
   const normalized = reference.trim().toLocaleLowerCase();
   const matches = channels.filter((channel) =>
     channel.id === reference
     || channel.displayName.toLocaleLowerCase() === normalized
     || channel.sourceName.toLocaleLowerCase() === normalized,
   );
-  if (matches.length === 0) throw new RangeError(`Formula channel not found: [${reference}]`);
   if (matches.length > 1) throw new RangeError(`Formula channel reference is ambiguous: [${reference}]`);
-  return matches[0]!;
+  return matches[0];
+}
+
+function resolvePhysicalReference(reference: string, channels: readonly ChannelDefinition[]): ResolvedPhysicalReference {
+  const exact = exactPhysicalReference(reference, channels);
+  if (exact) return { channel: exact, sampleOffset: 0 };
+  const historical = splitCalculatedFieldOffsetReference(reference);
+  if (historical) {
+    const base = exactPhysicalReference(historical.baseReference, channels);
+    if (base) return { channel: base, sampleOffset: historical.sampleOffset };
+  }
+  throw new RangeError(`Formula channel not found: [${reference}]`);
 }
 
 function traceCoversRequestedScope(
@@ -59,7 +74,7 @@ export function createHistogramLogicalContext(
     loadTraces: async (logicalIds, startMs, endMs) => {
       const requestedIds = [...new Set(logicalIds.filter(Boolean))];
       const programs = new Map<string, ReturnType<typeof compileCalculatedField>>();
-      const referencesByLogicalId = new Map<string, ReadonlyMap<string, ChannelDefinition>>();
+      const referencesByLogicalId = new Map<string, ReadonlyMap<string, ResolvedPhysicalReference>>();
       const physicalIds = new Set<string>();
 
       for (const logicalId of requestedIds) {
@@ -69,11 +84,11 @@ export function createHistogramLogicalContext(
           continue;
         }
         const program = compileCalculatedField(field.expression);
-        const references = new Map<string, ChannelDefinition>();
+        const references = new Map<string, ResolvedPhysicalReference>();
         for (const reference of program.references) {
-          const channel = resolvePhysicalReference(reference, baseContext.channels);
-          references.set(reference, channel);
-          physicalIds.add(channel.id);
+          const resolved = resolvePhysicalReference(reference, baseContext.channels);
+          references.set(reference, resolved);
+          physicalIds.add(resolved.channel.id);
         }
         programs.set(logicalId, program);
         referencesByLogicalId.set(logicalId, references);
@@ -95,17 +110,17 @@ export function createHistogramLogicalContext(
         const references = referencesByLogicalId.get(logicalId);
         if (!field || !program || !references) continue;
 
-        const ranges = new Map<string, HistogramTraceContext['range']>();
+        const ranges = new Map<string, CalculatedFieldRangeBinding>();
         let complete = true;
         let firstTrace: HistogramTraceContext | undefined;
-        for (const [reference, channel] of references) {
-          const trace = physical.get(channel.id);
+        for (const [reference, resolved] of references) {
+          const trace = physical.get(resolved.channel.id);
           if (!trace) {
             complete = false;
             continue;
           }
           firstTrace ??= trace;
-          ranges.set(reference, trace.range);
+          ranges.set(reference, { range: trace.range, sampleOffset: resolved.sampleOffset });
           complete &&= traceCoversRequestedScope(trace, startMs, endMs);
         }
         if (ranges.size !== references.size) continue;
