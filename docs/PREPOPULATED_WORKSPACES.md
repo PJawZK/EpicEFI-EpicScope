@@ -1,20 +1,124 @@
 # Pre-populated graph workspaces
 
-This document is the current product target for EpicScope's built-in Logger graph layouts and task-oriented workspaces.
+This document is the current product and implementation target for EpicScope's built-in Logger graph layouts and task-oriented workspaces.
 
-## Core rule
+## Core architecture
 
-Built-in workspaces bind to semantic channel roles, not hard-coded ECU channel IDs.
+Built-in workspaces bind to **semantic channel roles**, not hard-coded ECU channel IDs.
 
-Resolution order is intended to be:
+The intended identity stack is:
+
+```text
+semantic role
+      ↓
+logical ECU channel
+      ↓
+current source identity
+```
+
+Example:
+
+```text
+engine.rpm
+    ↓
+RPMValue
+    ↓
+ini:RPMValue  (recorded MLG + INI)
+
+engine.rpm
+    ↓
+RPMValue
+    ↓
+RPMValue      (ts_shim)
+```
+
+This keeps workspace meaning independent of whether the current source is a recorded log, an INI catalog, or live/retained Shim data.
+
+### Resolution order
+
+Current intended resolution order:
 
 1. explicit user/schema override;
-2. exact EpicEFI/native or ECU-family alias;
-3. cross-ECU compatibility alias;
+2. exact EpicEFI/native alias;
+3. ECU-family/cross-ECU compatibility alias;
 4. conservative normalized-name fallback;
 5. unresolved.
 
-Legacy aliases are compatibility input only. They do not define EpicScope's user-facing vocabulary. In particular, MLV-style `TP` may resolve the throttle-position role, but the EpicScope display name is **TPS**.
+User/schema overrides always win over automatic guessing.
+
+Missing channels remain explicit. EpicScope must never fabricate values merely to satisfy a built-in workspace.
+
+## Display names and aliases
+
+Source aliases are compatibility input. They do not define EpicScope's user-facing vocabulary.
+
+The naming pipeline is:
+
+```text
+legacy/vendor/import alias
+          ↓
+EpicScope semantic role
+          ↓
+preferred EpicScope display name
+```
+
+Examples:
+
+- MLV/legacy `TP` may resolve `engine.throttle.position`, but the visible name is **TPS**.
+- `PW` may be accepted as an injector-pulse-width alias, while the user-facing name is **Injector Pulse Width**.
+- `Batt V`/`VBatt` may resolve battery voltage, while the user-facing name is **Battery Voltage**.
+- `CLT`/`ECT` may resolve coolant temperature, while the user-facing name is **Coolant Temp**.
+
+Established technical abbreviations such as RPM, MAP, TPS, AFR and Lambda may remain visible where they are clearer than expanded wording.
+
+## MLV FieldMaps as compatibility evidence
+
+MegaLogViewer HD's `FieldMaps/*.properties` files were inspected as a cross-ECU compatibility reference.
+
+The installation contained 29 ECU/software-specific field maps and 132 unique normalized keys. Examples include mappings such as:
+
+```text
+Normalized key    rusEFI/EpicEFI-like source    MegaSquirt-like source
+RPM               RPM                           RPM
+MAP               MAP                           MAP
+TP                TPS                           TP
+coolantTemp       CLT                           CLT
+pulseWidth        Fuel: Last inj pulse width    PW
+```
+
+EpicScope uses that evidence as an **alias/compatibility dataset and architectural precedent**, not as naming authority.
+
+Reasons not to copy the MLV normalized vocabulary directly include:
+
+- historical abbreviations such as `TP`;
+- convenience/table-axis keys such as `yAxisFuel`;
+- semantically inconsistent keys such as `egoCorrection` across ECU families;
+- vendor-specific numeric keys in some maps;
+- lack of richer role metadata such as requirement level, capability class and preferred display terminology.
+
+The EpicScope semantic-role layer therefore sits above source/MLV aliases.
+
+## Layout vs workspace
+
+EpicScope treats these as separate concepts:
+
+- **Layout** — graph geometry only.
+- **Workspace** — task-oriented configuration that references a layout and semantic channel assignments.
+
+Conceptually:
+
+```text
+Workspace
+ ├─ name
+ ├─ category
+ ├─ layout
+ ├─ pane definitions
+ │    └─ semantic channel slots
+ ├─ optional ECU-family specialization
+ └─ user/schema overrides
+```
+
+Built-in layouts and workspaces are immutable templates. A duplicated built-in becomes a normal editable user workspace.
 
 ## Layout catalog
 
@@ -49,7 +153,7 @@ Initial target workspaces:
 
 ## EpicEFI-specific workspace tier
 
-Richer built-ins may be exposed only when the active schema has the required capabilities, for example:
+Generic workspaces should remain portable across ECU families. Richer built-ins may be exposed only when the active schema has the required capabilities, for example:
 
 - **EpicEFI · Dual Chamber Boost**
 - **EpicEFI · MAP Predict + Wall Wetting**
@@ -61,6 +165,8 @@ Richer built-ins may be exposed only when the active schema has the required cap
 
 These are intentionally allowed to depend on EpicEFI-native capabilities and channel semantics.
 
+Capability detection should be based on available semantic roles/schema capabilities rather than board-name conditionals such as `if ECU == Mega144H7`.
+
 ## Role requirement levels
 
 Each workspace role slot is classified as:
@@ -71,9 +177,96 @@ Each workspace role slot is classified as:
 
 A workspace remains loadable when roles are unresolved. Missing preferred/optional roles must not invalidate the layout. Missing required roles are reported explicitly so the user can map or replace them.
 
-## First production implementation: General · Single
+Example Boost requirement model:
 
-The validated **Single · Resolver Test** path has been promoted to the first production preset, **General · Single**. It uses one full-width pane and up to the Logger's eight active traces:
+```text
+Required
+- RPM
+- MAP
+
+Preferred
+- TPS / load
+- Wastegate command
+
+Optional
+- Boost target
+- Boost error
+- Upper wastegate duty
+- Lower wastegate duty
+- EMAP
+- Intake Air Temp
+- Turbo speed
+```
+
+## Validated first slice — Single resolver fixture
+
+The first implementation deliberately used a one-pane development fixture, **Single · Resolver Test**, to prove the semantic resolver without multi-pane geometry complexity.
+
+Fixture roles:
+
+- required: RPM;
+- preferred: MAP;
+- preferred: TPS;
+- optional: Coolant Temp.
+
+Semantic identities:
+
+- `engine.rpm`
+- `engine.map`
+- `engine.throttle.position`
+- `temperature.coolant`
+
+The real browser/ECU validation confirmed the same built-in workspace identity survived this round trip:
+
+```text
+MLG + INI
+→ ts_shim live/capture
+→ MLG + INI
+```
+
+Observed recorded identities:
+
+```text
+ini:RPMValue
+ini:MAPValue
+ini:TPSValue
+ini:coolant
+```
+
+Observed Shim identities:
+
+```text
+RPMValue
+MAPValue
+TPSValue
+coolant
+```
+
+In both source states:
+
+- `activeWorkspace=built-in:single-resolver-test`;
+- one pane was visible;
+- four channels were assigned;
+- all four assigned channels were renderable;
+- zero assigned channels were unavailable;
+- four traces were active;
+- runtime health was `0 ISSUE / 0 WARN`;
+- runtime errors were zero.
+
+This validates the central architecture: **semantic workspace identity remains stable while source-specific channel identities change underneath it**.
+
+The validation also confirmed that an ordinary editable `General` workspace remained independent while the built-in re-resolved, and that the reserved `built-in:*` identity prevented name collisions with user workspaces.
+
+Automated verification for the validated resolver/UI slice reached:
+
+```text
+npm run typecheck  → pass
+npm test           → 71 test files / 362 tests passed
+```
+
+## First production implementation — General · Single
+
+The validated resolver path is now being promoted to the first production preset, **General · Single**. It uses one full-width pane and up to the Logger's eight active traces:
 
 - required: RPM;
 - required: MAP;
@@ -95,7 +288,7 @@ Its semantic identities are:
 - `fuel.lambda`
 - `ignition.advance`
 
-For the current EpicEFI validation path these resolve to the authoritative source identities:
+For the current EpicEFI schema these resolve to:
 
 ```text
 MLG + INI                          ts_shim
@@ -111,11 +304,27 @@ ini:correctedIgnitionAdvance       correctedIgnitionAdvance
 
 The EpicEFI names above are backed by the current INI/channel catalog. Cross-ECU aliases remain resolver inputs rather than user-facing naming authority.
 
-### Logger integration and migration
+### Current verification status
 
-Logger continues to use the already-validated built-in runtime path. The validation-era internal id `built-in:single-resolver-test` is temporarily retained so an existing persisted validation workspace upgrades in place rather than leaving a stale duplicate. This is an internal compatibility detail; the visible preset name is **General · Single**.
+The eight-role **General · Single** expansion is implemented on `feat/single-prepopulated-workspace` / draft PR #343.
 
-The existing editable workspace named **General** is intentionally preserved. It is not silently converted, renamed or overwritten. Until an explicit migration policy for that legacy default is chosen, the immutable production preset is therefore shown as **General · Single** to keep the two entries unambiguous.
+It has **not yet superseded the validated four-role runtime checkpoint** until the expanded branch is pulled locally and passes:
+
+```text
+npm run typecheck
+npm test
+real MLG + INI → Shim → MLG runtime check
+```
+
+Do not describe the eight-role production preset as runtime-validated until that pass is completed.
+
+## Logger integration and migration
+
+Logger uses a reserved built-in runtime identity so automatic refresh never name-matches or rewrites user workspaces.
+
+The validation-era internal id `built-in:single-resolver-test` is temporarily retained while the production preset is introduced. This allows already-persisted validation state to upgrade in place rather than leaving a stale duplicate.
+
+The existing editable workspace named **General** is intentionally preserved. It is not silently converted, renamed or overwritten. Until an explicit migration policy for that legacy default is chosen, the immutable production preset is shown as **General · Single** to keep the two entries unambiguous.
 
 When the authoritative channel set changes, only the reserved built-in is refreshed:
 
@@ -124,4 +333,17 @@ When the authoritative channel set changes, only the reserved built-in is refres
 - Shim/live capture resolves against raw Shim channel identities;
 - returning to MLG resolves back to canonical `ini:*` identities.
 
-Normal user workspaces are never name-matched or repopulated. Rename/delete remain disabled for built-ins, while duplication remains available so a resolved preset can be copied into a normal editable workspace.
+Rename/delete remain disabled for built-ins. Duplication remains available so a resolved built-in can be copied into a normal editable workspace.
+
+## Implementation direction after Single
+
+Once **General · Single** is locally verified, the hard architectural part is considered proven for production use. The next work should reuse the same semantic/template/runtime path rather than inventing layout-specific resolver logic.
+
+Recommended progression:
+
+1. finalize the `General · Single` migration/name behavior;
+2. extend the semantic-role catalog only as needed by the next agreed workspace;
+3. define exact pane grouping for Dual/Triple/Quad/etc.;
+4. materialize additional generic workspaces;
+5. add EpicEFI-specific workspaces behind capability checks;
+6. add persistent user/schema role overrides where automatic mapping is ambiguous.
