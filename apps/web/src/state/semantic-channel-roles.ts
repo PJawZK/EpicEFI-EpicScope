@@ -26,7 +26,13 @@ export type SemanticChannelRoleId =
   | 'vehicle.speed'
   | 'temperature.oil'
   | 'engine.oilPressure'
-  | 'cooling.fanCommand';
+  | 'cooling.fanCommand'
+  | 'transient.tpsDelta'
+  | 'transient.effectiveMap'
+  | 'transient.aeFuel'
+  | 'transient.wallFuelCorrection'
+  | 'fuel.pressureDelta'
+  | 'fuel.pumpCommand';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -278,6 +284,48 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     aliases: ['fan1Pwm', 'fan1m_state', 'Fan Command', 'Cooling Fan Duty', 'Radiator Fan Duty', 'Fan Duty'],
     include: [/fan.*(?:pwm|duty|command|state|on)/i],
     exclude: [/fan\s*2/i, /frequency/i, /min/i, /max/i, /threshold/i, /temperature/i, /button/i, /broken/i, /inhibit/i],
+  },
+  'transient.tpsDelta': {
+    id: 'transient.tpsDelta',
+    displayName: 'TPS Change',
+    aliases: ['deltaTps', 'TPS Change', 'TPS Delta', 'dTPS', 'AE: TPS change'],
+    include: [/^delta.*tps$/i, /^tps.*(?:change|delta|rate)$/i, /^dtps$/i],
+    exclude: [/threshold/i, /average/i, /smoothed/i, /table/i, /bin/i],
+  },
+  'transient.effectiveMap': {
+    id: 'transient.effectiveMap',
+    displayName: 'Effective MAP',
+    aliases: ['effectiveMap', 'Effective MAP', 'Predicted MAP'],
+    include: [/^effective.*map$/i, /^predicted.*map$/i],
+    exclude: [/fallback/i, /instant/i, /target/i, /table/i, /bin/i, /duration/i],
+  },
+  'transient.aeFuel': {
+    id: 'transient.aeFuel',
+    displayName: 'AE Fuel',
+    aliases: ['tpsAccelFuel', 'AE Fuel', 'TPS AE Fuel', 'Acceleration Enrichment', 'Fuel: TPS AE add fuel ms'],
+    include: [/tps.*(?:accel|ae).*fuel/i, /accel(?:eration)?.*enrich(?:ment)?/i],
+    exclude: [/enable/i, /table/i, /curve/i, /threshold/i, /multiplier/i, /retard/i],
+  },
+  'transient.wallFuelCorrection': {
+    id: 'transient.wallFuelCorrection',
+    displayName: 'Wall Fuel Correction',
+    aliases: ['wallFuelCorrection', 'Wall Fuel Correction', 'Wall Wetting Correction', 'AE: wall correction extra'],
+    include: [/wall.*fuel.*correction/i, /wall.*wetting.*correction/i],
+    exclude: [/value$/i, /table/i, /tau/i, /beta/i, /amount/i],
+  },
+  'fuel.pressureDelta': {
+    id: 'fuel.pressureDelta',
+    displayName: 'Fuel Pressure Delta',
+    aliases: ['pressureDelta', 'Fuel Pressure Delta', 'Rail Differential Pressure', 'Injector Pressure Delta', 'Fuel: Injector pressure delta'],
+    include: [/(?:fuel|rail|injector).*pressure.*(?:delta|differential)/i, /pressure.*delta/i],
+    exclude: [/target/i, /reference/i, /ratio/i, /raw/i, /table/i, /minimum/i, /maximum/i],
+  },
+  'fuel.pumpCommand': {
+    id: 'fuel.pumpCommand',
+    displayName: 'Fuel Pump Command',
+    aliases: ['isFuelPumpOn', 'Fuel Pump Command', 'Fuel Pump State', 'Fuel Pump On'],
+    include: [/fuel.*pump.*(?:command|state|on)/i],
+    exclude: [/prime/i, /force/i, /button/i, /duration/i, /threshold/i, /config/i, /pin/i],
   },
 };
 

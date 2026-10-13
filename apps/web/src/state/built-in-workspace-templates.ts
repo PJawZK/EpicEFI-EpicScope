@@ -219,6 +219,63 @@ export const COOLING_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const TRANSIENT_AE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'transient-ae-dual',
+  name: 'Transient / AE',
+  description: 'Dual-pane throttle transient, MAP response and enrichment overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'engine.rpm', requirement: 'required' },
+        { roleId: 'engine.throttle.position', requirement: 'required' },
+        { roleId: 'transient.tpsDelta', requirement: 'preferred' },
+        { roleId: 'engine.map', requirement: 'preferred' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'transient.effectiveMap', requirement: 'preferred' },
+        { roleId: 'fuel.lambda', requirement: 'preferred' },
+        { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+        { roleId: 'transient.aeFuel', requirement: 'optional' },
+        { roleId: 'transient.wallFuelCorrection', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
+export const FUEL_SYSTEM_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'fuel-system-dual',
+  name: 'Fuel System',
+  description: 'Dual-pane fuel delivery, injector loading and pump-state overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'engine.rpm', requirement: 'required' },
+        { roleId: 'fuel.pressure', requirement: 'required' },
+        { roleId: 'engine.map', requirement: 'preferred' },
+        { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'fuel.pressureDelta', requirement: 'preferred' },
+        { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+        { roleId: 'fuel.injectorDuty', requirement: 'optional' },
+        { roleId: 'fuel.pumpCommand', requirement: 'optional' },
+        { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+        { roleId: 'fuel.lambda', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -226,6 +283,8 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   FUEL_DUAL_WORKSPACE,
   IGNITION_DUAL_WORKSPACE,
   COOLING_DUAL_WORKSPACE,
+  TRANSIENT_AE_DUAL_WORKSPACE,
+  FUEL_SYSTEM_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {
