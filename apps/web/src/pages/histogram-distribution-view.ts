@@ -1,6 +1,9 @@
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
+import { createHistogramLocalId } from '../state/histogram-table-storage';
+import { loadHistogramDistributionPresets, saveHistogramDistributionPresets, type HistogramDistributionPresetState } from '../state/histogram-distribution-storage';
+import { buildDistributionCsv, distributionCsvFilename } from './histogram-distribution-csv';
 import {
   histogramQualificationChannelIds,
   loadHistogramQualificationSets,
@@ -217,6 +220,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   let lastRangeMin = 0;
   let lastRangeMax = 1;
   let qualificationSets = loadHistogramQualificationSets();
+  let distributionPresets = loadHistogramDistributionPresets();
 
   const root = document.createElement('section');
   root.className = 'histogram-distribution-view';
@@ -231,6 +235,15 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       <input class="distribution-bin-count" type="number" min="1" max="512" step="1" value="20" aria-label="Manual bin count" hidden />
       <label><span>View</span><select class="distribution-display"><option value="histogram">Histogram</option><option value="cumulative">Cumulative</option></select></label>
       <label class="distribution-compare-toggle"><input type="checkbox" /><span>Compare</span></label>
+      <details class="distribution-presets">
+        <summary title="Saved Distribution setups">Presets</summary>
+        <div class="distribution-preset-popover">
+          <select class="distribution-preset-select" aria-label="Saved Distribution setup"></select>
+          <div class="distribution-preset-actions"><button type="button" class="distribution-preset-apply">Apply</button><button type="button" class="distribution-preset-save">Save setup…</button><button type="button" class="distribution-preset-delete">Delete</button></div>
+          <small>Saved setups retain channel, scope, Qualification, Y axis, bins, view and compare scope.</small>
+        </div>
+      </details>
+      <button type="button" class="distribution-export-csv" disabled>CSV</button>
     </div>
     <div class="distribution-compare-controls" hidden>
       <label><span>Compare scope</span><select class="distribution-compare-scope"></select></label>
@@ -266,6 +279,11 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   const compareToggle = root.querySelector<HTMLInputElement>('.distribution-compare-toggle input')!;
   const compareControls = root.querySelector<HTMLElement>('.distribution-compare-controls')!;
   const compareScopeSelect = root.querySelector<HTMLSelectElement>('.distribution-compare-scope')!;
+  const presetSelect = root.querySelector<HTMLSelectElement>('.distribution-preset-select')!;
+  const presetApply = root.querySelector<HTMLButtonElement>('.distribution-preset-apply')!;
+  const presetSave = root.querySelector<HTMLButtonElement>('.distribution-preset-save')!;
+  const presetDelete = root.querySelector<HTMLButtonElement>('.distribution-preset-delete')!;
+  const exportCsvButton = root.querySelector<HTMLButtonElement>('.distribution-export-csv')!;
   const empty = root.querySelector<HTMLElement>('.distribution-empty')!;
   const canvas = root.querySelector<HTMLCanvasElement>('.distribution-chart')!;
   const legend = root.querySelector<HTMLElement>('.distribution-legend')!;
@@ -275,6 +293,42 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   const binCountLabel = root.querySelector<HTMLElement>('.distribution-bin-count-label')!;
   const openLoggerButton = root.querySelector<HTMLButtonElement>('.distribution-open-logger')!;
   const clearBinButton = root.querySelector<HTMLButtonElement>('.distribution-clear-bin')!;
+
+  const populatePresetSelect = (preferredId = ''): void => {
+    presetSelect.replaceChildren(new Option(distributionPresets.length > 0 ? 'Select saved setup…' : 'No saved setups', ''));
+    for (const preset of distributionPresets) presetSelect.add(new Option(preset.name, preset.id));
+    presetSelect.value = preferredId && distributionPresets.some((preset) => preset.id === preferredId) ? preferredId : '';
+    presetApply.disabled = !presetSelect.value;
+    presetDelete.disabled = !presetSelect.value;
+  };
+
+  const currentPresetState = (id: string, name: string): HistogramDistributionPresetState => ({
+    id,
+    name,
+    channelId: channelSelect.value,
+    scope: scopeSelect.value,
+    qualificationId: qualificationSelect.value,
+    metric,
+    binMode,
+    binCount: binCountInput.value,
+    display,
+    compare,
+    compareScope: compareScopeSelect.value,
+  });
+
+  const setSelectIfAvailable = (select: HTMLSelectElement, value: string): void => {
+    if ([...select.options].some((option) => option.value === value && !option.disabled)) select.value = value;
+  };
+
+  const downloadCsv = (csv: string, filename: string): void => {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
 
   const hasValidCurrentRange = (): boolean => context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
 
@@ -473,6 +527,8 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
     selectedBin = undefined;
+    lastSeries = [];
+    exportCsvButton.disabled = true;
     binDetail.hidden = true;
     const channelId = channelSelect.value || context.channels[0]?.id;
     if (!channelId) {
@@ -544,6 +600,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     renderLegend(series);
     renderStats(series);
     renderChart(series, extent.min, extent.max);
+    exportCsvButton.disabled = false;
   };
 
   const updateBinDetail = (): void => {
@@ -600,6 +657,65 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     if (lastSeries.length > 0) renderChart(lastSeries, lastRangeMin, lastRangeMax);
   });
 
+  presetSelect.addEventListener('change', () => {
+    presetApply.disabled = !presetSelect.value;
+    presetDelete.disabled = !presetSelect.value;
+  });
+  presetApply.addEventListener('click', () => {
+    const preset = distributionPresets.find((candidate) => candidate.id === presetSelect.value);
+    if (!preset) return;
+    setSelectIfAvailable(channelSelect, preset.channelId);
+    setSelectIfAvailable(scopeSelect, preset.scope);
+    setSelectIfAvailable(qualificationSelect, preset.qualificationId);
+    metric = preset.metric; metricSelect.value = metric;
+    binMode = preset.binMode; binModeSelect.value = binMode; binCountInput.value = preset.binCount; binCountInput.hidden = binMode !== 'manual';
+    display = preset.display; displaySelect.value = display;
+    compare = preset.compare; compareToggle.checked = compare; compareControls.hidden = !compare;
+    setSelectIfAvailable(compareScopeSelect, preset.compareScope);
+    void render();
+  });
+  presetSave.addEventListener('click', () => {
+    const suggested = distributionPresets.find((candidate) => candidate.id === presetSelect.value)?.name ?? `${channelSelect.selectedOptions[0]?.text ?? 'Distribution'} setup`;
+    const name = window.prompt('Distribution setup name', suggested)?.trim();
+    if (!name) return;
+    const existing = distributionPresets.find((candidate) => candidate.id === presetSelect.value);
+    const id = existing?.id ?? createHistogramLocalId('distribution-preset');
+    const next = currentPresetState(id, name);
+    distributionPresets = existing ? distributionPresets.map((candidate) => candidate.id === id ? next : candidate) : [...distributionPresets, next];
+    saveHistogramDistributionPresets(distributionPresets);
+    populatePresetSelect(id);
+  });
+  presetDelete.addEventListener('click', () => {
+    const id = presetSelect.value;
+    if (!id) return;
+    distributionPresets = distributionPresets.filter((candidate) => candidate.id !== id);
+    saveHistogramDistributionPresets(distributionPresets);
+    populatePresetSelect();
+  });
+  exportCsvButton.addEventListener('click', () => {
+    if (lastSeries.length === 0) return;
+    const first = lastSeries[0]!;
+    const exported = buildDistributionCsv({
+      channelLabel: channelLabel(first.trace),
+      unit: first.trace.channel.unit,
+      metric,
+      display,
+      binMode,
+      rangeMin: lastRangeMin,
+      rangeMax: lastRangeMax,
+      series: lastSeries.map((series) => ({
+        label: series.label,
+        binValues: series.binValues,
+        stats: series.stats,
+        inputSampleCount: series.qualification.inputSampleCount,
+        eligibleSampleCount: series.qualification.eligibleSampleCount,
+        rejectedSampleCount: series.qualification.rejectedSampleCount,
+      })),
+    });
+    if (exported.binRowCount === 0) return;
+    downloadCsv(exported.csv, distributionCsvFilename(channelLabel(first.trace)));
+  });
+
   channelSelect.addEventListener('change', () => { void render(); });
   scopeSelect.addEventListener('change', () => { if (compare && compareScopeSelect.value === scopeSelect.value) refreshScopeSelectors(); void render(); });
   compareScopeSelect.addEventListener('change', () => { void render(); });
@@ -632,5 +748,6 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
   populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels);
   refreshScopeSelectors();
+  populatePresetSelect();
   return { element: root, setContext, refresh: () => { void render(); } };
 }

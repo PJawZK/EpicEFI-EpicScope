@@ -147,14 +147,13 @@ Detailed current behavior is documented in `docs/HISTOGRAM.md`.
 
 ### Remaining Histogram work
 
-Scatter has completed its targeted maturity pass: saved setups, box-region evidence inspection, useful region → Logger navigation and CSV export are implemented. The next Histogram target is **Distribution maturity**.
+Scatter has completed its targeted maturity pass: saved setups, box-region evidence inspection, useful region → Logger navigation and CSV export are implemented. Distribution has now also completed its setup-persistence/export maturity pass with saved setups and CSV bins/summary export.
 
-The worthwhile remaining gaps are narrower:
+The worthwhile remaining Histogram gaps are narrower:
 
-1. saved view/setup presets for Distribution;
-2. CSV export of Distribution bins plus summary statistics;
-3. later consolidate dormant duplicate/runtime-refinement code during the dedicated cleanup phase;
-4. replace the remaining Scatter timeline text/DOM bridge during cleanup only if it becomes a correctness or maintenance problem.
+1. explicit fixed min/max/bin-width Distribution geometry if reproducible repeated-test workflows require it;
+2. later consolidate dormant duplicate/runtime-refinement code during the dedicated cleanup phase;
+3. replace the remaining Scatter timeline text/DOM bridge during cleanup only if it becomes a correctness or maintenance problem.
 
 Do **not** start another broad Histogram rewrite.
 
