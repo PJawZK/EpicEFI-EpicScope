@@ -53,7 +53,10 @@ export type SemanticChannelRoleId =
   | 'vehicle.wheelSpeedFrontRight'
   | 'vehicle.wheelSpeedRearLeft'
   | 'vehicle.wheelSpeedRearRight'
-  | 'vehicle.longitudinalAcceleration';
+  | 'vehicle.longitudinalAcceleration'
+  | 'transient.predictedMap'
+  | 'transient.mapPredictionActive'
+  | 'transient.wallFuelAmount';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -369,6 +372,9 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'vehicle.wheelSpeedRearLeft': { id: 'vehicle.wheelSpeedRearLeft', displayName: 'Wheel Speed RL', aliases: ['vehicleSpeedKph3', 'Wheel Speed RL', 'Vehicle Speed Rear Left'], include: [/(?:wheel|vehicle).*speed.*(?:rear.*left|rl)/i], exclude: [/average/i, /reference/i, /target/i] },
   'vehicle.wheelSpeedRearRight': { id: 'vehicle.wheelSpeedRearRight', displayName: 'Wheel Speed RR', aliases: ['vehicleSpeedKph4', 'Wheel Speed RR', 'Vehicle Speed Rear Right'], include: [/(?:wheel|vehicle).*speed.*(?:rear.*right|rr)/i], exclude: [/average/i, /reference/i, /target/i] },
   'vehicle.longitudinalAcceleration': { id: 'vehicle.longitudinalAcceleration', displayName: 'Longitudinal Accel', aliases: ['accelerationLon', 'Accel: Longitudinal', 'Longitudinal Acceleration', 'Longitudinal Accel'], include: [/longitudinal.*(?:accel|acceleration)/i, /accel.*longitudinal/i], exclude: [/target/i, /limit/i] },
+  'transient.predictedMap': { id: 'transient.predictedMap', displayName: 'Predicted MAP', aliases: ['fallbackMap', 'Predicted MAP', 'MAP Estimate', 'Estimated MAP'], include: [/fallback.*map/i, /predicted.*map/i, /estimated.*map/i], exclude: [/use.*(?:map.*estimate|estimate.*map)/i, /enable/i, /during.*transient/i, /blend/i, /table/i, /target/i, /error/i, /duration/i, /config/i, /raw/i] },
+  'transient.mapPredictionActive': { id: 'transient.mapPredictionActive', displayName: 'MAP Prediction Active', aliases: ['isMapPredictionActive', 'MAP Prediction Active', 'Prediction Active'], include: [/map.*prediction.*active/i, /prediction.*active.*map/i], exclude: [/enable/i, /table/i, /config/i, /duration/i] },
+  'transient.wallFuelAmount': { id: 'transient.wallFuelAmount', displayName: 'Wall Fuel Amount', aliases: ['wallFuelAmount', 'Fuel: wall amount', 'Wall Fuel Amount', 'Fuel on the wall'], include: [/wall.*fuel.*amount/i, /fuel.*wall.*amount/i, /^fuel on the wall$/i], exclude: [/correction/i, /tau/i, /beta/i, /table/i, /config/i] },
 };
 
 export const semanticChannelRoles: readonly SemanticChannelRoleDefinition[] = Object.freeze(

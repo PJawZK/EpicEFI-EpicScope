@@ -170,17 +170,22 @@ The planned generic starter catalog is now complete.
 
 ## EpicEFI-specific starter tier
 
-Generic starters should remain portable across ECU families. Richer starters may be exposed only where the active schema provides the required capabilities, for example:
+Generic starters remain portable across ECU families. Specialized starters are capability-gated: they are offered only when every semantic role in the starter's availability bundle resolves against the active channel schema. Detection is therefore based on runtime/schema capabilities rather than hard-coded board names such as `if ECU == Mega144H7`.
+
+Implemented specialized starter:
+
+- **EpicEFI · MAP Predict + Wall Wetting** — Dual layout. Pane 1: RPM, TPS, TPS change, live MAP, predicted/fallback MAP, effective MAP and prediction-active state. Pane 2: Lambda, injector pulse width, TPS AE fuel, wall-fuel amount and wall-fuel correction. The menu exposes it only when predicted MAP, effective MAP, prediction-active state, wall-fuel amount and wall-fuel correction all resolve.
+
+Planned specialized candidates remain:
 
 - **EpicEFI · Dual Chamber Boost**;
-- **EpicEFI · MAP Predict + Wall Wetting**;
 - **EpicEFI · ETB Control**;
 - **EpicEFI · Fuel Rail Diagnostics**;
 - **EpicEFI · Trigger + Sync Detailed**;
 - **EpicEFI · Injector / Ignition Timing**;
 - **EpicEFI · Engine Protection**.
 
-Capability detection should use semantic roles/schema capabilities rather than hard-coded board names such as `if ECU == Mega144H7`.
+Capability gating affects only starter discovery. Once materialized, the resulting workspace is still an ordinary editable workspace and is not owned by the capability detector.
 
 ## Role requirement levels
 
