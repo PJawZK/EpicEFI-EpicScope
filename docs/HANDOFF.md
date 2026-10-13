@@ -8,9 +8,9 @@ Authoritative production branch: `main`
 
 Current authoritative product merge baseline:
 
-`452bca0655f11befe978f042f37a6d3c67ac9a99`
+`a7e08bfa3a8b5f451fd4b8710b1f956b8f3635cd`
 
-That squash merge is PR #348, **Add explicit workspace starter picker and Idle Dual starter**. It builds on PR #347's editable one-time starter lifecycle.
+That squash merge is PR #370, **Refine generic starter channels and MAP wall-wetting diagnostics**.
 
 Hosted application:
 
@@ -22,13 +22,19 @@ This file is the present-tense continuation authority. If older wording elsewher
 
 EpicScope Web remains the functional reference/validation implementation for Logger, Histogram and Analyzer behavior.
 
-The large recorded-log performance campaign remains complete unless a measured regression appears.
+The semantic Logger starter-template track is now **feature-complete for the current validation phase**:
 
-The validated real ECU/Pi/`ts_shim` source workflow is part of `main`.
+- 12 portable generic starters;
+- 12 capability-gated EpicEFI-specific starters;
+- all 12 generic starters seed a genuinely fresh Logger state as ordinary editable workspaces;
+- ECU-specific starters remain opt-in under **New graph → From template**;
+- template discovery is viewport-bounded and scrollable;
+- Single layout uses the normal overlay readout presentation with channel names plus NOW / MIN / MAX;
+- starter materialization is one-time and never creates persistent template ownership.
 
-The active product-development track is **semantic, multi-ECU Logger starter templates**. Production starter creation is now explicit through **New graph → Blank graph / From template**. The current starter catalog contains **General** and **Idle**.
+Do not continue adding starter templates by default. Staged Injection and Closed-loop Fuel / STFT / LTFT remain secondary future candidates. Per-cylinder/EGT work remains deferred until the semantic layer can represent indexed channel families cleanly.
 
-Do not restart broad Histogram redesign, reopen mature Fueling/Ignition work, or begin a new platform phase without a concrete user-visible need, measured regression or explicit project-owner direction.
+The next larger product track should be chosen deliberately. The strongest current candidate is richer Histogram Scatter region selection/evidence navigation.
 
 ## Product/workflow invariant
 
@@ -56,14 +62,6 @@ EpicScope same-origin Vite proxy
 Logger / Analyzer / Histogram
 ```
 
-Pi test endpoint used during validation:
-
-`http://192.168.186.181:29002`
-
-Firmware signature observed during the validated run:
-
-`rusEFI master.2026.10.12.MEGA144H7.2957763282`
-
 Local development command used on JZ-Main:
 
 ```bash
@@ -89,25 +87,11 @@ Recorded MLG + optional INI binding
 
 Loaded INI and MSQ are independent application resources and survive source transitions.
 
-### MLG → Shim
+Stable workspace assignments normalize between canonical `ini:*` identities and matching raw Shim identities. Source transitions must never reapply a starter template, resurrect deleted channels, or create raw + `ini:*` duplicate traces.
 
-- **Connect Shim** detaches the recorded source in-process.
-- No page reload is used.
-- INI, MSQ, reusable workspace, runtime errors and performance/report history remain.
-- Shim's decodable schema becomes the temporary Channel Browser catalog.
-- Stable workspace assignments resolve onto matching raw Shim runtime IDs.
+## Starter/workspace architecture
 
-### Shim → MLG
-
-Opening a recorded MLG makes Shim relinquish temporary catalog ownership first. The loaded INI catalog is restored, then the MLG is parsed/bound normally.
-
-Workspace assignments return to canonical `ini:*` identities.
-
-Do not reintroduce raw + `ini:*` duplicate traces.
-
-## Semantic starter-template architecture
-
-Starter templates are defined in terms of **semantic channel roles**, not one ECU's raw channel names.
+Starter templates are defined in terms of semantic channel roles, not one ECU's raw channel names.
 
 ```text
 semantic role
@@ -115,13 +99,6 @@ semantic role
 logical ECU channel
       ↓
 current source identity
-```
-
-Example:
-
-```text
-engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
-engine.rpm → RPMValue → RPMValue      (ts_shim)
 ```
 
 Resolution order:
@@ -134,151 +111,114 @@ Resolution order:
 
 Missing channels remain explicit. Required/preferred/optional roles degrade gracefully rather than fabricating data.
 
-Compatibility aliases never dictate the visible EpicScope name. Legacy `TP` may resolve throttle position while EpicScope displays **TPS**.
+### D-055 ownership invariant
 
-MegaLogViewer HD `FieldMaps/*.properties` remain compatibility/reference evidence, not naming authority.
+Layout, starter and workspace remain separate concepts:
 
-### Layout, starter and workspace are separate
-
-- **Layout** describes graph geometry only.
-- **Starter template** describes a task using a layout plus semantic role slots.
-- **Workspace** is the user's ordinary editable materialized configuration.
+- **Layout** — graph geometry only;
+- **Starter template** — task-oriented recipe using semantic role slots;
+- **Workspace** — ordinary user-owned materialized state.
 
 Lifecycle:
 
 ```text
 starter template
-      ↓ resolve once against current ECU/source catalog
-ordinary editable workspace
+      ↓ resolve once against current catalog
+ordinary editable graph-* workspace
 ```
 
-Once created, the workspace can be edited, renamed, duplicated or deleted. Template logic does **not** continue to own it and must not silently repopulate removed channels or reset layout changes.
+Once materialized, a workspace may be edited, renamed, duplicated or deleted. Template updates affect future materializations only. Source transitions normalize channel identities only. Historical `built-in:*` IDs are compatibility data and do not imply protected ownership.
 
-Source transitions may translate the user's chosen stable assignments between `ini:*` and raw Shim identities. That is source-identity normalization, not template reapplication.
+## Fresh-state behavior
 
-Template updates affect future materializations only.
-
-Historical persisted `built-in:*` IDs are compatibility data only and no longer imply protected rename/delete behavior.
-
-If the final workspace is deleted, Logger creates a blank ordinary workspace rather than resurrecting a starter automatically.
-
-Detailed authority:
-
-- `docs/PREPOPULATED_WORKSPACES.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DATA_MODEL.md`
-- `docs/DECISIONS.md` — D-055 supersedes the protected-instance lifecycle from D-054.
-
-## Workspace creation — merged production behavior
-
-PR #348 adds an explicit creation choice under **New graph**:
+A genuinely fresh Logger state seeds these 12 generic workspaces when the first usable channel catalog becomes available:
 
 ```text
-New graph
-├─ Blank graph
-└─ From template
-   ├─ General
-   └─ Idle
+General
+Idle
+Boost
+Fuel
+Ignition
+Cooling
+Transient / AE
+Fuel System
+Trigger / Sync
+Startup / Warmup
+Electrical
+Vehicle / Driveline
 ```
 
-The template list is generated from the starter catalog. Selecting a starter resolves its semantic roles against the current authoritative channel set and creates a normal `graph-*` workspace. There is no persistent template ownership after creation.
+Existing/restored workspace state is never re-seeded. If a user deletes or edits a default workspace, EpicScope must preserve that decision.
 
-The normal layout selector now also exposes **Dual · 2 graphs**. `dual` is a first-class Logger layout with two vertically stacked panes; it is not a special Idle-only rendering path.
+## Current generic starter intent
 
-## General starter
+- **General** — broad engine overview.
+- **Idle** — speed/load plus idle actuator/combustion context.
+- **Boost** — RPM, MAP, TPS, IAT plus ignition/fueling/electrical context; no closed-loop boost, wastegate or EMAP assumption.
+- **Fuel** — actual/target mixture, injection demand, pressure and total correction.
+- **Ignition** — timing, dwell, battery and thermal context; no knock-hardware assumption.
+- **Cooling** — temperatures, RPM/speed, binary fan-active state, oil/coolant pressure and battery context.
+- **Transient / AE** — TPS/MAP transient context, effective MAP, Lambda + target, injector PW, AE and wall-fuel correction.
+- **Fuel System** — delivery-system pressure, injector demand, pump state and mixture context.
+- **Trigger / Sync** — sync/error counters/phase plus battery context.
+- **Startup / Warmup** — cranking/after-start/warmup corrections plus actual injector PW and mixture context.
+- **Electrical** — charging/load/sensor-supply overview including binary fan activity.
+- **Vehicle / Driveline** — road speed, driver inputs, gear, clutch/brake, wheel speeds and longitudinal acceleration.
 
-**General** uses a Single layout.
+## Current EpicEFI-specific starter tier
 
-Roles:
+Capability-gated starters are offered only when their defining runtime semantic bundle resolves. They are not gated by ECU board name.
+
+Current production set:
 
 ```text
-Required
-- RPM
-- MAP
-
-Preferred
-- TPS
-- Coolant Temp
-
-Optional
-- Intake Air Temp
-- Battery Voltage
-- Lambda
-- Ignition Advance
+EpicEFI · MAP Predict + Wall Wetting
+EpicEFI · Fuel Rail Diagnostics
+EpicEFI · ETB Control
+EpicEFI · Dual Chamber Boost
+EpicEFI · Trigger + Sync Detailed
+EpicEFI · Injector + Ignition Timing
+EpicEFI · Engine Protection
+EpicEFI · VVT Control
+EpicEFI · Anti-Lag
+EpicEFI · Launch Control
+EpicEFI · Traction Control
+EpicEFI · Transmission Control
 ```
 
-Current EpicEFI mapping target:
+The MAP Predict + Wall Wetting starter now emphasizes the actual MAP-model and wall-film signals: measured MAP, Instant MAP, fallback/predicted MAP, Effective MAP, wall fuel amount and the mass-domain `wallFuelCorrectionValue`, with fueling/mixture context. It no longer centers generic TPS-AE triggering or the simple map-prediction-active flag.
 
-```text
-MLG + INI                          ts_shim
-ini:RPMValue                       RPMValue
-ini:MAPValue                       MAPValue
-ini:TPSValue                       TPSValue
-ini:coolant                        coolant
-ini:intake                         intake
-ini:VBatt                          VBatt
-ini:lambdaValue                    lambdaValue
-ini:correctedIgnitionAdvance       correctedIgnitionAdvance
-```
+## Recent starter-track milestones
 
-## Idle starter
-
-**Idle** is the first production multi-pane starter and uses the generic Dual layout.
-
-Pane 1 — speed/load context:
-
-```text
-Required
-- RPM
-- Idle Target
-
-Preferred
-- MAP
-- TPS
-```
-
-Pane 2 — control/combustion context:
-
-```text
-Preferred
-- Idle Air Command
-- Ignition Advance
-- Coolant Temp
-
-Optional
-- Lambda
-```
-
-New generic semantic roles:
-
-- `idle.target` — current preferred EpicEFI identity `idleTarget`;
-- `idle.airCommand` — current preferred EpicEFI identity `currentIdlePosition`.
-
-The generic starter deliberately does **not** fold controller-specific details such as `dcIdleTarget` or `IdlePosition` into those generic roles. DC-valve/IAC/ETB-specific target, feedback and PID evidence remain the responsibility of the Idle analyzer and future capability-specific starters.
+- #348 — explicit Blank / From template creation and first-class Dual layout.
+- #349 — dual workspace persistence validation.
+- #350 — INI-only workspace editing.
+- #351 — generic Boost starter.
+- #352 — right-side template flyout.
+- #356 — Trigger / Sync and Startup / Warmup.
+- #358 — Electrical and Vehicle / Driveline; 12 generic starters complete.
+- #359 — capability-gated EpicEFI-specific tier foundation + MAP Predict / Wall Wetting.
+- #360 — Fuel Rail Diagnostics + ETB Control.
+- #362 — Dual Chamber Boost + Trigger / Sync Detailed.
+- #363 — Injector + Ignition Timing + Engine Protection.
+- #365 — VVT Control.
+- #366 — Anti-Lag.
+- #367 — Launch, Traction and Transmission; 12 specialized starters complete.
+- #368 — scrollable template flyout.
+- #369 — fresh-state generic seeding + Single-layout readout fix.
+- #370 — generic channel audit refinements + MAP/WW semantic correction.
 
 ## Validation status
 
-The original four-role Single resolver path was real-runtime validated through:
+The following are established:
 
-```text
-MLG + INI → ts_shim live/capture → MLG + INI
-```
+- full branch/main type-check, test and production-build validation through PR #370;
+- real browser confirmation of fresh-state generic workspace seeding after site-local storage/cache reset;
+- user confirmation that the fresh baseline and Single layout presentation look correct;
+- prior real MLG + INI ↔ `ts_shim` source-transition validation;
+- automated coverage for semantic resolution, capability gating, workspace identity normalization and starter definitions.
 
-with correct source-specific resolution, zero unavailable assigned channels, `0 ISSUE / 0 WARN`, and zero runtime errors.
-
-The expanded eight-role General resolver has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing all eight roles as fully runtime-validated.
-
-PR #347's editable-starter lifecycle correction passed Web CI with type-check, full tests and production build before merge.
-
-PR #348's explicit starter picker, `dual` layout, Idle semantic roles, Idle two-pane resolution and caller-owned materialization all passed Web CI run #1262 with type-check, full tests and production build before merge.
-
-A browser/real-source confirmation of creating General/Idle through the new picker is still useful as a product-level smoke test, especially Idle across recorded MLG + INI and Shim source states.
-
-## Shim HTTP fix
-
-The default `fetch` implementation in `ShimHttpReadOnlyClient` is bound through an arrow wrapper rather than storing a bare native `fetch` reference.
-
-This fixes the browser-side `Illegal invocation` failure previously tracked by PR #342. PR #342 was closed after the fix was carried through PR #343.
+`docs/STARTER_SYSTEM_VALIDATION.md` records the close-out matrix for this track.
 
 ## Logger checkpoint
 
@@ -287,89 +227,30 @@ Mature behavior includes:
 - MLG v1/v2 staged import, CRC/source diagnostics and large-log reuse;
 - INI-backed channel catalog/binding;
 - optional MSQ tune enrichment;
-- reusable named graph workspaces plus exact-log navigation persistence;
-- fixed/freeform multi-pane Logger plus the generic Dual layout;
+- reusable named graph workspaces and exact-log navigation persistence;
+- fixed/freeform multi-pane Logger plus Single and Dual layouts;
 - A/B ranges, markers and saved ranges;
 - stable channel identity across recorded and Shim transitions;
-- semantic starter-template resolution;
-- explicit Blank / From template workspace creation;
-- General and Idle starter templates;
+- semantic starter resolution and capability gating;
+- fresh-state generic workspace seeding;
+- explicit Blank / From template creation;
 - fully editable/deletable materialized starter workspaces;
 - explicit unavailable-channel handling;
 - retained-memory, parser, performance and runtime-health diagnostics.
 
-The long-used 1.19 GB / 320,458-record MLG remains the main large-log stress/reference file.
-
 Do not resume broad Logger/performance micro-optimization without a concrete measured problem.
 
-## Histogram checkpoint
+## Histogram checkpoint / next likely track
 
-Histogram coherence remains complete through:
+Histogram coherence remains complete through the shared Scope, Qualification, Math Channels and help work. Current surfaces are Table Generator, Distribution, Scatter and Math Channels.
 
-- PR #339 — shared scope/evidence flow;
-- PR #340 — shared Qualification;
-- PR #344 — shared Math Channels;
-- PR #345 — unified Histogram help;
-- PR #346 — documentation refresh.
-
-Current surfaces:
-
-- Table Generator;
-- Distribution;
-- Scatter;
-- Math Channels.
-
-Remaining useful Histogram work is narrower:
-
-1. saved setups/presets for Distribution and Scatter;
-2. exports for Distribution and Scatter;
-3. richer Scatter region selection/evidence navigation;
-4. eventually replace the remaining Scatter timeline text/DOM bridge with direct shared state propagation;
-5. later cleanup/consolidation of dormant duplicate/runtime-refinement code.
-
-Do not restart a broad Histogram rewrite.
+The most useful next extension remains **richer Scatter region selection and evidence navigation**. Saved setups/exports for Distribution and Scatter are also valid later work. Do not restart a broad Histogram rewrite.
 
 ## Analyzer checkpoint
 
-Analyzer feature expansion remains paused after useful maturity checkpoints in Fueling and non-knock Ignition.
+Analyzer feature expansion remains paused after useful maturity checkpoints in Fueling and non-knock Ignition. Prefer practical coverage of less-mature analyzers before deepening mature Fueling/Ignition again.
 
-Current surfaces:
-
-- Range Compare;
-- Tune Table;
-- Boost;
-- Idle;
-- AE / MAP Predict;
-- Fueling;
-- Ignition;
-- Fuel / Injector;
-- Trigger / Sync.
-
-When Analyzer work resumes, prefer practical coverage of less-mature analyzers before deepening Fueling/Ignition again.
-
-## Cleanup/consolidation policy
-
-Broad cleanup/optimization remains deliberately deferred until feature coverage is broader. Do not destabilize mature behavior solely for internal tidiness.
-
-## Current Git / workflow state
-
-Current authoritative product merge baseline:
-
-`452bca0655f11befe978f042f37a6d3c67ac9a99`
-
-Relevant milestones:
-
-- #339 — Histogram scope/evidence flow;
-- #340 — shared Histogram Qualification;
-- #341 — validated `ts_shim` live/recorded source workflow;
-- #344 — shared Histogram Math Channels;
-- #345 — unified Histogram help;
-- #346 — current-state documentation refresh;
-- #343 — semantic channel-role layer and first General pre-populated implementation, including Shim HTTP binding fix;
-- #347 — editable one-time starter materialization; protected built-in lifecycle removed;
-- #348 — explicit Blank / From template creation, first-class Dual layout, and Idle as the first multi-pane starter.
-
-Before new work from a local clone:
+## Before new work from a local clone
 
 ```bash
 cd ~/EpicEFI-EpicScope
@@ -379,8 +260,8 @@ npm run typecheck
 npm test
 ```
 
-Recommended next work:
+Recommended continuation:
 
-1. smoke-test **New graph → From template → General / Idle** in the browser with a representative MLG + INI source;
-2. confirm Idle assignments survive MLG + INI → Shim → MLG source transitions without template reapplication;
-3. then extend the starter catalog deliberately, using the same one-time materialization path rather than adding workspace-specific lifecycle logic.
+1. use `docs/STARTER_SYSTEM_VALIDATION.md` if a starter regression appears;
+2. otherwise treat the starter-template track as closed for now;
+3. begin the next deliberate product track, currently expected to be richer Scatter region selection/evidence navigation.
