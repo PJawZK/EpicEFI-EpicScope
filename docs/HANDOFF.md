@@ -20,6 +20,13 @@ Draft PR:
 
 This file is the compact present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, current `main`, this file, the active feature branch, and the latest verified tests/runtime evidence win.
 
+Related semantic-workspace authority:
+
+- [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) — product catalog, role contents and implementation status;
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — semantic/capability layer and materialization boundaries;
+- [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
+- [`DECISIONS.md`](DECISIONS.md) — D-051–D-054 naming, identity and built-in workspace decisions.
+
 ## Current project position — 2026-10-13
 
 EpicScope Web remains the functional reference/validation implementation for Logger, Histogram and Analyzer behavior.
@@ -219,8 +226,6 @@ Initial generic workspace catalog:
 - Vehicle / Driveline
 
 EpicEFI-specific workspaces may coexist behind capability checks, e.g. Dual Chamber Boost, MAP Predict + Wall Wetting, ETB Control, Fuel Rail Diagnostics, Trigger + Sync Detailed, Injector / Ignition Timing and Engine Protection.
-
-See [`PREPOPULATED_WORKSPACES.md`](PREPOPULATED_WORKSPACES.md) for the current product target and role contents.
 
 ## Validated first slice — Single · Resolver Test
 
