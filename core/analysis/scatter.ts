@@ -20,6 +20,19 @@ export interface NumericScatterResult {
   readonly yMax: number | undefined;
 }
 
+export interface NumericScatterRegion {
+  readonly xMin: number;
+  readonly xMax: number;
+  readonly yMin: number;
+  readonly yMax: number;
+}
+
+export interface NumericScatterRegionSelection {
+  /** Source sample indices whose valid X/Y pair lies inside the inclusive region. */
+  readonly sampleIndices: Uint32Array;
+  readonly selectedPairCount: number;
+}
+
 function localIndexForSample(range: NumericChannelRange, sampleIndex: number): number | undefined {
   const localIndex = sampleIndex - range.startSampleIndex;
   if (!Number.isSafeInteger(localIndex) || localIndex < 0 || localIndex >= range.values.length) return undefined;
@@ -106,5 +119,32 @@ export function buildNumericScatter(
     xMax: sourceIndices.length > 0 ? xMax : undefined,
     yMin: sourceIndices.length > 0 ? yMin : undefined,
     yMax: sourceIndices.length > 0 ? yMax : undefined,
+  };
+}
+
+
+/** Select evidence from the complete scatter result, independent of any UI render stride. */
+export function selectNumericScatterRegion(
+  result: NumericScatterResult,
+  region: NumericScatterRegion,
+): NumericScatterRegionSelection {
+  const xMin = Math.min(region.xMin, region.xMax);
+  const xMax = Math.max(region.xMin, region.xMax);
+  const yMin = Math.min(region.yMin, region.yMax);
+  const yMax = Math.max(region.yMin, region.yMax);
+  const selected: number[] = [];
+
+  for (let index = 0; index < result.validPairSampleCount; index += 1) {
+    const x = result.xValues[index];
+    const y = result.yValues[index];
+    const sampleIndex = result.sampleIndices[index];
+    if (x === undefined || y === undefined || sampleIndex === undefined) continue;
+    if (x < xMin || x > xMax || y < yMin || y > yMax) continue;
+    selected.push(sampleIndex);
+  }
+
+  return {
+    sampleIndices: Uint32Array.from(selected),
+    selectedPairCount: selected.length,
   };
 }
