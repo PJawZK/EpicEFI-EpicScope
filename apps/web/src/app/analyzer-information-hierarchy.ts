@@ -1,3 +1,5 @@
+import { ensureFuelInjectorAnalyzerPresentation } from '../pages/fuel-injector-analyzer-presentation';
+
 const SPECIALIZED_PRIMARY: Readonly<Record<string, readonly string[]>> = {
   Idle: ['RPM mean', 'Target mean', 'RPM error MAE / RMSE', 'Worst sag', 'Median recovery', 'Sag events'],
   'AE / MAP Predict': ['Events', 'Tip-in / decel', 'Predict error MAE', 'Peak lean excursion', 'Peak rich excursion'],
@@ -111,7 +113,7 @@ function ensureSummaryToggle(
 function specializeSummary(view: HTMLElement): void {
   const title = view.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent?.split('·')[0]?.trim() ?? '';
   const labels = SPECIALIZED_PRIMARY[title];
-  const summary = view.querySelector<HTMLElement>('.specialized-analyzer-summary');
+  const summary = view.querySelector<HTMLElement>('.specialized-analyzer-summary:not(.fuel-injector-decision-summary)');
   if (!labels || !summary) return;
   ensureSummaryToggle(view, summary, `specialized:${title}`, new Set(labels));
 }
@@ -186,6 +188,7 @@ function collapseAdvancedOptionsOnce(root: HTMLElement): void {
 }
 
 function apply(root: HTMLElement): void {
+  ensureFuelInjectorAnalyzerPresentation(root);
   standardizeInfoIcons(root);
   collapseAdvancedOptionsOnce(root);
   for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) specializeSummary(view);

@@ -130,7 +130,7 @@ export function ensureFuelInjectorAnalyzerPresentation(root: HTMLElement): void 
     return;
   }
 
-  const summary = view.querySelector<HTMLElement>('.specialized-analyzer-summary');
+  const summary = view.querySelector<HTMLElement>('.specialized-analyzer-summary:not(.fuel-injector-decision-summary)');
   if (!summary) return;
   const dutyMax = parseLastNumber(summaryValue(summary, 'Injector duty mean / max'));
   const lowEvents = parseCount(summaryValue(summary, 'Low pressure events'));
