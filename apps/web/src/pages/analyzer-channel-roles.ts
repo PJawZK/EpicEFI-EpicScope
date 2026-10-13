@@ -127,8 +127,11 @@ const RULES: Readonly<Record<string, RoleRule>> = {
     include: [/^map(value)?$/i, /manifold.*(?:absolute.*)?pressure/i, /(^|\b)map(\b|$)/i],
     exclude: [/predict/i, /estimate/i, /target/i, /diff/i, /differential/i],
   },
-  'fuel-injector:fuelPressure': { include: [/fuel.*pressure/i, /rail.*pressure/i], exclude: [/diff/i, /differential/i] },
-  'fuel-injector:railDiff': { include: [/rail.*diff/i, /fuel.*pressure.*diff/i, /differential.*pressure/i], exclude: [/manifold/i, /(^|\b)map(\b|$)/i] },
+  'fuel-injector:fuelPressure': { include: [/fuel.*pressure/i, /rail.*pressure/i], exclude: [/diff/i, /differential/i, /delta/i] },
+  'fuel-injector:railDiff': {
+    include: [/rail.*diff/i, /rail.*delta/i, /fuel.*pressure.*diff/i, /fuel.*pressure.*delta/i, /pressure.*delta/i, /differential.*pressure/i],
+    exclude: [/manifold/i, /(^|\b)map(\b|$)/i],
+  },
   'fuel-injector:pw': { include: [/injector.*(pw|pulse)/i, /pulse.*width/i, /inj.*pw/i] },
   'fuel-injector:duty': { include: [/injector.*duty/i, /inj.*duty/i] },
   'fuel-injector:deadtime': { include: [/injector.*dead.*time/i, /inj.*dead.*time/i, /deadtime/i] },
