@@ -58,6 +58,7 @@ import {
   type StarterWorkspaceTemplate,
 } from '../state/built-in-workspace-templates';
 import { legacyBuiltInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';
+import { loggerWorkspaceEditingAvailable } from '../state/logger-workspace-capabilities';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
 const SINGLE_RESOLVER_RUNTIME_ID = legacyBuiltInWorkspaceRuntimeId(SINGLE_RESOLVER_TEST_WORKSPACE);
@@ -1984,6 +1985,7 @@ export function createLoggerPage(): LoggerPageController {
     catalogSourceName = sourceName;
 
     if (!channelDataSource) {
+      graphSelector.setEnabled(loggerWorkspaceEditingAvailable(channels.length));
       channelDefinitions = new Map(catalogChannelDefinitions);
       unavailableChannelIds.clear();
       for (const channel of channels) unavailableChannelIds.add(channel.id);
@@ -2043,7 +2045,7 @@ export function createLoggerPage(): LoggerPageController {
       activeWorkspaceId = workspaces[0]?.id ?? '';
     }
     refreshWorkspaceSelector();
-    graphSelector.setEnabled(Boolean(summary.timeRange));
+    graphSelector.setEnabled(loggerWorkspaceEditingAvailable(summary.channels.length));
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     const workspaceMs = now() - workspaceStarted;
 
@@ -2146,7 +2148,7 @@ export function createLoggerPage(): LoggerPageController {
       lastHistoryMutationMs: 0,
     }));
     refreshWorkspaceSelector();
-    graphSelector.setEnabled(false);
+    graphSelector.setEnabled(loggerWorkspaceEditingAvailable(catalogChannelDefinitions.size));
     paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());
     channelDefinitions.clear();
     channelIdAliases.clear();
