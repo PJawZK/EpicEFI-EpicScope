@@ -51,8 +51,8 @@ jobs:
           PY
           rm .github/workflows/temp-catalog-workspace-edit.yml
           npm ci
-          npm run type-check
-          npm test -- --run
+          npm run typecheck
+          npm test
           npm run build
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
