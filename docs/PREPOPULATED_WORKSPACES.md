@@ -172,15 +172,15 @@ The planned generic starter catalog is now complete.
 
 Generic starters remain portable across ECU families. Specialized starters are capability-gated: they are offered only when every semantic role in the starter's availability bundle resolves against the active channel schema. Detection is therefore based on runtime/schema capabilities rather than hard-coded board names such as `if ECU == Mega144H7`.
 
-Implemented specialized starter:
+Implemented specialized starters:
 
 - **EpicEFI · MAP Predict + Wall Wetting** — Dual layout. Pane 1: RPM, TPS, TPS change, live MAP, predicted/fallback MAP, effective MAP and prediction-active state. Pane 2: Lambda, injector pulse width, TPS AE fuel, wall-fuel amount and wall-fuel correction. The menu exposes it only when predicted MAP, effective MAP, prediction-active state, wall-fuel amount and wall-fuel correction all resolve.
+- **EpicEFI · Fuel Rail Diagnostics** — Dual layout. Pane 1 follows actual high rail pressure against HPFP target with RPM, injector pressure delta, injector pulse width and Lambda context. Pane 2 shows HPFP active/valve state plus P/I control contributions and battery voltage. It is offered only when actual high pressure, target pressure, HPFP-active state and valve state all resolve.
+- **EpicEFI · ETB Control** — Dual layout. Pane 1 compares pedal demand, ETB target, actual TPS and position error with RPM context. Pane 2 shows motor duty, feed-forward, jam state and battery voltage. It is offered only when pedal, target, actual TPS, ETB error, duty and feed-forward all resolve.
 
 Planned specialized candidates remain:
 
 - **EpicEFI · Dual Chamber Boost**;
-- **EpicEFI · ETB Control**;
-- **EpicEFI · Fuel Rail Diagnostics**;
 - **EpicEFI · Trigger + Sync Detailed**;
 - **EpicEFI · Injector / Ignition Timing**;
 - **EpicEFI · Engine Protection**.
