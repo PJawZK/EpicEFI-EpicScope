@@ -1,0 +1,61 @@
+name: Temporary catalog workspace edit transform
+on:
+  push:
+    branches: [fix/catalog-only-workspace-editing]
+permissions:
+  contents: write
+jobs:
+  transform:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/catalog-only-workspace-editing
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply guarded source transform and tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('apps/web/src/pages/logger-page.ts')
+          s = p.read_text()
+
+          old = "import { legacyBuiltInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';\n"
+          new = old + "import { loggerWorkspaceEditingAvailable } from '../state/logger-workspace-capabilities';\n"
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+
+          old = "    if (!channelDataSource) {\n      channelDefinitions = new Map(catalogChannelDefinitions);"
+          new = "    if (!channelDataSource) {\n      graphSelector.setEnabled(loggerWorkspaceEditingAvailable(channels.length));\n      channelDefinitions = new Map(catalogChannelDefinitions);"
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+
+          old = "    graphSelector.setEnabled(Boolean(summary.timeRange));"
+          new = "    graphSelector.setEnabled(loggerWorkspaceEditingAvailable(summary.channels.length));"
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+
+          old = "    graphSelector.setEnabled(false);\n    paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());"
+          new = "    graphSelector.setEnabled(loggerWorkspaceEditingAvailable(catalogChannelDefinitions.size));\n    paneRuntimes.forEach((runtime) => runtime.activeChannelIds.clear());"
+          assert s.count(old) == 1
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+
+          Path('apps/web/src/state/logger-workspace-capabilities.ts').write_text("""/**\n * Workspace structure can be edited as soon as EpicScope knows a channel\n * catalog. Sample data is only required for trace/timeline/statistics features.\n */\nexport function loggerWorkspaceEditingAvailable(channelCount: number): boolean {\n  return Number.isFinite(channelCount) && channelCount > 0;\n}\n""")
+
+          Path('tests/web/logger-workspace-capabilities.test.ts').write_text("""import { describe, expect, it } from 'vitest';\n\nimport { loggerWorkspaceEditingAvailable } from '../../apps/web/src/state/logger-workspace-capabilities';\n\ndescribe('Logger workspace editing capability', () => {\n  it('allows workspace editing from an INI catalog before sample data is loaded', () => {\n    expect(loggerWorkspaceEditingAvailable(2519)).toBe(true);\n  });\n\n  it('allows workspace editing from source channels when sample data is loaded', () => {\n    expect(loggerWorkspaceEditingAvailable(1389)).toBe(true);\n  });\n\n  it('keeps workspace selection disabled when no channels are known', () => {\n    expect(loggerWorkspaceEditingAvailable(0)).toBe(false);\n  });\n});\n""")
+          PY
+          rm .github/workflows/temp-catalog-workspace-edit.yml
+          npm ci
+          npm run type-check
+          npm test -- --run
+          npm run build
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: allow workspace editing from channel catalog"
+          git push origin HEAD:fix/catalog-only-workspace-editing
