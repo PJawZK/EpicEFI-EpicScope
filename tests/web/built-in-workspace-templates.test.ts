@@ -89,46 +89,37 @@ describe('starter workspace templates', () => {
     ]);
   });
 
-  it('defines Boost as a portable two-pane starter', () => {
+  it('defines Boost as a portable two-pane starter without closed-loop boost or extra-sensor assumptions', () => {
     expect(BOOST_DUAL_WORKSPACE.name).toBe('Boost');
     expect(BOOST_DUAL_WORKSPACE.layout).toBe('dual');
     expect(BOOST_DUAL_WORKSPACE.panes[0]?.roles).toEqual([
       { roleId: 'engine.rpm', requirement: 'required' },
       { roleId: 'engine.map', requirement: 'required' },
       { roleId: 'engine.throttle.position', requirement: 'preferred' },
-      { roleId: 'boost.target', requirement: 'optional' },
+      { roleId: 'temperature.intakeAir', requirement: 'preferred' },
     ]);
     expect(BOOST_DUAL_WORKSPACE.panes[1]?.roles).toEqual([
-      { roleId: 'boost.wastegateCommand', requirement: 'preferred' },
-      { roleId: 'boost.error', requirement: 'optional' },
-      { roleId: 'temperature.intakeAir', requirement: 'optional' },
-      { roleId: 'exhaust.emap', requirement: 'optional' },
+      { roleId: 'ignition.advance', requirement: 'preferred' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+      { roleId: 'fuel.injectorDuty', requirement: 'preferred' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
     ]);
   });
 
-  it('resolves Boost onto canonical EpicEFI INI identities', () => {
+  it('resolves Boost onto ordinary EpicEFI engine-state channels', () => {
     const result = resolveStarterWorkspaceTemplate(BOOST_DUAL_WORKSPACE, [
       channel('ini:RPMValue', 'RPMValue', 'RPM'),
       channel('ini:MAPValue', 'MAPValue', 'MAP'),
       channel('ini:TPSValue', 'TPSValue', 'TPS'),
-      channel('ini:boostControlTarget', 'boostControlTarget', 'Boost: Target'),
-      channel('ini:boostOutput', 'boostOutput', 'Boost: Output'),
-      channel('ini:boostStatus_error', 'boostStatus_error', 'Boost PID error'),
       channel('ini:intake', 'intake', 'Intake air temp'),
-      channel('ini:emapKpa', 'emapKpa', 'EMAP'),
-      channel('ini:boostControllerClosedLoopPart', 'boostControllerClosedLoopPart', 'Boost: Closed loop'),
-      channel('ini:lwgDutyPct', 'lwgDutyPct', 'Lower WG port output'),
+      channel('ini:correctedIgnitionAdvance', 'correctedIgnitionAdvance', 'Timing: ignition'),
+      channel('ini:actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),
+      channel('ini:injectorDutyCycle', 'injectorDutyCycle', 'Fuel: injector duty cycle'),
+      channel('ini:VBatt', 'VBatt', 'Battery'),
     ]);
-
-    expect(result.panes[0]?.channelIds).toEqual([
-      'ini:RPMValue', 'ini:MAPValue', 'ini:TPSValue', 'ini:boostControlTarget',
-    ]);
-    expect(result.panes[1]?.channelIds).toEqual([
-      'ini:boostOutput', 'ini:boostStatus_error', 'ini:intake', 'ini:emapKpa',
-    ]);
+    expect(result.panes[0]?.channelIds).toEqual(['ini:RPMValue', 'ini:MAPValue', 'ini:TPSValue', 'ini:intake']);
+    expect(result.panes[1]?.channelIds).toEqual(['ini:correctedIgnitionAdvance', 'ini:actualLastInjection', 'ini:injectorDutyCycle', 'ini:VBatt']);
     expect(result.unresolvedRequiredRoleIds).toEqual([]);
-    expect(result.unresolvedPreferredRoleIds).toEqual([]);
-    expect(result.unresolvedOptionalRoleIds).toEqual([]);
   });
 
   it('resolves Fuel onto canonical EpicEFI INI identities', () => {
@@ -150,42 +141,35 @@ describe('starter workspace templates', () => {
     ]);
   });
 
-  it('resolves Ignition onto canonical EpicEFI INI identities', () => {
+  it('resolves Ignition without requiring knock hardware', () => {
     const result = resolveStarterWorkspaceTemplate(IGNITION_DUAL_WORKSPACE, [
       channel('ini:RPMValue', 'RPMValue', 'RPM'),
       channel('ini:MAPValue', 'MAPValue', 'MAP'),
+      channel('ini:TPSValue', 'TPSValue', 'TPS'),
       channel('ini:correctedIgnitionAdvance', 'correctedIgnitionAdvance', 'Timing: ignition'),
-      channel('ini:m_knockRetard', 'm_knockRetard', 'Knock retard'),
       channel('ini:sparkDwell', 'sparkDwell', 'Ignition: coil charge time'),
-      channel('ini:m_knockLevel', 'm_knockLevel', 'Knock: Current level'),
-      channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
+      channel('ini:VBatt', 'VBatt', 'Battery'),
       channel('ini:intake', 'intake', 'Intake air temp'),
+      channel('ini:coolant', 'coolant', 'Coolant temp'),
     ]);
-    expect(result.panes[0]?.channelIds).toEqual([
-      'ini:RPMValue', 'ini:MAPValue', 'ini:correctedIgnitionAdvance', 'ini:m_knockRetard',
-    ]);
-    expect(result.panes[1]?.channelIds).toEqual([
-      'ini:sparkDwell', 'ini:m_knockLevel', 'ini:lambdaValue', 'ini:intake',
-    ]);
+    expect(result.panes[0]?.channelIds).toEqual(['ini:RPMValue', 'ini:MAPValue', 'ini:TPSValue', 'ini:correctedIgnitionAdvance']);
+    expect(result.panes[1]?.channelIds).toEqual(['ini:sparkDwell', 'ini:VBatt', 'ini:intake', 'ini:coolant']);
   });
 
-  it('resolves Cooling onto canonical EpicEFI INI identities', () => {
+  it('resolves Cooling with binary fan state and optional coolant pressure', () => {
     const result = resolveStarterWorkspaceTemplate(COOLING_DUAL_WORKSPACE, [
       channel('ini:coolant', 'coolant', 'Coolant temp'),
       channel('ini:intake', 'intake', 'Intake air temp'),
       channel('ini:RPMValue', 'RPMValue', 'RPM'),
       channel('ini:vehicleSpeedKph', 'vehicleSpeedKph', 'Vehicle speed'),
-      channel('ini:fan1Pwm', 'fan1Pwm', 'fan1Pwm'),
+      channel('ini:fan1m_state', 'fan1m_state', 'Fan 1 state'),
       channel('ini:oilTemp', 'oilTemp', 'Oil Temp'),
       channel('ini:oilPressure', 'oilPressure', 'Oil Pressure'),
+      channel('ini:coolantPressure', 'coolantPressure', 'Coolant Pressure'),
       channel('ini:VBatt', 'VBatt', 'Battery'),
     ]);
-    expect(result.panes[0]?.channelIds).toEqual([
-      'ini:coolant', 'ini:intake', 'ini:RPMValue', 'ini:vehicleSpeedKph',
-    ]);
-    expect(result.panes[1]?.channelIds).toEqual([
-      'ini:fan1Pwm', 'ini:oilTemp', 'ini:oilPressure', 'ini:VBatt',
-    ]);
+    expect(result.panes[0]?.channelIds).toEqual(['ini:coolant', 'ini:intake', 'ini:RPMValue', 'ini:vehicleSpeedKph']);
+    expect(result.panes[1]?.channelIds).toEqual(['ini:fan1m_state', 'ini:oilTemp', 'ini:oilPressure', 'ini:coolantPressure', 'ini:VBatt']);
   });
 
   it('resolves Transient / AE onto canonical EpicEFI INI identities', () => {
@@ -196,15 +180,16 @@ describe('starter workspace templates', () => {
       channel('ini:MAPValue', 'MAPValue', 'MAP'),
       channel('ini:effectiveMap', 'effectiveMap', 'Effective MAP'),
       channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
+      channel('ini:targetLambda', 'targetLambda', 'Fuel: target lambda'),
       channel('ini:actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),
       channel('ini:tpsAccelFuel', 'tpsAccelFuel', 'Fuel: TPS AE add fuel ms'),
-      channel('ini:wallFuelCorrection', 'wallFuelCorrection', 'AE: wall correction extra'),
+      channel('ini:wallFuelCorrectionValue', 'wallFuelCorrectionValue', 'Fuel: wall correction'),
     ]);
     expect(result.panes[0]?.channelIds).toEqual([
       'ini:RPMValue', 'ini:TPSValue', 'ini:deltaTps', 'ini:MAPValue',
     ]);
     expect(result.panes[1]?.channelIds).toEqual([
-      'ini:effectiveMap', 'ini:lambdaValue', 'ini:actualLastInjection', 'ini:tpsAccelFuel', 'ini:wallFuelCorrection',
+      'ini:effectiveMap', 'ini:lambdaValue', 'ini:targetLambda', 'ini:actualLastInjection', 'ini:tpsAccelFuel', 'ini:wallFuelCorrectionValue',
     ]);
     expect(result.unresolvedRequiredRoleIds).toEqual([]);
   });

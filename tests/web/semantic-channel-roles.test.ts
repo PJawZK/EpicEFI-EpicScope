@@ -182,17 +182,20 @@ describe('semantic channel roles', () => {
       channel('deltaTps', 'deltaTps', 'AE: TPS change'),
       channel('deltaTpsAverageThreshold', 'deltaTpsAverageThreshold', 'AE: TPS dynamic threshold'),
       channel('effectiveMap', 'effectiveMap', 'Effective MAP'),
+      channel('instantMAPValue', 'instantMAPValue', 'Instant MAP'),
       channel('fallbackMap', 'fallbackMap', 'fallbackMap'),
       channel('tpsAccelFuel', 'tpsAccelFuel', 'Fuel: TPS AE add fuel ms'),
       channel('tpsAccelAeEnabled', 'tpsAccelAeEnabled', 'Enable TPS Acceleration Enrichment'),
-      channel('wallFuelCorrection', 'wallFuelCorrection', 'AE: wall correction extra'),
+      channel('wallFuelCorrectionValue', 'wallFuelCorrectionValue', 'Fuel: wall correction'),
+      channel('wallFuelCorrection', 'wallFuelCorrection', 'fuel wallwetting injection time'),
       channel('wallFuelAmount', 'wallFuelAmount', 'AE: wall amount'),
     ];
 
     expect(resolveSemanticChannelRole('transient.tpsDelta', channels).channel?.id).toBe('deltaTps');
     expect(resolveSemanticChannelRole('transient.effectiveMap', channels).channel?.id).toBe('effectiveMap');
+    expect(resolveSemanticChannelRole('transient.instantMap', channels).channel?.id).toBe('instantMAPValue');
     expect(resolveSemanticChannelRole('transient.aeFuel', channels).channel?.id).toBe('tpsAccelFuel');
-    expect(resolveSemanticChannelRole('transient.wallFuelCorrection', channels).channel?.id).toBe('wallFuelCorrection');
+    expect(resolveSemanticChannelRole('transient.wallFuelCorrection', channels).channel?.id).toBe('wallFuelCorrectionValue');
   });
 
   it('resolves generic fuel-system pressure delta and pump state without raw/config aliases', () => {
@@ -217,4 +220,25 @@ describe('semantic channel roles', () => {
       channel('IdlePosition', 'IdlePosition', 'Idle valve position'),
     ]).channel).toBeUndefined();
   });
+
+  it('resolves binary cooling fan activity independently from PWM fan command', () => {
+    const channels = [
+      channel('fan1m_state', 'fan1m_state', 'Fan 1 state'),
+      channel('fan1Pwm', 'fan1Pwm', 'Fan 1 PWM'),
+      channel('enableFan1', 'enableFan1', 'Enable Fan 1'),
+    ];
+    expect(resolveSemanticChannelRole('cooling.fanActive', channels).channel?.id).toBe('fan1m_state');
+    expect(resolveSemanticChannelRole('cooling.fanCommand', channels).channel?.id).toBe('fan1Pwm');
+  });
+
+  it('prefers the wall-film mass correction over the separate wall-wetting injection-time channel', () => {
+    const channels = [
+      channel('instantMAPValue', 'instantMAPValue', 'Instant MAP'),
+      channel('wallFuelCorrectionValue', 'wallFuelCorrectionValue', 'Fuel: wall correction'),
+      channel('wallFuelCorrection', 'wallFuelCorrection', 'fuel wallwetting injection time'),
+    ];
+    expect(resolveSemanticChannelRole('transient.instantMap', channels).channel?.id).toBe('instantMAPValue');
+    expect(resolveSemanticChannelRole('transient.wallFuelCorrection', channels).channel?.id).toBe('wallFuelCorrectionValue');
+  });
+
 });
