@@ -42,7 +42,18 @@ export type SemanticChannelRoleId =
   | 'startup.crankingFuel'
   | 'startup.afterStartCorrection'
   | 'startup.warmupCorrection'
-  | 'startup.engineCycles';
+  | 'startup.engineCycles'
+  | 'electrical.sensorSupplyVoltage'
+  | 'electrical.sensorSupplyFault'
+  | 'electrical.alternatorDuty'
+  | 'vehicle.gear'
+  | 'vehicle.clutchState'
+  | 'vehicle.brakeState'
+  | 'vehicle.wheelSpeedFrontLeft'
+  | 'vehicle.wheelSpeedFrontRight'
+  | 'vehicle.wheelSpeedRearLeft'
+  | 'vehicle.wheelSpeedRearRight'
+  | 'vehicle.longitudinalAcceleration';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -347,6 +358,17 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'startup.afterStartCorrection': { id: 'startup.afterStartCorrection', displayName: 'After-start Correction', aliases: ['running_postCrankingFuelCorrection', 'After-start Correction', 'Post Cranking Fuel Correction', 'Fuel: Post cranking mult'], include: [/(?:after.*start|post.*cranking).*?(?:fuel.*)?(?:correction|mult)/i], exclude: [/table/i, /curve/i, /target/i, /config/i] },
   'startup.warmupCorrection': { id: 'startup.warmupCorrection', displayName: 'Warmup Correction', aliases: ['running_coolantTemperatureCoefficient', 'Warmup Correction', 'CLT Fuel Correction', 'Fuel: CLT correction'], include: [/(?:warmup|coolant|clt).*(?:fuel.*)?(?:correction|coefficient|mult)/i], exclude: [/cranking/i, /table/i, /curve/i, /target/i, /config/i, /afr/i, /lambda/i] },
   'startup.engineCycles': { id: 'startup.engineCycles', displayName: 'Engine Cycles Since Start', aliases: ['revolutionCounterSinceStart', 'Engine Cycle Count', 'Engine Cycles Since Start'], include: [/(?:engine.*cycle|revolution).*since.*start/i, /engine.*cycle.*count/i], exclude: [/table/i, /bin/i, /target/i] },
+  'electrical.sensorSupplyVoltage': { id: 'electrical.sensorSupplyVoltage', displayName: 'Sensor Supply Voltage', aliases: ['rawSst1Volts', 'Sensor Supply Voltage', 'Sensor Supply 1', '5V Reference', 'Sensor 5V'], include: [/(?:sensor.*supply|5v.*reference|reference.*5v).*volt/i, /sensor.*supply/i], exclude: [/fault/i, /threshold/i, /minimum/i, /maximum/i, /config/i, /adc.*channel/i] },
+  'electrical.sensorSupplyFault': { id: 'electrical.sensorSupplyFault', displayName: 'Sensor Supply Fault', aliases: ['sst1Fault', 'Sensor Supply Fault', 'SST1: Fault', '5V Reference Fault'], include: [/(?:sensor.*supply|sst|5v.*reference).*fault/i], exclude: [/threshold/i, /config/i] },
+  'electrical.alternatorDuty': { id: 'electrical.alternatorDuty', displayName: 'Alternator Duty', aliases: ['alternatorDutyCycle', 'Alternator Duty', 'Alternator duty cycle'], include: [/alternator.*duty(?:.*cycle)?/i], exclude: [/adder/i, /target/i, /conditioned/i, /table/i, /config/i] },
+  'vehicle.gear': { id: 'vehicle.gear', displayName: 'Gear', aliases: ['detectedGear', 'Detected Gear', 'Gear'], include: [/^(?:detected\s*)?gear$/i, /gear.*detected/i], exclude: [/target/i, /next/i, /ratio/i, /upshift/i, /downshift/i, /table/i, /config/i] },
+  'vehicle.clutchState': { id: 'vehicle.clutchState', displayName: 'Clutch State', aliases: ['clutchDownState', 'Clutch State', 'Clutch Down', 'Clutch: down'], include: [/clutch.*(?:down|state|pedal)/i], exclude: [/up/i, /pressure/i, /target/i, /pin/i, /mode/i, /position/i] },
+  'vehicle.brakeState': { id: 'vehicle.brakeState', displayName: 'Brake State', aliases: ['brakePedalState', 'Brake State', 'Brake Pedal State', 'Brake switch'], include: [/brake.*(?:pedal|switch|state)/i], exclude: [/pressure/i, /target/i, /pin/i, /mode/i, /trans/i] },
+  'vehicle.wheelSpeedFrontLeft': { id: 'vehicle.wheelSpeedFrontLeft', displayName: 'Wheel Speed FL', aliases: ['vehicleSpeedKph1', 'Wheel Speed FL', 'Vehicle Speed Front Left'], include: [/(?:wheel|vehicle).*speed.*(?:front.*left|fl)/i], exclude: [/average/i, /reference/i, /target/i] },
+  'vehicle.wheelSpeedFrontRight': { id: 'vehicle.wheelSpeedFrontRight', displayName: 'Wheel Speed FR', aliases: ['vehicleSpeedKph2', 'Wheel Speed FR', 'Vehicle Speed Front Right'], include: [/(?:wheel|vehicle).*speed.*(?:front.*right|fr)/i], exclude: [/average/i, /reference/i, /target/i] },
+  'vehicle.wheelSpeedRearLeft': { id: 'vehicle.wheelSpeedRearLeft', displayName: 'Wheel Speed RL', aliases: ['vehicleSpeedKph3', 'Wheel Speed RL', 'Vehicle Speed Rear Left'], include: [/(?:wheel|vehicle).*speed.*(?:rear.*left|rl)/i], exclude: [/average/i, /reference/i, /target/i] },
+  'vehicle.wheelSpeedRearRight': { id: 'vehicle.wheelSpeedRearRight', displayName: 'Wheel Speed RR', aliases: ['vehicleSpeedKph4', 'Wheel Speed RR', 'Vehicle Speed Rear Right'], include: [/(?:wheel|vehicle).*speed.*(?:rear.*right|rr)/i], exclude: [/average/i, /reference/i, /target/i] },
+  'vehicle.longitudinalAcceleration': { id: 'vehicle.longitudinalAcceleration', displayName: 'Longitudinal Accel', aliases: ['accelerationLon', 'Accel: Longitudinal', 'Longitudinal Acceleration', 'Longitudinal Accel'], include: [/longitudinal.*(?:accel|acceleration)/i, /accel.*longitudinal/i], exclude: [/target/i, /limit/i] },
 };
 
 export const semanticChannelRoles: readonly SemanticChannelRoleDefinition[] = Object.freeze(

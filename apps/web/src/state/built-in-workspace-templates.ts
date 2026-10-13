@@ -314,6 +314,47 @@ export const STARTUP_WARMUP_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const ELECTRICAL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'electrical-dual', name: 'Electrical', description: 'Dual-pane charging, electrical load and sensor-supply overview.', layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'electrical.batteryVoltage', requirement: 'required' },
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+      { roleId: 'ignition.dwell', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'fuel.injectorDuty', requirement: 'preferred' },
+      { roleId: 'fuel.pumpCommand', requirement: 'optional' },
+      { roleId: 'electrical.alternatorDuty', requirement: 'optional' },
+      { roleId: 'electrical.sensorSupplyVoltage', requirement: 'optional' },
+      { roleId: 'electrical.sensorSupplyFault', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const VEHICLE_DRIVELINE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'vehicle-driveline-dual', name: 'Vehicle / Driveline', description: 'Dual-pane road speed, driver inputs and driveline-state overview.', layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'vehicle.speed', requirement: 'required' },
+      { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      { roleId: 'engine.map', requirement: 'preferred' },
+      { roleId: 'vehicle.gear', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'vehicle.clutchState', requirement: 'optional' },
+      { roleId: 'vehicle.brakeState', requirement: 'optional' },
+      { roleId: 'vehicle.wheelSpeedFrontLeft', requirement: 'optional' },
+      { roleId: 'vehicle.wheelSpeedFrontRight', requirement: 'optional' },
+      { roleId: 'vehicle.wheelSpeedRearLeft', requirement: 'optional' },
+      { roleId: 'vehicle.wheelSpeedRearRight', requirement: 'optional' },
+      { roleId: 'vehicle.longitudinalAcceleration', requirement: 'optional' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -325,6 +366,8 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   FUEL_SYSTEM_DUAL_WORKSPACE,
   TRIGGER_SYNC_DUAL_WORKSPACE,
   STARTUP_WARMUP_DUAL_WORKSPACE,
+  ELECTRICAL_DUAL_WORKSPACE,
+  VEHICLE_DRIVELINE_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {
