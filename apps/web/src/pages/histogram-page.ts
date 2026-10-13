@@ -5,6 +5,7 @@ import { createHistogramTableGeneratorView } from './histogram-table-generator-v
 import { createHistogramDistributionView } from './histogram-distribution-view';
 import { createScatterView } from './scatter-view';
 import { createHistogramMathChannelsView } from './histogram-math-channels-view';
+import { installHistogramHelp } from './histogram-help';
 import {
   createHistogramLogicalContext,
   HISTOGRAM_CALCULATED_FIELDS_CHANGED_EVENT,
@@ -81,6 +82,7 @@ export function createHistogramPage(): HistogramPageController {
   if (!body || !viewSelect) throw new Error('Histogram workspace structure is incomplete.');
 
   body.append(tableGeneratorView.element, distributionView.element, scatterView.element, mathChannelsView.element);
+  installHistogramHelp(page);
 
   const setSelectValueCaseInsensitive = (select: HTMLSelectElement, wanted: string): boolean => {
     const lowered = wanted.toLocaleLowerCase();
