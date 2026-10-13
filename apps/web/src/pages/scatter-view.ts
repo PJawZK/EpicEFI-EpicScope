@@ -8,6 +8,8 @@ import {
   qualifyHistogramSamples,
   selectedHistogramQualification,
 } from './histogram-qualification';
+import { createHistogramLocalId } from '../state/histogram-table-storage';
+import { loadHistogramScatterPresets, saveHistogramScatterPresets, type HistogramScatterPresetState } from '../state/histogram-scatter-storage';
 
 const MAX_RENDERED_POINTS = 28_000;
 
@@ -310,6 +312,7 @@ export function createScatterView(): ScatterViewController {
   let fullStartMs: number | undefined;
   let fullEndMs: number | undefined;
   let qualificationSets = loadHistogramQualificationSets();
+  let scatterPresets = loadHistogramScatterPresets();
 
   const root = document.createElement('section');
   root.className = 'scatter-view scatter-view--mlv';
@@ -320,6 +323,14 @@ export function createScatterView(): ScatterViewController {
       <label><span>Qualification</span><select class="scatter-qualification"><option value="">None</option></select></label>
       <label><span>View</span><select class="scatter-layout"><option value="single">Single</option><option value="dual">Dual</option></select></label>
       <label><span>Trace</span><select class="scatter-trace-mode"><option value="dots">Dots</option><option value="lines">Lines</option></select></label>
+      <details class="scatter-presets">
+        <summary title="Saved Scatter setups">Presets</summary>
+        <div class="scatter-preset-popover">
+          <select class="scatter-preset-select" aria-label="Saved Scatter setup"></select>
+          <div class="scatter-preset-actions"><button type="button" class="scatter-preset-apply">Apply</button><button type="button" class="scatter-preset-save">Save setup…</button><button type="button" class="scatter-preset-delete">Delete</button></div>
+          <small>Saved setups retain scope, Qualification, layout, trace mode and both panes' X/Y channels.</small>
+        </div>
+      </details>
       <span class="scatter-scope-note"></span>
     </div>
     <div class="scatter-empty">
@@ -336,16 +347,38 @@ export function createScatterView(): ScatterViewController {
   const qualificationSelect = root.querySelector<HTMLSelectElement>('.scatter-qualification');
   const layoutSelect = root.querySelector<HTMLSelectElement>('.scatter-layout');
   const traceModeSelect = root.querySelector<HTMLSelectElement>('.scatter-trace-mode');
+  const presetSelect = root.querySelector<HTMLSelectElement>('.scatter-preset-select');
+  const presetApply = root.querySelector<HTMLButtonElement>('.scatter-preset-apply');
+  const presetSave = root.querySelector<HTMLButtonElement>('.scatter-preset-save');
+  const presetDelete = root.querySelector<HTMLButtonElement>('.scatter-preset-delete');
   const scopeNote = root.querySelector<HTMLElement>('.scatter-scope-note');
   const empty = root.querySelector<HTMLElement>('.scatter-empty');
   const content = root.querySelector<HTMLElement>('.scatter-content');
   const paneHost = root.querySelector<HTMLElement>('.scatter-panes');
-  if (!scopeSelect || !qualificationSelect || !layoutSelect || !traceModeSelect || !scopeNote || !empty || !content || !paneHost) {
+  if (!scopeSelect || !qualificationSelect || !layoutSelect || !traceModeSelect || !presetSelect || !presetApply || !presetSave || !presetDelete || !scopeNote || !empty || !content || !paneHost) {
     throw new Error('Scatter view structure is incomplete.');
   }
 
   const panes: ScatterPaneState[] = [createPane('A'), createPane('B')];
   paneHost.append(panes[0]!.root, panes[1]!.root);
+
+  const populatePresetSelect = (preferredId = ''): void => {
+    presetSelect.replaceChildren(new Option(scatterPresets.length > 0 ? 'Select saved setup…' : 'No saved setups', ''));
+    for (const preset of scatterPresets) presetSelect.add(new Option(preset.name, preset.id));
+    presetSelect.value = preferredId && scatterPresets.some((preset) => preset.id === preferredId) ? preferredId : '';
+    presetApply.disabled = !presetSelect.value;
+    presetDelete.disabled = !presetSelect.value;
+  };
+
+  const currentPresetState = (id: string, name: string): HistogramScatterPresetState => ({
+    id, name, scope: scopeSelect.value, qualificationId: qualificationSelect.value, layout, traceMode,
+    paneAXChannelId: panes[0]!.xSelect.value, paneAYChannelId: panes[0]!.ySelect.value,
+    paneBXChannelId: panes[1]!.xSelect.value, paneBYChannelId: panes[1]!.ySelect.value,
+  });
+
+  const setSelectIfAvailable = (select: HTMLSelectElement, value: string): void => {
+    if ([...select.options].some((option) => option.value === value && !option.disabled)) select.value = value;
+  };
 
   const hasValidRange = (): boolean => analysisA !== undefined && analysisB !== undefined && analysisA !== analysisB;
 
@@ -859,6 +892,39 @@ export function createScatterView(): ScatterViewController {
     });
   }
 
+  presetSelect.addEventListener('change', () => { presetApply.disabled = !presetSelect.value; presetDelete.disabled = !presetSelect.value; });
+  presetApply.addEventListener('click', () => {
+    const preset = scatterPresets.find((candidate) => candidate.id === presetSelect.value);
+    if (!preset) return;
+    setSelectIfAvailable(scopeSelect, preset.scope);
+    setSelectIfAvailable(qualificationSelect, preset.qualificationId);
+    layout = preset.layout; layoutSelect.value = layout; syncLayout();
+    traceMode = preset.traceMode; traceModeSelect.value = traceMode;
+    setSelectIfAvailable(panes[0]!.xSelect, preset.paneAXChannelId);
+    setSelectIfAvailable(panes[0]!.ySelect, preset.paneAYChannelId);
+    setSelectIfAvailable(panes[1]!.xSelect, preset.paneBXChannelId);
+    setSelectIfAvailable(panes[1]!.ySelect, preset.paneBYChannelId);
+    void render();
+  });
+  presetSave.addEventListener('click', () => {
+    const suggested = scatterPresets.find((candidate) => candidate.id === presetSelect.value)?.name ?? `${panes[0]!.ySelect.selectedOptions[0]?.text ?? 'Y'} vs ${panes[0]!.xSelect.selectedOptions[0]?.text ?? 'X'}`;
+    const name = window.prompt('Scatter setup name', suggested)?.trim();
+    if (!name) return;
+    const existing = scatterPresets.find((candidate) => candidate.id === presetSelect.value);
+    const id = existing?.id ?? createHistogramLocalId('scatter-preset');
+    const next = currentPresetState(id, name);
+    scatterPresets = existing ? scatterPresets.map((candidate) => candidate.id === id ? next : candidate) : [...scatterPresets, next];
+    saveHistogramScatterPresets(scatterPresets);
+    populatePresetSelect(id);
+  });
+  presetDelete.addEventListener('click', () => {
+    const id = presetSelect.value;
+    if (!id) return;
+    scatterPresets = scatterPresets.filter((candidate) => candidate.id !== id);
+    saveHistogramScatterPresets(scatterPresets);
+    populatePresetSelect();
+  });
+
   scopeSelect.addEventListener('change', () => {
     if (scopeSelect.value === 'ab') void syncRangeFromSharedTimeline().then(() => render());
     else void render();
@@ -904,6 +970,7 @@ export function createScatterView(): ScatterViewController {
 
   populateScopeOptions();
   populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels);
+  populatePresetSelect();
   syncLayout();
   return { element: root, setContext, refresh: () => scopeSelect.value === 'ab' ? void syncRangeFromSharedTimeline().then(() => render()) : void render() };
 }

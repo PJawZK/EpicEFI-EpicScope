@@ -163,6 +163,7 @@ Scatter currently supports:
 - Single/Dual panes;
 - independent X/Y selections;
 - Dots/Lines presentation;
+- saved Scatter setup presets retaining scope, Qualification, layout, trace mode and both panes' X/Y selections;
 - optional density heat encoding;
 - density calculated from the full qualified X/Y population;
 - bounded visible-point rendering for large-log browser performance;
@@ -177,7 +178,6 @@ Scatter currently supports:
 
 The initial richer evidence-selection slice is complete with box selection. Useful later additions include:
 
-- saved view/setup presets;
 - CSV export of selected/all X/Y evidence;
 - optional compact correlation/linear-fit summary where genuinely useful;
 - replacement of the remaining timeline text/DOM bridge with direct shared state propagation.
