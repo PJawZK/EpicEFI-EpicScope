@@ -43,6 +43,11 @@
   left: calc(100% + 5px);
   top: -5px;
   min-width: 220px;
+  max-height: min(65vh, 520px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 5px;
   border: 1px solid #385064;
   border-radius: 5px;
