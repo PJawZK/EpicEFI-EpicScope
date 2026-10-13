@@ -161,7 +161,12 @@ Initial generic workspace targets include General, Idle, Fuel, Ignition, Boost, 
 
 EpicEFI-specific workspaces may coexist where schema capabilities justify them.
 
-See [`docs/PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) for the detailed catalog and resolver rules.
+Detailed authority:
+
+- [`docs/PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) — workspace catalog, role contents and implementation status;
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — semantic/capability layer and source-aware materialization boundaries;
+- [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — semantic role/template entities;
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — approved naming, identity and built-in workspace rules.
 
 ## Validated Single semantic-workspace baseline
 
@@ -327,16 +332,16 @@ Most important current-state documents:
 
 - [`HANDOFF.md`](docs/HANDOFF.md) — **exact latest continuation state**.
 - [`PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) — semantic-role, layout and built-in workspace product/implementation target.
+- [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system/dependency architecture, including semantic workspace materialization.
+- [`DATA_MODEL.md`](docs/DATA_MODEL.md) — normalized source/channel/event/session and semantic-role/template concepts.
+- [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions, including D-051–D-054 for semantic built-ins.
 - [`TS_SHIM_STATUS.md`](docs/TS_SHIM_STATUS.md) — **validated live Shim implementation/runtime status**.
 - [`TS_SHIM_INTEGRATION.md`](docs/TS_SHIM_INTEGRATION.md) — implemented Shim architecture/protocol/invariants.
 - [`TS_SHIM_DEVELOPMENT_PROXY.md`](docs/TS_SHIM_DEVELOPMENT_PROXY.md) — local/LAN same-origin test flow.
 - [`PRODUCT.md`](docs/PRODUCT.md) — product scope and feature map.
-- [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system/dependency architecture.
-- [`DATA_MODEL.md`](docs/DATA_MODEL.md) — normalized source/channel/event/session concepts.
 - [`ANALYZER.md`](docs/ANALYZER.md) — Analyzer semantics and maturity direction.
 - [`PERFORMANCE.md`](docs/PERFORMANCE.md) — performance/memory requirements and evidence.
 - [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation/refinement plan.
-- [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions.
 
 When historical/current-state wording conflicts, use current `main`, `HANDOFF.md`, the active feature branch where applicable, and the latest verified test/runtime state.
 
