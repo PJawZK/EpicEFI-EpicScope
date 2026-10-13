@@ -10,6 +10,7 @@ import {
 } from './histogram-qualification';
 import { createHistogramLocalId } from '../state/histogram-table-storage';
 import { loadHistogramScatterPresets, saveHistogramScatterPresets, type HistogramScatterPresetState } from '../state/histogram-scatter-storage';
+import { buildScatterEvidenceCsv, scatterCsvFilename, type ScatterCsvEvidenceKind } from './scatter-csv-export';
 
 const MAX_RENDERED_POINTS = 28_000;
 
@@ -331,6 +332,14 @@ export function createScatterView(): ScatterViewController {
           <small>Saved setups retain scope, Qualification, layout, trace mode and both panes' X/Y channels.</small>
         </div>
       </details>
+      <details class="scatter-export">
+        <summary title="Export Scatter evidence">CSV</summary>
+        <div class="scatter-export-popover">
+          <label><span>Pane</span><select class="scatter-export-pane"><option value="0">A</option><option value="1">B</option></select></label>
+          <div class="scatter-export-actions"><button type="button" class="scatter-export-all">All qualified pairs</button><button type="button" class="scatter-export-region">Selected region</button></div>
+          <small>Exports source sample/time provenance plus X/Y values for the selected pane. Region export uses the complete selected pair population, not rendered point stride.</small>
+        </div>
+      </details>
       <span class="scatter-scope-note"></span>
     </div>
     <div class="scatter-empty">
@@ -351,16 +360,66 @@ export function createScatterView(): ScatterViewController {
   const presetApply = root.querySelector<HTMLButtonElement>('.scatter-preset-apply');
   const presetSave = root.querySelector<HTMLButtonElement>('.scatter-preset-save');
   const presetDelete = root.querySelector<HTMLButtonElement>('.scatter-preset-delete');
+  const exportPaneSelect = root.querySelector<HTMLSelectElement>('.scatter-export-pane');
+  const exportAllCsv = root.querySelector<HTMLButtonElement>('.scatter-export-all');
+  const exportRegionCsv = root.querySelector<HTMLButtonElement>('.scatter-export-region');
   const scopeNote = root.querySelector<HTMLElement>('.scatter-scope-note');
   const empty = root.querySelector<HTMLElement>('.scatter-empty');
   const content = root.querySelector<HTMLElement>('.scatter-content');
   const paneHost = root.querySelector<HTMLElement>('.scatter-panes');
-  if (!scopeSelect || !qualificationSelect || !layoutSelect || !traceModeSelect || !presetSelect || !presetApply || !presetSave || !presetDelete || !scopeNote || !empty || !content || !paneHost) {
+  if (!scopeSelect || !qualificationSelect || !layoutSelect || !traceModeSelect || !presetSelect || !presetApply || !presetSave || !presetDelete || !exportPaneSelect || !exportAllCsv || !exportRegionCsv || !scopeNote || !empty || !content || !paneHost) {
     throw new Error('Scatter view structure is incomplete.');
   }
 
   const panes: ScatterPaneState[] = [createPane('A'), createPane('B')];
   paneHost.append(panes[0]!.root, panes[1]!.root);
+
+  const exportPane = (): ScatterPaneState => panes[exportPaneSelect.value === '1' && layout === 'dual' ? 1 : 0]!;
+
+  const updateExportActions = (): void => {
+    const optionB = [...exportPaneSelect.options].find((option) => option.value === '1');
+    if (optionB) optionB.disabled = layout !== 'dual';
+    if (layout !== 'dual' && exportPaneSelect.value === '1') exportPaneSelect.value = '0';
+    const pane = exportPane();
+    exportAllCsv.disabled = !pane.result || pane.result.validPairSampleCount === 0 || !pane.xTrace || !pane.yTrace;
+    exportRegionCsv.disabled = !pane.selectedRegion || pane.selectedRegion.selection.selectedPairCount === 0 || !pane.result || !pane.xTrace || !pane.yTrace;
+  };
+
+  const downloadCsv = (csv: string, filename: string): void => {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const exportEvidence = (kind: ScatterCsvEvidenceKind): void => {
+    const pane = exportPane();
+    const result = pane.result;
+    const xTrace = pane.xTrace;
+    const yTrace = pane.yTrace;
+    if (!result || !xTrace || !yTrace) return;
+    const region = kind === 'region' ? pane.selectedRegion : undefined;
+    if (kind === 'region' && (!region || region.selection.selectedPairCount === 0)) return;
+    const resolvedScope = resolveScope();
+    const qualificationLabel = qualificationSelect.selectedOptions[0]?.text ?? 'None';
+    const exported = buildScatterEvidenceCsv({
+      result,
+      evidenceKind: kind,
+      scopeLabel: resolvedScope?.label ?? scopeSelect.selectedOptions[0]?.text ?? 'Unknown',
+      qualificationLabel,
+      xChannelLabel: channelLabel(xTrace),
+      xUnit: xTrace.channel.unit,
+      yChannelLabel: channelLabel(yTrace),
+      yUnit: yTrace.channel.unit,
+      timeForSampleIndex: (sampleIndex) => sampleTime(xTrace, sampleIndex),
+      selectedSampleIndices: region?.selection.sampleIndices,
+    });
+    if (exported.rowCount === 0) return;
+    downloadCsv(exported.csv, scatterCsvFilename(channelLabel(xTrace), channelLabel(yTrace), kind));
+  };
 
   const populatePresetSelect = (preferredId = ''): void => {
     presetSelect.replaceChildren(new Option(scatterPresets.length > 0 ? 'Select saved setup…' : 'No saved setups', ''));
@@ -421,6 +480,7 @@ export function createScatterView(): ScatterViewController {
   const syncLayout = (): void => {
     panes[1]!.root.hidden = layout !== 'dual';
     paneHost.classList.toggle('scatter-panes--dual', layout === 'dual');
+    updateExportActions();
   };
 
   const configureCanvas = (canvas: HTMLCanvasElement): { ctx: CanvasRenderingContext2D; width: number; height: number } | undefined => {
@@ -669,6 +729,7 @@ export function createScatterView(): ScatterViewController {
       if (qualification.rejectedSampleCount > 0) pane.status.textContent += ` · rejected ${qualification.rejectedSampleCount.toLocaleString()}`;
       pane.status.textContent += complete ? ' · complete' : ' · partial decoded';
     }));
+    updateExportActions();
   };
 
   const refreshCanvasOnly = (): void => {
@@ -764,10 +825,12 @@ export function createScatterView(): ScatterViewController {
       pane.regionOpenLogger.disabled = !context.openSamplesInLogger || !strongest;
       pane.regionCard.hidden = false;
       pane.pointDetail.hidden = true;
+      updateExportActions();
       return;
     }
 
     pane.regionCard.hidden = true;
+    updateExportActions();
     const index = pane.selectedResultIndex;
     if (index === undefined) { pane.pointDetail.hidden = true; return; }
     const sampleIndex = result.sampleIndices[index];
@@ -844,11 +907,13 @@ export function createScatterView(): ScatterViewController {
       pane.selectedRegion = undefined;
       pane.regionCard.hidden = true;
       pane.pointDetail.hidden = true;
+      updateExportActions();
       if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
     });
     pane.regionClear.addEventListener('click', () => {
       pane.selectedRegion = undefined;
       pane.regionCard.hidden = true;
+      updateExportActions();
       if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
     });
     pane.regionOpenLogger.addEventListener('click', () => {
@@ -924,6 +989,9 @@ export function createScatterView(): ScatterViewController {
     saveHistogramScatterPresets(scatterPresets);
     populatePresetSelect();
   });
+  exportPaneSelect.addEventListener('change', updateExportActions);
+  exportAllCsv.addEventListener('click', () => exportEvidence('qualified'));
+  exportRegionCsv.addEventListener('click', () => exportEvidence('region'));
 
   scopeSelect.addEventListener('change', () => {
     if (scopeSelect.value === 'ab') void syncRangeFromSharedTimeline().then(() => render());
