@@ -22,6 +22,13 @@ Tune/configuration sources such as INI and MSQ normalize into source-context/tun
 
 Built-in graph workspaces add a semantic role layer above source-local/logical channel identities so task definitions are not tied to one ECU vendor or one acquisition source.
 
+Related authority:
+
+- `HANDOFF.md` — latest runtime/continuation state;
+- `PREPOPULATED_WORKSPACES.md` — product catalog and current built-in implementation;
+- `ARCHITECTURE.md` — semantic/capability/materialization boundaries;
+- `DECISIONS.md` — D-051–D-054 approved semantic workspace rules.
+
 This document defines the initial authority. Exact TypeScript/native structures may evolve through approved decisions while preserving these responsibilities.
 
 ## Core concepts
