@@ -23,6 +23,8 @@ The Web implementation establishes **what EpicScope should do** and is now also 
 - Dependencies must justify their runtime, memory, compatibility, maintenance or complexity cost.
 - Source transitions must preserve unrelated application state.
 - Stable user/workspace channel identity must survive source changes.
+- Built-in task workspaces describe **semantic channel roles**, not one ECU's raw channel names.
+- Compatibility aliases never dictate EpicScope's preferred user-facing terminology.
 
 ## Technology direction
 
@@ -51,7 +53,9 @@ Implemented foundations include:
 - `ts_shim` protocol/binary decoding, schema discovery, reconnect/lifecycle handling and selected-channel series recording;
 - live/retained Shim captures exposed through the same normalized source path used by recorded analysis;
 - read-only Shim HTTP inspection for INIs, tune objects and trigger-log routes;
-- same-origin Vite proxy for local/LAN Shim testing.
+- same-origin Vite proxy for local/LAN Shim testing;
+- semantic channel-role resolution and reserved built-in workspace identities on the current pre-population feature branch;
+- the validated one-pane semantic workspace path used as the basis for the first production **General · Single** preset.
 
 ## Current source model
 
@@ -113,6 +117,123 @@ While Shim is authoritative, stable `ini:*` assignments resolve to matching raw 
 
 This avoids duplicate raw + `ini:*` traces and keeps graph presets reusable across source families.
 
+## Semantic pre-populated workspaces
+
+The current pre-population architecture adds a semantic layer above raw/source channel IDs:
+
+```text
+semantic role
+      ↓
+logical ECU channel
+      ↓
+current source identity
+```
+
+Example:
+
+```text
+engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
+engine.rpm → RPMValue → RPMValue      (ts_shim)
+```
+
+Built-ins therefore describe what a workspace **needs**, not what one ECU happens to call a field.
+
+Resolution preference is:
+
+1. explicit user/schema override;
+2. exact EpicEFI/native alias;
+3. ECU-family/cross-ECU compatibility alias;
+4. conservative normalized-name fallback;
+5. unresolved.
+
+Missing channels stay explicit and do not cause values to be fabricated.
+
+Compatibility aliases are separate from display names. For example, legacy/MLV `TP` may resolve the throttle-position role, but EpicScope displays **TPS**.
+
+MegaLogViewer HD `FieldMaps/*.properties` were inspected as cross-ECU alias evidence. EpicScope uses that material as a compatibility/reference dataset rather than copying its historical normalized vocabulary directly.
+
+### Layouts vs workspaces
+
+- **Layout** describes graph geometry only: Single, Dual, Triple, Quad, Focus + 2, Focus + 3, Six Pane.
+- **Workspace** describes a tuning/diagnostic task and assigns semantic roles to one of those layouts.
+
+Initial generic workspace targets include General, Idle, Fuel, Ignition, Boost, Transient / AE, Cooling, Fuel System, Trigger / Sync, Startup / Warmup, Electrical and Vehicle / Driveline.
+
+EpicEFI-specific workspaces may coexist where schema capabilities justify them.
+
+See [`docs/PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) for the detailed catalog and resolver rules.
+
+## Validated Single semantic-workspace baseline
+
+The first implementation deliberately used the one-pane **Single · Resolver Test** fixture to remove multi-pane geometry as a variable.
+
+The same reserved built-in workspace was validated through:
+
+```text
+MLG + INI
+→ ts_shim live/capture
+→ MLG + INI
+```
+
+Recorded source resolved:
+
+```text
+ini:RPMValue
+ini:MAPValue
+ini:TPSValue
+ini:coolant
+```
+
+Shim resolved:
+
+```text
+RPMValue
+MAPValue
+TPSValue
+coolant
+```
+
+In both source states the built-in remained `built-in:single-resolver-test`, all four assignments were renderable/active, unavailable assigned channels were zero, runtime health was `0 ISSUE / 0 WARN`, and runtime errors were zero.
+
+Automated validation for that resolver/UI slice reached:
+
+```text
+npm run typecheck  → pass
+npm test           → 71 test files / 362 tests passed
+```
+
+This proves the important part of the architecture: **semantic workspace identity survives while source-specific channel identities change underneath it**.
+
+## General · Single production preset — feature branch status
+
+Draft PR #343 on `feat/single-prepopulated-workspace` promotes the validated Single path to the first production preset, **General · Single**.
+
+Target roles:
+
+```text
+Required:   RPM, MAP
+Preferred:  TPS, Coolant Temp
+Optional:   Intake Air Temp, Battery Voltage, Lambda, Ignition Advance
+```
+
+Current EpicEFI target mapping:
+
+```text
+MLG + INI                          ts_shim
+ini:RPMValue                       RPMValue
+ini:MAPValue                       MAPValue
+ini:TPSValue                       TPSValue
+ini:coolant                        coolant
+ini:intake                         intake
+ini:VBatt                          VBatt
+ini:lambdaValue                    lambdaValue
+ini:correctedIgnitionAdvance       correctedIgnitionAdvance
+```
+
+The eight-role expansion is implemented on the feature branch but must not be described as runtime-validated until the local typecheck/test and real MLG → Shim → MLG pass are completed.
+
+The existing editable `General` workspace is intentionally preserved. The immutable production preset is therefore named **General · Single** for now so the two entries remain unambiguous.
+
 ## Validated real-ECU Shim baseline
 
 The source workflow was validated against the real chain:
@@ -141,37 +262,6 @@ MLG + INI
 → INI catalog restored
 → MLG/INI binding restored
 → canonical workspace IDs restored
-```
-
-Observed final recorded state:
-
-```text
-Health: 0 ISSUE / 0 WARN
-channelDefinitions=2544
-catalogChannels=2519
-assignedVisibleChannels=5
-renderableAssignedVisibleChannels=5
-unavailableAssignedVisibleChannels=0
-activeVisibleTraces=5
-```
-
-Observed Shim capture state:
-
-```text
-Health: 0 ISSUE / 0 WARN
-logChannels=2493
-catalogChannels=2493
-assignedVisibleChannels=5
-renderableAssignedVisibleChannels=5
-unavailableAssignedVisibleChannels=0
-activeVisibleTraces=5
-```
-
-After runtime validation:
-
-```text
-npm run typecheck  → pass
-npm test           → 67 test files / 344 tests passed
 ```
 
 The validated live-source implementation entered `main` through the squash merge:
@@ -227,7 +317,7 @@ See [`docs/TS_SHIM_DEVELOPMENT_PROXY.md`](docs/TS_SHIM_DEVELOPMENT_PROXY.md) for
 
 The intensive large-log architecture campaign is complete for now. Reopen performance work only for a concrete regression or measured new workload issue.
 
-The long-used ~1.19 GB / 320,458-record MLG remains a useful reference workload. Its known source properties include 291 recovered retry artifacts, 8 unrecovered CRC records and 9 counter anomalies; these are source-log properties, not Shim regressions.
+The long-used ~1.19 GB / 320,458-record MLG remains a useful reference workload. Its known source properties include 291 recovered retry artifacts, 8 unrecovered CRC records and 9 counter anomalies; these are source-log properties, not Shim or semantic-workspace regressions.
 
 ## Documentation authority
 
@@ -236,6 +326,7 @@ Current project documentation lives under [`docs/`](docs/).
 Most important current-state documents:
 
 - [`HANDOFF.md`](docs/HANDOFF.md) — **exact latest continuation state**.
+- [`PREPOPULATED_WORKSPACES.md`](docs/PREPOPULATED_WORKSPACES.md) — semantic-role, layout and built-in workspace product/implementation target.
 - [`TS_SHIM_STATUS.md`](docs/TS_SHIM_STATUS.md) — **validated live Shim implementation/runtime status**.
 - [`TS_SHIM_INTEGRATION.md`](docs/TS_SHIM_INTEGRATION.md) — implemented Shim architecture/protocol/invariants.
 - [`TS_SHIM_DEVELOPMENT_PROXY.md`](docs/TS_SHIM_DEVELOPMENT_PROXY.md) — local/LAN same-origin test flow.
@@ -247,7 +338,7 @@ Most important current-state documents:
 - [`ROADMAP.md`](docs/ROADMAP.md) — staged implementation/refinement plan.
 - [`DECISIONS.md`](docs/DECISIONS.md) — approved architectural/project decisions.
 
-When historical/current-state wording conflicts, use current `main`, `HANDOFF.md`, and the current test/CI state.
+When historical/current-state wording conflicts, use current `main`, `HANDOFF.md`, the active feature branch where applicable, and the latest verified test/runtime state.
 
 ## Web delivery
 
