@@ -5,10 +5,12 @@ import {
   BOOST_DUAL_WORKSPACE,
   COOLING_DUAL_WORKSPACE,
   FUEL_DUAL_WORKSPACE,
+  FUEL_SYSTEM_DUAL_WORKSPACE,
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
   IGNITION_DUAL_WORKSPACE,
   STARTER_WORKSPACE_TEMPLATES,
+  TRANSIENT_AE_DUAL_WORKSPACE,
   resolveStarterWorkspaceTemplate,
   starterWorkspaceTemplate,
 } from '../../apps/web/src/state/built-in-workspace-templates';
@@ -25,7 +27,7 @@ function channel(id: string, sourceName = id, displayName = sourceName): Channel
 describe('starter workspace templates', () => {
   it('exposes the production starter catalog in deliberate menu order', () => {
     expect(STARTER_WORKSPACE_TEMPLATES.map((template) => template.name)).toEqual([
-      'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling',
+      'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling', 'Transient / AE', 'Fuel System',
     ]);
     expect(starterWorkspaceTemplate(BOOST_DUAL_WORKSPACE.id)).toBe(BOOST_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate(COOLING_DUAL_WORKSPACE.id)).toBe(COOLING_DUAL_WORKSPACE);
@@ -33,6 +35,8 @@ describe('starter workspace templates', () => {
     expect(starterWorkspaceTemplate(GENERAL_SINGLE_WORKSPACE.id)).toBe(GENERAL_SINGLE_WORKSPACE);
     expect(starterWorkspaceTemplate(IDLE_DUAL_WORKSPACE.id)).toBe(IDLE_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate(IGNITION_DUAL_WORKSPACE.id)).toBe(IGNITION_DUAL_WORKSPACE);
+    expect(starterWorkspaceTemplate(TRANSIENT_AE_DUAL_WORKSPACE.id)).toBe(TRANSIENT_AE_DUAL_WORKSPACE);
+    expect(starterWorkspaceTemplate(FUEL_SYSTEM_DUAL_WORKSPACE.id)).toBe(FUEL_SYSTEM_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate('missing')).toBeUndefined();
   });
 
@@ -167,6 +171,49 @@ describe('starter workspace templates', () => {
     expect(result.panes[1]?.channelIds).toEqual([
       'ini:fan1Pwm', 'ini:oilTemp', 'ini:oilPressure', 'ini:VBatt',
     ]);
+  });
+
+  it('resolves Transient / AE onto canonical EpicEFI INI identities', () => {
+    const result = resolveStarterWorkspaceTemplate(TRANSIENT_AE_DUAL_WORKSPACE, [
+      channel('ini:RPMValue', 'RPMValue', 'RPM'),
+      channel('ini:TPSValue', 'TPSValue', 'TPS'),
+      channel('ini:deltaTps', 'deltaTps', 'AE: TPS change'),
+      channel('ini:MAPValue', 'MAPValue', 'MAP'),
+      channel('ini:effectiveMap', 'effectiveMap', 'Effective MAP'),
+      channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
+      channel('ini:actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),
+      channel('ini:tpsAccelFuel', 'tpsAccelFuel', 'Fuel: TPS AE add fuel ms'),
+      channel('ini:wallFuelCorrection', 'wallFuelCorrection', 'AE: wall correction extra'),
+    ]);
+    expect(result.panes[0]?.channelIds).toEqual([
+      'ini:RPMValue', 'ini:TPSValue', 'ini:deltaTps', 'ini:MAPValue',
+    ]);
+    expect(result.panes[1]?.channelIds).toEqual([
+      'ini:effectiveMap', 'ini:lambdaValue', 'ini:actualLastInjection', 'ini:tpsAccelFuel', 'ini:wallFuelCorrection',
+    ]);
+    expect(result.unresolvedRequiredRoleIds).toEqual([]);
+  });
+
+  it('resolves Fuel System onto canonical EpicEFI INI identities', () => {
+    const result = resolveStarterWorkspaceTemplate(FUEL_SYSTEM_DUAL_WORKSPACE, [
+      channel('ini:RPMValue', 'RPMValue', 'RPM'),
+      channel('ini:lowFuelPressure', 'lowFuelPressure', 'Fuel pressure'),
+      channel('ini:MAPValue', 'MAPValue', 'MAP'),
+      channel('ini:TPSValue', 'TPSValue', 'TPS'),
+      channel('ini:pressureDelta', 'pressureDelta', 'Fuel: Injector pressure delta'),
+      channel('ini:actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),
+      channel('ini:injectorDutyCycle', 'injectorDutyCycle', 'Fuel: injector duty cycle'),
+      channel('ini:isFuelPumpOn', 'isFuelPumpOn', 'isFuelPumpOn'),
+      channel('ini:VBatt', 'VBatt', 'Battery'),
+      channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
+    ]);
+    expect(result.panes[0]?.channelIds).toEqual([
+      'ini:RPMValue', 'ini:lowFuelPressure', 'ini:MAPValue', 'ini:TPSValue',
+    ]);
+    expect(result.panes[1]?.channelIds).toEqual([
+      'ini:pressureDelta', 'ini:actualLastInjection', 'ini:injectorDutyCycle', 'ini:isFuelPumpOn', 'ini:VBatt', 'ini:lambdaValue',
+    ]);
+    expect(result.unresolvedRequiredRoleIds).toEqual([]);
   });
 
   it('resolves General onto EpicEFI live Shim channel IDs', () => {

@@ -177,6 +177,37 @@ describe('semantic channel roles', () => {
     expect(resolveSemanticChannelRole('cooling.fanCommand', channels).channel?.id).toBe('fan1Pwm');
   });
 
+  it('resolves transient roles to live EpicEFI measurements rather than configuration channels', () => {
+    const channels = [
+      channel('deltaTps', 'deltaTps', 'AE: TPS change'),
+      channel('deltaTpsAverageThreshold', 'deltaTpsAverageThreshold', 'AE: TPS dynamic threshold'),
+      channel('effectiveMap', 'effectiveMap', 'Effective MAP'),
+      channel('fallbackMap', 'fallbackMap', 'fallbackMap'),
+      channel('tpsAccelFuel', 'tpsAccelFuel', 'Fuel: TPS AE add fuel ms'),
+      channel('tpsAccelAeEnabled', 'tpsAccelAeEnabled', 'Enable TPS Acceleration Enrichment'),
+      channel('wallFuelCorrection', 'wallFuelCorrection', 'AE: wall correction extra'),
+      channel('wallFuelAmount', 'wallFuelAmount', 'AE: wall amount'),
+    ];
+
+    expect(resolveSemanticChannelRole('transient.tpsDelta', channels).channel?.id).toBe('deltaTps');
+    expect(resolveSemanticChannelRole('transient.effectiveMap', channels).channel?.id).toBe('effectiveMap');
+    expect(resolveSemanticChannelRole('transient.aeFuel', channels).channel?.id).toBe('tpsAccelFuel');
+    expect(resolveSemanticChannelRole('transient.wallFuelCorrection', channels).channel?.id).toBe('wallFuelCorrection');
+  });
+
+  it('resolves generic fuel-system pressure delta and pump state without raw/config aliases', () => {
+    const channels = [
+      channel('pressureDelta', 'pressureDelta', 'Fuel: Injector pressure delta'),
+      channel('pressureCorrectionReference', 'pressureCorrectionReference', 'Fuel: corr reference pressure'),
+      channel('isFuelPumpOn', 'isFuelPumpOn', 'isFuelPumpOn'),
+      channel('fuelPumpForceState', 'fuelPumpForceState', 'fuelPumpForceState'),
+      channel('tpsFuelPumpPrime', 'tpsFuelPumpPrime', 'tpsFuelPumpPrime'),
+    ];
+
+    expect(resolveSemanticChannelRole('fuel.pressureDelta', channels).channel?.id).toBe('pressureDelta');
+    expect(resolveSemanticChannelRole('fuel.pumpCommand', channels).channel?.id).toBe('isFuelPumpOn');
+  });
+
   it('keeps generic idle roles separate from DC valve target/feedback detail', () => {
     expect(resolveSemanticChannelRole('idle.target', [
       channel('dcIdleTarget', 'dcIdleTarget', 'DC idle target'),

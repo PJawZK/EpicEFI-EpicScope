@@ -158,12 +158,11 @@ Implemented production starters:
 - **Boost** — Dual layout; RPM, MAP, TPS, boost target, wastegate command, boost error, intake-air temp and EMAP;
 - **Fuel** — Dual layout; RPM, MAP, Lambda, Lambda target, injector pulse width, injector duty, fuel pressure and fuel correction;
 - **Ignition** — Dual layout; RPM, MAP, ignition advance, knock retard, dwell, knock level, Lambda and intake-air temp;
-- **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage.
+- **Cooling** — Dual layout; coolant temp, intake-air temp, RPM, vehicle speed, fan command, oil temp, oil pressure and battery voltage;
+- **Transient / AE** — Dual layout; RPM, TPS, TPS change, MAP, effective/predicted MAP, Lambda, injector pulse width, AE fuel contribution and wall-fuel correction;
+- **Fuel System** — Dual layout; RPM, fuel pressure, MAP, TPS, fuel-pressure delta, injector pulse width, injector duty, fuel-pump command, battery voltage and Lambda.
 
 Planned generic starter families remain:
-
-- **Transient / AE** — RPM, TPS, TPS rate/change, MAP, MAP rate/prediction, AFR/Lambda, injector pulse width, acceleration-enrichment contribution and wall-wetting channels where available;
-- **Fuel System** — RPM, MAP, TPS, fuel pressure, rail differential pressure, injector pulse width, injector duty, battery voltage, AFR/Lambda and fuel-pump command/state where available;
 - **Trigger / Sync** — RPM, sync state, sync-loss count/reason, trigger/crank error, cam state/phase, trigger runtime channels and battery voltage where available;
 - **Startup / Warmup** — RPM, coolant temp, intake-air temp, MAP, TPS, AFR/Lambda, target, warmup correction, after-start enrichment, injector pulse width, idle target and idle actuator command;
 - **Electrical** — battery voltage, RPM, injector pulse width/duty, ignition dwell, fuel-pump state, ECU/sensor supply voltage and relevant electrical fault/status channels where available;
