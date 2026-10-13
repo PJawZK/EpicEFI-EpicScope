@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNumericScatter } from '../../core/analysis/scatter';
+import { buildNumericScatter, selectNumericScatterRegion } from '../../core/analysis/scatter';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
 
 function range(startSampleIndex: number, values: readonly number[], validity?: readonly number[]): NumericChannelRange {
@@ -89,5 +89,33 @@ describe('buildNumericScatter', () => {
     expect(result.inputSampleCount).toBe(4);
     expect(result.validPairSampleCount).toBe(2);
     expect(result.unavailableSampleCount).toBe(2);
+  });
+
+  it('selects every valid pair inside an inclusive X/Y region', () => {
+    const result = buildNumericScatter(
+      range(100, [1, 2, 3, 4, 5]),
+      range(100, [50, 40, 30, 20, 10]),
+    );
+    const selected = selectNumericScatterRegion(result, { xMin: 2, xMax: 4, yMin: 20, yMax: 40 });
+
+    expect(selected.selectedPairCount).toBe(3);
+    expect([...selected.sampleIndices]).toEqual([101, 102, 103]);
+  });
+
+  it('normalizes reversed region bounds and selects from the complete result', () => {
+    const values = Array.from({ length: 12 }, (_, index) => index);
+    const result = buildNumericScatter(range(0, values), range(0, values.map((value) => value * 2)));
+    const selected = selectNumericScatterRegion(result, { xMin: 9, xMax: 3, yMin: 18, yMax: 6 });
+
+    expect(selected.selectedPairCount).toBe(7);
+    expect([...selected.sampleIndices]).toEqual([3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it('returns an empty evidence set when no pair lies inside the region', () => {
+    const result = buildNumericScatter(range(0, [1, 2, 3]), range(0, [10, 20, 30]));
+    const selected = selectNumericScatterRegion(result, { xMin: 100, xMax: 200, yMin: 100, yMax: 200 });
+
+    expect(selected.selectedPairCount).toBe(0);
+    expect([...selected.sampleIndices]).toEqual([]);
   });
 });

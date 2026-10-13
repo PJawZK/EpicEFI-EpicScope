@@ -53,6 +53,11 @@ const SCATTER_HEAT_HELP: InlineHelpEntry = {
   text: 'Color represents local X/Y sample density. Density is calculated from the full qualified pair set even when the visible point drawing is reduced for browser performance.',
 };
 
+const SCATTER_SELECTION_HELP: InlineHelpEntry = {
+  title: 'Scatter evidence selection',
+  text: 'Drag a box inside the plot to select every qualified X/Y pair in that value region, including points omitted from the reduced visible drawing. The region count and bounds remain visible and the full selected evidence can be opened in Logger. A simple click still selects one rendered point.',
+};
+
 function addSelectHelp(root: HTMLElement, selector: string, help: InlineHelpEntry): void {
   const select = root.querySelector<HTMLSelectElement>(selector);
   const host = select?.closest('label')?.querySelector<HTMLElement>(':scope > span');
@@ -88,6 +93,9 @@ export function installHistogramHelp(root: HTMLElement): void {
 
   addSelectHelp(root, '.scatter-qualification', QUALIFICATION_HELP);
   addSelectHelp(root, '.scatter-trace-mode', SCATTER_TRACE_HELP);
+  for (const selectionHost of root.querySelectorAll<HTMLElement>('.scatter-pane-select')) {
+    addInlineHelpButton(selectionHost, SCATTER_SELECTION_HELP).classList.add('epicscope-info-icon');
+  }
   for (const heatHost of root.querySelectorAll<HTMLElement>('.scatter-pane-z')) {
     addInlineHelpButton(heatHost, SCATTER_HEAT_HELP).classList.add('epicscope-info-icon');
   }

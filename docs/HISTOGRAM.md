@@ -168,17 +168,14 @@ Scatter currently supports:
 - bounded visible-point rendering for large-log browser performance;
 - line breaks across large source-index discontinuities;
 - rendered point selection and point → Logger navigation;
+- drag-box region selection evaluated against the full qualified pair population, not only rendered/downsampled points;
+- selected-region pair count and X/Y bounds;
+- selected-region → Logger navigation with the complete selected source evidence;
 - shared Logger timeline.
 
 ### Scatter worthwhile future work
 
-The strongest remaining functionality gap is richer evidence selection:
-
-- box/lasso or similar region selection;
-- selected-region sample count/provenance;
-- selected-region → Logger navigation.
-
-Other useful later additions:
+The initial richer evidence-selection slice is complete with box selection. Useful later additions include:
 
 - saved view/setup presets;
 - CSV export of selected/all X/Y evidence;
@@ -237,9 +234,10 @@ Current evidence navigation:
 
 - Table Generator cell → Logger;
 - Distribution bin → Logger;
-- Scatter point → Logger.
+- Scatter point → Logger;
+- Scatter selected region → Logger.
 
-Richer Scatter region selection remains the obvious next extension.
+Scatter region selection deliberately uses the complete qualified pair population even when visible plotting is stride-reduced.
 
 ### Help
 
@@ -273,7 +271,7 @@ The broad coherence pass is complete. Remaining work is narrower and should be j
 
 1. **saved setups/presets for Distribution and Scatter**;
 2. **exports for Distribution and Scatter**;
-3. **richer Scatter region selection/evidence navigation**;
+3. optional further Scatter selection ergonomics (for example additive or freeform/lasso selection) only if field use justifies them;
 4. eventually replace the remaining Scatter timeline text bridge with direct state propagation;
 5. later cleanup/consolidation of dormant duplicate/runtime-refinement code.
 

@@ -1,4 +1,4 @@
-import { buildNumericScatter, type NumericScatterResult } from '../../../../core/analysis/scatter';
+import { buildNumericScatter, selectNumericScatterRegion, type NumericScatterRegionSelection, type NumericScatterResult } from '../../../../core/analysis/scatter';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import {
@@ -26,6 +26,22 @@ interface ScatterPlotLayout {
   readonly stride: number;
 }
 
+interface ScatterRegionState {
+  readonly xMin: number;
+  readonly xMax: number;
+  readonly yMin: number;
+  readonly yMax: number;
+  readonly selection: NumericScatterRegionSelection;
+}
+
+interface ScatterDragState {
+  readonly pointerId: number;
+  readonly startX: number;
+  readonly startY: number;
+  currentX: number;
+  currentY: number;
+}
+
 interface ScatterPaneState {
   readonly root: HTMLElement;
   readonly xSelect: HTMLSelectElement;
@@ -37,12 +53,16 @@ interface ScatterPaneState {
   readonly pointLabel: HTMLElement;
   readonly pointOpenLogger: HTMLButtonElement;
   readonly pointClear: HTMLButtonElement;
+  readonly regionDragOverlay: HTMLElement;
   result: NumericScatterResult | undefined;
   xTrace: HistogramTraceContext | undefined;
   yTrace: HistogramTraceContext | undefined;
   renderedPointCount: number;
   plotLayout: ScatterPlotLayout | undefined;
   selectedResultIndex: number | undefined;
+  selectedRegion: ScatterRegionState | undefined;
+  dragState: ScatterDragState | undefined;
+  suppressNextClick: boolean;
 }
 
 interface DensityModel {
@@ -155,10 +175,12 @@ function createPane(label: string): ScatterPaneState {
       <span class="scatter-pane-label">${label}</span>
       <label><span>X Axis</span><select class="scatter-pane-x"></select></label>
       <label><span>Y Axis</span><select class="scatter-pane-y"></select></label>
+      <span class="scatter-pane-select">Drag: region</span>
       <span class="scatter-pane-z">Heat <strong>Hits / cell</strong></span>
     </div>
     <div class="scatter-pane-stage">
       <canvas class="scatter-pane-chart" aria-label="Scatter plot"></canvas>
+      <div class="scatter-region-drag" hidden></div>
       <div class="scatter-pane-title"></div>
     </div>
     <div class="scatter-pane-status"></div>
@@ -177,12 +199,14 @@ function createPane(label: string): ScatterPaneState {
   const pointLabel = root.querySelector<HTMLElement>('.scatter-point-label');
   const pointOpenLogger = root.querySelector<HTMLButtonElement>('.scatter-point-open-logger');
   const pointClear = root.querySelector<HTMLButtonElement>('.scatter-point-clear');
-  if (!xSelect || !ySelect || !canvas || !title || !status || !pointDetail || !pointLabel || !pointOpenLogger || !pointClear) {
+  const regionDragOverlay = root.querySelector<HTMLElement>('.scatter-region-drag');
+  if (!xSelect || !ySelect || !canvas || !title || !status || !pointDetail || !pointLabel || !pointOpenLogger || !pointClear || !regionDragOverlay) {
     throw new Error('Scatter pane structure is incomplete.');
   }
   return {
-    root, xSelect, ySelect, canvas, title, status, pointDetail, pointLabel, pointOpenLogger, pointClear,
+    root, xSelect, ySelect, canvas, title, status, pointDetail, pointLabel, pointOpenLogger, pointClear, regionDragOverlay,
     result: undefined, xTrace: undefined, yTrace: undefined, renderedPointCount: 0, plotLayout: undefined, selectedResultIndex: undefined,
+    selectedRegion: undefined, dragState: undefined, suppressNextClick: false,
   };
 }
 
@@ -459,6 +483,20 @@ export function createScatterView(): ScatterViewController {
       }
     }
 
+    if (pane.selectedRegion) {
+      const left = padLeft + clamp01((pane.selectedRegion.xMin - xMin) / xSpan) * chartWidth;
+      const right = padLeft + clamp01((pane.selectedRegion.xMax - xMin) / xSpan) * chartWidth;
+      const top = padTop + chartHeight - clamp01((pane.selectedRegion.yMax - yMin) / ySpan) * chartHeight;
+      const bottom = padTop + chartHeight - clamp01((pane.selectedRegion.yMin - yMin) / ySpan) * chartHeight;
+      ctx.fillStyle = 'rgba(139, 200, 237, .10)';
+      ctx.fillRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
+      ctx.strokeStyle = '#8bc8ed';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 3]);
+      ctx.strokeRect(left + 0.5, top + 0.5, Math.max(1, right - left - 1), Math.max(1, bottom - top - 1));
+      ctx.setLineDash([]);
+    }
+
     const legendHeight = Math.max(80, Math.min(190, chartHeight * 0.62));
     drawHeatLegend(ctx, padLeft + chartWidth + 16, padTop + (chartHeight - legendHeight) / 2, legendHeight, density);
 
@@ -506,7 +544,7 @@ export function createScatterView(): ScatterViewController {
     const resolvedScope = resolveScope();
     if (context.channels.length < 2 || !resolvedScope) {
       for (const pane of panes) {
-        pane.result = undefined; pane.xTrace = undefined; pane.yTrace = undefined; pane.plotLayout = undefined; pane.selectedResultIndex = undefined; pane.pointDetail.hidden = true;
+        pane.result = undefined; pane.xTrace = undefined; pane.yTrace = undefined; pane.plotLayout = undefined; pane.selectedResultIndex = undefined; pane.selectedRegion = undefined; pane.dragState = undefined; pane.regionDragOverlay.hidden = true; pane.pointDetail.hidden = true;
       }
       empty.hidden = false;
       content.hidden = true;
@@ -532,6 +570,9 @@ export function createScatterView(): ScatterViewController {
       pane.renderedPointCount = 0;
       pane.plotLayout = undefined;
       pane.selectedResultIndex = undefined;
+      pane.selectedRegion = undefined;
+      pane.dragState = undefined;
+      pane.regionDragOverlay.hidden = true;
       pane.pointDetail.hidden = true;
       pane.canvas.getContext('2d')?.clearRect(0, 0, pane.canvas.width, pane.canvas.height);
       if (!xId || !yId) { pane.status.textContent = 'Select X and Y channels.'; return; }
@@ -601,12 +642,62 @@ export function createScatterView(): ScatterViewController {
     return bestIndex;
   };
 
-  const updatePointDetail = (pane: ScatterPaneState): void => {
+  const canvasPoint = (pane: ScatterPaneState, event: PointerEvent | MouseEvent): { x: number; y: number } => {
+    const rect = pane.canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const clampToPlot = (value: number, start: number, length: number): number => Math.max(start, Math.min(start + length, value));
+
+  const regionBoundsFromPixels = (pane: ScatterPaneState, x1: number, y1: number, x2: number, y2: number): Omit<ScatterRegionState, 'selection'> | undefined => {
+    const plot = pane.plotLayout;
+    if (!plot) return undefined;
+    const left = clampToPlot(Math.min(x1, x2), plot.left, plot.width);
+    const right = clampToPlot(Math.max(x1, x2), plot.left, plot.width);
+    const top = clampToPlot(Math.min(y1, y2), plot.top, plot.height);
+    const bottom = clampToPlot(Math.max(y1, y2), plot.top, plot.height);
+    const xSpan = Math.max(Number.EPSILON, plot.xMax - plot.xMin);
+    const ySpan = Math.max(Number.EPSILON, plot.yMax - plot.yMin);
+    return {
+      xMin: plot.xMin + ((left - plot.left) / plot.width) * xSpan,
+      xMax: plot.xMin + ((right - plot.left) / plot.width) * xSpan,
+      yMin: plot.yMax - ((bottom - plot.top) / plot.height) * ySpan,
+      yMax: plot.yMax - ((top - plot.top) / plot.height) * ySpan,
+    };
+  };
+
+  const updateDragOverlay = (pane: ScatterPaneState): void => {
+    const drag = pane.dragState;
+    const plot = pane.plotLayout;
+    if (!drag || !plot) { pane.regionDragOverlay.hidden = true; return; }
+    const left = clampToPlot(Math.min(drag.startX, drag.currentX), plot.left, plot.width);
+    const right = clampToPlot(Math.max(drag.startX, drag.currentX), plot.left, plot.width);
+    const top = clampToPlot(Math.min(drag.startY, drag.currentY), plot.top, plot.height);
+    const bottom = clampToPlot(Math.max(drag.startY, drag.currentY), plot.top, plot.height);
+    pane.regionDragOverlay.style.left = `${left}px`;
+    pane.regionDragOverlay.style.top = `${top}px`;
+    pane.regionDragOverlay.style.width = `${Math.max(1, right - left)}px`;
+    pane.regionDragOverlay.style.height = `${Math.max(1, bottom - top)}px`;
+    pane.regionDragOverlay.hidden = false;
+  };
+
+  const updateSelectionDetail = (pane: ScatterPaneState): void => {
     const result = pane.result;
     const xTrace = pane.xTrace;
     const yTrace = pane.yTrace;
+    if (!result || !xTrace || !yTrace) { pane.pointDetail.hidden = true; return; }
+
+    if (pane.selectedRegion) {
+      const region = pane.selectedRegion;
+      pane.pointLabel.textContent = `${region.selection.selectedPairCount.toLocaleString()} / ${result.validPairSampleCount.toLocaleString()} pairs · ${channelLabel(xTrace)} ${formatNumber(region.xMin)}–${formatNumber(region.xMax)} · ${channelLabel(yTrace)} ${formatNumber(region.yMin)}–${formatNumber(region.yMax)}`;
+      pane.pointOpenLogger.textContent = 'Open region in Logger';
+      pane.pointOpenLogger.disabled = !context.openSamplesInLogger || region.selection.selectedPairCount === 0;
+      pane.pointDetail.hidden = false;
+      return;
+    }
+
     const index = pane.selectedResultIndex;
-    if (!result || !xTrace || !yTrace || index === undefined) { pane.pointDetail.hidden = true; return; }
+    if (index === undefined) { pane.pointDetail.hidden = true; return; }
     const sampleIndex = result.sampleIndices[index];
     const xValue = result.xValues[index];
     const yValue = result.yValues[index];
@@ -614,6 +705,7 @@ export function createScatterView(): ScatterViewController {
     const localIndex = sampleIndex - xTrace.range.startSampleIndex;
     const time = localIndex >= 0 && localIndex < xTrace.range.timeMs.length ? xTrace.range.timeMs[localIndex] : undefined;
     pane.pointLabel.textContent = `${channelLabel(xTrace)} ${formatNumber(xValue)} · ${channelLabel(yTrace)} ${formatNumber(yValue)} · #${sampleIndex.toLocaleString()}${time !== undefined ? ` · ${(time / 1000).toFixed(3)} s` : ''}`;
+    pane.pointOpenLogger.textContent = 'Open point in Logger';
     pane.pointOpenLogger.disabled = !context.openSamplesInLogger || time === undefined;
     pane.pointDetail.hidden = false;
   };
@@ -621,15 +713,62 @@ export function createScatterView(): ScatterViewController {
   for (const pane of panes) {
     pane.xSelect.addEventListener('change', () => { if (pane === panes[0]) { fullStartMs = undefined; fullEndMs = undefined; } void render(); });
     pane.ySelect.addEventListener('change', () => { void render(); });
+
+    pane.canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || !pane.plotLayout || !pane.result) return;
+      const point = canvasPoint(pane, event);
+      const plot = pane.plotLayout;
+      if (point.x < plot.left || point.x > plot.left + plot.width || point.y < plot.top || point.y > plot.top + plot.height) return;
+      pane.dragState = { pointerId: event.pointerId, startX: point.x, startY: point.y, currentX: point.x, currentY: point.y };
+      pane.suppressNextClick = false;
+      pane.canvas.setPointerCapture(event.pointerId);
+    });
+    pane.canvas.addEventListener('pointermove', (event) => {
+      const drag = pane.dragState;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const point = canvasPoint(pane, event);
+      drag.currentX = point.x;
+      drag.currentY = point.y;
+      if (Math.hypot(drag.currentX - drag.startX, drag.currentY - drag.startY) >= 4) updateDragOverlay(pane);
+    });
+    const finishRegionDrag = (event: PointerEvent): void => {
+      const drag = pane.dragState;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const point = canvasPoint(pane, event);
+      drag.currentX = point.x;
+      drag.currentY = point.y;
+      pane.dragState = undefined;
+      pane.regionDragOverlay.hidden = true;
+      if (pane.canvas.hasPointerCapture(event.pointerId)) pane.canvas.releasePointerCapture(event.pointerId);
+      if (Math.hypot(drag.currentX - drag.startX, drag.currentY - drag.startY) < 6) return;
+      const result = pane.result;
+      const bounds = regionBoundsFromPixels(pane, drag.startX, drag.startY, drag.currentX, drag.currentY);
+      if (!result || !bounds) return;
+      pane.suppressNextClick = true;
+      pane.selectedResultIndex = undefined;
+      pane.selectedRegion = { ...bounds, selection: selectNumericScatterRegion(result, bounds) };
+      updateSelectionDetail(pane);
+      if (pane.xTrace && pane.yTrace) renderPane(pane, result, pane.xTrace, pane.yTrace);
+    };
+    pane.canvas.addEventListener('pointerup', finishRegionDrag);
+    pane.canvas.addEventListener('pointercancel', (event) => {
+      const drag = pane.dragState;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      pane.dragState = undefined;
+      pane.regionDragOverlay.hidden = true;
+    });
     pane.canvas.addEventListener('click', (event) => {
+      if (pane.suppressNextClick) { pane.suppressNextClick = false; return; }
       const index = nearestRenderedPoint(pane, event);
       if (index === undefined) return;
+      pane.selectedRegion = undefined;
       pane.selectedResultIndex = index;
-      updatePointDetail(pane);
+      updateSelectionDetail(pane);
       if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
     });
     pane.pointClear.addEventListener('click', () => {
       pane.selectedResultIndex = undefined;
+      pane.selectedRegion = undefined;
       pane.pointDetail.hidden = true;
       if (pane.result && pane.xTrace && pane.yTrace) renderPane(pane, pane.result, pane.xTrace, pane.yTrace);
     });
@@ -637,8 +776,29 @@ export function createScatterView(): ScatterViewController {
       const result = pane.result;
       const xTrace = pane.xTrace;
       const yTrace = pane.yTrace;
+      if (!result || !xTrace || !yTrace || !context.openSamplesInLogger) return;
+
+      if (pane.selectedRegion) {
+        const sampleIndices: number[] = [];
+        const timeMs: number[] = [];
+        for (const sampleIndex of pane.selectedRegion.selection.sampleIndices) {
+          const localIndex = sampleIndex - xTrace.range.startSampleIndex;
+          const time = localIndex >= 0 && localIndex < xTrace.range.timeMs.length ? xTrace.range.timeMs[localIndex] : undefined;
+          if (time === undefined || !Number.isFinite(time)) continue;
+          sampleIndices.push(sampleIndex);
+          timeMs.push(time);
+        }
+        if (timeMs.length === 0) return;
+        void context.openSamplesInLogger({
+          sampleIndices,
+          timeMs,
+          label: `${channelLabel(yTrace)} vs ${channelLabel(xTrace)} region · ${sampleIndices.length.toLocaleString()} pairs`,
+        });
+        return;
+      }
+
       const index = pane.selectedResultIndex;
-      if (!result || !xTrace || !yTrace || index === undefined || !context.openSamplesInLogger) return;
+      if (index === undefined) return;
       const sampleIndex = result.sampleIndices[index];
       const xValue = result.xValues[index];
       const yValue = result.yValues[index];
