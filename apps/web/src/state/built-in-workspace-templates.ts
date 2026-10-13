@@ -528,6 +528,31 @@ export const EPICEFI_ENGINE_PROTECTION_DUAL_WORKSPACE: StarterWorkspaceTemplate 
   ],
 };
 
+export const EPICEFI_VVT_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-vvt-control-dual',
+  name: 'EpicEFI · VVT Control',
+  description: 'EpicEFI primary bank-1 intake VVT target, position and controller diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['vvt.primary.actual', 'vvt.primary.target', 'vvt.primary.output', 'vvt.primary.error'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'vvt.primary.actual', requirement: 'required' },
+      { roleId: 'vvt.primary.target', requirement: 'required' },
+      { roleId: 'vvt.primary.error', requirement: 'required' },
+      { roleId: 'engine.map', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'vvt.primary.output', requirement: 'required' },
+      { roleId: 'vvt.primary.pControl', requirement: 'preferred' },
+      { roleId: 'vvt.primary.iControl', requirement: 'preferred' },
+      { roleId: 'vvt.primary.dControl', requirement: 'optional' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -548,6 +573,7 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE,
   EPICEFI_INJECTOR_IGNITION_TIMING_DUAL_WORKSPACE,
   EPICEFI_ENGINE_PROTECTION_DUAL_WORKSPACE,
+  EPICEFI_VVT_CONTROL_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceAvailable(

@@ -18,7 +18,7 @@ A large number of channels alone is not sufficient.
 
 ## Current specialized coverage
 
-Seven EpicEFI-specific starters are already implemented:
+Eight EpicEFI-specific starters are already implemented:
 
 - **EpicEFI · MAP Predict + Wall Wetting**
 - **EpicEFI · Fuel Rail Diagnostics**
@@ -27,36 +27,13 @@ Seven EpicEFI-specific starters are already implemented:
 - **EpicEFI · Trigger + Sync Detailed**
 - **EpicEFI · Injector + Ignition Timing**
 - **EpicEFI · Engine Protection**
+- **EpicEFI · VVT Control**
 
 Together with the twelve generic starters, these already cover most ordinary engine-state, fuel, ignition, cooling, transient, electrical, driveline, trigger and startup workflows.
 
 ## Tier A — strong next specialized candidates
 
-### 1. EpicEFI · VVT Control — highest priority
-
-The current INI exposes live cam positions for bank 1/2 intake/exhaust, four VVT targets, and four complete controller-status groups containing P/I/D terms, controller output, error and reset count.
-
-Representative runtime channels:
-
-```text
-vvtPositionB1I
-vvtPositionB1E
-vvtPositionB2I
-vvtPositionB2E
-vvtTargets1..4
-vvtStatus1..4_pTerm
-vvtStatus1..4_iTerm
-vvtStatus1..4_dTerm
-vvtStatus1..4_output
-vvtStatus1..4_error
-vvtStatus1..4_resetCounter
-```
-
-Why it deserves a starter: this is a genuine target → actual → controller-output/error workflow that no generic starter currently represents.
-
-Recommended first slice should use VVT 1 / bank 1 intake as the availability anchor and primary pane, then include other banks/cams when present rather than requiring every possible four-cam channel.
-
-### 2. EpicEFI · Anti-Lag — high priority
+### 1. EpicEFI · Anti-Lag — highest priority
 
 The runtime schema exposes an anti-lag trigger, full condition state, latch/timeout state, fuel/timing corrections, spark skip, ETB add and remaining time.
 
@@ -84,7 +61,7 @@ ALSTimeRemaining
 
 Why it deserves a starter: it has a strong condition → active state → actuator/correction chain and is not represented by Boost, Ignition or Engine Protection individually.
 
-### 3. EpicEFI · Launch Control — high priority
+### 2. EpicEFI · Launch Control — high priority
 
 The schema exposes launch activation, pre-launch/launch state, switch/clutch/brake/TPS/speed/RPM conditions, locked launch RPM and spark-skip output.
 
@@ -110,7 +87,7 @@ launchSparkSkipRatio
 
 Why it deserves a starter: the data explains *why* launch did or did not engage and what cut action was applied. A generic Vehicle/Driveline graph cannot answer that.
 
-### 4. EpicEFI · Traction Control — high priority
+### 3. EpicEFI · Traction Control — high priority
 
 The current runtime data includes four wheel speeds, multiple slip calculations/references, timing reduction, spark skip and ETB traction reduction.
 
@@ -131,7 +108,7 @@ etb1tcEtbDrop
 
 Why it deserves a starter: it connects measured slip to the ECU's torque-reduction actions. Vehicle / Driveline provides the raw road-state context but deliberately does not expose traction-controller intervention.
 
-### 5. EpicEFI · Transmission Control — strong, but lower immediate priority
+### 4. EpicEFI · Transmission Control — strong, but lower immediate priority
 
 The INI exposes an unusually rich transmission runtime set: current/target/next gear, input/output shaft speeds, target RPM, torque requests and limits, cut/blip requests, clutch/converter slip, lockup, pressures, temperature, modes, fault state and CAN freshness diagnostics.
 
@@ -269,13 +246,12 @@ A specialized variant needs a distinct diagnostic question, not just more channe
 ## Recommended implementation order
 
 ```text
-1. EpicEFI · VVT Control
-2. EpicEFI · Anti-Lag
-3. EpicEFI · Launch Control
-4. EpicEFI · Traction Control
-5. EpicEFI · Transmission Control
-6. Staged Injection
-7. Closed-loop Fuel / STFT / LTFT
+1. EpicEFI · Anti-Lag
+2. EpicEFI · Launch Control
+3. EpicEFI · Traction Control
+4. EpicEFI · Transmission Control
+5. Staged Injection
+6. Closed-loop Fuel / STFT / LTFT
 ```
 
 Per-cylinder/EGT work should wait for indexed semantic channel families.

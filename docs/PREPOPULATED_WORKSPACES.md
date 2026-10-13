@@ -181,8 +181,9 @@ Implemented specialized starters:
 - **EpicEFI · Trigger + Sync Detailed** — tooth-angle, edge-counter and cam-sync diagnostics;
 - **EpicEFI · Injector + Ignition Timing** — injection SOI plus ignition timing-attribution diagnostics;
 - **EpicEFI · Engine Protection** — dynamic rev-limit, cut-reason and protection-state diagnostics.
+- **EpicEFI · VVT Control** — primary bank-1 intake cam target/actual tracking with controller output, error and PID contributions.
 
-The current specialized coverage audit is maintained in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md). Its current highest-value next candidates are **VVT Control**, **Anti-Lag**, **Launch Control**, **Traction Control** and **Transmission Control**. Per-cylinder/EGT work is deliberately deferred until the semantic layer can represent indexed channel families cleanly.
+The current specialized coverage audit is maintained in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md). Its current highest-value next candidates are **Anti-Lag**, **Launch Control**, **Traction Control** and **Transmission Control**. Per-cylinder/EGT work is deliberately deferred until the semantic layer can represent indexed channel families cleanly.
 
 Capability gating affects only starter discovery. Once materialized, the resulting workspace is still an ordinary editable workspace and is not owned by the capability detector.
 
@@ -363,10 +364,10 @@ Existing persisted workspaces using a historical `built-in:*` ID are retained wi
 
 ## Next implementation direction
 
-The generic starter catalog is complete and seven capability-gated EpicEFI starters are merged. The next work should follow the evidence-ranked audit in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md):
+The generic starter catalog is complete and eight capability-gated EpicEFI starters are merged. The next work should follow the evidence-ranked audit in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md):
 
-1. implement **EpicEFI · VVT Control** first;
-2. then consider **Anti-Lag**, **Launch Control**, **Traction Control** and **Transmission Control** in that order, re-checking the user-visible gap after each addition;
+1. implement **EpicEFI · Anti-Lag** next;
+2. then consider **Launch Control**, **Traction Control** and **Transmission Control** in that order, re-checking the user-visible gap after each addition;
 3. keep Staged Injection and Closed-loop Fuel / STFT / LTFT as secondary candidates;
 4. do not model per-cylinder/EGT families as dozens of fixed roles — add indexed semantic channel-family support first;
 5. continue to add persistent user/schema semantic overrides only where automatic mapping is genuinely ambiguous.
