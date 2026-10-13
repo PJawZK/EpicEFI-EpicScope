@@ -68,15 +68,16 @@ function normalizeHistogramScopeLabels(root: HTMLElement): void {
 }
 
 function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
-  const timeline = root.querySelector<HTMLElement>('.logger-page .timeline-shell');
-  const timelineToggle = root.querySelector<HTMLButtonElement>('.logger-page .edge-toggle--timeline');
+  const timelineWrap = root.querySelector<HTMLElement>('.logger-page .timeline-wrap');
+  const timeline = timelineWrap?.querySelector<HTMLElement>('.timeline-shell');
+  const timelineToggle = timelineWrap?.querySelector<HTMLButtonElement>('.edge-toggle--timeline');
   const histogramPage = root.querySelector<HTMLElement>('.histogram-page');
   const histogramSelect = root.querySelector<HTMLSelectElement>('.histogram-view-select');
   const tableView = root.querySelector<HTMLElement>('.histogram-table-generator-view');
   const tableStage = tableView?.querySelector<HTMLElement>('.histogram-table-stage');
   const scatterSlot = root.querySelector<HTMLElement>('.scatter-shared-timeline-slot');
   const distributionSlot = root.querySelector<HTMLElement>('.distribution-shared-timeline-slot');
-  if (!timeline || !timeline.parentNode || !timelineToggle || !timelineToggle.parentNode
+  if (!timelineWrap || !timelineWrap.parentNode || !timeline || !timelineToggle
     || !histogramPage || !histogramSelect || !tableView || !tableStage || !scatterSlot || !distributionSlot) return;
 
   let tableSlot = tableView.querySelector<HTMLElement>('.histogram-table-shared-timeline-slot');
@@ -86,24 +87,22 @@ function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
     tableStage.after(tableSlot);
   }
 
+  // Keep the Logger timeline wrapper intact while docking it into Histogram. The
+  // wrapper is the positioning context for the centered edge toggle; moving the
+  // shell and toggle separately makes the toggle position relative to each
+  // analysis slot instead, which can place it inside or behind the plot/table.
   const timelineHomeMarker = document.createComment('EpicScope Logger timeline home');
-  const toggleHomeMarker = document.createComment('EpicScope Logger timeline toggle home');
-  timeline.parentNode.insertBefore(timelineHomeMarker, timeline);
-  timelineToggle.parentNode.insertBefore(toggleHomeMarker, timelineToggle);
+  timelineWrap.parentNode.insertBefore(timelineHomeMarker, timelineWrap);
 
   const restore = (): void => {
-    if (timelineHomeMarker.parentNode && timeline.parentNode !== timelineHomeMarker.parentNode) {
-      timelineHomeMarker.parentNode.insertBefore(timeline, timelineHomeMarker.nextSibling);
-    }
-    if (toggleHomeMarker.parentNode && timelineToggle.parentNode !== toggleHomeMarker.parentNode) {
-      toggleHomeMarker.parentNode.insertBefore(timelineToggle, toggleHomeMarker.nextSibling);
+    if (timelineHomeMarker.parentNode && timelineWrap.parentNode !== timelineHomeMarker.parentNode) {
+      timelineHomeMarker.parentNode.insertBefore(timelineWrap, timelineHomeMarker.nextSibling);
     }
     timeline.classList.remove('timeline-shell--analysis-docked');
   };
 
   const dock = (slot: HTMLElement): void => {
-    if (timeline.parentNode !== slot) slot.append(timeline);
-    if (timelineToggle.parentNode !== slot) slot.append(timelineToggle);
+    if (timelineWrap.parentNode !== slot) slot.append(timelineWrap);
     timeline.classList.add('timeline-shell--analysis-docked');
     requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
   };
