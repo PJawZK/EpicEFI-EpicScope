@@ -88,9 +88,29 @@ describe('remaining Phase 4 analyzer cores', () => {
     }, { lowPressureThreshold: 270, highDutyThreshold: 90, complete: true });
 
     expect(result.lowPressureEvents).toHaveLength(1);
-    expect(result.lowPressureEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeValue: 240 });
-    expect(result.highDutyEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeValue: 96 });
+    expect(result.lowPressureEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeValue: 240, extremeSampleIndex: 3, extremeTimeMs: 300 });
+    expect(result.highDutyEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeValue: 96, extremeSampleIndex: 3, extremeTimeMs: 300 });
     expect(result.injectorDeadtime?.mean).toBeCloseTo(0.8);
+  });
+
+  it('Fuel Pressure/Injector keeps threshold events separate across non-contiguous selected source samples', () => {
+    const result = analyzeFuelPressureInjector({
+      reference: range([0, 0, 0, 0, 0, 0]),
+      railDifferential: range([300, 250, 240, 300, 230, 220]),
+      injectorDuty: range([40, 92, 96, 50, 94, 98]),
+    }, {
+      sampleIndices: [1, 2, 4, 5],
+      lowPressureThreshold: 270,
+      highDutyThreshold: 90,
+      complete: true,
+    });
+
+    expect(result.lowPressureEvents).toHaveLength(2);
+    expect(result.lowPressureEvents[0]).toMatchObject({ startSampleIndex: 1, endSampleIndex: 2, sampleCount: 2, extremeSampleIndex: 2, extremeValue: 240 });
+    expect(result.lowPressureEvents[1]).toMatchObject({ startSampleIndex: 4, endSampleIndex: 5, sampleCount: 2, extremeSampleIndex: 5, extremeValue: 220 });
+    expect(result.highDutyEvents).toHaveLength(2);
+    expect(result.highDutyEvents[0]).toMatchObject({ startSampleIndex: 1, endSampleIndex: 2, extremeSampleIndex: 2, extremeValue: 96 });
+    expect(result.highDutyEvents[1]).toMatchObject({ startSampleIndex: 4, endSampleIndex: 5, extremeSampleIndex: 5, extremeValue: 98 });
   });
 
   it('Trigger/Sync combines sync-state, trigger-error and counter-increment evidence', () => {

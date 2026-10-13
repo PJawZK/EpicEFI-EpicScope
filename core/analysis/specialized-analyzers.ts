@@ -399,28 +399,47 @@ export function analyzeIgnition(inputs: {
 
 export interface ThresholdEvent extends TimedEvent {
   readonly extremeValue: number;
+  readonly extremeSampleIndex: number;
+  readonly extremeTimeMs: number;
 }
 
 function thresholdEvents(range: NumericChannelRange, indices: readonly number[], predicate: (value: number) => boolean, extreme: (a: number, b: number) => number): ThresholdEvent[] {
   const events: ThresholdEvent[] = [];
-  let start: number | undefined;
-  let extremeValue: number | undefined;
-  for (let pos = 0; pos <= indices.length; pos += 1) {
-    const current = pos < indices.length ? sample(range, indices[pos]!) : undefined;
-    if (current && predicate(current.value)) {
-      if (start === undefined) start = pos;
-      extremeValue = extremeValue === undefined ? current.value : extreme(extremeValue, current.value);
-      continue;
+  let first: SampleValue | undefined;
+  let last: SampleValue | undefined;
+  let extremeSample: SampleValue | undefined;
+
+  const finish = (): void => {
+    if (!first || !last || !extremeSample) return;
+    events.push({
+      startSampleIndex: first.sampleIndex,
+      endSampleIndex: last.sampleIndex,
+      startTimeMs: first.timeMs,
+      endTimeMs: last.timeMs,
+      durationMs: last.timeMs - first.timeMs,
+      sampleCount: last.sampleIndex - first.sampleIndex + 1,
+      extremeValue: extremeSample.value,
+      extremeSampleIndex: extremeSample.sampleIndex,
+      extremeTimeMs: extremeSample.timeMs,
+    });
+    first = undefined;
+    last = undefined;
+    extremeSample = undefined;
+  };
+
+  for (const index of indices) {
+    const current = sample(range, index);
+    const isContinuous = !last || current?.sampleIndex === last.sampleIndex + 1;
+    if (!current || !predicate(current.value) || !isContinuous) {
+      finish();
+      if (!current || !predicate(current.value)) continue;
     }
-    if (start !== undefined && extremeValue !== undefined) {
-      const endPos = pos - 1;
-      const first = sample(range, indices[start]!)!;
-      const last = sample(range, indices[endPos]!)!;
-      events.push({ startSampleIndex: indices[start]!, endSampleIndex: indices[endPos]!, startTimeMs: first.timeMs, endTimeMs: last.timeMs, durationMs: last.timeMs - first.timeMs, sampleCount: endPos - start + 1, extremeValue });
-      start = undefined;
-      extremeValue = undefined;
-    }
+
+    if (!first) first = current;
+    last = current;
+    if (!extremeSample || extreme(extremeSample.value, current.value) === current.value) extremeSample = current;
   }
+  finish();
   return events;
 }
 
