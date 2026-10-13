@@ -14,7 +14,19 @@ export type SemanticChannelRoleId =
   | 'boost.target'
   | 'boost.wastegateCommand'
   | 'boost.error'
-  | 'exhaust.emap';
+  | 'exhaust.emap'
+  | 'fuel.lambdaTarget'
+  | 'fuel.injectorPulseWidth'
+  | 'fuel.injectorDuty'
+  | 'fuel.pressure'
+  | 'fuel.totalCorrection'
+  | 'ignition.dwell'
+  | 'ignition.knockLevel'
+  | 'ignition.knockRetard'
+  | 'vehicle.speed'
+  | 'temperature.oil'
+  | 'engine.oilPressure'
+  | 'cooling.fanCommand';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -182,6 +194,90 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     aliases: ['emapKpa', 'EMAP', 'Exhaust Manifold Pressure', 'Exhaust MAP'],
     include: [/^emap(?:\s*kpa)?$/i, /exhaust.*(?:manifold.*)?pressure/i, /exhaust.*map/i],
     exclude: [/raw/i, /voltage/i, /sensor.*config/i],
+  },
+  'fuel.lambdaTarget': {
+    id: 'fuel.lambdaTarget',
+    displayName: 'Lambda Target',
+    aliases: ['targetLambda', 'Lambda Target', 'Target Lambda', 'Fuel: target lambda'],
+    include: [/target.*lambda/i, /lambda.*target/i],
+    exclude: [/error/i, /correction/i, /table/i],
+  },
+  'fuel.injectorPulseWidth': {
+    id: 'fuel.injectorPulseWidth',
+    displayName: 'Injector Pulse Width',
+    aliases: ['actualLastInjection', 'Injector Pulse Width', 'Injection Pulse Width', 'Fuel: Last inj pulse width', 'PW'],
+    include: [/actual.*injection/i, /inject(?:or|ion).*pulse.*width/i, /\binj.*pw\b/i],
+    exclude: [/stage\s*2/i, /secondary/i, /target/i, /limit/i, /pre.*small/i],
+  },
+  'fuel.injectorDuty': {
+    id: 'fuel.injectorDuty',
+    displayName: 'Injector Duty',
+    aliases: ['injectorDutyCycle', 'Injector Duty', 'Injector Duty Cycle', 'Fuel: injector duty cycle'],
+    include: [/injector.*duty(?:.*cycle)?/i],
+    exclude: [/stage\s*2/i, /secondary/i, /max/i, /limit/i, /sustained/i],
+  },
+  'fuel.pressure': {
+    id: 'fuel.pressure',
+    displayName: 'Fuel Pressure',
+    aliases: ['lowFuelPressure', 'Fuel Pressure', 'FuelPressureInjector', 'Fuel Pressure Low'],
+    include: [/^(?:low\s*)?fuel.*pressure$/i, /fuel.*pressure/i],
+    exclude: [/raw/i, /high/i, /target/i, /minimum/i, /maximum/i, /limit/i, /correction/i, /delta/i, /sensor.*config/i],
+  },
+  'fuel.totalCorrection': {
+    id: 'fuel.totalCorrection',
+    displayName: 'Fuel Correction',
+    aliases: ['totalFuelCorrection', 'Fuel: Total correction', 'Total Fuel Correction', 'Fuel Correction'],
+    include: [/total.*fuel.*correction/i, /fuel.*total.*correction/i],
+    exclude: [/table/i, /target/i, /long.*term/i, /short.*term/i],
+  },
+  'ignition.dwell': {
+    id: 'ignition.dwell',
+    displayName: 'Dwell',
+    aliases: ['sparkDwell', 'Dwell', 'Ignition: coil charge time', 'Coil Charge Time'],
+    include: [/^spark.*dwell$/i, /^dwell$/i, /coil.*charge.*time/i],
+    exclude: [/base/i, /clamp/i, /crank/i, /multispark/i, /table/i, /duration.*angle/i],
+  },
+  'ignition.knockLevel': {
+    id: 'ignition.knockLevel',
+    displayName: 'Knock Level',
+    aliases: ['m_knockLevel', 'Knock Level', 'Knock: Current level'],
+    include: [/knock.*(?:current.*)?level/i],
+    exclude: [/threshold/i, /gain/i, /cyl/i, /retard/i],
+  },
+  'ignition.knockRetard': {
+    id: 'ignition.knockRetard',
+    displayName: 'Knock Retard',
+    aliases: ['m_knockRetard', 'Knock Retard', 'Knock: Retard'],
+    include: [/knock.*retard/i],
+    exclude: [/max/i, /table/i, /limit/i],
+  },
+  'vehicle.speed': {
+    id: 'vehicle.speed',
+    displayName: 'Vehicle Speed',
+    aliases: ['vehicleSpeedKph', 'Vehicle Speed', 'VSS', 'Road Speed', 'Speed'],
+    include: [/^vehicle.*speed(?:.*kph)?$/i, /^vss$/i, /road.*speed/i],
+    exclude: [/target/i, /limit/i, /wheel/i, /front/i, /rear/i, /trans/i],
+  },
+  'temperature.oil': {
+    id: 'temperature.oil',
+    displayName: 'Oil Temp',
+    aliases: ['oilTemp', 'Oil Temp', 'Oil Temperature'],
+    include: [/^oil.*temp(?:erature)?$/i],
+    exclude: [/raw/i, /limit/i, /maximum/i, /sensor.*config/i],
+  },
+  'engine.oilPressure': {
+    id: 'engine.oilPressure',
+    displayName: 'Oil Pressure',
+    aliases: ['oilPressure', 'Oil Pressure'],
+    include: [/^oil.*pressure$/i],
+    exclude: [/raw/i, /minimum/i, /maximum/i, /limit/i, /switch/i, /sensor.*config/i],
+  },
+  'cooling.fanCommand': {
+    id: 'cooling.fanCommand',
+    displayName: 'Fan Command',
+    aliases: ['fan1Pwm', 'fan1m_state', 'Fan Command', 'Cooling Fan Duty', 'Radiator Fan Duty', 'Fan Duty'],
+    include: [/fan.*(?:pwm|duty|command|state|on)/i],
+    exclude: [/fan\s*2/i, /frequency/i, /min/i, /max/i, /threshold/i, /temperature/i, /button/i, /broken/i, /inhibit/i],
   },
 };
 

@@ -138,10 +138,94 @@ export const BOOST_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const FUEL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'fuel-dual',
+  name: 'Fuel',
+  description: 'Dual-pane mixture and injector overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'engine.rpm', requirement: 'required' },
+        { roleId: 'engine.map', requirement: 'required' },
+        { roleId: 'fuel.lambda', requirement: 'preferred' },
+        { roleId: 'fuel.lambdaTarget', requirement: 'preferred' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+        { roleId: 'fuel.injectorDuty', requirement: 'preferred' },
+        { roleId: 'fuel.pressure', requirement: 'optional' },
+        { roleId: 'fuel.totalCorrection', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
+export const IGNITION_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'ignition-dual',
+  name: 'Ignition',
+  description: 'Dual-pane spark timing and knock overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'engine.rpm', requirement: 'required' },
+        { roleId: 'engine.map', requirement: 'required' },
+        { roleId: 'ignition.advance', requirement: 'preferred' },
+        { roleId: 'ignition.knockRetard', requirement: 'optional' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'ignition.dwell', requirement: 'preferred' },
+        { roleId: 'ignition.knockLevel', requirement: 'optional' },
+        { roleId: 'fuel.lambda', requirement: 'optional' },
+        { roleId: 'temperature.intakeAir', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
+export const COOLING_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'cooling-dual',
+  name: 'Cooling',
+  description: 'Dual-pane thermal state and cooling-system overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'temperature.coolant', requirement: 'required' },
+        { roleId: 'temperature.intakeAir', requirement: 'preferred' },
+        { roleId: 'engine.rpm', requirement: 'preferred' },
+        { roleId: 'vehicle.speed', requirement: 'optional' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'cooling.fanCommand', requirement: 'optional' },
+        { roleId: 'temperature.oil', requirement: 'optional' },
+        { roleId: 'engine.oilPressure', requirement: 'optional' },
+        { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
   BOOST_DUAL_WORKSPACE,
+  FUEL_DUAL_WORKSPACE,
+  IGNITION_DUAL_WORKSPACE,
+  COOLING_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {

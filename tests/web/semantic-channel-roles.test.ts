@@ -133,6 +133,50 @@ describe('semantic channel roles', () => {
     ]).channel).toBeUndefined();
   });
 
+  it('resolves generic fuel roles to measured EpicEFI runtime channels', () => {
+    const channels = [
+      channel('lambdaValue', 'lambdaValue', 'Lambda'),
+      channel('targetLambda', 'targetLambda', 'Fuel: target lambda'),
+      channel('actualLastInjection', 'actualLastInjection', 'Fuel: Last inj pulse width'),
+      channel('actualLastInjectionStage2', 'actualLastInjectionStage2', 'Fuel: Last inj pulse width stg 2'),
+      channel('injectorDutyCycle', 'injectorDutyCycle', 'Fuel: injector duty cycle'),
+      channel('maxInjectorDutyInstant', 'maxInjectorDutyInstant', 'Max injector duty'),
+      channel('lowFuelPressure', 'lowFuelPressure', 'Fuel pressure'),
+      channel('rawLowFuelPressure', 'rawLowFuelPressure', 'Raw Fuel Pressure'),
+      channel('totalFuelCorrection', 'totalFuelCorrection', 'Fuel: Total correction'),
+    ];
+
+    expect(resolveSemanticChannelRole('fuel.lambdaTarget', channels).channel?.id).toBe('targetLambda');
+    expect(resolveSemanticChannelRole('fuel.injectorPulseWidth', channels).channel?.id).toBe('actualLastInjection');
+    expect(resolveSemanticChannelRole('fuel.injectorDuty', channels).channel?.id).toBe('injectorDutyCycle');
+    expect(resolveSemanticChannelRole('fuel.pressure', channels).channel?.id).toBe('lowFuelPressure');
+    expect(resolveSemanticChannelRole('fuel.totalCorrection', channels).channel?.id).toBe('totalFuelCorrection');
+  });
+
+  it('resolves ignition and cooling context without consuming configuration/raw channels', () => {
+    const channels = [
+      channel('sparkDwell', 'sparkDwell', 'Ignition: coil charge time'),
+      channel('baseDwell', 'baseDwell', 'Ignition: base dwell'),
+      channel('m_knockLevel', 'm_knockLevel', 'Knock: Current level'),
+      channel('m_knockRetard', 'm_knockRetard', 'Knock retard'),
+      channel('vehicleSpeedKph', 'vehicleSpeedKph', 'Vehicle speed'),
+      channel('oilTemp', 'oilTemp', 'Oil Temp'),
+      channel('rawOilTemperature', 'rawOilTemperature', 'Raw Oil Temperature'),
+      channel('oilPressure', 'oilPressure', 'Oil Pressure'),
+      channel('rawOilPressure', 'rawOilPressure', 'Raw Oil Pressure'),
+      channel('fan1Pwm', 'fan1Pwm', 'fan1Pwm'),
+      channel('fan1PwmFrequency', 'fan1PwmFrequency', 'Fan 1 PWM frequency'),
+    ];
+
+    expect(resolveSemanticChannelRole('ignition.dwell', channels).channel?.id).toBe('sparkDwell');
+    expect(resolveSemanticChannelRole('ignition.knockLevel', channels).channel?.id).toBe('m_knockLevel');
+    expect(resolveSemanticChannelRole('ignition.knockRetard', channels).channel?.id).toBe('m_knockRetard');
+    expect(resolveSemanticChannelRole('vehicle.speed', channels).channel?.id).toBe('vehicleSpeedKph');
+    expect(resolveSemanticChannelRole('temperature.oil', channels).channel?.id).toBe('oilTemp');
+    expect(resolveSemanticChannelRole('engine.oilPressure', channels).channel?.id).toBe('oilPressure');
+    expect(resolveSemanticChannelRole('cooling.fanCommand', channels).channel?.id).toBe('fan1Pwm');
+  });
+
   it('keeps generic idle roles separate from DC valve target/feedback detail', () => {
     expect(resolveSemanticChannelRole('idle.target', [
       channel('dcIdleTarget', 'dcIdleTarget', 'DC idle target'),
