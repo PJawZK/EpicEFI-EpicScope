@@ -1,109 +1,76 @@
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
-import type {
-  GraphWorkspaceSnapshot,
-  LoggerWorkspaceState,
-} from './workspace-state';
+import type { GraphWorkspaceSnapshot } from './workspace-state';
 import {
-  resolveBuiltInWorkspaceTemplate,
-  type BuiltInWorkspaceTemplate,
-  type ResolvedBuiltInWorkspace,
+  resolveStarterWorkspaceTemplate,
+  type ResolvedStarterWorkspace,
+  type StarterWorkspaceTemplate,
 } from './built-in-workspace-templates';
 import type { SemanticChannelResolveOptions } from './semantic-channel-roles';
 
-export const BUILT_IN_WORKSPACE_ID_PREFIX = 'built-in:';
+/**
+ * Historical prefix used by the first protected pre-populated-workspace implementation.
+ * Persisted IDs carrying this prefix are compatibility data only and no longer imply protection.
+ */
+export const LEGACY_BUILT_IN_WORKSPACE_ID_PREFIX = 'built-in:';
 
-export interface MaterializedBuiltInWorkspace {
+export function legacyBuiltInWorkspaceRuntimeId(template: StarterWorkspaceTemplate): string {
+  return `${LEGACY_BUILT_IN_WORKSPACE_ID_PREFIX}${template.id}`;
+}
+
+export interface MaterializedStarterWorkspace {
   readonly workspace: GraphWorkspaceSnapshot;
-  readonly resolution: ResolvedBuiltInWorkspace;
+  readonly resolution: ResolvedStarterWorkspace;
 }
 
-export interface UpsertBuiltInWorkspaceOptions extends SemanticChannelResolveOptions {
-  readonly activate?: boolean;
-}
-
-export interface UpsertBuiltInWorkspaceResult {
-  readonly state: LoggerWorkspaceState;
-  readonly materialized: MaterializedBuiltInWorkspace;
-  readonly inserted: boolean;
-}
-
-export function builtInWorkspaceRuntimeId(template: BuiltInWorkspaceTemplate): string {
-  return `${BUILT_IN_WORKSPACE_ID_PREFIX}${template.id}`;
-}
-
-function materializedPaneSnapshots(resolution: ResolvedBuiltInWorkspace) {
+function materializedPaneSnapshots(resolution: ResolvedStarterWorkspace) {
   return resolution.panes.map((pane) => ({
     id: pane.id,
     channelIds: [...pane.channelIds],
   }));
 }
 
-export function materializeBuiltInWorkspace(
-  template: BuiltInWorkspaceTemplate,
+/**
+ * Resolves a starter template once and returns a normal editable workspace snapshot.
+ *
+ * The caller owns the workspace identity. No reserved prefix is added and this function does not
+ * update, refresh or otherwise retain ownership of an existing workspace after materialization.
+ */
+export function materializeStarterWorkspace(
+  template: StarterWorkspaceTemplate,
   channels: readonly ChannelDefinition[],
+  workspaceId: string,
   options: SemanticChannelResolveOptions = {},
-  previous?: GraphWorkspaceSnapshot,
-): MaterializedBuiltInWorkspace {
-  const resolution = resolveBuiltInWorkspaceTemplate(template, channels, options);
+  seed?: Partial<GraphWorkspaceSnapshot>,
+): MaterializedStarterWorkspace {
+  const resolution = resolveStarterWorkspaceTemplate(template, channels, options);
   const panes = materializedPaneSnapshots(resolution);
-  const activePaneId = previous?.activePaneId && panes.some((pane) => pane.id === previous.activePaneId)
-    ? previous.activePaneId
+  const requestedActivePaneId = seed?.activePaneId;
+  const activePaneId = requestedActivePaneId && panes.some((pane) => pane.id === requestedActivePaneId)
+    ? requestedActivePaneId
     : (panes[0]?.id ?? 'pane-1');
   const activePane = panes.find((pane) => pane.id === activePaneId) ?? panes[0];
 
   return {
     resolution,
     workspace: {
-      id: builtInWorkspaceRuntimeId(template),
-      name: template.name,
+      id: workspaceId,
+      name: seed?.name ?? template.name,
       channelIds: [...(activePane?.channelIds ?? [])],
       layout: template.layout,
       activePaneId,
       panes,
-      viewport: previous?.viewport,
-      cursorTimeMs: previous?.cursorTimeMs ?? 0,
-      viewHistory: previous?.viewHistory ?? [],
-      viewHistoryIndex: previous?.viewHistoryIndex ?? -1,
-      ...(previous?.paneGeometry ? { paneGeometry: previous.paneGeometry } : {}),
-      ...(previous?.minimizedPaneIds ? { minimizedPaneIds: previous.minimizedPaneIds } : {}),
-      ...(previous?.maximizedPaneId !== undefined ? { maximizedPaneId: previous.maximizedPaneId } : {}),
-      ...(previous?.freeformArrange ? { freeformArrange: previous.freeformArrange } : {}),
+      viewport: seed?.viewport,
+      cursorTimeMs: seed?.cursorTimeMs ?? 0,
+      viewHistory: seed?.viewHistory ?? [],
+      viewHistoryIndex: seed?.viewHistoryIndex ?? -1,
+      ...(seed?.paneGeometry ? { paneGeometry: seed.paneGeometry } : {}),
+      ...(seed?.minimizedPaneIds ? { minimizedPaneIds: seed.minimizedPaneIds } : {}),
+      ...(seed?.maximizedPaneId !== undefined ? { maximizedPaneId: seed.maximizedPaneId } : {}),
+      ...(seed?.freeformArrange ? { freeformArrange: seed.freeformArrange } : {}),
     },
   };
 }
 
-/**
- * Inserts or refreshes a built-in workspace using only its reserved runtime ID.
- *
- * User workspaces are never matched by name, so a user-created workspace called
- * "Single · Resolver Test" remains independent from the development fixture.
- */
-export function upsertBuiltInWorkspace(
-  state: LoggerWorkspaceState,
-  template: BuiltInWorkspaceTemplate,
-  channels: readonly ChannelDefinition[],
-  options: UpsertBuiltInWorkspaceOptions = {},
-): UpsertBuiltInWorkspaceResult {
-  const runtimeId = builtInWorkspaceRuntimeId(template);
-  const existingIndex = state.workspaces.findIndex((workspace) => workspace.id === runtimeId);
-  const previous = existingIndex >= 0 ? state.workspaces[existingIndex] : undefined;
-  const materialized = materializeBuiltInWorkspace(template, channels, options, previous);
-
-  const workspaces = [...state.workspaces];
-  if (existingIndex >= 0) workspaces[existingIndex] = materialized.workspace;
-  else workspaces.push(materialized.workspace);
-
-  const activeWorkspaceId = options.activate
-    ? runtimeId
-    : (state.activeWorkspaceId === runtimeId ? runtimeId : state.activeWorkspaceId);
-
-  return {
-    state: {
-      ...state,
-      activeWorkspaceId,
-      workspaces,
-    },
-    materialized,
-    inserted: existingIndex < 0,
-  };
-}
+/** Compatibility aliases for callers/tests during the lifecycle migration. */
+export const BUILT_IN_WORKSPACE_ID_PREFIX = LEGACY_BUILT_IN_WORKSPACE_ID_PREFIX;
+export const builtInWorkspaceRuntimeId = legacyBuiltInWorkspaceRuntimeId;
