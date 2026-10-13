@@ -3,6 +3,7 @@ import './styles/app.css';
 import './styles/log-import.css';
 import './styles/timeline-graph.css';
 import './styles/logger-ui.css';
+import './styles/workspace-starters.css';
 import './styles/channel-value-search.css';
 import './styles/histogram.css';
 import './styles/histogram-workspace.css';
