@@ -447,6 +447,32 @@ export const EPICEFI_ETB_CONTROL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   ],
 };
 
+export const EPICEFI_DUAL_CHAMBER_BOOST_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-dual-chamber-boost-dual', name: 'EpicEFI · Dual Chamber Boost', description: 'EpicEFI upper/lower wastegate solenoid and boost-control diagnostics.', tier: 'epicefi',
+  availability: { allOfRoleIds: ['boost.wastegateCommand', 'boost.lowerWastegateCommand', 'boost.openLoopPart', 'boost.closedLoopPart'] }, layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' }, { roleId: 'engine.map', requirement: 'required' }, { roleId: 'boost.target', requirement: 'preferred' }, { roleId: 'boost.wastegateCommand', requirement: 'required' }, { roleId: 'boost.lowerWastegateCommand', requirement: 'required' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'boost.openLoopPart', requirement: 'required' }, { roleId: 'boost.closedLoopPart', requirement: 'required' }, { roleId: 'boost.spooledLevel', requirement: 'optional' }, { roleId: 'boost.controlActive', requirement: 'optional' }, { roleId: 'boost.error', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-trigger-sync-detailed-dual', name: 'EpicEFI · Trigger + Sync Detailed', description: 'EpicEFI trigger edge, tooth-angle and cam-sync diagnostics.', tier: 'epicefi',
+  availability: { allOfRoleIds: ['trigger.toothAngleError', 'trigger.primaryRiseCount', 'trigger.primaryFallCount', 'trigger.camRiseCount', 'trigger.camFallCount'] }, layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' }, { roleId: 'trigger.syncState', requirement: 'required' }, { roleId: 'trigger.errorActive', requirement: 'preferred' }, { roleId: 'trigger.errorCount', requirement: 'preferred' }, { roleId: 'trigger.resyncCount', requirement: 'preferred' }, { roleId: 'trigger.phaseSynchronized', requirement: 'preferred' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'trigger.enginePhase', requirement: 'preferred' }, { roleId: 'trigger.toothAngleError', requirement: 'required' }, { roleId: 'trigger.ignoredToothCount', requirement: 'optional' }, { roleId: 'trigger.primaryRiseCount', requirement: 'required' }, { roleId: 'trigger.primaryFallCount', requirement: 'required' }, { roleId: 'trigger.camRiseCount', requirement: 'required' }, { roleId: 'trigger.camFallCount', requirement: 'required' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -463,6 +489,8 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE,
   EPICEFI_FUEL_RAIL_DIAGNOSTICS_DUAL_WORKSPACE,
   EPICEFI_ETB_CONTROL_DUAL_WORKSPACE,
+  EPICEFI_DUAL_CHAMBER_BOOST_DUAL_WORKSPACE,
+  EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceAvailable(
