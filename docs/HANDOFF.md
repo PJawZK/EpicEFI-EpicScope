@@ -4,19 +4,23 @@
 
 Repository: `PJawZK/EpicEFI-EpicScope`
 
-Authoritative branch: `main`
+Authoritative production branch: `main`
 
-Current authoritative `main` baseline:
+Current production baseline before this focused correction:
 
-`2a5a20ac25aca74f9b200c0f5a68e2f10d3ef8f5`
+`90f68c121d98e33e57ea09e04e139eb233432f08`
 
-That squash merge is PR #343, **Add General Single pre-populated workspace**, after reconciling the branch with the Histogram baseline from PRs #344–#346 and carrying forward the Shim HTTP default-fetch binding fix from PR #342.
+Active branch:
+
+`fix/editable-starter-workspaces`
+
+This branch corrects the lifecycle introduced with PR #343: pre-populated graph definitions are starter templates, not protected persistent workspace objects.
 
 Hosted application:
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-This file is the compact present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, current `main`, this file and current CI/test/runtime evidence win.
+This file is the present-tense continuation authority. If older wording elsewhere conflicts, use current `main`, this handoff and current CI/runtime evidence.
 
 ## Current project position — 2026-10-13
 
@@ -26,9 +30,9 @@ The large recorded-log performance campaign remains complete unless a measured r
 
 The validated real ECU/Pi/`ts_shim` source workflow is part of `main`.
 
-The latest merged product-development track is now **semantic, multi-ECU pre-populated Logger workspaces**. The first production built-in is **General · Single**.
+The active product-development track is **semantic, multi-ECU Logger starter templates**. The first production starter is **General** using a Single layout.
 
-Do not restart broad Histogram redesign, reopen mature Fueling/Ignition work, or begin a new platform phase without a concrete user-visible need, measured regression, or explicit project-owner direction.
+Do not restart broad Histogram redesign, reopen mature Fueling/Ignition work, or begin a new platform phase without a concrete user-visible need, measured regression or explicit project-owner direction.
 
 ## Product/workflow invariant
 
@@ -105,11 +109,9 @@ Workspace assignments return to canonical `ini:*` identities.
 
 Do not reintroduce raw + `ini:*` duplicate traces.
 
-## Semantic pre-populated workspace architecture
+## Semantic starter-template architecture
 
-Built-in task workspaces are defined in terms of **semantic channel roles**, not one ECU's raw channel names.
-
-Identity layers:
+Starter templates are defined in terms of **semantic channel roles**, not one ECU's raw channel names.
 
 ```text
 semantic role
@@ -134,31 +136,46 @@ Resolution order:
 4. conservative normalized-name fallback;
 5. unresolved.
 
-Missing channels remain explicit. Built-ins degrade gracefully rather than fabricating data or failing the entire workspace.
+Missing channels remain explicit. Required/preferred/optional roles degrade gracefully rather than fabricating data.
 
-Compatibility aliases never dictate the visible EpicScope name. A legacy alias such as `TP` may resolve the throttle-position role, while the visible semantic name remains **TPS**.
+Compatibility aliases never dictate the visible EpicScope name. Legacy `TP` may resolve throttle position while EpicScope displays **TPS**.
 
-MegaLogViewer HD `FieldMaps/*.properties` are compatibility/reference evidence, not EpicScope naming authority.
+MegaLogViewer HD `FieldMaps/*.properties` remain compatibility/reference evidence, not naming authority.
 
-### Layout vs workspace
+### Layout, starter and workspace are separate
 
 - **Layout** describes graph geometry only.
-- **Workspace** describes a task and assigns semantic roles to a layout.
+- **Starter template** describes a task using a layout plus semantic role slots.
+- **Workspace** is the user's ordinary editable materialized configuration.
 
-Generic workspace targets include General, Idle, Fuel, Ignition, Boost, Transient / AE, Cooling, Fuel System, Trigger / Sync, Startup / Warmup, Electrical and Vehicle / Driveline.
+Lifecycle:
 
-EpicEFI-specific workspaces may coexist where schema capabilities justify them.
+```text
+starter template
+      ↓ resolve once against current ECU/source catalog
+ordinary editable workspace
+```
+
+Once created, the workspace can be edited, renamed, duplicated or deleted. Template logic does **not** continue to own it and must not silently repopulate removed channels or reset layout changes.
+
+Source transitions may translate the user's chosen stable assignments between `ini:*` and raw Shim identities. That is source-identity normalization, not template reapplication.
+
+Template updates affect future materializations only.
+
+Historical persisted `built-in:*` IDs are compatibility data only and no longer imply protected rename/delete behavior.
+
+If the final workspace is deleted, Logger creates a blank ordinary workspace rather than resurrecting a starter automatically.
 
 Detailed authority:
 
 - `docs/PREPOPULATED_WORKSPACES.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_MODEL.md`
-- `docs/DECISIONS.md`
+- `docs/DECISIONS.md` — D-055 supersedes the protected-instance lifecycle from D-054.
 
-## General · Single — merged production baseline
+## General starter
 
-PR #343 merged the first production semantic built-in workspace: **General · Single**.
+The first production starter is **General**. `Single` describes its initial geometry, not its permanent workspace name.
 
 Roles:
 
@@ -178,7 +195,7 @@ Optional
 - Ignition Advance
 ```
 
-Current EpicEFI native resolution target:
+Current EpicEFI mapping target:
 
 ```text
 MLG + INI                          ts_shim
@@ -192,35 +209,25 @@ ini:lambdaValue                    lambdaValue
 ini:correctedIgnitionAdvance       correctedIgnitionAdvance
 ```
 
-Built-ins use reserved `built-in:*` identity and do not overwrite normal user workspaces by visible name.
-
-Rules:
-
-- built-ins may re-resolve when the authoritative channel catalog changes;
-- normal user workspaces are never automatically repopulated;
-- built-in rename/delete are disabled;
-- Duplicate creates a normal editable workspace;
-- user/schema semantic overrides win over automatic mapping.
-
-The existing editable workspace named `General` remains intentionally separate. The immutable preset remains visibly named **General · Single** for now.
-
 ### Validation status
 
-The original four-role Single semantic resolver path was real-runtime validated through:
+The original four-role Single resolver path was real-runtime validated through:
 
 ```text
 MLG + INI → ts_shim live/capture → MLG + INI
 ```
 
-with correct `ini:*` ↔ raw re-resolution, zero unavailable assigned channels, `0 ISSUE / 0 WARN`, and zero runtime errors.
+with correct source-specific resolution, zero unavailable assigned channels, `0 ISSUE / 0 WARN`, and zero runtime errors.
 
-The expanded eight-role General preset passed the reconciled Web CI before merge. The eight-role expansion should still receive one explicit real MLG + INI → Shim → MLG runtime confirmation before being described as fully runtime-validated in all roles.
+The expanded eight-role General resolver has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing all eight roles as fully runtime-validated.
+
+The editable-starter lifecycle correction is deterministic UI/state work and should be gated by typecheck/full tests/CI before merge.
 
 ## Shim HTTP fix
 
-The default `fetch` implementation in `ShimHttpReadOnlyClient` is now bound through an arrow wrapper rather than storing a bare native `fetch` reference.
+The default `fetch` implementation in `ShimHttpReadOnlyClient` is bound through an arrow wrapper rather than storing a bare native `fetch` reference.
 
-This fixes the browser-side `Illegal invocation` failure previously tracked by PR #342. PR #342 was closed after the fix was carried into and merged through PR #343.
+This fixes the browser-side `Illegal invocation` failure previously tracked by PR #342. PR #342 was closed after the fix was carried through PR #343.
 
 ## Logger checkpoint
 
@@ -233,7 +240,7 @@ Mature behavior includes:
 - fixed/freeform multi-pane Logger;
 - A/B ranges, markers and saved ranges;
 - stable channel identity across recorded and Shim transitions;
-- semantic built-in workspace resolution;
+- semantic starter-template resolution;
 - explicit unavailable-channel handling;
 - retained-memory, parser, performance and runtime-health diagnostics.
 
@@ -243,13 +250,13 @@ Do not resume broad Logger/performance micro-optimization without a concrete mea
 
 ## Histogram checkpoint
 
-Histogram coherence remains complete through the current consistency milestones:
+Histogram coherence remains complete through:
 
 - PR #339 — shared scope/evidence flow;
 - PR #340 — shared Qualification;
 - PR #344 — shared Math Channels;
-- PR #345 — unified help;
-- PR #346 — documentation refresh of current Analyzer/Histogram state.
+- PR #345 — unified Histogram help;
+- PR #346 — documentation refresh.
 
 Current surfaces:
 
@@ -257,8 +264,6 @@ Current surfaces:
 - Distribution;
 - Scatter;
 - Math Channels.
-
-Preserve the shared flow and contracts already documented in `docs/HISTOGRAM.md`.
 
 Remaining useful Histogram work is narrower:
 
@@ -286,25 +291,23 @@ Current surfaces:
 - Fuel / Injector;
 - Trigger / Sync.
 
-When Analyzer work resumes, prefer practical coverage of the less-mature analyzers before deepening Fueling/Ignition again.
-
-See `docs/ANALYZER.md` and `docs/FUELING_ANALYZER.md` for detailed semantics.
+When Analyzer work resumes, prefer practical coverage of less-mature analyzers before deepening Fueling/Ignition again.
 
 ## Cleanup/consolidation policy
 
-A broad cleanup/optimization phase remains deliberately deferred until feature coverage is broader.
-
-Later review should include dormant duplicate editor paths, analyzer-local/shared DOM enhancement code, unnecessary MutationObservers, direct DOM state bridges, duplicated rendering/help/table logic, canvas resize ownership, CSS/runtime UI surgery, dead compatibility branches and representative large-log performance after consolidation.
-
-Until then, do not destabilize mature behavior solely for internal tidiness.
+Broad cleanup/optimization remains deliberately deferred until feature coverage is broader. Do not destabilize mature behavior solely for internal tidiness.
 
 ## Current Git / workflow state
 
-Current authoritative `main`:
+Production `main` before this correction:
 
-`2a5a20ac25aca74f9b200c0f5a68e2f10d3ef8f5`
+`90f68c121d98e33e57ea09e04e139eb233432f08`
 
-Recent relevant merged milestones:
+Active correction branch:
+
+`fix/editable-starter-workspaces`
+
+Relevant milestones:
 
 - #339 — Histogram scope/evidence flow;
 - #340 — shared Histogram Qualification;
@@ -312,11 +315,10 @@ Recent relevant merged milestones:
 - #344 — shared Histogram Math Channels;
 - #345 — unified Histogram help;
 - #346 — current-state documentation refresh;
-- #343 — semantic channel-role layer + **General · Single** built-in workspace, reconciled with the Histogram baseline and including the Shim HTTP binding fix.
+- #343 — semantic channel-role layer and first General pre-populated implementation, including Shim HTTP binding fix;
+- current branch — replaces PR #343's protected built-in lifecycle with editable one-time starter materialization.
 
-PR #342 was closed as superseded because its fix is included in current `main` through #343.
-
-Before starting new work from a local clone:
+Before new work from a local clone after this branch lands:
 
 ```bash
 cd ~/EpicEFI-EpicScope
@@ -326,4 +328,4 @@ npm run typecheck
 npm test
 ```
 
-Continue from current `main`, not an older Analyzer, Histogram or pre-populated-workspace feature branch.
+Next product work after this correction is green should be a deliberate **New graph/workspace → From template…** path, followed by the first multi-pane starter (Idle is the preferred architecture test).
