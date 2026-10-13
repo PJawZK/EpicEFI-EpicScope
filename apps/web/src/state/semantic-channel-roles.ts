@@ -68,7 +68,18 @@ export type SemanticChannelRoleId =
   | 'etb.error'
   | 'etb.duty'
   | 'etb.feedForward'
-  | 'etb.jamDetected';
+  | 'etb.jamDetected'
+  | 'boost.lowerWastegateCommand'
+  | 'boost.openLoopPart'
+  | 'boost.closedLoopPart'
+  | 'boost.spooledLevel'
+  | 'boost.controlActive'
+  | 'trigger.toothAngleError'
+  | 'trigger.ignoredToothCount'
+  | 'trigger.primaryRiseCount'
+  | 'trigger.primaryFallCount'
+  | 'trigger.camRiseCount'
+  | 'trigger.camFallCount';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -399,6 +410,17 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'etb.duty': { id: 'etb.duty', displayName: 'ETB Duty', aliases: ['etb1DutyCycle', 'ETB: Duty', 'ETB 1 duty', 'ETB Duty'], include: [/etb.*(?:duty|duty.*cycle)/i], exclude: [/test/i, /bias/i, /table/i, /config/i] },
   'etb.feedForward': { id: 'etb.feedForward', displayName: 'ETB Feed Forward', aliases: ['etb1etbFeedForward', 'ETB Feed Forward', 'ETB Feedforward'], include: [/etb.*feed.*forward/i], exclude: [/table/i, /curve/i, /config/i] },
   'etb.jamDetected': { id: 'etb.jamDetected', displayName: 'ETB Jam Detected', aliases: ['etb1jamDetected', 'ETB Jam Detected', 'ETB control fault/jam'], include: [/etb.*jam.*(?:detected|fault)/i, /jam.*detected/i], exclude: [/enable/i, /threshold/i, /timeout/i, /config/i] },
+  'boost.lowerWastegateCommand': { id: 'boost.lowerWastegateCommand', displayName: 'Lower WG Command', aliases: ['lwgDutyPct', 'Lower WG port output', 'Lower Wastegate Command'], include: [/(?:lower.*wg|lower.*wastegate).*(?:output|duty|command)/i], exclude: [/pin/i, /mode/i, /table/i, /test/i, /limiter/i, /spooled/i, /config/i] },
+  'boost.openLoopPart': { id: 'boost.openLoopPart', displayName: 'Boost Open Loop', aliases: ['openLoopPart', 'Boost: Open loop', 'Boost Open Loop'], include: [/boost.*open.*loop/i, /^open.*loop.*part$/i], exclude: [/table/i, /adder/i, /mult/i, /blend/i, /config/i] },
+  'boost.closedLoopPart': { id: 'boost.closedLoopPart', displayName: 'Boost Closed Loop', aliases: ['boostControllerClosedLoopPart', 'Boost: Closed loop', 'Boost Closed Loop'], include: [/boost.*closed.*loop/i], exclude: [/table/i, /target/i, /blend/i, /config/i, /mode/i] },
+  'boost.spooledLevel': { id: 'boost.spooledLevel', displayName: 'Spooled Level', aliases: ['spooledLevel', 'Spooled Level'], include: [/spooled.*level/i], exclude: [/curve/i, /table/i, /enable/i, /config/i] },
+  'boost.controlActive': { id: 'boost.controlActive', displayName: 'Boost Control Active', aliases: ['isBoostControlled', 'Boost Control Active'], include: [/boost.*control.*active/i, /is.*boost.*controlled/i], exclude: [/enable/i, /config/i, /pin/i] },
+  'trigger.toothAngleError': { id: 'trigger.toothAngleError', displayName: 'Trigger Tooth Angle Error', aliases: ['triggerToothAngleError', 'Sync: trigger angle error', 'Trigger Tooth Angle Error'], include: [/trigger.*tooth.*angle.*error/i, /trigger.*angle.*error/i], exclude: [/window/i, /config/i, /threshold/i] },
+  'trigger.ignoredToothCount': { id: 'trigger.ignoredToothCount', displayName: 'Ignored Tooth Count', aliases: ['triggerIgnoredToothCount', 'Ignored Tooth Count'], include: [/trigger.*ignored.*tooth.*count/i, /ignored.*tooth.*count/i], exclude: [/config/i, /limit/i] },
+  'trigger.primaryRiseCount': { id: 'trigger.primaryRiseCount', displayName: 'Primary Rise Count', aliases: ['triggerPrimaryRise', 'Primary Trigger Rise Count'], include: [/trigger.*primary.*rise/i], exclude: [/pin/i, /mode/i, /config/i] },
+  'trigger.primaryFallCount': { id: 'trigger.primaryFallCount', displayName: 'Primary Fall Count', aliases: ['triggerPrimaryFall', 'Primary Trigger Fall Count'], include: [/trigger.*primary.*fall/i], exclude: [/pin/i, /mode/i, /config/i] },
+  'trigger.camRiseCount': { id: 'trigger.camRiseCount', displayName: 'Cam Rise Count', aliases: ['vvtEventRiseCounter1', 'triggerVvtRise', 'Cam Rise Count'], include: [/(?:vvt|cam).*rise.*(?:count|counter)/i], exclude: [/config/i] },
+  'trigger.camFallCount': { id: 'trigger.camFallCount', displayName: 'Cam Fall Count', aliases: ['vvtEventFallCounter1', 'triggerVvtFall', 'Cam Fall Count'], include: [/(?:vvt|cam).*fall.*(?:count|counter)/i], exclude: [/config/i] },
 };
 
 export const semanticChannelRoles: readonly SemanticChannelRoleDefinition[] = Object.freeze(

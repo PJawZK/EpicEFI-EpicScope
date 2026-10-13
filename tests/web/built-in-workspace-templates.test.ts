@@ -30,6 +30,7 @@ describe('starter workspace templates', () => {
       'General', 'Idle', 'Boost', 'Fuel', 'Ignition', 'Cooling', 'Transient / AE', 'Fuel System',
       'Trigger / Sync', 'Startup / Warmup', 'Electrical', 'Vehicle / Driveline',
       'EpicEFI · MAP Predict + Wall Wetting', 'EpicEFI · Fuel Rail Diagnostics', 'EpicEFI · ETB Control',
+      'EpicEFI · Dual Chamber Boost', 'EpicEFI · Trigger + Sync Detailed',
     ]);
     expect(starterWorkspaceTemplate(BOOST_DUAL_WORKSPACE.id)).toBe(BOOST_DUAL_WORKSPACE);
     expect(starterWorkspaceTemplate(COOLING_DUAL_WORKSPACE.id)).toBe(COOLING_DUAL_WORKSPACE);
