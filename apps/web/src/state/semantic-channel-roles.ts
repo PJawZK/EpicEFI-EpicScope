@@ -146,8 +146,8 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     ],
     include: [
       /current.*idle.*position/i,
-      /idle.*(?:air|valve|iac).*(?:command|duty|position)/i,
-      /(?:valve|iac).*idle.*(?:command|duty|position)/i,
+      /idle.*(?:air|valve|iac).*(?:command|duty)/i,
+      /(?:valve|iac).*idle.*(?:command|duty)/i,
     ],
     exclude: [/target/i, /actual/i, /feedback/i, /status/i, /term/i, /bias/i],
   },

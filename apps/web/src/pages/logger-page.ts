@@ -51,8 +51,11 @@ import {
   type GraphPaneState,
 } from '../state/logger-pane-layout';
 import {
+  STARTER_WORKSPACE_TEMPLATES,
   resolveStarterWorkspaceTemplate,
+  starterWorkspaceTemplate,
   SINGLE_RESOLVER_TEST_WORKSPACE,
+  type StarterWorkspaceTemplate,
 } from '../state/built-in-workspace-templates';
 import { legacyBuiltInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';
 
@@ -240,7 +243,7 @@ interface GraphSelectorController {
   setWorkspaces(workspaces: readonly GraphWorkspaceSummary[], activeId: string): void;
   setEnabled(enabled: boolean): void;
   onSelect(listener: (workspaceId: string) => void): void;
-  onCreate(listener: () => void): void;
+  onCreate(listener: (templateId: string | undefined) => void): void;
   onRename(listener: () => void): void;
   onDuplicate(listener: () => void): void;
   onDelete(listener: () => void): void;
@@ -251,7 +254,7 @@ function createGraphSelector(): GraphSelectorController {
   let activeId = SINGLE_RESOLVER_RUNTIME_ID;
   let enabled = false;
   let selectListener: ((workspaceId: string) => void) | undefined;
-  let createListener: (() => void) | undefined;
+  let createListener: ((templateId: string | undefined) => void) | undefined;
   let renameListener: (() => void) | undefined;
   let duplicateListener: (() => void) | undefined;
   let deleteListener: (() => void) | undefined;
@@ -268,6 +271,11 @@ function createGraphSelector(): GraphSelectorController {
       <div class="graph-selector-list"></div>
       <div class="graph-selector-actions">
         <button type="button" data-workspace-action="new">＋ New graph</button>
+        <div class="graph-selector-new-options" hidden>
+          <button type="button" data-workspace-create="blank">Blank graph</button>
+          <span class="graph-selector-new-label">From template</span>
+          <div class="graph-selector-template-list"></div>
+        </div>
         <button type="button" data-workspace-action="rename">Rename</button>
         <button type="button" data-workspace-action="duplicate">Duplicate</button>
         <button type="button" data-workspace-action="delete">Delete</button>
@@ -279,11 +287,34 @@ function createGraphSelector(): GraphSelectorController {
   const buttonLabel = button?.querySelector<HTMLElement>('span');
   const menu = root.querySelector<HTMLElement>('.graph-selector-menu');
   const list = root.querySelector<HTMLElement>('.graph-selector-list');
+  const newOptions = root.querySelector<HTMLElement>('.graph-selector-new-options');
+  const templateList = root.querySelector<HTMLElement>('.graph-selector-template-list');
   const actionButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-workspace-action]')];
-  if (!button || !buttonLabel || !menu || !list) throw new Error('Graph selector structure is incomplete.');
+  if (!button || !buttonLabel || !menu || !list || !newOptions || !templateList) {
+    throw new Error('Graph selector structure is incomplete.');
+  }
+
+  const templateFragment = document.createDocumentFragment();
+  for (const template of STARTER_WORKSPACE_TEMPLATES) {
+    const templateButton = document.createElement('button');
+    templateButton.type = 'button';
+    templateButton.dataset.workspaceTemplateId = template.id;
+    const label = document.createElement('span');
+    label.textContent = template.name;
+    templateButton.append(label);
+    if (template.description) {
+      const detail = document.createElement('small');
+      detail.className = 'graph-selector-template-detail';
+      detail.textContent = template.description;
+      templateButton.append(detail);
+    }
+    templateFragment.append(templateButton);
+  }
+  templateList.replaceChildren(templateFragment);
 
   const close = (): void => {
     menu.hidden = true;
+    newOptions.hidden = true;
     button.setAttribute('aria-expanded', 'false');
   };
 
@@ -331,11 +362,26 @@ function createGraphSelector(): GraphSelectorController {
       selectListener?.(choice.dataset.workspaceId);
       return;
     }
+    const blankButton = target.closest<HTMLButtonElement>('[data-workspace-create="blank"]');
+    if (blankButton) {
+      close();
+      createListener?.(undefined);
+      return;
+    }
+    const templateButton = target.closest<HTMLButtonElement>('[data-workspace-template-id]');
+    if (templateButton?.dataset.workspaceTemplateId) {
+      close();
+      createListener?.(templateButton.dataset.workspaceTemplateId);
+      return;
+    }
     const actionButton = target.closest<HTMLButtonElement>('[data-workspace-action]');
     if (!actionButton || actionButton.disabled) return;
+    if (actionButton.dataset.workspaceAction === 'new') {
+      newOptions.hidden = !newOptions.hidden;
+      return;
+    }
     close();
     switch (actionButton.dataset.workspaceAction) {
-      case 'new': createListener?.(); break;
       case 'rename': renameListener?.(); break;
       case 'duplicate': duplicateListener?.(); break;
       case 'delete': deleteListener?.(); break;
@@ -437,6 +483,7 @@ export function createLoggerPage(): LoggerPageController {
   layoutSelect.setAttribute('aria-label', 'Graph workspace layout');
   layoutSelect.innerHTML = `
     <option value="single">Single graph</option>
+    <option value="dual">Dual · 2 graphs</option>
     <option value="grid4">2 × 2 · 4 graphs</option>
     <option value="grid5">2 × 3 · 5 graphs</option>
     <option value="grid6">3 × 2 · 6 graphs</option>
@@ -754,6 +801,34 @@ export function createLoggerPage(): LoggerPageController {
     }
     starterWorkspaceMaterialized = true;
     if (refreshSelector) refreshWorkspaceSelector();
+  };
+
+  const createWorkspaceFromStarter = (
+    template: StarterWorkspaceTemplate,
+    workspaceId: string,
+  ): GraphWorkspaceState => {
+    const resolution = resolveStarterWorkspaceTemplate(template, [...channelDefinitions.values()]);
+    const panes = createEmptyPaneStates();
+    for (const resolvedPane of resolution.panes) {
+      const pane = panes.find((candidate) => candidate.id === resolvedPane.id);
+      if (pane) pane.channelIds = [...resolvedPane.channelIds];
+    }
+    return {
+      id: workspaceId,
+      name: template.name,
+      layout: template.layout,
+      activePaneId: panes[0]?.id ?? 'pane-1',
+      panes,
+      paneGeometry: freeformArrangement('mosaic'),
+      minimizedPaneIds: [],
+      maximizedPaneId: undefined,
+      freeformArrange: 'mosaic',
+      viewport: viewport ? { ...viewport } : undefined,
+      cursorTimeMs: timeline.getCursorTime(),
+      viewHistory: viewport ? [{ ...viewport }] : [],
+      viewHistoryIndex: viewport ? 0 : -1,
+      lastHistoryMutationMs: 0,
+    };
   };
 
   const channelIdentityOptions = () => ({
@@ -1819,25 +1894,29 @@ export function createLoggerPage(): LoggerPageController {
     void restoreWorkspace(workspaceId);
   });
 
-  graphSelector.onCreate(() => {
+  graphSelector.onCreate((templateId) => {
     saveCurrentWorkspace();
     workspaceCounter += 1;
-    const workspace: GraphWorkspaceState = {
-      id: `graph-${workspaceCounter}`,
-      name: `Graph ${workspaceCounter}`,
-      layout: 'single',
-      activePaneId: 'pane-1',
-      panes: createEmptyPaneStates(),
-      paneGeometry: freeformArrangement('mosaic'),
-      minimizedPaneIds: [],
-      maximizedPaneId: undefined,
-      freeformArrange: 'mosaic',
-      viewport: viewport ? { ...viewport } : undefined,
-      cursorTimeMs: timeline.getCursorTime(),
-      viewHistory: viewport ? [{ ...viewport }] : [],
-      viewHistoryIndex: viewport ? 0 : -1,
-      lastHistoryMutationMs: 0,
-    };
+    const workspaceId = `graph-${workspaceCounter}`;
+    const template = templateId ? starterWorkspaceTemplate(templateId) : undefined;
+    const workspace: GraphWorkspaceState = template
+      ? createWorkspaceFromStarter(template, workspaceId)
+      : {
+          id: workspaceId,
+          name: `Graph ${workspaceCounter}`,
+          layout: 'single',
+          activePaneId: 'pane-1',
+          panes: createEmptyPaneStates(),
+          paneGeometry: freeformArrangement('mosaic'),
+          minimizedPaneIds: [],
+          maximizedPaneId: undefined,
+          freeformArrange: 'mosaic',
+          viewport: viewport ? { ...viewport } : undefined,
+          cursorTimeMs: timeline.getCursorTime(),
+          viewHistory: viewport ? [{ ...viewport }] : [],
+          viewHistoryIndex: viewport ? 0 : -1,
+          lastHistoryMutationMs: 0,
+        };
     workspaces.push(workspace);
     void restoreWorkspace(workspace.id).then(emitWorkspaceMutation);
   });
