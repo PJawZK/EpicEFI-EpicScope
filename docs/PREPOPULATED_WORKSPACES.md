@@ -174,16 +174,15 @@ Generic starters remain portable across ECU families. Specialized starters are c
 
 Implemented specialized starters:
 
-- **EpicEFI · MAP Predict + Wall Wetting** — Dual layout. Pane 1: RPM, TPS, TPS change, live MAP, predicted/fallback MAP, effective MAP and prediction-active state. Pane 2: Lambda, injector pulse width, TPS AE fuel, wall-fuel amount and wall-fuel correction. The menu exposes it only when predicted MAP, effective MAP, prediction-active state, wall-fuel amount and wall-fuel correction all resolve.
-- **EpicEFI · Fuel Rail Diagnostics** — Dual layout. Pane 1 follows actual high rail pressure against HPFP target with RPM, injector pressure delta, injector pulse width and Lambda context. Pane 2 shows HPFP active/valve state plus P/I control contributions and battery voltage. It is offered only when actual high pressure, target pressure, HPFP-active state and valve state all resolve.
-- **EpicEFI · ETB Control** — Dual layout. Pane 1 compares pedal demand, ETB target, actual TPS and position error with RPM context. Pane 2 shows motor duty, feed-forward, jam state and battery voltage. It is offered only when pedal, target, actual TPS, ETB error, duty and feed-forward all resolve.
+- **EpicEFI · MAP Predict + Wall Wetting** — predictive-MAP and wall-film transient diagnostics;
+- **EpicEFI · Fuel Rail Diagnostics** — high-pressure rail target/actual and HPFP control diagnostics;
+- **EpicEFI · ETB Control** — pedal/target/actual/error and ETB actuator diagnostics;
+- **EpicEFI · Dual Chamber Boost** — upper/lower wastegate plus open/closed-loop boost-control diagnostics;
+- **EpicEFI · Trigger + Sync Detailed** — tooth-angle, edge-counter and cam-sync diagnostics;
+- **EpicEFI · Injector + Ignition Timing** — injection SOI plus ignition timing-attribution diagnostics;
+- **EpicEFI · Engine Protection** — dynamic rev-limit, cut-reason and protection-state diagnostics.
 
-Planned specialized candidates remain:
-
-- **EpicEFI · Dual Chamber Boost**;
-- **EpicEFI · Trigger + Sync Detailed**;
-- **EpicEFI · Injector / Ignition Timing**;
-- **EpicEFI · Engine Protection**.
+The current specialized coverage audit is maintained in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md). Its current highest-value next candidates are **VVT Control**, **Anti-Lag**, **Launch Control**, **Traction Control** and **Transmission Control**. Per-cylinder/EGT work is deliberately deferred until the semantic layer can represent indexed channel families cleanly.
 
 Capability gating affects only starter discovery. Once materialized, the resulting workspace is still an ordinary editable workspace and is not owned by the capability detector.
 
@@ -364,11 +363,12 @@ Existing persisted workspaces using a historical `built-in:*` ID are retained wi
 
 ## Next implementation direction
 
-With the reusable workspace lifecycle, INI-only editing, cascading template menu and first six generic starters now merged:
+The generic starter catalog is complete and seven capability-gated EpicEFI starters are merged. The next work should follow the evidence-ranked audit in [`SPECIALIZED_WORKSPACE_COVERAGE.md`](SPECIALIZED_WORKSPACE_COVERAGE.md):
 
-1. browser-smoke-test **Fuel**, **Ignition** and **Cooling** against the current INI catalog and representative recorded data;
-2. implement the remaining generic starter families through the same semantic catalog/materialization path, starting with Transient / AE and Fuel System;
-3. keep ECU-specific detail out of generic starters and add richer EpicEFI-specific starters behind capability checks;
-4. add persistent user/schema semantic overrides where automatic mapping is genuinely ambiguous.
+1. implement **EpicEFI · VVT Control** first;
+2. then consider **Anti-Lag**, **Launch Control**, **Traction Control** and **Transmission Control** in that order, re-checking the user-visible gap after each addition;
+3. keep Staged Injection and Closed-loop Fuel / STFT / LTFT as secondary candidates;
+4. do not model per-cylinder/EGT families as dozens of fixed roles — add indexed semantic channel-family support first;
+5. continue to add persistent user/schema semantic overrides only where automatic mapping is genuinely ambiguous.
 
 All future starter implementations must reuse the same semantic resolver/materialization path rather than creating layout-specific resolver logic.
