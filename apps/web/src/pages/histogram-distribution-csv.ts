@@ -18,6 +18,7 @@ export interface DistributionCsvSeries {
   readonly inputSampleCount: number;
   readonly eligibleSampleCount: number;
   readonly rejectedSampleCount: number;
+  readonly outsideGeometrySampleCount?: number;
 }
 
 export interface DistributionCsvOptions {
@@ -46,7 +47,7 @@ export function buildDistributionCsv(options: DistributionCsvOptions): Distribut
     'row_type', 'series', 'channel', 'unit', 'metric', 'display', 'bin_mode',
     'bin_index', 'lower', 'upper', 'upper_inclusive', 'value',
     'sample_count', 'min', 'max', 'mean', 'median', 'stddev', 'p05', 'p25', 'p75', 'p95',
-    'input_samples', 'eligible_samples', 'rejected_samples',
+    'input_samples', 'eligible_samples', 'rejected_samples', 'outside_geometry_samples',
   ];
   const rows: string[] = [header.join(',')];
   const binCount = options.series[0]?.binValues.length ?? 0;
@@ -60,7 +61,7 @@ export function buildDistributionCsv(options: DistributionCsvOptions): Distribut
       const values: (string | number | boolean)[] = [
         'bin', series.label, options.channelLabel, options.unit ?? '', options.metric, options.display, options.binMode,
         index, lower, upper, index === binCount - 1, series.binValues[index] ?? 0,
-        '', '', '', '', '', '', '', '', '', '', '', '', '',
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '',
       ];
       rows.push(values.map(quote).join(','));
       binRowCount += 1;
@@ -71,7 +72,7 @@ export function buildDistributionCsv(options: DistributionCsvOptions): Distribut
       '', '', '', '', '',
       stats.count, stats.min ?? '', stats.max ?? '', stats.mean ?? '', stats.median ?? '', stats.standardDeviation ?? '',
       stats.p05 ?? '', stats.p25 ?? '', stats.p75 ?? '', stats.p95 ?? '',
-      series.inputSampleCount, series.eligibleSampleCount, series.rejectedSampleCount,
+      series.inputSampleCount, series.eligibleSampleCount, series.rejectedSampleCount, series.outsideGeometrySampleCount ?? 0,
     ];
     rows.push(summary.map(quote).join(','));
   }

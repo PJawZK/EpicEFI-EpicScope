@@ -1,4 +1,5 @@
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
+import { distributionValueInsideGeometry, resolveFixedDistributionGeometry } from '../../../../core/analysis/distribution-geometry';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
 import type { SavedTimelineRangeState } from '../state/workspace-state';
 import { createHistogramLocalId } from '../state/histogram-table-storage';
@@ -14,7 +15,7 @@ import {
 } from './histogram-qualification';
 
 type DistributionMetric = 'count' | 'percent' | 'time';
-type DistributionBinMode = 'auto' | 'manual';
+type DistributionBinMode = 'auto' | 'manual' | 'fixed';
 type DistributionDisplay = 'histogram' | 'cumulative';
 
 interface DistributionStats {
@@ -38,6 +39,7 @@ interface DistributionSeries {
   readonly binValues: readonly number[];
   readonly color: string;
   readonly qualification: HistogramQualificationState;
+  readonly outsideGeometrySampleCount: number;
 }
 
 interface SelectedBin {
@@ -184,10 +186,11 @@ function metricBins(trace: HistogramTraceContext, localIndices: readonly number[
     const value = trace.range.values[localIndex];
     const time = trace.range.timeMs[localIndex];
     if (value === undefined || time === undefined || !Number.isFinite(value) || !Number.isFinite(time)) continue;
+    validCount += 1;
+    if (!distributionValueInsideGeometry(value, rangeMin, rangeMax)) continue;
     const normalized = Math.max(0, Math.min(1, (value - rangeMin) / span));
     const binIndex = value === rangeMax ? binCount - 1 : Math.min(binCount - 1, Math.max(0, Math.floor(normalized * binCount)));
     counts[binIndex] = (counts[binIndex] ?? 0) + 1;
-    validCount += 1;
 
     if (metric !== 'time') continue;
     const nextLocalIndex = localIndices[position + 1];
@@ -231,8 +234,11 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       <label><span>Scope</span><select class="distribution-scope"></select></label>
       <label><span>Qualification</span><select class="distribution-qualification"><option value="">None</option></select></label>
       <label><span>Y Axis</span><select class="distribution-metric"><option value="count">Count</option><option value="percent">% Samples</option><option value="time">Time</option></select></label>
-      <label><span>Bins</span><select class="distribution-bin-mode"><option value="auto">Auto</option><option value="manual">Manual</option></select></label>
-      <input class="distribution-bin-count" type="number" min="1" max="512" step="1" value="20" aria-label="Manual bin count" hidden />
+      <label><span>Bins</span><select class="distribution-bin-mode"><option value="auto">Auto</option><option value="manual">Count</option><option value="fixed">Fixed</option></select></label>
+      <input class="distribution-bin-count" type="number" min="1" max="512" step="1" value="20" aria-label="Manual bin count" title="Manual bin count" hidden />
+      <label class="distribution-fixed-control" hidden><span>Min</span><input class="distribution-fixed-min" type="number" step="any" value="0" /></label>
+      <label class="distribution-fixed-control" hidden><span>Max</span><input class="distribution-fixed-max" type="number" step="any" value="100" /></label>
+      <label class="distribution-fixed-control" hidden><span>Width</span><input class="distribution-fixed-width" type="number" min="0" step="any" value="5" /></label>
       <label><span>View</span><select class="distribution-display"><option value="histogram">Histogram</option><option value="cumulative">Cumulative</option></select></label>
       <label class="distribution-compare-toggle"><input type="checkbox" /><span>Compare</span></label>
       <details class="distribution-presets">
@@ -275,6 +281,10 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   const metricSelect = root.querySelector<HTMLSelectElement>('.distribution-metric')!;
   const binModeSelect = root.querySelector<HTMLSelectElement>('.distribution-bin-mode')!;
   const binCountInput = root.querySelector<HTMLInputElement>('.distribution-bin-count')!;
+  const fixedControls = [...root.querySelectorAll<HTMLElement>('.distribution-fixed-control')];
+  const fixedMinInput = root.querySelector<HTMLInputElement>('.distribution-fixed-min')!;
+  const fixedMaxInput = root.querySelector<HTMLInputElement>('.distribution-fixed-max')!;
+  const fixedWidthInput = root.querySelector<HTMLInputElement>('.distribution-fixed-width')!;
   const displaySelect = root.querySelector<HTMLSelectElement>('.distribution-display')!;
   const compareToggle = root.querySelector<HTMLInputElement>('.distribution-compare-toggle input')!;
   const compareControls = root.querySelector<HTMLElement>('.distribution-compare-controls')!;
@@ -311,10 +321,18 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     metric,
     binMode,
     binCount: binCountInput.value,
+    fixedMin: fixedMinInput.value,
+    fixedMax: fixedMaxInput.value,
+    fixedWidth: fixedWidthInput.value,
     display,
     compare,
     compareScope: compareScopeSelect.value,
   });
+
+  const syncBinGeometryControls = (): void => {
+    binCountInput.hidden = binMode !== 'manual';
+    for (const control of fixedControls) control.hidden = binMode !== 'fixed';
+  };
 
   const setSelectIfAvailable = (select: HTMLSelectElement, value: string): void => {
     if ([...select.options].some((option) => option.value === value && !option.disabled)) select.value = value;
@@ -390,7 +408,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       const section = document.createElement('section');
       section.className = 'distribution-stat-series';
       section.innerHTML = `
-        <header><i style="--series-color:${item.color}"></i><strong>${item.label}</strong><small>${item.stats.count.toLocaleString()} samples · eligible ${item.qualification.eligibleSampleCount.toLocaleString()} / ${item.qualification.inputSampleCount.toLocaleString()}</small></header>
+        <header><i style="--series-color:${item.color}"></i><strong>${item.label}</strong><small>${item.stats.count.toLocaleString()} samples · eligible ${item.qualification.eligibleSampleCount.toLocaleString()} / ${item.qualification.inputSampleCount.toLocaleString()}${item.outsideGeometrySampleCount > 0 ? ` · outside geometry ${item.outsideGeometrySampleCount.toLocaleString()}` : ''}</small></header>
         <dl>
           <div><dt>Mean</dt><dd>${formatNumber(item.stats.mean)}</dd></div>
           <div><dt>Median</dt><dd>${formatNumber(item.stats.median)}</dd></div>
@@ -513,6 +531,12 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     color: string,
   ): DistributionSeries => {
     const localIndices = localIndicesForSourceIndices(trace, qualification.eligibleSampleIndices);
+    let outsideGeometrySampleCount = 0;
+    for (const localIndex of localIndices) {
+      const value = trace.range.values[localIndex];
+      if (trace.range.validity[localIndex] !== 1 || value === undefined || !Number.isFinite(value)) continue;
+      if (!distributionValueInsideGeometry(value, rangeMin, rangeMax)) outsideGeometrySampleCount += 1;
+    }
     return {
       label: scope.label,
       trace,
@@ -521,6 +545,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       binValues: metricBins(trace, localIndices, binCount, rangeMin, rangeMax, metric),
       color,
       qualification,
+      outsideGeometrySampleCount,
     };
   };
 
@@ -585,21 +610,43 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       return;
     }
 
-    const resolvedBinCount = binMode === 'manual'
-      ? Math.max(1, Math.min(512, Math.floor(Number(binCountInput.value) || 20)))
-      : autoBinCountFromValues(allValues);
-    binCountInput.value = String(resolvedBinCount);
+    let rangeMin = extent.min;
+    let rangeMax = extent.max;
+    let resolvedBinCount: number;
+    if (binMode === 'fixed') {
+      try {
+        const geometry = resolveFixedDistributionGeometry({
+          min: Number(fixedMinInput.value),
+          max: Number(fixedMaxInput.value),
+          width: Number(fixedWidthInput.value),
+          maximumBinCount: 512,
+        });
+        rangeMin = geometry.min;
+        rangeMax = geometry.max;
+        resolvedBinCount = geometry.binCount;
+      } catch (error) {
+        empty.hidden = false;
+        empty.querySelector('strong')!.textContent = 'Fixed Distribution geometry is invalid.';
+        empty.querySelector('span')!.textContent = error instanceof Error ? error.message : String(error);
+        canvas.hidden = true; statsPanel.replaceChildren(); legend.replaceChildren(); return;
+      }
+    } else {
+      resolvedBinCount = binMode === 'manual'
+        ? Math.max(1, Math.min(512, Math.floor(Number(binCountInput.value) || 20)))
+        : autoBinCountFromValues(allValues);
+      binCountInput.value = String(resolvedBinCount);
+    }
 
-    const series = available.map((item) => buildSeries(item.trace, item.request.scope, item.qualification, resolvedBinCount, extent.min, extent.max, item.request.color));
+    const series = available.map((item) => buildSeries(item.trace, item.request.scope, item.qualification, resolvedBinCount, rangeMin, rangeMax, item.request.color));
     if (generation !== renderGeneration) return;
     lastSeries = series;
-    lastRangeMin = extent.min;
-    lastRangeMax = extent.max;
+    lastRangeMin = rangeMin;
+    lastRangeMax = rangeMax;
     empty.hidden = true;
     canvas.hidden = false;
     renderLegend(series);
     renderStats(series);
-    renderChart(series, extent.min, extent.max);
+    renderChart(series, rangeMin, rangeMax);
     exportCsvButton.disabled = false;
   };
 
@@ -668,7 +715,11 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     setSelectIfAvailable(scopeSelect, preset.scope);
     setSelectIfAvailable(qualificationSelect, preset.qualificationId);
     metric = preset.metric; metricSelect.value = metric;
-    binMode = preset.binMode; binModeSelect.value = binMode; binCountInput.value = preset.binCount; binCountInput.hidden = binMode !== 'manual';
+    binMode = preset.binMode; binModeSelect.value = binMode; binCountInput.value = preset.binCount;
+    fixedMinInput.value = preset.fixedMin ?? fixedMinInput.value;
+    fixedMaxInput.value = preset.fixedMax ?? fixedMaxInput.value;
+    fixedWidthInput.value = preset.fixedWidth ?? fixedWidthInput.value;
+    syncBinGeometryControls();
     display = preset.display; displaySelect.value = display;
     compare = preset.compare; compareToggle.checked = compare; compareControls.hidden = !compare;
     setSelectIfAvailable(compareScopeSelect, preset.compareScope);
@@ -710,6 +761,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
         inputSampleCount: series.qualification.inputSampleCount,
         eligibleSampleCount: series.qualification.eligibleSampleCount,
         rejectedSampleCount: series.qualification.rejectedSampleCount,
+        outsideGeometrySampleCount: series.outsideGeometrySampleCount,
       })),
     });
     if (exported.binRowCount === 0) return;
@@ -721,8 +773,11 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   compareScopeSelect.addEventListener('change', () => { void render(); });
   qualificationSelect.addEventListener('change', () => { void render(); });
   metricSelect.addEventListener('change', () => { metric = metricSelect.value === 'percent' ? 'percent' : metricSelect.value === 'time' ? 'time' : 'count'; void render(); });
-  binModeSelect.addEventListener('change', () => { binMode = binModeSelect.value === 'manual' ? 'manual' : 'auto'; binCountInput.hidden = binMode !== 'manual'; void render(); });
+  binModeSelect.addEventListener('change', () => { binMode = binModeSelect.value === 'manual' ? 'manual' : binModeSelect.value === 'fixed' ? 'fixed' : 'auto'; syncBinGeometryControls(); void render(); });
   binCountInput.addEventListener('change', () => { void render(); });
+  fixedMinInput.addEventListener('change', () => { void render(); });
+  fixedMaxInput.addEventListener('change', () => { void render(); });
+  fixedWidthInput.addEventListener('change', () => { void render(); });
   displaySelect.addEventListener('change', () => { display = displaySelect.value === 'cumulative' ? 'cumulative' : 'histogram'; void render(); });
   compareToggle.addEventListener('change', () => { compare = compareToggle.checked; compareControls.hidden = !compare; refreshScopeSelectors(); void render(); });
 
@@ -747,6 +802,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   };
 
   populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels);
+  syncBinGeometryControls();
   refreshScopeSelectors();
   populatePresetSelect();
   return { element: root, setContext, refresh: () => { void render(); } };

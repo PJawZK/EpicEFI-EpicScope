@@ -18,7 +18,7 @@ describe('Distribution preset storage', () => {
     const storage = await import('../../apps/web/src/state/histogram-distribution-storage');
     const preset = {
       id: 'dist-1', name: 'RPM compare', channelId: 'rpm', scope: 'ab', qualificationId: 'warm',
-      metric: 'percent' as const, binMode: 'manual' as const, binCount: '32', display: 'cumulative' as const,
+      metric: 'percent' as const, binMode: 'fixed' as const, binCount: '32', fixedMin: '0', fixedMax: '250', fixedWidth: '5', display: 'cumulative' as const,
       compare: true, compareScope: 'full',
     };
     expect(storage.saveHistogramDistributionPresets([preset])).toBe(true);

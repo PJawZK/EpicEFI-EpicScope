@@ -129,7 +129,7 @@ Distribution currently supports:
 - physical channels and saved Math Channels;
 - shared Qualification;
 - Count / % Samples / Time Y-axis modes;
-- automatic/manual bin count;
+- automatic/manual bin count plus explicit fixed min/max/bin-width geometry for reproducible repeated tests;
 - Histogram/Cumulative presentation;
 - mean, median, standard deviation, min/max and percentile summaries;
 - optional second scope comparison;
@@ -147,10 +147,7 @@ Distribution currently supports:
 
 ### Distribution worthwhile future work
 
-The setup-persistence and export maturity pass is complete. Remaining improvements are narrower:
-
-- explicit fixed min/max/bin-width geometry for reproducible repeated tests;
-- deeper consolidation around shared histogram-core primitives where that reduces duplicate definitions without changing behavior.
+The research-driven Distribution maturity pass is complete, including reproducible fixed geometry. Remaining work is implementation cleanup only, such as deeper consolidation around shared histogram-core primitives where that reduces duplicate definitions without changing behavior.
 
 ## Scatter — current state
 

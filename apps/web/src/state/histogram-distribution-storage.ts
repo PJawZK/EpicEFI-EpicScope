@@ -1,5 +1,5 @@
 export type HistogramDistributionMetric = 'count' | 'percent' | 'time';
-export type HistogramDistributionBinMode = 'auto' | 'manual';
+export type HistogramDistributionBinMode = 'auto' | 'manual' | 'fixed';
 export type HistogramDistributionDisplay = 'histogram' | 'cumulative';
 
 export interface HistogramDistributionPresetState {
@@ -11,6 +11,9 @@ export interface HistogramDistributionPresetState {
   readonly metric: HistogramDistributionMetric;
   readonly binMode: HistogramDistributionBinMode;
   readonly binCount: string;
+  readonly fixedMin?: string;
+  readonly fixedMax?: string;
+  readonly fixedWidth?: string;
   readonly display: HistogramDistributionDisplay;
   readonly compare: boolean;
   readonly compareScope: string;
@@ -18,7 +21,7 @@ export interface HistogramDistributionPresetState {
 
 const PRESET_KEY = 'epicscope.histogram.distribution-presets.v1';
 const metricValues = new Set<HistogramDistributionMetric>(['count', 'percent', 'time']);
-const binModeValues = new Set<HistogramDistributionBinMode>(['auto', 'manual']);
+const binModeValues = new Set<HistogramDistributionBinMode>(['auto', 'manual', 'fixed']);
 const displayValues = new Set<HistogramDistributionDisplay>(['histogram', 'cumulative']);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -35,6 +38,9 @@ function isPreset(value: unknown): value is HistogramDistributionPresetState {
     && metricValues.has(value.metric as HistogramDistributionMetric)
     && binModeValues.has(value.binMode as HistogramDistributionBinMode)
     && isString(value.binCount)
+    && (value.fixedMin === undefined || isString(value.fixedMin))
+    && (value.fixedMax === undefined || isString(value.fixedMax))
+    && (value.fixedWidth === undefined || isString(value.fixedWidth))
     && displayValues.has(value.display as HistogramDistributionDisplay)
     && typeof value.compare === 'boolean'
     && isString(value.compareScope);
