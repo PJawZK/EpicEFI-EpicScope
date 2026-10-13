@@ -14,6 +14,7 @@ export interface GraphPaneState {
 export type FreeformArrange = 'mosaic' | 'columns' | 'rows' | 'cascade' | 'custom';
 
 export function paneCountForLayout(layout: GraphWorkspaceLayout): number {
+  if (layout === 'dual') return 2;
   if (layout === 'grid4') return 4;
   if (layout === 'grid5' || layout === 'freeform') return 5;
   if (layout === 'grid6') return 6;
