@@ -5,7 +5,10 @@ import {
   legacyBuiltInWorkspaceRuntimeId,
   materializeStarterWorkspace,
 } from '../../apps/web/src/state/prepopulated-workspace-runtime';
-import { GENERAL_SINGLE_WORKSPACE } from '../../apps/web/src/state/built-in-workspace-templates';
+import {
+  GENERAL_SINGLE_WORKSPACE,
+  IDLE_DUAL_WORKSPACE,
+} from '../../apps/web/src/state/built-in-workspace-templates';
 
 function channel(id: string, sourceName = id, displayName = sourceName): ChannelDefinition {
   return {
@@ -38,6 +41,17 @@ const liveChannels = (): ChannelDefinition[] => [
   channel('correctedIgnitionAdvance'),
 ];
 
+const idleRecordedChannels = (): ChannelDefinition[] => [
+  channel('ini:RPMValue', 'RPMValue', 'RPM'),
+  channel('ini:idleTarget', 'idleTarget', 'Idle target'),
+  channel('ini:MAPValue', 'MAPValue', 'MAP'),
+  channel('ini:TPSValue', 'TPSValue', 'TPS'),
+  channel('ini:currentIdlePosition', 'currentIdlePosition', 'Idle final position'),
+  channel('ini:correctedIgnitionAdvance', 'correctedIgnitionAdvance', 'Timing: ignition'),
+  channel('ini:coolant', 'coolant', 'Coolant temp'),
+  channel('ini:lambdaValue', 'lambdaValue', 'Lambda'),
+];
+
 describe('pre-populated starter workspace runtime', () => {
   it('materializes General as an ordinary caller-owned workspace', () => {
     const result = materializeStarterWorkspace(
@@ -60,6 +74,31 @@ describe('pre-populated starter workspace runtime', () => {
       'ini:correctedIgnitionAdvance',
     ]);
     expect(result.workspace.panes?.[0]?.channelIds).toEqual(result.workspace.channelIds);
+  });
+
+  it('materializes Idle as an ordinary two-pane caller-owned workspace', () => {
+    const result = materializeStarterWorkspace(
+      IDLE_DUAL_WORKSPACE,
+      idleRecordedChannels(),
+      'graph-idle',
+    );
+
+    expect(result.workspace.id).toBe('graph-idle');
+    expect(result.workspace.name).toBe('Idle');
+    expect(result.workspace.layout).toBe('dual');
+    expect(result.workspace.panes?.[0]?.channelIds).toEqual([
+      'ini:RPMValue',
+      'ini:idleTarget',
+      'ini:MAPValue',
+      'ini:TPSValue',
+    ]);
+    expect(result.workspace.panes?.[1]?.channelIds).toEqual([
+      'ini:currentIdlePosition',
+      'ini:correctedIgnitionAdvance',
+      'ini:coolant',
+      'ini:lambdaValue',
+    ]);
+    expect(result.resolution.unresolvedRequiredRoleIds).toEqual([]);
   });
 
   it('resolves separate new starter instances against the current source catalog', () => {

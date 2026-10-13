@@ -97,4 +97,26 @@ describe('semantic channel roles', () => {
     ]);
     expect(ignition.channel?.id).toBe('correctedIgnitionAdvance');
   });
+
+  it('uses the same canonical idle target and air-command channels as the Idle analyzer', () => {
+    const channels = [
+      channel('idleTarget', 'idleTarget', 'Idle target'),
+      channel('currentIdlePosition', 'currentIdlePosition', 'Idle final position'),
+      channel('dcIdleTarget', 'dcIdleTarget', 'DC idle target'),
+      channel('IdlePosition', 'IdlePosition', 'Idle valve position'),
+    ];
+
+    expect(resolveSemanticChannelRole('idle.target', channels).channel?.id).toBe('idleTarget');
+    expect(resolveSemanticChannelRole('idle.airCommand', channels).channel?.id).toBe('currentIdlePosition');
+  });
+
+  it('keeps generic idle roles separate from DC valve target/feedback detail', () => {
+    expect(resolveSemanticChannelRole('idle.target', [
+      channel('dcIdleTarget', 'dcIdleTarget', 'DC idle target'),
+    ]).channel).toBeUndefined();
+
+    expect(resolveSemanticChannelRole('idle.airCommand', [
+      channel('IdlePosition', 'IdlePosition', 'Idle valve position'),
+    ]).channel).toBeUndefined();
+  });
 });

@@ -1,0 +1,36 @@
+.graph-workspace--dual {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.graph-selector-new-options {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0 0 12px;
+}
+
+.graph-selector-new-options[hidden] {
+  display: none;
+}
+
+.graph-selector-new-label {
+  padding: 3px 6px 1px;
+  color: #718796;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.graph-selector-new-options button {
+  width: 100%;
+  text-align: left;
+}
+
+.graph-selector-template-detail {
+  display: block;
+  margin-top: 1px;
+  color: #718796;
+  font-size: 9px;
+  font-weight: 400;
+}

@@ -25,6 +25,7 @@ export interface BuiltInWorkspaceTemplate {
   readonly name: string;
   readonly layout: GraphWorkspaceLayout;
   readonly panes: readonly BuiltInWorkspacePaneTemplate[];
+  readonly description?: string;
   readonly developmentOnly?: boolean;
 }
 
@@ -61,6 +62,7 @@ export type ResolvedStarterWorkspace = ResolvedBuiltInWorkspace;
 export const GENERAL_SINGLE_WORKSPACE: StarterWorkspaceTemplate = {
   id: 'single-resolver-test',
   name: 'General',
+  description: 'Single-pane engine overview.',
   layout: 'single',
   panes: [{
     id: 'pane-1',
@@ -76,6 +78,47 @@ export const GENERAL_SINGLE_WORKSPACE: StarterWorkspaceTemplate = {
     ],
   }],
 };
+
+/**
+ * First multi-pane starter. It deliberately uses generic idle-control semantics so the workspace
+ * remains portable across DC valve, IAC and ETB implementations. ECU-specific controller detail
+ * belongs in the Idle analyzer rather than in this starter definition.
+ */
+export const IDLE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'idle-dual',
+  name: 'Idle',
+  description: 'Dual-pane idle speed and actuator overview.',
+  layout: 'dual',
+  panes: [
+    {
+      id: 'pane-1',
+      roles: [
+        { roleId: 'engine.rpm', requirement: 'required' },
+        { roleId: 'idle.target', requirement: 'required' },
+        { roleId: 'engine.map', requirement: 'preferred' },
+        { roleId: 'engine.throttle.position', requirement: 'preferred' },
+      ],
+    },
+    {
+      id: 'pane-2',
+      roles: [
+        { roleId: 'idle.airCommand', requirement: 'preferred' },
+        { roleId: 'ignition.advance', requirement: 'preferred' },
+        { roleId: 'temperature.coolant', requirement: 'preferred' },
+        { roleId: 'fuel.lambda', requirement: 'optional' },
+      ],
+    },
+  ],
+};
+
+export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
+  GENERAL_SINGLE_WORKSPACE,
+  IDLE_DUAL_WORKSPACE,
+]);
+
+export function starterWorkspaceTemplate(id: string): StarterWorkspaceTemplate | undefined {
+  return STARTER_WORKSPACE_TEMPLATES.find((template) => template.id === id);
+}
 
 /** Compatibility export while Logger/tests still refer to the validation-era symbol name. */
 export const SINGLE_RESOLVER_TEST_WORKSPACE = GENERAL_SINGLE_WORKSPACE;

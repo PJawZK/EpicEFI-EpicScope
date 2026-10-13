@@ -26,7 +26,7 @@ export interface InspectorWorkspaceState {
   readonly sortAscending: boolean;
 }
 
-export type GraphWorkspaceLayout = 'single' | 'grid4' | 'grid5' | 'grid6' | 'freeform';
+export type GraphWorkspaceLayout = 'single' | 'dual' | 'grid4' | 'grid5' | 'grid6' | 'freeform';
 
 export interface GraphPaneGeometry {
   readonly x: number;
@@ -101,8 +101,8 @@ export function createWorkspaceHistory<T>(
   };
 
   const push = (state: T): void => {
-    const current = entries[index];
-    if (current !== undefined && equals(current, state)) return;
+    const current = index >= 0 ? entries[index] : undefined;
+    if (current && equals(current, state)) return;
     entries = entries.slice(0, index + 1);
     entries.push(clone(state));
     if (entries.length > limit) entries.shift();
@@ -112,15 +112,13 @@ export function createWorkspaceHistory<T>(
   const undo = (): T | undefined => {
     if (index <= 0) return undefined;
     index -= 1;
-    const state = entries[index];
-    return state === undefined ? undefined : clone(state);
+    return clone(entries[index]!);
   };
 
   const redo = (): T | undefined => {
     if (index < 0 || index >= entries.length - 1) return undefined;
     index += 1;
-    const state = entries[index];
-    return state === undefined ? undefined : clone(state);
+    return clone(entries[index]!);
   };
 
   return {
@@ -128,10 +126,7 @@ export function createWorkspaceHistory<T>(
     push,
     undo,
     redo,
-    current: () => {
-      const state = entries[index];
-      return state === undefined ? undefined : clone(state);
-    },
+    current: () => index >= 0 ? clone(entries[index]!) : undefined,
     canUndo: () => index > 0,
     canRedo: () => index >= 0 && index < entries.length - 1,
   };

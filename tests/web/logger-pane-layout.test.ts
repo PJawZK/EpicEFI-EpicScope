@@ -10,6 +10,7 @@ import {
 describe('logger pane layout state', () => {
   it('maps workspace layouts to visible pane counts', () => {
     expect(paneCountForLayout('single')).toBe(1);
+    expect(paneCountForLayout('dual')).toBe(2);
     expect(paneCountForLayout('grid4')).toBe(4);
     expect(paneCountForLayout('grid5')).toBe(5);
     expect(paneCountForLayout('freeform')).toBe(5);

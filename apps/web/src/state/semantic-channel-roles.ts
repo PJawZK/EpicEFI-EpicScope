@@ -8,7 +8,9 @@ export type SemanticChannelRoleId =
   | 'temperature.intakeAir'
   | 'electrical.batteryVoltage'
   | 'fuel.lambda'
-  | 'ignition.advance';
+  | 'ignition.advance'
+  | 'idle.target'
+  | 'idle.airCommand';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -117,6 +119,37 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     ],
     include: [/corrected.*ignition.*advance/i, /ignition.*advance/i, /spark.*advance/i, /timing.*advance/i],
     exclude: [/base/i, /target/i, /correction/i, /table/i, /retard/i],
+  },
+  'idle.target': {
+    id: 'idle.target',
+    displayName: 'Idle Target',
+    aliases: [
+      'idleTarget',
+      'Idle Target',
+      'Idle RPM Target',
+      'Target Idle RPM',
+      'Target Idle Speed',
+    ],
+    include: [/idle.*(?:rpm|speed)?.*target/i, /target.*idle.*(?:rpm|speed)?/i],
+    exclude: [/position/i, /valve/i, /throttle/i, /etb/i, /dc.*idle/i],
+  },
+  'idle.airCommand': {
+    id: 'idle.airCommand',
+    displayName: 'Idle Air Command',
+    aliases: [
+      'currentIdlePosition',
+      'Idle Air Command',
+      'Idle Valve Duty',
+      'IAC Duty',
+      'Idle Position Command',
+      'Idle Valve Command',
+    ],
+    include: [
+      /current.*idle.*position/i,
+      /idle.*(?:air|valve|iac).*(?:command|duty)/i,
+      /(?:valve|iac).*idle.*(?:command|duty)/i,
+    ],
+    exclude: [/target/i, /actual/i, /feedback/i, /status/i, /term/i, /bias/i],
   },
 };
 
