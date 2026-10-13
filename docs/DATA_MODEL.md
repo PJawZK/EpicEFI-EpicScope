@@ -20,14 +20,14 @@ Log sources such as MLG, CSV, future MDF4 support, and later log formats normali
 
 Tune/configuration sources such as INI and MSQ normalize into source-context/tune concepts rather than being forced into the log model. INI may also contribute the stable runtime/output-channel catalog used to bind logs into persistent workspaces.
 
-Built-in graph workspaces add a semantic role layer above source-local/logical channel identities so task definitions are not tied to one ECU vendor or one acquisition source.
+Pre-populated graph starters add a semantic role layer above source-local/logical channel identities so task definitions are not tied to one ECU vendor or one acquisition source.
 
 Related authority:
 
 - `HANDOFF.md` — latest runtime/continuation state;
-- `PREPOPULATED_WORKSPACES.md` — product catalog and current built-in implementation;
+- `PREPOPULATED_WORKSPACES.md` — product catalog and current starter implementation;
 - `ARCHITECTURE.md` — semantic/capability/materialization boundaries;
-- `DECISIONS.md` — D-051–D-054 approved semantic workspace rules.
+- `DECISIONS.md` — D-051–D-055 approved semantic workspace rules.
 
 This document defines the initial authority. Exact TypeScript/native structures may evolve through approved decisions while preserving these responsibilities.
 
@@ -64,7 +64,7 @@ EpicScope distinguishes two persistence scopes inside presentation state:
 - named graph workspaces;
 - pane layout/geometry and active-pane identity;
 - stable logical channel assignments;
-- built-in workspace/template identity;
+- historical starter/template provenance where useful for compatibility, without implying continuing template ownership;
 - favorites and display preferences;
 - panel visibility/sizing;
 - reusable UI configuration that should survive opening/closing different logs.
@@ -178,7 +178,7 @@ engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
 engine.rpm → RPMValue → RPMValue      (ts_shim)
 ```
 
-The semantic layer allows a built-in workspace/analyzer to express intent without becoming a source-format or vendor-name parser.
+The semantic layer allows a starter template/analyzer to express intent without becoming a source-format or vendor-name parser.
 
 A role definition may contain:
 
@@ -254,9 +254,9 @@ The conceptual API should allow bounded queries such as:
 
 The data model must not require all values to be resident in memory.
 
-### Built-in workspace template
+### Starter workspace template
 
-A **BuiltInWorkspaceTemplate** is an immutable product-defined task template.
+A **StarterWorkspaceTemplate** is a product-defined task recipe used to create an initial graph workspace.
 
 It conceptually contains:
 
@@ -270,21 +270,23 @@ It conceptually contains:
 
 The template does not persist one source's concrete channel IDs as its product meaning.
 
-Materialization resolves semantic role slots against the authoritative channel set and produces the concrete channel assignments for the current source.
+Materialization resolves semantic role slots against the authoritative current channel set and creates concrete channel assignments in a new **ordinary editable workspace**.
 
-A built-in should use a reserved runtime identity (for example `built-in:*`) so it cannot overwrite or collide with an editable user workspace that happens to have the same visible name.
+Template identity and workspace identity are separate. Reusing a template creates another workspace; editing or deleting one materialized workspace does not modify the template or any other workspace.
 
-A duplicated built-in becomes a normal editable user workspace and must stop auto-repopulating.
+After materialization, the workspace is authoritative for its own layout and concrete assignments. Template logic must not automatically repopulate or reset it.
+
+Historical persisted IDs such as `built-in:*` are compatibility data only. They do not imply immutability, protected deletion, protected rename, or continued template ownership.
 
 ### Workspace role requirement
 
 Role requirement levels are:
 
-- **required** — central to the workspace purpose;
+- **required** — central to the starter purpose;
 - **preferred** — normally expected and materially useful;
 - **optional** — enhancement when available.
 
-Unresolved preferred/optional roles do not invalidate a workspace. Unresolved required roles are reported explicitly, but the workspace still degrades rather than fabricating data.
+Unresolved preferred/optional roles do not invalidate workspace creation. Unresolved required roles are reported explicitly, but the workspace still degrades rather than fabricating data.
 
 ### Timebase
 
@@ -442,7 +444,7 @@ Schema changes must follow one of these paths:
 
 Silent incompatibility is prohibited.
 
-Built-in template identity and user workspace identity must remain separate. Visible names are not sufficient identity for automatic migration or repopulation.
+Starter-template identity and user workspace identity remain separate. A template may optionally be recorded as provenance, but visible names and historical `built-in:*` prefixes are not authority for automatic repopulation.
 
 ## Performance constraint on model design
 
