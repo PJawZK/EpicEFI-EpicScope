@@ -13,18 +13,50 @@
   display: none;
 }
 
-.graph-selector-new-label {
-  padding: 3px 6px 1px;
-  color: #718796;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-
 .graph-selector-new-options button {
   width: 100%;
   text-align: left;
+}
+
+.graph-selector-template-flyout {
+  position: relative;
+}
+
+.graph-selector-template-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graph-selector-template-arrow {
+  flex: 0 0 auto;
+  color: #8aa0ae;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.graph-selector-template-panel {
+  position: absolute;
+  z-index: 40;
+  left: calc(100% + 5px);
+  top: -5px;
+  min-width: 220px;
+  padding: 5px;
+  border: 1px solid #385064;
+  border-radius: 5px;
+  background: #0d1822;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .52);
+}
+
+.graph-selector-template-panel[hidden] {
+  display: none;
+}
+
+.graph-selector-template-list {
+  display: grid;
+  gap: 2px;
 }
 
 .graph-selector-template-detail {
