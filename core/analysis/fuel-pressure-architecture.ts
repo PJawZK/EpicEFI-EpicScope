@@ -9,7 +9,7 @@ export interface FuelPressureArchitectureInput {
   readonly lowSidePressure?: NumericChannelRange;
   readonly railDifferential?: NumericChannelRange;
   readonly highSidePressure?: NumericChannelRange;
-  readonly sampleIndices: readonly number[];
+  readonly sampleIndices: ArrayLike<number>;
   readonly conventionalMinimumDifferential?: number;
   readonly gdiMinimumPressure?: number;
 }
@@ -82,11 +82,12 @@ function belowThresholdEvents(range: NumericChannelRange, indices: readonly numb
 }
 
 export function analyzeFuelPressureArchitecture(input: FuelPressureArchitectureInput): FuelPressureArchitectureResult {
+  const indices = Array.from({ length: input.sampleIndices.length }, (_, index) => input.sampleIndices[index]).filter((value): value is number => Number.isSafeInteger(value));
   const common = {
     architecture: input.architecture,
-    ...(input.lowSidePressure ? { lowSidePressure: aggregateNumericSamples(input.lowSidePressure, { sampleIndices: input.sampleIndices }) } : {}),
-    ...(input.railDifferential ? { railDifferential: aggregateNumericSamples(input.railDifferential, { sampleIndices: input.sampleIndices }) } : {}),
-    ...(input.highSidePressure ? { highSidePressure: aggregateNumericSamples(input.highSidePressure, { sampleIndices: input.sampleIndices }) } : {}),
+    ...(input.lowSidePressure ? { lowSidePressure: aggregateNumericSamples(input.lowSidePressure, { sampleIndices: indices }) } : {}),
+    ...(input.railDifferential ? { railDifferential: aggregateNumericSamples(input.railDifferential, { sampleIndices: indices }) } : {}),
+    ...(input.highSidePressure ? { highSidePressure: aggregateNumericSamples(input.highSidePressure, { sampleIndices: indices }) } : {}),
   } as const;
 
   if (input.architecture === 'gdi') {
@@ -94,10 +95,10 @@ export function analyzeFuelPressureArchitecture(input: FuelPressureArchitectureI
     return {
       ...common,
       pressureRole: input.highSidePressure ? 'high-side' : 'unavailable',
-      ...(input.highSidePressure ? { activePressure: aggregateNumericSamples(input.highSidePressure, { sampleIndices: input.sampleIndices }) } : {}),
+      ...(input.highSidePressure ? { activePressure: aggregateNumericSamples(input.highSidePressure, { sampleIndices: indices }) } : {}),
       ...(threshold !== undefined ? { threshold } : {}),
       pressureEvents: input.highSidePressure && threshold !== undefined
-        ? belowThresholdEvents(input.highSidePressure, input.sampleIndices, threshold)
+        ? belowThresholdEvents(input.highSidePressure, indices, threshold)
         : [],
     };
   }
@@ -106,10 +107,10 @@ export function analyzeFuelPressureArchitecture(input: FuelPressureArchitectureI
   return {
     ...common,
     pressureRole: input.railDifferential ? 'rail-differential' : 'unavailable',
-    ...(input.railDifferential ? { activePressure: aggregateNumericSamples(input.railDifferential, { sampleIndices: input.sampleIndices }) } : {}),
+    ...(input.railDifferential ? { activePressure: aggregateNumericSamples(input.railDifferential, { sampleIndices: indices }) } : {}),
     ...(threshold !== undefined ? { threshold } : {}),
     pressureEvents: input.railDifferential && threshold !== undefined
-      ? belowThresholdEvents(input.railDifferential, input.sampleIndices, threshold)
+      ? belowThresholdEvents(input.railDifferential, indices, threshold)
       : [],
   };
 }
