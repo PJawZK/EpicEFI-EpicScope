@@ -1,0 +1,37 @@
+name: Temporary final specialized starters
+
+on:
+  push:
+    branches:
+      - feat/final-specialized-starters
+
+permissions:
+  contents: write
+
+jobs:
+  transform:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/final-specialized-starters
+      - run: python .github/scripts/temp_final_specialized_starters.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Remove temporary workflow and transform
+        run: |
+          rm .github/workflows/temp-final-specialized-starters.yml
+          rm .github/scripts/temp_final_specialized_starters.py
+      - name: Commit product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: complete specialized starter catalog'
+          git push
