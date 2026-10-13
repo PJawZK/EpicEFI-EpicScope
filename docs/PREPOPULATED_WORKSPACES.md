@@ -25,6 +25,22 @@ After materialization, the resulting workspace is fully user-owned. It may be ed
 
 Template definitions remain reusable application data so a user can create another fresh workspace from the same starting point at any time.
 
+## Current creation flow
+
+PR #348 makes starter application explicit in the Logger graph selector:
+
+```text
+New graph
+├─ Blank graph
+└─ From template
+   ├─ General
+   └─ Idle
+```
+
+The **From template** list is generated from the starter catalog. It is not a second workspace store and it does not create protected instances.
+
+Each selection creates a normal `graph-*` workspace. After creation there is no special rename/delete/refresh behavior attached to the starter origin.
+
 ## Semantic resolution
 
 Starter templates bind to **semantic channel roles**, not hard-coded ECU channel IDs.
@@ -118,24 +134,26 @@ The template catalog is controlled application data. The generated workspace is 
 
 ## Layout catalog
 
-Initial target layouts:
+Implemented production layouts relevant to starter work:
 
 - **Single** — one full graph pane;
-- **Dual** — two stacked panes;
-- **Triple** — three stacked panes;
-- **Quad** — 2×2 panes;
-- **Focus + 2** — one large pane plus two smaller panes;
-- **Focus + 3** — one large pane plus three smaller panes;
-- **Six Pane** — six compact diagnostic panes.
+- **Dual** — two vertically stacked graph panes.
 
-Layout names describe geometry. Starter/workspace names describe diagnostic purpose.
+Existing Logger layouts also include 2×2 / 4 graphs, 2×3 / 5 graphs, 3×2 / 6 graphs and Freeform / 5 graphs.
+
+Longer-term starter geometry vocabulary may still include Triple, Quad, Focus + 2, Focus + 3 and Six Pane where a concrete starter benefits from them. Layout names describe geometry; starter/workspace names describe diagnostic purpose.
+
+`Dual` is a normal Logger layout, not an Idle-only rendering mode.
 
 ## Generic starter catalog
 
-Initial targets:
+Implemented production starters:
 
-- **General** — RPM, MAP, TPS, coolant temp, intake-air temp, battery voltage, AFR/Lambda and ignition advance;
-- **Idle** — RPM, idle target, MAP, TPS, idle actuator command/position, ignition advance, coolant temp, intake-air temp and AFR/Lambda;
+- **General** — Single layout; RPM, MAP, TPS, coolant temp, intake-air temp, battery voltage, Lambda and ignition advance;
+- **Idle** — Dual layout; RPM, idle target, MAP, TPS, idle-air command, ignition advance, coolant temp and Lambda.
+
+Planned generic starter families remain:
+
 - **Fuel** — RPM, MAP, TPS, AFR/Lambda, target, injector pulse width, injector duty, fuel correction, VE and fuel pressure where available;
 - **Ignition** — RPM, MAP/load, TPS, ignition advance, knock evidence where available, battery voltage, AFR/Lambda, coolant temp and intake-air temp;
 - **Boost** — RPM, MAP, TPS/load, boost target, wastegate command, upper/lower wastegate duty where available, boost error, EMAP and intake-air temp where available;
@@ -224,9 +242,9 @@ The historical validation implementation used `built-in:single-resolver-test` as
 
 The validated result still proves the useful architectural point: semantic roles can resolve correctly against recorded and live source families. What no longer follows from that proof is that a template must remain attached to a protected workspace instance.
 
-## First production starter — General
+## Production starter — General
 
-The first production starter uses a Single layout and these semantic roles:
+General uses a Single layout and these semantic roles:
 
 ```text
 Required
@@ -262,6 +280,62 @@ The visible starter/workspace name is simply **General**. `Single` describes its
 
 The expanded eight-role General resolver has automated coverage. One explicit real MLG + INI → Shim → MLG confirmation with all eight roles remains useful before describing all eight roles as runtime-validated.
 
+## Production starter — Idle
+
+Idle is the first multi-pane starter and the first production use of the Dual layout.
+
+Pane 1:
+
+```text
+Required
+- RPM
+- Idle Target
+
+Preferred
+- MAP
+- TPS
+```
+
+Pane 2:
+
+```text
+Preferred
+- Idle Air Command
+- Ignition Advance
+- Coolant Temp
+
+Optional
+- Lambda
+```
+
+The generic semantic identities added for this starter are:
+
+```text
+idle.target
+idle.airCommand
+```
+
+For the current EpicEFI schema, the preferred channel identities are:
+
+```text
+MLG + INI                    ts_shim
+ini:idleTarget               idleTarget
+ini:currentIdlePosition      currentIdlePosition
+```
+
+The generic Idle starter intentionally does not use `dcIdleTarget` as `idle.target` and does not use `IdlePosition` as `idle.airCommand`. Those are controller-specific target/feedback concepts and remain available to the specialized Idle analyzer or future capability-specific starters.
+
+PR #348 added automated coverage for:
+
+- the two new generic idle semantic roles;
+- exclusion of the DC-specific target/feedback identities from those generic roles;
+- the Idle two-pane template definition;
+- recorded EpicEFI resolution into both panes;
+- caller-owned materialization with `layout: 'dual'`;
+- `dual` visible-pane count behavior.
+
+Web CI run #1262 passed type-check, full tests and production build before merge.
+
 ## Ownership and persistence rules
 
 Once a starter has produced a workspace:
@@ -282,14 +356,13 @@ Existing persisted workspaces using a historical `built-in:*` ID are retained wi
 
 ## Next implementation direction
 
-After this lifecycle correction is merged and green:
+With explicit starter creation and the first multi-pane starter now merged:
 
-1. expose a deliberate **New graph/workspace → From template…** path;
-2. keep **Blank** as an ordinary creation option;
-3. extend semantic roles only as needed for the next starter;
-4. define the first multi-pane starter, with **Idle** the preferred architecture test;
-5. add further generic starters;
-6. add EpicEFI-specific starters behind capability checks;
-7. add persistent user/schema semantic overrides where automatic mapping is ambiguous.
+1. smoke-test **New graph → Blank graph / From template → General / Idle** in the hosted/local browser;
+2. confirm an Idle workspace created from recorded MLG + INI retains its user-owned assignments through MLG + INI → Shim → MLG transitions without template reapplication;
+3. extend semantic roles only as required by the next agreed starter;
+4. add further generic starters through the same catalog/materialization path;
+5. add EpicEFI-specific starters behind capability checks;
+6. add persistent user/schema semantic overrides where automatic mapping is genuinely ambiguous.
 
 All future starter implementations must reuse the same semantic resolver/materialization path rather than creating layout-specific resolver logic.
