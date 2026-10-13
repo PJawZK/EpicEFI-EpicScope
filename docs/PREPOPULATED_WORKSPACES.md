@@ -2,6 +2,13 @@
 
 This document is the current product and implementation target for EpicScope's built-in Logger graph layouts and task-oriented workspaces.
 
+Related authority:
+
+- [`HANDOFF.md`](HANDOFF.md) — present-tense continuation/runtime status;
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — semantic/capability layer and materialization boundaries;
+- [`DATA_MODEL.md`](DATA_MODEL.md) — semantic role/template concepts;
+- [`DECISIONS.md`](DECISIONS.md) — approved semantic workspace/naming/identity decisions.
+
 ## Core architecture
 
 Built-in workspaces bind to **semantic channel roles**, not hard-coded ECU channel IDs.
