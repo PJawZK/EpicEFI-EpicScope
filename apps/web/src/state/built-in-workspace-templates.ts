@@ -473,6 +473,61 @@ export const EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE: StarterWorkspaceTempl
   ],
 };
 
+export const EPICEFI_INJECTOR_IGNITION_TIMING_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-injector-ignition-timing-dual',
+  name: 'EpicEFI · Injector + Ignition Timing',
+  description: 'EpicEFI injection-event timing and ignition timing-attribution diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['fuel.injectionTiming', 'ignition.tableAdvance', 'ignition.corrections', 'ignition.advance'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'fuel.injectionTiming', requirement: 'required' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+      { roleId: 'fuel.injectorDuty', requirement: 'optional' },
+      { roleId: 'fuel.lambda', requirement: 'optional' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'ignition.tableAdvance', requirement: 'required' },
+      { roleId: 'ignition.baseAdvance', requirement: 'preferred' },
+      { roleId: 'ignition.advance', requirement: 'required' },
+      { roleId: 'ignition.corrections', requirement: 'required' },
+      { roleId: 'ignition.dwell', requirement: 'optional' },
+      { roleId: 'ignition.knockRetard', requirement: 'optional' },
+    ] },
+  ],
+};
+
+export const EPICEFI_ENGINE_PROTECTION_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
+  id: 'epicefi-engine-protection-dual',
+  name: 'EpicEFI · Engine Protection',
+  description: 'EpicEFI dynamic limit, cut-reason and engine-protection diagnostics.',
+  tier: 'epicefi',
+  availability: { allOfRoleIds: ['protection.stopEngineCode', 'protection.currentRevLimit', 'protection.fuelCutReason', 'protection.sparkCutReason'] },
+  layout: 'dual',
+  panes: [
+    { id: 'pane-1', roles: [
+      { roleId: 'engine.rpm', requirement: 'required' },
+      { roleId: 'protection.currentRevLimit', requirement: 'required' },
+      { roleId: 'temperature.coolant', requirement: 'preferred' },
+      { roleId: 'engine.oilPressure', requirement: 'preferred' },
+      { roleId: 'fuel.pressure', requirement: 'optional' },
+      { roleId: 'cooling.coolantPressure', requirement: 'optional' },
+      { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
+    ] },
+    { id: 'pane-2', roles: [
+      { roleId: 'protection.stopEngineCode', requirement: 'required' },
+      { roleId: 'protection.fuelCutReason', requirement: 'required' },
+      { roleId: 'protection.sparkCutReason', requirement: 'required' },
+      { roleId: 'protection.totalFuelCut', requirement: 'preferred' },
+      { roleId: 'protection.totalSparkCut', requirement: 'preferred' },
+      { roleId: 'protection.criticalError', requirement: 'preferred' },
+      { roleId: 'protection.warningActive', requirement: 'optional' },
+    ] },
+  ],
+};
+
 export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = Object.freeze([
   GENERAL_SINGLE_WORKSPACE,
   IDLE_DUAL_WORKSPACE,
@@ -491,6 +546,8 @@ export const STARTER_WORKSPACE_TEMPLATES: readonly StarterWorkspaceTemplate[] = 
   EPICEFI_ETB_CONTROL_DUAL_WORKSPACE,
   EPICEFI_DUAL_CHAMBER_BOOST_DUAL_WORKSPACE,
   EPICEFI_TRIGGER_SYNC_DETAILED_DUAL_WORKSPACE,
+  EPICEFI_INJECTOR_IGNITION_TIMING_DUAL_WORKSPACE,
+  EPICEFI_ENGINE_PROTECTION_DUAL_WORKSPACE,
 ]);
 
 export function starterWorkspaceAvailable(

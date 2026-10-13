@@ -79,7 +79,20 @@ export type SemanticChannelRoleId =
   | 'trigger.primaryRiseCount'
   | 'trigger.primaryFallCount'
   | 'trigger.camRiseCount'
-  | 'trigger.camFallCount';
+  | 'trigger.camFallCount'
+  | 'fuel.injectionTiming'
+  | 'ignition.tableAdvance'
+  | 'ignition.baseAdvance'
+  | 'ignition.corrections'
+  | 'protection.stopEngineCode'
+  | 'protection.currentRevLimit'
+  | 'protection.fuelCutReason'
+  | 'protection.sparkCutReason'
+  | 'protection.totalFuelCut'
+  | 'protection.totalSparkCut'
+  | 'protection.criticalError'
+  | 'protection.warningActive'
+  | 'cooling.coolantPressure';
 
 export interface SemanticChannelRoleDefinition {
   readonly id: SemanticChannelRoleId;
@@ -421,6 +434,20 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'trigger.primaryFallCount': { id: 'trigger.primaryFallCount', displayName: 'Primary Fall Count', aliases: ['triggerPrimaryFall', 'Primary Trigger Fall Count'], include: [/trigger.*primary.*fall/i], exclude: [/pin/i, /mode/i, /config/i] },
   'trigger.camRiseCount': { id: 'trigger.camRiseCount', displayName: 'Cam Rise Count', aliases: ['vvtEventRiseCounter1', 'triggerVvtRise', 'Cam Rise Count'], include: [/(?:vvt|cam).*rise.*(?:count|counter)/i], exclude: [/config/i] },
   'trigger.camFallCount': { id: 'trigger.camFallCount', displayName: 'Cam Fall Count', aliases: ['vvtEventFallCounter1', 'triggerVvtFall', 'Cam Fall Count'], include: [/(?:vvt|cam).*fall.*(?:count|counter)/i], exclude: [/config/i] },
+  'fuel.injectionTiming': { id: 'fuel.injectionTiming', displayName: 'Injection Timing SOI', aliases: ['injectionOffset', 'Fuel: Injection timing SOI', 'Injection Timing SOI'], include: [/injection.*timing.*soi/i, /^injection.*offset$/i, /start.*of.*injection/i], exclude: [/mode/i, /table/i, /phase.*table/i, /assist/i, /start.*deg/i, /end.*deg/i, /axis/i, /config/i] },
+  'ignition.tableAdvance': { id: 'ignition.tableAdvance', displayName: 'Raw Ignition Table Advance', aliases: ['ignitionTableAdvance', 'Ignition: Raw table advance', 'Raw Ignition Table Advance'], include: [/^ignition.*raw.*table.*advance$/i, /^ignitiontableadvance$/i], exclude: [/config/i, /axis/i, /bin/i] },
+  'ignition.baseAdvance': { id: 'ignition.baseAdvance', displayName: 'Base Ignition Advance', aliases: ['baseIgnitionAdvance', 'Timing: base ignition', 'Base Ignition Advance'], include: [/^base.*ignition.*advance$/i, /^timing.*base.*ignition$/i], exclude: [/table/i, /config/i, /cranking/i] },
+  'ignition.corrections': { id: 'ignition.corrections', displayName: 'Ignition Corrections', aliases: ['ignitionCorrections', 'ignitionAdvanceCorrections', 'Ignition: Corrections SUM', 'Ignition: Advance corrections'], include: [/ignition.*correction/i], exclude: [/table/i, /config/i, /limit/i, /individual/i] },
+  'protection.stopEngineCode': { id: 'protection.stopEngineCode', displayName: 'Stop Engine Code', aliases: ['stopEngineCode', 'Stop Engine Code'], include: [/^stop.*engine.*code$/i], exclude: [/config/i, /enable/i] },
+  'protection.currentRevLimit': { id: 'protection.currentRevLimit', displayName: 'Current Rev Limit', aliases: ['rev_limit', 'Current Rev Limit'], include: [/^current.*rev.*limit$/i], exclude: [/minimum/i, /maximum/i, /soft/i, /hard/i, /window/i, /table/i, /config/i, /adder/i] },
+  'protection.fuelCutReason': { id: 'protection.fuelCutReason', displayName: 'Fuel Cut Reason', aliases: ['fuelCutReason', 'Fuel: Cut Code', 'Fuel Cut Reason'], include: [/^fuel.*cut.*(?:reason|code)$/i], exclude: [/blink/i, /enable/i, /config/i, /hard.*limit/i] },
+  'protection.sparkCutReason': { id: 'protection.sparkCutReason', displayName: 'Spark Cut Reason', aliases: ['sparkCutReason', 'Ign: Cut Code', 'Spark Cut Reason'], include: [/(?:spark|ignition|ign).*cut.*(?:reason|code)/i], exclude: [/blink/i, /enable/i, /config/i, /hard.*limit/i] },
+  'protection.totalFuelCut': { id: 'protection.totalFuelCut', displayName: 'Total Fuel Cut', aliases: ['totalFuelCut', 'Total Fuel Cut'], include: [/^total.*fuel.*cut$/i], exclude: [/config/i, /enable/i] },
+  'protection.totalSparkCut': { id: 'protection.totalSparkCut', displayName: 'Total Spark Cut', aliases: ['totalSparkCut', 'Total Spark Cut'], include: [/^total.*spark.*cut$/i], exclude: [/config/i, /enable/i] },
+  'protection.criticalError': { id: 'protection.criticalError', displayName: 'Critical Error', aliases: ['hasCriticalError', 'Error: Active', 'Critical Error'], include: [/critical.*error/i, /^error.*active$/i], exclude: [/code/i, /count/i, /config/i] },
+  'protection.warningActive': { id: 'protection.warningActive', displayName: 'Warning Active', aliases: ['isWarnNow', 'Warning: Active', 'Warning Active'], include: [/warning.*active/i, /^is.*warn.*now$/i], exclude: [/counter/i, /code/i, /config/i] },
+  'cooling.coolantPressure': { id: 'cooling.coolantPressure', displayName: 'Coolant Pressure', aliases: ['coolantPressure', 'Coolant Pressure'], include: [/^coolant.*pressure$/i], exclude: [/raw/i, /minimum/i, /maximum/i, /limit/i, /sensor.*config/i] },
+
 };
 
 export const semanticChannelRoles: readonly SemanticChannelRoleDefinition[] = Object.freeze(
