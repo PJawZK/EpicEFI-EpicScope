@@ -1,4 +1,4 @@
-import { compileCalculatedField, evaluateCalculatedFieldRange } from '../../../../core/analysis/calculated-field';
+import { compileCalculatedField, evaluateCalculatedFieldRange, splitCalculatedFieldOffsetReference, type CalculatedFieldRangeBinding } from '../../../../core/analysis/calculated-field';
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext } from './histogram-page';
 import {
@@ -112,9 +112,12 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
           <label class="math-channel-formula-field"><span>Formula</span><textarea class="math-channel-formula" spellcheck="false" placeholder="[Fuel Pressure] - [MAP]"></textarea></label>
           <div class="math-channel-helper-row" aria-label="Formula helpers">
             <button type="button" data-insert=" + ">＋</button><button type="button" data-insert=" - ">−</button><button type="button" data-insert=" * ">×</button><button type="button" data-insert=" / ">÷</button><button type="button" data-insert=" % ">%</button><button type="button" data-insert=" ^ ">xʸ</button>
+            <button type="button" data-insert=" &gt; " title="Greater than">&gt;</button><button type="button" data-insert=" &lt; " title="Less than">&lt;</button><button type="button" data-insert=" &gt;= ">&gt;=</button><button type="button" data-insert=" &lt;= ">&lt;=</button><button type="button" data-insert=" == ">==</button><button type="button" data-insert=" != ">!=</button>
+            <button type="button" data-insert=" AND ">AND</button><button type="button" data-insert=" OR ">OR</button><button type="button" data-insert=" NOT ">NOT</button>
+            <button type="button" data-insert="if()">if()</button><button type="button" data-insert="lag(, 1)">lag()</button><button type="button" data-insert="delta(, 1)">delta()</button><button type="button" data-insert="avg(, 5)">avg()</button><button type="button" data-insert="rate(, 1)">rate()</button>
             <button type="button" data-insert="abs()">abs()</button><button type="button" data-insert="min()">min()</button><button type="button" data-insert="max()">max()</button><button type="button" data-insert="clamp()">clamp()</button><button type="button" data-insert="sqrt()">sqrt()</button><button type="button" data-insert="pow()">pow()</button><button type="button" data-insert="round()">round()</button>
           </div>
-          <p class="math-channel-help">Click a source channel below to insert a <strong>[Channel Name]</strong> reference. Examples: <code>[Fuel Pressure] - [MAP]</code> · <code>clamp([TPS], 0, 100)</code> · <code>[Lambda] * 14.1</code>.</p>
+          <p class="math-channel-help">Click a source channel to insert <strong>[Channel Name]</strong>. Historical references use <code>[RPM-1]</code>. Temporal helpers accept a source reference plus samples/window: <code>delta([RPM], 1)</code> · <code>avg([TPS], 5)</code> · <code>rate([MAP], 1)</code>. Conditions return 1/0 and can use <code>AND</code>, <code>OR</code>, <code>NOT</code> and lazy <code>if(condition, true, false)</code>.</p>
           <div class="math-channel-validation">Enter a name and formula to preview the result.</div>
           <div class="math-channel-actions"><button type="button" class="math-channel-save">Save channel</button><button type="button" class="math-channel-reset">Reset editor</button><span></span><button type="button" class="math-channel-delete" hidden>Delete channel</button></div>
         </section>
@@ -158,16 +161,27 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     return node;
   };
 
-  const resolveReference = (reference: string): ChannelDefinition => {
+  const exactReference = (reference: string): ChannelDefinition | undefined => {
     const normalized = reference.trim().toLocaleLowerCase();
     const matches = context.channels.filter((channel) =>
-      channel.id === reference
-      || channelLabel(channel).toLocaleLowerCase() === normalized
-      || channel.sourceName.toLocaleLowerCase() === normalized,
+      !channel.id.startsWith('formula:')
+      && (channel.id === reference
+        || channelLabel(channel).toLocaleLowerCase() === normalized
+        || channel.sourceName.toLocaleLowerCase() === normalized),
     );
-    if (matches.length === 0) throw new RangeError(`Channel not found: [${reference}]`);
     if (matches.length > 1) throw new RangeError(`Channel reference is ambiguous: [${reference}]`);
-    return matches[0]!;
+    return matches[0];
+  };
+
+  const resolveReference = (reference: string): { readonly channel: ChannelDefinition; readonly sampleOffset: number } => {
+    const exact = exactReference(reference);
+    if (exact) return { channel: exact, sampleOffset: 0 };
+    const historical = splitCalculatedFieldOffsetReference(reference);
+    if (historical) {
+      const base = exactReference(historical.baseReference);
+      if (base) return { channel: base, sampleOffset: historical.sampleOffset };
+    }
+    throw new RangeError(`Channel not found: [${reference}]`);
   };
 
   const notifyChanged = (): void => {
@@ -260,20 +274,20 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     }
     try {
       const program = compileCalculatedField(expression);
-      const references = new Map<string, ChannelDefinition>();
+      const references = new Map<string, { readonly channel: ChannelDefinition; readonly sampleOffset: number }>();
       for (const reference of program.references) references.set(reference, resolveReference(reference));
       validation.className = 'math-channel-validation';
       validation.textContent = `Valid formula · ${program.references.length} source channel${program.references.length === 1 ? '' : 's'} · loading preview…`;
       const startMs = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs ? Math.min(context.aTimeMs, context.bTimeMs) : undefined;
       const endMs = startMs !== undefined ? Math.max(context.aTimeMs!, context.bTimeMs!) : undefined;
-      const traces = await context.loadTraces([...new Set([...references.values()].map((channel) => channel.id))], startMs, endMs);
+      const traces = await context.loadTraces([...new Set([...references.values()].map((resolved) => resolved.channel.id))], startMs, endMs);
       if (generation !== previewGeneration) return;
       const byId = new Map(traces.map((trace) => [trace.channel.id, trace]));
-      const ranges = new Map<string, NumericChannelRange>();
-      for (const [reference, channel] of references) {
-        const trace = byId.get(channel.id);
+      const ranges = new Map<string, CalculatedFieldRangeBinding>();
+      for (const [reference, resolved] of references) {
+        const trace = byId.get(resolved.channel.id);
         if (!trace) throw new RangeError(`Preview data unavailable for [${reference}]`);
-        ranges.set(reference, trace.range);
+        ranges.set(reference, { range: trace.range, sampleOffset: resolved.sampleOffset });
       }
       const evaluated = evaluateCalculatedFieldRange(program, ranges);
       const values = validValues(evaluated);

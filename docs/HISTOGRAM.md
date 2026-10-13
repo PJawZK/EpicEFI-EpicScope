@@ -184,13 +184,21 @@ Current behavior includes:
 
 - saved named formulas;
 - source-channel browser/search;
+- arithmetic plus comparison/logical expressions (`>`, `<`, `>=`, `<=`, `==`, `!=`, `AND`, `OR`, `NOT`);
+- lazy `if(condition, true, false)` conditionals;
+- MLV-style historical sample references such as `[RPM-1]`;
+- sample-aware `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()` helpers;
 - formula helpers and validation;
 - numeric preview;
 - stable `ƒ` identity/units in Histogram channel selectors;
 - use in Table Generator, Distribution and Scatter;
 - use inside shared Histogram Qualification definitions.
 
-Math formulas currently resolve physical channel dependencies. Nested saved Math Channel references are not silently introduced.
+Historical suffixes are resolved exact-name first: a real physical channel literally named `RPM-1` wins; otherwise `[RPM-1]` means one source sample before `[RPM]`. Temporal history is evaluated within the loaded source range, so the first lookback/window samples are intentionally invalid rather than fabricated. `rate([Channel], N)` uses recorded timestamps and returns change per second. Temporal sample/window counts are bounded to 4096.
+
+Math formulas continue to resolve physical channel dependencies. Nested saved Math Channel references are not silently introduced; composition remains explicit and cycle-free.
+
+At this checkpoint the research-driven generic Histogram maturity gaps are closed across Table Generator, Distribution, Scatter and Math Channels.
 
 ## Shared UI and interaction rules
 

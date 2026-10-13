@@ -99,6 +99,17 @@ describe('Histogram logical analysis context', () => {
     expect(loaded[0]?.color).toBe('#112233');
   });
 
+  it('resolves MLV-style historical references against the physical channel without duplicate loads', async () => {
+    const rpm = channel('rpm', 'RPM', 'rpm');
+    const requests: string[][] = [];
+    const change: HistogramCalculatedFieldDefinition = { id: 'rpm-change', name: 'RPM Change', expression: '[RPM] - [RPM-1]', unit: 'rpm/sample' };
+    const logical = createHistogramLogicalContext(context([rpm], [trace(rpm, [1000, 1100, 1300])], requests), [change]);
+    const loaded = await logical.loadTraces(['formula:rpm-change']);
+    expect(requests).toEqual([['rpm']]);
+    expect([...loaded[0]!.range.validity]).toEqual([0, 1, 1]);
+    expect([...loaded[0]!.range.values].slice(1)).toEqual([100, 200]);
+  });
+
   it('returns physical and calculated traces together without reloading duplicate dependencies', async () => {
     const fuel = channel('fuel', 'Fuel Pressure', 'kPa');
     const map = channel('map', 'MAP', 'kPa');
