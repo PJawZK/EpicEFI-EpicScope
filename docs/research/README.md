@@ -36,6 +36,10 @@ Bounded MLG v3 compatibility investigation using TunerStudio 3.6.00.06 Beta, MLV
 - `../VE_ANALYZER.md` — EpicScope VE Analyzer behavior contract derived from this research.
 - `../FUELING_ANALYZER.md` — current Fueling Analyzer maturity and reusable delay/qualification foundations.
 
+## Traceability
+
+The VE Analyzer specification in `../VE_ANALYZER.md` should be read together with the research notes in this directory. The specification records intended EpicScope behavior; these research documents record the external evidence and reasoning that motivated those decisions.
+
 ## Research status
 
 The broad MLV investigation is considered complete enough for product work. Future MLV/EMU PRO inspection should be triggered by a concrete EpicScope behavior question, regression or compatibility need rather than open-ended reverse engineering.
