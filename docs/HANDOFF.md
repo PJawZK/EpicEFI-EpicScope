@@ -8,25 +8,41 @@ Authoritative branch: `main`
 
 Current authoritative main baseline:
 
-`ad6d6a5ed26939ce7d27e4e4a018be8b2bd88bdc`
+`6b048b5a77dfc2cfe0d050e1da334a92a147b591`
 
-That squash merge promoted the validated `ts_shim` live-source/recorded-source workflow into `main`.
+That merge is PR #345, the Histogram help-consistency milestone.
 
-Hosted recorded-log application:
+Hosted application:
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-This file is the compact present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, current `main`, this file and the current CI/test state win.
+This file is the compact present-tense continuation authority. If older current-state wording elsewhere conflicts with this handoff, current `main`, this file and current CI/test state win.
 
-## Current project position — 2026-10-12
+## Current project position — 2026-10-13
 
 EpicScope Web remains the functional reference/validation implementation for Logger, Histogram and Analyzer behavior.
 
 The large recorded-log performance campaign is complete unless a measured regression appears.
 
-The `ts_shim` track is no longer blocked on hardware. The real ECU/Pi/shim/browser chain has been exercised successfully and the validated source workflow is now part of `main`.
+The real ECU/Pi/`ts_shim` source workflow has been validated and merged into `main`; it is not currently the active product-development focus.
 
-Do not begin a new product phase automatically. Continue from concrete Logger/Analyzer/Histogram usefulness, firmware-integration needs, or measured runtime issues.
+The latest active product work moved from Analyzer maturity into a Histogram consistency pass. That pass is now substantially complete through PRs #339, #340, #344 and #345.
+
+Analyzer feature expansion is deliberately paused for now. Fueling and non-knock Ignition reached sensible maturity checkpoints; other analyzers should later be brought to similar practical coverage before a broad cleanup/consolidation/optimization phase is started.
+
+Do not automatically reopen Fueling/Ignition, restart broad Histogram redesign, or begin a new platform phase without a concrete user-visible need, measured regression, or explicit project-owner direction.
+
+## Product/workflow invariant
+
+The approved visible workflow remains:
+
+> **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
+
+For generic Histogram analysis, the current shared sub-flow is:
+
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
+
+Shared concepts should use shared names and semantics rather than diverging per page.
 
 ## Validated real runtime topology
 
@@ -115,13 +131,13 @@ RPMValue
 TPSValue
 ```
 
-While Shim is authoritative, the stable assignments resolve to the raw Shim channels. When an INI-bound MLG returns, the workspace returns to canonical `ini:*` identities.
+While Shim is authoritative, stable assignments resolve to raw Shim channels. When an INI-bound MLG returns, the workspace returns to canonical `ini:*` identities.
 
 Do not reintroduce raw + `ini:*` duplicate traces.
 
-## Real validation checkpoint
+## Real source-validation checkpoint
 
-The full round trip was tested:
+The full source round trip was tested:
 
 ```text
 MLG + INI
@@ -135,139 +151,205 @@ MLG + INI
 → canonical workspace identities restored
 ```
 
-Final recorded state after the round trip:
-
-```text
-Health: 0 ISSUE / 0 WARN
-channelDefinitions=2544
-catalogChannels=2519
-assignedVisibleChannels=5
-renderableAssignedVisibleChannels=5
-unavailableAssignedVisibleChannels=0
-activeVisibleTraces=5
-```
-
-Shim capture state:
-
-```text
-Health: 0 ISSUE / 0 WARN
-logChannels=2493
-catalogChannels=2493
-assignedVisibleChannels=5
-renderableAssignedVisibleChannels=5
-unavailableAssignedVisibleChannels=0
-activeVisibleTraces=5
-```
-
 Source-lifetime diagnostics showed replaced recorded/bound sources becoming collected; no obvious cross-source strong-reference leak was observed.
 
-## Verification status
+The Web implementation remains read-only with respect to ECU control. No tune writes, burns, flashing, mocks, ECU commands or CAN injection are part of this baseline.
 
-After the real runtime validation:
+For source/protocol details use the `TS_SHIM_*` documents in `docs/`.
 
-```text
-npm run typecheck  → pass
-npm test           → 67 test files passed
-                     344 tests passed
-                     0 failed
-```
+## Logger — current authority
 
-Treat this as the current regression baseline.
+Mature behavior includes:
 
-## Shim Logger UX — current
-
-The normal Logger Channel Browser is authoritative for the Shim recording set.
-
-Primary workflow:
-
-```text
-Connect Shim
-→ assign channels in Logger
-→ Record
-→ live Logger view starts immediately
-→ Follow / inspect history
-→ Stop Recording
-```
-
-The Shim schema remains visible while uncaptured channels are explicitly unavailable in a selected-channel capture.
-
-One narrow UI review edge remains: **capture remains loaded** and **live refresh is paused** should be modeled as separate states. The core MLG ↔ Shim source ownership/identity round trip is validated; do not conflate this remaining UI cleanup with failure of the source architecture.
-
-## ts_shim implementation boundaries
-
-EpicScope's live integration is read-only.
-
-EpicScope consumes Shim's shared output snapshot rather than polling the ECU independently.
-
-Current HTTP inspection remains read-only for:
-
-- `/api/v1/inis`;
-- `/api/v1/objects`;
-- `/api/v1/triggerlog`.
-
-No tune writes, burns, flashing, mocks, ECU commands or CAN injection are part of this baseline.
-
-For architecture/protocol details use:
-
-- [`TS_SHIM_INTEGRATION.md`](TS_SHIM_INTEGRATION.md)
-- [`TS_SHIM_STATUS.md`](TS_SHIM_STATUS.md)
-- [`TS_SHIM_DEVELOPMENT_PROXY.md`](TS_SHIM_DEVELOPMENT_PROXY.md)
-
-## Recorded-log performance/current parser evidence
-
-The long-used 1.19 GB / 320,458-record MLG remains the main large test log.
-
-Known source properties:
-
-- 291 recovered retry artifacts;
-- 8 unrecovered CRC records;
-- 9 counter anomalies.
-
-Those are properties of the source log, not regressions introduced by Shim work.
-
-Representative current large-log behavior remains around ~1 second for staged indexing on the test PC, with OPFS/column-sidecar reuse available for later channel reads.
-
-Do not reopen general micro-optimization without a concrete measured problem.
-
-## Logger / Analyzer / Histogram authority
-
-Existing mature behavior remains intact:
-
-- MLG v1/v2 staged import/CRC/source diagnostics;
+- MLG v1/v2 staged import, CRC/source diagnostics and large-log reuse;
 - INI-backed channel catalog/binding;
 - optional MSQ tune enrichment;
-- reusable named graph workspaces and per-log navigation persistence;
+- reusable named graph workspaces plus exact-log navigation persistence;
 - fixed/freeform multi-pane Logger;
 - A/B ranges, markers and saved ranges;
-- Histogram Table Generator / Distribution / Scatter / Math Channels;
-- Analyzer Range Compare, Tune Table, Boost, Idle, AE/MAP Predict, Fueling, Ignition, Fuel/Injector and Trigger/Sync surfaces;
-- evidence navigation back to Logger;
+- stable channel identity across recorded and Shim source transitions;
+- explicit unavailable-channel handling;
 - retained-memory, parser, performance and runtime-health diagnostics.
 
-Do not build parallel live-only Analyzer/Histogram logic. Live/retained Shim sources continue through the same normalized analysis contracts.
+The long-used 1.19 GB / 320,458-record MLG remains the main large-log stress/reference file.
 
-## Development guidance
+Do not resume broad Logger/performance micro-optimization without a concrete measured problem.
 
-The Web implementation is a reference implementation for behavior and source-contract validation. It is not a requirement that firmware/native integrations duplicate its DOM/UI structure.
+## Analyzer — current checkpoint
 
-For downstream implementation, preserve these invariants:
+Analyzer work is deliberately paused after a substantial maturity pass.
 
-1. one authoritative telemetry/catalog owner at a time;
-2. source transitions are in-process;
-3. unrelated INI/MSQ/workspace/report state survives source changes;
-4. stable channel identity survives source changes;
-5. live schema ownership is explicit and temporary;
-6. returning to recorded analysis restores the recorded/INI catalog and binding;
-7. unavailable channels remain explicit;
-8. negotiated Shim limits/generation/stream identity are obeyed.
+Current surfaces remain:
 
-## Git / workflow state
+- Range Compare;
+- Tune Table;
+- Boost;
+- Idle;
+- AE / MAP Predict;
+- Fueling;
+- Ignition;
+- Fuel / Injector;
+- Trigger / Sync.
 
-PR #341 was squash-merged into `main` as:
+### Shared Analyzer presentation/interaction
 
-`ad6d6a5ed26939ce7d27e4e4a018be8b2bd88bdc`
+Current conventions include:
 
-The experimental branch history is not the architectural authority; current `main` is.
+- Full Log / Current A/B / Saved Range scopes;
+- shared Qualification where appropriate;
+- evidence navigation back to Logger;
+- progressive disclosure: a small decision-facing default summary with secondary diagnostics behind **More details**;
+- sortable evidence tables where useful;
+- one standardized anchored round-`i` help interaction;
+- aligned-evidence canvases render at real displayed size and respond to layout resize rather than relying on CSS stretching;
+- avoid dense all-signals/all-envelopes defaults; optional context can be enabled deliberately.
+
+### Fueling checkpoint
+
+Fueling is mature enough to freeze unless a concrete defect appears.
+
+Current important behavior includes:
+
+- lambda-first actual/target semantics (`lambdaValue` / `targetLambda`);
+- Gas Scale AFR before generic AFR as fallback;
+- `veValue` as current live effective VE, distinct from the VE table and `Fuel: Tuned VE`;
+- `actualLastInjection` as preferred command signal for observed mixture-response delay;
+- `veTableYAxis` as preferred VE/load coordinate;
+- DFCO and other fuel cuts explicitly identified/excluded from ordinary steady calibration conclusions;
+- AE/decel transient context separated from steady evidence;
+- rolling/trailing-window stability rather than brittle adjacent-sample derivatives;
+- low-count bins remain visible as Weak/Moderate/Strong evidence instead of disappearing;
+- scale-aware Lambda/AFR thresholds;
+- STFT/LTFT/total-correction context;
+- observed mixture-response-delay analysis;
+- compact/progressive UI and Logger evidence navigation.
+
+A Fueling heatmap experiment was rolled back after it caused page-load/graph-resize regressions. Do not reintroduce a DOM-heavy overview implementation without a safer architecture and measured validation.
+
+See `docs/FUELING_ANALYZER.md` for the detailed authoritative Fueling semantics.
+
+### Ignition checkpoint — non-knock scope
+
+Current Ignition work intentionally avoids knock diagnosis because the current validation path does not include trusted knock hardware/evidence.
+
+Current non-knock behavior includes:
+
+- final ignition advance as the primary required signal;
+- optional aggregate correction/retard, dwell, RPM and ignition-load context;
+- large timing-step and correction-activity event evidence;
+- large-log-safe statistics/event presentation;
+- clean default aligned evidence (decision-facing traces only, percentile envelopes/context opt-in);
+- ranked **Areas to review** built from repeated stable RPM/load regions;
+- configurable normal-running review focus (default minimum 1000 rpm) so cranking/start/very-low-RPM regions do not dominate the shortlist;
+- optional MSQ base-ignition-table comparison using the actual ignition table axes;
+- **Source clue** attribution that distinguishes behavior substantially explained by the base table, overlapping correction activity, residual/unexplained timing movement, or insufficient evidence.
+
+Preferred EpicEFI automatic roles now prioritize canonical channels such as:
+
+- `correctedIgnitionAdvance` for final timing;
+- `ignitionAdvanceCorrections` / `ignitionCorrections` for aggregate correction context;
+- `sparkDwell` for dwell;
+- `RPMValue` for RPM;
+- `loadForIgnitionTableDot` / `ignitionLoad` before generic MAP for ignition-table load.
+
+Ignition remains observational. It does not claim knock/detonation, declare timing safe/unsafe, or recommend adding/removing a specific number of degrees from log evidence alone.
+
+## Histogram — current authoritative checkpoint
+
+Histogram coherence is substantially improved and is the latest completed product track.
+
+Current surfaces:
+
+- Table Generator;
+- Distribution;
+- Scatter;
+- Math Channels.
+
+Four milestones are confirmed on current `main`:
+
+### PR #339 — Scope/evidence flow
+
+- Full Log / Current A/B / Saved Range consistency;
+- shared Logger timeline including Table Generator;
+- Distribution correctness fixes for comparison geometry and Time gaps;
+- Scatter Full Log/A-B/Saved Range support;
+- full-qualified-data density with bounded visible rendering;
+- line-gap handling;
+- rendered Scatter point → Logger evidence navigation;
+- redundant manual Refresh controls removed from auto-updating flows.
+
+### PR #340 — Shared Qualification
+
+- the same saved grouped ALL/ANY Qualification sets work in Table Generator, Distribution and Scatter;
+- Qualification is applied before Distribution/Scatter analysis;
+- eligible/input provenance remains visible;
+- missing dependencies remain explicit rather than silently changing filter meaning.
+
+### PR #344 — Shared Math Channels
+
+- saved Math Channels are first-class inputs in Distribution and Scatter as well as Table Generator;
+- calculated traces retain source alignment;
+- Qualification may use Math Channels;
+- the old compact Table Generator formula editor remains internally dormant/hidden and is deferred to cleanup.
+
+### PR #345 — Unified help
+
+- Histogram now uses the shared Analyzer-style anchored round-`i` information popup;
+- Distribution/Scatter gained focused explanations for non-obvious calculations;
+- Table Generator's bespoke help surface is no longer the visible path;
+- help density remains intentionally restrained.
+
+Detailed current Histogram behavior and remaining work are documented in `docs/HISTOGRAM.md`.
+
+### Histogram remaining useful work
+
+The broad coherence pass is complete. Remaining worthwhile functionality is narrower:
+
+1. saved setups/presets for Distribution and Scatter;
+2. exports for Distribution and Scatter;
+3. richer Scatter region selection rather than only individual points;
+4. eventually replace the remaining Scatter timeline text/DOM bridge with direct shared state propagation;
+5. later remove dormant duplicate/runtime-refinement code during the planned cleanup phase.
+
+Do not restart a broad Histogram rewrite.
+
+## Cleanup/consolidation policy
+
+A dedicated cleanup/optimization phase is intentionally deferred until analyzer coverage is broader.
+
+When that phase begins, it should explicitly review:
+
+- dormant/duplicate editor paths;
+- analyzer-local/shared DOM enhancement code;
+- unnecessary MutationObservers;
+- direct DOM state bridges/lookups that should become explicit state/contracts;
+- Boost-specific utilities that have become generic;
+- duplicate table/event/help/rendering logic;
+- canvas resize ownership;
+- CSS duplication and runtime UI surgery;
+- dead/unreachable branches and compatibility leftovers;
+- large-log performance after consolidation.
+
+Until then, do not destabilize mature paths solely to make code prettier.
+
+## Current Git / workflow state
+
+Current authoritative `main`:
+
+`6b048b5a77dfc2cfe0d050e1da334a92a147b591`
+
+Recent merged milestones relevant to this handoff:
+
+- #338 — Ignition base-table/source attribution;
+- #339 — Histogram scope/evidence flow;
+- #340 — shared Histogram Qualification;
+- #341 — validated `ts_shim` live/recorded source workflow promoted to `main`;
+- #344 — shared Histogram Math Channels;
+- #345 — unified Histogram help.
+
+Post-merge type-check, full tests, production build and GitHub Pages deployment are green at the current Histogram baseline.
+
+PR #342 (Shim HTTP fetch binding) and draft PR #343 (General · Single pre-populated workspace) are not part of the current `main` baseline unless they are later merged/reconciled.
 
 If continuing from a local clone:
 
@@ -279,4 +361,4 @@ npm run typecheck
 npm test
 ```
 
-Do not continue development from the old `fix/shim-live-view-toggle` branch.
+Continue from current `main`, not an older Analyzer/Histogram feature branch.
