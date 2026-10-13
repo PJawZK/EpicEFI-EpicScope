@@ -121,7 +121,7 @@ export const IDLE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
 export const BOOST_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   id: 'boost-dual',
   name: 'Boost',
-  description: 'Dual-pane boost response and control overview.',
+  description: 'Dual-pane boost response and engine-state overview without requiring closed-loop boost control or extra pressure sensors.',
   layout: 'dual',
   panes: [
     {
@@ -130,16 +130,16 @@ export const BOOST_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
         { roleId: 'engine.rpm', requirement: 'required' },
         { roleId: 'engine.map', requirement: 'required' },
         { roleId: 'engine.throttle.position', requirement: 'preferred' },
-        { roleId: 'boost.target', requirement: 'optional' },
+        { roleId: 'temperature.intakeAir', requirement: 'preferred' },
       ],
     },
     {
       id: 'pane-2',
       roles: [
-        { roleId: 'boost.wastegateCommand', requirement: 'preferred' },
-        { roleId: 'boost.error', requirement: 'optional' },
-        { roleId: 'temperature.intakeAir', requirement: 'optional' },
-        { roleId: 'exhaust.emap', requirement: 'optional' },
+        { roleId: 'ignition.advance', requirement: 'preferred' },
+        { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+        { roleId: 'fuel.injectorDuty', requirement: 'preferred' },
+        { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
       ],
     },
   ],
@@ -175,7 +175,7 @@ export const FUEL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
 export const IGNITION_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   id: 'ignition-dual',
   name: 'Ignition',
-  description: 'Dual-pane spark timing and knock overview.',
+  description: 'Dual-pane spark timing, coil-charge and engine-condition overview without requiring knock hardware.',
   layout: 'dual',
   panes: [
     {
@@ -183,17 +183,17 @@ export const IGNITION_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
       roles: [
         { roleId: 'engine.rpm', requirement: 'required' },
         { roleId: 'engine.map', requirement: 'required' },
+        { roleId: 'engine.throttle.position', requirement: 'preferred' },
         { roleId: 'ignition.advance', requirement: 'preferred' },
-        { roleId: 'ignition.knockRetard', requirement: 'optional' },
       ],
     },
     {
       id: 'pane-2',
       roles: [
         { roleId: 'ignition.dwell', requirement: 'preferred' },
-        { roleId: 'ignition.knockLevel', requirement: 'optional' },
-        { roleId: 'fuel.lambda', requirement: 'optional' },
+        { roleId: 'electrical.batteryVoltage', requirement: 'preferred' },
         { roleId: 'temperature.intakeAir', requirement: 'optional' },
+        { roleId: 'temperature.coolant', requirement: 'optional' },
       ],
     },
   ],
@@ -217,9 +217,10 @@ export const COOLING_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
     {
       id: 'pane-2',
       roles: [
-        { roleId: 'cooling.fanCommand', requirement: 'optional' },
+        { roleId: 'cooling.fanActive', requirement: 'optional' },
         { roleId: 'temperature.oil', requirement: 'optional' },
         { roleId: 'engine.oilPressure', requirement: 'optional' },
+        { roleId: 'cooling.coolantPressure', requirement: 'optional' },
         { roleId: 'electrical.batteryVoltage', requirement: 'optional' },
       ],
     },
@@ -246,6 +247,7 @@ export const TRANSIENT_AE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
       roles: [
         { roleId: 'transient.effectiveMap', requirement: 'preferred' },
         { roleId: 'fuel.lambda', requirement: 'preferred' },
+        { roleId: 'fuel.lambdaTarget', requirement: 'optional' },
         { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
         { roleId: 'transient.aeFuel', requirement: 'optional' },
         { roleId: 'transient.wallFuelCorrection', requirement: 'optional' },
@@ -315,6 +317,7 @@ export const STARTUP_WARMUP_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
       { roleId: 'startup.crankingFuel', requirement: 'preferred' },
       { roleId: 'startup.afterStartCorrection', requirement: 'preferred' },
       { roleId: 'startup.warmupCorrection', requirement: 'preferred' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
       { roleId: 'fuel.lambda', requirement: 'preferred' },
       { roleId: 'idle.target', requirement: 'optional' },
     ] },
@@ -333,6 +336,7 @@ export const ELECTRICAL_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
     { id: 'pane-2', roles: [
       { roleId: 'fuel.injectorDuty', requirement: 'preferred' },
       { roleId: 'fuel.pumpCommand', requirement: 'optional' },
+      { roleId: 'cooling.fanActive', requirement: 'optional' },
       { roleId: 'electrical.alternatorDuty', requirement: 'optional' },
       { roleId: 'electrical.sensorSupplyVoltage', requirement: 'optional' },
       { roleId: 'electrical.sensorSupplyFault', requirement: 'optional' },
@@ -365,13 +369,13 @@ export const VEHICLE_DRIVELINE_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
 export const EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE: StarterWorkspaceTemplate = {
   id: 'epicefi-map-predict-wall-wetting-dual',
   name: 'EpicEFI · MAP Predict + Wall Wetting',
-  description: 'EpicEFI predictive-MAP and intake-wall fuel model diagnostics.',
+  description: 'EpicEFI live-MAP prediction and wall-film mass/correction diagnostics.',
   tier: 'epicefi',
   availability: {
     allOfRoleIds: [
+      'transient.instantMap',
       'transient.predictedMap',
       'transient.effectiveMap',
-      'transient.mapPredictionActive',
       'transient.wallFuelAmount',
       'transient.wallFuelCorrection',
     ],
@@ -380,19 +384,19 @@ export const EPICEFI_MAP_PREDICT_WALL_WETTING_DUAL_WORKSPACE: StarterWorkspaceTe
   panes: [
     { id: 'pane-1', roles: [
       { roleId: 'engine.rpm', requirement: 'required' },
-      { roleId: 'engine.throttle.position', requirement: 'required' },
-      { roleId: 'transient.tpsDelta', requirement: 'preferred' },
+      { roleId: 'engine.throttle.position', requirement: 'preferred' },
       { roleId: 'engine.map', requirement: 'required' },
+      { roleId: 'transient.instantMap', requirement: 'required' },
       { roleId: 'transient.predictedMap', requirement: 'required' },
       { roleId: 'transient.effectiveMap', requirement: 'required' },
-      { roleId: 'transient.mapPredictionActive', requirement: 'required' },
     ] },
     { id: 'pane-2', roles: [
-      { roleId: 'fuel.lambda', requirement: 'preferred' },
-      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
-      { roleId: 'transient.aeFuel', requirement: 'preferred' },
       { roleId: 'transient.wallFuelAmount', requirement: 'required' },
       { roleId: 'transient.wallFuelCorrection', requirement: 'required' },
+      { roleId: 'fuel.injectorPulseWidth', requirement: 'preferred' },
+      { roleId: 'fuel.lambda', requirement: 'preferred' },
+      { roleId: 'fuel.lambdaTarget', requirement: 'optional' },
+      { roleId: 'temperature.coolant', requirement: 'optional' },
     ] },
   ],
 };

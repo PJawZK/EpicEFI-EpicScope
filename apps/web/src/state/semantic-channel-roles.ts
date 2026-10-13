@@ -27,8 +27,10 @@ export type SemanticChannelRoleId =
   | 'temperature.oil'
   | 'engine.oilPressure'
   | 'cooling.fanCommand'
+  | 'cooling.fanActive'
   | 'transient.tpsDelta'
   | 'transient.effectiveMap'
+  | 'transient.instantMap'
   | 'transient.aeFuel'
   | 'transient.wallFuelCorrection'
   | 'fuel.pressureDelta'
@@ -394,6 +396,13 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
     include: [/fan.*(?:pwm|duty|command|state|on)/i],
     exclude: [/fan\s*2/i, /frequency/i, /min/i, /max/i, /threshold/i, /temperature/i, /button/i, /broken/i, /inhibit/i],
   },
+  'cooling.fanActive': {
+    id: 'cooling.fanActive',
+    displayName: 'Fan Active',
+    aliases: ['fan1m_state', 'Fan Active', 'Fan 1 Active', 'Cooling Fan Active', 'Radiator Fan Active'],
+    include: [/^fan1m_state$/i, /(?:cooling|radiator|fan\s*1).*fan?.*(?:active|state|on)/i, /fan.*(?:active|state|on)/i],
+    exclude: [/fan\s*2/i, /pwm/i, /duty/i, /frequency/i, /enable/i, /enabled/i, /temperature/i, /threshold/i, /button/i, /broken/i, /inhibit/i, /trans/i],
+  },
   'transient.tpsDelta': {
     id: 'transient.tpsDelta',
     displayName: 'TPS Change',
@@ -418,9 +427,9 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'transient.wallFuelCorrection': {
     id: 'transient.wallFuelCorrection',
     displayName: 'Wall Fuel Correction',
-    aliases: ['wallFuelCorrection', 'Wall Fuel Correction', 'Wall Wetting Correction', 'AE: wall correction extra'],
-    include: [/wall.*fuel.*correction/i, /wall.*wetting.*correction/i],
-    exclude: [/value$/i, /table/i, /tau/i, /beta/i, /amount/i],
+    aliases: ['wallFuelCorrectionValue', 'Fuel: wall correction', 'Wall Fuel Correction', 'Wall Wetting Correction', 'wallFuelCorrection'],
+    include: [/wall.*fuel.*correction/i, /wall.*wetting.*correction/i, /fuel.*wall.*correction/i],
+    exclude: [/table/i, /tau/i, /beta/i, /amount/i],
   },
   'fuel.pressureDelta': {
     id: 'fuel.pressureDelta',
@@ -458,6 +467,7 @@ const ROLES: Readonly<Record<SemanticChannelRoleId, SemanticChannelRoleDefinitio
   'vehicle.wheelSpeedRearRight': { id: 'vehicle.wheelSpeedRearRight', displayName: 'Wheel Speed RR', aliases: ['vehicleSpeedKph4', 'Wheel Speed RR', 'Vehicle Speed Rear Right'], include: [/(?:wheel|vehicle).*speed.*(?:rear.*right|rr)/i], exclude: [/average/i, /reference/i, /target/i] },
   'vehicle.longitudinalAcceleration': { id: 'vehicle.longitudinalAcceleration', displayName: 'Longitudinal Accel', aliases: ['accelerationLon', 'Accel: Longitudinal', 'Longitudinal Acceleration', 'Longitudinal Accel'], include: [/longitudinal.*(?:accel|acceleration)/i, /accel.*longitudinal/i], exclude: [/target/i, /limit/i] },
   'transient.predictedMap': { id: 'transient.predictedMap', displayName: 'Predicted MAP', aliases: ['fallbackMap', 'Predicted MAP', 'MAP Estimate', 'Estimated MAP'], include: [/fallback.*map/i, /predicted.*map/i, /estimated.*map/i], exclude: [/use.*(?:map.*estimate|estimate.*map)/i, /enable/i, /during.*transient/i, /blend/i, /table/i, /target/i, /error/i, /duration/i, /config/i, /raw/i] },
+  'transient.instantMap': { id: 'transient.instantMap', displayName: 'Instant MAP', aliases: ['instantMAPValue', 'Instant MAP', 'Raw MAP Instant'], include: [/^instant.*map(?:.*value)?$/i], exclude: [/config/i, /table/i, /target/i, /error/i] },
   'transient.mapPredictionActive': { id: 'transient.mapPredictionActive', displayName: 'MAP Prediction Active', aliases: ['isMapPredictionActive', 'MAP Prediction Active', 'Prediction Active'], include: [/map.*prediction.*active/i, /prediction.*active.*map/i], exclude: [/enable/i, /table/i, /config/i, /duration/i] },
   'transient.wallFuelAmount': { id: 'transient.wallFuelAmount', displayName: 'Wall Fuel Amount', aliases: ['wallFuelAmount', 'Fuel: wall amount', 'Wall Fuel Amount', 'Fuel on the wall'], include: [/wall.*fuel.*amount/i, /fuel.*wall.*amount/i, /^fuel on the wall$/i], exclude: [/correction/i, /tau/i, /beta/i, /table/i, /config/i] },
   'fuel.highPressure': { id: 'fuel.highPressure', displayName: 'High Fuel Pressure', aliases: ['highFuelPressure', 'Fuel pressure (high)', 'Fuel Pressure High', 'High Fuel Pressure'], include: [/(?:high.*fuel|fuel.*high).*pressure/i, /fuel.*pressure.*high/i], exclude: [/raw/i, /bank.*2/i, /high2/i, /target/i, /table/i, /config/i, /minimum/i, /maximum/i] },
