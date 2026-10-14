@@ -5,7 +5,7 @@ let histogramChannelDecorationQueued = false;
 let histogramChannelObserver: MutationObserver | undefined;
 
 export function histogramChannelOptionLabel(channel: ChannelDefinition): string {
-  const name = channel.displayName || channel.sourceName;
+  const name = channel.sourceName;
   const unit = channel.unit?.trim();
   return unit ? `${name} [${unit}]` : name;
 }
