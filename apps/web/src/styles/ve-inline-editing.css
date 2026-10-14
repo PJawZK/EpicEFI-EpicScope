@@ -48,50 +48,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Keep the dense workbench footprint, but make functional groups visually distinct. */
-.ve-workbench-quick-controls > label,
-.ve-workbench-quick-controls > .ve-quick-qualification > label {
-  position: relative;
-}
-
-.ve-workbench-quick-controls > label:has([data-role='rpm-axis']),
-.ve-workbench-quick-controls > label:has([data-role='load-axis']),
-.ve-workbench-quick-controls > label:has([data-role='target-rpm-axis']),
-.ve-workbench-quick-controls > label:has([data-role='target-load-axis']) {
-  box-shadow: inset 0 2px 0 #365d70;
-  background: rgba(38, 70, 84, .10);
-}
-
-.ve-workbench-quick-controls > label:has([data-role='actual']),
-.ve-workbench-quick-controls > label:has([data-role='stft']),
-.ve-workbench-quick-controls > label:has([data-role='fuel-correction-mode']) {
-  box-shadow: inset 0 2px 0 #5c6e42;
-  background: rgba(84, 104, 52, .10);
-}
-
-.ve-workbench-quick-controls > label:has([data-role='min-rpm']),
-.ve-workbench-quick-controls > label:has([data-role='max-rpm']),
-.ve-workbench-quick-controls > label:has([data-role='min-load']),
-.ve-workbench-quick-controls > label:has([data-role='max-load']) {
-  box-shadow: inset 0 2px 0 #6b5a3d;
-  background: rgba(112, 85, 43, .10);
-}
-
+/* Keep CLT/TPS controls in the same compact flow as the rest of the quick controls. */
 .ve-workbench-quick-controls > .ve-quick-qualification {
   display: contents;
-}
-
-.ve-workbench-quick-controls > .ve-quick-qualification > label {
-  box-shadow: inset 0 2px 0 #5b4f78;
-  background: rgba(77, 61, 105, .10);
-}
-
-.ve-workbench-quick-controls > label:has([data-role='stable-ms']),
-.ve-workbench-quick-controls > label:has([data-role='min-evidence-weight']),
-.ve-workbench-quick-controls > label:has([data-role='max-absolute-change']),
-.ve-workbench-quick-controls > label:has([data-role='max-percent-change']) {
-  box-shadow: inset 0 2px 0 #4c6670;
-  background: rgba(60, 85, 94, .10);
 }
 
 .ve-quick-qualification-note {
