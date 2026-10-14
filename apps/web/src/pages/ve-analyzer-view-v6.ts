@@ -56,9 +56,50 @@ function targetForReadinessName(root: HTMLElement, name: string): HTMLElement | 
     'RPM': 'rpm',
     'VE-table load': 'load',
     'Actual mixture': 'actual',
+    'Prior weight': 'prior-weight',
+    'Minimum evidence weight': 'min-evidence-weight',
+    'Max VE change': 'max-absolute-change',
+    'Max VE change %': 'max-percent-change',
   };
   const role = roleByName[name];
   return role ? root.querySelector<HTMLElement>(`[data-role="${role}"]`) ?? undefined : undefined;
+}
+
+function settingState(raw: string, location: string): { source: string; status: string; valid: boolean } {
+  const text = raw.trim();
+  if (!text) return { source: '—', status: `Missing value · ${location}`, valid: false };
+  const value = Number(text);
+  if (!Number.isFinite(value)) return { source: text, status: `Invalid number · ${location}`, valid: false };
+  if (value < 0) return { source: text, status: `Must be 0 or greater · ${location}`, valid: false };
+  return { source: text, status: `Resolved · ${location}`, valid: true };
+}
+
+function replaceProposalSettingsRow(root: HTMLElement, body: HTMLElement): void {
+  const tableBody = body as HTMLTableSectionElement;
+  const generic = [...tableBody.rows].find((row) => row.cells[0]?.textContent?.trim() === 'Proposal settings');
+  if (!generic) return;
+
+  const definitions = [
+    ['Prior weight', 'Proposal authority', 'prior-weight', 'Cell Change preset or Advanced → Prior weight'],
+    ['Minimum evidence weight', 'Evidence threshold', 'min-evidence-weight', 'VE controls → Min evidence weight'],
+    ['Max VE change', 'Absolute safety limit', 'max-absolute-change', 'VE controls → Max VE change'],
+    ['Max VE change %', 'Relative safety limit', 'max-percent-change', 'VE controls → Max VE change %'],
+  ] as const;
+
+  const rows = definitions.map(([name, purpose, role, location]) => {
+    const state = settingState(inputValue(root, role), location);
+    const row = document.createElement('tr');
+    const values = [name, purpose, 'Required', state.source, state.status];
+    for (const value of values) {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.append(cell);
+    }
+    row.dataset.veProposalSetting = role;
+    row.dataset.valid = state.valid ? 'true' : 'false';
+    return row;
+  });
+  generic.replaceWith(...rows);
 }
 
 function readinessBlockers(
@@ -74,7 +115,7 @@ function readinessBlockers(
     const cells = [...row.cells].map((cell) => cell.textContent?.trim() ?? '');
     const [name, , requirement, source, status] = cells;
     if (requirement !== 'Required' || !name) continue;
-    const bad = !source || source === '—' || /missing|mismatch|unavailable|required source unavailable|enter non-negative|discover\/use recommendation|load a saved/i.test(status ?? '');
+    const bad = !source || source === '—' || /missing|invalid|mismatch|unavailable|required source unavailable|must be 0 or greater|enter non-negative|discover\/use recommendation|load a saved/i.test(status ?? '');
     if (!bad) continue;
     if (name === 'Proposal settings') {
       blockers.push(...proposalBlockers(root));
@@ -162,6 +203,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const renderBlockers = (): void => {
     annotateOptionalBounds();
     syncPriorAuthority();
+    replaceProposalSettingsRow(root, readinessBody);
     if (!runButton.disabled) {
       blockerPanel.hidden = true;
       if (blockerPanel.childNodes.length > 0) blockerPanel.replaceChildren();
@@ -213,8 +255,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   delayHost.addEventListener('pointerup', () => queueMicrotask(refocusDelaySelection));
 
-  // Keep edit-focus tracking separate from readiness. Delay-table rerenders are
-  // frequent and must never trigger the blocker renderer recursively.
   let hadInlineInput = Boolean(delayHost.querySelector('.ve-delay-inline-input'));
   const delayEditObserver = new MutationObserver(() => {
     const hasInlineInput = Boolean(delayHost.querySelector('.ve-delay-inline-input'));
@@ -223,8 +263,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   });
   delayEditObserver.observe(delayHost, { childList: true, subtree: true });
 
-  // Observe only the state that can actually change Run readiness. Never watch
-  // the whole analyzer subtree because renderBlockers() mutates that subtree.
   const readinessObserver = new MutationObserver(scheduleRenderBlockers);
   readinessObserver.observe(readinessBody, { childList: true, subtree: true });
   readinessObserver.observe(delayHost, { attributes: true, attributeFilter: ['data-mode'] });

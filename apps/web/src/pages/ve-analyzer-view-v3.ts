@@ -92,9 +92,9 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const minimumTps = finiteInput(minTpsInput);
     const maximumTps = finiteInput(maxTpsInput);
     return {
-      ...(cltSelect.value ? { cltChannelId: cltSelect.value } : {}),
+      ...(minimumClt !== undefined && cltSelect.value ? { cltChannelId: cltSelect.value } : {}),
       ...(minimumClt !== undefined ? { minimumClt } : {}),
-      ...(tpsSelect.value ? { tpsChannelId: tpsSelect.value } : {}),
+      ...((minimumTps !== undefined || maximumTps !== undefined) && tpsSelect.value ? { tpsChannelId: tpsSelect.value } : {}),
       ...(minimumTps !== undefined ? { minimumTps } : {}),
       ...(maximumTps !== undefined ? { maximumTps } : {}),
     };
@@ -120,6 +120,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   };
 
+  const ensurePresetPrior = (prior: HTMLInputElement): void => {
+    const mode = authoritySelect.value as VeCellChangeAuthority;
+    if (mode === 'custom' || prior.value.trim() !== '') return;
+    prior.value = String(VE_CELL_CHANGE_PRIOR_WEIGHT[mode]);
+  };
+
   const moveNumericPriorToAdvanced = (): void => {
     const prior = root.querySelector<HTMLInputElement>('input[data-role="prior-weight"]');
     const advanced = root.querySelector<HTMLElement>('[data-ve-analyzer="controls"]');
@@ -128,10 +134,25 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const caption = label.querySelector('span');
     if (caption) caption.textContent = 'Prior weight (advanced)';
     if (label.parentElement !== advanced) advanced.prepend(label);
-    authoritySelect.value = veCellChangeAuthorityForPrior(Number(prior.value) || 0);
+
+    const raw = prior.value.trim();
+    if (raw !== '') {
+      const value = Number(raw);
+      if (Number.isFinite(value)) authoritySelect.value = veCellChangeAuthorityForPrior(value);
+    } else {
+      // A blank numeric field must not silently turn an existing preset into
+      // Custom. Presets are the normal user-facing authority control.
+      ensurePresetPrior(prior);
+    }
+
     if (prior.dataset.veAuthorityLinked !== 'true') {
       prior.addEventListener('change', () => {
-        const value = Number(prior.value);
+        const rawValue = prior.value.trim();
+        if (rawValue === '') {
+          ensurePresetPrior(prior);
+          return;
+        }
+        const value = Number(rawValue);
         authoritySelect.value = Number.isFinite(value) ? veCellChangeAuthorityForPrior(value) : 'custom';
       });
       prior.dataset.veAuthorityLinked = 'true';

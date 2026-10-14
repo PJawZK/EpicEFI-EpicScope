@@ -31,8 +31,19 @@ function pressureSemantic(channel: ChannelDefinition): boolean {
   return /pressure|(^| )(kpa|bar|psi|mpa)( |$)/.test(identity);
 }
 
+function diagnosticSemantic(channel: ChannelDefinition): boolean {
+  const source = normalized(channel.sourceName);
+  const display = normalized(channel.displayName);
+  // EpicEFI's `cel_*` channels describe Check Engine Light diagnostics/status,
+  // not the physical sensor value named after the suffix. They must never be
+  // offered as measured CLT sources even when `clt` appears in the name.
+  return /(^| )cel( |$)/.test(source)
+    || source.startsWith('cel ')
+    || /check engine|checkengine|diagnostic|fault|warning/.test(`${source} ${display}`);
+}
+
 function scoreClt(channel: ChannelDefinition): number {
-  if (pressureSemantic(channel)) return Number.NEGATIVE_INFINITY;
+  if (pressureSemantic(channel) || diagnosticSemantic(channel)) return Number.NEGATIVE_INFINITY;
   const source = normalized(channel.sourceName);
   const display = normalized(channel.displayName);
   const tempUnit = temperatureUnit(channel.unit);
@@ -40,9 +51,9 @@ function scoreClt(channel: ChannelDefinition): number {
   const coolantIdentity = /coolant/.test(source) || /coolant/.test(display);
   const temperatureIdentity = /temp|temperature/.test(source) || /temp|temperature/.test(display);
 
-  // A generic coolant-labelled value is not enough: coolant pressure and other
-  // coolant-system channels must never become CLT candidates. Require either
-  // canonical CLT identity or explicit temperature evidence.
+  // A generic coolant-labelled value is not enough: coolant pressure,
+  // diagnostic/CEL channels and other coolant-system channels must never become
+  // CLT candidates. Require canonical CLT identity or explicit temperature evidence.
   if (!exactClt && !(coolantIdentity && (temperatureIdentity || tempUnit))) return Number.NEGATIVE_INFINITY;
 
   let score = 0;
@@ -51,7 +62,7 @@ function scoreClt(channel: ChannelDefinition): number {
   if (/coolant/.test(display)) score += 35;
   if (temperatureIdentity) score += 45;
   if (tempUnit) score += 40;
-  if (/target|threshold|limit|warning|delta|rate/.test(source)) score -= 100;
+  if (/target|threshold|limit|delta|rate/.test(source)) score -= 100;
   return score;
 }
 
