@@ -60,6 +60,57 @@
   white-space: nowrap;
 }
 
+/* Normal workflow auto-resolves table axes. Manual overrides remain available
+   inside Advanced without creating another large visual block. */
+.ve-axis-mapping-advanced {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 9px;
+  border-top: 1px solid rgba(145, 165, 175, .16);
+}
+
+.ve-axis-mapping-heading {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ve-axis-mapping-heading strong {
+  color: #cbd9df;
+  font-size: 9px;
+}
+
+.ve-axis-mapping-heading span {
+  color: #7f949f;
+  font-size: 7px;
+}
+
+.ve-axis-mapping-advanced > label {
+  display: grid;
+  gap: 2px;
+}
+
+.ve-axis-mapping-advanced > label > span {
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ve-axis-mapping-advanced select {
+  min-width: 145px;
+  min-height: 25px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+  font-size: 8px;
+}
+
 /* Compact, neutral blocker guidance: clearer hierarchy without colored framing. */
 .ve-run-blocker-panel {
   display: flex;
