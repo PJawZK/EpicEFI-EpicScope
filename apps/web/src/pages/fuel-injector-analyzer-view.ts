@@ -1,3 +1,4 @@
+import { analyzeFuelInjectorHeadroomContext, type FuelInjectorEventContext } from '../../../../core/analysis/fuel-injector-headroom';
 import { analyzeFuelPressureArchitecture, type FuelPressureArchitecture } from '../../../../core/analysis/fuel-pressure-architecture';
 import { analyzeFuelPressureInjector } from '../../../../core/analysis/specialized-analyzers';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
@@ -14,10 +15,11 @@ export interface FuelInjectorAnalyzerViewController {
   refresh(): void;
 }
 
-type RoleKey = 'reference' | 'fuelPressure' | 'railDiff' | 'fuelPressureHigh' | 'pw' | 'duty' | 'deadtime';
+type RoleKey = 'reference' | 'map' | 'fuelPressure' | 'railDiff' | 'fuelPressureHigh' | 'pw' | 'duty' | 'deadtime';
 
 const ROLES: readonly { key: RoleKey; label: string; required?: boolean }[] = [
   { key: 'reference', label: 'Reference sample grid', required: true },
+  { key: 'map', label: 'MAP / load context' },
   { key: 'fuelPressure', label: 'Low-side fuel pressure' },
   { key: 'railDiff', label: 'Rail differential' },
   { key: 'fuelPressureHigh', label: 'High-side / GDI fuel pressure' },
@@ -169,9 +171,13 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     }));
   };
 
-  const renderEvents = (events: readonly { type: string; unit?: string; event: { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number; durationMs: number; extremeValue: number } }[]): void => {
+  const renderEvents = (
+    events: readonly FuelInjectorEventContext[],
+    units: { readonly rpm: string; readonly load: string; readonly lowSide: string; readonly activePressure: string; readonly duty: string; readonly pw: string; readonly deadtime: string },
+    architecture: FuelPressureArchitecture,
+  ): void => {
     field('event-count').textContent = events.length.toLocaleString();
-    const headers = ['#', 'Type', 'Start', 'End', 'Duration', 'Extreme'];
+    const headers = ['#', 'Type', 'Extreme time', 'Duration', 'RPM', 'MAP / load', 'Low-side', 'Active pressure', 'Duty', 'PW', 'Deadtime'];
     const headerRow = document.createElement('tr');
     for (const header of headers) {
       const th = document.createElement('th');
@@ -188,9 +194,28 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       tableBody.replaceChildren(row);
       return;
     }
-    tableBody.replaceChildren(...events.slice(0, 200).map(({ type, unit, event }, index) => {
+    tableBody.replaceChildren(...events.slice(0, 200).map((item, index) => {
+      const { event } = item;
+      const type = item.type === 'high-duty'
+        ? 'High injector duty'
+        : architecture === 'gdi'
+          ? 'Low GDI rail pressure'
+          : 'Low rail differential';
+      const activePressureAtExtreme = architecture === 'gdi' ? item.highSidePressureAtExtreme : item.railDifferentialAtExtreme;
+      const values = [
+        String(index + 1),
+        type,
+        timeText(event.extremeTimeMs),
+        `${event.durationMs.toFixed(0)} ms`,
+        valueWithUnit(item.rpmAtExtreme, units.rpm),
+        valueWithUnit(item.loadAtExtreme, units.load),
+        valueWithUnit(item.fuelPressureAtExtreme, units.lowSide),
+        valueWithUnit(activePressureAtExtreme, units.activePressure),
+        valueWithUnit(item.injectorDutyAtExtreme, units.duty),
+        valueWithUnit(item.injectorPulseWidthAtExtreme, units.pw),
+        valueWithUnit(item.injectorDeadtimeAtExtreme, units.deadtime),
+      ];
       const row = document.createElement('tr');
-      const values = [String(index + 1), type, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, valueWithUnit(event.extremeValue, unit ?? '')];
       for (const value of values) {
         const cell = document.createElement('td');
         cell.textContent = value;
@@ -199,12 +224,19 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       if (context.openSamplesInLogger) {
         row.classList.add('specialized-analyzer-event-row--navigable');
         row.tabIndex = 0;
-        row.title = 'Double-click or press Enter to open this event in Logger';
-        const open = (): void => context.openSamplesInLogger?.({
-          sampleIndices: event.startSampleIndex === event.endSampleIndex ? [event.startSampleIndex] : [event.startSampleIndex, event.endSampleIndex],
-          timeMs: event.startTimeMs === event.endTimeMs ? [event.startTimeMs] : [event.startTimeMs, event.endTimeMs],
-          label: `${type} ${index + 1}`,
-        });
+        row.title = 'Double-click or press Enter to open this event and its extreme sample in Logger';
+        const open = (): void => {
+          const evidencePoints = [
+            { sampleIndex: event.startSampleIndex, timeMs: event.startTimeMs },
+            { sampleIndex: event.extremeSampleIndex, timeMs: event.extremeTimeMs },
+            { sampleIndex: event.endSampleIndex, timeMs: event.endTimeMs },
+          ].filter((point, pointIndex, points) => points.findIndex((candidate) => candidate.sampleIndex === point.sampleIndex) === pointIndex);
+          context.openSamplesInLogger?.({
+            sampleIndices: evidencePoints.map((point) => point.sampleIndex),
+            timeMs: evidencePoints.map((point) => point.timeMs),
+            label: `${type} ${index + 1}`,
+          });
+        };
         row.addEventListener('dblclick', open);
         row.addEventListener('keydown', (keyEvent) => {
           if (keyEvent.key === 'Enter') { keyEvent.preventDefault(); open(); }
@@ -245,6 +277,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     const scoped = selectedScopeInfo(reference, [...traces.values()]);
     if (!scoped) return;
 
+    const map = traces.get('map');
     const lowSide = traces.get('fuelPressure');
     const railDiff = traces.get('railDiff');
     const highSide = traces.get('fuelPressureHigh');
@@ -252,6 +285,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     const duty = traces.get('duty');
     const deadtime = traces.get('deadtime');
     const architecture = currentArchitecture();
+    const highDutyThreshold = optionNumber(highDuty, 90) ?? 90;
 
     const injector = analyzeFuelPressureInjector({
       reference: reference.range,
@@ -261,7 +295,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     }, {
       sampleIndices: scoped.sampleIndices,
       complete: scoped.complete,
-      highDutyThreshold: optionNumber(highDuty, 90) ?? 90,
+      highDutyThreshold,
     });
 
     const pressure = analyzeFuelPressureArchitecture({
@@ -274,9 +308,30 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       ...(optionNumber(gdiMinimum) !== undefined ? { gdiMinimumPressure: optionNumber(gdiMinimum)! } : {}),
     });
 
+    const contextual = analyzeFuelInjectorHeadroomContext(injector, {
+      reference: reference.range,
+      rpm: reference.range,
+      ...(map ? { load: map.range } : {}),
+      ...(lowSide ? { fuelPressure: lowSide.range } : {}),
+      ...(railDiff ? { railDifferential: railDiff.range } : {}),
+      ...(highSide ? { highSidePressure: highSide.range } : {}),
+      ...(pw ? { injectorPulseWidth: pw.range } : {}),
+      ...(duty ? { injectorDuty: duty.range } : {}),
+      ...(deadtime ? { injectorDeadtime: deadtime.range } : {}),
+    }, {
+      sampleIndices: scoped.sampleIndices,
+      highDutyThreshold,
+      pressureEvents: pressure.pressureEvents,
+    });
+
     const dutyMax = injector.injectorDuty?.max;
     const dutyUnit = channelUnit(duty) || '%';
-    const headroom = dutyMax === undefined ? '—' : `${numberText(100 - dutyMax, 1)}%`;
+    const minimumHeadroom = contextual.headroom?.minimumHeadroomPercent;
+    const headroom = minimumHeadroom === undefined ? '—' : `${numberText(minimumHeadroom, 1)}%`;
+    const highDutySamples = contextual.headroom
+      ? `${contextual.headroom.highDutySampleCount.toLocaleString()} (${numberText(contextual.headroom.highDutySamplePercent, 2)}%)`
+      : '—';
+    const saturationSamples = contextual.headroom ? contextual.headroom.saturationSampleCount.toLocaleString() : '—';
     const activePressureLabel = pressure.pressureRole === 'rail-differential'
       ? 'Rail differential'
       : pressure.pressureRole === 'high-side'
@@ -300,14 +355,20 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       ['Injector duty mean / max', rangeWithUnit(injector.injectorDuty?.mean, dutyMax, dutyUnit)],
       ['Minimum duty headroom', headroom],
       ['High duty events', String(injector.highDutyEvents.length)],
+      ['High duty samples', highDutySamples],
+      ['Duty ≥ 100% samples', saturationSamples],
       ['Deadtime mean', valueWithUnit(injector.injectorDeadtime?.mean, channelUnit(deadtime))],
     ]);
 
-    const pressureType = architecture === 'gdi' ? 'Low GDI rail pressure' : 'Low rail differential';
-    renderEvents([
-      ...pressure.pressureEvents.map((event) => ({ type: pressureType, unit: activePressureUnit, event })),
-      ...injector.highDutyEvents.map((event) => ({ type: 'High injector duty', unit: dutyUnit, event })),
-    ]);
+    renderEvents(contextual.events, {
+      rpm: channelUnit(reference),
+      load: channelUnit(map),
+      lowSide: channelUnit(lowSide),
+      activePressure: activePressureUnit,
+      duty: dutyUnit,
+      pw: channelUnit(pw),
+      deadtime: channelUnit(deadtime),
+    }, architecture);
     empty.hidden = true;
     content.hidden = false;
   };
