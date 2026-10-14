@@ -43,11 +43,11 @@ function schema(decodable = true): ShimSchema {
 }
 
 describe('ts_shim schema adapter', () => {
-  it('maps exact shim identities plus display metadata into ChannelDefinition', () => {
+  it('preserves exact shim channel identity while retaining non-name metadata', () => {
     expect(shimChannelDefinition(schema().channels[0]!)).toEqual({
       id: 'RPMValue',
       sourceName: 'RPMValue',
-      displayName: 'Engine speed',
+      displayName: 'RPMValue',
       valueType: 'number',
       unit: 'rpm',
       category: 'Engine',
@@ -55,7 +55,7 @@ describe('ts_shim schema adapter', () => {
     });
   });
 
-  it('falls back to exact output-channel names and direct channel category', () => {
+  it('keeps exact output-channel names and direct channel category', () => {
     expect(shimChannelDefinition(schema().channels[1]!)).toEqual({
       id: 'coolant',
       sourceName: 'coolant',
