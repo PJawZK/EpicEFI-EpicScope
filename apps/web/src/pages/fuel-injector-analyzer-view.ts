@@ -2,9 +2,11 @@ import { analyzeFuelPressureArchitecture, type FuelPressureArchitecture } from '
 import { analyzeFuelPressureInjector } from '../../../../core/analysis/specialized-analyzers';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
+import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { suggestAnalyzerChannel } from './analyzer-channel-roles';
+import { isFuelPressureChannelEligible, suggestFuelPressureChannel, type FuelPressureChannelRole } from './fuel-pressure-channel-selection';
 
 export interface FuelInjectorAnalyzerViewController {
   readonly element: HTMLElement;
@@ -34,6 +36,31 @@ function timeText(ms: number): string {
   return `${(ms / 1000).toFixed(3)} s`;
 }
 
+function channelUnit(trace: LoggerAnalysisTraceContext | undefined): string {
+  return trace?.channel.unit?.trim() ?? '';
+}
+
+function valueWithUnit(value: number | undefined, unit: string, precision = 3): string {
+  const text = numberText(value, precision);
+  return text === '—' || !unit ? text : `${text} ${unit}`;
+}
+
+function rangeWithUnit(mean: number | undefined, min: number | undefined, unit: string): string {
+  const text = `${numberText(mean)} / ${numberText(min)}`;
+  return !unit || text === '— / —' ? text : `${text} ${unit}`;
+}
+
+function pressureRoleForKey(key: RoleKey): FuelPressureChannelRole | undefined {
+  if (key === 'fuelPressure') return 'low-side';
+  if (key === 'fuelPressureHigh') return 'high-side';
+  return undefined;
+}
+
+function optionText(channel: ChannelDefinition): string {
+  const name = channel.displayName || channel.sourceName;
+  return channel.unit ? `${name} [${channel.unit}]` : name;
+}
+
 export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let generation = 0;
@@ -59,7 +86,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     </details>
     <div class="specialized-analyzer-empty">
       <strong>Select the reference sample grid before analyzing.</strong>
-      <span>Optional channels can remain unselected. Pressure verdicts are only produced from the pressure domain required by the selected fuel-system architecture.</span>
+      <span>Optional channels can remain unselected. Raw electrical pressure inputs are not offered as calibrated pressure evidence.</span>
     </div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary"></div>
@@ -107,8 +134,8 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     gdiMinimum.disabled = architecture !== 'gdi';
     field('guidance-title').textContent = architecture === 'gdi' ? 'GDI / high-pressure mode' : 'Conventional / port-injection mode';
     field('guidance-text').textContent = architecture === 'gdi'
-      ? 'High-side rail pressure is the active pressure evidence. Low-side pressure remains supply context. Rail differential is shown as context but is not used to create GDI low-pressure events.'
-      : 'Rail differential is the active pressure evidence. High-side/GDI pressure is shown as context only and cannot create conventional low-pressure events.';
+      ? 'High-side calibrated rail pressure is the active pressure evidence. Low-side calibrated pressure remains supply context. Raw electrical pressure inputs are intentionally excluded.'
+      : 'Rail differential is the active pressure evidence. Calibrated low-side pressure is supply context; raw electrical pressure inputs are intentionally excluded.';
   };
 
   const selectedScopeInfo = (reference: LoggerAnalysisTraceContext, selected: readonly LoggerAnalysisTraceContext[]) => {
@@ -142,7 +169,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     }));
   };
 
-  const renderEvents = (events: readonly { type: string; event: { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number; durationMs: number; extremeValue: number } }[]): void => {
+  const renderEvents = (events: readonly { type: string; unit?: string; event: { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number; durationMs: number; extremeValue: number } }[]): void => {
     field('event-count').textContent = events.length.toLocaleString();
     const headers = ['#', 'Type', 'Start', 'End', 'Duration', 'Extreme'];
     const headerRow = document.createElement('tr');
@@ -161,9 +188,9 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       tableBody.replaceChildren(row);
       return;
     }
-    tableBody.replaceChildren(...events.slice(0, 200).map(({ type, event }, index) => {
+    tableBody.replaceChildren(...events.slice(0, 200).map(({ type, unit, event }, index) => {
       const row = document.createElement('tr');
-      const values = [String(index + 1), type, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.extremeValue)];
+      const values = [String(index + 1), type, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, valueWithUnit(event.extremeValue, unit ?? '')];
       for (const value of values) {
         const cell = document.createElement('td');
         cell.textContent = value;
@@ -248,35 +275,38 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     });
 
     const dutyMax = injector.injectorDuty?.max;
+    const dutyUnit = channelUnit(duty) || '%';
     const headroom = dutyMax === undefined ? '—' : `${numberText(100 - dutyMax, 1)}%`;
     const activePressureLabel = pressure.pressureRole === 'rail-differential'
       ? 'Rail differential'
       : pressure.pressureRole === 'high-side'
         ? 'High-side / GDI rail'
-        : 'Required pressure channel unavailable';
+        : 'Required calibrated pressure channel unavailable';
+    const activePressureTrace = architecture === 'gdi' ? highSide : railDiff;
+    const activePressureUnit = channelUnit(activePressureTrace);
 
     renderSummary([
       ['Fuel system', architecture === 'gdi' ? 'GDI / high-pressure' : 'Conventional / port injection'],
       ['Scope', scoped.scope.label],
       ['Coverage', scoped.complete ? 'Complete' : 'Partial decoded'],
       ['Active pressure evidence', activePressureLabel],
-      ['Active pressure mean / min', `${numberText(pressure.activePressure?.mean)} / ${numberText(pressure.activePressure?.min)}`],
-      ['Pressure threshold', pressure.threshold === undefined ? 'Not set' : numberText(pressure.threshold)],
+      ['Active pressure mean / min', rangeWithUnit(pressure.activePressure?.mean, pressure.activePressure?.min, activePressureUnit)],
+      ['Pressure threshold', pressure.threshold === undefined ? 'Not set' : valueWithUnit(pressure.threshold, activePressureUnit)],
       ['Pressure events', String(pressure.pressureEvents.length)],
-      ['Low-side mean / min', `${numberText(pressure.lowSidePressure?.mean)} / ${numberText(pressure.lowSidePressure?.min)}`],
-      ['Rail diff mean / min', `${numberText(pressure.railDifferential?.mean)} / ${numberText(pressure.railDifferential?.min)}`],
-      ['GDI high-side mean / min', `${numberText(pressure.highSidePressure?.mean)} / ${numberText(pressure.highSidePressure?.min)}`],
-      ['Injector PW mean', numberText(injector.injectorPulseWidth?.mean)],
-      ['Injector duty mean / max', `${numberText(injector.injectorDuty?.mean)} / ${numberText(dutyMax)}`],
+      ['Low-side mean / min', rangeWithUnit(pressure.lowSidePressure?.mean, pressure.lowSidePressure?.min, channelUnit(lowSide))],
+      ['Rail diff mean / min', rangeWithUnit(pressure.railDifferential?.mean, pressure.railDifferential?.min, channelUnit(railDiff))],
+      ['GDI high-side mean / min', rangeWithUnit(pressure.highSidePressure?.mean, pressure.highSidePressure?.min, channelUnit(highSide))],
+      ['Injector PW mean', valueWithUnit(injector.injectorPulseWidth?.mean, channelUnit(pw))],
+      ['Injector duty mean / max', rangeWithUnit(injector.injectorDuty?.mean, dutyMax, dutyUnit)],
       ['Minimum duty headroom', headroom],
       ['High duty events', String(injector.highDutyEvents.length)],
-      ['Deadtime mean', numberText(injector.injectorDeadtime?.mean)],
+      ['Deadtime mean', valueWithUnit(injector.injectorDeadtime?.mean, channelUnit(deadtime))],
     ]);
 
     const pressureType = architecture === 'gdi' ? 'Low GDI rail pressure' : 'Low rail differential';
     renderEvents([
-      ...pressure.pressureEvents.map((event) => ({ type: pressureType, event })),
-      ...injector.highDutyEvents.map((event) => ({ type: 'High injector duty', event })),
+      ...pressure.pressureEvents.map((event) => ({ type: pressureType, unit: activePressureUnit, event })),
+      ...injector.highDutyEvents.map((event) => ({ type: 'High injector duty', unit: dutyUnit, event })),
     ]);
     empty.hidden = true;
     content.hidden = false;
@@ -292,8 +322,8 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     architecture.add(new Option('Conventional / port injection', 'conventional'));
     architecture.add(new Option('GDI / high-pressure', 'gdi'));
     const rememberedArchitecture = remembered.get('architecture');
-    const hasLow = Boolean(suggestAnalyzerChannel('fuel-injector', 'fuelPressure', context.channels) || suggestAnalyzerChannel('fuel-injector', 'railDiff', context.channels));
-    const hasHigh = Boolean(suggestAnalyzerChannel('fuel-injector', 'fuelPressureHigh', context.channels));
+    const hasLow = Boolean(suggestFuelPressureChannel('low-side', context.channels) || suggestAnalyzerChannel('fuel-injector', 'railDiff', context.channels));
+    const hasHigh = Boolean(suggestFuelPressureChannel('high-side', context.channels));
     architecture.value = rememberedArchitecture ?? (!hasLow && hasHigh ? 'gdi' : 'conventional');
     architecture.addEventListener('change', () => {
       remembered.set('architecture', architecture.value);
@@ -310,11 +340,17 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       const select = document.createElement('select');
       select.dataset.role = role.key;
       select.add(new Option(role.required ? '(select channel)' : '(none)', ''));
-      for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+      const pressureRole = pressureRoleForKey(role.key);
+      const availableChannels = pressureRole
+        ? context.channels.filter((channel) => isFuelPressureChannelEligible(pressureRole, channel))
+        : context.channels;
+      for (const channel of availableChannels) select.add(new Option(optionText(channel), channel.id));
       const rememberedValue = remembered.get(role.key);
       if (rememberedValue && [...select.options].some((option) => option.value === rememberedValue)) select.value = rememberedValue;
       else {
-        const suggested = suggestAnalyzerChannel('fuel-injector', role.key, context.channels);
+        const suggested = pressureRole
+          ? suggestFuelPressureChannel(pressureRole, context.channels)
+          : suggestAnalyzerChannel('fuel-injector', role.key, context.channels);
         if (suggested) select.value = suggested.id;
       }
       select.addEventListener('change', () => {
