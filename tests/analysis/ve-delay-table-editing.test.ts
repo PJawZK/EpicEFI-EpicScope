@@ -58,6 +58,20 @@ describe('VE lambda delay direct editing', () => {
     expect(reverted.cells[0]?.workingProvenance).toBe('measured-recommendation');
   });
 
+  it('returns an originally empty cell to untouched provenance when it is cleared again', () => {
+    const base = buildVeDelayTable([], [1000], [50], {
+      minimumMeasuredEvents: 3,
+      adaptiveGeometry: false,
+    });
+    const edited = setVeDelayWorkingCell(base, 0, 0, 175);
+    expect(edited.cells[0]?.workingProvenance).toBe('user-edited');
+
+    const cleared = setVeDelayWorkingCell(edited, 0, 0, undefined);
+    expect(cleared.cells[0]?.recommendedMs).toBeUndefined();
+    expect(cleared.cells[0]?.workingMs).toBeUndefined();
+    expect(cleared.cells[0]?.workingProvenance).toBeUndefined();
+  });
+
   it('keeps reviewed recommendation edits when promoted to working authority', () => {
     const base = buildVeDelayTable([event(100), event(120), event(140)], [1000], [50], {
       minimumMeasuredEvents: 3,
