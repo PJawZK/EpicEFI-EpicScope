@@ -9,6 +9,13 @@ export interface TargetMixtureTableAssessment {
   readonly messages: readonly string[];
 }
 
+export interface TuneMixtureScaleEvidence {
+  readonly identityScale: VeMixtureScale;
+  readonly valueScale: VeMixtureScale;
+  readonly resolvedScale: VeMixtureScale;
+  readonly conflict: boolean;
+}
+
 export function veTableCandidates(model: TuneModel | undefined): readonly TuneEntry[] {
   return model?.entries.filter((entry) => entry.kind === 'table' && entry.numericValues !== undefined) ?? [];
 }
@@ -65,12 +72,15 @@ function median(values: readonly number[]): number | undefined {
   return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle];
 }
 
-export function inferTuneMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
+function identityMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
   if (!entry) return 'unknown';
   const identity = `${entry.name} ${entry.units ?? ''}`.toLowerCase();
   if (/lambda|\blam\b/.test(identity)) return 'lambda';
   if (/\bafr\b|air.?fuel/.test(identity)) return 'afr';
+  return 'unknown';
+}
 
+function valueMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
   const values = finiteValues(entry);
   const middle = median(values);
   if (middle === undefined) return 'unknown';
@@ -81,6 +91,22 @@ export function inferTuneMixtureScale(entry: TuneEntry | undefined): VeMixtureSc
   return 'unknown';
 }
 
+export function tuneMixtureScaleEvidence(entry: TuneEntry | undefined): TuneMixtureScaleEvidence {
+  const identityScale = identityMixtureScale(entry);
+  const valueScale = valueMixtureScale(entry);
+  const conflict = identityScale !== 'unknown' && valueScale !== 'unknown' && identityScale !== valueScale;
+  const resolvedScale = conflict
+    ? 'unknown'
+    : valueScale !== 'unknown'
+      ? valueScale
+      : identityScale;
+  return { identityScale, valueScale, resolvedScale, conflict };
+}
+
+export function inferTuneMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
+  return tuneMixtureScaleEvidence(entry).resolvedScale;
+}
+
 export function assessTargetMixtureTable(
   entry: TuneEntry | undefined,
   selectedScale: Exclude<VeMixtureScale, 'unknown'>,
@@ -88,12 +114,18 @@ export function assessTargetMixtureTable(
 ): TargetMixtureTableAssessment {
   if (!entry) return { scale: 'unknown', status: 'invalid', messages: ['No target mixture table is selected.'] };
   const messages: string[] = [];
-  const inferred = inferTuneMixtureScale(entry);
+  const evidence = tuneMixtureScaleEvidence(entry);
   const values = finiteValues(entry);
+
   if (entry.name === veTableName) messages.push('The selected target table is the same table as the VE table.');
   if (values.length === 0) messages.push('The selected target table has no finite numeric values.');
-  if (inferred !== 'unknown' && inferred !== selectedScale) {
-    messages.push(`Scale mismatch: the selected table looks like ${inferred === 'afr' ? 'AFR' : 'Lambda'}, but VE Analyzer is set to ${selectedScale === 'afr' ? 'AFR' : 'Lambda'}.`);
+
+  if (evidence.conflict) {
+    messages.push(
+      `Source identity suggests ${evidence.identityScale === 'afr' ? 'AFR' : 'Lambda'}, but the stored values look like ${evidence.valueScale === 'afr' ? 'AFR' : 'Lambda'}. Verify the table and mixture scale before analysis.`,
+    );
+  } else if (evidence.resolvedScale !== 'unknown' && evidence.resolvedScale !== selectedScale) {
+    messages.push(`Scale mismatch: the selected table looks like ${evidence.resolvedScale === 'afr' ? 'AFR' : 'Lambda'}, but VE Analyzer is set to ${selectedScale === 'afr' ? 'AFR' : 'Lambda'}.`);
   }
 
   if (values.length > 0) {
@@ -107,13 +139,13 @@ export function assessTargetMixtureTable(
   }
 
   const identity = `${entry.name} ${entry.units ?? ''}`;
-  if (inferred === 'unknown' && !/(target|afr|lambda|air.?fuel)/i.test(identity)) {
+  if (evidence.resolvedScale === 'unknown' && !evidence.conflict && !/(target|afr|lambda|air.?fuel)/i.test(identity)) {
     messages.push('This table is not identifiable as an AFR/Lambda target from its name, units, or values. Verify the selection before analysis.');
   }
 
-  const invalid = messages.some((message) => /same table|no finite|Scale mismatch|do not look like/.test(message));
+  const invalid = messages.some((message) => /same table|no finite|Scale mismatch|do not look like|Source identity suggests/.test(message));
   return {
-    scale: inferred,
+    scale: evidence.resolvedScale,
     status: invalid ? 'invalid' : messages.length > 0 ? 'warning' : 'ok',
     messages,
   };
