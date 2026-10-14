@@ -11,10 +11,13 @@ function evidence(ratios: readonly (number | undefined)[], weights: readonly num
     targetOutOfRangeSampleCount: 0,
     veOutOfRangeSampleCount: 0,
     delayUnavailableSampleCount: 0,
+    fuelCorrectionUnavailableSampleCount: 0,
+    fuelCorrectionCompensatedSampleCount: 0,
     invalidSampleCount: 0,
     eligibleSampleCount: 10,
     contributingSampleCount: 10,
     delayMs: 0,
+    fuelCorrectionCompensated: false,
     cells: ratios.map((ratio, index) => ({
       row: 0,
       col: index,

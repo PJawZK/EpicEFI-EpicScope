@@ -7,6 +7,7 @@ import type { TuneEntry, TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { analyzerChannelOptionLabel, suggestAnalyzerChannel } from './analyzer-channel-roles';
+import { assessVeFuelCorrection, type VeFuelCorrectionMode } from './ve-fuel-correction';
 import {
   assessTargetMixtureTable,
   inferTuneMixtureScale,
@@ -150,6 +151,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <label><span>Target load axis</span><select data-role="target-load-axis"></select></label>
       <label><span>Actual mixture</span><select data-role="actual"></select></label>
       <label><span>EGO / STFT correction</span><select data-role="stft"></select></label>
+      <label><span>Fuel correction handling</span><select data-role="fuel-correction-mode"><option value="auto">Auto · known percent trim only</option><option value="off">Context only</option><option value="percent">Percent fuel applied (+5 = +5%)</option></select></label>
       <label><span>Min RPM</span><input data-role="min-rpm" type="number" value="500"></label>
       <label><span>Max RPM</span><input data-role="max-rpm" type="number" value="8500"></label>
       <label><span>Min load</span><input data-role="min-load" type="number"></label>
@@ -162,7 +164,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <label><span>Max VE change %</span><input data-role="max-percent-change" type="number" value="50" min="0"></label>
     </div>
     <div class="specialized-analyzer-guidance ve-mixture-warning" data-ve-analyzer="mixture-warning" hidden><strong>Mixture selection needs attention</strong><span></span></div>
-    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Proposal stage</strong><span data-ve-analyzer="stage">Run Analysis applies the visible working delay by timestamp, builds VE-node evidence, and calculates guarded proposals. The original MSQ remains unchanged.</span></div>
+    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Proposal stage</strong><span data-ve-analyzer="stage">Run Analysis applies the visible working delay by timestamp, builds VE-node evidence, compensates only explicitly understood fuel corrections, and calculates guarded proposals. The original MSQ remains unchanged.</span></div>
     <div class="specialized-analyzer-empty"><strong>VE Analyzer needs a loaded log plus valid VE/target tables, axes and primary channels.</strong><span>Run Analysis is explicit; changing setup invalidates the prior result instead of recomputing automatically.</span></div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary" data-ve-analyzer="summary"></div>
@@ -204,6 +206,17 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const input = (role: string) => root.querySelector<HTMLInputElement>(`input[data-role="${role}"]`) ?? undefined;
   const roleSelect = (key: RoleKey) => select(key) ?? controls.querySelector<HTMLSelectElement>(`select[data-role="${key}"]`) ?? undefined;
   const selectedScale = (): Exclude<VeMixtureScale, 'unknown'> => select('mixture-scale')?.value === 'lambda' ? 'lambda' : 'afr';
+  const fuelCorrectionMode = (): VeFuelCorrectionMode => {
+    const value = select('fuel-correction-mode')?.value;
+    return value === 'off' || value === 'percent' ? value : 'auto';
+  };
+
+  const selectedChannel = (key: RoleKey): ChannelDefinition | undefined => {
+    const id = roleSelect(key)?.value;
+    return id ? context.channels.find((channel) => channel.id === id) : undefined;
+  };
+
+  const currentFuelCorrection = () => assessVeFuelCorrection(selectedChannel('stft'), fuelCorrectionMode());
 
   const readNumber = (role: string): number | undefined => {
     const raw = input(role)?.value.trim();
@@ -281,7 +294,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const mixtureAssessment = () => {
     const target = tableEntry(tuneModel, select('target-table')?.value ?? ''); const assessment = assessTargetMixtureTable(target, selectedScale(), select('ve-table')?.value);
-    const actualChannel = context.channels.find((channel) => channel.id === roleSelect('actual')?.value); const actualScale = channelMixtureScale(actualChannel); const messages = [...assessment.messages];
+    const actualChannel = selectedChannel('actual'); const actualScale = channelMixtureScale(actualChannel); const messages = [...assessment.messages];
     if (actualScale !== 'unknown' && actualScale !== selectedScale()) messages.push(`Actual mixture source is ${displayScale(actualScale)}, but VE Analyzer is set to ${displayScale(selectedScale())}.`);
     warning.hidden = messages.length === 0; warningText.textContent = messages.join(' ');
     return { valid: assessment.status !== 'invalid' && (actualScale === 'unknown' || actualScale === selectedScale()), targetScale: assessment.scale };
@@ -332,6 +345,22 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
     const mix = mixtureAssessment(); add('Mixture scale', 'Target / actual compatibility', 'Required', displayScale(selectedScale()), mix.valid ? `Resolved · target ${displayScale(mix.targetScale)}` : 'Mismatch / verify', mix.valid);
     add('Proposal settings', 'Delay / prior / authority', 'Required', `${nonNegativeSetting('delay-ms') ?? '—'} ms delay`, authoritySettingsValid() ? 'Resolved' : 'Enter non-negative numeric values', authoritySettingsValid());
+
+    const correctionChannel = selectedChannel('stft');
+    const correction = currentFuelCorrection();
+    const correctionLoaded = correctionChannel && loaded ? loaded.has(correctionChannel.id) : undefined;
+    const correctionOk = !correction.applicable || (Boolean(correctionChannel) && correctionLoaded !== false);
+    add(
+      'Fuel correction compensation',
+      'Base-VE attribution',
+      correction.applicable ? 'Required' : 'Optional',
+      correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : '—',
+      correction.applicable
+        ? correctionLoaded === false ? 'Required source unavailable in scope' : `${correction.interpretation} · ${correction.reason}`
+        : `Context only · ${correction.reason}`,
+      correctionOk,
+    );
+
     for (const role of ROLES) {
       const control = roleSelect(role.key); const id = control?.value ?? ''; const channel = id ? context.channels.find((candidate) => candidate.id === id) : undefined; const loadState = loaded && id ? loaded.has(id) : undefined; const ok = Boolean(channel) && loadState !== false;
       add(role.label, role.purpose, role.required ? 'Required' : 'Optional', channel ? analyzerChannelOptionLabel(channel) : '—', channel ? loadState === false ? 'Unavailable in scope' : loadState === true ? 'Resolved · loaded' : 'Resolved' : role.required ? 'Missing' : 'Unavailable optional', ok);
@@ -384,15 +413,43 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const rangeMap = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); if (!renderReadiness(rangeMap)) return;
     const rpm = rangeMap.get(roleSelect('rpm')!.value); const load = rangeMap.get(roleSelect('load')!.value); const actual = rangeMap.get(roleSelect('actual')!.value); if (!rpm || !load || !actual) return;
     const filtered = stateFilteredIndices(rpm, rangeMap); const minimumRpm = readNumber('min-rpm'); const maximumRpm = readNumber('max-rpm'); const minimumLoad = readNumber('min-load'); const maximumLoad = readNumber('max-load'); const delayMs = nonNegativeSetting('delay-ms')!;
-    result = buildVeEvidenceMap({ actualMixture: actual, rpm, load, target: { rpmBins: targetRpm, loadBins: targetLoad, values: target.numericValues, rows: target.rows, cols: target.cols }, veRpmBins: veRpm, veLoadBins: veLoad, sampleIndices: filtered.indices }, {
-      ...(minimumRpm !== undefined ? { minimumRpm } : {}), ...(maximumRpm !== undefined ? { maximumRpm } : {}), ...(minimumLoad !== undefined ? { minimumLoad } : {}), ...(maximumLoad !== undefined ? { maximumLoad } : {}), minimumStableDurationMs: nonNegativeSetting('stable-ms')!, delayMs,
+
+    const correctionChannel = selectedChannel('stft');
+    const correctionAssessment = currentFuelCorrection();
+    const correctionRange = correctionChannel ? rangeMap.get(correctionChannel.id) : undefined;
+    if (correctionAssessment.applicable && !correctionRange) return;
+
+    result = buildVeEvidenceMap({
+      actualMixture: actual,
+      rpm,
+      load,
+      target: { rpmBins: targetRpm, loadBins: targetLoad, values: target.numericValues, rows: target.rows, cols: target.cols },
+      veRpmBins: veRpm,
+      veLoadBins: veLoad,
+      sampleIndices: filtered.indices,
+      ...(correctionAssessment.applicable && correctionRange ? { fuelCorrectionPercent: correctionRange } : {}),
+    }, {
+      ...(minimumRpm !== undefined ? { minimumRpm } : {}),
+      ...(maximumRpm !== undefined ? { maximumRpm } : {}),
+      ...(minimumLoad !== undefined ? { minimumLoad } : {}),
+      ...(maximumLoad !== undefined ? { maximumLoad } : {}),
+      minimumStableDurationMs: nonNegativeSetting('stable-ms')!,
+      delayMs,
+      compensateFuelCorrectionPercent: correctionAssessment.applicable,
     });
+
     proposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, result, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')! }); if (run !== runGeneration) return;
     const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTables();
+    const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
     renderSummary([
-      ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${delayMs} ms`], ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
+      ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${delayMs} ms`],
+      ['Fuel correction source', correctionSource], ['Fuel correction handling', correctionAssessment.applicable ? 'Compensated · percent fuel applied' : 'Context only'], ['Fuel correction samples', result.fuelCorrectionCompensated ? `${result.fuelCorrectionCompensatedSampleCount.toLocaleString()} compensated · ${result.fuelCorrectionUnavailableSampleCount.toLocaleString()} unavailable` : 'Not applied'],
+      ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
     ]);
-    stageText.textContent = 'Guarded VE proposal calculated. Engine state was aligned by timestamp using the visible working delay. Original MSQ values remain unchanged; weak and over-limit cells are not proposed.'; empty.hidden = true; content.hidden = false; renderReadiness(rangeMap);
+    stageText.textContent = correctionAssessment.applicable
+      ? 'Guarded VE proposal calculated with timestamp delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged; weak and over-limit cells are not proposed.'
+      : 'Guarded VE proposal calculated with timestamp delay alignment. The selected fuel-correction source is context-only because its applied-fuel semantics were not asserted or recognized. Original MSQ values remain unchanged.';
+    empty.hidden = true; content.hidden = false; renderReadiness(rangeMap);
   }
 
   const syncDelayResponseDefault = (): void => {
@@ -401,14 +458,16 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const rebuild = (): void => {
     controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined;
-    const veSelect = select('ve-table')!; const targetSelect = select('target-table')!; const scaleSelect = select('mixture-scale')!; const scopeSelect = select('scope')!; const presetSelect = select('preset')!;
+    const veSelect = select('ve-table')!; const targetSelect = select('target-table')!; const scaleSelect = select('mixture-scale')!; const scopeSelect = select('scope')!; const presetSelect = select('preset')!; const correctionModeSelect = select('fuel-correction-mode')!;
     veSelect.replaceChildren(new Option('(select VE table)', ''), ...veTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name))); veSelect.value = remembered.get('ve-table') && [...veSelect.options].some((option) => option.value === remembered.get('ve-table')) ? remembered.get('ve-table')! : preferredVeTableName(tuneModel) ?? '';
     targetSelect.replaceChildren(new Option('(select target mixture table)', ''), ...targetMixtureTableCandidates(tuneModel).map((entry) => new Option(`${entry.name}${entry.units ? ` [${entry.units}]` : ''}`, entry.name))); targetSelect.value = remembered.get('target-table') && [...targetSelect.options].some((option) => option.value === remembered.get('target-table')) ? remembered.get('target-table')! : preferredTargetMixtureTableName(tuneModel, veSelect.value) ?? '';
     const inferred = inferTuneMixtureScale(tableEntry(tuneModel, targetSelect.value)); scaleSelect.value = remembered.get('mixture-scale') === 'lambda' || remembered.get('mixture-scale') === 'afr' ? remembered.get('mixture-scale')! : inferred === 'lambda' ? 'lambda' : 'afr'; syncDelayResponseDefault();
+    correctionModeSelect.value = remembered.get('fuel-correction-mode') ?? 'auto';
     fillAxis('rpm-axis', 've-table', 'rpm'); fillAxis('load-axis', 've-table', 'load'); fillAxis('target-rpm-axis', 'target-table', 'rpm'); fillAxis('target-load-axis', 'target-table', 'load');
     veSelect.onchange = () => { remembered.set('ve-table', veSelect.value); fillAxis('rpm-axis', 've-table', 'rpm'); fillAxis('load-axis', 've-table', 'load'); invalidate(); };
     targetSelect.onchange = () => { remembered.set('target-table', targetSelect.value); const scale = inferTuneMixtureScale(tableEntry(tuneModel, targetSelect.value)); if (scale !== 'unknown') { scaleSelect.value = scale; remembered.set('mixture-scale', scale); syncDelayResponseDefault(); clearDelayDiscovery(); } fillAxis('target-rpm-axis', 'target-table', 'rpm'); fillAxis('target-load-axis', 'target-table', 'load'); invalidate(); };
     scaleSelect.onchange = () => { remembered.set('mixture-scale', scaleSelect.value); const actual = select('actual'); if (actual) { actual.value = preferredActualMixtureChannel(context.channels, selectedScale())?.id ?? ''; remembered.set('actual', actual.value); } syncDelayResponseDefault(); clearDelayDiscovery(); invalidate(); };
+    correctionModeSelect.onchange = () => { remembered.set('fuel-correction-mode', correctionModeSelect.value); invalidate(); };
     populateAnalyzerScopeSelect(scopeSelect, context, remembered.get('scope') ?? 'full'); scopeSelect.onchange = () => { remembered.set('scope', scopeSelect.value); clearDelayDiscovery(); invalidate(); };
     presetSelect.replaceChildren(...PRESETS.map(([value, label]) => new Option(label, value))); presetSelect.value = remembered.get('preset') ?? 'recommended'; presetSelect.onchange = () => { remembered.set('preset', presetSelect.value); invalidate(); };
     fillRole(select('actual')!, ROLES.find((role) => role.key === 'actual')!); fillRole(select('stft')!, ROLES.find((role) => role.key === 'stft')!); for (const role of ROLES.filter((item) => item.key !== 'actual' && item.key !== 'stft')) fillRole(addAdvanced(role), role);
