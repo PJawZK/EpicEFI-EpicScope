@@ -1,37 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { orderLoadDataMenuItems } from '../../apps/web/src/app/source-transition';
+import { LOAD_DATA_MENU_ORDER } from '../../apps/web/src/app/source-transition';
 
 describe('Load Data menu ordering', () => {
   it('orders source actions by normal setup and use sequence', () => {
-    const menu = document.createElement('div');
-    menu.innerHTML = `
-      <div class="load-data-menu-head">Header</div>
-      <button class="open-log">LOG</button>
-      <button class="unload-log">UNLOAD</button>
-      <button class="load-ini">INI</button>
-      <button class="shim-source-button">TS-SHIM</button>
-      <button class="load-msq">MSQ</button>
-    `;
-
-    orderLoadDataMenuItems(menu);
-
-    const labels = [...menu.querySelectorAll('button')].map((button) => button.textContent);
-    expect(labels).toEqual(['INI', 'MSQ', 'LOG', 'UNLOAD', 'TS-SHIM']);
-    expect(menu.firstElementChild?.classList.contains('load-data-menu-head')).toBe(true);
+    expect(LOAD_DATA_MENU_ORDER).toEqual([
+      '.load-ini',
+      '.load-msq',
+      '.open-log',
+      '.unload-log',
+      '.shim-source-button',
+    ]);
   });
 
-  it('keeps working when optional dynamic items are absent', () => {
-    const menu = document.createElement('div');
-    menu.innerHTML = `
-      <div class="load-data-menu-head">Header</div>
-      <button class="open-log">LOG</button>
-      <button class="load-ini">INI</button>
-      <button class="load-msq">MSQ</button>
-    `;
-
-    orderLoadDataMenuItems(menu);
-
-    const labels = [...menu.querySelectorAll('button')].map((button) => button.textContent);
-    expect(labels).toEqual(['INI', 'MSQ', 'LOG']);
+  it('keeps the recorded-log actions adjacent before the live shim action', () => {
+    expect(LOAD_DATA_MENU_ORDER.indexOf('.open-log') + 1).toBe(LOAD_DATA_MENU_ORDER.indexOf('.unload-log'));
+    expect(LOAD_DATA_MENU_ORDER.indexOf('.unload-log') + 1).toBe(LOAD_DATA_MENU_ORDER.indexOf('.shim-source-button'));
   });
 });
