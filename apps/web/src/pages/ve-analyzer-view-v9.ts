@@ -15,52 +15,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const inner = createVeAnalyzerViewV8();
   const root = inner.element;
 
-  const tableLayoutSelect = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer table view"]');
-  const tableLayoutLabel = tableLayoutSelect?.closest<HTMLLabelElement>('label');
-  const tableLayoutCaption = tableLayoutLabel?.querySelector<HTMLElement>('span');
-  const tabs = root.querySelector<HTMLElement>('.ve-workbench-table-tabs');
-  const veSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
-  const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
-  const vePanel = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
-  const targetPanel = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
-  const veHeader = vePanel?.querySelector<HTMLElement>('header');
-  const targetHeader = targetPanel?.querySelector<HTMLElement>('header');
-  const veControls = veHeader?.querySelector<HTMLElement>('.ve-table-header-controls');
-  const targetControls = targetHeader?.querySelector<HTMLElement>('.ve-table-header-controls');
-
-  // The table-view selector is self-explanatory next to the table source selector.
-  // Removing the caption saves vertical space in the already compact table header.
-  tableLayoutCaption?.remove();
-
-  const syncTableControls = (): void => {
-    if (!tableLayoutSelect || !tableLayoutLabel || !tabs || !veSelect || !targetSelect || !veControls || !targetControls || !veHeader || !targetHeader) return;
-    const single = tableLayoutSelect.value === 'single';
-    const activeVe = !vePanel?.hidden;
-
-    // Keep the descriptive copy first, then the compact controls where the
-    // original table selector lived. This preserves the familiar table header
-    // reading order and keeps Table view immediately left of veTable.
-    veHeader.append(veControls);
-    targetHeader.append(targetControls);
-    veControls.replaceChildren();
-    targetControls.replaceChildren();
-
-    if (!single) {
-      veControls.append(tableLayoutLabel, veSelect);
-      targetControls.append(targetSelect);
-      return;
-    }
-
-    // Single-table mode keeps layout, tabs and both source-table selectors in
-    // one stable row. The source selectors sit directly beside the tab group.
-    const activeControls = activeVe ? veControls : targetControls;
-    activeControls.append(tableLayoutLabel, tabs, veSelect, targetSelect);
-  };
-
-  tableLayoutSelect?.addEventListener('change', () => queueMicrotask(syncTableControls));
-  tabs?.addEventListener('click', () => queueMicrotask(syncTableControls));
-  queueMicrotask(syncTableControls);
-
+  // Table layout/header ownership lives entirely in v7. This layer is limited
+  // to the lambda-delay interaction fixes introduced in the known-good baseline.
   const delayHost = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-table"]');
   const delayHint = root.querySelector<HTMLElement>('.ve-delay-inline-hint');
   const legacyWorking = root.querySelector<HTMLInputElement>('[data-ve-analyzer="delay-cell-working"]');
@@ -131,15 +87,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     element: root,
     setContext(context: LoggerAnalysisContext) {
       inner.setContext(context);
-      queueMicrotask(syncTableControls);
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       inner.setTuneModel(model, sourceName);
-      queueMicrotask(syncTableControls);
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(syncTableControls);
     },
   };
 }

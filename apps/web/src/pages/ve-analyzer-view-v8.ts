@@ -13,52 +13,9 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
   const blockerPanel = root.querySelector<HTMLElement>('.ve-run-blocker-panel')!;
   const infoButton = root.querySelector<HTMLButtonElement>('.ve-run-info-button')!;
-  const tableLayoutSelect = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer table view"]');
-  const tableLayoutLabel = tableLayoutSelect?.closest<HTMLLabelElement>('label');
-  const tabs = root.querySelector<HTMLElement>('.ve-workbench-table-tabs');
-  const veSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
-  const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
-  const vePanel = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
-  const targetPanel = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
-  const veHeader = vePanel?.querySelector<HTMLElement>('header');
-  const targetHeader = targetPanel?.querySelector<HTMLElement>('header');
 
-  const ensureControls = (header: HTMLElement | null | undefined): HTMLElement | undefined => {
-    if (!header) return undefined;
-    let controls = header.querySelector<HTMLElement>('.ve-table-header-controls');
-    if (!controls) {
-      controls = document.createElement('div');
-      controls.className = 've-table-header-controls';
-      header.append(controls);
-    }
-    return controls;
-  };
-
-  const veControls = ensureControls(veHeader);
-  const targetControls = ensureControls(targetHeader);
-
-  const syncTableControls = (): void => {
-    if (!tableLayoutSelect || !tableLayoutLabel || !tabs || !veSelect || !targetSelect || !veControls || !targetControls) return;
-    const single = tableLayoutSelect.value === 'single';
-    const activeVe = !vePanel?.hidden;
-    veControls.replaceChildren();
-    targetControls.replaceChildren();
-
-    if (!single) {
-      veControls.append(tableLayoutLabel, veSelect);
-      targetControls.append(targetSelect);
-      return;
-    }
-
-    const activeControls = activeVe ? veControls : targetControls;
-    activeControls.append(tabs, tableLayoutLabel, activeVe ? veSelect : targetSelect);
-    (activeVe ? targetControls : veControls).append(activeVe ? targetSelect : veSelect);
-  };
-
-  tableLayoutSelect?.addEventListener('change', () => queueMicrotask(syncTableControls));
-  tabs?.addEventListener('click', () => queueMicrotask(syncTableControls));
-  queueMicrotask(syncTableControls);
-
+  // Table layout/header ownership lives entirely in v7. This layer only adds
+  // the compact Run Analysis blocker status and global font-intensity support.
   const quickFix = document.createElement('button');
   quickFix.type = 'button';
   quickFix.className = 've-run-quick-fix';
@@ -84,15 +41,15 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     element: root,
     setContext(context: LoggerAnalysisContext) {
       inner.setContext(context);
-      queueMicrotask(() => { syncTableControls(); syncQuickFix(); });
+      queueMicrotask(syncQuickFix);
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       inner.setTuneModel(model, sourceName);
-      queueMicrotask(() => { syncTableControls(); syncQuickFix(); });
+      queueMicrotask(syncQuickFix);
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(() => { syncTableControls(); syncQuickFix(); });
+      queueMicrotask(syncQuickFix);
     },
   };
 }
