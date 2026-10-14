@@ -19,6 +19,10 @@ const OPTIONAL_BOUND_ROLES = [
   'max-load',
 ] as const;
 
+function blocker(message: string, target?: HTMLElement): RunBlocker {
+  return target ? { message, target } : { message };
+}
+
 function inputValue(root: HTMLElement, role: string): string {
   return root.querySelector<HTMLInputElement>(`input[data-role="${role}"]`)?.value ?? '';
 }
@@ -35,7 +39,7 @@ function proposalBlockers(root: HTMLElement): RunBlocker[] {
       : message.startsWith('Minimum evidence weight') ? 'min-evidence-weight'
         : message.startsWith('Max VE change %') ? 'max-percent-change'
           : 'max-absolute-change';
-    return { message, target: root.querySelector<HTMLElement>(`input[data-role="${role}"]`) ?? undefined };
+    return blocker(message, root.querySelector<HTMLElement>(`input[data-role="${role}"]`) ?? undefined);
   });
 }
 
@@ -79,17 +83,17 @@ function readinessBlockers(
     if (name === 'Lambda delay table') {
       const recommendationReady = !useDelay.disabled;
       blockers.push(recommendationReady
-        ? { message: 'Activate the lambda-delay recommendation with Use recommendation.', target: useDelay }
-        : { message: 'Create or load a working lambda-delay table.', target: grabDelay });
+        ? blocker('Activate the lambda-delay recommendation with Use recommendation.', useDelay)
+        : blocker('Create or load a working lambda-delay table.', grabDelay));
       continue;
     }
     const detail = status && status !== 'Missing' ? ` — ${status}` : '';
-    blockers.push({ message: `${name}${detail}`, target: targetForReadinessName(root, name) });
+    blockers.push(blocker(`${name}${detail}`, targetForReadinessName(root, name)));
   }
-  if (delayHost.dataset.mode !== 'working' && blockers.every((blocker) => !/lambda-delay/i.test(blocker.message))) {
+  if (delayHost.dataset.mode !== 'working' && blockers.every((entry) => !/lambda-delay/i.test(entry.message))) {
     blockers.unshift(!useDelay.disabled
-      ? { message: 'Activate the lambda-delay recommendation with Use recommendation.', target: useDelay }
-      : { message: 'Create or load a working lambda-delay table.', target: grabDelay });
+      ? blocker('Activate the lambda-delay recommendation with Use recommendation.', useDelay)
+      : blocker('Create or load a working lambda-delay table.', grabDelay));
   }
   return blockers;
 }
@@ -163,23 +167,23 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const heading = document.createElement('strong');
     heading.textContent = `Run Analysis needs ${blockers.length} ${blockers.length === 1 ? 'fix' : 'fixes'}`;
     blockerPanel.append(heading);
-    for (const blocker of blockers) {
+    for (const entry of blockers) {
       const item = document.createElement('div');
       item.className = 've-run-blocker-item';
       const text = document.createElement('span');
-      text.textContent = blocker.message;
+      text.textContent = entry.message;
       item.append(text);
-      if (blocker.target) {
+      if (entry.target) {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Fix';
-        button.onclick = () => focusBlocker(blocker.target);
+        button.onclick = () => focusBlocker(entry.target);
         item.append(button);
       }
       blockerPanel.append(item);
     }
     readiness.textContent = `Run blocked · ${blockers.length} ${blockers.length === 1 ? 'issue' : 'issues'}`;
-    readiness.title = blockers.map((blocker) => blocker.message).join('; ');
+    readiness.title = blockers.map((entry) => entry.message).join('; ');
   };
 
   const refocusDelaySelection = (): void => {
