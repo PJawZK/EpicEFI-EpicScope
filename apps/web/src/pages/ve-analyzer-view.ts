@@ -247,6 +247,14 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     return { min: finite.length ? Math.min(...finite) : 0, max: finite.length ? Math.max(...finite) : 1 };
   };
 
+  const evidenceDetail = (cell: VeEvidenceMapResult['cells'][number] | undefined): string => {
+    if (!cell || !(cell.totalWeight > 0)) return '';
+    const p10 = cell.correctionP10Ratio === undefined ? '—' : formatPercent((cell.correctionP10Ratio - 1) * 100);
+    const p90 = cell.correctionP90Ratio === undefined ? '—' : formatPercent((cell.correctionP90Ratio - 1) * 100);
+    const spread = cell.correctionSpreadPercent === undefined ? '—' : `${cell.correctionSpreadPercent.toFixed(1)}%`;
+    return `Robust median ${formatPercent(cell.correctionPercent)}; P10 ${p10}; P90 ${p90}; spread ${spread}; confidence ${cell.confidence}; weight ${cell.totalWeight.toFixed(3)}; samples ${cell.sampleCount}.`;
+  };
+
   const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult, proposed?: VeProposalResult): void => {
     if (!entry?.numericValues) { host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>'; return; }
     const scale = tableScale(entry);
@@ -266,17 +274,20 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
           const evidenceCell = evidence?.cells[index];
           if (proposalCell && proposalCell.state !== 'no-evidence') {
             const small = document.createElement('small');
-            if (proposalCell.state === 'measured') small.textContent = `${formatPercent(proposalCell.changePercent)} · w ${proposalCell.totalWeight.toFixed(1)} · n ${proposalCell.sampleCount}`;
-            else if (proposalCell.state === 'weak-evidence') small.textContent = `weak · raw ${formatPercent(proposalCell.changePercent)} · w ${proposalCell.totalWeight.toFixed(1)}`;
-            else small.textContent = `withheld · raw ${formatPercent(proposalCell.changePercent)}`;
+            const confidence = evidenceCell?.confidence ?? 'none';
+            if (proposalCell.state === 'measured') small.textContent = `${formatPercent(proposalCell.changePercent)} · ${confidence} · w ${proposalCell.totalWeight.toFixed(1)} · n ${proposalCell.sampleCount}`;
+            else if (proposalCell.state === 'weak-evidence') small.textContent = `weak · ${confidence} · raw ${formatPercent(proposalCell.changePercent)} · w ${proposalCell.totalWeight.toFixed(1)}`;
+            else small.textContent = `withheld · ${confidence} · raw ${formatPercent(proposalCell.changePercent)}`;
             small.style.display = 'block'; td.append(small);
+            const evidenceText = evidenceDetail(evidenceCell);
             td.title = proposalCell.state === 'measured'
-              ? `Measured proposal. Current ${formatValue(current, entry.digits)}, proposed ${formatValue(proposalCell.proposedValue!, entry.digits)}, change ${formatPercent(proposalCell.changePercent)}, weight ${proposalCell.totalWeight.toFixed(3)}, samples ${proposalCell.sampleCount}.`
+              ? `Measured proposal. Current ${formatValue(current, entry.digits)}, proposed ${formatValue(proposalCell.proposedValue!, entry.digits)}, change ${formatPercent(proposalCell.changePercent)}. ${evidenceText}`
               : proposalCell.state === 'weak-evidence'
-                ? `Weak evidence only. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}); no proposal is emitted.`
-                : `Recommendation withheld by configured change limits. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}).`;
+                ? `Weak evidence only. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}); no proposal is emitted. ${evidenceText}`
+                : `Recommendation withheld by configured change limits. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}). ${evidenceText}`;
           } else if (evidenceCell && evidenceCell.totalWeight > 0) {
-            const small = document.createElement('small'); small.textContent = `${formatPercent(evidenceCell.correctionPercent)} · w ${evidenceCell.totalWeight.toFixed(1)} · n ${evidenceCell.sampleCount}`; small.style.display = 'block'; td.append(small);
+            const small = document.createElement('small'); small.textContent = `${formatPercent(evidenceCell.correctionPercent)} · ${evidenceCell.confidence} · w ${evidenceCell.totalWeight.toFixed(1)} · n ${evidenceCell.sampleCount}`; small.style.display = 'block'; td.append(small);
+            td.title = evidenceDetail(evidenceCell);
           }
         } else td.textContent = '—';
         tr.append(td);
@@ -441,14 +452,19 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     proposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, result, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')! }); if (run !== runGeneration) return;
     const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTables();
     const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
+    const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length;
+    const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length;
+    const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length;
     renderSummary([
       ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${delayMs} ms`],
       ['Fuel correction source', correctionSource], ['Fuel correction handling', correctionAssessment.applicable ? 'Compensated · percent fuel applied' : 'Context only'], ['Fuel correction samples', result.fuelCorrectionCompensated ? `${result.fuelCorrectionCompensatedSampleCount.toLocaleString()} compensated · ${result.fuelCorrectionUnavailableSampleCount.toLocaleString()} unavailable` : 'Not applied'],
-      ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
+      ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()],
+      ['Evidence estimator', 'Weighted median · P10/P90 spread'], ['Evidence confidence', `${strongEvidenceCells} strong · ${moderateEvidenceCells} moderate · ${limitedEvidenceCells} limited`],
+      ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
     ]);
     stageText.textContent = correctionAssessment.applicable
-      ? 'Guarded VE proposal calculated with timestamp delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged; weak and over-limit cells are not proposed.'
-      : 'Guarded VE proposal calculated with timestamp delay alignment. The selected fuel-correction source is context-only because its applied-fuel semantics were not asserted or recognized. Original MSQ values remain unchanged.';
+      ? 'Guarded VE proposal calculated from robust weighted evidence with timestamp delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged; weak and over-limit cells are not proposed.'
+      : 'Guarded VE proposal calculated from robust weighted evidence with timestamp delay alignment. The selected fuel-correction source is context-only because its applied-fuel semantics were not asserted or recognized. Original MSQ values remain unchanged.';
     empty.hidden = true; content.hidden = false; renderReadiness(rangeMap);
   }
 
