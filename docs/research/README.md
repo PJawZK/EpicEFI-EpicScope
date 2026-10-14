@@ -41,11 +41,27 @@ MegaLogViewer HD 4.6.14 research covering:
 
 **Current EpicScope disposition:** much of the generic Histogram/Table Generator/Scatter/Math Channel research is implemented or improved beyond the reference. VE Analyze findings are preserved as planned VE Analyzer behavior. See `STATUS.md`.
 
+### `MLV_VE_ANALYZE_WORKFLOW_PASS.md`
+
+Second, workflow-focused MegaLogViewer VE Analyze pass added after real UI validation exposed a gap in the original research. It covers:
+
+- the two-table VE + Target AFR workbench as the primary user model;
+- Run Analysis / Accept New Table / Exit lifecycle;
+- selective revert/edit of proposed cells;
+- Cell Change / starting-table authority;
+- Lambda Delay Table placement;
+- target-table authority;
+- EGO sensor/correction field handling;
+- quick RPM/load/CLT/time/custom filters;
+- how EpicScope should preserve the mature fast workflow while adding stronger evidence and safety semantics.
+
+**Current EpicScope disposition:** this pass changes the intended primary VE Analyzer UX. PR #399's readiness shell remains useful plumbing, but the normative workbench direction is now recorded in `../VE_ANALYZER_WORKBENCH.md`.
+
 ### `VE_AUTOTUNE_REFERENCE_RESEARCH.md`
 
 Cross-tool VE/autotune research comparing MegaLogViewer HD and ECUMaster EMU PRO VE Tuner, with explicit EpicScope design conclusions for qualification, lambda-delay discovery, correction authority, confidence and evidence presentation.
 
-**Current EpicScope disposition:** supporting foundations exist in Fueling, AFR-delay analysis, Qualification, Table Generator weighting, semantic roles and MSQ tune context. The dedicated VE Analyzer product surface is still planned and is specified in `../VE_ANALYZER.md`.
+**Current EpicScope disposition:** supporting foundations exist in Fueling, AFR-delay analysis, Qualification, Table Generator weighting, semantic roles and MSQ tune context. VE Analyzer has now started as an experimental shell; the next implementation step is the two-table workbench defined in `../VE_ANALYZER_WORKBENCH.md` before recommendation math proceeds.
 
 ### `MLG_V3_RESEARCH.md`
 
@@ -59,7 +75,8 @@ Living research-to-product mapping. Update this file when a researched behavior 
 
 ## Related product specifications
 
-- `../VE_ANALYZER.md` — EpicScope VE Analyzer behavior contract derived from MLV/EMU PRO research.
+- `../VE_ANALYZER.md` — EpicScope VE Analyzer evidence/algorithm behavior contract derived from MLV/EMU PRO research.
+- `../VE_ANALYZER_WORKBENCH.md` — normative primary VE Analyzer workflow/layout contract from the second MLV VE Analyze pass.
 - `../FUELING_ANALYZER.md` — current Fueling Analyzer maturity and reusable delay/qualification foundations.
 - `../ANALYZER.md` — present Analyzer family maturity and sequencing.
 - `../HISTOGRAM.md` — present generic Histogram/Table Generator/Distribution/Scatter state.
@@ -80,8 +97,8 @@ Do not turn EpicScope into a live tune editor merely to mirror TunerStudio.
 
 ## Traceability
 
-The VE Analyzer specification in `../VE_ANALYZER.md` should be read together with the research notes in this directory. The specification records intended EpicScope behavior; these research documents record the external evidence and reasoning that motivated those decisions; `STATUS.md` records current implementation disposition.
+The VE Analyzer specifications in `../VE_ANALYZER.md` and `../VE_ANALYZER_WORKBENCH.md` should be read together with the research notes in this directory. The specifications record intended EpicScope behavior; these research documents record the external evidence and reasoning that motivated those decisions; `STATUS.md` records current implementation disposition.
 
 ## Research status
 
-The broad MLV and VE/autotune investigations are considered complete enough for product work. Future MLV/EMU PRO/TunerStudio inspection should be triggered by a concrete EpicScope behavior question, regression or compatibility need rather than open-ended reverse engineering.
+The broad MLV and VE/autotune investigations are considered complete enough for product work after the second VE Analyze workflow pass. Future MLV/EMU PRO/TunerStudio inspection should be triggered by a concrete EpicScope behavior question, regression or compatibility need rather than open-ended reverse engineering.
