@@ -35,6 +35,7 @@ describe('VE Analyzer quick qualification', () => {
     const channels = [
       channel('clt-threshold', 'cltFanOn', 'C'),
       channel('coolant-pressure', 'coolantPressure', 'kPa', 'Coolant pressure'),
+      channel('cel-clt', 'cel_clt', 'C', 'CLT check engine diagnostic'),
       channel('coolant', 'CLT', 'C', 'Coolant temperature'),
       channel('tps-rate', 'tpsRate', '%/s'),
       channel('tps', 'TPS', '%', 'Throttle position'),
@@ -43,9 +44,11 @@ describe('VE Analyzer quick qualification', () => {
     expect(preferredVeQualificationChannel(channels, 'tps')?.sourceName).toBe('TPS');
   });
 
-  it('never exposes coolant pressure as a CLT temperature candidate', () => {
+  it('never exposes coolant pressure or CEL diagnostics as CLT temperature candidates', () => {
     expect(veQualificationChannelCompatible(channel('pressure', 'coolantPressure', 'kPa'), 'clt')).toBe(false);
     expect(veQualificationChannelCompatible(channel('pressure2', 'Coolant Pressure', 'bar'), 'clt')).toBe(false);
+    expect(veQualificationChannelCompatible(channel('cel-clt', 'cel_clt', 'C'), 'clt')).toBe(false);
+    expect(veQualificationChannelCompatible(channel('check-engine-clt', 'checkEngineClt', 'C', 'Check Engine CLT'), 'clt')).toBe(false);
     expect(veQualificationChannelCompatible(channel('coolant', 'coolant', 'deg C'), 'clt')).toBe(true);
     expect(veQualificationChannelCompatible(channel('clt', 'CLT', 'C'), 'clt')).toBe(true);
   });
