@@ -68,11 +68,19 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const targetPanel = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
   const veHeader = vePanel?.querySelector<HTMLElement>('header');
   const targetHeader = targetPanel?.querySelector<HTMLElement>('header');
+  const veSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
+  const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
   let activeTableTab: VeTableTab = 've';
 
-  // Table layout belongs to the VE table header, not the lower Run Analysis bar.
-  // Creating it at its final structural owner prevents later enhancement layers
-  // from leaving a stale/duplicate selector in the action bar.
+  // v7 is the single owner of table layout and table-header controls. Later
+  // enhancement layers must not re-parent these nodes.
+  const veControls = document.createElement('div');
+  veControls.className = 've-table-header-controls';
+  const targetControls = document.createElement('div');
+  targetControls.className = 've-table-header-controls';
+  veHeader?.prepend(veControls);
+  targetHeader?.prepend(targetControls);
+
   const tableLayoutLabel = document.createElement('label');
   tableLayoutLabel.className = 've-table-layout-control';
   const tableLayoutSelect = document.createElement('select');
@@ -80,9 +88,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   tableLayoutSelect.innerHTML = '<option value="side-by-side">Side by side</option><option value="single">Single table</option>';
   tableLayoutSelect.value = storedTableLayout();
   tableLayoutLabel.append(tableLayoutSelect);
-  const veTableSelect = veHeader?.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
-  if (veTableSelect) veTableSelect.insertAdjacentElement('beforebegin', tableLayoutLabel);
-  else veHeader?.append(tableLayoutLabel);
 
   const tableTabs = document.createElement('nav');
   tableTabs.className = 've-workbench-table-tabs';
@@ -99,15 +104,30 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   targetTabButton.setAttribute('role', 'tab');
   tableTabs.append(veTabButton, targetTabButton);
 
+  const syncTableHeaderControls = (): void => {
+    if (!veSelect || !targetSelect) return;
+    veControls.replaceChildren();
+    targetControls.replaceChildren();
+
+    const single = tableLayoutSelect.value === 'single';
+    if (!single) {
+      // Preserve the known-good side-by-side placement. Table view is the only
+      // new control: immediately left of the VE source-table selector.
+      veControls.append(tableLayoutLabel, veSelect);
+      targetControls.append(targetSelect);
+      return;
+    }
+
+    // Single-table mode keeps the entire table-switching/source-selection group
+    // together so changing tabs cannot move the controls vertically.
+    const activeControls = activeTableTab === 've' ? veControls : targetControls;
+    activeControls.append(tableLayoutLabel, tableTabs, veSelect, targetSelect);
+  };
+
   const applyTableLayout = (): void => {
     const layout = tableLayoutSelect.value === 'single' ? 'single' : 'side-by-side';
     workbench.dataset.tableLayout = layout;
     tableTabs.hidden = layout !== 'single';
-
-    if (layout === 'single') {
-      const activeHeader = activeTableTab === 've' ? veHeader : targetHeader;
-      activeHeader?.append(tableTabs);
-    }
 
     if (vePanel) vePanel.hidden = layout === 'single' && activeTableTab !== 've';
     if (targetPanel) targetPanel.hidden = layout === 'single' && activeTableTab !== 'target';
@@ -116,6 +136,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     targetTabButton.classList.toggle('is-active', activeTableTab === 'target');
     veTabButton.setAttribute('aria-selected', activeTableTab === 've' ? 'true' : 'false');
     targetTabButton.setAttribute('aria-selected', activeTableTab === 'target' ? 'true' : 'false');
+    syncTableHeaderControls();
   };
 
   tableLayoutSelect.addEventListener('change', () => {
@@ -268,15 +289,15 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     element: root,
     setContext(context: LoggerAnalysisContext) {
       inner.setContext(context);
-      queueMicrotask(renderPopout);
+      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       inner.setTuneModel(model, sourceName);
-      queueMicrotask(renderPopout);
+      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(renderPopout);
+      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
     },
   };
 }
