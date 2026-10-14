@@ -18,20 +18,40 @@ export const VE_CELL_CHANGE_PRIOR_WEIGHT: Readonly<Record<Exclude<VeCellChangeAu
 };
 
 function normalized(value: string | undefined): string {
-  return value?.trim().toLowerCase().replace(/[^a-z0-9%]+/g, ' ') ?? '';
+  return value?.trim().toLowerCase().replace(/[^a-z0-9%°]+/g, ' ') ?? '';
+}
+
+function temperatureUnit(unit: string | undefined): boolean {
+  const text = normalized(unit);
+  return /(^| )(deg ?c|°c|celsius|deg ?f|°f|fahrenheit|kelvin|k)( |$)/.test(` ${text} `);
+}
+
+function pressureSemantic(channel: ChannelDefinition): boolean {
+  const identity = normalized(`${channel.sourceName} ${channel.displayName} ${channel.unit ?? ''}`);
+  return /pressure|(^| )(kpa|bar|psi|mpa)( |$)/.test(identity);
 }
 
 function scoreClt(channel: ChannelDefinition): number {
+  if (pressureSemantic(channel)) return Number.NEGATIVE_INFINITY;
   const source = normalized(channel.sourceName);
   const display = normalized(channel.displayName);
-  const unit = normalized(channel.unit);
+  const tempUnit = temperatureUnit(channel.unit);
+  const exactClt = /(^| )clt( |$)/.test(source);
+  const coolantIdentity = /coolant/.test(source) || /coolant/.test(display);
+  const temperatureIdentity = /temp|temperature/.test(source) || /temp|temperature/.test(display);
+
+  // A generic coolant-labelled value is not enough: coolant pressure and other
+  // coolant-system channels must never become CLT candidates. Require either
+  // canonical CLT identity or explicit temperature evidence.
+  if (!exactClt && !(coolantIdentity && (temperatureIdentity || tempUnit))) return Number.NEGATIVE_INFINITY;
+
   let score = 0;
-  if (/(^| )clt( |$)/.test(source)) score += 120;
-  if (/coolant/.test(source)) score += 100;
+  if (exactClt) score += 140;
+  if (/coolant/.test(source)) score += 95;
   if (/coolant/.test(display)) score += 35;
-  if (/temp|temperature/.test(source)) score += 20;
-  if (/degc| c |celsius/.test(` ${unit} `)) score += 15;
-  if (/target|threshold|limit|warning/.test(source)) score -= 80;
+  if (temperatureIdentity) score += 45;
+  if (tempUnit) score += 40;
+  if (/target|threshold|limit|warning|delta|rate/.test(source)) score -= 100;
   return score;
 }
 
@@ -48,13 +68,21 @@ function scoreTps(channel: ChannelDefinition): number {
   return score;
 }
 
+export function veQualificationChannelCompatible(
+  channel: ChannelDefinition,
+  kind: 'clt' | 'tps',
+): boolean {
+  const score = kind === 'clt' ? scoreClt(channel) : scoreTps(channel);
+  return Number.isFinite(score) && score > 0;
+}
+
 export function preferredVeQualificationChannel(
   channels: readonly ChannelDefinition[],
   kind: 'clt' | 'tps',
 ): ChannelDefinition | undefined {
   const scored = channels
     .map((channel) => ({ channel, score: kind === 'clt' ? scoreClt(channel) : scoreTps(channel) }))
-    .filter((entry) => entry.score > 0)
+    .filter((entry) => Number.isFinite(entry.score) && entry.score > 0)
     .sort((left, right) => right.score - left.score);
   return scored[0]?.channel;
 }
