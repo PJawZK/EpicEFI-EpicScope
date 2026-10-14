@@ -27,6 +27,7 @@ describe('architecture-aware fuel pressure evidence', () => {
 
     expect(result.pressureRole).toBe('rail-differential');
     expect(result.activePressure?.mean).toBeCloseTo(277);
+    expect(result.activePressureQuality?.state).toBe('usable');
     expect(result.pressureEvents).toHaveLength(1);
     expect(result.pressureEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeValue: 240 });
   });
@@ -80,5 +81,69 @@ describe('architecture-aware fuel pressure evidence', () => {
     expect(result.pressureEvents).toHaveLength(2);
     expect(result.pressureEvents[0]).toMatchObject({ startSampleIndex: 1, endSampleIndex: 2, extremeSampleIndex: 2 });
     expect(result.pressureEvents[1]).toMatchObject({ startSampleIndex: 4, endSampleIndex: 5, extremeSampleIndex: 5 });
+  });
+
+  it('treats a constant-zero active pressure channel as unavailable evidence', () => {
+    const result = analyzeFuelPressureArchitecture({
+      architecture: 'conventional',
+      railDifferential: range([0, 0, 0, 0, 0]),
+      sampleIndices: indices,
+      conventionalMinimumDifferential: 25,
+    });
+
+    expect(result.activePressureQuality).toMatchObject({ state: 'constant-zero', validSampleCount: 5, span: 0 });
+    expect(result.pressureRole).toBe('unavailable');
+    expect(result.pressureEvents).toHaveLength(0);
+  });
+
+  it('flags constant non-zero pressure as limited evidence without fabricating variation', () => {
+    const result = analyzeFuelPressureArchitecture({
+      architecture: 'gdi',
+      highSidePressure: range([5000, 5000, 5000, 5000, 5000]),
+      sampleIndices: indices,
+      gdiMinimumPressure: 4500,
+    });
+
+    expect(result.activePressureQuality).toMatchObject({ state: 'constant', validSampleCount: 5, span: 0 });
+    expect(result.pressureRole).toBe('high-side');
+    expect(result.pressureEvents).toHaveLength(0);
+  });
+
+  it('excludes samples below the configured running RPM from pressure evidence and events', () => {
+    const result = analyzeFuelPressureArchitecture({
+      architecture: 'conventional',
+      rpm: range([0, 150, 800, 1000, 1200]),
+      railDifferential: range([0, 0, 250, 240, 300]),
+      sampleIndices: indices,
+      minimumRunningRpm: 300,
+      conventionalMinimumDifferential: 270,
+    });
+
+    expect(result.minimumRunningRpm).toBe(300);
+    expect(result.excludedByRunningGateCount).toBe(2);
+    expect(result.pressureQualifiedSampleCount).toBe(3);
+    expect(result.activePressure?.mean).toBeCloseTo(263.3333333);
+    expect(result.pressureEvents).toHaveLength(1);
+    expect(result.pressureEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeSampleIndex: 3, extremeValue: 240 });
+  });
+
+  it('reports negative calibrated-pressure samples for verification without inventing a universal valid range', () => {
+    const result = analyzeFuelPressureArchitecture({
+      architecture: 'conventional',
+      lowSidePressure: range([-1078, -900, 1000, 1020, 980]),
+      railDifferential: range([300, 295, 280, 275, 290]),
+      sampleIndices: indices,
+    });
+
+    expect(result.lowSidePressureQuality).toMatchObject({ state: 'usable', validSampleCount: 5, negativeSampleCount: 2 });
+    expect(result.lowSidePressure?.min).toBe(-1078);
+  });
+
+  it('rejects invalid running RPM thresholds', () => {
+    expect(() => analyzeFuelPressureArchitecture({
+      architecture: 'conventional',
+      sampleIndices: indices,
+      minimumRunningRpm: -1,
+    })).toThrow(/running RPM/i);
   });
 });
