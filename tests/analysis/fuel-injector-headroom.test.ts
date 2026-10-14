@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
+import { analyzeFuelPressureArchitecture } from '../../core/analysis/fuel-pressure-architecture';
 import { analyzeFuelPressureInjector } from '../../core/analysis/specialized-analyzers';
 import { analyzeFuelInjectorHeadroomContext } from '../../core/analysis/fuel-injector-headroom';
 
@@ -81,6 +82,45 @@ describe('Fuel / Injector headroom and event context', () => {
       injectorDeadtimeAtExtreme: 0.84,
     });
     expect(result.events[1]).toMatchObject({ type: 'high-duty', rpmAtExtreme: 2800, loadAtExtreme: 140, injectorDutyAtExtreme: 96 });
+  });
+
+  it('uses architecture pressure events and carries GDI high-side context', () => {
+    const rpm = range([1200, 1800, 2400, 3000]);
+    const map = range([45, 80, 130, 180]);
+    const lowSide = range([350, 345, 340, 338]);
+    const highSide = range([6000, 5800, 4100, 5600]);
+    const duty = range([20, 40, 72, 65]);
+    const injector = analyzeFuelPressureInjector({ reference: rpm, injectorDuty: duty }, { highDutyThreshold: 90 });
+    const pressure = analyzeFuelPressureArchitecture({
+      architecture: 'gdi',
+      sampleIndices: [0, 1, 2, 3],
+      lowSidePressure: lowSide,
+      highSidePressure: highSide,
+      gdiMinimumPressure: 5000,
+    });
+
+    const result = analyzeFuelInjectorHeadroomContext(injector, {
+      reference: rpm,
+      rpm,
+      load: map,
+      fuelPressure: lowSide,
+      highSidePressure: highSide,
+      injectorDuty: duty,
+    }, {
+      pressureEvents: pressure.pressureEvents,
+      sampleIndices: [0, 1, 2, 3],
+      highDutyThreshold: 90,
+    });
+
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      type: 'low-pressure',
+      rpmAtExtreme: 2400,
+      loadAtExtreme: 130,
+      fuelPressureAtExtreme: 340,
+      highSidePressureAtExtreme: 4100,
+      injectorDutyAtExtreme: 72,
+    });
   });
 
   it('keeps unavailable event context absent instead of fabricating values', () => {
