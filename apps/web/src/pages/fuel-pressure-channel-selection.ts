@@ -11,8 +11,9 @@ function normalizedIdentity(channel: ChannelDefinition): string {
 }
 
 function isRawElectricalPressure(identity: string): boolean {
-  return /(?:^|\b)raw(?:\b|.*fuel.*pressure)|fuel.*pressure.*(?:^|\b)raw(?:\b|$)/i.test(identity)
-    || /rawlowfuelpressure|rawhighfuelpressure/i.test(identity.replace(/\s+/g, ''));
+  const compact = identity.replace(/\s+/g, '');
+  return /raw.*fuel.*pressure|fuel.*pressure.*raw/i.test(identity)
+    || /rawlowfuelpressure|rawhighfuelpressure/i.test(compact);
 }
 
 function isCelIdentity(identity: string): boolean {
@@ -54,6 +55,10 @@ function scoreFuelPressureChannel(channel: ChannelDefinition, role: FuelPressure
   else if (unit) score += 5;
   if (channel.id.startsWith('ini:')) score += 1;
   return score;
+}
+
+export function isFuelPressureChannelEligible(role: FuelPressureChannelRole, channel: ChannelDefinition): boolean {
+  return Number.isFinite(scoreFuelPressureChannel(channel, role));
 }
 
 export function suggestFuelPressureChannel(
