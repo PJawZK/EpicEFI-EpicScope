@@ -8,6 +8,7 @@ import { createTuneTableView } from './tune-table-view';
 import { createBoostAnalyzerView } from './boost-analyzer-view';
 import { createIgnitionAnalyzerView } from './ignition-analyzer-view';
 import { createFuelInjectorAnalyzerView } from './fuel-injector-analyzer-view';
+import { createVeAnalyzerView } from './ve-analyzer-view';
 import {
   createSpecializedAnalyzerSuiteView,
   type SpecializedAnalyzerDomain,
@@ -55,12 +56,13 @@ export function createAnalyzerPage(): AnalyzerPageController {
   let renderGeneration = 0;
   let suppressImmediateRefresh = false;
   let contextUpdateGeneration = 0;
-  type AnalyzerView = 'compare' | 'tune-table' | 'boost' | SpecializedAnalyzerDomain;
+  type AnalyzerView = 'compare' | 'tune-table' | 'boost' | 've' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
   const tuneTableView = createTuneTableView();
   const boostView = createBoostAnalyzerView();
   const ignitionView = createIgnitionAnalyzerView();
   const fuelInjectorView = createFuelInjectorAnalyzerView();
+  const veAnalyzerView = createVeAnalyzerView();
   const specializedView = createSpecializedAnalyzerSuiteView();
 
   const headerControl = document.createElement('label');
@@ -73,6 +75,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       <option value="idle">Idle · Experimental</option>
       <option value="ae-map">AE / MAP Predict · Experimental</option>
       <option value="fueling">Fueling · Experimental</option>
+      <option value="ve">VE Analyzer · Experimental</option>
       <option value="ignition">Ignition · Experimental</option>
       <option value="fuel-injector">Fuel Pressure / Injector · Experimental</option>
       <option value="trigger-sync">Trigger / Sync · Experimental</option>
@@ -139,7 +142,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
   `;
-  root.append(tuneTableView.element, boostView.element, ignitionView.element, fuelInjectorView.element, specializedView.element);
+  root.append(tuneTableView.element, boostView.element, ignitionView.element, fuelInjectorView.element, veAnalyzerView.element, specializedView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
@@ -329,12 +332,14 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const boostActive = view === 'boost';
     const ignitionActive = view === 'ignition';
     const fuelInjectorActive = view === 'fuel-injector';
-    const specializedActive = !compareActive && !tuneActive && !boostActive && !ignitionActive && !fuelInjectorActive;
+    const veActive = view === 've';
+    const specializedActive = !compareActive && !tuneActive && !boostActive && !ignitionActive && !fuelInjectorActive && !veActive;
     compareControls.hidden = !compareActive;
     tuneTableView.element.hidden = !tuneActive;
     boostView.element.hidden = !boostActive;
     ignitionView.element.hidden = !ignitionActive;
     fuelInjectorView.element.hidden = !fuelInjectorActive;
+    veAnalyzerView.element.hidden = !veActive;
     specializedView.element.hidden = !specializedActive;
     viewSelect.value = view;
     if (compareActive) {
@@ -355,6 +360,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
       heading.textContent = 'Boost analysis';
       description.textContent = 'Analyze boost tracking, spool and steady-state behavior using any channels available in the loaded log.';
       boostView.setContext(context);
+      return;
+    }
+    if (veActive) {
+      heading.textContent = 'VE Analyzer';
+      description.textContent = 'Validate VE-table geometry, semantic fueling inputs and scope before building evidence-backed VE recommendations.';
+      veAnalyzerView.setContext(context);
       return;
     }
     if (ignitionActive) {
@@ -391,6 +402,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     else if (currentView === 'boost') boostView.setContext(nextContext);
     else if (currentView === 'ignition') ignitionView.setContext(nextContext);
     else if (currentView === 'fuel-injector') fuelInjectorView.setContext(nextContext);
+    else if (currentView === 've') veAnalyzerView.setContext(nextContext);
     specializedView.setContext(nextContext);
     if (channelsChanged) fillChannelSelect(previousChannel);
     const hasCurrentAb = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
@@ -409,7 +421,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
   refreshButton.addEventListener('click', () => { fillQualificationSelect(qualificationSelect.value); void render(); });
   viewSelect.addEventListener('change', () => {
     const view = viewSelect.value;
-    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
+    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 've' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
   });
 
   return {
@@ -419,6 +431,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     setTuneModel: (model, sourceName) => {
       tuneTableView.setTuneModel(model, sourceName);
       ignitionView.setTuneModel(model, sourceName);
+      veAnalyzerView.setTuneModel(model, sourceName);
     },
     openRangeCompareScope: (scopeValue) => {
       setView('compare');
@@ -438,6 +451,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       else if (currentView === 'boost') boostView.refresh();
       else if (currentView === 'ignition') ignitionView.refresh();
       else if (currentView === 'fuel-injector') fuelInjectorView.refresh();
+      else if (currentView === 've') veAnalyzerView.refresh();
       else specializedView.refresh();
     },
   };
