@@ -129,7 +129,7 @@ export function parseVeDelayTableFile(text: string, fileLabel?: string): VeDelay
   const loadBins = finiteArray(source.loadBins, 'loadBins');
   const rows = source.rows;
   const cols = source.cols;
-  if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows !== loadBins.length || cols !== rpmBins.length) {
+  if (typeof rows !== 'number' || typeof cols !== 'number' || !Number.isInteger(rows) || !Number.isInteger(cols) || rows !== loadBins.length || cols !== rpmBins.length) {
     throw new Error('Lambda delay table geometry does not match its axes.');
   }
   if (!Array.isArray(source.cells) || source.cells.length !== rows * cols) throw new Error('Lambda delay table cell count does not match its geometry.');
@@ -140,10 +140,10 @@ export function parseVeDelayTableFile(text: string, fileLabel?: string): VeDelay
     const row = cell.row;
     const col = cell.col;
     const eventCount = cell.eventCount;
-    if (!Number.isInteger(row) || !Number.isInteger(col) || row !== Math.floor(index / cols) || col !== index % cols) throw new Error(`cells[${index}] has invalid coordinates.`);
+    if (typeof row !== 'number' || typeof col !== 'number' || !Number.isInteger(row) || !Number.isInteger(col) || row !== Math.floor(index / cols) || col !== index % cols) throw new Error(`cells[${index}] has invalid coordinates.`);
     if (!isState(cell.state)) throw new Error(`cells[${index}].state is invalid.`);
     if (!isConfidence(cell.confidence)) throw new Error(`cells[${index}].confidence is invalid.`);
-    if (!Number.isInteger(eventCount) || eventCount < 0) throw new Error(`cells[${index}].eventCount is invalid.`);
+    if (typeof eventCount !== 'number' || !Number.isInteger(eventCount) || eventCount < 0) throw new Error(`cells[${index}].eventCount is invalid.`);
     if (cell.workingProvenance !== undefined && !isWorkingProvenance(cell.workingProvenance)) throw new Error(`cells[${index}].workingProvenance is invalid.`);
     const workingMs = optionalFinite(cell.workingMs, `cells[${index}].workingMs`);
     if (workingMs !== undefined && workingMs < 0) throw new Error(`cells[${index}].workingMs must be non-negative.`);
@@ -164,13 +164,14 @@ export function parseVeDelayTableFile(text: string, fileLabel?: string): VeDelay
   });
 
   const sourceLabel = typeof source.sourceLabel === 'string' && source.sourceLabel.trim() ? source.sourceLabel.trim() : undefined;
-  return {
+  const originLabel = fileLabel ?? sourceLabel;
+  const base: VeDelayTable = {
     rpmBins,
     loadBins,
     rows,
     cols,
     cells,
     origin: 'saved-file',
-    ...(fileLabel || sourceLabel ? { originLabel: fileLabel ?? sourceLabel } : {}),
   };
+  return originLabel ? { ...base, originLabel } : base;
 }
