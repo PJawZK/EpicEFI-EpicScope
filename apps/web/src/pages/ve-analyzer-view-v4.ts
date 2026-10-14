@@ -1,5 +1,6 @@
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
+import { veProposalSettingIssues } from './ve-analyzer-readiness';
 import {
   createVeAnalyzerView as createVeAnalyzerViewV3,
   type VeAnalyzerViewController,
@@ -16,6 +17,19 @@ function parseKey(key: DelayCellKey): { row: number; col: number } {
   return { row: row!, col: col! };
 }
 
+function inputValue(root: HTMLElement, role: string): string {
+  return root.querySelector<HTMLInputElement>(`input[data-role="${role}"]`)?.value ?? '';
+}
+
+function proposalSettingBlockers(root: HTMLElement): string[] {
+  return veProposalSettingIssues({
+    priorWeight: inputValue(root, 'prior-weight'),
+    minimumEvidenceWeight: inputValue(root, 'min-evidence-weight'),
+    maximumAbsoluteChange: inputValue(root, 'max-absolute-change'),
+    maximumPercentChange: inputValue(root, 'max-percent-change'),
+  });
+}
+
 function requiredBlockers(root: HTMLElement): string[] {
   const body = root.querySelector<HTMLTableSectionElement>('[data-ve-analyzer="readiness-body"]');
   if (!body) return [];
@@ -25,7 +39,13 @@ function requiredBlockers(root: HTMLElement): string[] {
     const [name, , requirement, source, status] = cells;
     if (requirement !== 'Required') continue;
     const bad = !source || source === '—' || /missing|mismatch|unavailable|required source unavailable|enter non-negative|discover\/use recommendation|load a saved/i.test(status ?? '');
-    if (bad && name) blockers.push(name);
+    if (!bad || !name) continue;
+    if (name === 'Proposal settings') {
+      const issues = proposalSettingBlockers(root);
+      blockers.push(...(issues.length > 0 ? issues : ['Proposal settings contain an invalid value']));
+    } else {
+      blockers.push(name);
+    }
   }
   return blockers;
 }
@@ -203,8 +223,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
     const blockers = requiredBlockers(root);
     if (runButton.disabled && mode === 'working' && blockers.length > 0) {
-      readiness.textContent = `Run blocked: ${blockers.join(', ')}`;
-      readiness.title = `Resolve required inputs: ${blockers.join(', ')}`;
+      readiness.textContent = `Run blocked: ${blockers.join(' · ')}`;
+      readiness.title = `Resolve: ${blockers.join('; ')}`;
     } else if (runButton.disabled && mode !== 'working') {
       readiness.textContent = recommendationReady ? 'Run blocked: activate lambda delay recommendation' : 'Run blocked: lambda delay required';
       readiness.title = flowDetail.textContent ?? '';
@@ -222,8 +242,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const readinessBody = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness-body"]');
   if (readinessBody) observer.observe(readinessBody, { childList: true, subtree: true });
 
-  // The original single-cell evidence editor remains useful for provenance and
-  // source-event inspection. Keep it directly underneath bulk editing.
   bulkEditor.insertAdjacentElement('afterend', delayEditor);
   updateWorkflowState();
 
