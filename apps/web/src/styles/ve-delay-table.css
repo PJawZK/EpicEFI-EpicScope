@@ -56,3 +56,94 @@
   color: #718793;
   background: #0b171f;
 }
+
+.ve-delay-table td[data-delay-provenance='user-edited'] {
+  outline: 2px solid rgba(128, 220, 255, .95);
+  outline-offset: -2px;
+  font-weight: 800;
+}
+
+.ve-delay-table td[data-delay-provenance='user-edited']::after {
+  content: 'U';
+  position: absolute;
+  top: 0;
+  right: 1px;
+  color: #d9f6ff;
+  font-size: 6px;
+  line-height: 1;
+  text-shadow: 0 1px 2px #07131a;
+}
+
+.ve-delay-cell-editor {
+  margin-top: 8px;
+  border: 1px solid #2a4350;
+  border-radius: 4px;
+  background: #0a171f;
+}
+
+.ve-delay-cell-editor > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border-bottom: 1px solid #203540;
+  color: #d8e7ed;
+  font-size: 9px;
+}
+
+.ve-delay-cell-editor > header span {
+  color: #8da5b1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ve-delay-cell-editor-grid {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 9px;
+}
+
+.ve-delay-cell-editor-grid > div,
+.ve-delay-cell-editor-grid > label {
+  display: grid;
+  gap: 3px;
+}
+
+.ve-delay-cell-editor-grid span {
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.ve-delay-cell-editor-grid strong {
+  min-width: 110px;
+  color: #d9e7ed;
+  font-size: 9px;
+}
+
+.ve-delay-cell-editor-grid input {
+  width: 100px;
+  min-height: 27px;
+  padding: 0 6px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+}
+
+.ve-delay-source-events {
+  padding: 0 9px 9px;
+  color: #8da5b1;
+  font-size: 8px;
+}
+
+.ve-delay-source-events-title {
+  margin: 2px 0 5px;
+  color: #9fb4be;
+  font-size: 8px;
+  font-weight: 700;
+}
