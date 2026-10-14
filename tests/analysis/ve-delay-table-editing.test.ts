@@ -72,6 +72,31 @@ describe('VE lambda delay direct editing', () => {
     expect(cleared.cells[0]?.workingProvenance).toBeUndefined();
   });
 
+  it('removes user-edit provenance when the generated value is entered again', () => {
+    const base = buildVeDelayTable([event(100), event(120), event(140)], [1000], [50], {
+      minimumMeasuredEvents: 3,
+      adaptiveGeometry: false,
+    });
+    const edited = setVeDelayWorkingCell(base, 0, 0, 175);
+    expect(edited.cells[0]?.workingProvenance).toBe('user-edited');
+
+    const restored = setVeDelayWorkingCell(edited, 0, 0, 120);
+    expect(restored.cells[0]?.workingMs).toBe(120);
+    expect(restored.cells[0]?.workingProvenance).toBe('measured-recommendation');
+  });
+
+  it('treats the displayed whole-millisecond recommendation as a revert', () => {
+    const base = buildVeDelayTable([event(100.2), event(120.4), event(140.6)], [1000], [50], {
+      minimumMeasuredEvents: 3,
+      adaptiveGeometry: false,
+    });
+    const recommended = base.cells[0]?.recommendedMs;
+    expect(recommended).toBeDefined();
+    const restored = setVeDelayWorkingCell(base, 0, 0, Math.round(recommended!));
+    expect(restored.cells[0]?.workingMs).toBe(recommended);
+    expect(restored.cells[0]?.workingProvenance).toBe('measured-recommendation');
+  });
+
   it('keeps reviewed recommendation edits when promoted to working authority', () => {
     const base = buildVeDelayTable([event(100), event(120), event(140)], [1000], [50], {
       minimumMeasuredEvents: 3,
