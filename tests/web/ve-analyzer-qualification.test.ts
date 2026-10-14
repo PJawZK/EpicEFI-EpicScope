@@ -31,18 +31,19 @@ describe('VE Analyzer quick qualification', () => {
     expect(veCellChangeAuthorityForPrior(17)).toBe('custom');
   });
 
-  it('prefers literal Coolant [deg] for CLT while preserving other valid choices', () => {
+  it('prefers literal Coolant [deg C] for CLT while preserving other valid choices', () => {
     const channels = [
       channel('clt-threshold', 'cltFanOn', 'C'),
       channel('coolant-pressure', 'coolantPressure', 'kPa', 'Coolant pressure'),
       channel('cel-clt', 'cel_clt', 'C', 'CLT check engine diagnostic'),
       channel('clt', 'CLT', 'C', 'Coolant temperature'),
-      channel('coolant', 'Coolant', 'deg', 'Coolant'),
+      channel('coolant-deg', 'Coolant', 'deg', 'Coolant'),
+      channel('coolant', 'Coolant', 'deg C', 'Coolant'),
       channel('tps-rate', 'tpsRate', '%/s'),
       channel('tps', 'TPS', '%', 'Throttle position'),
     ];
     expect(preferredVeQualificationChannel(channels, 'clt')?.sourceName).toBe('Coolant');
-    expect(preferredVeQualificationChannel(channels, 'clt')?.unit).toBe('deg');
+    expect(preferredVeQualificationChannel(channels, 'clt')?.unit).toBe('deg C');
     expect(preferredVeQualificationChannel(channels, 'tps')?.sourceName).toBe('TPS');
     expect(veQualificationChannelCompatible(channel('clt', 'CLT', 'C'), 'clt')).toBe(true);
   });

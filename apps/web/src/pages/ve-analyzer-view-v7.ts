@@ -11,14 +11,40 @@ interface BlockerEntry {
   readonly fixButton?: HTMLButtonElement;
 }
 
+type VeTableLayout = 'side-by-side' | 'single';
+type VeTableTab = 've' | 'target';
+
+const VE_TABLE_LAYOUT_STORAGE_KEY = 'epicscope.veAnalyzer.tableLayout';
+
+function storedTableLayout(): VeTableLayout {
+  try {
+    return localStorage.getItem(VE_TABLE_LAYOUT_STORAGE_KEY) === 'single' ? 'single' : 'side-by-side';
+  } catch {
+    return 'side-by-side';
+  }
+}
+
+function storeTableLayout(layout: VeTableLayout): void {
+  try {
+    localStorage.setItem(VE_TABLE_LAYOUT_STORAGE_KEY, layout);
+  } catch {
+    // Storage can be unavailable in restricted/private browser contexts.
+  }
+}
+
 export function createVeAnalyzerView(): VeAnalyzerViewController {
   const inner = createVeAnalyzerViewV6();
   const root = inner.element;
+  const workbench = root.querySelector<HTMLElement>('.ve-workbench')!;
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
   const blockerPanel = root.querySelector<HTMLElement>('.ve-run-blocker-panel')!;
   const advanced = root.querySelector<HTMLDetailsElement>('.ve-workbench-advanced');
   const advancedControls = advanced?.querySelector<HTMLElement>('[data-ve-analyzer="controls"]');
+
+  const minimumEvidence = root.querySelector<HTMLInputElement>('input[data-role="min-evidence-weight"]');
+  const minimumEvidenceCaption = minimumEvidence?.closest('label')?.querySelector('span');
+  if (minimumEvidenceCaption) minimumEvidenceCaption.textContent = 'Min evidence weight';
 
   // Table choice already resolves the matching RPM/load axes. Keep manual mapping
   // available as an Advanced escape hatch for ambiguous/non-standard tune files,
@@ -37,6 +63,68 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
     advanced.insertBefore(mapping, advancedControls);
   }
+
+  const vePanel = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
+  const targetPanel = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
+  let activeTableTab: VeTableTab = 've';
+
+  const tableLayoutLabel = document.createElement('label');
+  const tableLayoutCaption = document.createElement('span');
+  tableLayoutCaption.textContent = 'Table view';
+  const tableLayoutSelect = document.createElement('select');
+  tableLayoutSelect.setAttribute('aria-label', 'VE Analyzer table view');
+  tableLayoutSelect.innerHTML = '<option value="side-by-side">Side by side</option><option value="single">Single table</option>';
+  tableLayoutSelect.value = storedTableLayout();
+  tableLayoutLabel.append(tableLayoutCaption, tableLayoutSelect);
+  readiness.insertAdjacentElement('beforebegin', tableLayoutLabel);
+
+  const tableTabs = document.createElement('nav');
+  tableTabs.className = 've-workbench-table-tabs';
+  tableTabs.setAttribute('aria-label', 'VE Analyzer table');
+  const veTabButton = document.createElement('button');
+  veTabButton.type = 'button';
+  veTabButton.textContent = 'VE table';
+  veTabButton.dataset.tableTab = 've';
+  veTabButton.setAttribute('role', 'tab');
+  const targetTabButton = document.createElement('button');
+  targetTabButton.type = 'button';
+  targetTabButton.textContent = 'Target table';
+  targetTabButton.dataset.tableTab = 'target';
+  targetTabButton.setAttribute('role', 'tab');
+  tableTabs.append(veTabButton, targetTabButton);
+  workbench.insertAdjacentElement('beforebegin', tableTabs);
+
+  const applyTableLayout = (): void => {
+    const layout = tableLayoutSelect.value === 'single' ? 'single' : 'side-by-side';
+    workbench.dataset.tableLayout = layout;
+    tableTabs.hidden = layout !== 'single';
+
+    if (vePanel) vePanel.hidden = layout === 'single' && activeTableTab !== 've';
+    if (targetPanel) targetPanel.hidden = layout === 'single' && activeTableTab !== 'target';
+
+    veTabButton.classList.toggle('is-active', activeTableTab === 've');
+    targetTabButton.classList.toggle('is-active', activeTableTab === 'target');
+    veTabButton.setAttribute('aria-selected', activeTableTab === 've' ? 'true' : 'false');
+    targetTabButton.setAttribute('aria-selected', activeTableTab === 'target' ? 'true' : 'false');
+  };
+
+  tableLayoutSelect.addEventListener('change', () => {
+    const layout: VeTableLayout = tableLayoutSelect.value === 'single' ? 'single' : 'side-by-side';
+    storeTableLayout(layout);
+    applyTableLayout();
+  });
+
+  veTabButton.addEventListener('click', () => {
+    activeTableTab = 've';
+    applyTableLayout();
+  });
+
+  targetTabButton.addEventListener('click', () => {
+    activeTableTab = 'target';
+    applyTableLayout();
+  });
+
+  applyTableLayout();
 
   actionbar.classList.add('ve-run-info-host');
 
