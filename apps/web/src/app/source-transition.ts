@@ -1,5 +1,13 @@
 export const REQUEST_RECORDED_SOURCE_UNLOAD_EVENT = 'epicscope:request-recorded-source-unload';
 
+export const LOAD_DATA_MENU_ORDER = [
+  '.load-ini',
+  '.load-msq',
+  '.open-log',
+  '.unload-log',
+  '.shim-source-button',
+] as const;
+
 function recordedLogIsActive(root: HTMLElement): boolean {
   const loadedLog = root.querySelector<HTMLElement>('.loaded-log strong');
   const label = loadedLog?.textContent?.trim() ?? '';
@@ -10,6 +18,13 @@ function requestRecordedSourceUnload(root: HTMLElement): void {
   root.dispatchEvent(new CustomEvent(REQUEST_RECORDED_SOURCE_UNLOAD_EVENT, {
     bubbles: true,
   }));
+}
+
+export function orderLoadDataMenuItems(loadMenu: HTMLElement): void {
+  for (const selector of LOAD_DATA_MENU_ORDER) {
+    const item = loadMenu.querySelector<HTMLElement>(selector);
+    if (item) loadMenu.append(item);
+  }
 }
 
 export function installSourceTransitionUi(root: HTMLElement): void {
@@ -26,6 +41,7 @@ export function installSourceTransitionUi(root: HTMLElement): void {
   unloadLogButton.innerHTML = '<strong>Unload Log</strong><small>Release the active recorded MLG source</small>';
   unloadLogButton.disabled = true;
   openLogButton.after(unloadLogButton);
+  orderLoadDataMenuItems(loadMenu);
 
   const refreshUnloadState = (): void => {
     const active = recordedLogIsActive(root);
