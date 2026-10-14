@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../core/log-model/log-types';
 import { analyzerChannelOptionLabel } from '../apps/web/src/pages/analyzer-channel-roles';
 
-function channel(displayName: string, unit?: string): ChannelDefinition {
+function channel(sourceName: string, displayName: string, unit?: string): ChannelDefinition {
   return {
-    id: `ini:${displayName}`,
-    sourceName: displayName,
+    id: `ini:${sourceName}`,
+    sourceName,
     displayName,
     valueType: 'number',
     ...(unit !== undefined ? { unit } : {}),
@@ -13,16 +13,20 @@ function channel(displayName: string, unit?: string): ChannelDefinition {
 }
 
 describe('Analyzer channel option labels', () => {
-  it('shows engineering units beside the channel name', () => {
-    expect(analyzerChannelOptionLabel(channel('Fuel pressure low', 'kPa'))).toBe('Fuel pressure low [kPa]');
-    expect(analyzerChannelOptionLabel(channel('RPM - engine speed', 'rpm'))).toBe('RPM - engine speed [rpm]');
+  it('shows literal source identity plus engineering units', () => {
+    expect(analyzerChannelOptionLabel(channel('fuelPressure_low', 'Fuel pressure low', 'kPa'))).toBe('fuelPressure_low [kPa]');
+    expect(analyzerChannelOptionLabel(channel('RPMValue', 'RPM - engine speed', 'rpm'))).toBe('RPMValue [rpm]');
   });
 
-  it('keeps channels without unit metadata unchanged', () => {
-    expect(analyzerChannelOptionLabel(channel('Sync state'))).toBe('Sync state');
+  it('does not replace source identity with a friendly/display label', () => {
+    expect(analyzerChannelOptionLabel(channel('lambdaValue', 'Lambda', 'lambda'))).toBe('lambdaValue [lambda]');
+  });
+
+  it('keeps source names without unit metadata unchanged', () => {
+    expect(analyzerChannelOptionLabel(channel('syncState', 'Sync state'))).toBe('syncState');
   });
 
   it('ignores blank unit metadata', () => {
-    expect(analyzerChannelOptionLabel(channel('Fuel cut reason', '   '))).toBe('Fuel cut reason');
+    expect(analyzerChannelOptionLabel(channel('fuelCutReason', 'Fuel cut reason', '   '))).toBe('fuelCutReason');
   });
 });
