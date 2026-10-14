@@ -281,3 +281,45 @@
   font-size: 10px;
   font-weight: 700;
 }
+
+/* Optional wide-table mode: keep the existing two-table workbench available,
+   while allowing one calibration table to use the full analyzer width. */
+.ve-workbench[data-table-layout='single'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ve-workbench-table-tabs {
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  margin: 0 0 -1px;
+  padding: 0 5px;
+}
+
+.ve-workbench-table-tabs[hidden] {
+  display: none;
+}
+
+.ve-workbench-table-tabs > button {
+  min-height: 27px;
+  padding: 0 12px;
+  border: 1px solid #263b4c;
+  border-bottom-color: #263b4c;
+  border-radius: 4px 4px 0 0;
+  background: #0a151d;
+  color: #8299a5;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.ve-workbench-table-tabs > button.is-active {
+  position: relative;
+  z-index: 2;
+  border-bottom-color: #0b171f;
+  background: #0b171f;
+  color: #dce9ef;
+}
+
+.ve-workbench[data-table-layout='single'] .ve-workbench-panel {
+  width: 100%;
+}
