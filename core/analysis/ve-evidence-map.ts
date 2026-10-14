@@ -29,6 +29,8 @@ export interface VeEvidenceConfig {
   readonly maximumRpmRatePerSecond?: number;
   readonly maximumLoadRatePerSecond?: number;
   readonly minimumIndividualWeight?: number;
+  /** Working observed-mixture delay. Engine state is sampled at mixtureTime - delayMs. */
+  readonly delayMs?: number;
 }
 
 export interface VeEvidenceCell {
@@ -48,9 +50,11 @@ export interface VeEvidenceMapResult {
   readonly transientRejectedSampleCount: number;
   readonly targetOutOfRangeSampleCount: number;
   readonly veOutOfRangeSampleCount: number;
+  readonly delayUnavailableSampleCount: number;
   readonly invalidSampleCount: number;
   readonly eligibleSampleCount: number;
   readonly contributingSampleCount: number;
+  readonly delayMs: number;
   readonly cells: readonly VeEvidenceCell[];
 }
 
@@ -75,6 +79,30 @@ function value(range: NumericChannelRange, sampleIndex: number): { value: number
   const timeMs = range.timeMs[index];
   if (result === undefined || timeMs === undefined || !Number.isFinite(result) || !Number.isFinite(timeMs)) return undefined;
   return { value: result, timeMs };
+}
+
+export function interpolateNumericRangeAtTime(range: NumericChannelRange, timeMs: number): number | undefined {
+  if (!Number.isFinite(timeMs) || range.timeMs.length === 0) return undefined;
+  const first = range.timeMs[0];
+  const last = range.timeMs[range.timeMs.length - 1];
+  if (first === undefined || last === undefined || timeMs < first || timeMs > last) return undefined;
+  let low = 0;
+  let high = range.timeMs.length - 1;
+  while (high - low > 1) {
+    const mid = (low + high) >>> 1;
+    if (timeMs < range.timeMs[mid]!) high = mid;
+    else low = mid;
+  }
+  if (range.timeMs[low] === timeMs) return range.validity[low] === 1 && Number.isFinite(range.values[low]) ? range.values[low] : undefined;
+  if (range.timeMs[high] === timeMs) return range.validity[high] === 1 && Number.isFinite(range.values[high]) ? range.values[high] : undefined;
+  if (range.validity[low] !== 1 || range.validity[high] !== 1) return undefined;
+  const lowTime = range.timeMs[low]!;
+  const highTime = range.timeMs[high]!;
+  const lowValue = range.values[low]!;
+  const highValue = range.values[high]!;
+  if (!(highTime > lowTime) || !Number.isFinite(lowValue) || !Number.isFinite(highValue)) return undefined;
+  const fraction = (timeMs - lowTime) / (highTime - lowTime);
+  return lowValue + (highValue - lowValue) * fraction;
 }
 
 function axisBracket(value: number, bins: readonly number[]): { low: number; high: number; fraction: number } | undefined {
@@ -164,10 +192,13 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const maxRpmRate = config.maximumRpmRatePerSecond ?? 500;
   const maxLoadRate = config.maximumLoadRatePerSecond ?? 25;
   const minWeight = config.minimumIndividualWeight ?? 0;
+  const delayMs = config.delayMs ?? 0;
+  if (!Number.isFinite(delayMs) || delayMs < 0) throw new RangeError('VE evidence delayMs must be finite and >= 0.');
 
   let invalidSampleCount = 0;
   let rangeRejectedSampleCount = 0;
   let targetOutOfRangeSampleCount = 0;
+  let delayUnavailableSampleCount = 0;
   const aligned: Sample[] = [];
   let segment: Sample[] = [];
   const stable: Sample[] = [];
@@ -176,13 +207,15 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   for (let position = 0; position < indices.length; position += 1) {
     const sampleIndex = indices[position]!;
     const actual = value(inputs.actualMixture, sampleIndex);
-    const rpm = value(inputs.rpm, sampleIndex);
-    const load = value(inputs.load, sampleIndex);
-    if (!actual || !rpm || !load || !(actual.value > 0)) { finish(); invalidSampleCount += 1; continue; }
-    if (rpm.value < minRpm || rpm.value > maxRpm || load.value < minLoad || load.value > maxLoad) { finish(); rangeRejectedSampleCount += 1; continue; }
-    const target = interpolateVeTable(inputs.target, rpm.value, load.value);
+    if (!actual || !(actual.value > 0)) { finish(); invalidSampleCount += 1; continue; }
+    const engineTimeMs = actual.timeMs - delayMs;
+    const rpmValue = delayMs === 0 ? value(inputs.rpm, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs);
+    const loadValue = delayMs === 0 ? value(inputs.load, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.load, engineTimeMs);
+    if (rpmValue === undefined || loadValue === undefined) { finish(); delayUnavailableSampleCount += 1; continue; }
+    if (rpmValue < minRpm || rpmValue > maxRpm || loadValue < minLoad || loadValue > maxLoad) { finish(); rangeRejectedSampleCount += 1; continue; }
+    const target = interpolateVeTable(inputs.target, rpmValue, loadValue);
     if (!(target !== undefined && target > 0)) { finish(); targetOutOfRangeSampleCount += 1; continue; }
-    const current: Sample = { sampleIndex, timeMs: actual.timeMs, actual: actual.value, rpm: rpm.value, load: load.value, target };
+    const current: Sample = { sampleIndex, timeMs: engineTimeMs, actual: actual.value, rpm: rpmValue, load: loadValue, target };
     aligned.push(current);
     if (position === 0 || sampleIndex !== indices[position - 1]! + 1 || (segment.length && !(current.timeMs > segment[segment.length - 1]!.timeMs))) finish();
     segment.push(current);
@@ -227,14 +260,7 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
     const index = row * rpmBins.length + col;
     const totalWeight = weights[index] ?? 0;
     const ratio = totalWeight > 0 ? (weightedRatios[index] ?? 0) / totalWeight : undefined;
-    cells.push({
-      row, col,
-      sampleCount: counts[index] ?? 0,
-      totalWeight,
-      correctionRatio: ratio,
-      correctionPercent: ratio === undefined ? undefined : (ratio - 1) * 100,
-      sampleIndices: Uint32Array.from(sampleLists[index]!),
-    });
+    cells.push({ row, col, sampleCount: counts[index] ?? 0, totalWeight, correctionRatio: ratio, correctionPercent: ratio === undefined ? undefined : (ratio - 1) * 100, sampleIndices: Uint32Array.from(sampleLists[index]!) });
   }
 
   return {
@@ -244,9 +270,11 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
     transientRejectedSampleCount: Math.max(0, aligned.length - stable.length),
     targetOutOfRangeSampleCount,
     veOutOfRangeSampleCount,
+    delayUnavailableSampleCount,
     invalidSampleCount,
     eligibleSampleCount: stable.length,
     contributingSampleCount,
+    delayMs,
     cells,
   };
 }
