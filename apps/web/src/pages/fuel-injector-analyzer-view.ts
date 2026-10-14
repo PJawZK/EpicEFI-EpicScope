@@ -66,9 +66,16 @@ function optionText(channel: ChannelDefinition): string {
 function pressureQualityLabel(quality: FuelPressureEvidenceQuality | undefined): string {
   if (!quality) return 'Unavailable';
   if (quality.state === 'usable') return 'Usable';
+  if (quality.state === 'usable-with-warning') return 'Usable with warning';
+  if (quality.state === 'needs-verification') return 'Needs verification';
   if (quality.state === 'constant') return 'Constant / limited variation';
   if (quality.state === 'constant-zero') return 'Unavailable — constant zero';
   return 'Unavailable — no valid samples';
+}
+
+function pressureNegativeText(quality: FuelPressureEvidenceQuality | undefined): string {
+  if (!quality || quality.validSampleCount <= 0) return '—';
+  return `${quality.negativeSampleCount.toLocaleString()} (${numberText(quality.negativeSamplePercent, 2)}%)`;
 }
 
 function pressureQualityMessages(
@@ -77,11 +84,11 @@ function pressureQualityMessages(
   activeLabel: string,
 ): string[] {
   const messages: string[] = [];
-  if (active?.state === 'constant-zero') messages.push(`${activeLabel} is constant at 0 across the qualified samples, so it is not used as pressure-fault evidence.`);
+  if (active?.state === 'constant-zero') messages.push(`${activeLabel} is present but constant at 0 across the qualified samples, so it is non-informative and is not used as pressure-fault evidence.`);
   else if (active?.state === 'constant') messages.push(`${activeLabel} has effectively no variation in the qualified samples. Threshold evidence is retained, but verify that the channel is live and meaningful.`);
   else if (active?.state === 'no-valid-samples') messages.push(`${activeLabel} has no valid samples after pressure qualification.`);
-  if (active && active.negativeSampleCount > 0) messages.push(`${activeLabel} contains ${active.negativeSampleCount.toLocaleString()} negative calibrated values; verify channel calibration and units before drawing pressure conclusions.`);
-  if (lowSide && lowSide.negativeSampleCount > 0) messages.push(`Low-side fuel pressure contains ${lowSide.negativeSampleCount.toLocaleString()} negative calibrated values; verify sensor calibration and units.`);
+  if (active && active.negativeSampleCount > 0) messages.push(`${activeLabel} contains ${active.negativeSampleCount.toLocaleString()} negative calibrated values (${numberText(active.negativeSamplePercent, 2)}% of valid qualified samples); verify channel calibration and units before drawing pressure conclusions.`);
+  if (lowSide && lowSide.negativeSampleCount > 0) messages.push(`Low-side fuel pressure contains ${lowSide.negativeSampleCount.toLocaleString()} negative calibrated values (${numberText(lowSide.negativeSamplePercent, 2)}% of valid qualified samples); verify sensor calibration and units.`);
   return messages;
 }
 
@@ -368,7 +375,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       : pressure.pressureRole === 'high-side'
         ? 'High-side / GDI rail'
         : pressure.activePressureQuality?.state === 'constant-zero'
-          ? `${activePressureName} unavailable — constant zero`
+          ? `${activePressureName} present but non-informative — constant zero`
           : 'Required calibrated pressure evidence unavailable';
     const qualityMessages = pressureQualityMessages(pressure.activePressureQuality, pressure.lowSidePressureQuality, activePressureName);
     const qualityGuidance = field('quality-guidance');
@@ -383,10 +390,12 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       ['Pressure-qualified samples', `${pressure.pressureQualifiedSampleCount.toLocaleString()} · ${pressure.excludedByRunningGateCount.toLocaleString()} excluded`],
       ['Active pressure evidence', activePressureLabel],
       ['Active pressure quality', pressureQualityLabel(pressure.activePressureQuality)],
+      ['Active negative samples', pressureNegativeText(pressure.activePressureQuality)],
       ['Active pressure mean / min', rangeWithUnit(pressure.activePressure?.mean, pressure.activePressure?.min, activePressureUnit)],
       ['Pressure threshold', pressure.threshold === undefined ? 'Not set' : valueWithUnit(pressure.threshold, activePressureUnit)],
       ['Pressure events', String(pressure.pressureEvents.length)],
       ['Low-side quality', pressureQualityLabel(pressure.lowSidePressureQuality)],
+      ['Low-side negative samples', pressureNegativeText(pressure.lowSidePressureQuality)],
       ['Low-side mean / min', rangeWithUnit(pressure.lowSidePressure?.mean, pressure.lowSidePressure?.min, channelUnit(lowSide))],
       ['Rail diff mean / min', rangeWithUnit(pressure.railDifferential?.mean, pressure.railDifferential?.min, channelUnit(railDiff))],
       ['GDI high-side mean / min', rangeWithUnit(pressure.highSidePressure?.mean, pressure.highSidePressure?.min, channelUnit(highSide))],
