@@ -42,6 +42,40 @@ export function preferGasScaleAfrOption(control: HTMLSelectElement, scale: strin
   return true;
 }
 
+function orientLoadAxisFromBottom(table: HTMLTableElement): void {
+  if (table.dataset.veLoadOrigin === 'lower-left') return;
+  const body = table.tBodies[0];
+  if (!body) return;
+  const rows = [...body.rows];
+  for (let index = rows.length - 1; index >= 0; index -= 1) body.append(rows[index]!);
+  table.dataset.veLoadOrigin = 'lower-left';
+}
+
+function compactProposalCell(cell: HTMLTableCellElement): void {
+  if (cell.dataset.veCellRefined === 'true') return;
+  if (cell.title.startsWith('Measured proposal')) {
+    const main = cell.querySelector<HTMLElement>(':scope > span');
+    const text = main?.textContent ?? '';
+    const arrow = text.indexOf('→');
+    if (main && arrow >= 0) main.textContent = text.slice(arrow + 1).trim();
+  }
+  if (cell.title) {
+    cell.tabIndex = 0;
+    cell.setAttribute('role', 'button');
+    cell.setAttribute('aria-label', cell.title);
+    cell.dataset.veHasDetail = 'true';
+  }
+  cell.dataset.veCellRefined = 'true';
+}
+
+function detailTitle(cell: HTMLTableCellElement): string {
+  if (cell.classList.contains('ve-delay-table') || cell.closest('.ve-delay-table')) return 'Lambda delay detail';
+  if (cell.title.startsWith('Measured proposal')) return 'VE proposed change';
+  if (cell.title.startsWith('Weak evidence')) return 'VE weak evidence';
+  if (cell.title.startsWith('Recommendation withheld')) return 'VE recommendation withheld';
+  return 'Cell detail';
+}
+
 export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
   const viewSelect = root.querySelector<HTMLSelectElement>('.analyzer-header-view-select');
   const analyzerPage = root.querySelector<HTMLElement>('.analyzer-page');
@@ -56,6 +90,39 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
     addInlineHelpButton(helpHost, VE_HELP, showInlineHelpPopover);
   }
 
+  const detail = document.createElement('aside');
+  detail.className = 've-cell-detail-popover';
+  detail.hidden = true;
+  detail.innerHTML = '<header><strong>Cell detail</strong><button type="button" aria-label="Close cell detail">×</button></header><div></div>';
+  analyzerPage.append(detail);
+  const detailHeading = detail.querySelector<HTMLElement>('strong')!;
+  const detailText = detail.querySelector<HTMLElement>('div')!;
+  detail.querySelector<HTMLButtonElement>('button')!.onclick = (event) => {
+    event.stopPropagation();
+    detail.hidden = true;
+  };
+
+  const showCellDetail = (cell: HTMLTableCellElement): void => {
+    if (!cell.title) return;
+    detailHeading.textContent = detailTitle(cell);
+    detailText.textContent = cell.title;
+    detail.hidden = false;
+  };
+
+  analyzerPage.addEventListener('click', (event) => {
+    const target = event.target;
+    const cell = target instanceof Element ? target.closest<HTMLTableCellElement>('.ve-analyzer-view td[data-ve-has-detail="true"]') : null;
+    if (cell) showCellDetail(cell);
+  });
+  analyzerPage.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target;
+    const cell = target instanceof HTMLTableCellElement && target.matches('.ve-analyzer-view td[data-ve-has-detail="true"]') ? target : null;
+    if (!cell) return;
+    event.preventDefault();
+    showCellDetail(cell);
+  });
+
   let applying = false;
   const apply = (): void => {
     if (applying) return;
@@ -67,11 +134,25 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
       const veBanner = analyzerPage.querySelector<HTMLElement>('.ve-analyzer-view .ve-workbench-banner');
       if (veBanner) veBanner.hidden = true;
       if (helpHost) helpHost.hidden = !active;
-      if (!active) return;
+      if (!active) {
+        detail.hidden = true;
+        return;
+      }
 
       const actual = analyzerPage.querySelector<HTMLSelectElement>('.ve-analyzer-view select[data-role="actual"]');
       const scale = analyzerPage.querySelector<HTMLSelectElement>('.ve-analyzer-view select[data-role="mixture-scale"]')?.value ?? '';
       if (actual) preferGasScaleAfrOption(actual, scale);
+
+      const delayMinEvents = analyzerPage.querySelector<HTMLInputElement>('.ve-analyzer-view input[data-role="delay-min-events"]');
+      if (delayMinEvents && delayMinEvents.dataset.veDefaultAdjusted !== 'true') {
+        if (delayMinEvents.value === '2') delayMinEvents.value = '3';
+        delayMinEvents.dataset.veDefaultAdjusted = 'true';
+      }
+
+      for (const table of analyzerPage.querySelectorAll<HTMLTableElement>('.ve-analyzer-view .ve-workbench-table')) {
+        orientLoadAxisFromBottom(table);
+        for (const cell of table.querySelectorAll<HTMLTableCellElement>('tbody td')) compactProposalCell(cell);
+      }
     } finally {
       applying = false;
     }
