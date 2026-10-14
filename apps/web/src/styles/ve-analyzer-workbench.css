@@ -1,0 +1,200 @@
+.ve-analyzer-view {
+  min-width: 0;
+}
+
+.ve-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.ve-workbench-panel {
+  min-width: 0;
+  border: 1px solid #263b4c;
+  border-radius: 4px;
+  background: #0b171f;
+  overflow: hidden;
+}
+
+.ve-workbench-panel > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border-bottom: 1px solid #203340;
+}
+
+.ve-workbench-panel > header > div {
+  min-width: 0;
+}
+
+.ve-workbench-panel > header strong {
+  display: block;
+  color: #dce9ef;
+  font-size: 10px;
+}
+
+.ve-workbench-panel > header span {
+  display: block;
+  margin-top: 2px;
+  color: #748c99;
+  font-size: 8px;
+}
+
+.ve-workbench-panel select,
+.ve-workbench-actionbar select,
+.ve-workbench-quick-controls select,
+.ve-workbench-quick-controls input {
+  min-height: 27px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+  font-size: 9px;
+}
+
+.ve-workbench-panel select {
+  min-width: 180px;
+  max-width: 42%;
+}
+
+.ve-workbench-table-wrap {
+  min-height: 260px;
+  max-height: 480px;
+  overflow: auto;
+  background: #08131a;
+}
+
+.ve-workbench-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ve-workbench-table th,
+.ve-workbench-table td {
+  min-width: 38px;
+  height: 24px;
+  padding: 2px 4px;
+  border-right: 1px solid rgba(8, 19, 26, .32);
+  border-bottom: 1px solid rgba(8, 19, 26, .32);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ve-workbench-table th {
+  position: sticky;
+  z-index: 2;
+  background: #101d28;
+  color: #9bb0bc;
+  font-weight: 700;
+}
+
+.ve-workbench-table thead th {
+  top: 0;
+}
+
+.ve-workbench-table tbody th {
+  left: 0;
+}
+
+.ve-workbench-table td {
+  background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39% / .9);
+  color: #f3f7f9;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .45);
+}
+
+.ve-workbench-table-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  color: #6f8795;
+  font-size: 10px;
+}
+
+.ve-workbench-actionbar,
+.ve-workbench-quick-controls {
+  display: flex;
+  align-items: end;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 8px 9px;
+  border: 1px solid #263b4c;
+  border-radius: 4px;
+  background: #0b171f;
+}
+
+.ve-workbench-actionbar label,
+.ve-workbench-quick-controls label {
+  display: grid;
+  gap: 3px;
+}
+
+.ve-workbench-actionbar label > span,
+.ve-workbench-quick-controls label > span {
+  color: #78909e;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.ve-workbench-actionbar select {
+  min-width: 150px;
+}
+
+.ve-workbench-quick-controls select {
+  min-width: 150px;
+}
+
+.ve-workbench-quick-controls input {
+  width: 82px;
+  padding: 0 6px;
+}
+
+.ve-workbench-run {
+  min-height: 31px;
+  padding: 0 22px;
+  border: 1px solid #237b9e;
+  border-radius: 4px;
+  background: #12506d;
+  color: #eef8fc;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ve-workbench-delay {
+  min-height: 29px;
+  padding: 0 12px;
+  border: 1px solid #31505f;
+  border-radius: 3px;
+  background: #10212c;
+  color: #7f97a4;
+}
+
+.ve-workbench-state {
+  margin-left: auto;
+  align-self: center;
+  color: #9db0ba;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.ve-workbench-guidance {
+  margin: 0;
+}
+
+.ve-workbench-advanced > .specialized-analyzer-controls {
+  border: 0;
+  border-top: 1px solid #203340;
+  border-radius: 0;
+}
+
+@media (max-width: 1100px) {
+  .ve-workbench { grid-template-columns: 1fr; }
+  .ve-workbench-panel select { max-width: 50%; }
+}
