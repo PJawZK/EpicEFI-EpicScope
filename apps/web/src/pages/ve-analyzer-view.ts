@@ -25,7 +25,8 @@ export interface VeAnalyzerViewController {
 }
 
 type RoleKey = 'rpm' | 'load' | 'actual' | 'target' | 've' | 'fuelCommand' | 'dfco' | 'fuelCutReason' | 'aeActive' | 'decelActive' | 'totalCorrection' | 'stft' | 'ltft';
-interface RoleDef { readonly key: RoleKey; readonly label: string; readonly required: boolean; readonly purpose: 'Primary calculation' | 'Qualification / context'; }
+type RolePurpose = 'Primary calculation' | 'Qualification / context' | 'State exclusion';
+interface RoleDef { readonly key: RoleKey; readonly label: string; readonly required: boolean; readonly purpose: RolePurpose; }
 
 const ROLES: readonly RoleDef[] = [
   { key: 'rpm', label: 'RPM', required: true, purpose: 'Primary calculation' },
@@ -340,19 +341,26 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const bounds = analyzerScopeBounds(scope);
     const loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
     if (run !== runGeneration) return;
-    const traceMap = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const rangeMap = new Map(loaded.map((trace) => [trace.channel.id, trace.range]));
     if (!renderReadiness(rangeMap)) return;
     const rpm = rangeMap.get(roleSelect('rpm')!.value); const load = rangeMap.get(roleSelect('load')!.value); const actual = rangeMap.get(roleSelect('actual')!.value);
     if (!rpm || !load || !actual) return;
     const filtered = stateFilteredIndices(rpm, rangeMap);
+    const minimumRpm = readNumber('min-rpm');
+    const maximumRpm = readNumber('max-rpm');
+    const minimumLoad = readNumber('min-load');
+    const maximumLoad = readNumber('max-load');
 
     result = buildVeEvidenceMap({
       actualMixture: actual, rpm, load,
       target: { rpmBins: targetRpm, loadBins: targetLoad, values: target.numericValues, rows: target.rows, cols: target.cols },
       veRpmBins: veRpm, veLoadBins: veLoad, sampleIndices: filtered.indices,
     }, {
-      minimumRpm: readNumber('min-rpm'), maximumRpm: readNumber('max-rpm'), minimumLoad: readNumber('min-load'), maximumLoad: readNumber('max-load'), minimumStableDurationMs: readNumber('stable-ms') ?? 300,
+      ...(minimumRpm !== undefined ? { minimumRpm } : {}),
+      ...(maximumRpm !== undefined ? { maximumRpm } : {}),
+      ...(minimumLoad !== undefined ? { minimumLoad } : {}),
+      ...(maximumLoad !== undefined ? { maximumLoad } : {}),
+      minimumStableDurationMs: readNumber('stable-ms') ?? 300,
     });
     if (run !== runGeneration) return;
 
