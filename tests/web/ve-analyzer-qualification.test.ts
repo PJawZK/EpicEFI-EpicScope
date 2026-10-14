@@ -9,7 +9,7 @@ import {
 } from '../../apps/web/src/pages/ve-analyzer-qualification';
 
 function channel(id: string, sourceName: string, unit?: string, displayName = sourceName): ChannelDefinition {
-  return { id, sourceName, displayName, unit, valueType: 'number' };
+  return { id, sourceName, displayName, valueType: 'number', ...(unit ? { unit } : {}) };
 }
 
 function range(values: readonly number[], startSampleIndex = 0): NumericChannelRange {
