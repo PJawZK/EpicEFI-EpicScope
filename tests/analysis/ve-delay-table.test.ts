@@ -35,6 +35,16 @@ describe('VE lambda delay table', () => {
     expect(axes.loadBins.at(-1)).toBe(load.at(-1));
   });
 
+  it('automatically returns a smaller delay table when VE geometry is oversized for the evidence', () => {
+    const rpm = Array.from({ length: 32 }, (_, index) => 600 + index * 200);
+    const load = Array.from({ length: 32 }, (_, index) => 20 + index * 5);
+    const events = Array.from({ length: 110 }, (_, index) => event(900 + (index % 11) * 350, 30 + (index % 9) * 10, 80 + (index % 7) * 20));
+    const table = buildVeDelayTable(events, rpm, load, { minimumMeasuredEvents: 3 });
+    expect(table.cols).toBe(5);
+    expect(table.rows).toBe(5);
+    expect(table.cells.length).toBe(25);
+  });
+
   it('builds robust measured RPM/load cells and preserves event evidence', () => {
     const table = buildVeDelayTable([
       event(1000, 50, 100),
