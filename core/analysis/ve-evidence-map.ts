@@ -1,4 +1,5 @@
 import type { NumericChannelRange } from '../log-model/log-types';
+import type { NumericHeatmapAxisBin } from './heatmap';
 import { axisBreakpointContributions } from './weighted-cell-mean';
 
 export interface VeTableGeometry {
@@ -72,7 +73,8 @@ function value(range: NumericChannelRange, sampleIndex: number): { value: number
   if (index === undefined || range.validity[index] !== 1) return undefined;
   const result = range.values[index];
   const timeMs = range.timeMs[index];
-  return Number.isFinite(result) && Number.isFinite(timeMs) ? { value: result, timeMs } : undefined;
+  if (result === undefined || timeMs === undefined || !Number.isFinite(result) || !Number.isFinite(timeMs)) return undefined;
+  return { value: result, timeMs };
 }
 
 function axisBracket(value: number, bins: readonly number[]): { low: number; high: number; fraction: number } | undefined {
@@ -104,9 +106,9 @@ export function interpolateVeTable(table: VeTableGeometry, rpm: number, load: nu
   const v10 = at(y.low, x.high);
   const v01 = at(y.high, x.low);
   const v11 = at(y.high, x.high);
-  if (![v10, v01, v11].every((entry) => entry !== undefined && Number.isFinite(entry))) return undefined;
-  const top = x.low === x.high ? v00 : v00 + (v10! - v00) * x.fraction;
-  const bottom = x.low === x.high ? v01! : v01! + (v11! - v01!) * x.fraction;
+  if (v10 === undefined || v01 === undefined || v11 === undefined || !Number.isFinite(v10) || !Number.isFinite(v01) || !Number.isFinite(v11)) return undefined;
+  const top = x.low === x.high ? v00 : v00 + (v10 - v00) * x.fraction;
+  const bottom = x.low === x.high ? v01 : v01 + (v11 - v01) * x.fraction;
   return y.low === y.high ? top : top + (bottom - top) * y.fraction;
 }
 
@@ -142,11 +144,13 @@ function stableSegment(samples: readonly Sample[], durationMs: number, maxRpmRat
   return accepted;
 }
 
-function heatmapBins(values: readonly number[]): readonly { centerValue: number; lowerBound: number; upperBound: number }[] {
+function heatmapBins(values: readonly number[]): readonly NumericHeatmapAxisBin[] {
   return values.map((centerValue, index) => ({
+    index,
     centerValue,
     lowerBound: index === 0 ? centerValue : (values[index - 1]! + centerValue) / 2,
     upperBound: index === values.length - 1 ? centerValue : (centerValue + values[index + 1]!) / 2,
+    includesUpperBound: index === values.length - 1,
   }));
 }
 
@@ -209,9 +213,9 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
       const weight = xc.weight * yc.weight;
       if (!(weight > 0) || weight < minWeight) continue;
       const cell = yc.index * rpmBins.length + xc.index;
-      weights[cell] += weight;
-      weightedRatios[cell] += ratio * weight;
-      counts[cell] += 1;
+      weights[cell] = (weights[cell] ?? 0) + weight;
+      weightedRatios[cell] = (weightedRatios[cell] ?? 0) + ratio * weight;
+      counts[cell] = (counts[cell] ?? 0) + 1;
       sampleLists[cell]!.push(sample.sampleIndex);
       contributed = true;
     }
@@ -221,11 +225,11 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const cells: VeEvidenceCell[] = [];
   for (let row = 0; row < loadBins.length; row += 1) for (let col = 0; col < rpmBins.length; col += 1) {
     const index = row * rpmBins.length + col;
-    const totalWeight = weights[index]!;
-    const ratio = totalWeight > 0 ? weightedRatios[index]! / totalWeight : undefined;
+    const totalWeight = weights[index] ?? 0;
+    const ratio = totalWeight > 0 ? (weightedRatios[index] ?? 0) / totalWeight : undefined;
     cells.push({
       row, col,
-      sampleCount: counts[index]!,
+      sampleCount: counts[index] ?? 0,
       totalWeight,
       correctionRatio: ratio,
       correctionPercent: ratio === undefined ? undefined : (ratio - 1) * 100,
