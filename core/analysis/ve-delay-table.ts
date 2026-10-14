@@ -27,6 +27,13 @@ export interface VeDelayTable {
 export interface VeDelayTableConfig {
   readonly minimumMeasuredEvents?: number;
   readonly interpolationNeighbors?: number;
+  /** Maximum normalized RPM/load distance for an interpolation source. */
+  readonly maximumInterpolationDistance?: number;
+}
+
+export interface VeDelayAxes {
+  readonly rpmBins: readonly number[];
+  readonly loadBins: readonly number[];
 }
 
 function percentile(values: readonly number[], fraction: number): number | undefined {
@@ -78,6 +85,39 @@ function normalizedDistance(
   return Math.hypot(dr, dl);
 }
 
+function downsampleAxis(values: readonly number[], count: number): number[] {
+  if (values.length <= count) return [...values];
+  if (count <= 1) return [values[0]!];
+  const picked: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const sourceIndex = Math.round(index * (values.length - 1) / (count - 1));
+    const value = values[sourceIndex]!;
+    if (picked[picked.length - 1] !== value) picked.push(value);
+  }
+  return picked;
+}
+
+/**
+ * Delay evidence is much sparser than VE evidence. Derive a dedicated delay grid
+ * from the available event count instead of copying every VE node.
+ */
+export function deriveVeDelayAxes(
+  veRpmBins: readonly number[],
+  veLoadBins: readonly number[],
+  usableEventCount: number,
+  minimumMeasuredEvents = 3,
+): VeDelayAxes {
+  if (veRpmBins.length === 0 || veLoadBins.length === 0) throw new RangeError('VE delay axes require non-empty source axes.');
+  const minEvents = Math.max(1, Math.floor(minimumMeasuredEvents));
+  const usable = Math.max(0, Math.floor(usableEventCount));
+  const desiredCells = Math.max(16, Math.min(100, Math.round(usable / (minEvents + 1))));
+  const side = Math.max(4, Math.min(10, Math.round(Math.sqrt(desiredCells))));
+  return {
+    rpmBins: downsampleAxis(veRpmBins, Math.min(side, veRpmBins.length)),
+    loadBins: downsampleAxis(veLoadBins, Math.min(side, veLoadBins.length)),
+  };
+}
+
 export function buildVeDelayTable(
   events: readonly AfrDelayEvent[],
   rpmBins: readonly number[],
@@ -85,8 +125,11 @@ export function buildVeDelayTable(
   config: VeDelayTableConfig = {},
 ): VeDelayTable {
   if (rpmBins.length === 0 || loadBins.length === 0) throw new RangeError('VE delay table requires non-empty RPM and load axes.');
-  const minimumMeasuredEvents = Math.max(1, Math.floor(config.minimumMeasuredEvents ?? 2));
-  const interpolationNeighbors = Math.max(1, Math.floor(config.interpolationNeighbors ?? 4));
+  const minimumMeasuredEvents = Math.max(1, Math.floor(config.minimumMeasuredEvents ?? 3));
+  const interpolationNeighbors = Math.max(2, Math.floor(config.interpolationNeighbors ?? 4));
+  const maximumInterpolationDistance = config.maximumInterpolationDistance ?? 0.35;
+  if (!Number.isFinite(maximumInterpolationDistance) || maximumInterpolationDistance <= 0) throw new RangeError('VE delay interpolation distance must be finite and > 0.');
+
   const rows = loadBins.length;
   const cols = rpmBins.length;
   const buckets: number[][] = Array.from({ length: rows * cols }, () => []);
@@ -123,15 +166,24 @@ export function buildVeDelayTable(
 
   const measured = cells.filter((cell) => cell.state === 'measured' && cell.recommendedMs !== undefined);
   if (measured.length > 1) {
+    const minMeasuredRow = Math.min(...measured.map((cell) => cell.row));
+    const maxMeasuredRow = Math.max(...measured.map((cell) => cell.row));
+    const minMeasuredCol = Math.min(...measured.map((cell) => cell.col));
+    const maxMeasuredCol = Math.max(...measured.map((cell) => cell.col));
+
     for (let index = 0; index < cells.length; index += 1) {
       const cell = cells[index]!;
       if (cell.state === 'measured') continue;
+      // Do not manufacture delay evidence outside the region directly covered by measured cells.
+      if (cell.row < minMeasuredRow || cell.row > maxMeasuredRow || cell.col < minMeasuredCol || cell.col > maxMeasuredCol) continue;
+
       const neighbors = measured
         .map((candidate) => ({ candidate, distance: normalizedDistance(cell.row, cell.col, candidate.row, candidate.col, rpmBins, loadBins) }))
-        .filter((entry) => entry.distance > 0)
+        .filter((entry) => entry.distance > 0 && entry.distance <= maximumInterpolationDistance)
         .sort((left, right) => left.distance - right.distance)
         .slice(0, interpolationNeighbors);
       if (neighbors.length < 2) continue;
+
       let weighted = 0;
       let weight = 0;
       for (const neighbor of neighbors) {
