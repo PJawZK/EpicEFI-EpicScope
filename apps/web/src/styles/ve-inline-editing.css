@@ -60,6 +60,43 @@
   white-space: nowrap;
 }
 
+/* Compact, neutral blocker guidance: clearer hierarchy without colored framing. */
+.ve-run-blocker-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(145, 165, 175, .22);
+  border-bottom: 1px solid rgba(145, 165, 175, .16);
+  font-size: 8px;
+}
+
+.ve-run-blocker-panel[hidden] {
+  display: none;
+}
+
+.ve-run-blocker-panel > strong {
+  white-space: nowrap;
+}
+
+.ve-run-blocker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ve-run-blocker-item > span {
+  color: #a9b7be;
+}
+
+.ve-run-blocker-item > button {
+  min-height: 18px;
+  padding: 1px 5px;
+  font-size: 8px;
+}
+
 /* Raise calibration-table readability without increasing cell geometry. */
 .ve-workbench-table {
   font-size: 9px;
