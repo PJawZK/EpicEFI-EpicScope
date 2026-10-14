@@ -2,6 +2,18 @@ import type { AfrDelayEvent } from './afr-delay-analyzer';
 
 export type VeDelayCellState = 'measured' | 'interpolated' | 'insufficient';
 export type VeDelayConfidence = 'none' | 'limited' | 'moderate' | 'strong';
+export type VeDelayWorkingProvenance = 'measured-recommendation' | 'interpolated-recommendation' | 'user-edited';
+export type VeDelayTableOrigin = 'log-discovery' | 'saved-file';
+
+export interface VeDelaySourceEvent {
+  readonly commandTimeMs: number;
+  readonly responseTimeMs: number;
+  readonly onsetDelayMs: number;
+  readonly rpm: number | undefined;
+  readonly load: number | undefined;
+  readonly commandDelta: number;
+  readonly responseDeltaAfr: number;
+}
 
 export interface VeDelayTableCell {
   readonly row: number;
@@ -9,11 +21,14 @@ export interface VeDelayTableCell {
   readonly state: VeDelayCellState;
   readonly recommendedMs: number | undefined;
   readonly workingMs: number | undefined;
+  readonly workingProvenance: VeDelayWorkingProvenance | undefined;
   readonly eventCount: number;
   readonly p10Ms: number | undefined;
   readonly p90Ms: number | undefined;
   readonly spreadMs: number | undefined;
   readonly confidence: VeDelayConfidence;
+  /** Direct delay-discovery events assigned to this cell. Empty for interpolated cells. */
+  readonly sourceEvents: readonly VeDelaySourceEvent[];
 }
 
 export interface VeDelayTable {
@@ -22,6 +37,9 @@ export interface VeDelayTable {
   readonly rows: number;
   readonly cols: number;
   readonly cells: readonly VeDelayTableCell[];
+  readonly origin: VeDelayTableOrigin;
+  /** Optional human-readable origin, for example the source log or saved file name. */
+  readonly originLabel?: string;
 }
 
 export interface VeDelayTableConfig {
@@ -31,6 +49,8 @@ export interface VeDelayTableConfig {
   readonly maximumInterpolationDistance?: number;
   /** Reduce oversized VE geometry to a dedicated evidence-sized delay grid. Default true. */
   readonly adaptiveGeometry?: boolean;
+  /** Optional source-log label retained with the recommendation. */
+  readonly originLabel?: string;
 }
 
 export interface VeDelayAxes {
@@ -99,6 +119,18 @@ function downsampleAxis(values: readonly number[], count: number): number[] {
   return picked;
 }
 
+function eventSummary(event: AfrDelayEvent): VeDelaySourceEvent {
+  return {
+    commandTimeMs: event.commandTimeMs,
+    responseTimeMs: event.responseTimeMs,
+    onsetDelayMs: event.onsetDelayMs,
+    rpm: event.rpm,
+    load: event.load,
+    commandDelta: event.commandDelta,
+    responseDeltaAfr: event.responseDeltaAfr,
+  };
+}
+
 /**
  * Delay evidence is much sparser than VE evidence. Derive a dedicated delay grid
  * from the available event count instead of copying every VE node.
@@ -138,19 +170,20 @@ export function buildVeDelayTable(
   const tableLoadBins = axes.loadBins;
   const rows = tableLoadBins.length;
   const cols = tableRpmBins.length;
-  const buckets: number[][] = Array.from({ length: rows * cols }, () => []);
+  const buckets: AfrDelayEvent[][] = Array.from({ length: rows * cols }, () => []);
 
   for (const event of events) {
     if (event.rpm === undefined || event.load === undefined || !Number.isFinite(event.onsetDelayMs) || event.onsetDelayMs < 0) continue;
     const col = nearestIndex(event.rpm, tableRpmBins);
     const row = nearestIndex(event.load, tableLoadBins);
     if (row === undefined || col === undefined) continue;
-    buckets[row * cols + col]!.push(event.onsetDelayMs);
+    buckets[row * cols + col]!.push(event);
   }
 
-  const cells: VeDelayTableCell[] = buckets.map((values, index) => {
+  const cells: VeDelayTableCell[] = buckets.map((eventsInCell, index) => {
     const row = Math.floor(index / cols);
     const col = index % cols;
+    const values = eventsInCell.map((event) => event.onsetDelayMs);
     const p10Ms = percentile(values, 0.10);
     const p90Ms = percentile(values, 0.90);
     const spreadMs = p10Ms !== undefined && p90Ms !== undefined ? p90Ms - p10Ms : undefined;
@@ -162,11 +195,13 @@ export function buildVeDelayTable(
       state: measured ? 'measured' : 'insufficient',
       recommendedMs: measured ? medianMs : undefined,
       workingMs: measured ? medianMs : undefined,
+      workingProvenance: measured ? 'measured-recommendation' : undefined,
       eventCount: values.length,
       p10Ms,
       p90Ms,
       spreadMs,
       confidence: measured ? confidence(values.length, spreadMs) : values.length > 0 ? 'limited' : 'none',
+      sourceEvents: eventsInCell.map(eventSummary),
     };
   });
 
@@ -203,18 +238,58 @@ export function buildVeDelayTable(
         state: 'interpolated',
         recommendedMs: interpolatedMs,
         workingMs: interpolatedMs,
+        workingProvenance: 'interpolated-recommendation',
         confidence: 'limited',
       };
     }
   }
 
-  return { rpmBins: [...tableRpmBins], loadBins: [...tableLoadBins], rows, cols, cells };
+  return {
+    rpmBins: [...tableRpmBins],
+    loadBins: [...tableLoadBins],
+    rows,
+    cols,
+    cells,
+    origin: 'log-discovery',
+    ...(config.originLabel ? { originLabel: config.originLabel } : {}),
+  };
 }
 
 export function resetVeDelayWorkingToRecommendation(table: VeDelayTable): VeDelayTable {
   return {
     ...table,
-    cells: table.cells.map((cell) => ({ ...cell, workingMs: cell.recommendedMs })),
+    cells: table.cells.map((cell) => ({
+      ...cell,
+      workingMs: cell.recommendedMs,
+      workingProvenance: cell.recommendedMs === undefined
+        ? undefined
+        : cell.state === 'measured' ? 'measured-recommendation' : 'interpolated-recommendation',
+    })),
+  };
+}
+
+export function editVeDelayWorkingCell(table: VeDelayTable, row: number, col: number, workingMs: number): VeDelayTable {
+  if (!Number.isFinite(workingMs) || workingMs < 0) throw new RangeError('VE delay user edit must be a finite non-negative delay.');
+  if (row < 0 || row >= table.rows || col < 0 || col >= table.cols) throw new RangeError('VE delay user edit is outside the table geometry.');
+  const index = row * table.cols + col;
+  return {
+    ...table,
+    cells: table.cells.map((cell, cellIndex) => cellIndex === index ? { ...cell, workingMs, workingProvenance: 'user-edited' } : cell),
+  };
+}
+
+export function revertVeDelayWorkingCell(table: VeDelayTable, row: number, col: number): VeDelayTable {
+  if (row < 0 || row >= table.rows || col < 0 || col >= table.cols) throw new RangeError('VE delay revert is outside the table geometry.');
+  const index = row * table.cols + col;
+  return {
+    ...table,
+    cells: table.cells.map((cell, cellIndex) => cellIndex === index ? {
+      ...cell,
+      workingMs: cell.recommendedMs,
+      workingProvenance: cell.recommendedMs === undefined
+        ? undefined
+        : cell.state === 'measured' ? 'measured-recommendation' : 'interpolated-recommendation',
+    } : cell),
   };
 }
 
