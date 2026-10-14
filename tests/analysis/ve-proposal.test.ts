@@ -25,6 +25,10 @@ function evidence(ratios: readonly (number | undefined)[], weights: readonly num
       totalWeight: weights[index]!,
       correctionRatio: ratio,
       correctionPercent: ratio === undefined ? undefined : (ratio - 1) * 100,
+      correctionP10Ratio: ratio,
+      correctionP90Ratio: ratio,
+      correctionSpreadPercent: ratio === undefined ? undefined : 0,
+      confidence: weights[index]! >= 8 ? 'moderate' : weights[index]! > 0 ? 'limited' : 'none',
       sampleIndices: new Uint32Array(),
     })),
   };
