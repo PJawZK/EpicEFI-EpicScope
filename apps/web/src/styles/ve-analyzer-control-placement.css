@@ -1,23 +1,35 @@
-/* Keep table selectors stable at the left edge of each table header. */
+/* Keep table controls compact and in the familiar selector position. */
 .ve-workbench-panel > header {
   justify-content: flex-start;
+  gap: 7px;
+  padding: 3px 7px 4px;
 }
 
 .ve-table-header-controls {
-  order: -1;
+  order: initial;
   flex: 0 0 auto;
-  min-height: 37px;
-  margin: 0 8px 0 0;
+  min-height: 27px;
+  margin: 0;
   justify-content: flex-start;
   align-items: end;
+  gap: 5px;
 }
 
 .ve-table-header-controls > label {
+  display: flex;
   flex: 0 0 auto;
+  gap: 0;
+}
+
+/* Table view intentionally has no caption; its dropdown sits immediately
+   to the left of the VE source-table dropdown. */
+.ve-table-header-controls > label > span {
+  display: none !important;
 }
 
 .ve-table-header-controls select {
   flex: 0 0 auto;
+  min-height: 27px;
 }
 
 .ve-table-header-controls .ve-workbench-table-tabs {
@@ -26,8 +38,14 @@
 }
 
 .ve-workbench-panel > header > div:not(.ve-table-header-controls) {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  margin-right: 2px;
+}
+
+.ve-workbench-panel > header > div:not(.ve-table-header-controls) > span {
+  margin-top: 1px;
+  line-height: 1.15;
 }
 
 /* In single-table mode both tune-table selectors remain next to the tabs. */

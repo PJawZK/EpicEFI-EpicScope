@@ -17,6 +17,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const tableLayoutSelect = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer table view"]');
   const tableLayoutLabel = tableLayoutSelect?.closest<HTMLLabelElement>('label');
+  const tableLayoutCaption = tableLayoutLabel?.querySelector<HTMLElement>('span');
   const tabs = root.querySelector<HTMLElement>('.ve-workbench-table-tabs');
   const veSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
   const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
@@ -27,16 +28,20 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const veControls = veHeader?.querySelector<HTMLElement>('.ve-table-header-controls');
   const targetControls = targetHeader?.querySelector<HTMLElement>('.ve-table-header-controls');
 
+  // The table-view selector is self-explanatory next to the table source selector.
+  // Removing the caption saves vertical space in the already compact table header.
+  tableLayoutCaption?.remove();
+
   const syncTableControls = (): void => {
     if (!tableLayoutSelect || !tableLayoutLabel || !tabs || !veSelect || !targetSelect || !veControls || !targetControls || !veHeader || !targetHeader) return;
     const single = tableLayoutSelect.value === 'single';
     const activeVe = !vePanel?.hidden;
 
-    // Control groups belong at the left edge of their table header. Keep their
-    // minimum height identical so switching between VE and Target never shifts
-    // the table vertically.
-    veHeader.prepend(veControls);
-    targetHeader.prepend(targetControls);
+    // Keep the descriptive copy first, then the compact controls where the
+    // original table selector lived. This preserves the familiar table header
+    // reading order and keeps Table view immediately left of veTable.
+    veHeader.append(veControls);
+    targetHeader.append(targetControls);
     veControls.replaceChildren();
     targetControls.replaceChildren();
 
@@ -46,9 +51,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       return;
     }
 
-    // Single-table mode keeps both source-table selectors visible next to the
-    // VE/Target tabs. This makes table switching and source selection stable in
-    // one horizontal group instead of moving controls when the active tab flips.
+    // Single-table mode keeps layout, tabs and both source-table selectors in
+    // one stable row. The source selectors sit directly beside the tab group.
     const activeControls = activeVe ? veControls : targetControls;
     activeControls.append(tableLayoutLabel, tabs, veSelect, targetSelect);
   };
