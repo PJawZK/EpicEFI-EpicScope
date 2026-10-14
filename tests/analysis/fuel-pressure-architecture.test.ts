@@ -127,7 +127,7 @@ describe('architecture-aware fuel pressure evidence', () => {
     expect(result.pressureEvents[0]).toMatchObject({ startSampleIndex: 2, endSampleIndex: 3, extremeSampleIndex: 3, extremeValue: 240 });
   });
 
-  it('reports negative calibrated-pressure samples for verification without inventing a universal valid range', () => {
+  it('marks substantial negative calibrated-pressure evidence as needing verification', () => {
     const result = analyzeFuelPressureArchitecture({
       architecture: 'conventional',
       lowSidePressure: range([-1078, -900, 1000, 1020, 980]),
@@ -135,8 +135,26 @@ describe('architecture-aware fuel pressure evidence', () => {
       sampleIndices: indices,
     });
 
-    expect(result.lowSidePressureQuality).toMatchObject({ state: 'usable', validSampleCount: 5, negativeSampleCount: 2 });
+    expect(result.lowSidePressureQuality).toMatchObject({
+      state: 'needs-verification',
+      validSampleCount: 5,
+      negativeSampleCount: 2,
+      negativeSamplePercent: 40,
+    });
     expect(result.lowSidePressure?.min).toBe(-1078);
+  });
+
+  it('keeps rare negative calibrated samples as usable evidence with a warning', () => {
+    const values = Array.from({ length: 200 }, (_, index) => index === 50 ? -1 : 300 + index * 0.01);
+    const result = analyzeFuelPressureArchitecture({
+      architecture: 'conventional',
+      lowSidePressure: range(values),
+      sampleIndices: Array.from({ length: values.length }, (_, index) => index),
+    });
+
+    expect(result.lowSidePressureQuality?.state).toBe('usable-with-warning');
+    expect(result.lowSidePressureQuality?.negativeSampleCount).toBe(1);
+    expect(result.lowSidePressureQuality?.negativeSamplePercent).toBeCloseTo(0.5);
   });
 
   it('rejects invalid running RPM thresholds', () => {
