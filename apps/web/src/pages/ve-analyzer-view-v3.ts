@@ -6,7 +6,6 @@ import {
   preferredVeQualificationChannel,
   veQualificationChannelCompatible,
   VE_CELL_CHANGE_PRIOR_WEIGHT,
-  veCellChangeAuthorityForPrior,
   type VeCellChangeAuthority,
   type VeQuickQualificationSettings,
 } from './ve-analyzer-qualification';
@@ -120,65 +119,56 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   };
 
-  const ensurePresetPrior = (prior: HTMLInputElement): void => {
-    const mode = authoritySelect.value as VeCellChangeAuthority;
-    if (mode === 'custom' || prior.value.trim() !== '') return;
-    prior.value = String(VE_CELL_CHANGE_PRIOR_WEIGHT[mode]);
-  };
-
-  const moveNumericPriorToAdvanced = (): void => {
+  const syncAuthorityUi = (notify = false): void => {
     const prior = root.querySelector<HTMLInputElement>('input[data-role="prior-weight"]');
-    const advanced = root.querySelector<HTMLElement>('[data-ve-analyzer="controls"]');
-    const label = prior?.closest('label');
-    if (!prior || !advanced || !label) return;
-    const caption = label.querySelector('span');
-    if (caption) caption.textContent = 'Prior weight (advanced)';
-    if (label.parentElement !== advanced) advanced.prepend(label);
+    const label = prior?.closest<HTMLLabelElement>('label');
+    if (!prior || !label) return;
 
-    const raw = prior.value.trim();
-    if (raw !== '') {
-      const value = Number(raw);
-      if (Number.isFinite(value)) authoritySelect.value = veCellChangeAuthorityForPrior(value);
-    } else {
-      // A blank numeric field must not silently turn an existing preset into
-      // Custom. Presets are the normal user-facing authority control.
-      ensurePresetPrior(prior);
+    if (label.parentElement !== actionbar) authorityLabel.insertAdjacentElement('afterend', label);
+    const caption = label.querySelector('span');
+    if (caption) caption.textContent = 'Prior weight';
+
+    const mode = authoritySelect.value as VeCellChangeAuthority;
+    const custom = mode === 'custom';
+    label.hidden = !custom;
+
+    if (!custom) {
+      const resolved = String(VE_CELL_CHANGE_PRIOR_WEIGHT[mode]);
+      if (prior.value !== resolved) {
+        prior.value = resolved;
+        if (notify) prior.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     }
 
     if (prior.dataset.veAuthorityLinked !== 'true') {
       prior.addEventListener('change', () => {
-        const rawValue = prior.value.trim();
-        if (rawValue === '') {
-          ensurePresetPrior(prior);
-          return;
-        }
-        const value = Number(rawValue);
-        authoritySelect.value = Number.isFinite(value) ? veCellChangeAuthorityForPrior(value) : 'custom';
+        if (authoritySelect.value !== 'custom') syncAuthorityUi(true);
       });
       prior.dataset.veAuthorityLinked = 'true';
     }
   };
 
-  const clarifyRecoveryControl = (): void => {
+  const clarifyProposalLabels = (): void => {
     const stable = root.querySelector<HTMLInputElement>('input[data-role="stable-ms"]');
-    const caption = stable?.closest('label')?.querySelector('span');
-    if (caption) {
-      caption.textContent = 'Stable / recovery ms';
-      caption.title = 'Required stable trailing window after transient/state changes before VE evidence becomes eligible.';
+    const stableCaption = stable?.closest('label')?.querySelector('span');
+    if (stableCaption) {
+      stableCaption.textContent = 'Stable / recovery ms';
+      stableCaption.title = 'Required stable trailing window after transient/state changes before VE evidence becomes eligible.';
     }
+
+    const minimumEvidence = root.querySelector<HTMLInputElement>('input[data-role="min-evidence-weight"]');
+    const evidenceCaption = minimumEvidence?.closest('label')?.querySelector('span');
+    if (evidenceCaption) evidenceCaption.textContent = 'Minimum evidence weight';
   };
 
-  const applyUi = (): void => {
-    moveNumericPriorToAdvanced();
-    clarifyRecoveryControl();
+  const applyUi = (notifyAuthority = false): void => {
+    syncAuthorityUi(notifyAuthority);
+    clarifyProposalLabels();
   };
 
   authoritySelect.addEventListener('change', () => {
-    const prior = root.querySelector<HTMLInputElement>('input[data-role="prior-weight"]');
-    const mode = authoritySelect.value as VeCellChangeAuthority;
-    if (!prior || mode === 'custom') return;
-    prior.value = String(VE_CELL_CHANGE_PRIOR_WEIGHT[mode]);
-    prior.dispatchEvent(new Event('change', { bubbles: true }));
+    syncAuthorityUi(true);
+    invalidate();
   });
 
   for (const control of [cltSelect, minCltInput, tpsSelect, minTpsInput, maxTpsInput]) {
@@ -213,21 +203,28 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     },
   });
 
+  // Resolve the default preset before the inner analyzer performs its first
+  // readiness calculation. Preset authority must never depend on a hidden input.
+  applyUi(false);
+
   return {
     element: root,
     setContext(next) {
       sourceContext = next;
       populateQualificationSources();
+      applyUi(false);
       inner.setContext(wrappedContext(next));
-      applyUi();
+      applyUi(false);
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      applyUi(false);
       inner.setTuneModel(model, sourceName);
-      applyUi();
+      applyUi(false);
     },
     refresh() {
+      applyUi(false);
       inner.refresh();
-      applyUi();
+      applyUi(false);
     },
   };
 }
