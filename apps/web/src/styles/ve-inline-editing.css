@@ -13,7 +13,7 @@
 }
 
 .ve-inline-delay-editing .ve-delay-table td {
-  cursor: cell;
+  cursor: default;
   user-select: none;
   touch-action: none;
 }
