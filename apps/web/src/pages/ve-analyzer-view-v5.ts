@@ -6,6 +6,7 @@ import {
 } from './ve-analyzer-view-v4';
 
 type CellKey = `${number}:${number}`;
+type LegacyAction = 'apply' | 'clear' | 'revert';
 
 function keyFor(row: number, col: number): CellKey {
   return `${row}:${col}`;
@@ -38,7 +39,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const hint = document.createElement('div');
   hint.className = 've-delay-inline-hint';
-  hint.textContent = 'Select a cell, then type a number to edit it. Drag across cells to select a range; typing edits the whole selection. Enter commits · Esc cancels.';
+  hint.textContent = 'Select a cell and type to replace its value. Drag to select a range. Delete clears to no working delay. Enter/F2 edits the current value · Esc cancels.';
   delayHost.insertAdjacentElement('beforebegin', hint);
 
   const selected = new Set<CellKey>();
@@ -96,7 +97,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     refreshSelection();
   };
 
-  const invokeLegacy = (key: CellKey, action: 'apply' | 'revert', value?: number): void => {
+  const invokeLegacy = (key: CellKey, action: LegacyAction, value?: number): void => {
     const cell = cellFor(key);
     if (!cell) return;
     bypassLegacy = true;
@@ -105,6 +106,9 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       if (action === 'apply') {
         if (value === undefined) return;
         legacyWorking.value = String(value);
+        legacyApply.click();
+      } else if (action === 'clear') {
+        legacyWorking.value = '';
         legacyApply.click();
       } else {
         legacyRevert.click();
@@ -117,7 +121,10 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const restorePreview = (): void => {
     for (const [key, text] of previewOriginal) {
       const cell = cellFor(key);
-      if (cell) cell.textContent = text;
+      if (cell) {
+        cell.textContent = text;
+        delete cell.dataset.delayPreview;
+      }
     }
     previewOriginal.clear();
   };
@@ -133,27 +140,33 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   };
 
+  const applyEditToSelection = (text: string): boolean => {
+    const keys = [...selected];
+    if (text === '') {
+      for (const key of keys) invokeLegacy(key, 'clear');
+      return true;
+    }
+    const value = Number(text);
+    if (!Number.isFinite(value) || value < 0) return false;
+    for (const key of keys) invokeLegacy(key, 'apply', value);
+    return true;
+  };
+
   const endInlineEdit = (commit: boolean): void => {
     const input = inlineInput;
     if (!input) return;
     const text = input.value.trim();
-    const value = Number(text);
-    const canCommit = commit && text !== '' && Number.isFinite(value) && value >= 0;
-    const keys = [...selected];
     inlineInput = undefined;
     restorePreview();
-    if (canCommit) {
-      for (const key of keys) invokeLegacy(key, 'apply', value);
-    }
+    if (commit) applyEditToSelection(text);
     queueMicrotask(refreshSelection);
   };
 
   const startInlineEdit = (initialText?: string, mode: 'replace' | 'existing' = 'existing'): void => {
-    if (!anchor || selected.size === 0) return;
-    if (inlineInput) return;
+    if (!anchor || selected.size === 0 || inlineInput) return;
     const activeCell = cellFor(anchor);
     if (!activeCell) return;
-    const current = (activeCell.textContent ?? '').trim().replace(/[^0-9.]/g, '');
+    const current = activeCell.dataset.delayValue ?? '';
     previewOriginal = new Map([...selected].map((key) => [key, cellFor(key)?.textContent ?? '']));
     const input = document.createElement('input');
     input.className = 've-delay-inline-input';
@@ -181,6 +194,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     input.addEventListener('blur', () => {
       if (inlineInput === input) endInlineEdit(true);
     });
+  };
+
+  const clearSelection = (): void => {
+    if (selected.size === 0) return;
+    restorePreview();
+    for (const key of [...selected]) invokeLegacy(key, 'clear');
+    queueMicrotask(refreshSelection);
   };
 
   const closestDelayCell = (target: EventTarget | null): HTMLTableCellElement | null =>
@@ -236,11 +256,15 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       startInlineEdit(event.key, 'replace');
       return;
     }
-    if (event.key === 'Backspace' || event.key === 'Delete') {
+    if (event.key === 'Delete') {
       event.preventDefault();
-      const current = anchor ? (cellFor(anchor)?.textContent ?? '').trim().replace(/[^0-9.]/g, '') : '';
-      const next = event.key === 'Delete' ? '' : current.slice(0, -1);
-      startInlineEdit(next, 'replace');
+      clearSelection();
+      return;
+    }
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      const current = anchor ? (cellFor(anchor)?.dataset.delayValue ?? '') : '';
+      startInlineEdit(current.slice(0, -1), 'replace');
       return;
     }
     if (event.key === 'Enter' || event.key === 'F2') {
