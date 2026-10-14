@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
-import { buildVeEvidenceMap, interpolateVeTable } from '../../core/analysis/ve-evidence-map';
+import { buildVeEvidenceMap, interpolateNumericRangeAtTime, interpolateVeTable } from '../../core/analysis/ve-evidence-map';
 
-function range(values: readonly number[], stepMs = 100): NumericChannelRange {
+function range(values: readonly number[], stepMs = 100, startMs = 0): NumericChannelRange {
   return {
     startSampleIndex: 0,
-    timeMs: Float64Array.from(values.map((_, index) => index * stepMs)),
+    timeMs: Float64Array.from(values.map((_, index) => startMs + index * stepMs)),
     values: Float64Array.from(values),
     validity: Uint8Array.from(values.map(() => 1)),
   };
@@ -24,6 +24,17 @@ describe('VE evidence map', () => {
     expect(interpolateVeTable(target, 1000, 50)).toBe(14);
     expect(interpolateVeTable(target, 1500, 75)).toBeCloseTo(12.5, 8);
     expect(interpolateVeTable(target, 500, 75)).toBeUndefined();
+  });
+
+  it('interpolates engine-state channels by timestamp rather than record offset', () => {
+    const irregular: NumericChannelRange = {
+      startSampleIndex: 0,
+      timeMs: Float64Array.from([0, 70, 210, 400]),
+      values: Float64Array.from([1000, 1200, 1600, 2000]),
+      validity: Uint8Array.from([1, 1, 1, 1]),
+    };
+    expect(interpolateNumericRangeAtTime(irregular, 140)).toBeCloseTo(1400, 8);
+    expect(interpolateNumericRangeAtTime(irregular, -1)).toBeUndefined();
   });
 
   it('contributes an exact breakpoint sample to one VE node', () => {
@@ -55,6 +66,51 @@ describe('VE evidence map', () => {
 
     expect(result.cells.map((cell) => cell.totalWeight)).toEqual([0.25, 0.25, 0.25, 0.25]);
     expect(result.cells.every((cell) => cell.correctionRatio === 1)).toBe(true);
+  });
+
+  it('aligns observed mixture back to the delayed engine state by time', () => {
+    const actual: NumericChannelRange = {
+      startSampleIndex: 0,
+      timeMs: Float64Array.from([0, 100, 200, 300]),
+      values: Float64Array.from([14, 14, 14, 13]),
+      validity: Uint8Array.from([1, 1, 1, 1]),
+    };
+    const rpm: NumericChannelRange = {
+      startSampleIndex: 0,
+      timeMs: Float64Array.from([0, 80, 200, 320]),
+      values: Float64Array.from([1000, 1000, 2000, 2000]),
+      validity: Uint8Array.from([1, 1, 1, 1]),
+    };
+    const load: NumericChannelRange = {
+      startSampleIndex: 0,
+      timeMs: Float64Array.from([0, 80, 200, 320]),
+      values: Float64Array.from([50, 50, 100, 100]),
+      validity: Uint8Array.from([1, 1, 1, 1]),
+    };
+    const result = buildVeEvidenceMap({ actualMixture: actual, rpm, load, target, veRpmBins: [1000, 2000], veLoadBins: [50, 100], sampleIndices: [3] }, {
+      delayMs: 100,
+      minimumStableDurationMs: 0,
+    });
+
+    // Mixture observed at 300 ms is attributed to engine state at 200 ms: 2000 RPM / 100 load.
+    expect(result.delayMs).toBe(100);
+    expect(result.delayUnavailableSampleCount).toBe(0);
+    expect(result.cells[3]!.sampleCount).toBe(1);
+    expect(result.cells[3]!.correctionRatio).toBeCloseTo(13 / 11, 8);
+    expect(result.cells[0]!.sampleCount).toBe(0);
+  });
+
+  it('counts samples whose requested delayed engine state predates the loaded data', () => {
+    const result = buildVeEvidenceMap({
+      actualMixture: range([14], 100, 50),
+      rpm: range([1000], 100, 50),
+      load: range([50], 100, 50),
+      target,
+      veRpmBins: [1000, 2000],
+      veLoadBins: [50, 100],
+    }, { delayMs: 100, minimumStableDurationMs: 0 });
+    expect(result.delayUnavailableSampleCount).toBe(1);
+    expect(result.contributingSampleCount).toBe(0);
   });
 
   it('rejects target-table and VE-axis extrapolation explicitly', () => {
