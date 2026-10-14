@@ -1,5 +1,6 @@
 import type { NumericChannelRange } from '../log-model/log-types';
 import type { NumericHeatmapAxisBin } from './heatmap';
+import { robustWeightedEstimate, type WeightedObservation } from './ve-evidence-statistics';
 import { axisBreakpointContributions } from './weighted-cell-mean';
 
 export interface VeTableGeometry {
@@ -37,13 +38,20 @@ export interface VeEvidenceConfig {
   readonly compensateFuelCorrectionPercent?: boolean;
 }
 
+export type VeEvidenceConfidence = 'none' | 'limited' | 'moderate' | 'strong';
+
 export interface VeEvidenceCell {
   readonly row: number;
   readonly col: number;
   readonly sampleCount: number;
   readonly totalWeight: number;
+  /** Robust weighted median correction ratio. */
   readonly correctionRatio: number | undefined;
   readonly correctionPercent: number | undefined;
+  readonly correctionP10Ratio: number | undefined;
+  readonly correctionP90Ratio: number | undefined;
+  readonly correctionSpreadPercent: number | undefined;
+  readonly confidence: VeEvidenceConfidence;
   readonly sampleIndices: Uint32Array;
 }
 
@@ -190,6 +198,13 @@ function heatmapBins(values: readonly number[]): readonly NumericHeatmapAxisBin[
   }));
 }
 
+function evidenceConfidence(totalWeight: number, sampleCount: number, spreadPercent: number | undefined): VeEvidenceConfidence {
+  if (!(totalWeight > 0) || sampleCount === 0) return 'none';
+  if (spreadPercent !== undefined && sampleCount >= 20 && totalWeight >= 20 && spreadPercent <= 10) return 'strong';
+  if (spreadPercent !== undefined && sampleCount >= 8 && totalWeight >= 8 && spreadPercent <= 20) return 'moderate';
+  return 'limited';
+}
+
 export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceConfig = {}): VeEvidenceMapResult {
   const indices = selectedIndices(inputs.actualMixture, inputs.sampleIndices);
   const minRpm = config.minimumRpm ?? Number.NEGATIVE_INFINITY;
@@ -249,8 +264,8 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const loadBins = heatmapBins(inputs.veLoadBins);
   const cellCount = rpmBins.length * loadBins.length;
   const weights = new Float64Array(cellCount);
-  const weightedRatios = new Float64Array(cellCount);
   const counts = new Uint32Array(cellCount);
+  const observationLists: WeightedObservation[][] = Array.from({ length: cellCount }, () => []);
   const sampleLists: number[][] = Array.from({ length: cellCount }, () => []);
   let veOutOfRangeSampleCount = 0;
   let contributingSampleCount = 0;
@@ -270,8 +285,8 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
       if (!(weight > 0) || weight < minWeight) continue;
       const cell = yc.index * rpmBins.length + xc.index;
       weights[cell] = (weights[cell] ?? 0) + weight;
-      weightedRatios[cell] = (weightedRatios[cell] ?? 0) + ratio * weight;
       counts[cell] = (counts[cell] ?? 0) + 1;
+      observationLists[cell]!.push({ value: ratio, weight });
       sampleLists[cell]!.push(sample.sampleIndex);
       contributed = true;
     }
@@ -281,9 +296,22 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const cells: VeEvidenceCell[] = [];
   for (let row = 0; row < loadBins.length; row += 1) for (let col = 0; col < rpmBins.length; col += 1) {
     const index = row * rpmBins.length + col;
-    const totalWeight = weights[index] ?? 0;
-    const ratio = totalWeight > 0 ? (weightedRatios[index] ?? 0) / totalWeight : undefined;
-    cells.push({ row, col, sampleCount: counts[index] ?? 0, totalWeight, correctionRatio: ratio, correctionPercent: ratio === undefined ? undefined : (ratio - 1) * 100, sampleIndices: Uint32Array.from(sampleLists[index]!) });
+    const estimate = robustWeightedEstimate(observationLists[index]!);
+    const ratio = estimate.median;
+    const spreadPercent = estimate.spread === undefined ? undefined : estimate.spread * 100;
+    cells.push({
+      row,
+      col,
+      sampleCount: counts[index] ?? 0,
+      totalWeight: weights[index] ?? 0,
+      correctionRatio: ratio,
+      correctionPercent: ratio === undefined ? undefined : (ratio - 1) * 100,
+      correctionP10Ratio: estimate.p10,
+      correctionP90Ratio: estimate.p90,
+      correctionSpreadPercent: spreadPercent,
+      confidence: evidenceConfidence(weights[index] ?? 0, counts[index] ?? 0, spreadPercent),
+      sampleIndices: Uint32Array.from(sampleLists[index]!),
+    });
   }
 
   return {
