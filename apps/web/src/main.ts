@@ -17,6 +17,7 @@ import './styles/specialized-analyzer.css';
 import './styles/ve-analyzer-workbench.css';
 import './styles/ve-delay-table.css';
 import './styles/ve-analyzer-workflow.css';
+import './styles/ve-inline-editing.css';
 import './styles/analyzer-information-hierarchy.css';
 import './styles/performance-diagnostics.css';
 import './styles/ui-refinements.css';
