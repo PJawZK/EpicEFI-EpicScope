@@ -1,0 +1,107 @@
+/* Final VE Analyzer workbench spacing and hierarchy refinements. */
+
+/* Keep VE and Target headers the same height. The evidence legend belongs in detail/help, not in one table header. */
+.ve-workbench-panel:first-child > header > div::after {
+  content: none !important;
+  display: none !important;
+}
+
+.ve-table-header-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.ve-table-header-controls > label {
+  display: grid;
+  gap: 2px;
+}
+
+.ve-table-header-controls > label > span {
+  color: #b4c5ce;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ve-table-header-controls select {
+  min-width: 150px;
+  max-width: 230px;
+}
+
+.ve-table-header-controls .ve-workbench-table-tabs {
+  margin: 0;
+  padding: 0;
+  align-self: end;
+}
+
+.ve-table-header-controls .ve-workbench-table-tabs > button {
+  min-height: 27px;
+  border-radius: 3px;
+}
+
+/* The hidden legacy blocker strip still provides source data for the info popout and quick Fix target. */
+.ve-run-blocker-panel {
+  display: none !important;
+}
+
+.ve-run-status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-height: 24px;
+}
+
+.ve-run-status-inline .ve-run-info-button {
+  align-self: center;
+  margin: 0;
+}
+
+.ve-run-status-inline .ve-workbench-state {
+  margin: 0;
+  align-self: center;
+  line-height: 20px;
+}
+
+.ve-run-quick-fix {
+  min-height: 22px;
+  padding: 1px 8px;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.ve-run-quick-fix[hidden] {
+  display: none;
+}
+
+/* Make workbench boundaries easier to distinguish without consuming more space. */
+.ve-workbench-panel,
+.ve-workbench-actionbar,
+.ve-workbench-quick-controls,
+.ve-workbench-advanced,
+.ve-analyzer-view .specialized-analyzer-guidance,
+.ve-analyzer-view .specialized-analyzer-options,
+.ve-analyzer-view .specialized-analyzer-content {
+  border-color: #3d596b !important;
+}
+
+.ve-workbench-panel > header,
+.ve-axis-mapping-advanced,
+.ve-analyzer-view .specialized-analyzer-options > summary {
+  border-color: #344e5e !important;
+}
+
+@media (max-width: 1050px) {
+  .ve-table-header-controls {
+    flex-wrap: wrap;
+  }
+
+  .ve-table-header-controls select {
+    min-width: 132px;
+  }
+}
