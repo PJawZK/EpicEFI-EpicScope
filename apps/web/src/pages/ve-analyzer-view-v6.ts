@@ -247,22 +247,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     readiness.title = blockers.map((entry) => entry.message).join('; ');
   };
 
-  const refocusDelaySelection = (): void => {
-    if (delayHost.querySelector('.ve-delay-inline-input')) return;
-    const anchor = delayHost.querySelector<HTMLTableCellElement>('td[data-delay-anchor="true"]');
-    anchor?.focus({ preventScroll: true });
-  };
-
-  delayHost.addEventListener('pointerup', () => queueMicrotask(refocusDelaySelection));
-
-  let hadInlineInput = Boolean(delayHost.querySelector('.ve-delay-inline-input'));
-  const delayEditObserver = new MutationObserver(() => {
-    const hasInlineInput = Boolean(delayHost.querySelector('.ve-delay-inline-input'));
-    if (hadInlineInput && !hasInlineInput) queueMicrotask(refocusDelaySelection);
-    hadInlineInput = hasInlineInput;
-  });
-  delayEditObserver.observe(delayHost, { childList: true, subtree: true });
-
   const readinessObserver = new MutationObserver(scheduleRenderBlockers);
   readinessObserver.observe(readinessBody, { childList: true, subtree: true });
   readinessObserver.observe(delayHost, { attributes: true, attributeFilter: ['data-mode'] });
@@ -270,7 +254,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   readinessObserver.observe(useDelay, { attributes: true, attributeFilter: ['disabled'] });
 
   root.addEventListener('change', scheduleRenderBlockers);
-  root.addEventListener('input', scheduleRenderBlockers);
+  root.addEventListener('input', (event) => {
+    const target = event.target;
+    // v5 owns live in-cell editing/focus. Do not recompute the whole Run blocker
+    // UI on every delay digit; the committed table change updates readiness.
+    if (target instanceof Element && target.closest('.ve-delay-inline-input')) return;
+    scheduleRenderBlockers();
+  });
 
   scheduleRenderBlockers();
 
