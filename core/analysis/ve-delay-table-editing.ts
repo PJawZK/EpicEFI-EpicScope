@@ -26,9 +26,12 @@ export function setVeDelayWorkingCell(
     cells: table.cells.map((cell, cellIndexValue) => cellIndexValue === index ? {
       ...cell,
       workingMs,
-      // `user-edited` also records an explicit user clear. This is distinct
-      // from an untouched insufficient cell whose provenance is undefined.
-      workingProvenance: 'user-edited',
+      // Clearing an originally empty/insufficient cell restores its untouched
+      // state. Clearing a cell that has a recommendation remains an explicit
+      // user override because it suppresses known delay authority.
+      workingProvenance: workingMs === undefined && cell.recommendedMs === undefined
+        ? undefined
+        : 'user-edited',
     } : cell),
   };
 }
