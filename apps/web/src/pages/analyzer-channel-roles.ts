@@ -34,7 +34,7 @@ function normalizedIdentity(channel: ChannelDefinition): string {
     .trim();
 }
 
-const INVALID_ACTUAL_MIXTURE_IDENTITY = /(^|\b)(target|error|err|trim|correction|offset|delta|difference|diff|command|desired|setpoint|table|axis|bin)(\b|$)/i;
+const INVALID_ACTUAL_MIXTURE_IDENTITY = /(target|error|err|trim|correction|offset|delta|difference|diff|command|desired|setpoint|table|axis|bin)/i;
 
 function sourceIdentity(channel: ChannelDefinition): string {
   return channel.sourceName.trim().toLowerCase();
