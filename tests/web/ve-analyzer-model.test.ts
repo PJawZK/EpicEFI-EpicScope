@@ -11,7 +11,7 @@ function entry(name: string, kind: TuneEntry['kind'], rows: number, cols: number
   return {
     name,
     kind,
-    sourceKind: 'numeric',
+    sourceKind: 'constant',
     pageNumber: 1,
     rows,
     cols,
