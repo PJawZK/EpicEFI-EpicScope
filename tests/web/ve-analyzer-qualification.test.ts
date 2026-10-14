@@ -59,6 +59,14 @@ describe('VE Analyzer quick qualification', () => {
     expect(veQualificationSamplePasses(2, settings, clt, tps)).toBe(false);
   });
 
+  it('treats absent optional bounds as full-range qualification', () => {
+    const source = range([1, 2, 3]);
+    expect(veQualificationSamplePasses(0, {})).toBe(true);
+    expect(veQualificationSamplePasses(1, {})).toBe(true);
+    const qualified = applyVeQualificationValidity(source, {});
+    expect([...qualified.validity]).toEqual([1, 1, 1]);
+  });
+
   it('projects qualification into validity without changing values or indexing', () => {
     const source = range([1000, 1100, 1200], 20);
     const clt = range([50, 80, 90], 20);
