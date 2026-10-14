@@ -20,7 +20,7 @@ let analyzerChannelDecorationQueued = false;
 let analyzerChannelObserver: MutationObserver | undefined;
 
 export function analyzerChannelOptionLabel(channel: ChannelDefinition): string {
-  const name = channel.displayName || channel.sourceName;
+  const name = channel.sourceName;
   const unit = channel.unit?.trim();
   return unit ? `${name} [${unit}]` : name;
 }
