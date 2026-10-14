@@ -54,6 +54,53 @@ describe('VE evidence map', () => {
     expect(result.cells.slice(1).every((cell) => cell.sampleCount === 0)).toBe(true);
   });
 
+  it('removes known percent fuel-trim contribution from base-VE evidence', () => {
+    const result = buildVeEvidenceMap({
+      actualMixture: range([14]),
+      rpm: range([1000]),
+      load: range([50]),
+      target,
+      veRpmBins: [1000, 2000],
+      veLoadBins: [50, 100],
+      fuelCorrectionPercent: range([5]),
+    }, { minimumStableDurationMs: 0, compensateFuelCorrectionPercent: true });
+
+    // Target is 14 and observed mixture is already on target only because +5% fuel is applied.
+    // Base VE therefore needs +5%, not 0%.
+    expect(result.fuelCorrectionCompensated).toBe(true);
+    expect(result.fuelCorrectionCompensatedSampleCount).toBe(1);
+    expect(result.cells[0]!.correctionRatio).toBeCloseTo(1.05, 8);
+    expect(result.cells[0]!.correctionPercent).toBeCloseTo(5, 8);
+  });
+
+  it('samples applied fuel correction at the delayed engine-event time', () => {
+    const result = buildVeEvidenceMap({
+      actualMixture: range([14, 14, 14], 100),
+      rpm: range([1000, 1000, 1000], 100),
+      load: range([50, 50, 50], 100),
+      target,
+      veRpmBins: [1000, 2000],
+      veLoadBins: [50, 100],
+      fuelCorrectionPercent: range([0, 10, 20], 100),
+      sampleIndices: [2],
+    }, { delayMs: 100, minimumStableDurationMs: 0, compensateFuelCorrectionPercent: true });
+
+    // Mixture at 200 ms maps back to the fuel event at 100 ms, where +10% fuel was applied.
+    expect(result.cells[0]!.correctionRatio).toBeCloseTo(1.10, 8);
+  });
+
+  it('rejects compensated samples when the selected correction is unavailable', () => {
+    const correction = range([5]);
+    correction.validity[0] = 0;
+    const result = buildVeEvidenceMap({
+      actualMixture: range([14]), rpm: range([1000]), load: range([50]), target,
+      veRpmBins: [1000, 2000], veLoadBins: [50, 100], fuelCorrectionPercent: correction,
+    }, { minimumStableDurationMs: 0, compensateFuelCorrectionPercent: true });
+
+    expect(result.fuelCorrectionUnavailableSampleCount).toBe(1);
+    expect(result.contributingSampleCount).toBe(0);
+  });
+
   it('splits a center operating point across four surrounding nodes', () => {
     const result = buildVeEvidenceMap({
       actualMixture: range([12.5]),
@@ -92,7 +139,6 @@ describe('VE evidence map', () => {
       minimumStableDurationMs: 0,
     });
 
-    // Mixture observed at 300 ms is attributed to engine state at 200 ms: 2000 RPM / 100 load.
     expect(result.delayMs).toBe(100);
     expect(result.delayUnavailableSampleCount).toBe(0);
     expect(result.cells[3]!.sampleCount).toBe(1);
