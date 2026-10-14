@@ -112,6 +112,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const runButton = root.querySelector<HTMLButtonElement>('.ve-workbench-run')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
+  const readinessBody = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness-body"]')!;
   const delayHost = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-table"]')!;
   const grabDelay = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]')!;
   const useDelay = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]')!;
@@ -148,39 +149,57 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     prior.dispatchEvent(new Event('change', { bubbles: true }));
   };
 
+  let renderQueued = false;
+  const scheduleRenderBlockers = (): void => {
+    if (renderQueued) return;
+    renderQueued = true;
+    queueMicrotask(() => {
+      renderQueued = false;
+      renderBlockers();
+    });
+  };
+
   const renderBlockers = (): void => {
     annotateOptionalBounds();
     syncPriorAuthority();
     if (!runButton.disabled) {
       blockerPanel.hidden = true;
-      blockerPanel.replaceChildren();
+      if (blockerPanel.childNodes.length > 0) blockerPanel.replaceChildren();
       return;
     }
     const blockers = readinessBlockers(root, delayHost, grabDelay, useDelay);
     if (blockers.length === 0) {
       blockerPanel.hidden = false;
-      blockerPanel.innerHTML = '<strong>Run Analysis is blocked</strong><span>Open Advanced inputs and readiness for the unresolved required input.</span>';
+      const fallback = 'Run Analysis is blocked\nOpen Advanced inputs and readiness for the unresolved required input.';
+      if (blockerPanel.dataset.renderKey !== fallback) {
+        blockerPanel.dataset.renderKey = fallback;
+        blockerPanel.innerHTML = '<strong>Run Analysis is blocked</strong><span>Open Advanced inputs and readiness for the unresolved required input.</span>';
+      }
       return;
     }
+    const renderKey = blockers.map((entry) => entry.message).join('\n');
     blockerPanel.hidden = false;
-    blockerPanel.replaceChildren();
-    const heading = document.createElement('strong');
-    heading.textContent = `Run Analysis needs ${blockers.length} ${blockers.length === 1 ? 'fix' : 'fixes'}`;
-    blockerPanel.append(heading);
-    for (const entry of blockers) {
-      const item = document.createElement('div');
-      item.className = 've-run-blocker-item';
-      const text = document.createElement('span');
-      text.textContent = entry.message;
-      item.append(text);
-      if (entry.target) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = 'Fix';
-        button.onclick = () => focusBlocker(entry.target);
-        item.append(button);
+    if (blockerPanel.dataset.renderKey !== renderKey) {
+      blockerPanel.dataset.renderKey = renderKey;
+      blockerPanel.replaceChildren();
+      const heading = document.createElement('strong');
+      heading.textContent = `Run Analysis needs ${blockers.length} ${blockers.length === 1 ? 'fix' : 'fixes'}`;
+      blockerPanel.append(heading);
+      for (const entry of blockers) {
+        const item = document.createElement('div');
+        item.className = 've-run-blocker-item';
+        const text = document.createElement('span');
+        text.textContent = entry.message;
+        item.append(text);
+        if (entry.target) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = 'Fix';
+          button.onclick = () => focusBlocker(entry.target);
+          item.append(button);
+        }
+        blockerPanel.append(item);
       }
-      blockerPanel.append(item);
     }
     readiness.textContent = `Run blocked · ${blockers.length} ${blockers.length === 1 ? 'issue' : 'issues'}`;
     readiness.title = blockers.map((entry) => entry.message).join('; ');
@@ -193,32 +212,43 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   delayHost.addEventListener('pointerup', () => queueMicrotask(refocusDelaySelection));
+
+  // Keep edit-focus tracking separate from readiness. Delay-table rerenders are
+  // frequent and must never trigger the blocker renderer recursively.
   let hadInlineInput = Boolean(delayHost.querySelector('.ve-delay-inline-input'));
-  const observer = new MutationObserver(() => {
+  const delayEditObserver = new MutationObserver(() => {
     const hasInlineInput = Boolean(delayHost.querySelector('.ve-delay-inline-input'));
     if (hadInlineInput && !hasInlineInput) queueMicrotask(refocusDelaySelection);
     hadInlineInput = hasInlineInput;
-    queueMicrotask(renderBlockers);
   });
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'data-mode'] });
-  root.addEventListener('change', () => queueMicrotask(renderBlockers));
-  root.addEventListener('input', () => queueMicrotask(renderBlockers));
+  delayEditObserver.observe(delayHost, { childList: true, subtree: true });
 
-  queueMicrotask(renderBlockers);
+  // Observe only the state that can actually change Run readiness. Never watch
+  // the whole analyzer subtree because renderBlockers() mutates that subtree.
+  const readinessObserver = new MutationObserver(scheduleRenderBlockers);
+  readinessObserver.observe(readinessBody, { childList: true, subtree: true });
+  readinessObserver.observe(delayHost, { attributes: true, attributeFilter: ['data-mode'] });
+  readinessObserver.observe(runButton, { attributes: true, attributeFilter: ['disabled'] });
+  readinessObserver.observe(useDelay, { attributes: true, attributeFilter: ['disabled'] });
+
+  root.addEventListener('change', scheduleRenderBlockers);
+  root.addEventListener('input', scheduleRenderBlockers);
+
+  scheduleRenderBlockers();
 
   return {
     element: root,
     setContext(context: LoggerAnalysisContext) {
       inner.setContext(context);
-      queueMicrotask(renderBlockers);
+      scheduleRenderBlockers();
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       inner.setTuneModel(model, sourceName);
-      queueMicrotask(renderBlockers);
+      scheduleRenderBlockers();
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(renderBlockers);
+      scheduleRenderBlockers();
     },
   };
 }
