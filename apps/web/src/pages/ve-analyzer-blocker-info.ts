@@ -21,26 +21,26 @@ export function describeVeRunBlocker(message: string): VeRunBlockerHelp {
   }
   if (lower.startsWith('prior weight')) {
     return {
-      why: 'Prior weight controls how strongly the existing VE table is trusted relative to new log evidence. VE Analyzer cannot build a guarded proposal without a valid prior authority.',
-      fix: 'Choose a Cell Change preset such as Normal, or open Advanced settings and enter a non-negative Prior weight.',
+      why: 'Prior weight controls how strongly the existing VE table is trusted relative to new log evidence. A normal Cell Change preset supplies this automatically; it is only manually entered when Custom authority is used.',
+      fix: 'Use the Cell Change control beside Run Analysis and choose Responsive, Normal, Conservative or Very conservative. For manual control, open Advanced inputs and edit Prior weight. Normal = 20.',
     };
   }
   if (lower.startsWith('minimum evidence weight')) {
     return {
       why: 'Minimum evidence weight defines how much accumulated evidence a VE cell needs before EpicScope may emit a measured proposal.',
-      fix: 'Open Advanced settings and enter a non-negative Minimum evidence weight.',
+      fix: 'Use the visible Min evidence weight box in the VE Analyzer controls. It must contain a number of 0 or greater; the current default is 5.',
     };
   }
   if (lower.startsWith('max ve change %')) {
     return {
-      why: 'The percentage change limit is a safety bound that prevents one analysis pass from proposing an unexpectedly large relative VE change.',
-      fix: 'Open Advanced settings and enter a non-negative Max VE change % value.',
+      why: 'Max VE change % is a safety bound on the relative size of a proposed VE correction. It is not an operating-range Min/Max filter, so it must have a value.',
+      fix: 'Use the visible Max VE change % box in the VE Analyzer controls and enter a number of 0 or greater. The current default is 50%.',
     };
   }
   if (lower.startsWith('max ve change')) {
     return {
-      why: 'The absolute VE change limit is a safety bound that prevents one analysis pass from proposing an unexpectedly large VE-number change.',
-      fix: 'Open Advanced settings and enter a non-negative Max VE change value.',
+      why: 'Max VE change is a safety bound on the absolute size of a proposed VE correction. It is not an operating-range Min/Max filter, so it must have a value.',
+      fix: 'Use the visible Max VE change box in the VE Analyzer controls and enter a number of 0 or greater. The current default is 50 VE units.',
     };
   }
   if (lower.includes('msq ve table')) {
@@ -112,6 +112,6 @@ export function describeVeRunBlocker(message: string): VeRunBlockerHelp {
 
   return {
     why: 'This required VE Analyzer input or safety condition is not currently valid, so running analysis could produce incomplete or misleading results.',
-    fix: 'Use Fix to jump to the associated control, then provide a valid required source or setting. Optional blank Min/Max limits do not block analysis.',
+    fix: 'Use Fix to jump to the associated control, then provide a valid required source or setting. Optional blank operating-range Min/Max filters do not block analysis.',
   };
 }
