@@ -3,12 +3,19 @@ import { aggregateNumericSamples, type NumericAggregationResult } from './numeri
 import type { ThresholdEvent } from './specialized-analyzers';
 
 export type FuelPressureArchitecture = 'conventional' | 'gdi';
-export type FuelPressureEvidenceQualityState = 'usable' | 'constant' | 'constant-zero' | 'no-valid-samples';
+export type FuelPressureEvidenceQualityState =
+  | 'usable'
+  | 'usable-with-warning'
+  | 'needs-verification'
+  | 'constant'
+  | 'constant-zero'
+  | 'no-valid-samples';
 
 export interface FuelPressureEvidenceQuality {
   readonly state: FuelPressureEvidenceQualityState;
   readonly validSampleCount: number;
   readonly negativeSampleCount: number;
+  readonly negativeSamplePercent?: number;
   readonly span?: number;
 }
 
@@ -73,14 +80,24 @@ function pressureQuality(range: NumericChannelRange | undefined, indices: readon
     max = Math.max(max, current.value);
   }
   if (validSampleCount === 0) return { state: 'no-valid-samples', validSampleCount, negativeSampleCount };
+
   const span = max - min;
   const magnitude = Math.max(1, Math.abs(min), Math.abs(max));
   const effectivelyConstant = span <= Math.max(1e-6, magnitude * 1e-9);
   const effectivelyZero = Math.max(Math.abs(min), Math.abs(max)) <= 1e-6;
+  const negativeSamplePercent = (negativeSampleCount / validSampleCount) * 100;
+
+  let state: FuelPressureEvidenceQualityState;
+  if (effectivelyConstant) state = effectivelyZero ? 'constant-zero' : 'constant';
+  else if (negativeSamplePercent >= 1) state = 'needs-verification';
+  else if (negativeSampleCount > 0) state = 'usable-with-warning';
+  else state = 'usable';
+
   return {
-    state: effectivelyConstant ? (effectivelyZero ? 'constant-zero' : 'constant') : 'usable',
+    state,
     validSampleCount,
     negativeSampleCount,
+    negativeSamplePercent,
     span,
   };
 }
