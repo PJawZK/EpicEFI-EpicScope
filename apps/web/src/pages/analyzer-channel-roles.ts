@@ -15,6 +15,47 @@ interface RoleRule {
   readonly exclude?: readonly RegExp[];
 }
 
+let analyzerChannelCatalog: readonly ChannelDefinition[] = [];
+let analyzerChannelDecorationQueued = false;
+let analyzerChannelObserver: MutationObserver | undefined;
+
+export function analyzerChannelOptionLabel(channel: ChannelDefinition): string {
+  const name = channel.displayName || channel.sourceName;
+  const unit = channel.unit?.trim();
+  return unit ? `${name} [${unit}]` : name;
+}
+
+export function decorateAnalyzerChannelOptions(root: ParentNode, channels: readonly ChannelDefinition[]): void {
+  const byId = new Map(channels.map((channel) => [channel.id, channel]));
+  for (const option of root.querySelectorAll<HTMLOptionElement>('select option')) {
+    const channel = byId.get(option.value);
+    if (!channel) continue;
+    const expected = analyzerChannelOptionLabel(channel);
+    if (option.textContent !== expected) option.textContent = expected;
+  }
+}
+
+function queueAnalyzerChannelDecoration(): void {
+  if (analyzerChannelDecorationQueued || typeof document === 'undefined') return;
+  analyzerChannelDecorationQueued = true;
+  queueMicrotask(() => {
+    analyzerChannelDecorationQueued = false;
+    for (const root of document.querySelectorAll<HTMLElement>('.analyzer-page')) {
+      decorateAnalyzerChannelOptions(root, analyzerChannelCatalog);
+    }
+  });
+}
+
+function registerAnalyzerChannelCatalog(channels: readonly ChannelDefinition[]): void {
+  analyzerChannelCatalog = channels;
+  if (typeof document === 'undefined') return;
+  if (!analyzerChannelObserver && typeof MutationObserver !== 'undefined') {
+    analyzerChannelObserver = new MutationObserver(() => { queueAnalyzerChannelDecoration(); });
+    analyzerChannelObserver.observe(document.documentElement, { childList: true, subtree: true });
+  }
+  queueAnalyzerChannelDecoration();
+}
+
 // Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
 // Canonical runtime channels are preferred where EpicEFI has an established name; fuzzy matching is fallback only.
 const RULES: Readonly<Record<string, RoleRule>> = {
@@ -195,6 +236,7 @@ export function suggestAnalyzerChannel(
   role: string,
   channels: readonly ChannelDefinition[],
 ): ChannelDefinition | undefined {
+  registerAnalyzerChannelCatalog(channels);
   const rule = RULES[`${domain}:${role}`];
   if (!rule) return undefined;
   let selected: ChannelDefinition | undefined;
