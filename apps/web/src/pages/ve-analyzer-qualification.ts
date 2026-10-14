@@ -23,7 +23,7 @@ function normalized(value: string | undefined): string {
 
 function temperatureUnit(unit: string | undefined): boolean {
   const text = normalized(unit);
-  return /(^| )(deg ?c|°c|celsius|deg ?f|°f|fahrenheit|kelvin|k)( |$)/.test(` ${text} `);
+  return /(^| )(deg|deg ?c|°c|celsius|deg ?f|°f|fahrenheit|kelvin|k)( |$)/.test(` ${text} `);
 }
 
 function pressureSemantic(channel: ChannelDefinition): boolean {
@@ -42,6 +42,10 @@ function diagnosticSemantic(channel: ChannelDefinition): boolean {
     || /check engine|checkengine|diagnostic|fault|warning/.test(`${source} ${display}`);
 }
 
+function canonicalCoolantDegrees(channel: ChannelDefinition): boolean {
+  return normalized(channel.sourceName) === 'coolant' && normalized(channel.unit) === 'deg';
+}
+
 function scoreClt(channel: ChannelDefinition): number {
   if (pressureSemantic(channel) || diagnosticSemantic(channel)) return Number.NEGATIVE_INFINITY;
   const source = normalized(channel.sourceName);
@@ -57,6 +61,9 @@ function scoreClt(channel: ChannelDefinition): number {
   if (!exactClt && !(coolantIdentity && (temperatureIdentity || tempUnit))) return Number.NEGATIVE_INFINITY;
 
   let score = 0;
+  // The literal EpicEFI runtime channel shown as `Coolant [deg]` is the preferred
+  // normal-use CLT source when present. Other compatible CLT channels remain selectable.
+  if (canonicalCoolantDegrees(channel)) score += 300;
   if (exactClt) score += 140;
   if (/coolant/.test(source)) score += 95;
   if (/coolant/.test(display)) score += 35;
