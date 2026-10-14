@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AfrDelayEvent } from '../../core/analysis/afr-delay-analyzer';
-import { buildVeDelayTable, interpolateVeDelayTable, resetVeDelayWorkingToRecommendation } from '../../core/analysis/ve-delay-table';
+import { buildVeDelayTable, deriveVeDelayAxes, interpolateVeDelayTable, resetVeDelayWorkingToRecommendation } from '../../core/analysis/ve-delay-table';
 
 function event(rpm: number, load: number, onsetDelayMs: number): AfrDelayEvent {
   return {
@@ -23,6 +23,18 @@ function event(rpm: number, load: number, onsetDelayMs: number): AfrDelayEvent {
 }
 
 describe('VE lambda delay table', () => {
+  it('derives a dedicated coarse delay geometry from sparse event evidence', () => {
+    const rpm = Array.from({ length: 32 }, (_, index) => 600 + index * 200);
+    const load = Array.from({ length: 32 }, (_, index) => 20 + index * 5);
+    const axes = deriveVeDelayAxes(rpm, load, 110, 3);
+    expect(axes.rpmBins.length).toBe(5);
+    expect(axes.loadBins.length).toBe(5);
+    expect(axes.rpmBins[0]).toBe(rpm[0]);
+    expect(axes.rpmBins.at(-1)).toBe(rpm.at(-1));
+    expect(axes.loadBins[0]).toBe(load[0]);
+    expect(axes.loadBins.at(-1)).toBe(load.at(-1));
+  });
+
   it('builds robust measured RPM/load cells and preserves event evidence', () => {
     const table = buildVeDelayTable([
       event(1000, 50, 100),
@@ -45,15 +57,26 @@ describe('VE lambda delay table', () => {
     expect(table.cells[0]?.workingMs).toBeUndefined();
   });
 
-  it('interpolates empty regions only when multiple measured neighbors exist', () => {
+  it('interpolates local gaps when multiple measured neighbors are close enough', () => {
     const table = buildVeDelayTable([
       event(1000, 50, 100), event(1000, 50, 110),
       event(2000, 100, 300), event(2000, 100, 310),
-    ], [1000, 1500, 2000], [50, 75, 100], { minimumMeasuredEvents: 2 });
+    ], [1000, 1500, 2000], [50, 75, 100], { minimumMeasuredEvents: 2, maximumInterpolationDistance: 1 });
     const center = table.cells[1 * table.cols + 1]!;
     expect(center.state).toBe('interpolated');
     expect(center.workingMs).toBeCloseTo(205);
     expect(center.confidence).toBe('limited');
+  });
+
+  it('does not globally extrapolate a sparse measured island across the table', () => {
+    const table = buildVeDelayTable([
+      event(1000, 50, 100), event(1000, 50, 110), event(1000, 50, 120),
+      event(1500, 75, 150), event(1500, 75, 160), event(1500, 75, 170),
+    ], [1000, 1500, 2000, 2500, 3000], [50, 75, 100, 125, 150], { minimumMeasuredEvents: 3 });
+    expect(table.cells[0]?.state).toBe('measured');
+    expect(table.cells[1 * table.cols + 1]?.state).toBe('measured');
+    expect(table.cells[4 * table.cols + 4]?.state).toBe('insufficient');
+    expect(table.cells[4 * table.cols + 4]?.workingMs).toBeUndefined();
   });
 
   it('interpolates the working table in RPM/load space without extrapolation', () => {
@@ -71,7 +94,7 @@ describe('VE lambda delay table', () => {
     const table = buildVeDelayTable([
       event(1000, 50, 100), event(1000, 50, 120),
       event(2000, 100, 300), event(2000, 100, 320),
-    ], [1000, 2000], [50, 100]);
+    ], [1000, 2000], [50, 100], { minimumMeasuredEvents: 2 });
     const altered = {
       ...table,
       cells: table.cells.map((cell, index) => index === 0 ? { ...cell, workingMs: 250 } : cell),
