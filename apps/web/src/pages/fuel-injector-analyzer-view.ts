@@ -1,5 +1,5 @@
 import { analyzeFuelInjectorHeadroomContext, type FuelInjectorEventContext } from '../../../../core/analysis/fuel-injector-headroom';
-import { analyzeFuelPressureArchitecture, type FuelPressureArchitecture } from '../../../../core/analysis/fuel-pressure-architecture';
+import { analyzeFuelPressureArchitecture, type FuelPressureArchitecture, type FuelPressureEvidenceQuality } from '../../../../core/analysis/fuel-pressure-architecture';
 import { analyzeFuelPressureInjector } from '../../../../core/analysis/specialized-analyzers';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
@@ -63,6 +63,28 @@ function optionText(channel: ChannelDefinition): string {
   return channel.unit ? `${name} [${channel.unit}]` : name;
 }
 
+function pressureQualityLabel(quality: FuelPressureEvidenceQuality | undefined): string {
+  if (!quality) return 'Unavailable';
+  if (quality.state === 'usable') return 'Usable';
+  if (quality.state === 'constant') return 'Constant / limited variation';
+  if (quality.state === 'constant-zero') return 'Unavailable — constant zero';
+  return 'Unavailable — no valid samples';
+}
+
+function pressureQualityMessages(
+  active: FuelPressureEvidenceQuality | undefined,
+  lowSide: FuelPressureEvidenceQuality | undefined,
+  activeLabel: string,
+): string[] {
+  const messages: string[] = [];
+  if (active?.state === 'constant-zero') messages.push(`${activeLabel} is constant at 0 across the qualified samples, so it is not used as pressure-fault evidence.`);
+  else if (active?.state === 'constant') messages.push(`${activeLabel} has effectively no variation in the qualified samples. Threshold evidence is retained, but verify that the channel is live and meaningful.`);
+  else if (active?.state === 'no-valid-samples') messages.push(`${activeLabel} has no valid samples after pressure qualification.`);
+  if (active && active.negativeSampleCount > 0) messages.push(`${activeLabel} contains ${active.negativeSampleCount.toLocaleString()} negative calibrated values; verify channel calibration and units before drawing pressure conclusions.`);
+  if (lowSide && lowSide.negativeSampleCount > 0) messages.push(`Low-side fuel pressure contains ${lowSide.negativeSampleCount.toLocaleString()} negative calibrated values; verify sensor calibration and units.`);
+  return messages;
+}
+
 export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let generation = 0;
@@ -78,9 +100,11 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     </div>
     <div class="specialized-analyzer-controls"></div>
     <div class="specialized-analyzer-guidance"><strong data-fuel-injector="guidance-title"></strong><span data-fuel-injector="guidance-text"></span></div>
+    <div class="specialized-analyzer-guidance" data-fuel-injector="quality-guidance" hidden><strong>Pressure evidence quality</strong><span data-fuel-injector="quality-text"></span></div>
     <details class="specialized-analyzer-options" open>
       <summary>Analysis thresholds</summary>
       <div class="specialized-analyzer-options-grid">
+        <label><span>Minimum RPM for pressure events</span><input type="number" min="0" step="50" data-option="minimumRunningRpm" value="300"></label>
         <label><span>Conventional min rail differential</span><input type="number" step="any" data-option="conventionalMinimum" placeholder="optional"></label>
         <label><span>GDI min high-side pressure</span><input type="number" step="any" data-option="gdiMinimum" placeholder="optional"></label>
         <label><span>High duty threshold</span><input type="number" step="0.1" data-option="highDuty" value="90"></label>
@@ -107,10 +131,11 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
   const content = root.querySelector<HTMLElement>('.specialized-analyzer-content');
   const tableHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table thead');
   const tableBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-table tbody');
+  const minimumRunningRpm = root.querySelector<HTMLInputElement>('input[data-option="minimumRunningRpm"]');
   const conventionalMinimum = root.querySelector<HTMLInputElement>('input[data-option="conventionalMinimum"]');
   const gdiMinimum = root.querySelector<HTMLInputElement>('input[data-option="gdiMinimum"]');
   const highDuty = root.querySelector<HTMLInputElement>('input[data-option="highDuty"]');
-  if (!controls || !summary || !empty || !content || !tableHead || !tableBody || !conventionalMinimum || !gdiMinimum || !highDuty) throw new Error('Fuel / Injector analyzer structure is incomplete.');
+  if (!controls || !summary || !empty || !content || !tableHead || !tableBody || !minimumRunningRpm || !conventionalMinimum || !gdiMinimum || !highDuty) throw new Error('Fuel / Injector analyzer structure is incomplete.');
 
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-fuel-injector="${name}"]`);
@@ -189,7 +214,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       const row = document.createElement('tr');
       const cell = document.createElement('td');
       cell.colSpan = headers.length;
-      cell.textContent = 'No pressure or high-duty review events were found for the selected architecture and thresholds.';
+      cell.textContent = 'No usable pressure or high-duty review events were found for the selected architecture, qualification and thresholds.';
       row.append(cell);
       tableBody.replaceChildren(row);
       return;
@@ -286,6 +311,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     const deadtime = traces.get('deadtime');
     const architecture = currentArchitecture();
     const highDutyThreshold = optionNumber(highDuty, 90) ?? 90;
+    const runningRpmThreshold = optionNumber(minimumRunningRpm, 300) ?? 300;
 
     const injector = analyzeFuelPressureInjector({
       reference: reference.range,
@@ -300,7 +326,9 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
 
     const pressure = analyzeFuelPressureArchitecture({
       architecture,
+      rpm: reference.range,
       sampleIndices: scoped.sampleIndices,
+      minimumRunningRpm: runningRpmThreshold,
       ...(lowSide ? { lowSidePressure: lowSide.range } : {}),
       ...(railDiff ? { railDifferential: railDiff.range } : {}),
       ...(highSide ? { highSidePressure: highSide.range } : {}),
@@ -332,22 +360,33 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       ? `${contextual.headroom.highDutySampleCount.toLocaleString()} (${numberText(contextual.headroom.highDutySamplePercent, 2)}%)`
       : '—';
     const saturationSamples = contextual.headroom ? contextual.headroom.saturationSampleCount.toLocaleString() : '—';
+    const activePressureTrace = architecture === 'gdi' ? highSide : railDiff;
+    const activePressureUnit = channelUnit(activePressureTrace);
+    const activePressureName = architecture === 'gdi' ? 'High-side / GDI rail pressure' : 'Rail differential';
     const activePressureLabel = pressure.pressureRole === 'rail-differential'
       ? 'Rail differential'
       : pressure.pressureRole === 'high-side'
         ? 'High-side / GDI rail'
-        : 'Required calibrated pressure channel unavailable';
-    const activePressureTrace = architecture === 'gdi' ? highSide : railDiff;
-    const activePressureUnit = channelUnit(activePressureTrace);
+        : pressure.activePressureQuality?.state === 'constant-zero'
+          ? `${activePressureName} unavailable — constant zero`
+          : 'Required calibrated pressure evidence unavailable';
+    const qualityMessages = pressureQualityMessages(pressure.activePressureQuality, pressure.lowSidePressureQuality, activePressureName);
+    const qualityGuidance = field('quality-guidance');
+    qualityGuidance.hidden = qualityMessages.length === 0;
+    field('quality-text').textContent = qualityMessages.join(' ');
 
     renderSummary([
       ['Fuel system', architecture === 'gdi' ? 'GDI / high-pressure' : 'Conventional / port injection'],
       ['Scope', scoped.scope.label],
       ['Coverage', scoped.complete ? 'Complete' : 'Partial decoded'],
+      ['Pressure RPM gate', `≥ ${numberText(runningRpmThreshold, 0)} RPM`],
+      ['Pressure-qualified samples', `${pressure.pressureQualifiedSampleCount.toLocaleString()} · ${pressure.excludedByRunningGateCount.toLocaleString()} excluded`],
       ['Active pressure evidence', activePressureLabel],
+      ['Active pressure quality', pressureQualityLabel(pressure.activePressureQuality)],
       ['Active pressure mean / min', rangeWithUnit(pressure.activePressure?.mean, pressure.activePressure?.min, activePressureUnit)],
       ['Pressure threshold', pressure.threshold === undefined ? 'Not set' : valueWithUnit(pressure.threshold, activePressureUnit)],
       ['Pressure events', String(pressure.pressureEvents.length)],
+      ['Low-side quality', pressureQualityLabel(pressure.lowSidePressureQuality)],
       ['Low-side mean / min', rangeWithUnit(pressure.lowSidePressure?.mean, pressure.lowSidePressure?.min, channelUnit(lowSide))],
       ['Rail diff mean / min', rangeWithUnit(pressure.railDifferential?.mean, pressure.railDifferential?.min, channelUnit(railDiff))],
       ['GDI high-side mean / min', rangeWithUnit(pressure.highSidePressure?.mean, pressure.highSidePressure?.min, channelUnit(highSide))],
@@ -444,7 +483,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     void analyze();
   };
 
-  for (const input of [conventionalMinimum, gdiMinimum, highDuty]) input.addEventListener('change', () => { void analyze(); });
+  for (const input of [minimumRunningRpm, conventionalMinimum, gdiMinimum, highDuty]) input.addEventListener('change', () => { void analyze(); });
 
   return {
     element: root,
