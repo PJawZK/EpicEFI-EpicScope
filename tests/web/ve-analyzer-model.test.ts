@@ -7,6 +7,7 @@ import {
   preferredVeAxisName,
   preferredVeTableName,
   targetMixtureTableCandidates,
+  tuneMixtureScaleEvidence,
   veAxisCandidates,
   veTableCandidates,
 } from '../../apps/web/src/pages/ve-analyzer-model';
@@ -83,6 +84,20 @@ describe('VE Analyzer tune mapping helpers', () => {
     expect(inferTuneMixtureScale(entry('targetLambda', 'table', 2, 2, [1, 0.95, 0.82, 0.78], 'Lambda'))).toBe('lambda');
     expect(inferTuneMixtureScale(entry('mysteryTarget', 'table', 2, 2, [14.1, 13.8, 12.5, 11.8]))).toBe('afr');
     expect(inferTuneMixtureScale(entry('mysteryTarget', 'table', 2, 2, [1, 0.98, 0.88, 0.8]))).toBe('lambda');
+  });
+
+  it('does not let a misleading table name override strongly contradictory stored values', () => {
+    const misleading = entry('lambdaTable', 'table', 2, 2, [14.1, 13.8, 12.5, 11.8]);
+    const evidence = tuneMixtureScaleEvidence(misleading);
+    expect(evidence.identityScale).toBe('lambda');
+    expect(evidence.valueScale).toBe('afr');
+    expect(evidence.conflict).toBe(true);
+    expect(evidence.resolvedScale).toBe('unknown');
+    expect(inferTuneMixtureScale(misleading)).toBe('unknown');
+
+    const assessment = assessTargetMixtureTable(misleading, 'afr', 'veTable1');
+    expect(assessment.status).toBe('invalid');
+    expect(assessment.messages.join(' ')).toMatch(/Source identity suggests Lambda.*values look like AFR/);
   });
 
   it('warns when the selected mixture scale disagrees with the target table', () => {
