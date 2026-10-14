@@ -36,9 +36,29 @@
   min-width: 0;
 }
 
-/* In single-table mode both tune-table selectors remain next to the tabs. */
+/* Single-table mode groups the three dropdowns first, followed by a separated
+   VE/Target tab group at the far right. Side-by-side ordering is unchanged. */
 .ve-workbench[data-table-layout='single'] .ve-table-header-controls {
   flex-wrap: nowrap;
+}
+
+.ve-workbench[data-table-layout='single'] .ve-table-layout-control {
+  order: 0;
+}
+
+.ve-workbench[data-table-layout='single'] .ve-table-header-controls > select[data-role='ve-table'] {
+  order: 1;
+}
+
+.ve-workbench[data-table-layout='single'] .ve-table-header-controls > select[data-role='target-table'] {
+  order: 2;
+}
+
+.ve-workbench[data-table-layout='single'] .ve-workbench-table-tabs {
+  order: 3;
+  margin-left: 7px;
+  padding-left: 9px;
+  border-left: 1px solid #3d596b;
 }
 
 @media (max-width: 1250px) {
