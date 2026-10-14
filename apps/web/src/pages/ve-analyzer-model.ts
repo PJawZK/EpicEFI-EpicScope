@@ -6,6 +6,10 @@ export function veTableCandidates(model: TuneModel | undefined): readonly TuneEn
   return model?.entries.filter((entry) => entry.kind === 'table' && entry.numericValues !== undefined) ?? [];
 }
 
+export function targetMixtureTableCandidates(model: TuneModel | undefined): readonly TuneEntry[] {
+  return veTableCandidates(model);
+}
+
 export function veNumericCandidates(model: TuneModel | undefined): readonly TuneEntry[] {
   return model?.entries.filter((entry) => entry.numericValues !== undefined) ?? [];
 }
@@ -44,6 +48,20 @@ function bestName(entries: readonly TuneEntry[], patterns: readonly RegExp[]): s
 
 export function preferredVeTableName(model: TuneModel | undefined): string | undefined {
   return bestName(veTableCandidates(model), [/^ve(table)?\d*$/i, /(^|[_\s])ve([_\s]|$)/i, /fuel.*ve/i, /ve.*table/i]);
+}
+
+export function preferredTargetMixtureTableName(
+  model: TuneModel | undefined,
+  veTableName?: string,
+): string | undefined {
+  const candidates = targetMixtureTableCandidates(model).filter((entry) => entry.name !== veTableName);
+  return bestName(candidates, [
+    /target.*(afr|lambda)/i,
+    /(afr|lambda).*target/i,
+    /^afr(table)?\d*$/i,
+    /^lambda(table)?\d*$/i,
+    /(afr|lambda).*table/i,
+  ]);
 }
 
 export function preferredVeAxisName(
