@@ -109,16 +109,16 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const invokeUnderlyingEditor = (key: CellKey, action: EditAction, value?: number): void => {
     const cell = cellFor(key);
     if (!cell) return;
-    cell.onclick?.call(cell, new MouseEvent('click'));
+    cell.onclick?.call(cell, new PointerEvent('click'));
     if (action === 'apply') {
       if (value === undefined) return;
       legacyWorking.value = String(value);
-      legacyApply.onclick?.call(legacyApply, new MouseEvent('click'));
+      legacyApply.onclick?.call(legacyApply, new PointerEvent('click'));
     } else if (action === 'clear') {
       legacyWorking.value = '';
-      legacyApply.onclick?.call(legacyApply, new MouseEvent('click'));
+      legacyApply.onclick?.call(legacyApply, new PointerEvent('click'));
     } else {
-      legacyRevert.onclick?.call(legacyRevert, new MouseEvent('click'));
+      legacyRevert.onclick?.call(legacyRevert, new PointerEvent('click'));
     }
   };
 
