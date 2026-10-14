@@ -1,15 +1,15 @@
-/* Keep table controls compact and in the familiar selector position. */
+/* v7 owns table-header structure. This stylesheet only controls compact spacing. */
 .ve-workbench-panel > header {
   justify-content: flex-start;
   gap: 7px;
-  padding: 3px 7px 4px;
+  padding: 4px 7px;
 }
 
 .ve-table-header-controls {
-  order: initial;
+  order: -1;
   flex: 0 0 auto;
   min-height: 27px;
-  margin: 0;
+  margin: 0 6px 0 0;
   justify-content: flex-start;
   align-items: end;
   gap: 5px;
@@ -18,13 +18,6 @@
 .ve-table-header-controls > label {
   display: flex;
   flex: 0 0 auto;
-  gap: 0;
-}
-
-/* Table view intentionally has no caption; its dropdown sits immediately
-   to the left of the VE source-table dropdown. */
-.ve-table-header-controls > label > span {
-  display: none !important;
 }
 
 .ve-table-header-controls select {
@@ -38,14 +31,8 @@
 }
 
 .ve-workbench-panel > header > div:not(.ve-table-header-controls) {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
-  margin-right: 2px;
-}
-
-.ve-workbench-panel > header > div:not(.ve-table-header-controls) > span {
-  margin-top: 1px;
-  line-height: 1.15;
 }
 
 /* In single-table mode both tune-table selectors remain next to the tabs. */
