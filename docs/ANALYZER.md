@@ -4,7 +4,7 @@ EpicScope Analyzer answers specific tuning questions from log evidence. Logger r
 
 An analyzer should identify relevant events/conditions, quantify the result, show the evidence, explain what can and cannot be concluded, and preserve a route back to the original log.
 
-For present-tense continuation state, `docs/HANDOFF.md` remains authoritative.
+For present-tense continuation state, `docs/HANDOFF.md` remains authoritative. Research-derived requirements and their current implementation status are mapped in `docs/research/STATUS.md`.
 
 ## Current surfaces
 
@@ -15,18 +15,27 @@ For present-tense continuation state, `docs/HANDOFF.md` remains authoritative.
 - AE / MAP Predict · Experimental
 - Fueling · Experimental
 - Ignition · Experimental
-- Fuel / Injector · Experimental
+- Fuel Pressure / Injector · Experimental
 - Trigger / Sync · Experimental
 
 The Analyzer selector is a compact dropdown in the global analysis header.
 
-## Current development position
+**VE Analyzer is not yet a selectable surface.** It is researched and specified in `docs/VE_ANALYZER.md` and remains a planned major Analyzer feature.
 
-Analyzer feature expansion is deliberately paused as of 2026-10-13.
+## Current development position — 2026-10-14
 
-Fueling and non-knock Ignition have reached useful maturity checkpoints. The intended next Analyzer phase is not to keep deepening those same two surfaces indefinitely; when Analyzer work resumes, bring the less-mature analyzers toward similar practical coverage first, then begin a deliberate cleanup/consolidation/optimization pass across the shared implementation.
+Analyzer maturity is deliberately uneven rather than falsely uniform.
 
-Unless a concrete defect appears, treat Fueling and Ignition as frozen for now.
+- **Fueling** — mature experimental checkpoint; freeze unless bug/regression.
+- **Ignition** — mature non-knock experimental checkpoint; freeze unless bug/regression.
+- **Boost** — strong experimental foundation; paused.
+- **Idle** — useful foundation; later refinement.
+- **AE / MAP Predict** — useful foundation; later refinement.
+- **Fuel Pressure / Injector** — active maturity track.
+- **Trigger / Sync** — next broad-coverage target after Fuel / Injector.
+- **VE Analyzer** — researched/specified; not implemented.
+
+The preferred sequence is to bring the thinner analyzers toward the same evidence/navigation usefulness as Fueling/Ignition before beginning the dedicated cleanup/consolidation phase.
 
 ## Shared workflow foundation
 
@@ -38,44 +47,48 @@ Current shared scope choices:
 - **Current A/B**
 - **Saved Range**
 
-Required semantic roles must not silently fall back to the first available channel. Role matching should prefer canonical runtime identifiers where known, then fall back to increasingly fuzzy name/display matching.
+Required semantic roles must not silently fall back to the first available channel. Role matching should prefer canonical runtime identifiers where known, then increasingly fuzzy name/display matching.
+
+Channel selectors should show the source/display name plus unit when unit metadata exists:
+
+```text
+MAP [kPa]
+RPM [rpm]
+Injector duty cycle [%]
+```
 
 Shared Analyzer infrastructure includes:
 
 - contextual Logger → Analyzer handoff for Current A/B;
 - Analyzer → Logger source/event navigation;
-- shared saved Qualification filter storage where appropriate;
+- shared saved Qualification storage where appropriate;
 - grouped ALL/ANY Qualification semantics;
 - qualification provenance;
 - shared numeric range/cohort comparison;
 - reusable event-aligned evidence rendering;
 - progressive disclosure of decision-facing vs secondary diagnostics;
 - sortable evidence tables where useful;
-- one standardized anchored round-`i` information/help component.
+- standardized anchored round-`i` help.
 
 Do not build analyzer-local replacements for shared concepts unless the domain genuinely requires different semantics.
 
 ## Presentation rules
 
-Analyzer work in October 2026 established several UI rules that should remain consistent.
-
 ### Progressive disclosure
 
 Calculate the evidence needed for correctness, but do not show every available metric at once.
 
-Default presentation should usually expose a small number of decision-facing results. Secondary provenance, distributions, raw diagnostic counts and supporting metrics belong behind **More details**, expandable sections, optional columns or evidence drill-down.
+Default presentation should expose a small number of decision-facing results. Secondary provenance, distributions, raw diagnostic counts and supporting metrics belong behind **More details**, expandable sections, optional columns or evidence drill-down.
 
 ### Information buttons
 
 Use the standardized small round `i` button with an anchored popup near the invoking control/result.
 
-Do not send the user to a shared help bar or a distant fixed explanation area. Help closes by the standard popup interaction and should only be added where calculation, qualification or interpretation is not immediately obvious.
-
 ### Event evidence graphs
 
 Aligned-event canvases must render at their actual displayed dimensions. Do not render hidden canvases at a fallback size and then allow CSS to stretch the bitmap.
 
-Default aggregate evidence should be restrained. Avoid enabling every trace plus every percentile envelope simultaneously. Decision-facing signals should be on by default; context signals/envelopes may be enabled deliberately.
+Default aggregate evidence should be restrained. Decision-facing signals should be on by default; context signals/envelopes may be enabled deliberately.
 
 ### Large-log event presentation
 
@@ -83,31 +96,13 @@ Analysis should use all relevant data. Browser rendering may be bounded.
 
 Do not confuse a display cap with an analysis cap. Event tables may use pagination, and aggregate graph evidence may use representative sampling across the whole scope, but statistics/detection should remain full-scope unless explicitly documented otherwise.
 
-## Inline help convention
+## Analyzer invariant
 
-For non-obvious controls, thresholds, statistics and interpretations, inline help should explain:
-
-1. what the setting/result is;
-2. what changing it changes;
-3. what result the user should expect;
-4. how to interpret it for tuning;
-5. important limitations / what cannot be concluded.
-
-Avoid redundant help on self-explanatory controls.
-
-## Event-aligned evidence
-
-Idle, AE / MAP Predict, Ignition and other event-oriented analyzers reuse the shared event-evidence model.
-
-Each detected event is aligned to `t=0` at event onset. Aggregate evidence can show median response and optional 10–90% envelopes. Selecting one event shows that event alone. **All events** returns to aggregate evidence. Event rows preserve Logger navigation.
-
-Different channels may be independently normalized/scaled for timing/shape inspection. Numeric values remain available in summary/event evidence. Do not misrepresent independently scaled traces as sharing one physical Y axis.
+> **An analyzer should not merely report channel averages. It should find the relevant operating events/conditions, show the evidence that produced the result, quantify repeatability/error, explain the likely tuning layer when evidence supports it, and let the user move directly between the analysis and the original log without overstating causation.**
 
 ## Idle analyzer
 
-Idle remains subsystem-aware.
-
-Current systems:
+Idle remains subsystem-aware:
 
 - Combined
 - DC Idle
@@ -115,16 +110,13 @@ Current systems:
 - ETB
 - Ignition
 
-Common required roles:
-
-- RPM
-- Idle Target
-
-Canonical EpicEFI `RPMValue` remains preferred for RPM.
+Common required roles include RPM and Idle Target. Canonical EpicEFI `RPMValue` remains preferred for RPM.
 
 The **DC Bias calibration curve/table is tune calibration data**, not a scalar runtime channel. A distinct logged runtime DC Bias contribution/output may be analyzed as runtime evidence. Future curve/current-operating-point analysis should come from MSQ/tune context.
 
-Current maturity includes target tracking, sag/recovery evidence, subsystem-specific controller/actuator context and shared help. Later work may add richer idle phases, settling/oscillation/headroom and real tune-curve context.
+Current maturity includes target tracking, sag/recovery evidence, subsystem-specific controller/actuator context and shared help.
+
+Later work may add richer idle phases, settling/oscillation/headroom and real tune-curve context.
 
 ## AE / MAP Predict analyzer
 
@@ -136,7 +128,7 @@ Actual-mixture role matching prefers Lambda before AFR for the same fuel-indepen
 
 Later maturity may add richer event classes, integrated/timing error metrics and comparison between event sets.
 
-## Boost analyzer — current model
+## Boost analyzer
 
 Boost remains capability-driven and control-mode aware.
 
@@ -148,37 +140,19 @@ Closed Loop adds:
 
 > **Boost Target → pressure tracking / error / attainment / over/undershoot / settling**
 
-Implemented maturity includes:
-
-- explicit Open Loop / Closed Loop mode;
-- target-independent Open Loop measured-pressure-rise T10/T50/T90;
-- peak pressure with RPM/load/duty context;
-- qualified RPM × TPS/load operating points;
-- sample/evidence strength and pressure consistency;
-- neighbor trends;
-- matched Primary/Compare scopes;
-- upper/lower chamber response summaries;
-- conservative evidence interpretation;
-- sortable result/evidence tables;
-- inline help and Logger traceability.
+Implemented maturity includes explicit Open/Closed Loop mode, target-independent pressure-rise timing, peak pressure with context, operating-point evidence, matched-scope comparison, upper/lower chamber summaries and sortable evidence.
 
 ### Critical Boost invariant
 
 > **Boost Analyzer does not assume wastegate plumbing/polarity.**
 
-An observed positive/negative duty-to-pressure association is evidence, not an instruction to increase/decrease duty.
+An observed duty-to-pressure association is evidence, not an instruction to increase/decrease duty.
 
-Repeated-pull/repeatability maturity remains viable later, but Boost is not the active development surface now.
+## Fueling analyzer — mature checkpoint
 
-## Fueling analyzer — current maturity checkpoint
+Detailed semantics remain authoritative in `docs/FUELING_ANALYZER.md`.
 
-Fueling is no longer merely a future direction. It is a substantially matured experimental analyzer and should remain frozen unless a concrete defect/regression appears.
-
-Detailed semantics are authoritative in `docs/FUELING_ANALYZER.md`.
-
-### Canonical EpicEFI/JZ roles
-
-Preferred roles include:
+Preferred EpicEFI/JZ roles include:
 
 - actual mixture: `lambdaValue`;
 - target mixture: `targetLambda`;
@@ -187,200 +161,139 @@ Preferred roles include:
 - RPM: `RPMValue`;
 - VE/load coordinate: `veTableYAxis`;
 - DFCO: `dfcoActive`;
-- other fuel-cut reason: `fuelCutReason`;
+- hard fuel-cut reason: `fuelCutReason`;
 - AE/decel state where available;
 - total/STFT/LTFT correction context where available.
 
-Lambda is canonical because it is fuel-independent. If Lambda is unavailable, Gas Scale AFR is preferred before generic AFR. Actual and target scales must remain compatible.
+Fueling explicitly separates intentional fuel-state effects from ordinary steady calibration evidence and uses trailing-window stability rather than brittle adjacent-sample derivative gating.
 
-`Fuel: VE` is the live effective VE used at the current operating point. It is not the editable VE table and should not be confused with `Fuel: Tuned VE`.
+It can estimate observed mixture response delay from isolated injector-pulse changes and deliberately describes that as observed response delay rather than pure sensor delay.
 
-### State qualification
+STFT/LTFT/total correction are explanatory context. The analyzer must not automatically claim VE is the cause of a mixture error.
 
-Fueling explicitly separates intentional state effects from ordinary steady calibration evidence:
+A previous DOM-heavy Fueling heatmap experiment was rolled back after page-load/graph-stretch regressions. Do not reintroduce a similar overview without a safer architecture and measured validation.
 
-- DFCO is explanatory intentional fuel-off state, not a VE error;
-- nonzero hard fuel-cut reasons are excluded from ordinary steady/delay conclusions;
-- TPS AE/decel are excluded from steady calibration evidence but may remain useful transient context;
-- invalid/unavailable selected state context is handled conservatively.
+## Ignition analyzer — mature non-knock checkpoint
 
-### Stable operating evidence
+Ignition is deliberately non-knock-focused until trusted knock evidence is available for validation.
 
-The original adjacent-sample derivative gate was replaced with a trailing-window stability model because high-rate logger jitter made steady-state evidence artificially sparse.
-
-Low-count bins remain visible. The minimum samples value is now an evidence threshold with **Weak / Moderate / Strong** strength rather than a visibility cutoff.
-
-### Observed mixture response delay
-
-Fueling can estimate observed mixture response delay from isolated injector-pulse changes using `actualLastInjection` by default.
-
-The result is deliberately described as observed mixture response delay rather than pure wideband-sensor delay because it can include combustion, exhaust transport, turbo/manifold volume, sensor/controller response, filtering and logging latency.
-
-### Correction context
-
-STFT/LTFT/total correction can explain when apparent target tracking may be correction-assisted. The analyzer must not automatically claim VE is the cause because injector characterization, stoich setup, pressure delivery, transient models and other layers can also contribute.
-
-### Fueling visualization rollback
-
-A compact RPM×load heatmap experiment was implemented and then fully rolled back after it caused page-load and graph-stretch regressions. The rollback restored the stable pre-heatmap behavior.
-
-Do not reintroduce a DOM-heavy overview/heatmap integration without a safer architecture and measured large-log validation.
-
-## Ignition analyzer — current non-knock maturity checkpoint
-
-Ignition is deliberately **non-knock-focused** in the current validation scope.
-
-Trusted knock hardware/evidence is not currently available for product validation, so the analyzer must not pretend to diagnose knock, detonation or timing safety.
-
-### Preferred EpicEFI roles
-
-Current automatic preferences prioritize canonical runtime semantics:
+Preferred EpicEFI roles prioritize:
 
 - final timing: `correctedIgnitionAdvance`;
-- aggregate correction context: `ignitionAdvanceCorrections`, then `ignitionCorrections`;
+- correction context: `ignitionAdvanceCorrections`, then `ignitionCorrections`;
 - dwell: `sparkDwell`;
 - RPM: `RPMValue`;
-- ignition-table load: `loadForIgnitionTableDot`, then `ignitionLoad`, before generic MAP fallbacks.
+- ignition-table load: `loadForIgnitionTableDot`, then `ignitionLoad`.
 
-Knock-named correction channels are not preferred as the automatic generic correction role.
+Current behavior includes large-log-safe events, restrained aggregate evidence, ranked **Areas to review**, optional MSQ base-ignition-table comparison and conservative source clues.
 
-### Current visible questions
+The analyzer does not claim knock/detonation, judge timing safe/unsafe, or recommend a specific timing change from observational data alone.
 
-Ignition currently focuses on:
+## Fuel Pressure / Injector analyzer — current active maturity track
 
-- advance behavior;
-- timing-step stability/discontinuities;
-- aggregate correction activity;
-- dwell context;
-- RPM/load context;
-- repeated stable operating regions worth inspection.
+This analyzer changed substantially during PRs #382–#390.
 
-It does **not** answer:
+### Current semantic model
 
-- whether timing is safe/unsafe;
-- whether detonation occurred;
-- whether the user should add/remove a specific number of degrees.
+Fuel systems are explicitly separated by architecture:
 
-### Large-log-safe events
+- **Conventional / port injection** — active pressure evidence is rail differential; low-side calibrated pressure is supply/context; GDI high-side pressure cannot create conventional pressure events.
+- **GDI / high-pressure** — active pressure evidence is high-side/GDI rail pressure; low-side calibrated pressure remains supply-side context; conventional rail differential cannot substitute for high-side evidence.
 
-The original implementation exposed a stack-overflow hazard by spreading hundreds of thousands of timing-step values into `Math.max`. Large-log statistics now avoid large argument spreading.
+Calibrated pressure roles prefer canonical engineering channels:
 
-Full-scope event detection/statistics remain available while presentation is bounded:
+- `fuelPressure_low` — low-side/conventional pressure;
+- `fuelPressure_high` — high-side/GDI pressure.
 
-- aggregate evidence uses a representative workload budget across the whole scope;
-- the event table uses pagination rather than silently truncating after the first rows;
-- individual events remain inspectable and Logger-navigable.
+The following are explicitly not normal pressure evidence:
 
-### Clean aggregate graph default
+- `cel_*` / Check Engine Light channels;
+- `rawLowFuelPressure` / `rawHighFuelPressure` electrical-domain channels;
+- MAP/manifold pressure as a substitute for rail differential.
 
-Ignition aggregate evidence defaults to decision-facing traces rather than every trace/envelope.
+When available, unit metadata is shown directly in channel selectors and summaries.
 
-Ignition advance and correction context are the primary visible traces. Dwell, RPM, load and percentile envelopes are opt-in from the legend.
+### Current implemented evidence
 
-The shared canvas renderer now waits for measurable layout size and redraws on resize, which also fixes the same hidden-canvas stretching class for other aligned-evidence analyzers.
+- threshold events respect true source-sample continuity;
+- event extremes retain exact source sample/time;
+- injector duty mean/max and minimum duty headroom;
+- sample counts above the selected duty threshold;
+- samples at/above 100% duty;
+- negative headroom is preserved when duty exceeds 100% rather than hidden;
+- core event context can retain RPM/load/pressure/differential/PW/duty/deadtime at the actual event extreme;
+- decision-facing summary cards;
+- explicit no-review-event state rather than an empty-looking table.
 
-### Areas to review
+### Remaining maturity work
 
-Ignition groups stable-context evidence into RPM×load regions and surfaces a short ranked **Areas to review** list instead of a dense full matrix.
+Highest-value next steps:
 
-Potential review findings include:
+1. expose the existing event-extreme operating context in the visible evidence table/detail view;
+2. quantify pressure sag magnitude and recovery time;
+3. characterize repeated pressure/high-duty events and operating regions;
+4. add pump/prime/recovery evidence where logged;
+5. add battery-voltage/deadtime evidence and deadtime-calibration comparison;
+6. strengthen Logger navigation and ranked Areas to review.
 
-- repeated timing steps under relatively stable RPM/load;
-- timing variability on repeated visits;
-- repeated correction activity;
-- persistent adjacent-region timing differences.
+The analyzer should remain observational. It may say pressure fell during a high-demand event; it must not jump directly to a causal verdict such as “bad fuel pump.”
 
-Only supported/repeated regions should enter the shortlist. Single isolated events remain in the ordinary event table.
+## Trigger / Sync analyzer — next broad-coverage target
 
-The shortlist defaults to a configurable **Review focus minimum RPM = 1000 rpm** so cranking/start/very-low-RPM regions do not displace normal-running areas. This affects prioritization only; low-RPM evidence remains in the underlying analysis/event data. Setting the threshold to `0` restores all-RPM ranking.
-
-### Base ignition table attribution
-
-With MSQ/tune context loaded, Ignition can compare final logged timing against the interpolated base ignition table using explicit table/RPM-axis/load-axis mapping.
-
-For EpicEFI the main ignition table uses RPM and ignition-load coordinates; `loadForIgnitionTableDot` / `ignitionLoad` are therefore preferred ahead of generic MAP for this purpose.
-
-Each surfaced review area can expose a **Source clue** based on auditable evidence, for example:
-
-- base table follows representative timing steps closely enough;
-- base table contains a similar adjacent transition;
-- only some steps are explained and residual movement remains;
-- correction activity overlaps the representative visit;
-- correction activity exists elsewhere in the region but not at the representative visit;
-- the base table leaves substantial residual spread;
-- no strong base-table/correction clue is available.
-
-A step counts as base-table-aligned only when the base table moves in the same direction and accounts for enough of the movement that the remaining observed-minus-base step falls below the same visible timing-step threshold.
-
-The Source clue is observational attribution, not proof of engine preference. It points the user toward the likely tuning layer to inspect next.
-
-## Fuel / Injector analyzer direction
-
-This analyzer exists but has not yet received the same maturity depth as Fueling/Ignition.
-
-Useful focus when resumed:
-
-- differential rail pressure vs MAP;
-- pressure regulation error/sag/recovery;
-- pump recovery/prime behavior where logged;
-- injector PW/duty saturation/headroom;
-- voltage/deadtime evidence;
-- deadtime calibration comparison;
-- direct evidence navigation.
-
-## Trigger / Sync analyzer direction
-
-This analyzer also exists but remains thinner.
-
-Useful focus when resumed:
+Current useful direction:
 
 - sync state / trigger error / loss counter/reason;
 - RPM/voltage/load at events;
 - pre/post evidence;
 - frequency by RPM band;
-- distinguish one-sample glitches from real loss;
-- direct Logger navigation.
+- distinguish one-sample glitches from sustained loss;
+- direct Logger navigation;
+- ranked review areas.
 
-## Range Compare — current state
+A future waveform-style Trigger Logger for crank/cam/TDC/injection/ignition pulse relationships is a separate product capability from the statistical Trigger / Sync analyzer and should be scoped deliberately before implementation.
 
-Range Compare is the general before/after experiment tool.
+## VE Analyzer — researched and specified, not implemented
 
-Current capabilities include:
+`docs/VE_ANALYZER.md` is the current behavior contract derived from MegaLogViewer and ECUMaster EMU PRO research.
 
-- Full Log / Current A/B / Saved Range independently on each side;
-- shared saved Qualification filters;
-- grouped ALL/ANY semantics;
-- provenance per side;
-- Count / Mean / Min / Max / Std Dev;
-- P10 / Median / P90;
-- contextual Logger A/B → Range Compare handoff.
+Important planned behavior:
+
+- semantic Recommended VE Analysis and Lambda Delay Discovery qualification presets;
+- separate state exclusions from stability/recovery requirements;
+- single / RPM-curve / RPM×load lambda-delay working models;
+- explicit **Grab lambda delays from log** action;
+- no expensive delay scan on startup/log load/analyzer open;
+- timestamp-based delay alignment rather than record-count offsets;
+- bilinear VE-node evidence geometry;
+- effective/interpolated runtime VE awareness;
+- starting-table prior/confidence authority;
+- independent evidence authority and user apply percentage;
+- absolute/percentage correction limits that withhold rather than silently clamp;
+- Measured / Interpolated / Weak / Withheld / No-evidence result states;
+- exact source provenance and Logger navigation;
+- immutable original tune until explicit review/export/apply.
+
+Existing reusable foundations already include Fueling state semantics, trailing-window stability, AFR-delay analysis, shared scopes/Qualification, Table Generator weighting, semantic channel roles and loaded MSQ tune tables.
+
+Do not implement VE Analyzer as a parallel mini-application; reuse those foundations.
+
+## Range Compare
+
+Range Compare remains the general before/after experiment tool.
+
+Current capabilities include Full Log / Current A/B / Saved Range independently on each side, saved Qualification filters, grouped ALL/ANY semantics, provenance, descriptive statistics and contextual Logger A/B handoff.
 
 Future work should extend the common comparison model rather than fork analyzer-local equivalents.
 
 ## Cleanup/consolidation policy
 
-Do not start a broad Analyzer refactor merely because duplicate or awkward implementation details are now visible.
+Do not start a broad Analyzer refactor merely because duplicate or awkward implementation details are visible.
 
-Current project-owner direction is:
+Current direction:
 
-1. reach useful coverage across the analyzer family;
+1. finish useful coverage across the analyzer family;
 2. stop mature analyzers at sensible checkpoints;
-3. then run a dedicated cleanup/consolidation/optimization phase.
+3. implement VE Analyzer if retained as planned;
+4. then run the dedicated cleanup/consolidation/optimization phase.
 
-That later phase should review:
-
-- duplicated DOM enhancement logic;
-- unnecessary MutationObservers;
-- direct DOM state bridges/lookups;
-- Boost-specific utilities that became generic;
-- duplicated table/event/help/rendering code;
-- canvas resize ownership;
-- CSS/runtime UI surgery;
-- dead/unreachable branches and compatibility leftovers;
-- representative large-log performance after consolidation.
-
-Until then, preserve working behavior over internal tidiness.
-
-## Analyzer invariant
-
-> **An analyzer should not merely report channel averages. It should find the relevant operating events/conditions, show the evidence that produced the result, quantify repeatability/error, explain the likely tuning layer when evidence supports it, and let the user move directly between the analysis and the original log without overstating causation.**
+That later phase should review duplicated DOM enhancement logic, unnecessary MutationObservers, direct DOM state bridges/lookups, duplicated table/event/help/rendering code, canvas resize ownership, CSS/runtime UI surgery, dead/unreachable branches and representative large-log performance.
