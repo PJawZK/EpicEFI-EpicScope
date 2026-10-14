@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { TuneEntry, TuneModel } from '../../core/tune/tune-model';
 import {
+  preferredTargetMixtureTableName,
   preferredVeAxisName,
   preferredVeTableName,
+  targetMixtureTableCandidates,
   veAxisCandidates,
   veTableCandidates,
 } from '../../apps/web/src/pages/ve-analyzer-model';
@@ -42,6 +44,21 @@ describe('VE Analyzer tune mapping helpers', () => {
     expect(preferredVeTableName(tune)).toBe('veTable1');
   });
 
+  it('prefers an AFR/lambda target table distinct from the selected VE table', () => {
+    const tune = model([
+      entry('veTable1', 'table', 3, 4, Array(12).fill(60)),
+      entry('ignitionTable', 'table', 3, 4, Array(12).fill(10)),
+      entry('targetAfrTable', 'table', 3, 4, Array(12).fill(14.1)),
+    ]);
+
+    expect(targetMixtureTableCandidates(tune).map((candidate) => candidate.name)).toEqual([
+      'veTable1',
+      'ignitionTable',
+      'targetAfrTable',
+    ]);
+    expect(preferredTargetMixtureTableName(tune, 'veTable1')).toBe('targetAfrTable');
+  });
+
   it('limits axis candidates to the selected table dimensions', () => {
     const tune = model([
       entry('veTable1', 'table', 3, 4, Array(12).fill(60)),
@@ -60,5 +77,6 @@ describe('VE Analyzer tune mapping helpers', () => {
     const tune = model([entry('rpmBins', 'vector', 1, 4, [1000, 2000, 3000, 4000])]);
     expect(veAxisCandidates(tune, 'missing', 'rpm')).toEqual([]);
     expect(preferredVeTableName(tune)).toBeUndefined();
+    expect(preferredTargetMixtureTableName(tune)).toBeUndefined();
   });
 });
