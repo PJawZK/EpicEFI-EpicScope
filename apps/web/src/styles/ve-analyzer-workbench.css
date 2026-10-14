@@ -42,6 +42,17 @@
   font-size: 8px;
 }
 
+/* VE evidence belongs in cell state, not in cell geometry. Keep the legend outside the grid. */
+.ve-workbench-panel:first-child > header > div::after {
+  content: 'Solid outline = proposed change · dotted outline = weak evidence · amber corner = withheld';
+  display: block;
+  margin-top: 3px;
+  color: #8ca0ab;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
 .ve-workbench-panel select,
 .ve-workbench-actionbar select,
 .ve-workbench-quick-controls select,
@@ -77,13 +88,17 @@
 
 .ve-workbench-table th,
 .ve-workbench-table td {
-  min-width: 38px;
-  height: 24px;
-  padding: 2px 4px;
+  box-sizing: border-box;
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+  height: 22px;
+  padding: 1px 3px;
   border-right: 1px solid rgba(8, 19, 26, .32);
   border-bottom: 1px solid rgba(8, 19, 26, .32);
   text-align: center;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .ve-workbench-table th {
@@ -103,9 +118,61 @@
 }
 
 .ve-workbench-table td {
+  position: relative;
   background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39% / .9);
   color: #f3f7f9;
   text-shadow: 0 1px 1px rgba(0, 0, 0, .45);
+  text-overflow: clip;
+}
+
+.ve-workbench-table td > span {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* Detailed evidence remains available through the existing cell tooltip. It must never resize a cell. */
+.ve-workbench-table td > small {
+  display: none !important;
+}
+
+/* A measured proposal is the only state that means the displayed VE has a proposed change. */
+.ve-workbench-table td[title^='Measured proposal'] {
+  box-shadow: inset 0 0 0 2px rgba(218, 244, 255, .95);
+  font-weight: 800;
+}
+
+.ve-workbench-table td[title^='Measured proposal']::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(238, 251, 255, .95);
+  pointer-events: none;
+}
+
+/* Weak evidence is informational only; it has not changed the proposal. */
+.ve-workbench-table td[title^='Weak evidence only'] {
+  outline: 1px dotted rgba(220, 235, 244, .75);
+  outline-offset: -2px;
+}
+
+/* Withheld evidence stays on the original VE value and gets only a compact warning corner. */
+.ve-workbench-table td[title^='Recommendation withheld']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 7px solid rgba(255, 184, 72, .95);
+  border-left: 7px solid transparent;
+  pointer-events: none;
 }
 
 .ve-workbench-table-empty {
