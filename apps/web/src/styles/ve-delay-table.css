@@ -57,9 +57,9 @@
   background: #0b171f;
 }
 
+/* User provenance must not compete with the selection outline. The compact
+   corner marker is sufficient to show a manual edit. */
 .ve-delay-table td[data-delay-provenance='user-edited'] {
-  outline: 2px solid rgba(128, 220, 255, .95);
-  outline-offset: -2px;
   font-weight: 800;
 }
 
