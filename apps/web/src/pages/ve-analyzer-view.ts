@@ -1,4 +1,5 @@
 import { buildVeEvidenceMap, type VeEvidenceMapResult } from '../../../../core/analysis/ve-evidence-map';
+import { buildVeProposal, type VeProposalResult } from '../../../../core/analysis/ve-proposal';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TuneEntry, TuneModel } from '../../../../core/tune/tune-model';
@@ -120,15 +121,16 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   let tuneSourceName: string | undefined;
   let runGeneration = 0;
   let result: VeEvidenceMapResult | undefined;
+  let proposal: VeProposalResult | undefined;
   const remembered = new Map<string, string>();
 
   const root = document.createElement('section');
   root.className = 'specialized-analyzer-view ve-analyzer-view';
   root.hidden = true;
   root.innerHTML = `
-    <div class="specialized-analyzer-banner ve-workbench-banner"><div><strong>VE Analyzer · Experimental</strong><span>Target-table-aware VE evidence workbench. Source table/channel names are shown exactly as supplied.</span></div><span class="specialized-analyzer-badge">EXP</span></div>
+    <div class="specialized-analyzer-banner ve-workbench-banner"><div><strong>VE Analyzer · Experimental</strong><span>Target-table-aware VE proposal workbench. Source table/channel names are shown exactly as supplied.</span></div><span class="specialized-analyzer-badge">EXP</span></div>
     <div class="ve-workbench">
-      <section class="ve-workbench-panel"><header><div><strong>VE / evidence table</strong><span>Current MSQ VE values with evidence overlaid after Run Analysis.</span></div><select data-role="ve-table"></select></header><div class="ve-workbench-table-wrap" data-ve-analyzer="ve-table-view"></div></section>
+      <section class="ve-workbench-panel"><header><div><strong>VE / proposal table</strong><span>Original MSQ VE stays immutable; evidence and guarded proposals are overlaid after Run Analysis.</span></div><select data-role="ve-table"></select></header><div class="ve-workbench-table-wrap" data-ve-analyzer="ve-table-view"></div></section>
       <section class="ve-workbench-panel"><header><div><strong>Target mixture table</strong><span>Exact MSQ target table and its own axes; AFR/Lambda are not relabeled or silently converted.</span></div><select data-role="target-table"></select></header><div class="ve-workbench-table-wrap" data-ve-analyzer="target-table-view"></div></section>
     </div>
     <div class="ve-workbench-actionbar">
@@ -136,8 +138,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <label><span>Mixture scale</span><select data-role="mixture-scale"><option value="afr">AFR</option><option value="lambda">Lambda</option></select></label>
       <label><span>Scope</span><select data-role="scope"></select></label>
       <label><span>Qualification</span><select data-role="preset"></select></label>
-      <label><span>Cell change authority</span><select data-role="authority"><option>Normal</option><option>Conservative</option><option>Very conservative</option><option>Responsive</option></select></label>
-      <button type="button" class="ve-workbench-delay" disabled>Lambda Delay Table</button>
       <span class="ve-workbench-state" data-ve-analyzer="readiness">Not ready</span>
     </div>
     <div class="ve-workbench-quick-controls">
@@ -152,14 +152,19 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <label><span>Min load</span><input data-role="min-load" type="number"></label>
       <label><span>Max load</span><input data-role="max-load" type="number"></label>
       <label><span>Stable ms</span><input data-role="stable-ms" type="number" value="300" min="0"></label>
+      <label><span>Working delay ms</span><input data-role="delay-ms" type="number" value="0" min="0"></label>
+      <label><span>Prior weight</span><input data-role="prior-weight" type="number" value="20" min="0"></label>
+      <label><span>Min evidence weight</span><input data-role="min-evidence-weight" type="number" value="5" min="0"></label>
+      <label><span>Max VE change</span><input data-role="max-absolute-change" type="number" value="50" min="0"></label>
+      <label><span>Max VE change %</span><input data-role="max-percent-change" type="number" value="50" min="0"></label>
     </div>
     <div class="specialized-analyzer-guidance ve-mixture-warning" data-ve-analyzer="mixture-warning" hidden><strong>Mixture selection needs attention</strong><span></span></div>
-    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Evidence stage</strong><span data-ve-analyzer="stage">Run Analysis builds uncompensated target-vs-actual evidence. Lambda-delay compensation and VE proposals are the next stages; tune mutation remains disabled.</span></div>
+    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Proposal stage</strong><span data-ve-analyzer="stage">Run Analysis applies the visible working delay by timestamp, builds VE-node evidence, and calculates guarded proposals. The original MSQ remains unchanged.</span></div>
     <div class="specialized-analyzer-empty"><strong>VE Analyzer needs a loaded log plus valid VE/target tables, axes and primary channels.</strong><span>Run Analysis is explicit; changing setup invalidates the prior result instead of recomputing automatically.</span></div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary" data-ve-analyzer="summary"></div>
       <details class="specialized-analyzer-options ve-workbench-advanced"><summary>Advanced inputs, qualification and readiness</summary><div class="specialized-analyzer-controls" data-ve-analyzer="controls"></div><section class="specialized-analyzer-events"><header><strong>Input readiness</strong><span data-ve-analyzer="advanced-readiness">Not ready</span></header><div class="specialized-analyzer-table-wrap"><table class="specialized-analyzer-table"><thead><tr><th>Input</th><th>Purpose</th><th>Requirement</th><th>Resolved source</th><th>Status</th></tr></thead><tbody data-ve-analyzer="readiness-body"></tbody></table></div></section></details>
-      <details class="specialized-analyzer-options"><summary>Lambda Delay · next implementation stage</summary><div class="specialized-analyzer-guidance"><strong>No delay model applied yet</strong><span>The current evidence map is explicitly uncompensated. Single-value, RPM-curve and RPM×load delay models remain next.</span></div></details>
+      <details class="specialized-analyzer-options"><summary>Lambda Delay</summary><div class="specialized-analyzer-guidance"><strong>Single working value active</strong><span>The visible Working delay ms value aligns each mixture sample to engine state at mixtureTime − delay. Automatic log-based delay discovery and RPM curve/table models are the next stage.</span></div></details>
     </div>`;
 
   const controls = root.querySelector<HTMLElement>('[data-ve-analyzer="controls"]')!;
@@ -188,6 +193,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     return Number.isFinite(value) ? value : undefined;
   };
 
+  const nonNegativeSetting = (role: string): number | undefined => {
+    const value = readNumber(role);
+    return value !== undefined && value >= 0 ? value : undefined;
+  };
+
   const addAdvanced = (role: RoleDef): HTMLSelectElement => {
     const label = document.createElement('label');
     const caption = document.createElement('span');
@@ -204,7 +214,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     return { min: finite.length ? Math.min(...finite) : 0, max: finite.length ? Math.max(...finite) : 1 };
   };
 
-  const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult): void => {
+  const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult, proposed?: VeProposalResult): void => {
     if (!entry?.numericValues) { host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>'; return; }
     const scale = tableScale(entry);
     const table = document.createElement('table');
@@ -220,17 +230,30 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       const rowHead = document.createElement('th'); rowHead.textContent = y?.[row] !== undefined ? formatValue(y[row]!, 0) : String(row + 1); tr.append(rowHead);
       for (let col = 0; col < entry.cols; col += 1) {
         const td = document.createElement('td');
-        const value = entry.numericValues[row * entry.cols + col];
-        if (value !== undefined && Number.isFinite(value)) {
-          const main = document.createElement('span'); main.textContent = formatValue(value, entry.digits); td.append(main);
-          td.style.setProperty('--ve-cell-level', scale.min === scale.max ? '0.5' : String(Math.max(0, Math.min(1, (value - scale.min) / (scale.max - scale.min)))));
-          const cell = evidence?.cells[row * entry.cols + col];
-          if (cell && cell.totalWeight > 0) {
+        const index = row * entry.cols + col;
+        const current = entry.numericValues[index];
+        if (current !== undefined && Number.isFinite(current)) {
+          const proposalCell = proposed?.cells[index];
+          const main = document.createElement('span');
+          main.textContent = proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined
+            ? `${formatValue(current, entry.digits)} → ${formatValue(proposalCell.proposedValue, entry.digits)}`
+            : formatValue(current, entry.digits);
+          td.append(main);
+          td.style.setProperty('--ve-cell-level', scale.min === scale.max ? '0.5' : String(Math.max(0, Math.min(1, (current - scale.min) / (scale.max - scale.min)))));
+          const evidenceCell = evidence?.cells[index];
+          if (proposalCell && proposalCell.state !== 'no-evidence') {
             const small = document.createElement('small');
-            small.textContent = `${formatPercent(cell.correctionPercent)} · w ${cell.totalWeight.toFixed(1)} · n ${cell.sampleCount}`;
-            small.style.display = 'block';
-            td.append(small);
-            td.title = `Uncompensated correction evidence ${formatPercent(cell.correctionPercent)}; cumulative weight ${cell.totalWeight.toFixed(3)}; ${cell.sampleCount} contributing samples.`;
+            if (proposalCell.state === 'measured') small.textContent = `${formatPercent(proposalCell.changePercent)} · w ${proposalCell.totalWeight.toFixed(1)} · n ${proposalCell.sampleCount}`;
+            else if (proposalCell.state === 'weak-evidence') small.textContent = `weak · raw ${formatPercent(proposalCell.changePercent)} · w ${proposalCell.totalWeight.toFixed(1)}`;
+            else small.textContent = `withheld · raw ${formatPercent(proposalCell.changePercent)}`;
+            small.style.display = 'block'; td.append(small);
+            td.title = proposalCell.state === 'measured'
+              ? `Measured proposal. Current ${formatValue(current, entry.digits)}, proposed ${formatValue(proposalCell.proposedValue!, entry.digits)}, change ${formatPercent(proposalCell.changePercent)}, weight ${proposalCell.totalWeight.toFixed(3)}, samples ${proposalCell.sampleCount}.`
+              : proposalCell.state === 'weak-evidence'
+                ? `Weak evidence only. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}); no proposal is emitted.`
+                : `Recommendation withheld by configured change limits. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}).`;
+          } else if (evidenceCell && evidenceCell.totalWeight > 0) {
+            const small = document.createElement('small'); small.textContent = `${formatPercent(evidenceCell.correctionPercent)} · w ${evidenceCell.totalWeight.toFixed(1)} · n ${evidenceCell.sampleCount}`; small.style.display = 'block'; td.append(small);
           }
         } else td.textContent = '—';
         tr.append(td);
@@ -243,7 +266,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const renderTables = (): void => {
     const ve = tableEntry(tuneModel, select('ve-table')?.value ?? '');
     const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
-    renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result);
+    renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal);
     renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
   };
 
@@ -256,18 +279,22 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     if (actualScale !== 'unknown' && actualScale !== selectedScale()) messages.push(`Actual mixture source is ${displayScale(actualScale)}, but VE Analyzer is set to ${displayScale(selectedScale())}.`);
     warning.hidden = messages.length === 0;
     warningText.textContent = messages.join(' ');
-    return { valid: assessment.status !== 'invalid' && (actualScale === 'unknown' || actualScale === selectedScale()), targetScale: assessment.scale, actualScale };
+    return { valid: assessment.status !== 'invalid' && (actualScale === 'unknown' || actualScale === selectedScale()), targetScale: assessment.scale };
   };
 
   const renderSummary = (items: readonly [string, string][]) => {
     summary.replaceChildren(...items.map(([label, value]) => { const div = document.createElement('div'); const span = document.createElement('span'); span.textContent = label; const strong = document.createElement('strong'); strong.textContent = value; div.append(span, strong); return div; }));
   };
 
+  const authoritySettingsValid = (): boolean => ['delay-ms', 'prior-weight', 'min-evidence-weight', 'max-absolute-change', 'max-percent-change', 'stable-ms']
+    .every((role) => nonNegativeSetting(role) !== undefined);
+
   const invalidate = (): void => {
     runGeneration += 1;
     result = undefined;
+    proposal = undefined;
     renderTables();
-    stageText.textContent = 'Setup changed. Run Analysis to rebuild uncompensated target-vs-actual evidence; no tune state is modified.';
+    stageText.textContent = 'Setup changed. Run Analysis to rebuild the delayed evidence and guarded VE proposal; no tune state is modified.';
     renderReadiness();
   };
 
@@ -284,6 +311,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
     const mix = mixtureAssessment();
     add('Mixture scale', 'Target / actual compatibility', 'Required', displayScale(selectedScale()), mix.valid ? `Resolved · target ${displayScale(mix.targetScale)}` : 'Mismatch / verify', mix.valid);
+    add('Proposal settings', 'Delay / prior / authority', 'Required', `${nonNegativeSetting('delay-ms') ?? '—'} ms delay`, authoritySettingsValid() ? 'Resolved' : 'Enter non-negative numeric values', authoritySettingsValid());
     for (const role of ROLES) {
       const control = roleSelect(role.key); const id = control?.value ?? ''; const channel = id ? context.channels.find((candidate) => candidate.id === id) : undefined;
       const loadState = loaded && id ? loaded.has(id) : undefined;
@@ -291,7 +319,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       add(role.label, role.purpose, role.required ? 'Required' : 'Optional', channel ? analyzerChannelOptionLabel(channel) : '—', channel ? loadState === false ? 'Unavailable in scope' : loadState === true ? 'Resolved · loaded' : 'Resolved' : role.required ? 'Missing' : 'Unavailable optional', ok);
     }
     readinessBody.replaceChildren(...rows);
-    const text = ready ? result ? 'Evidence map calculated' : 'Ready · press Run Analysis' : 'Missing / incompatible required inputs';
+    const text = ready ? proposal ? 'VE proposal calculated' : 'Ready · press Run Analysis' : 'Missing / incompatible required inputs';
     readiness.textContent = text; advancedReadiness.textContent = text; runButton.disabled = !ready;
     return ready;
   };
@@ -313,7 +341,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const stateFilteredIndices = (reference: NumericChannelRange, traces: ReadonlyMap<string, NumericChannelRange>): { indices: number[]; excluded: number } => {
     const preset = select('preset')?.value ?? 'recommended';
-    const useStateExclusions = preset === 'recommended' || preset === 'steady' || preset === 'warm' || preset === 'cruise' || preset === 'boost';
+    const useStateExclusions = preset !== 'custom';
     const ranges = (key: RoleKey) => { const id = roleSelect(key)?.value; return id ? traces.get(id) : undefined; };
     const dfco = ranges('dfco'); const fuelCut = ranges('fuelCutReason'); const ae = ranges('aeActive'); const decel = ranges('decelActive');
     const indices: number[] = []; let excluded = 0;
@@ -329,7 +357,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   async function runAnalysis(): Promise<void> {
     if (!renderReadiness()) return;
     const run = ++runGeneration;
-    result = undefined;
+    result = undefined; proposal = undefined;
     const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined;
     const ve = tableEntry(tuneModel, select('ve-table')?.value ?? '');
     const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
@@ -346,40 +374,43 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const rpm = rangeMap.get(roleSelect('rpm')!.value); const load = rangeMap.get(roleSelect('load')!.value); const actual = rangeMap.get(roleSelect('actual')!.value);
     if (!rpm || !load || !actual) return;
     const filtered = stateFilteredIndices(rpm, rangeMap);
-    const minimumRpm = readNumber('min-rpm');
-    const maximumRpm = readNumber('max-rpm');
-    const minimumLoad = readNumber('min-load');
-    const maximumLoad = readNumber('max-load');
+    const minimumRpm = readNumber('min-rpm'); const maximumRpm = readNumber('max-rpm'); const minimumLoad = readNumber('min-load'); const maximumLoad = readNumber('max-load');
+    const delayMs = nonNegativeSetting('delay-ms')!;
 
     result = buildVeEvidenceMap({
       actualMixture: actual, rpm, load,
       target: { rpmBins: targetRpm, loadBins: targetLoad, values: target.numericValues, rows: target.rows, cols: target.cols },
       veRpmBins: veRpm, veLoadBins: veLoad, sampleIndices: filtered.indices,
     }, {
-      ...(minimumRpm !== undefined ? { minimumRpm } : {}),
-      ...(maximumRpm !== undefined ? { maximumRpm } : {}),
-      ...(minimumLoad !== undefined ? { minimumLoad } : {}),
-      ...(maximumLoad !== undefined ? { maximumLoad } : {}),
-      minimumStableDurationMs: readNumber('stable-ms') ?? 300,
+      ...(minimumRpm !== undefined ? { minimumRpm } : {}), ...(maximumRpm !== undefined ? { maximumRpm } : {}),
+      ...(minimumLoad !== undefined ? { minimumLoad } : {}), ...(maximumLoad !== undefined ? { maximumLoad } : {}),
+      minimumStableDurationMs: nonNegativeSetting('stable-ms')!, delayMs,
+    });
+    proposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, result, {
+      priorWeight: nonNegativeSetting('prior-weight')!,
+      minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!,
+      maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!,
+      maximumPercentChange: nonNegativeSetting('max-percent-change')!,
     });
     if (run !== runGeneration) return;
 
     const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs));
-    const evidencedCells = result.cells.filter((cell) => cell.totalWeight > 0).length;
     renderTables();
     renderSummary([
       ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())],
-      ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()],
-      ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Target out of range', result.targetOutOfRangeSampleCount.toLocaleString()],
-      ['VE-axis out of range', result.veOutOfRangeSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()], ['VE cells with evidence', evidencedCells.toLocaleString()],
-      ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Delay compensation', 'Not applied · uncompensated evidence'], ['VE proposal', 'Not yet calculated'], ['Tune mutation', 'None'],
+      ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${delayMs} ms`], ['Input samples', result.inputSampleCount.toLocaleString()],
+      ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()],
+      ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()],
+      ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()],
+      ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))],
+      ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
     ]);
-    stageText.textContent = 'Evidence map calculated. Each VE cell now shows uncompensated target-vs-actual correction evidence, cumulative bilinear weight and contributing sample count. No VE proposal or tune mutation has occurred.';
+    stageText.textContent = 'Guarded VE proposal calculated. Engine state was aligned by timestamp using the visible working delay. Original MSQ values remain unchanged; weak and over-limit cells are not proposed.';
     empty.hidden = true; content.hidden = false; renderReadiness(rangeMap);
   }
 
   const rebuild = (): void => {
-    controls.replaceChildren(); result = undefined;
+    controls.replaceChildren(); result = undefined; proposal = undefined;
     const veSelect = select('ve-table')!; const targetSelect = select('target-table')!; const scaleSelect = select('mixture-scale')!; const scopeSelect = select('scope')!; const presetSelect = select('preset')!;
     veSelect.replaceChildren(new Option('(select VE table)', ''), ...veTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name)));
     veSelect.value = remembered.get('ve-table') && [...veSelect.options].some((option) => option.value === remembered.get('ve-table')) ? remembered.get('ve-table')! : preferredVeTableName(tuneModel) ?? '';
