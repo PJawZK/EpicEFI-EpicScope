@@ -70,15 +70,19 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const targetHeader = targetPanel?.querySelector<HTMLElement>('header');
   let activeTableTab: VeTableTab = 've';
 
+  // Table layout belongs to the VE table header, not the lower Run Analysis bar.
+  // Creating it at its final structural owner prevents later enhancement layers
+  // from leaving a stale/duplicate selector in the action bar.
   const tableLayoutLabel = document.createElement('label');
-  const tableLayoutCaption = document.createElement('span');
-  tableLayoutCaption.textContent = 'Table view';
+  tableLayoutLabel.className = 've-table-layout-control';
   const tableLayoutSelect = document.createElement('select');
   tableLayoutSelect.setAttribute('aria-label', 'VE Analyzer table view');
   tableLayoutSelect.innerHTML = '<option value="side-by-side">Side by side</option><option value="single">Single table</option>';
   tableLayoutSelect.value = storedTableLayout();
-  tableLayoutLabel.append(tableLayoutCaption, tableLayoutSelect);
-  readiness.insertAdjacentElement('beforebegin', tableLayoutLabel);
+  tableLayoutLabel.append(tableLayoutSelect);
+  const veTableSelect = veHeader?.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
+  if (veTableSelect) veTableSelect.insertAdjacentElement('beforebegin', tableLayoutLabel);
+  else veHeader?.append(tableLayoutLabel);
 
   const tableTabs = document.createElement('nav');
   tableTabs.className = 've-workbench-table-tabs';
