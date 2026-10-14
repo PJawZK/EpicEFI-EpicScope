@@ -11,6 +11,8 @@ export interface TargetMixtureTableAssessment {
 
 export interface TuneMixtureScaleEvidence {
   readonly identityScale: VeMixtureScale;
+  readonly unitScale: VeMixtureScale;
+  readonly nameScale: VeMixtureScale;
   readonly valueScale: VeMixtureScale;
   readonly resolvedScale: VeMixtureScale;
   readonly conflict: boolean;
@@ -42,6 +44,7 @@ export function veAxisCandidates(
 function scoreName(name: string, patterns: readonly RegExp[]): number {
   let score = 0;
   for (let index = 0; index < patterns.length; index += 1) {
+    patterns[index]!.lastIndex = 0;
     if (patterns[index]!.test(name)) score += (patterns.length - index) * 10;
   }
   return score;
@@ -61,6 +64,14 @@ function bestName(entries: readonly TuneEntry[], patterns: readonly RegExp[], al
   return allowFallback ? entries[0]?.name : undefined;
 }
 
+function exactName(entries: readonly TuneEntry[], names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const match = entries.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    if (match) return match.name;
+  }
+  return undefined;
+}
+
 function finiteValues(entry: TuneEntry | undefined): readonly number[] {
   return entry?.numericValues?.filter(Number.isFinite) ?? [];
 }
@@ -72,11 +83,11 @@ function median(values: readonly number[]): number | undefined {
   return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle];
 }
 
-function identityMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
-  if (!entry) return 'unknown';
-  const identity = `${entry.name} ${entry.units ?? ''}`.toLowerCase();
-  if (/lambda|\blam\b/.test(identity)) return 'lambda';
-  if (/\bafr\b|air.?fuel/.test(identity)) return 'afr';
+function scaleFromText(value: string | undefined): VeMixtureScale {
+  const text = value?.trim().toLowerCase() ?? '';
+  if (!text) return 'unknown';
+  if (/\bafr\b|air.?fuel/.test(text)) return 'afr';
+  if (/lambda|\blam\b/.test(text)) return 'lambda';
   return 'unknown';
 }
 
@@ -92,15 +103,19 @@ function valueMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
 }
 
 export function tuneMixtureScaleEvidence(entry: TuneEntry | undefined): TuneMixtureScaleEvidence {
-  const identityScale = identityMixtureScale(entry);
+  const unitScale = scaleFromText(entry?.units);
+  const nameScale = scaleFromText(entry?.name);
   const valueScale = valueMixtureScale(entry);
-  const conflict = identityScale !== 'unknown' && valueScale !== 'unknown' && identityScale !== valueScale;
+  const identityScale = unitScale !== 'unknown' ? unitScale : nameScale;
+  const conflict = unitScale !== 'unknown' && valueScale !== 'unknown' && unitScale !== valueScale;
   const resolvedScale = conflict
     ? 'unknown'
-    : valueScale !== 'unknown'
-      ? valueScale
-      : identityScale;
-  return { identityScale, valueScale, resolvedScale, conflict };
+    : unitScale !== 'unknown'
+      ? unitScale
+      : valueScale !== 'unknown'
+        ? valueScale
+        : nameScale;
+  return { identityScale, unitScale, nameScale, valueScale, resolvedScale, conflict };
 }
 
 export function inferTuneMixtureScale(entry: TuneEntry | undefined): VeMixtureScale {
@@ -122,10 +137,19 @@ export function assessTargetMixtureTable(
 
   if (evidence.conflict) {
     messages.push(
-      `Source identity suggests ${evidence.identityScale === 'afr' ? 'AFR' : 'Lambda'}, but the stored values look like ${evidence.valueScale === 'afr' ? 'AFR' : 'Lambda'}. Verify the table and mixture scale before analysis.`,
+      `Table unit indicates ${evidence.unitScale === 'afr' ? 'AFR' : 'Lambda'}, but the stored values look like ${evidence.valueScale === 'afr' ? 'AFR' : 'Lambda'}. Verify the table before analysis.`,
     );
   } else if (evidence.resolvedScale !== 'unknown' && evidence.resolvedScale !== selectedScale) {
-    messages.push(`Scale mismatch: the selected table looks like ${evidence.resolvedScale === 'afr' ? 'AFR' : 'Lambda'}, but VE Analyzer is set to ${selectedScale === 'afr' ? 'AFR' : 'Lambda'}.`);
+    messages.push(`Scale mismatch: the selected table is ${evidence.resolvedScale === 'afr' ? 'AFR' : 'Lambda'}, but VE Analyzer is set to ${selectedScale === 'afr' ? 'AFR' : 'Lambda'}.`);
+  }
+
+  if (evidence.unitScale === 'unknown'
+    && evidence.nameScale !== 'unknown'
+    && evidence.valueScale !== 'unknown'
+    && evidence.nameScale !== evidence.valueScale) {
+    messages.push(
+      `Table identifier suggests ${evidence.nameScale === 'afr' ? 'AFR' : 'Lambda'}, while the stored values look like ${evidence.valueScale === 'afr' ? 'AFR' : 'Lambda'}. No explicit unit is available; verify the scale.`,
+    );
   }
 
   if (values.length > 0) {
@@ -138,12 +162,11 @@ export function assessTargetMixtureTable(
     }
   }
 
-  const identity = `${entry.name} ${entry.units ?? ''}`;
-  if (evidence.resolvedScale === 'unknown' && !evidence.conflict && !/(target|afr|lambda|air.?fuel)/i.test(identity)) {
-    messages.push('This table is not identifiable as an AFR/Lambda target from its name, units, or values. Verify the selection before analysis.');
+  if (evidence.resolvedScale === 'unknown' && !evidence.conflict && evidence.nameScale === 'unknown') {
+    messages.push('This table is not identifiable as an AFR/Lambda target from its unit, values, or identifier. Verify the selection before analysis.');
   }
 
-  const invalid = messages.some((message) => /same table|no finite|Scale mismatch|do not look like|Source identity suggests/.test(message));
+  const invalid = messages.some((message) => /same table|no finite|Scale mismatch|do not look like|Table unit indicates/.test(message));
   return {
     scale: evidence.resolvedScale,
     status: invalid ? 'invalid' : messages.length > 0 ? 'warning' : 'ok',
@@ -151,24 +174,51 @@ export function assessTargetMixtureTable(
   };
 }
 
+function sameGeometry(left: TuneEntry | undefined, right: TuneEntry): boolean {
+  return Boolean(left && left.kind === 'table' && left.rows === right.rows && left.cols === right.cols);
+}
+
+function tableFamilyStem(tableName: string): string {
+  return tableName.replace(/(?:_?table\d*)$/i, '');
+}
+
 export function preferredVeTableName(model: TuneModel | undefined): string | undefined {
-  return bestName(veTableCandidates(model), [/^ve(table)?\d*$/i, /(^|[_\s])ve([_\s]|$)/i, /fuel.*ve/i, /ve.*table/i]);
+  const candidates = veTableCandidates(model);
+  const canonical = exactName(candidates, ['veTable']);
+  if (canonical) return canonical;
+  const mainVe = candidates.find((entry) => /^veTable\d*$/i.test(entry.name));
+  if (mainVe) return mainVe.name;
+  const nonAuxiliary = candidates.filter((entry) => !/(idle|crank|warm|trim|blend|correction|secondary)/i.test(entry.name));
+  return bestName(nonAuxiliary.length ? nonAuxiliary : candidates, [/(^|[_\s])ve([_\s]|$)/i, /fuel.*ve/i, /ve.*table/i], false);
 }
 
 export function preferredTargetMixtureTableName(
   model: TuneModel | undefined,
   veTableName?: string,
 ): string | undefined {
+  const ve = veTableName ? model?.byName.get(veTableName) : undefined;
   const candidates = targetMixtureTableCandidates(model).filter((entry) => entry.name !== veTableName);
-  const named = bestName(candidates, [
-    /target.*(afr|lambda)/i,
-    /(afr|lambda).*target/i,
+  const geometryMatches = ve ? candidates.filter((entry) => sameGeometry(ve, entry)) : candidates;
+  const preferredPool = geometryMatches.length ? geometryMatches : candidates;
+
+  const canonical = exactName(preferredPool, ['lambdaTable', 'afrTable', 'targetAfrTable', 'targetLambdaTable']);
+  if (canonical) return canonical;
+
+  const nonAuxiliary = preferredPool.filter((entry) => !/(blend|trim|correction|max.*deviation|deviation|max|min)/i.test(entry.name));
+  const pool = nonAuxiliary.length ? nonAuxiliary : preferredPool;
+  const unitBacked = pool.filter((entry) => scaleFromText(entry.units) !== 'unknown');
+  if (unitBacked.length === 1) return unitBacked[0]!.name;
+
+  const named = bestName(pool, [
     /^afr(table)?\d*$/i,
     /^lambda(table)?\d*$/i,
+    /target.*(afr|lambda)/i,
+    /(afr|lambda).*target/i,
     /(afr|lambda).*table/i,
   ], false);
   if (named) return named;
-  const valueIdentified = candidates.filter((entry) => inferTuneMixtureScale(entry) !== 'unknown');
+
+  const valueIdentified = pool.filter((entry) => inferTuneMixtureScale(entry) !== 'unknown');
   return valueIdentified.length === 1 ? valueIdentified[0]!.name : undefined;
 }
 
@@ -178,7 +228,15 @@ export function preferredVeAxisName(
   axis: VeAxisKind,
 ): string | undefined {
   const candidates = veAxisCandidates(model, tableName, axis);
+  const stem = tableFamilyStem(tableName);
+  const canonicalNames = axis === 'rpm'
+    ? [`${stem}RpmBins`, `${stem}RPMBins`]
+    : [`${stem}LoadBins`];
+  const canonical = exactName(candidates, canonicalNames);
+  if (canonical) return canonical;
+
+  const stemPattern = stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return axis === 'rpm'
-    ? bestName(candidates, [/rpm/i, /engine.*speed/i])
-    : bestName(candidates, [/load/i, /map/i, /pressure/i, /kpa/i, /tps/i]);
+    ? bestName(candidates, [new RegExp(`^${stemPattern}.*rpm.*bins$`, 'i'), /rpm.*bins/i, /engine.*speed/i], false)
+    : bestName(candidates, [new RegExp(`^${stemPattern}.*load.*bins$`, 'i'), /load.*bins/i, /map.*bins/i, /pressure.*bins/i, /tps.*bins/i], false);
 }
