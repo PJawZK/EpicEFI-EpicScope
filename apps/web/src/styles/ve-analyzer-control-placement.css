@@ -1,0 +1,42 @@
+/* Keep table selectors stable at the left edge of each table header. */
+.ve-workbench-panel > header {
+  justify-content: flex-start;
+}
+
+.ve-table-header-controls {
+  order: -1;
+  flex: 0 0 auto;
+  min-height: 37px;
+  margin: 0 8px 0 0;
+  justify-content: flex-start;
+  align-items: end;
+}
+
+.ve-table-header-controls > label {
+  flex: 0 0 auto;
+}
+
+.ve-table-header-controls select {
+  flex: 0 0 auto;
+}
+
+.ve-table-header-controls .ve-workbench-table-tabs {
+  flex: 0 0 auto;
+  align-self: end;
+}
+
+.ve-workbench-panel > header > div:not(.ve-table-header-controls) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* In single-table mode both tune-table selectors remain next to the tabs. */
+.ve-workbench[data-table-layout='single'] .ve-table-header-controls {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 1250px) {
+  .ve-workbench[data-table-layout='single'] .ve-table-header-controls {
+    flex-wrap: wrap;
+  }
+}
