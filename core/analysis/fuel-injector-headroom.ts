@@ -19,6 +19,7 @@ export interface FuelInjectorEventContext {
   readonly loadAtExtreme?: number;
   readonly fuelPressureAtExtreme?: number;
   readonly railDifferentialAtExtreme?: number;
+  readonly highSidePressureAtExtreme?: number;
   readonly injectorPulseWidthAtExtreme?: number;
   readonly injectorDutyAtExtreme?: number;
   readonly injectorDeadtimeAtExtreme?: number;
@@ -32,6 +33,7 @@ export interface FuelInjectorHeadroomContextResult {
 export interface FuelInjectorHeadroomContextOptions {
   readonly highDutyThreshold?: number;
   readonly sampleIndices?: ArrayLike<number>;
+  readonly pressureEvents?: readonly ThresholdEvent[];
 }
 
 function localIndex(range: NumericChannelRange, sampleIndex: number): number | undefined {
@@ -111,6 +113,7 @@ function contextualize(
     readonly load?: NumericChannelRange;
     readonly fuelPressure?: NumericChannelRange;
     readonly railDifferential?: NumericChannelRange;
+    readonly highSidePressure?: NumericChannelRange;
     readonly injectorPulseWidth?: NumericChannelRange;
     readonly injectorDuty?: NumericChannelRange;
     readonly injectorDeadtime?: NumericChannelRange;
@@ -121,6 +124,7 @@ function contextualize(
   const loadAtExtreme = valueAt(inputs.load, sampleIndex);
   const fuelPressureAtExtreme = valueAt(inputs.fuelPressure, sampleIndex);
   const railDifferentialAtExtreme = valueAt(inputs.railDifferential, sampleIndex);
+  const highSidePressureAtExtreme = valueAt(inputs.highSidePressure, sampleIndex);
   const injectorPulseWidthAtExtreme = valueAt(inputs.injectorPulseWidth, sampleIndex);
   const injectorDutyAtExtreme = valueAt(inputs.injectorDuty, sampleIndex);
   const injectorDeadtimeAtExtreme = valueAt(inputs.injectorDeadtime, sampleIndex);
@@ -131,6 +135,7 @@ function contextualize(
     ...(loadAtExtreme !== undefined ? { loadAtExtreme } : {}),
     ...(fuelPressureAtExtreme !== undefined ? { fuelPressureAtExtreme } : {}),
     ...(railDifferentialAtExtreme !== undefined ? { railDifferentialAtExtreme } : {}),
+    ...(highSidePressureAtExtreme !== undefined ? { highSidePressureAtExtreme } : {}),
     ...(injectorPulseWidthAtExtreme !== undefined ? { injectorPulseWidthAtExtreme } : {}),
     ...(injectorDutyAtExtreme !== undefined ? { injectorDutyAtExtreme } : {}),
     ...(injectorDeadtimeAtExtreme !== undefined ? { injectorDeadtimeAtExtreme } : {}),
@@ -145,6 +150,7 @@ export function analyzeFuelInjectorHeadroomContext(
     readonly load?: NumericChannelRange;
     readonly fuelPressure?: NumericChannelRange;
     readonly railDifferential?: NumericChannelRange;
+    readonly highSidePressure?: NumericChannelRange;
     readonly injectorPulseWidth?: NumericChannelRange;
     readonly injectorDuty?: NumericChannelRange;
     readonly injectorDeadtime?: NumericChannelRange;
@@ -159,12 +165,14 @@ export function analyzeFuelInjectorHeadroomContext(
     ...(inputs.load ? { load: inputs.load } : {}),
     ...(inputs.fuelPressure ? { fuelPressure: inputs.fuelPressure } : {}),
     ...(inputs.railDifferential ? { railDifferential: inputs.railDifferential } : {}),
+    ...(inputs.highSidePressure ? { highSidePressure: inputs.highSidePressure } : {}),
     ...(inputs.injectorPulseWidth ? { injectorPulseWidth: inputs.injectorPulseWidth } : {}),
     ...(inputs.injectorDuty ? { injectorDuty: inputs.injectorDuty } : {}),
     ...(inputs.injectorDeadtime ? { injectorDeadtime: inputs.injectorDeadtime } : {}),
   };
+  const pressureEvents = options.pressureEvents ?? analysis.lowPressureEvents;
   const events: FuelInjectorEventContext[] = [
-    ...analysis.lowPressureEvents.map((event) => contextualize('low-pressure', event, contextInputs)),
+    ...pressureEvents.map((event) => contextualize('low-pressure', event, contextInputs)),
     ...analysis.highDutyEvents.map((event) => contextualize('high-duty', event, contextInputs)),
   ].sort((left, right) => left.event.startSampleIndex - right.event.startSampleIndex || left.event.endSampleIndex - right.event.endSampleIndex);
 
