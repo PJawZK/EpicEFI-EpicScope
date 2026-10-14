@@ -66,6 +66,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const vePanel = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
   const targetPanel = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]')?.closest<HTMLElement>('.ve-workbench-panel');
+  const veHeader = vePanel?.querySelector<HTMLElement>('header');
+  const targetHeader = targetPanel?.querySelector<HTMLElement>('header');
   let activeTableTab: VeTableTab = 've';
 
   const tableLayoutLabel = document.createElement('label');
@@ -92,12 +94,16 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   targetTabButton.dataset.tableTab = 'target';
   targetTabButton.setAttribute('role', 'tab');
   tableTabs.append(veTabButton, targetTabButton);
-  workbench.insertAdjacentElement('beforebegin', tableTabs);
 
   const applyTableLayout = (): void => {
     const layout = tableLayoutSelect.value === 'single' ? 'single' : 'side-by-side';
     workbench.dataset.tableLayout = layout;
     tableTabs.hidden = layout !== 'single';
+
+    if (layout === 'single') {
+      const activeHeader = activeTableTab === 've' ? veHeader : targetHeader;
+      activeHeader?.append(tableTabs);
+    }
 
     if (vePanel) vePanel.hidden = layout === 'single' && activeTableTab !== 've';
     if (targetPanel) targetPanel.hidden = layout === 'single' && activeTableTab !== 'target';
