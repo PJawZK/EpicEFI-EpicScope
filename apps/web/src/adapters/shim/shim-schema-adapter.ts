@@ -5,11 +5,6 @@ function firstDisplayHint(channel: ShimSchemaChannel) {
   return channel.displayHints?.[0];
 }
 
-function displayName(channel: ShimSchemaChannel): string {
-  const hint = firstDisplayHint(channel);
-  return hint?.name?.trim() || channel.name;
-}
-
 function precision(channel: ShimSchemaChannel): number | undefined {
   const hint = firstDisplayHint(channel);
   return hint?.precision ?? hint?.labelPrecision;
@@ -27,10 +22,11 @@ export function shimChannelDefinition(channel: ShimSchemaChannel): ChannelDefini
 
   return {
     // The shim channel id is already the matched-INI output-channel identity.
-    // Keep it stable so live and INI-backed recorded contexts can converge by name.
+    // Keep source/display identity literal. EpicScope roles/categories may be
+    // attached separately, but must not rename ECU/INI channels in presentation.
     id: channel.id,
     sourceName: channel.name,
-    displayName: displayName(channel),
+    displayName: channel.name,
     valueType: 'number',
     ...(unit ? { unit } : {}),
     ...(resolvedCategory ? { category: resolvedCategory } : {}),
