@@ -1,0 +1,126 @@
+.ve-inline-delay-editing .ve-delay-cell-editor,
+.ve-inline-delay-editing .ve-delay-bulk-editor {
+  display: none !important;
+}
+
+.ve-delay-inline-hint {
+  padding: 4px 7px;
+  border-left: 2px solid #2d7895;
+  background: rgba(18, 44, 57, .55);
+  color: #9ab0bb;
+  font-size: 8px;
+  line-height: 1.3;
+}
+
+.ve-inline-delay-editing .ve-delay-table td {
+  cursor: cell;
+  user-select: none;
+  touch-action: none;
+}
+
+.ve-inline-delay-editing .ve-delay-table td[data-delay-selected='true'] {
+  outline: 2px solid rgba(115, 211, 246, .95);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.ve-inline-delay-editing .ve-delay-table td[data-delay-anchor='true'] {
+  box-shadow: inset 0 0 0 2px rgba(222, 248, 255, .95);
+}
+
+.ve-inline-delay-editing .ve-delay-table td[data-delay-preview='true'] {
+  font-weight: 800;
+  color: #f4fbff;
+}
+
+.ve-delay-inline-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keep the dense workbench footprint, but make functional groups visually distinct. */
+.ve-workbench-quick-controls > label,
+.ve-workbench-quick-controls > .ve-quick-qualification > label {
+  position: relative;
+}
+
+.ve-workbench-quick-controls > label:has([data-role='rpm-axis']),
+.ve-workbench-quick-controls > label:has([data-role='load-axis']),
+.ve-workbench-quick-controls > label:has([data-role='target-rpm-axis']),
+.ve-workbench-quick-controls > label:has([data-role='target-load-axis']) {
+  box-shadow: inset 0 2px 0 #365d70;
+  background: rgba(38, 70, 84, .10);
+}
+
+.ve-workbench-quick-controls > label:has([data-role='actual']),
+.ve-workbench-quick-controls > label:has([data-role='stft']),
+.ve-workbench-quick-controls > label:has([data-role='fuel-correction-mode']) {
+  box-shadow: inset 0 2px 0 #5c6e42;
+  background: rgba(84, 104, 52, .10);
+}
+
+.ve-workbench-quick-controls > label:has([data-role='min-rpm']),
+.ve-workbench-quick-controls > label:has([data-role='max-rpm']),
+.ve-workbench-quick-controls > label:has([data-role='min-load']),
+.ve-workbench-quick-controls > label:has([data-role='max-load']) {
+  box-shadow: inset 0 2px 0 #6b5a3d;
+  background: rgba(112, 85, 43, .10);
+}
+
+.ve-workbench-quick-controls > .ve-quick-qualification {
+  display: contents;
+}
+
+.ve-workbench-quick-controls > .ve-quick-qualification > label {
+  box-shadow: inset 0 2px 0 #5b4f78;
+  background: rgba(77, 61, 105, .10);
+}
+
+.ve-workbench-quick-controls > label:has([data-role='stable-ms']),
+.ve-workbench-quick-controls > label:has([data-role='min-evidence-weight']),
+.ve-workbench-quick-controls > label:has([data-role='max-absolute-change']),
+.ve-workbench-quick-controls > label:has([data-role='max-percent-change']) {
+  box-shadow: inset 0 2px 0 #4c6670;
+  background: rgba(60, 85, 94, .10);
+}
+
+.ve-quick-qualification-note {
+  align-self: end;
+  color: #728793;
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+/* Raise calibration-table readability without increasing cell geometry. */
+.ve-workbench-table {
+  font-size: 9px;
+}
+
+.ve-workbench-table th {
+  font-size: 9px;
+}
+
+.ve-workbench-panel > header strong {
+  font-size: 11px;
+}
+
+.ve-workbench-actionbar label > span,
+.ve-workbench-quick-controls label > span {
+  font-size: 8px;
+  color: #91a5af;
+}
+
+.ve-delay-table-shell::before {
+  font-size: 10px;
+  font-weight: 700;
+}
