@@ -29,6 +29,8 @@ export interface VeDelayTableConfig {
   readonly interpolationNeighbors?: number;
   /** Maximum normalized RPM/load distance for an interpolation source. */
   readonly maximumInterpolationDistance?: number;
+  /** Reduce oversized VE geometry to a dedicated evidence-sized delay grid. Default true. */
+  readonly adaptiveGeometry?: boolean;
 }
 
 export interface VeDelayAxes {
@@ -130,14 +132,18 @@ export function buildVeDelayTable(
   const maximumInterpolationDistance = config.maximumInterpolationDistance ?? 0.35;
   if (!Number.isFinite(maximumInterpolationDistance) || maximumInterpolationDistance <= 0) throw new RangeError('VE delay interpolation distance must be finite and > 0.');
 
-  const rows = loadBins.length;
-  const cols = rpmBins.length;
+  const adaptive = config.adaptiveGeometry !== false && rpmBins.length * loadBins.length > 144;
+  const axes = adaptive ? deriveVeDelayAxes(rpmBins, loadBins, events.length, minimumMeasuredEvents) : { rpmBins: [...rpmBins], loadBins: [...loadBins] };
+  const tableRpmBins = axes.rpmBins;
+  const tableLoadBins = axes.loadBins;
+  const rows = tableLoadBins.length;
+  const cols = tableRpmBins.length;
   const buckets: number[][] = Array.from({ length: rows * cols }, () => []);
 
   for (const event of events) {
     if (event.rpm === undefined || event.load === undefined || !Number.isFinite(event.onsetDelayMs) || event.onsetDelayMs < 0) continue;
-    const col = nearestIndex(event.rpm, rpmBins);
-    const row = nearestIndex(event.load, loadBins);
+    const col = nearestIndex(event.rpm, tableRpmBins);
+    const row = nearestIndex(event.load, tableLoadBins);
     if (row === undefined || col === undefined) continue;
     buckets[row * cols + col]!.push(event.onsetDelayMs);
   }
@@ -174,11 +180,10 @@ export function buildVeDelayTable(
     for (let index = 0; index < cells.length; index += 1) {
       const cell = cells[index]!;
       if (cell.state === 'measured') continue;
-      // Do not manufacture delay evidence outside the region directly covered by measured cells.
       if (cell.row < minMeasuredRow || cell.row > maxMeasuredRow || cell.col < minMeasuredCol || cell.col > maxMeasuredCol) continue;
 
       const neighbors = measured
-        .map((candidate) => ({ candidate, distance: normalizedDistance(cell.row, cell.col, candidate.row, candidate.col, rpmBins, loadBins) }))
+        .map((candidate) => ({ candidate, distance: normalizedDistance(cell.row, cell.col, candidate.row, candidate.col, tableRpmBins, tableLoadBins) }))
         .filter((entry) => entry.distance > 0 && entry.distance <= maximumInterpolationDistance)
         .sort((left, right) => left.distance - right.distance)
         .slice(0, interpolationNeighbors);
@@ -203,7 +208,7 @@ export function buildVeDelayTable(
     }
   }
 
-  return { rpmBins: [...rpmBins], loadBins: [...loadBins], rows, cols, cells };
+  return { rpmBins: [...tableRpmBins], loadBins: [...tableLoadBins], rows, cols, cells };
 }
 
 export function resetVeDelayWorkingToRecommendation(table: VeDelayTable): VeDelayTable {
