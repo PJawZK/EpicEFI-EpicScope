@@ -1,5 +1,13 @@
 export const REQUEST_RECORDED_SOURCE_UNLOAD_EVENT = 'epicscope:request-recorded-source-unload';
 
+export const LOAD_DATA_MENU_ORDER = [
+  '.load-ini',
+  '.load-msq',
+  '.open-log',
+  '.unload-log',
+  '.shim-source-button',
+] as const;
+
 function recordedLogIsActive(root: HTMLElement): boolean {
   const loadedLog = root.querySelector<HTMLElement>('.loaded-log strong');
   const label = loadedLog?.textContent?.trim() ?? '';
@@ -13,15 +21,7 @@ function requestRecordedSourceUnload(root: HTMLElement): void {
 }
 
 export function orderLoadDataMenuItems(loadMenu: HTMLElement): void {
-  const orderedSelectors = [
-    '.load-ini',
-    '.load-msq',
-    '.open-log',
-    '.unload-log',
-    '.shim-source-button',
-  ] as const;
-
-  for (const selector of orderedSelectors) {
+  for (const selector of LOAD_DATA_MENU_ORDER) {
     const item = loadMenu.querySelector<HTMLElement>(selector);
     if (item) loadMenu.append(item);
   }
