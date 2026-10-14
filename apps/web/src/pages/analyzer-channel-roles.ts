@@ -9,6 +9,8 @@ export type AnalyzerRoleDomain =
   | 'trigger-sync'
   | 'boost';
 
+export type VeActualMixtureScale = 'afr' | 'lambda';
+
 interface RoleRule {
   readonly exact?: readonly string[];
   readonly include: readonly RegExp[];
@@ -25,6 +27,102 @@ export function analyzerChannelOptionLabel(channel: ChannelDefinition): string {
   return unit ? `${name} [${unit}]` : name;
 }
 
+function normalizedIdentity(channel: ChannelDefinition): string {
+  return `${channel.id} ${channel.sourceName} ${channel.displayName}`
+    .replace(/[_:./\\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const INVALID_ACTUAL_MIXTURE_IDENTITY = /(target|error|err|trim|correction|offset|delta|difference|diff|command|desired|setpoint|table|axis|bin)/i;
+
+function sourceIdentity(channel: ChannelDefinition): string {
+  return channel.sourceName.trim().toLowerCase();
+}
+
+function normalizedUnit(channel: ChannelDefinition): string {
+  return channel.unit?.trim().toLowerCase() ?? '';
+}
+
+export function isVeActualMixtureChannelEligible(
+  channel: ChannelDefinition,
+  scale: VeActualMixtureScale,
+): boolean {
+  if (channel.valueType === 'bitfield') return false;
+  const identity = normalizedIdentity(channel);
+  if (INVALID_ACTUAL_MIXTURE_IDENTITY.test(identity)) return false;
+
+  const unit = normalizedUnit(channel);
+  if (unit === '%' || unit.includes('percent')) return false;
+
+  const source = sourceIdentity(channel);
+  if (scale === 'afr') {
+    if (unit === 'afr') return true;
+    if (['afrgasolinescale', 'afrvalue', 'realafrvalue', 'smoothedafrvalue'].includes(source)) return true;
+    return /(^|\b)(afr|air\s*fuel)(\b|$)/i.test(identity) && !/lambda/i.test(identity);
+  }
+
+  if (unit === 'lambda') return true;
+  if (['lambdavalue', 'reallambdavalue1', 'smoothedlambdavalue'].includes(source)) return true;
+  return /(^|\b)lambda(\b|$)/i.test(identity) && unit !== 'afr';
+}
+
+function actualMixturePreference(channel: ChannelDefinition, scale: VeActualMixtureScale): number {
+  if (!isVeActualMixtureChannelEligible(channel, scale)) return Number.NEGATIVE_INFINITY;
+  const source = sourceIdentity(channel);
+  const priorities = scale === 'afr'
+    ? ['afrgasolinescale', 'afrvalue', 'realafrvalue', 'smoothedafrvalue']
+    : ['lambdavalue', 'reallambdavalue1', 'smoothedlambdavalue', 'lambdavalue2', 'reallambdavalue2'];
+  const exactIndex = priorities.indexOf(source);
+  if (exactIndex >= 0) return 1000 - exactIndex * 20;
+
+  let score = 100;
+  if (normalizedUnit(channel) === scale) score += 100;
+  if (channel.id.startsWith('ini:')) score += 5;
+  if (/\b(actual|real|measured)\b/i.test(normalizedIdentity(channel))) score += 10;
+  if (/\b2\b|value2/i.test(normalizedIdentity(channel))) score -= 25;
+  return score;
+}
+
+export function preferredVeActualMixtureChannel(
+  channels: readonly ChannelDefinition[],
+  scale: VeActualMixtureScale,
+): ChannelDefinition | undefined {
+  let best: ChannelDefinition | undefined;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const channel of channels) {
+    const score = actualMixturePreference(channel, scale);
+    if (score > bestScore) {
+      best = channel;
+      bestScore = score;
+    }
+  }
+  return Number.isFinite(bestScore) ? best : undefined;
+}
+
+function enforceVeActualMixtureSelection(root: ParentNode, channels: readonly ChannelDefinition[]): void {
+  const byId = new Map(channels.map((channel) => [channel.id, channel]));
+  for (const control of root.querySelectorAll<HTMLSelectElement>('.ve-analyzer-view select[data-role="actual"]')) {
+    const view = control.closest<HTMLElement>('.ve-analyzer-view');
+    const scaleControl = view?.querySelector<HTMLSelectElement>('select[data-role="mixture-scale"]');
+    const scale = scaleControl?.value === 'lambda' ? 'lambda' : 'afr';
+
+    for (const option of control.options) {
+      if (!option.value) continue;
+      const channel = byId.get(option.value);
+      option.disabled = channel ? !isVeActualMixtureChannelEligible(channel, scale) : true;
+    }
+
+    const selected = byId.get(control.value);
+    if (selected && isVeActualMixtureChannelEligible(selected, scale)) continue;
+    const preferred = preferredVeActualMixtureChannel(channels, scale);
+    const next = preferred?.id ?? '';
+    if (control.value === next) continue;
+    control.value = next;
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
 export function decorateAnalyzerChannelOptions(root: ParentNode, channels: readonly ChannelDefinition[]): void {
   const byId = new Map(channels.map((channel) => [channel.id, channel]));
   for (const option of root.querySelectorAll<HTMLOptionElement>('select option')) {
@@ -33,6 +131,7 @@ export function decorateAnalyzerChannelOptions(root: ParentNode, channels: reado
     const expected = analyzerChannelOptionLabel(channel);
     if (option.textContent !== expected) option.textContent = expected;
   }
+  enforceVeActualMixtureSelection(root, channels);
 }
 
 function queueAnalyzerChannelDecoration(): void {
@@ -103,7 +202,7 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'fueling:actual': {
     exact: ['ini:lambdaValue', 'lambdaValue', 'ini:afrGasolineScale', 'afrGasolineScale', 'ini:AFRValue', 'AFRValue'],
     include: [/^lambda(value)?$/i, /(^|\b)lambda(\b|$)/i, /gas.*scale.*afr/i, /air.*fuel.*gas.*scale/i, /^afr(value)?$/i, /actual.*afr/i, /air.*fuel/i],
-    exclude: [/target/i, /error/i, /lambda.*2/i, /afr.*2/i],
+    exclude: [/target/i, /error/i, /trim/i, /correction/i, /offset/i, /delta/i, /table/i, /axis/i, /bin/i, /lambda.*2/i, /afr.*2/i],
   },
   'fueling:target': {
     exact: ['ini:targetLambda', 'targetLambda', 'ini:targetAFR', 'targetAFR'],
@@ -203,13 +302,6 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'boost:upper': { include: [/upper.*(wastegate|wg).*duty/i, /boost.*open.*loop.*duty/i, /upper.*duty/i] },
   'boost:lower': { include: [/lower.*(wastegate|wg).*duty/i, /lower.*duty/i] },
 };
-
-function normalizedIdentity(channel: ChannelDefinition): string {
-  return `${channel.id} ${channel.sourceName} ${channel.displayName}`
-    .replace(/[_:./\\-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function scoreChannel(channel: ChannelDefinition, rule: RoleRule): number {
   const exactIdentities = [channel.id, channel.sourceName, channel.displayName].map((value) => value.toLowerCase());
