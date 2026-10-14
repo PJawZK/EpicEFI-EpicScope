@@ -23,7 +23,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const veHeader = vePanel?.querySelector<HTMLElement>('header');
   const targetHeader = targetPanel?.querySelector<HTMLElement>('header');
 
-  const ensureControls = (header: HTMLElement | undefined): HTMLElement | undefined => {
+  const ensureControls = (header: HTMLElement | null | undefined): HTMLElement | undefined => {
     if (!header) return undefined;
     let controls = header.querySelector<HTMLElement>('.ve-table-header-controls');
     if (!controls) {
