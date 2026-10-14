@@ -18,6 +18,8 @@ export interface VeEvidenceInputs {
   readonly veRpmBins: readonly number[];
   readonly veLoadBins: readonly number[];
   readonly sampleIndices?: ArrayLike<number>;
+  /** Applied fuel correction in percent, where +5 means 5% extra fuel. */
+  readonly fuelCorrectionPercent?: NumericChannelRange;
 }
 
 export interface VeEvidenceConfig {
@@ -31,6 +33,8 @@ export interface VeEvidenceConfig {
   readonly minimumIndividualWeight?: number;
   /** Working observed-mixture delay. Engine state is sampled at mixtureTime - delayMs. */
   readonly delayMs?: number;
+  /** Apply fuelCorrectionPercent to remove known closed-loop fuel contribution from base-VE evidence. */
+  readonly compensateFuelCorrectionPercent?: boolean;
 }
 
 export interface VeEvidenceCell {
@@ -51,10 +55,13 @@ export interface VeEvidenceMapResult {
   readonly targetOutOfRangeSampleCount: number;
   readonly veOutOfRangeSampleCount: number;
   readonly delayUnavailableSampleCount: number;
+  readonly fuelCorrectionUnavailableSampleCount: number;
+  readonly fuelCorrectionCompensatedSampleCount: number;
   readonly invalidSampleCount: number;
   readonly eligibleSampleCount: number;
   readonly contributingSampleCount: number;
   readonly delayMs: number;
+  readonly fuelCorrectionCompensated: boolean;
   readonly cells: readonly VeEvidenceCell[];
 }
 
@@ -65,6 +72,7 @@ interface Sample {
   readonly rpm: number;
   readonly load: number;
   readonly target: number;
+  readonly fuelCorrectionFactor: number;
 }
 
 function local(range: NumericChannelRange, sampleIndex: number): number | undefined {
@@ -193,12 +201,15 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const maxLoadRate = config.maximumLoadRatePerSecond ?? 25;
   const minWeight = config.minimumIndividualWeight ?? 0;
   const delayMs = config.delayMs ?? 0;
+  const compensateFuelCorrection = config.compensateFuelCorrectionPercent === true && inputs.fuelCorrectionPercent !== undefined;
   if (!Number.isFinite(delayMs) || delayMs < 0) throw new RangeError('VE evidence delayMs must be finite and >= 0.');
 
   let invalidSampleCount = 0;
   let rangeRejectedSampleCount = 0;
   let targetOutOfRangeSampleCount = 0;
   let delayUnavailableSampleCount = 0;
+  let fuelCorrectionUnavailableSampleCount = 0;
+  let fuelCorrectionCompensatedSampleCount = 0;
   const aligned: Sample[] = [];
   let segment: Sample[] = [];
   const stable: Sample[] = [];
@@ -215,7 +226,19 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
     if (rpmValue < minRpm || rpmValue > maxRpm || loadValue < minLoad || loadValue > maxLoad) { finish(); rangeRejectedSampleCount += 1; continue; }
     const target = interpolateVeTable(inputs.target, rpmValue, loadValue);
     if (!(target !== undefined && target > 0)) { finish(); targetOutOfRangeSampleCount += 1; continue; }
-    const current: Sample = { sampleIndex, timeMs: engineTimeMs, actual: actual.value, rpm: rpmValue, load: loadValue, target };
+
+    let fuelCorrectionFactor = 1;
+    if (compensateFuelCorrection) {
+      const correctionPercent = delayMs === 0
+        ? value(inputs.fuelCorrectionPercent!, sampleIndex)?.value
+        : interpolateNumericRangeAtTime(inputs.fuelCorrectionPercent!, engineTimeMs);
+      if (correctionPercent === undefined) { finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
+      fuelCorrectionFactor = 1 + correctionPercent / 100;
+      if (!(fuelCorrectionFactor > 0) || !Number.isFinite(fuelCorrectionFactor)) { finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
+      fuelCorrectionCompensatedSampleCount += 1;
+    }
+
+    const current: Sample = { sampleIndex, timeMs: engineTimeMs, actual: actual.value, rpm: rpmValue, load: loadValue, target, fuelCorrectionFactor };
     aligned.push(current);
     if (position === 0 || sampleIndex !== indices[position - 1]! + 1 || (segment.length && !(current.timeMs > segment[segment.length - 1]!.timeMs))) finish();
     segment.push(current);
@@ -240,7 +263,7 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
     }
     const x = axisBreakpointContributions(sample.rpm, rpmBins);
     const y = axisBreakpointContributions(sample.load, loadBins);
-    const ratio = sample.actual / sample.target;
+    const ratio = (sample.actual / sample.target) * sample.fuelCorrectionFactor;
     let contributed = false;
     for (const yc of y) for (const xc of x) {
       const weight = xc.weight * yc.weight;
@@ -271,10 +294,13 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
     targetOutOfRangeSampleCount,
     veOutOfRangeSampleCount,
     delayUnavailableSampleCount,
+    fuelCorrectionUnavailableSampleCount,
+    fuelCorrectionCompensatedSampleCount,
     invalidSampleCount,
     eligibleSampleCount: stable.length,
     contributingSampleCount,
     delayMs,
+    fuelCorrectionCompensated: compensateFuelCorrection,
     cells,
   };
 }
