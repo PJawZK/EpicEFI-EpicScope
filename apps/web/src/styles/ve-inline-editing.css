@@ -97,6 +97,116 @@
   font-size: 8px;
 }
 
+.ve-run-info-host {
+  position: relative;
+}
+
+.ve-run-info-button {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+
+.ve-run-info-button[hidden] {
+  display: none;
+}
+
+.ve-run-info-popout {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  top: calc(100% + 5px);
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(70vh, 620px);
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid rgba(145, 165, 175, .38);
+  border-radius: 6px;
+  background: #10191f;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .45);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.ve-run-info-popout[hidden] {
+  display: none;
+}
+
+.ve-run-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.ve-run-info-header > strong {
+  font-size: 11px;
+}
+
+.ve-run-info-close {
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.ve-run-info-intro {
+  margin: 0 0 7px;
+  color: #9eafb7;
+}
+
+.ve-run-info-list {
+  display: grid;
+  gap: 6px;
+}
+
+.ve-run-info-item {
+  padding-top: 6px;
+  border-top: 1px solid rgba(145, 165, 175, .18);
+}
+
+.ve-run-info-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ve-run-info-item > strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #dbe8ed;
+}
+
+.ve-run-info-label {
+  display: block;
+  margin-top: 3px;
+  color: #7f98a4;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.ve-run-info-item p {
+  margin: 1px 0 3px;
+  color: #afbdc4;
+}
+
+.ve-run-info-item > button {
+  min-height: 20px;
+  margin-top: 2px;
+  padding: 1px 7px;
+  font-size: 8px;
+}
+
 /* Raise calibration-table readability without increasing cell geometry. */
 .ve-workbench-table {
   font-size: 9px;
