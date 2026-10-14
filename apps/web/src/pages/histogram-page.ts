@@ -6,6 +6,7 @@ import { createHistogramDistributionView } from './histogram-distribution-view';
 import { createScatterView } from './scatter-view';
 import { createHistogramMathChannelsView } from './histogram-math-channels-view';
 import { installHistogramHelp } from './histogram-help';
+import { registerHistogramChannelCatalog } from './histogram-channel-options';
 import {
   createHistogramLogicalContext,
   HISTOGRAM_CALCULATED_FIELDS_CHANGED_EVENT,
@@ -119,6 +120,7 @@ export function createHistogramPage(): HistogramPageController {
 
   const refreshLogicalAnalysisContext = (): void => {
     logicalAnalysisContext = createHistogramLogicalContext(context);
+    registerHistogramChannelCatalog(logicalAnalysisContext.channels);
   };
 
   const refreshActive = (): void => {
