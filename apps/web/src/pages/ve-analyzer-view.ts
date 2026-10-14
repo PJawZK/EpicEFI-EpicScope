@@ -20,29 +20,11 @@ export interface VeAnalyzerViewController {
   refresh(): void;
 }
 
-type RoleKey =
-  | 'rpm'
-  | 'load'
-  | 'actual'
-  | 'target'
-  | 've'
-  | 'fuelCommand'
-  | 'dfco'
-  | 'fuelCutReason'
-  | 'aeActive'
-  | 'decelActive'
-  | 'totalCorrection'
-  | 'stft'
-  | 'ltft';
+type RoleKey = 'rpm' | 'load' | 'actual' | 'target' | 've' | 'fuelCommand' | 'dfco' | 'fuelCutReason' | 'aeActive' | 'decelActive' | 'totalCorrection' | 'stft' | 'ltft';
+type Purpose = 'Primary calculation' | 'Qualification / context';
+interface RoleDef { readonly key: RoleKey; readonly label: string; readonly required: boolean; readonly purpose: Purpose; }
 
-interface VeRoleDefinition {
-  readonly key: RoleKey;
-  readonly label: string;
-  readonly required: boolean;
-  readonly purpose: 'Primary calculation' | 'Qualification / context';
-}
-
-const ROLES: readonly VeRoleDefinition[] = [
+const ROLES: readonly RoleDef[] = [
   { key: 'rpm', label: 'RPM', required: true, purpose: 'Primary calculation' },
   { key: 'load', label: 'VE-table load', required: true, purpose: 'Primary calculation' },
   { key: 'actual', label: 'Actual mixture', required: true, purpose: 'Primary calculation' },
@@ -67,32 +49,22 @@ const PRESETS = [
   ['custom', 'Custom'],
 ] as const;
 
-function sameChannelCatalog(left: LoggerAnalysisContext['channels'], right: LoggerAnalysisContext['channels']): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+function sameChannels(a: LoggerAnalysisContext['channels'], b: LoggerAnalysisContext['channels']): boolean {
+  return a.length === b.length && a.every((channel, index) => channel === b[index]);
 }
-
-function selectedText(select: HTMLSelectElement): string {
-  return select.selectedOptions[0]?.textContent?.trim() || '—';
-}
-
-function formatTuneValue(value: number, digits: number | undefined): string {
+function selectedText(select: HTMLSelectElement | undefined): string { return select?.selectedOptions[0]?.textContent?.trim() || '—'; }
+function formatValue(value: number, digits?: number): string {
   if (!Number.isFinite(value)) return '—';
   const precision = Math.max(0, Math.min(3, digits ?? (Math.abs(value) < 20 ? 2 : 1)));
   return value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
-
 function tableEntry(model: TuneModel | undefined, name: string): TuneEntry | undefined {
   const entry = model?.byName.get(name);
   return entry?.kind === 'table' && entry.numericValues !== undefined ? entry : undefined;
 }
-
-function axisValues(model: TuneModel | undefined, name: string): readonly number[] | undefined {
-  return model?.byName.get(name)?.numericValues;
-}
-
-function colorLevel(value: number, min: number, max: number): string {
-  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || min === max) return '0.5';
-  return String(Math.max(0, Math.min(1, (value - min) / (max - min))));
+function axisValues(model: TuneModel | undefined, name: string): readonly number[] | undefined { return model?.byName.get(name)?.numericValues; }
+function level(value: number, min: number, max: number): string {
+  return !Number.isFinite(value) || min === max ? '0.5' : String(Math.max(0, Math.min(1, (value - min) / (max - min))));
 }
 
 export function createVeAnalyzerView(): VeAnalyzerViewController {
@@ -107,28 +79,19 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   root.hidden = true;
   root.innerHTML = `
     <div class="specialized-analyzer-banner ve-workbench-banner">
-      <div><strong>VE Analyzer · Experimental</strong><span>Two-table VE analysis workbench. Current tune and target mixture remain visible while evidence controls stay close to Run Analysis.</span></div>
+      <div><strong>VE Analyzer · Experimental</strong><span>Two-table workbench with current VE and target mixture visible throughout analysis.</span></div>
       <span class="specialized-analyzer-badge">EXP</span>
     </div>
-
     <div class="ve-workbench">
       <section class="ve-workbench-panel">
-        <header>
-          <div><strong>VE / proposal table</strong><span>Current MSQ VE table; future analysis proposals will be reviewed in these same coordinates.</span></div>
-          <select data-role="ve-table" aria-label="VE table"></select>
-        </header>
+        <header><div><strong>VE / proposal table</strong><span>Current MSQ VE table; future proposals stay in these coordinates.</span></div><select data-role="ve-table"></select></header>
         <div class="ve-workbench-table-wrap" data-ve-analyzer="ve-table-view"></div>
       </section>
-
       <section class="ve-workbench-panel">
-        <header>
-          <div><strong>Target AFR / lambda table</strong><span>Primary target-mixture authority from the loaded tune.</span></div>
-          <select data-role="target-table" aria-label="Target mixture table"></select>
-        </header>
+        <header><div><strong>Target AFR / lambda table</strong><span>Primary target-mixture authority from the loaded tune.</span></div><select data-role="target-table"></select></header>
         <div class="ve-workbench-table-wrap" data-ve-analyzer="target-table-view"></div>
       </section>
     </div>
-
     <div class="ve-workbench-actionbar">
       <button type="button" class="ve-workbench-run">Run Analysis</button>
       <label><span>Scope</span><select data-role="scope"></select></label>
@@ -137,7 +100,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <button type="button" class="ve-workbench-delay" disabled>Lambda Delay Table</button>
       <span class="ve-workbench-state" data-ve-analyzer="readiness">Not ready</span>
     </div>
-
     <div class="ve-workbench-quick-controls">
       <label><span>RPM axis</span><select data-role="rpm-axis"></select></label>
       <label><span>Load axis</span><select data-role="load-axis"></select></label>
@@ -149,358 +111,143 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <label><span>Max load</span><input type="number" disabled></label>
       <label><span>Min CLT</span><input type="number" disabled></label>
     </div>
-
-    <div class="specialized-analyzer-guidance ve-workbench-guidance">
-      <strong>Current implementation stage</strong>
-      <span>The workbench and evidence contract are active. Run Analysis validates selected data and scope only; VE recommendations, table mutation and tune writes remain disabled.</span>
-    </div>
-
-    <div class="specialized-analyzer-empty">
-      <strong>VE Analyzer needs a loaded log plus VE and target-mixture tune tables.</strong>
-      <span>RPM, VE-table load and actual mixture are required log inputs. The target AFR/lambda table is the primary target authority; logged target mixture is optional validation context.</span>
-    </div>
-
+    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Current implementation stage</strong><span>Run Analysis validates evidence and scope only. VE recommendations, table mutation and tune writes remain disabled.</span></div>
+    <div class="specialized-analyzer-empty"><strong>VE Analyzer needs a loaded log plus VE and target-mixture tune tables.</strong><span>RPM, VE-table load and actual mixture are required log inputs. Logged target mixture is optional validation context.</span></div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary" data-ve-analyzer="summary"></div>
-      <details class="specialized-analyzer-options ve-workbench-advanced">
-        <summary>Advanced inputs, qualification and readiness</summary>
+      <details class="specialized-analyzer-options ve-workbench-advanced"><summary>Advanced inputs, qualification and readiness</summary>
         <div class="specialized-analyzer-controls" data-ve-analyzer="controls"></div>
-        <section class="specialized-analyzer-events">
-          <header><strong>Input readiness</strong><span data-ve-analyzer="advanced-readiness">Not ready</span></header>
-          <div class="specialized-analyzer-table-wrap">
-            <table class="specialized-analyzer-table">
-              <thead><tr><th>Input</th><th>Purpose</th><th>Requirement</th><th>Resolved source</th><th>Status</th></tr></thead>
-              <tbody data-ve-analyzer="readiness-body"></tbody>
-            </table>
-          </div>
+        <section class="specialized-analyzer-events"><header><strong>Input readiness</strong><span data-ve-analyzer="advanced-readiness">Not ready</span></header>
+          <div class="specialized-analyzer-table-wrap"><table class="specialized-analyzer-table"><thead><tr><th>Input</th><th>Purpose</th><th>Requirement</th><th>Resolved source</th><th>Status</th></tr></thead><tbody data-ve-analyzer="readiness-body"></tbody></table></div>
         </section>
       </details>
-      <details class="specialized-analyzer-options">
-        <summary>Lambda Delay · next implementation stage</summary>
-        <div class="specialized-analyzer-guidance">
-          <strong>No delay discovery has run</strong>
-          <span>Single-value, RPM-curve and RPM×load-table working models remain planned. Expensive discovery will run only from the explicit Grab lambda delays from log action.</span>
-        </div>
-        <div class="specialized-analyzer-options-grid">
-          <label><span>Working model</span><select disabled><option>Single value</option><option>RPM curve</option><option>RPM × load table</option></select></label>
-          <button type="button" disabled>Grab lambda delays from log</button>
-        </div>
+      <details class="specialized-analyzer-options"><summary>Lambda Delay · next implementation stage</summary>
+        <div class="specialized-analyzer-guidance"><strong>No delay discovery has run</strong><span>Single-value, RPM-curve and RPM×load-table models remain planned. Discovery will run only from an explicit action.</span></div>
+        <div class="specialized-analyzer-options-grid"><label><span>Working model</span><select disabled><option>Single value</option><option>RPM curve</option><option>RPM × load table</option></select></label><button type="button" disabled>Grab lambda delays from log</button></div>
       </details>
-    </div>
-  `;
+    </div>`;
 
-  const controls = root.querySelector<HTMLElement>('[data-ve-analyzer="controls"]');
-  const summary = root.querySelector<HTMLElement>('[data-ve-analyzer="summary"]');
-  const empty = root.querySelector<HTMLElement>('.specialized-analyzer-empty');
-  const content = root.querySelector<HTMLElement>('.specialized-analyzer-content');
-  const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]');
-  const advancedReadiness = root.querySelector<HTMLElement>('[data-ve-analyzer="advanced-readiness"]');
-  const readinessBody = root.querySelector<HTMLTableSectionElement>('[data-ve-analyzer="readiness-body"]');
-  const veTableView = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]');
-  const targetTableView = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]');
-  const runButton = root.querySelector<HTMLButtonElement>('.ve-workbench-run');
-  if (!controls || !summary || !empty || !content || !readiness || !advancedReadiness || !readinessBody || !veTableView || !targetTableView || !runButton) {
-    throw new Error('VE Analyzer workbench structure is incomplete.');
-  }
+  const controls = root.querySelector<HTMLElement>('[data-ve-analyzer="controls"]')!;
+  const summary = root.querySelector<HTMLElement>('[data-ve-analyzer="summary"]')!;
+  const empty = root.querySelector<HTMLElement>('.specialized-analyzer-empty')!;
+  const content = root.querySelector<HTMLElement>('.specialized-analyzer-content')!;
+  const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
+  const advancedReadiness = root.querySelector<HTMLElement>('[data-ve-analyzer="advanced-readiness"]')!;
+  const readinessBody = root.querySelector<HTMLTableSectionElement>('[data-ve-analyzer="readiness-body"]')!;
+  const veHost = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]')!;
+  const targetHost = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]')!;
+  const runButton = root.querySelector<HTMLButtonElement>('.ve-workbench-run')!;
+  const select = (role: string): HTMLSelectElement | undefined => root.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`) ?? undefined;
+  const roleSelect = (key: RoleKey): HTMLSelectElement | undefined => select(key) ?? controls.querySelector<HTMLSelectElement>(`select[data-role="${key}"]`) ?? undefined;
 
-  const workbenchSelect = (role: string): HTMLSelectElement | undefined => root.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`) ?? undefined;
-  const roleSelect = (key: RoleKey): HTMLSelectElement | undefined => workbenchSelect(key) ?? controls.querySelector<HTMLSelectElement>(`select[data-role="${key}"]`) ?? undefined;
-  const tableSelect = (): HTMLSelectElement | undefined => workbenchSelect('ve-table');
-  const targetTableSelect = (): HTMLSelectElement | undefined => workbenchSelect('target-table');
-  const rpmAxisSelect = (): HTMLSelectElement | undefined => workbenchSelect('rpm-axis');
-  const loadAxisSelect = (): HTMLSelectElement | undefined => workbenchSelect('load-axis');
-  const scopeSelect = (): HTMLSelectElement | undefined => workbenchSelect('scope');
-  const presetSelect = (): HTMLSelectElement | undefined => workbenchSelect('preset');
-
-  const addAdvancedSelect = (labelText: string, role: string): HTMLSelectElement => {
+  const addAdvanced = (role: RoleDef): HTMLSelectElement => {
     const label = document.createElement('label');
-    const caption = document.createElement('span');
-    caption.textContent = labelText;
-    const select = document.createElement('select');
-    select.dataset.role = role;
-    label.append(caption, select);
-    controls.append(label);
-    return select;
+    const caption = document.createElement('span'); caption.textContent = role.label;
+    const control = document.createElement('select'); control.dataset.role = role.key;
+    label.append(caption, control); controls.append(label); return control;
   };
 
-  const renderTuneTable = (host: HTMLElement, entry: TuneEntry | undefined, axisX?: readonly number[], axisY?: readonly number[]): void => {
-    if (!entry?.numericValues) {
-      host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>';
-      return;
-    }
-    const values = entry.numericValues;
-    const finite = values.filter(Number.isFinite);
-    const min = finite.length ? Math.min(...finite) : 0;
-    const max = finite.length ? Math.max(...finite) : 1;
-    const table = document.createElement('table');
-    table.className = 've-workbench-table';
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    const corner = document.createElement('th');
-    corner.textContent = entry.units ?? '';
-    headRow.append(corner);
-    for (let col = 0; col < entry.cols; col += 1) {
-      const th = document.createElement('th');
-      th.textContent = axisX?.[col] !== undefined ? formatTuneValue(axisX[col]!, 0) : String(col + 1);
-      headRow.append(th);
-    }
-    thead.append(headRow);
-    const tbody = document.createElement('tbody');
+  const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[]): void => {
+    if (!entry?.numericValues) { host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>'; return; }
+    const finite = entry.numericValues.filter(Number.isFinite);
+    const min = finite.length ? Math.min(...finite) : 0; const max = finite.length ? Math.max(...finite) : 1;
+    const table = document.createElement('table'); table.className = 've-workbench-table';
+    const head = document.createElement('tr'); const corner = document.createElement('th'); corner.textContent = entry.units ?? ''; head.append(corner);
+    for (let col = 0; col < entry.cols; col += 1) { const th = document.createElement('th'); th.textContent = x?.[col] !== undefined ? formatValue(x[col]!, 0) : String(col + 1); head.append(th); }
+    const thead = document.createElement('thead'); thead.append(head); const tbody = document.createElement('tbody');
     for (let row = 0; row < entry.rows; row += 1) {
-      const tr = document.createElement('tr');
-      const rowHead = document.createElement('th');
-      rowHead.textContent = axisY?.[row] !== undefined ? formatTuneValue(axisY[row]!, 0) : String(row + 1);
-      tr.append(rowHead);
-      for (let col = 0; col < entry.cols; col += 1) {
-        const value = values[row * entry.cols + col];
-        const td = document.createElement('td');
-        if (value !== undefined) {
-          td.textContent = formatTuneValue(value, entry.digits);
-          td.style.setProperty('--ve-cell-level', colorLevel(value, min, max));
-        } else td.textContent = '—';
-        tr.append(td);
-      }
+      const tr = document.createElement('tr'); const th = document.createElement('th'); th.textContent = y?.[row] !== undefined ? formatValue(y[row]!, 0) : String(row + 1); tr.append(th);
+      for (let col = 0; col < entry.cols; col += 1) { const td = document.createElement('td'); const value = entry.numericValues[row * entry.cols + col]; if (value !== undefined) { td.textContent = formatValue(value, entry.digits); td.style.setProperty('--ve-cell-level', level(value, min, max)); } else td.textContent = '—'; tr.append(td); }
       tbody.append(tr);
     }
-    table.append(thead, tbody);
-    host.replaceChildren(table);
+    table.append(thead, tbody); host.replaceChildren(table);
   };
 
-  const renderWorkbenchTables = (): void => {
-    const veEntry = tableEntry(tuneModel, tableSelect()?.value ?? '');
-    const targetEntry = tableEntry(tuneModel, targetTableSelect()?.value ?? '');
-    const rpmAxis = axisValues(tuneModel, rpmAxisSelect()?.value ?? '');
-    const loadAxis = axisValues(tuneModel, loadAxisSelect()?.value ?? '');
-    renderTuneTable(veTableView, veEntry, rpmAxis, loadAxis);
-    const targetAxesMatch = Boolean(targetEntry && veEntry && targetEntry.cols === veEntry.cols && targetEntry.rows === veEntry.rows);
-    renderTuneTable(targetTableView, targetEntry, targetAxesMatch ? rpmAxis : undefined, targetAxesMatch ? loadAxis : undefined);
+  const renderTables = (): void => {
+    const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
+    const rpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const load = axisValues(tuneModel, select('load-axis')?.value ?? '');
+    renderTable(veHost, ve, rpm, load);
+    const sameGeometry = Boolean(ve && target && ve.rows === target.rows && ve.cols === target.cols);
+    renderTable(targetHost, target, sameGeometry ? rpm : undefined, sameGeometry ? load : undefined);
   };
 
-  const fillAxisSelectors = (): void => {
-    const table = tableSelect();
-    const rpmAxis = rpmAxisSelect();
-    const loadAxis = loadAxisSelect();
-    if (!table || !rpmAxis || !loadAxis) return;
-    const tableName = table.value;
-    const previousRpm = remembered.get('rpm-axis') ?? rpmAxis.value;
-    const previousLoad = remembered.get('load-axis') ?? loadAxis.value;
-    const rpmCandidates = veAxisCandidates(tuneModel, tableName, 'rpm');
-    const loadCandidates = veAxisCandidates(tuneModel, tableName, 'load');
-    rpmAxis.replaceChildren(new Option('(select RPM axis)', ''), ...rpmCandidates.map((entry) => new Option(entry.name, entry.name)));
-    loadAxis.replaceChildren(new Option('(select load axis)', ''), ...loadCandidates.map((entry) => new Option(entry.name, entry.name)));
-    const preferredRpm = rpmCandidates.some((entry) => entry.name === previousRpm) ? previousRpm : preferredVeAxisName(tuneModel, tableName, 'rpm');
-    const preferredLoad = loadCandidates.some((entry) => entry.name === previousLoad) ? previousLoad : preferredVeAxisName(tuneModel, tableName, 'load');
-    if (preferredRpm) rpmAxis.value = preferredRpm;
-    if (preferredLoad) loadAxis.value = preferredLoad;
-    renderWorkbenchTables();
+  const fillAxes = (): void => {
+    const veName = select('ve-table')?.value ?? ''; const rpmSelect = select('rpm-axis'); const loadSelect = select('load-axis'); if (!rpmSelect || !loadSelect) return;
+    const rpmCandidates = veAxisCandidates(tuneModel, veName, 'rpm'); const loadCandidates = veAxisCandidates(tuneModel, veName, 'load');
+    const rememberedRpm = remembered.get('rpm-axis'); const rememberedLoad = remembered.get('load-axis');
+    rpmSelect.replaceChildren(new Option('(select RPM axis)', ''), ...rpmCandidates.map((entry) => new Option(entry.name, entry.name)));
+    loadSelect.replaceChildren(new Option('(select load axis)', ''), ...loadCandidates.map((entry) => new Option(entry.name, entry.name)));
+    rpmSelect.value = rememberedRpm && rpmCandidates.some((entry) => entry.name === rememberedRpm) ? rememberedRpm : preferredVeAxisName(tuneModel, veName, 'rpm') ?? '';
+    loadSelect.value = rememberedLoad && loadCandidates.some((entry) => entry.name === rememberedLoad) ? rememberedLoad : preferredVeAxisName(tuneModel, veName, 'load') ?? '';
+    renderTables();
+  };
+
+  const fillRole = (control: HTMLSelectElement, role: RoleDef): void => {
+    control.replaceChildren(new Option(role.required ? '(select required channel)' : '(none)', ''), ...context.channels.map((channel) => new Option(analyzerChannelOptionLabel(channel), channel.id)));
+    const old = remembered.get(role.key); const suggested = suggestAnalyzerChannel('fueling', role.key, context.channels);
+    control.value = old && context.channels.some((channel) => channel.id === old) ? old : suggested?.id ?? '';
+    control.onchange = () => { remembered.set(role.key, control.value); void analyze(); };
   };
 
   const renderSummary = (items: readonly [string, string][]): void => {
-    summary.replaceChildren(...items.map(([label, value]) => {
-      const div = document.createElement('div');
-      const caption = document.createElement('span');
-      caption.textContent = label;
-      const strong = document.createElement('strong');
-      strong.textContent = value;
-      div.append(caption, strong);
-      return div;
-    }));
+    summary.replaceChildren(...items.map(([label, value]) => { const div = document.createElement('div'); const span = document.createElement('span'); span.textContent = label; const strong = document.createElement('strong'); strong.textContent = value; div.append(span, strong); return div; }));
   };
 
-  const renderReadiness = (loadedById?: ReadonlyMap<string, LoggerAnalysisTraceContext>): boolean => {
-    const rows: HTMLTableRowElement[] = [];
-    let ready = true;
-    const addRow = (input: string, purpose: string, requirement: string, source: string, status: string, ok: boolean): void => {
-      const row = document.createElement('tr');
-      for (const value of [input, purpose, requirement, source, status]) {
-        const cell = document.createElement('td');
-        cell.textContent = value;
-        row.append(cell);
-      }
-      rows.push(row);
-      if (!ok && requirement === 'Required') ready = false;
+  const renderReadiness = (loaded?: ReadonlyMap<string, LoggerAnalysisTraceContext>): boolean => {
+    let ready = true; const rows: HTMLTableRowElement[] = [];
+    const add = (input: string, purpose: string, requirement: string, source: string, status: string, ok: boolean) => {
+      const tr = document.createElement('tr'); for (const text of [input, purpose, requirement, source, status]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); } rows.push(tr); if (!ok && requirement === 'Required') ready = false;
     };
-
-    const veTable = tableSelect();
-    const targetTable = targetTableSelect();
-    const rpmAxis = rpmAxisSelect();
-    const loadAxis = loadAxisSelect();
-    addRow('MSQ VE table', 'Tune geometry', 'Required', veTable ? selectedText(veTable) : '—', veTable?.value ? 'Resolved' : 'Missing', Boolean(veTable?.value));
-    addRow('MSQ target AFR/lambda table', 'Target authority', 'Required', targetTable ? selectedText(targetTable) : '—', targetTable?.value ? 'Resolved' : 'Missing', Boolean(targetTable?.value));
-    addRow('MSQ RPM axis', 'Tune geometry', 'Required', rpmAxis ? selectedText(rpmAxis) : '—', rpmAxis?.value ? 'Resolved' : 'Missing', Boolean(rpmAxis?.value));
-    addRow('MSQ load axis', 'Tune geometry', 'Required', loadAxis ? selectedText(loadAxis) : '—', loadAxis?.value ? 'Resolved' : 'Missing', Boolean(loadAxis?.value));
-
-    for (const role of ROLES) {
-      const select = roleSelect(role.key);
-      const id = select?.value ?? '';
-      const selected = id ? context.channels.find((channel) => channel.id === id) : undefined;
-      const loaded = id && loadedById ? loadedById.has(id) : undefined;
-      const requirement = role.required ? 'Required' : 'Optional';
-      const source = selected ? analyzerChannelOptionLabel(selected) : '—';
-      const status = selected
-        ? loaded === false ? 'Selected · unavailable in scope' : loaded === true ? 'Resolved · loaded' : 'Resolved'
-        : role.required ? 'Missing' : 'Unavailable optional';
-      const ok = Boolean(selected) && loaded !== false;
-      addRow(role.label, role.purpose, requirement, source, status, ok);
+    for (const [role, purpose] of [['ve-table', 'Tune geometry'], ['target-table', 'Target authority'], ['rpm-axis', 'Tune geometry'], ['load-axis', 'Tune geometry']] as const) {
+      const control = select(role); add(role === 'target-table' ? 'MSQ target AFR/lambda table' : role === 've-table' ? 'MSQ VE table' : role === 'rpm-axis' ? 'MSQ RPM axis' : 'MSQ load axis', purpose, 'Required', selectedText(control), control?.value ? 'Resolved' : 'Missing', Boolean(control?.value));
     }
-
-    readinessBody.replaceChildren(...rows);
-    const text = ready ? 'Ready for evidence-map stage' : 'Missing required inputs';
-    readiness.textContent = text;
-    advancedReadiness.textContent = text;
-    return ready;
+    for (const role of ROLES) {
+      const control = roleSelect(role.key); const id = control?.value ?? ''; const channel = id ? context.channels.find((candidate) => candidate.id === id) : undefined; const loadedState = id && loaded ? loaded.has(id) : undefined;
+      const status = channel ? loadedState === false ? 'Selected · unavailable in scope' : loadedState === true ? 'Resolved · loaded' : 'Resolved' : role.required ? 'Missing' : 'Unavailable optional';
+      add(role.label, role.purpose, role.required ? 'Required' : 'Optional', channel ? analyzerChannelOptionLabel(channel) : '—', status, Boolean(channel) && loadedState !== false);
+    }
+    readinessBody.replaceChildren(...rows); const text = ready ? 'Ready for evidence-map stage' : 'Missing required inputs'; readiness.textContent = text; advancedReadiness.textContent = text; return ready;
   };
 
-  const analyze = async (): Promise<void> => {
-    const run = ++generation;
-    const scopeControl = scopeSelect();
-    const scope = scopeControl ? selectedAnalyzerScope(scopeControl, context) : undefined;
-    const preset = presetSelect();
-    const selected = new Map<RoleKey, string>();
-    for (const role of ROLES) {
-      const value = roleSelect(role.key)?.value;
-      if (value) selected.set(role.key, value);
-    }
-
-    renderWorkbenchTables();
-    renderReadiness();
-    if (!scope) {
-      empty.hidden = false;
-      content.hidden = true;
-      return;
-    }
-
-    const requested = [...new Set(selected.values())];
-    const bounds = analyzerScopeBounds(scope);
-    const loaded = requested.length > 0 ? await context.loadTraces(requested, bounds.startMs, bounds.endMs) : [];
-    if (run !== generation) return;
-    const loadedById = new Map(loaded.map((trace) => [trace.channel.id, trace]));
-    const ready = renderReadiness(loadedById);
-
-    const rpmId = selected.get('rpm');
-    const rpmTrace = rpmId ? loadedById.get(rpmId) : undefined;
-    let referenceSamples = 0;
-    let complete = loaded.every((trace) => {
-      if (bounds.startMs === undefined || bounds.endMs === undefined) return trace.complete;
-      return trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs);
-    });
-    if (rpmTrace) {
-      const channels = new Map([[rpmTrace.channel.id, { range: rpmTrace.range, complete: rpmTrace.complete }]]);
-      const qualified = qualifyNumericSamples({
-        referenceChannelId: rpmTrace.channel.id,
-        channels,
-        conditions: [],
-        ...(bounds.startMs !== undefined && bounds.endMs !== undefined ? { timeRange: { startMs: bounds.startMs, endMs: bounds.endMs } } : {}),
-      });
-      referenceSamples = qualified.eligibleSampleCount;
-      complete = complete && qualified.complete;
-    } else complete = false;
-
-    const resolvedPrimary = ROLES.filter((role) => role.purpose === 'Primary calculation' && roleSelect(role.key)?.value).length;
-    const resolvedContext = ROLES.filter((role) => role.purpose === 'Qualification / context' && roleSelect(role.key)?.value).length;
+  async function analyze(): Promise<void> {
+    const run = ++generation; renderTables(); renderReadiness();
+    const scopeControl = select('scope'); const scope = scopeControl ? selectedAnalyzerScope(scopeControl, context) : undefined; if (!scope) { empty.hidden = false; content.hidden = true; return; }
+    const selected = new Map<RoleKey, string>(); for (const role of ROLES) { const value = roleSelect(role.key)?.value; if (value) selected.set(role.key, value); }
+    const bounds = analyzerScopeBounds(scope); const requested = [...new Set(selected.values())]; const traces = requested.length ? await context.loadTraces(requested, bounds.startMs, bounds.endMs) : []; if (run !== generation) return;
+    const byId = new Map(traces.map((trace) => [trace.channel.id, trace])); const ready = renderReadiness(byId);
+    const rpmTrace = selected.get('rpm') ? byId.get(selected.get('rpm')!) : undefined; let samples = 0;
+    let complete = traces.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs));
+    if (rpmTrace) { const channels = new Map([[rpmTrace.channel.id, { range: rpmTrace.range, complete: rpmTrace.complete }]]); const qualified = qualifyNumericSamples({ referenceChannelId: rpmTrace.channel.id, channels, conditions: [], ...(bounds.startMs !== undefined && bounds.endMs !== undefined ? { timeRange: { startMs: bounds.startMs, endMs: bounds.endMs } } : {}) }); samples = qualified.eligibleSampleCount; complete = complete && qualified.complete; } else complete = false;
     renderSummary([
-      ['Tune source', tuneSourceName ?? 'No MSQ loaded'],
-      ['VE table', tableSelect()?.value || 'Not selected'],
-      ['Target table', targetTableSelect()?.value || 'Not selected'],
-      ['Scope', scope.label],
-      ['Qualification preset', preset ? selectedText(preset) : '—'],
-      ['Primary roles resolved', `${resolvedPrimary} / ${ROLES.filter((role) => role.purpose === 'Primary calculation').length}`],
-      ['Context roles resolved', `${resolvedContext} / ${ROLES.filter((role) => role.purpose === 'Qualification / context').length}`],
-      ['Reference samples in scope', referenceSamples.toLocaleString()],
-      ['Coverage', complete ? 'Complete' : 'Partial / unresolved'],
-      ['Recommendation state', 'Not calculated — workbench only'],
-      ['Tune mutation', 'None'],
+      ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', select('ve-table')?.value || 'Not selected'], ['Target table', select('target-table')?.value || 'Not selected'], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Reference samples', samples.toLocaleString()], ['Coverage', complete ? 'Complete' : 'Partial / unresolved'], ['Recommendation', 'Not calculated — workbench only'], ['Tune mutation', 'None'],
     ]);
-
-    empty.hidden = ready;
-    content.hidden = false;
-  };
-
-  const fillChannelSelect = (select: HTMLSelectElement, role: VeRoleDefinition): void => {
-    select.replaceChildren(new Option(role.required ? '(select required channel)' : '(none)', ''));
-    for (const channel of context.channels) select.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
-    const rememberedValue = remembered.get(role.key);
-    if (rememberedValue && context.channels.some((channel) => channel.id === rememberedValue)) select.value = rememberedValue;
-    else {
-      const suggested = suggestAnalyzerChannel('fueling', role.key, context.channels);
-      if (suggested) select.value = suggested.id;
-    }
-    select.addEventListener('change', () => { remembered.set(role.key, select.value); void analyze(); });
-  };
+    empty.hidden = ready; content.hidden = false;
+  }
 
   const rebuild = (): void => {
-    const previousContext = context;
-    controls.replaceChildren();
-
-    const veTable = tableSelect();
-    const targetTable = targetTableSelect();
-    const rpmAxis = rpmAxisSelect();
-    const loadAxis = loadAxisSelect();
-    const scope = scopeSelect();
-    const preset = presetSelect();
-    const actual = workbenchSelect('actual');
-    const stft = workbenchSelect('stft');
-    if (!veTable || !targetTable || !rpmAxis || !loadAxis || !scope || !preset || !actual || !stft) return;
-
-    veTable.replaceChildren(new Option('(select VE table)', ''), ...veTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name)));
-    const rememberedVe = remembered.get('ve-table');
-    const preferredVe = rememberedVe && [...veTable.options].some((option) => option.value === rememberedVe) ? rememberedVe : preferredVeTableName(tuneModel);
-    if (preferredVe) veTable.value = preferredVe;
-
-    targetTable.replaceChildren(new Option('(select target AFR/lambda table)', ''), ...targetMixtureTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name)));
-    const rememberedTarget = remembered.get('target-table');
-    const preferredTarget = rememberedTarget && [...targetTable.options].some((option) => option.value === rememberedTarget)
-      ? rememberedTarget
-      : preferredTargetMixtureTableName(tuneModel, veTable.value);
-    if (preferredTarget) targetTable.value = preferredTarget;
-
-    fillAxisSelectors();
-    veTable.addEventListener('change', () => {
-      remembered.set('ve-table', veTable.value);
-      fillAxisSelectors();
-      if (!remembered.get('target-table')) {
-        const nextTarget = preferredTargetMixtureTableName(tuneModel, veTable.value);
-        if (nextTarget) targetTable.value = nextTarget;
-      }
-      void analyze();
-    }, { once: true });
-    targetTable.addEventListener('change', () => { remembered.set('target-table', targetTable.value); renderWorkbenchTables(); void analyze(); }, { once: true });
-    rpmAxis.addEventListener('change', () => { remembered.set('rpm-axis', rpmAxis.value); renderWorkbenchTables(); void analyze(); }, { once: true });
-    loadAxis.addEventListener('change', () => { remembered.set('load-axis', loadAxis.value); renderWorkbenchTables(); void analyze(); }, { once: true });
-
-    populateAnalyzerScopeSelect(scope, context, remembered.get('scope') ?? 'full');
-    scope.addEventListener('change', () => { remembered.set('scope', scope.value); void analyze(); }, { once: true });
-    preset.replaceChildren(...PRESETS.map(([value, label]) => new Option(label, value)));
-    preset.value = remembered.get('preset') ?? 'recommended';
-    preset.addEventListener('change', () => { remembered.set('preset', preset.value); void analyze(); }, { once: true });
-
-    const actualRole = ROLES.find((role) => role.key === 'actual')!;
-    const stftRole = ROLES.find((role) => role.key === 'stft')!;
-    fillChannelSelect(actual, actualRole);
-    fillChannelSelect(stft, stftRole);
-
-    for (const role of ROLES.filter((candidate) => candidate.key !== 'actual' && candidate.key !== 'stft')) {
-      const select = addAdvancedSelect(role.label, role.key);
-      fillChannelSelect(select, role);
-    }
-
-    runButton.onclick = () => { void analyze(); };
-    renderWorkbenchTables();
-    const channelsChanged = !sameChannelCatalog(previousContext.channels, context.channels);
-    if (channelsChanged || tuneModel || context.channels.length > 0) void analyze();
+    const oldContext = context; controls.replaceChildren();
+    const veSelect = select('ve-table')!; const targetSelect = select('target-table')!; const rpmSelect = select('rpm-axis')!; const loadSelect = select('load-axis')!; const scopeSelect = select('scope')!; const presetSelect = select('preset')!;
+    veSelect.replaceChildren(new Option('(select VE table)', ''), ...veTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name)));
+    const oldVe = remembered.get('ve-table'); veSelect.value = oldVe && [...veSelect.options].some((option) => option.value === oldVe) ? oldVe : preferredVeTableName(tuneModel) ?? '';
+    targetSelect.replaceChildren(new Option('(select target AFR/lambda table)', ''), ...targetMixtureTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name)));
+    const oldTarget = remembered.get('target-table'); targetSelect.value = oldTarget && [...targetSelect.options].some((option) => option.value === oldTarget) ? oldTarget : preferredTargetMixtureTableName(tuneModel, veSelect.value) ?? '';
+    fillAxes();
+    veSelect.onchange = () => { remembered.set('ve-table', veSelect.value); fillAxes(); if (!remembered.get('target-table')) targetSelect.value = preferredTargetMixtureTableName(tuneModel, veSelect.value) ?? ''; void analyze(); };
+    targetSelect.onchange = () => { remembered.set('target-table', targetSelect.value); void analyze(); };
+    rpmSelect.onchange = () => { remembered.set('rpm-axis', rpmSelect.value); void analyze(); };
+    loadSelect.onchange = () => { remembered.set('load-axis', loadSelect.value); void analyze(); };
+    populateAnalyzerScopeSelect(scopeSelect, context, remembered.get('scope') ?? 'full'); scopeSelect.onchange = () => { remembered.set('scope', scopeSelect.value); void analyze(); };
+    presetSelect.replaceChildren(...PRESETS.map(([value, label]) => new Option(label, value))); presetSelect.value = remembered.get('preset') ?? 'recommended'; presetSelect.onchange = () => { remembered.set('preset', presetSelect.value); void analyze(); };
+    fillRole(select('actual')!, ROLES.find((role) => role.key === 'actual')!); fillRole(select('stft')!, ROLES.find((role) => role.key === 'stft')!);
+    for (const role of ROLES.filter((item) => item.key !== 'actual' && item.key !== 'stft')) fillRole(addAdvanced(role), role);
+    runButton.onclick = () => { void analyze(); }; renderTables();
+    if (!sameChannels(oldContext.channels, context.channels) || tuneModel || context.channels.length) void analyze();
   };
 
   return {
     element: root,
-    setContext(nextContext) {
-      context = nextContext;
-      rebuild();
-    },
-    setTuneModel(model, sourceName) {
-      tuneModel = model;
-      tuneSourceName = sourceName;
-      rebuild();
-    },
+    setContext(next) { context = next; rebuild(); },
+    setTuneModel(model, sourceName) { tuneModel = model; tuneSourceName = sourceName; rebuild(); },
     refresh: () => { void analyze(); },
   };
 }
