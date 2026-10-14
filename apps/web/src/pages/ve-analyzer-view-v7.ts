@@ -17,6 +17,26 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
   const blockerPanel = root.querySelector<HTMLElement>('.ve-run-blocker-panel')!;
+  const advanced = root.querySelector<HTMLDetailsElement>('.ve-workbench-advanced');
+  const advancedControls = advanced?.querySelector<HTMLElement>('[data-ve-analyzer="controls"]');
+
+  // Table choice already resolves the matching RPM/load axes. Keep manual mapping
+  // available as an Advanced escape hatch for ambiguous/non-standard tune files,
+  // but do not spend normal-workflow space on four usually redundant selectors.
+  if (advanced && advancedControls) {
+    const mapping = document.createElement('section');
+    mapping.className = 've-axis-mapping-advanced';
+    const heading = document.createElement('div');
+    heading.className = 've-axis-mapping-heading';
+    heading.innerHTML = '<strong>Table-axis mapping</strong><span>Resolved automatically from the selected VE and target tables. Override only when a tune has ambiguous or non-standard mappings.</span>';
+    mapping.append(heading);
+    for (const role of ['rpm-axis', 'load-axis', 'target-rpm-axis', 'target-load-axis'] as const) {
+      const control = root.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`);
+      const label = control?.closest<HTMLLabelElement>('label');
+      if (label) mapping.append(label);
+    }
+    advanced.insertBefore(mapping, advancedControls);
+  }
 
   actionbar.classList.add('ve-run-info-host');
 
