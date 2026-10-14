@@ -6,7 +6,7 @@ import {
 } from './ve-analyzer-view-v4';
 
 type CellKey = `${number}:${number}`;
-type LegacyAction = 'apply' | 'clear' | 'revert';
+type EditAction = 'apply' | 'clear' | 'revert';
 
 function keyFor(row: number, col: number): CellKey {
   return `${row}:${col}`;
@@ -46,15 +46,20 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   let anchor: CellKey | undefined;
   let dragPointerId: number | undefined;
   let dragMoved = false;
-  let bypassLegacy = false;
   let inlineInput: HTMLInputElement | undefined;
   let previewOriginal = new Map<CellKey, string>();
+  let committing = false;
 
   const cells = (): HTMLTableCellElement[] => [...delayHost.querySelectorAll<HTMLTableCellElement>('td[data-delay-row][data-delay-col]')];
 
   const cellFor = (key: CellKey): HTMLTableCellElement | undefined => {
     const { row, col } = parseKey(key);
     return delayHost.querySelector<HTMLTableCellElement>(`td[data-delay-row="${row}"][data-delay-col="${col}"]`) ?? undefined;
+  };
+
+  const focusAnchor = (): void => {
+    if (!anchor || inlineInput) return;
+    cellFor(anchor)?.focus({ preventScroll: true });
   };
 
   const refreshSelection = (): void => {
@@ -95,26 +100,25 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     selected.add(key);
     anchor = key;
     refreshSelection();
+    cell.focus({ preventScroll: true });
   };
 
-  const invokeLegacy = (key: CellKey, action: LegacyAction, value?: number): void => {
+  // v2 still owns the actual delay-table state. Call its installed callbacks
+  // directly instead of synthesizing browser clicks. This keeps visible table
+  // focus/selection under v5 control and avoids click -> rerender -> click races.
+  const invokeUnderlyingEditor = (key: CellKey, action: EditAction, value?: number): void => {
     const cell = cellFor(key);
     if (!cell) return;
-    bypassLegacy = true;
-    try {
-      cell.click();
-      if (action === 'apply') {
-        if (value === undefined) return;
-        legacyWorking.value = String(value);
-        legacyApply.click();
-      } else if (action === 'clear') {
-        legacyWorking.value = '';
-        legacyApply.click();
-      } else {
-        legacyRevert.click();
-      }
-    } finally {
-      bypassLegacy = false;
+    cell.onclick?.call(cell, new MouseEvent('click'));
+    if (action === 'apply') {
+      if (value === undefined) return;
+      legacyWorking.value = String(value);
+      legacyApply.onclick?.call(legacyApply, new MouseEvent('click'));
+    } else if (action === 'clear') {
+      legacyWorking.value = '';
+      legacyApply.onclick?.call(legacyApply, new MouseEvent('click'));
+    } else {
+      legacyRevert.onclick?.call(legacyRevert, new MouseEvent('click'));
     }
   };
 
@@ -140,16 +144,25 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   };
 
-  const applyEditToSelection = (text: string): boolean => {
+  const editSelection = (action: EditAction, value?: number): boolean => {
+    if (selected.size === 0 || committing) return false;
     const keys = [...selected];
-    if (text === '') {
-      for (const key of keys) invokeLegacy(key, 'clear');
-      return true;
+    committing = true;
+    try {
+      for (const key of keys) invokeUnderlyingEditor(key, action, value);
+    } finally {
+      committing = false;
+      refreshSelection();
+      queueMicrotask(focusAnchor);
     }
+    return true;
+  };
+
+  const applyEditToSelection = (text: string): boolean => {
+    if (text === '') return editSelection('clear');
     const value = Number(text);
     if (!Number.isFinite(value) || value < 0) return false;
-    for (const key of keys) invokeLegacy(key, 'apply', value);
-    return true;
+    return editSelection('apply', value);
   };
 
   const endInlineEdit = (commit: boolean): void => {
@@ -159,11 +172,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     inlineInput = undefined;
     restorePreview();
     if (commit) applyEditToSelection(text);
-    queueMicrotask(refreshSelection);
+    refreshSelection();
+    queueMicrotask(focusAnchor);
   };
 
   const startInlineEdit = (initialText?: string, mode: 'replace' | 'existing' = 'existing'): void => {
-    if (!anchor || selected.size === 0 || inlineInput) return;
+    if (!anchor || selected.size === 0 || inlineInput || committing) return;
     const activeCell = cellFor(anchor);
     if (!activeCell) return;
     const current = activeCell.dataset.delayValue ?? '';
@@ -185,9 +199,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
+        event.stopPropagation();
         endInlineEdit(true);
       } else if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         endInlineEdit(false);
       }
     });
@@ -199,15 +215,14 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const clearSelection = (): void => {
     if (selected.size === 0) return;
     restorePreview();
-    for (const key of [...selected]) invokeLegacy(key, 'clear');
-    queueMicrotask(refreshSelection);
+    editSelection('clear');
   };
 
   const closestDelayCell = (target: EventTarget | null): HTMLTableCellElement | null =>
     target instanceof Element ? target.closest<HTMLTableCellElement>('td[data-delay-row][data-delay-col]') : null;
 
   root.addEventListener('pointerdown', (event) => {
-    if (bypassLegacy || inlineInput) return;
+    if (committing || inlineInput) return;
     const cell = closestDelayCell(event.target);
     if (!cell || !delayHost.contains(cell)) return;
     event.preventDefault();
@@ -219,7 +234,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('pointermove', (event) => {
-    if (bypassLegacy || dragPointerId !== event.pointerId || !anchor || inlineInput) return;
+    if (committing || dragPointerId !== event.pointerId || !anchor || inlineInput) return;
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     const cell = closestDelayCell(hit);
     if (!cell || !delayHost.contains(cell)) return;
@@ -231,16 +246,17 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('pointerup', (event) => {
-    if (bypassLegacy || dragPointerId !== event.pointerId) return;
+    if (committing || dragPointerId !== event.pointerId) return;
     const pointerType = event.pointerType;
     dragPointerId = undefined;
     event.preventDefault();
     event.stopPropagation();
     if (!dragMoved && pointerType === 'touch') startInlineEdit(undefined, 'existing');
+    else queueMicrotask(focusAnchor);
   }, { capture: true });
 
   root.addEventListener('click', (event) => {
-    if (bypassLegacy) return;
+    if (committing) return;
     const cell = closestDelayCell(event.target);
     if (!cell || !delayHost.contains(cell)) return;
     event.preventDefault();
@@ -248,7 +264,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('keydown', (event) => {
-    if (bypassLegacy || inlineInput || selected.size === 0) return;
+    if (committing || inlineInput || selected.size === 0) return;
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
     if (/^[0-9.]$/.test(event.key)) {
@@ -273,6 +289,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       return;
     }
     if (event.key === 'Escape') {
+      event.preventDefault();
       selected.clear();
       anchor = undefined;
       refreshSelection();
@@ -280,7 +297,10 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   const observer = new MutationObserver(() => {
-    if (!inlineInput) refreshSelection();
+    if (!inlineInput && !committing) {
+      refreshSelection();
+      queueMicrotask(focusAnchor);
+    }
   });
   observer.observe(delayHost, { childList: true, subtree: true });
 
@@ -303,7 +323,10 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(refreshSelection);
+      queueMicrotask(() => {
+        refreshSelection();
+        focusAnchor();
+      });
     },
   };
 }
