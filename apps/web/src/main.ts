@@ -14,6 +14,7 @@ import './styles/analyzer.css';
 import './styles/boost-analyzer.css';
 import './styles/boost-table-enhancements.css';
 import './styles/specialized-analyzer.css';
+import './styles/ve-analyzer-workbench.css';
 import './styles/analyzer-information-hierarchy.css';
 import './styles/performance-diagnostics.css';
 import './styles/ui-refinements.css';
