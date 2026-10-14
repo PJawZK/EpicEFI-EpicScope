@@ -44,7 +44,7 @@
 
 /* VE evidence belongs in cell state, not in cell geometry. Keep the legend outside the grid. */
 .ve-workbench-panel:first-child > header > div::after {
-  content: 'Solid outline = proposed change · dotted outline = weak evidence · amber corner = withheld';
+  content: 'Dot = evidence · solid outline = proposed change · dotted outline = weak evidence · amber corner = withheld';
   display: block;
   margin-top: 3px;
   color: #8ca0ab;
@@ -154,7 +154,8 @@
   font-weight: 800;
 }
 
-.ve-workbench-table td[title^='Measured proposal']::after {
+.ve-workbench-table td[title^='Measured proposal']::after,
+.ve-workbench-table td[title^='Weak evidence only']::after {
   content: '';
   position: absolute;
   top: 1px;
