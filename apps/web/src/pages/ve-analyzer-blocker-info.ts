@@ -21,14 +21,14 @@ export function describeVeRunBlocker(message: string): VeRunBlockerHelp {
   }
   if (lower.startsWith('prior weight')) {
     return {
-      why: 'Prior weight controls how strongly the existing VE table is trusted relative to new log evidence. A normal Cell Change preset supplies this automatically; it is only manually entered when Custom authority is used.',
-      fix: 'Use the Cell Change control beside Run Analysis and choose Responsive, Normal, Conservative or Very conservative. For manual control, open Advanced inputs and edit Prior weight. Normal = 20.',
+      why: 'Prior weight controls how strongly the existing VE table is trusted relative to new log evidence. The normal Cell Change presets supply this automatically; only Custom numeric prior requires a manually entered value.',
+      fix: 'Use Cell Change beside Run Analysis. Responsive = 5, Normal = 20, Conservative = 50, Very conservative = 100. If Custom numeric prior is selected, the Prior weight box appears beside Cell Change and must contain a value of 0 or greater.',
     };
   }
   if (lower.startsWith('minimum evidence weight')) {
     return {
       why: 'Minimum evidence weight defines how much accumulated evidence a VE cell needs before EpicScope may emit a measured proposal.',
-      fix: 'Use the visible Min evidence weight box in the VE Analyzer controls. It must contain a number of 0 or greater; the current default is 5.',
+      fix: 'Use the visible Minimum evidence weight box in the VE Analyzer controls. It must contain a number of 0 or greater; the current default is 5.',
     };
   }
   if (lower.startsWith('max ve change %')) {
