@@ -12,6 +12,21 @@ function requestRecordedSourceUnload(root: HTMLElement): void {
   }));
 }
 
+export function orderLoadDataMenuItems(loadMenu: HTMLElement): void {
+  const orderedSelectors = [
+    '.load-ini',
+    '.load-msq',
+    '.open-log',
+    '.unload-log',
+    '.shim-source-button',
+  ] as const;
+
+  for (const selector of orderedSelectors) {
+    const item = loadMenu.querySelector<HTMLElement>(selector);
+    if (item) loadMenu.append(item);
+  }
+}
+
 export function installSourceTransitionUi(root: HTMLElement): void {
   const loadMenu = root.querySelector<HTMLElement>('.load-data-menu');
   const openLogButton = loadMenu?.querySelector<HTMLButtonElement>('.open-log');
@@ -26,6 +41,7 @@ export function installSourceTransitionUi(root: HTMLElement): void {
   unloadLogButton.innerHTML = '<strong>Unload Log</strong><small>Release the active recorded MLG source</small>';
   unloadLogButton.disabled = true;
   openLogButton.after(unloadLogButton);
+  orderLoadDataMenuItems(loadMenu);
 
   const refreshUnloadState = (): void => {
     const active = recordedLogIsActive(root);
