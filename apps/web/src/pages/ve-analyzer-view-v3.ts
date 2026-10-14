@@ -4,6 +4,7 @@ import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger
 import {
   applyVeQualificationValidity,
   preferredVeQualificationChannel,
+  veQualificationChannelCompatible,
   VE_CELL_CHANGE_PRIOR_WEIGHT,
   veCellChangeAuthorityForPrior,
   type VeCellChangeAuthority,
@@ -102,13 +103,15 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const populateQualificationSources = (): void => {
     const oldClt = cltSelect.value;
     const oldTps = tpsSelect.value;
-    cltSelect.replaceChildren(new Option('(none)', ''), ...sourceContext.channels.map(optionForChannel));
-    tpsSelect.replaceChildren(new Option('(none)', ''), ...sourceContext.channels.map(optionForChannel));
+    const cltChannels = sourceContext.channels.filter((channel) => veQualificationChannelCompatible(channel, 'clt'));
+    const tpsChannels = sourceContext.channels.filter((channel) => veQualificationChannelCompatible(channel, 'tps'));
+    cltSelect.replaceChildren(new Option('(none)', ''), ...cltChannels.map(optionForChannel));
+    tpsSelect.replaceChildren(new Option('(none)', ''), ...tpsChannels.map(optionForChannel));
 
-    const preferredClt = preferredVeQualificationChannel(sourceContext.channels, 'clt');
-    const preferredTps = preferredVeQualificationChannel(sourceContext.channels, 'tps');
-    cltSelect.value = oldClt && sourceContext.channels.some((channel) => channel.id === oldClt) ? oldClt : preferredClt?.id ?? '';
-    tpsSelect.value = oldTps && sourceContext.channels.some((channel) => channel.id === oldTps) ? oldTps : preferredTps?.id ?? '';
+    const preferredClt = preferredVeQualificationChannel(cltChannels, 'clt');
+    const preferredTps = preferredVeQualificationChannel(tpsChannels, 'tps');
+    cltSelect.value = oldClt && cltChannels.some((channel) => channel.id === oldClt) ? oldClt : preferredClt?.id ?? '';
+    tpsSelect.value = oldTps && tpsChannels.some((channel) => channel.id === oldTps) ? oldTps : preferredTps?.id ?? '';
 
     if (!minCltInput.dataset.veInitialized) {
       const selected = sourceContext.channels.find((channel) => channel.id === cltSelect.value);
