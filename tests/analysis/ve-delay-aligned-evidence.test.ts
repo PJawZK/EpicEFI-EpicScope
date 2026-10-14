@@ -22,17 +22,20 @@ function delayTable(workingMs: number | undefined): VeDelayTable {
     loadBins: [40, 80],
     rows: 2,
     cols: 2,
+    origin: 'log-discovery',
     cells: [0, 1, 2, 3].map((index) => ({
       row: Math.floor(index / 2),
       col: index % 2,
       state: workingMs === undefined ? 'insufficient' as const : 'measured' as const,
       recommendedMs: workingMs,
       workingMs,
+      workingProvenance: workingMs === undefined ? undefined : 'measured-recommendation' as const,
       eventCount: workingMs === undefined ? 0 : 3,
       p10Ms: workingMs,
       p90Ms: workingMs,
       spreadMs: workingMs === undefined ? undefined : 0,
       confidence: workingMs === undefined ? 'none' as const : 'moderate' as const,
+      sourceEvents: [],
     })),
   };
 }
