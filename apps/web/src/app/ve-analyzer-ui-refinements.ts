@@ -5,22 +5,29 @@ const VE_HELP = {
   text: 'Log-based VE proposal workbench. The VE table and target-mixture table remain the primary surfaces; analysis uses explicit qualification, mixture scale, fuel-correction handling and a timestamp-based lambda-delay model. Running analysis never mutates the loaded MSQ.',
 } as const;
 
-function normalizedOptionText(option: HTMLOptionElement | undefined): string {
-  return option?.textContent?.trim().toLowerCase().replace(/[_/.-]+/g, ' ').replace(/\s+/g, ' ') ?? '';
+function normalizedLabel(label: string | undefined): string {
+  return label?.trim().toLowerCase().replace(/[_/.-]+/g, ' ').replace(/\s+/g, ' ') ?? '';
+}
+
+export function isGasScaleAfrLabel(label: string): boolean {
+  const text = normalizedLabel(label);
+  return /gas\s*scale/.test(text) && /(afr|air\s*fuel\s*ratio)/.test(text);
+}
+
+export function isGenericAfrLabel(label: string): boolean {
+  const text = normalizedLabel(label);
+  if (!text || /gas\s*scale/.test(text)) return false;
+  return /(^|\s)afr\s*value(\s|$)|(^|\s)afrvalue(\s|$)|air\s*fuel\s*ratio/.test(text);
+}
+
+export function shouldPreferGasScaleAfr(currentLabel: string | undefined, gasScaleLabel: string | undefined, scale: string): boolean {
+  return scale === 'afr'
+    && Boolean(gasScaleLabel && isGasScaleAfrLabel(gasScaleLabel))
+    && (!currentLabel || isGenericAfrLabel(currentLabel));
 }
 
 export function isGasScaleAfrOption(option: HTMLOptionElement): boolean {
-  const text = normalizedOptionText(option);
-  return !option.disabled
-    && Boolean(option.value)
-    && /gas\s*scale/.test(text)
-    && /(afr|air\s*fuel\s*ratio)/.test(text);
-}
-
-function isGenericAfrOption(option: HTMLOptionElement | undefined): boolean {
-  const text = normalizedOptionText(option);
-  if (!text || /gas\s*scale/.test(text)) return false;
-  return /(^|\s)afr\s*value(\s|$)|(^|\s)afrvalue(\s|$)|air\s*fuel\s*ratio/.test(text);
+  return !option.disabled && Boolean(option.value) && isGasScaleAfrLabel(option.textContent ?? '');
 }
 
 export function preferGasScaleAfrOption(control: HTMLSelectElement, scale: string): boolean {
@@ -28,7 +35,7 @@ export function preferGasScaleAfrOption(control: HTMLSelectElement, scale: strin
   const gasScale = [...control.options].find(isGasScaleAfrOption);
   if (!gasScale) return false;
   const selected = control.selectedOptions[0];
-  if (control.value && !isGenericAfrOption(selected)) return false;
+  if (!shouldPreferGasScaleAfr(selected?.textContent ?? undefined, gasScale.textContent ?? undefined, scale)) return false;
   if (control.value === gasScale.value) return false;
   control.value = gasScale.value;
   control.dispatchEvent(new Event('change', { bubbles: true }));
