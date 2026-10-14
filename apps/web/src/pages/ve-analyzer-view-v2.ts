@@ -2,13 +2,12 @@ import { analyzeAfrDelay, type AfrDelayAnalyzerResult } from '../../../../core/a
 import { type VeEvidenceMapResult } from '../../../../core/analysis/ve-evidence-map';
 import { buildVeEvidenceMapWithDelayTable } from '../../../../core/analysis/ve-delay-aligned-evidence';
 import { buildVeProposal, type VeProposalResult } from '../../../../core/analysis/ve-proposal';
+import { buildVeDelayTable, type VeDelayTable } from '../../../../core/analysis/ve-delay-table';
 import {
-  buildVeDelayTable,
-  editVeDelayWorkingCell,
-  resetVeDelayWorkingToRecommendation,
-  revertVeDelayWorkingCell,
-  type VeDelayTable,
-} from '../../../../core/analysis/ve-delay-table';
+  activateVeDelayRecommendation,
+  revertVeDelayCellToRecommendation,
+  setVeDelayWorkingCell,
+} from '../../../../core/analysis/ve-delay-table-editing';
 import { parseVeDelayTableFile, serializeVeDelayTable } from '../../../../core/analysis/ve-delay-table-storage';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
@@ -354,8 +353,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     delayCellRecommendation.textContent = cell.recommendedMs === undefined ? '—' : `${Math.round(cell.recommendedMs)} ms${cell.spreadMs !== undefined ? ` · spread ${Math.round(cell.spreadMs)} ms` : ''}`;
     delayCellProvenance.textContent = cell.workingProvenance ?? 'No working authority';
     delayCellWorking.value = cell.workingMs === undefined ? '' : String(Math.round(cell.workingMs));
-    delayCellApply.disabled = !workingDelayTable;
-    delayCellRevert.disabled = !workingDelayTable || cell.recommendedMs === undefined;
+    delayCellApply.disabled = false;
+    delayCellRevert.disabled = cell.workingProvenance !== 'user-edited';
     const events = cell.sourceEvents ?? [];
     if (events.length === 0) {
       delaySourceEvents.innerHTML = '<span>No direct discovery events are attached to this cell. Interpolated/user-filled cells are not presented as measured evidence.</span>';
@@ -387,9 +386,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         td.dataset.delayState = cell.state;
         if (cell.workingProvenance) td.dataset.delayProvenance = cell.workingProvenance;
         td.dataset.delayRow = String(row); td.dataset.delayCol = String(col);
-        const shown = workingDelayTable ? cell.workingMs : cell.recommendedMs;
+        if (cell.workingMs !== undefined) td.dataset.delayValue = String(cell.workingMs);
+        if (cell.recommendedMs !== undefined) td.dataset.delayRecommended = String(cell.recommendedMs);
+        const shown = cell.workingMs;
         td.textContent = shown === undefined ? '—' : String(Math.round(shown));
-        td.title = `${cell.state} delay cell · ${cell.eventCount} events${cell.recommendedMs !== undefined ? ` · recommendation ${Math.round(cell.recommendedMs)} ms` : ''}${cell.workingMs !== undefined && workingDelayTable ? ` · working ${Math.round(cell.workingMs)} ms` : ''}${cell.workingProvenance ? ` · provenance ${cell.workingProvenance}` : ''}${cell.p10Ms !== undefined ? ` · P10 ${Math.round(cell.p10Ms)} ms` : ''}${cell.p90Ms !== undefined ? ` · P90 ${Math.round(cell.p90Ms)} ms` : ''} · confidence ${cell.confidence}`;
+        td.title = `${cell.state} delay cell · ${cell.eventCount} events${cell.recommendedMs !== undefined ? ` · raw recommendation ${Math.round(cell.recommendedMs)} ms` : ''}${cell.workingMs !== undefined ? ` · editable value ${Math.round(cell.workingMs)} ms` : ' · editable value none'}${cell.workingProvenance ? ` · provenance ${cell.workingProvenance}` : ''}${cell.p10Ms !== undefined ? ` · P10 ${Math.round(cell.p10Ms)} ms` : ''}${cell.p90Ms !== undefined ? ` · P90 ${Math.round(cell.p90Ms)} ms` : ''} · confidence ${cell.confidence}`;
         td.onclick = () => { selectedDelayCell = { row, col }; renderSelectedDelayCell(); };
         tr.append(td);
       }
@@ -437,8 +438,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         : fuel ? 'Discover from the current log or Load saved table. Discovery never replaces working authority until Use recommendation is pressed.' : 'Select a fuel-command / injector-PW source under Advanced inputs before current-log delay discovery, or load a saved table.';
       return;
     }
-    delayResultTitle.textContent = `Current-log recommendation · ${recommendationCounts.measured} measured · ${recommendationCounts.interpolated} interpolated · ${recommendationCounts.insufficient} insufficient`;
-    delayResultText.textContent = `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. ${workingDelayTable ? `Working authority remains ${workingDelayTable.origin === 'saved-file' ? 'the loaded saved table' : 'separate'} until Use recommendation is pressed.` : 'Recommendation remains separate until Use recommendation is pressed.'}`;
+    delayResultTitle.textContent = `Current-log recommendation · ${recommendationCounts.measured} measured · ${recommendationCounts.interpolated} interpolated · ${recommendationCounts.insufficient} insufficient · ${recommendationCounts.userEdited} user edited`;
+    delayResultText.textContent = `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. Raw discovered evidence remains preserved when recommendation cells are edited. ${workingDelayTable ? `Working authority remains ${workingDelayTable.origin === 'saved-file' ? 'the loaded saved table' : 'separate'} until Use recommendation is pressed.` : 'Recommendation remains separate until Use recommendation is pressed.'}`;
   };
 
   const invalidate = (): void => {
@@ -575,7 +576,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     for (const role of ['delay-command-threshold', 'delay-search-window', 'delay-event-spacing', 'delay-min-events'] as const) { const field = input(role); if (field) field.onchange = () => { clearDelayRecommendation(); renderReadiness(); }; }
     const responseField = input('delay-response-threshold'); if (responseField) responseField.onchange = () => { responseField.dataset.auto = 'false'; clearDelayRecommendation(); renderReadiness(); };
     grabDelayButton.onclick = () => { void runDelayDiscovery(); };
-    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = resetVeDelayWorkingToRecommendation(delayRecommendation); selectedDelayCell = undefined; invalidate(); renderDelayDiscovery(); };
+    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); selectedDelayCell = undefined; invalidate(); renderDelayDiscovery(); };
     saveDelayButton.onclick = () => { if (!workingDelayTable) return; downloadText('EpicScope-lambda-delay-table.json', serializeVeDelayTable(workingDelayTable, workingDelayTable.originLabel)); };
     loadDelayButton.onclick = () => { loadDelayFile.value = ''; loadDelayFile.click(); };
     loadDelayFile.onchange = () => {
@@ -590,10 +591,24 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       });
     };
     delayCellApply.onclick = () => {
-      if (!workingDelayTable || !selectedDelayCell) return; const value = Number(delayCellWorking.value); if (!Number.isFinite(value) || value < 0) return;
-      workingDelayTable = editVeDelayWorkingCell(workingDelayTable, selectedDelayCell.row, selectedDelayCell.col, value); invalidate(); renderDelayDiscovery();
+      if (!selectedDelayCell) return;
+      const activeTable = workingDelayTable ?? delayRecommendation;
+      if (!activeTable) return;
+      const raw = delayCellWorking.value.trim();
+      const value = raw === '' ? undefined : Number(raw);
+      if (value !== undefined && (!Number.isFinite(value) || value < 0)) return;
+      const edited = setVeDelayWorkingCell(activeTable, selectedDelayCell.row, selectedDelayCell.col, value);
+      if (workingDelayTable) workingDelayTable = edited; else delayRecommendation = edited;
+      invalidate(); renderDelayDiscovery();
     };
-    delayCellRevert.onclick = () => { if (!workingDelayTable || !selectedDelayCell) return; workingDelayTable = revertVeDelayWorkingCell(workingDelayTable, selectedDelayCell.row, selectedDelayCell.col); invalidate(); renderDelayDiscovery(); };
+    delayCellRevert.onclick = () => {
+      if (!selectedDelayCell) return;
+      const activeTable = workingDelayTable ?? delayRecommendation;
+      if (!activeTable) return;
+      const reverted = revertVeDelayCellToRecommendation(activeTable, selectedDelayCell.row, selectedDelayCell.col);
+      if (workingDelayTable) workingDelayTable = reverted; else delayRecommendation = reverted;
+      invalidate(); renderDelayDiscovery();
+    };
     runButton.onclick = () => { void runAnalysis(); }; renderTables(); renderReadiness(); content.hidden = false; empty.hidden = false;
   };
 
