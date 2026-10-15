@@ -1,269 +1,117 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. Use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. `docs/DOCUMENTATION_MAP.md` defines current versus historical authority.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Web UI Reference
 
 ## Purpose
 
-This document records the approved EpicHub-derived interaction reference and current EpicScope-specific hierarchy.
-
-The visual/interaction reference remains `EpicHub-Tablet-Landscape-0.0.45(2).html`, but EpicScope is its own product. It inherits useful Logger/Analyzer interaction patterns, not the wider EpicHub Dashboard/Tuner/Diagnostics shell or Android architecture.
+This document records the approved EpicHub-derived interaction reference plus current EpicScope-specific hierarchy. EpicScope inherits useful Logger/Analyzer interaction patterns, not EpicHub's wider Dashboard/Tuner/Diagnostics shell or Android architecture.
 
 ## Core UI principle
 
 > **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
-Controls are grouped by what the user is trying to do next, not by implementation ownership.
-
-Permanent visibility rule:
-
-> A control remains permanently visible only when it is frequently useful at the current workflow stage.
-
-Secondary/rare actions belong in compact menus, contextual rows or state-dependent surfaces.
+Controls are grouped by user goal/sequence rather than implementation ownership. Frequently useful controls may stay visible; secondary/rare actions belong in compact/contextual surfaces.
 
 ## EpicScope mode switcher
 
 The **EpicScope logo dropdown** is the in-product mode switcher.
 
-Current real top-level entries:
+Current top-level entries:
 
 - **Logger**
 - **Analyzer**
 - **Histogram**
 
-The redundant active-mode chip is removed. Selected mode is represented by the menu state itself.
+Analyzer and Histogram each use compact secondary dropdowns. Do not expand subviews into permanent top-level button rows.
 
-Analyzer and Histogram each use a compact secondary dropdown for their own subviews. Do not expand those subviews into permanent rows of top-level buttons.
+## Logger header/workspace hierarchy
 
-The logo menu does not own Load Data, layout actions, diagnostics, Settings or wider EpicHub app navigation.
-
-## Logger header hierarchy
-
-Conceptual order:
+Conceptual wide-layout order:
 
 ```text
 EpicScope ▾ | Graph preset ▾ | Layout ▾ | Undo/Redo | Search | Settings | Perf/Report
 ```
 
-Exact placement may adapt to viewport width, but redundant context labels should not be reintroduced.
+Graph workspaces are user-owned/editable. Starter templates materialize into ordinary workspaces and do not retain hidden ownership afterward.
 
-### Graph presets/workspaces
-
-Graph workspaces are user-editable presets. The visible selector may display them in the coherent form:
-
-`<user name> - Graph`
-
-Examples:
-
-- `General - Graph`
-- `Idle - Graph`
-- `Boost - Graph`
-
-The stored user-editable part remains the workspace name itself.
-
-Supported preset actions include create, rename, duplicate, delete and switch.
-
-**Rendering invariant:** every available channel assigned to a visible pane renders. Hidden panes may retain assignments/active cache state; when made visible they reconcile automatically.
-
-### Layout menu
-
-Layout is one compact menu rather than separate permanent layout/arrange/reset/clear buttons.
-
-It owns:
-
-- Single/fixed multi-pane layouts;
-- Freeform;
-- Freeform quick arrange where relevant;
-- **Reset**;
-- **Clear**.
-
-Reset/Clear appear at the bottom of the menu with short single-word labels and fitting symbols.
-
-Freeform exposes five visible panes. Out-of-layout hidden pane geometry must not be applied.
-
-### Undo / Redo
-
-Undo and Redo form one compact rectangular control using two triangular halves split diagonally. Preserve the compact silhouette/alignment rather than turning them back into two full independent buttons.
-
-### Search
-
-The former `Search Symbol Value` text button is represented by a magnifying-glass symbol. The accessible name/popover can still describe Search Symbol Value.
-
-### Settings
-
-Settings are grouped sensibly by responsibility and current mode.
-
-Current conceptual sections:
-
-- Current mode;
-- Interface;
-- Data & storage;
-- Diagnostics/help where appropriate.
-
-Mode-specific settings should appear only when relevant. Do not hide core analysis controls in Settings.
+The Layout menu owns fixed layouts, Freeform and relevant reset/clear/arrange operations. Available channels assigned to visible panes must render; hidden panes may retain assignments and reconcile when visible again.
 
 ## Channels / inspector
 
 Wide layouts retain a right-side inspector/control surface.
 
-Channel browser expectations:
+Expectations:
 
 - Search first;
-- Group + visibility filters together;
+- group + visibility filters together;
 - compact sort + direction;
-- current values may appear directly with units;
+- current values with units where useful;
 - exact source/channel names remain available;
-- known-no-data is distinct from active data.
+- known-no-data distinct from active data;
+- Active/Favorites/Recent reflect real workspace context.
 
-Active/Favorites/Recent must reflect actual graph/pane context, not merely catalog existence.
+## Load Data / live-source UX
+
+Load Data order is intentionally:
+
+1. Load INI
+2. Load MSQ
+3. Open Log
+4. Unload Log
+5. Connect Shim
+
+`ts_shim` live/capture is implemented and real-ECU validated. Live acquisition is therefore **not** a future placeholder. It remains read-only and shares the same normalized product surfaces as recorded analysis.
+
+A source transition must preserve unrelated INI/MSQ/workspace state and must not require a page reload.
 
 ## Timeline
 
-Timeline is a shared first-class navigation/selection component.
+Logger owns the authoritative timeline/range/marker component.
 
 Conceptual groups:
 
-### Navigate
+- **Navigate** — play/pause, step, scrub/cursor, time, Fit/zoom, view history;
+- **Range / Markers** — A/B, duration, saved ranges, markers/navigation;
+- **Contextual Analyze** — current selected range/event can feed analysis.
 
-- play/pause;
-- step/navigation;
-- scrub/cursor;
-- time display;
-- Fit/zoom;
-- previous/next view history.
+Table Generator, Distribution and Scatter reuse the complete `.timeline-wrap`. Do not move `.timeline-shell` and `.edge-toggle--timeline` independently.
 
-### Range / Markers
+## Histogram hierarchy
 
-- Set A / Set B;
-- current A→B span/duration;
-- save/clear/select saved range;
-- markers and marker navigation.
+Secondary selector:
 
-### Contextual Analyze
+- Table Generator
+- Distribution
+- Scatter
+- Math Channels
 
-Range/event context should naturally feed analysis without creating a permanent button for every tool.
-
-The shared Logger timeline is reused in Table Generator, Distribution and Scatter where those modes need the same A/B/range context. Re-parent the authoritative component rather than create divergent copies.
-
-### Shared docking invariant — PR #381
-
-The timeline's Hide/Show controls edge tab is positioned by the Logger `.timeline-wrap` container.
-
-When docking the shared timeline into Histogram, move the **entire `.timeline-wrap` intact**. Do not move `.timeline-shell` and `.edge-toggle--timeline` separately.
-
-Expected visible behavior is identical across:
-
-- Logger;
-- Table Generator;
-- Distribution;
-- Scatter.
-
-The Hide/Show controls tab sits centered on the upper edge of the timeline/control panel. Splitting the wrapper from the toggle recreates the observed bug where Table Generator places the tab in the wrong location and Distribution/Scatter can cover it with the plot surface.
-
-## Histogram mode hierarchy
-
-Histogram secondary selector:
-
-- **Table Generator**
-- **Distribution**
-- **Scatter**
-- **Math Channels**
-
-The former separate Heatmap / Dual Heatmap modes are not restored as separate primary modes.
-
-Shared Histogram flow:
+Shared flow:
 
 > **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
-Shared scope wording is:
-
-- **Full Log**
-- **Current A/B**
-- **Saved Range**
+Current Histogram track is closed for broad feature expansion. UI changes should be correctness/regression/cleanup driven unless field use exposes a real gap.
 
 ### Table Generator
 
-Important current UI rules:
-
-- visible statistic wording is **Weighted Mean**, not `MLV Weighted Mean`;
-- **Median** is a first-class statistic;
-- standalone **Size** button is removed;
-- the remaining geometry button is **Table Size**;
-- Table Size owns Auto/custom/MSQ geometry controls;
-- Presets mean complete saved Table Generator setups;
-- grouped Qualification uses the shared saved-library/editor model;
-- cell evidence exposes sample/time and aligned X/Y/Z/reference/delta values;
-- cell evidence can open contributing samples in Logger;
-- CSV export remains available.
-
-Loaded MSQ table selection changes geometry only and must not silently rewrite selected analysis X/Y/Z channels.
+Current rules include **Weighted Mean** terminology, Median, one **Table Size** geometry control, saved complete presets, shared Qualification, exact aligned cell evidence and CSV/export. Loaded MSQ geometry does not silently rewrite user-selected analysis channels.
 
 ### Distribution
 
-Distribution is a mature analysis workspace, not a placeholder histogram.
-
-Current controls/features include:
-
-- Full Log / Current A/B / Saved Range;
-- shared Qualification;
-- physical and Math Channels;
-- Count / % Samples / Time;
-- Auto / Manual-count / **Fixed Min-Max-Width** geometry;
-- Histogram / Cumulative;
-- statistical summary;
-- Primary-vs-Compare scope comparison on shared geometry;
-- saved setup presets;
-- CSV export with summary/provenance;
-- clickable bin evidence → Logger;
-- shared Logger timeline.
-
-Fixed geometry must not clamp outside values into edge bins. Outside-geometry evidence remains explicit.
+Supports shared scope/Qualification/Math Channels, Count/% Samples/Time, Histogram/Cumulative, comparison, saved setups, CSV, fixed geometry and Logger evidence. Outside fixed geometry remains explicit rather than clamped into edge bins.
 
 ### Scatter
 
-Current controls/features include:
-
-- Full Log / Current A/B / Saved Range;
-- shared Qualification;
-- physical and Math Channels;
-- Single / Dual;
-- Dots / Lines;
-- independent X/Y selectors per pane;
-- density heat encoding and legend;
-- saved Scatter setups;
-- rendered point → Logger navigation;
-- drag-box region selection against the full qualified population;
-- prominent in-plot region evidence card;
-- strongest contiguous region visit → Logger;
-- qualified/selected-region CSV export;
-- shared Logger timeline;
-- Hide/Show controls tab following the shared docking invariant above.
-
-Per-pane coverage/status belongs outside the plot overlay when possible. Stale previous plots must be cleared if a new selection cannot load.
+Supports Single/Dual, Dots/Lines, density heat, saved setups, point evidence, box-region evidence against the full qualified population, strongest contiguous visit → Logger and qualified/region CSV export.
 
 ### Math Channels
 
-Math Channels is a dedicated editor, not a tiny formula popover.
+Dedicated editor supporting arithmetic, comparison/logical expressions, lazy `if()`, historical `[Channel-N]` references and temporal helpers. Imported/saved labels remain text, never executable HTML. Nested saved Math Channel dependencies remain deliberately unsupported.
 
-Current expression capability includes:
+## Analyzer hierarchy
 
-- arithmetic;
-- comparisons;
-- logical AND/OR/NOT;
-- lazy `if()` conditionals;
-- MLV-style `[Channel-N]` historical references;
-- `lag()`, `delta()`, moving `avg()` and timestamp-based `rate()` helpers.
-
-Dynamic imported/saved labels are text data and must not be interpolated into executable HTML.
-
-Nested saved Math Channel references remain deliberately unsupported; formulas resolve physical source dependencies.
-
-## Analyzer mode hierarchy
-
-Analyzer uses a compact secondary dropdown rather than a permanent mode-button row.
-
-Current subviews:
+Analyzer secondary selector includes:
 
 - Range Compare;
 - Tune Table;
@@ -272,75 +120,63 @@ Current subviews:
 - AE / MAP Predict · Experimental;
 - Fueling · Experimental;
 - Ignition · Experimental;
-- Fuel / Injector · Experimental;
-- Trigger / Sync · Experimental.
+- Fuel Pressure / Injector · Experimental;
+- Trigger / Sync · Experimental;
+- VE Analyzer · Experimental.
 
-### Shared Analyzer interaction
+Shared Analyzer rules:
 
-- semantic role mapping is visible and manually overridable;
-- scope is explicit (Full Log / Current A/B / Saved Range where supported);
-- event rows select evidence in Analyzer;
-- double-click/Enter can open event evidence in Logger;
-- aligned-event graphs use a common interaction model where applicable.
+- semantic role mapping visible/manual where important;
+- literal source names preserved;
+- scope explicit where supported;
+- evidence can return to Logger;
+- decision-facing output uses progressive disclosure;
+- unavailable dependencies remain visible rather than silently substituted.
 
-### Idle Analyzer UI
+## VE Analyzer workbench
 
-Idle must make control architecture explicit.
+`VE_ANALYZER_WORKBENCH.md` is the detailed authority. Key UI invariants:
 
-Idle system selector:
+- table-first VE + target-mixture workbench;
+- table title/description left, compact controls right;
+- current single ownership of table layout/tabs/header controls;
+- Side-by-side / Single-table presentation without changing underlying table authority;
+- compact normal-use mapping/qualification/authority controls;
+- explicit **Run Analysis** and actionable blocker information;
+- **RPM × load lambda-delay table only**;
+- explicit **Grab lambda delays from log** and **Use recommendation** lifecycle;
+- direct in-cell delay editing, no old external value/apply editor as primary workflow;
+- Result View overlays on the VE table;
+- per-cell evidence and strongest-visit Logger navigation;
+- original tune, Analyzer proposal/evidence and user-reviewed result remain distinct.
 
-- Combined;
-- DC Idle;
-- IAC Valve;
-- ETB;
-- Ignition.
+Known UI defects: Result View fallback/precision and Logger → Analyzer result continuity. Fix one at a time from the browser-known-good PR #449 runtime and browser-verify each lifecycle/render/input change.
 
-Common required roles:
+## Idle Analyzer UI
 
-- RPM;
-- Idle Target.
-
-Subsystem-specific controls appear only when relevant.
-
-**DC Bias:** distinguish the calibration curve/table from any logged runtime bias contribution. The calibration itself is not a scalar channel selector.
-
-Analyze controls must explain their meaning in context, e.g. sag threshold relative to target and settled band used to end recovery.
+Idle system selector remains subsystem-aware: Combined, DC Idle, IAC Valve, ETB, Ignition. RPM/Idle Target are common required roles. DC Bias calibration is tune data, not a scalar runtime selector.
 
 ## Diagnostics / Perf / Report
 
-Diagnostics should visually recede when healthy.
+Diagnostics should visually recede when healthy. Report exposes current health summary; log-specific warnings must not imply a log problem before a log exists.
 
-Perf and Report use compact consistent boxed controls.
+## Approved EpicScope refinements
 
-Report has a live health status:
-
-- healthy check when no issue/warning;
-- warning count when warnings exist;
-- issue count when issues exist;
-- tooltip/title explains summary.
-
-Log-specific warnings must not imply a log problem before a log exists.
-
-## Approved deviations/refinements
-
-1. EpicScope logo dropdown is the mode switcher.
-2. Not the broader EpicHub shell.
-3. Workflow-first hierarchy.
-4. Right-side inspector/control consistency on wide layouts.
-5. Offline/imported-log focus; live ECU acquisition remains separate future work.
-6. Performance over exact visual reproduction.
-7. Compact dense graph chrome.
-8. Single-view synchronized stacked traces are an approved adaptation.
-9. No disabled future-tool clutter.
-10. Current values can be direct unit-aware text without decorative bars.
-11. Mode/workspace/pane identity are separate concepts.
-12. Secondary Analyzer/Histogram functions belong in dropdowns rather than permanent button rows.
-13. Shared timeline/range components should be reused across analysis surfaces rather than duplicated.
-14. Analysis controls should state what entered thresholds/values actually do.
-15. Shared controls must preserve their owning positioning/context wrapper when re-parented between modes.
+1. EpicScope logo dropdown is the mode switcher, not the broader EpicHub shell.
+2. Workflow-first hierarchy.
+3. Right-side inspector/control consistency on wide layouts.
+4. Recorded and implemented read-only live/Shim sources share normalized product surfaces.
+5. Performance over exact visual reproduction.
+6. Compact dense graph chrome.
+7. No disabled future-tool clutter.
+8. Mode/workspace/pane identity remain separate concepts.
+9. Shared timeline/range components are reused rather than duplicated.
+10. Analysis controls state what thresholds/values actually do.
+11. Shared components preserve their owning positioning/context wrapper when re-parented.
+12. VE Analyzer is a table-first workbench with browser-validated behavior taking precedence over CI-only assumptions.
 
 ## Reference change control
 
-`EpicHub-Tablet-Landscape-0.0.45(2).html` remains the reviewed source reference, but this document plus explicit later owner decisions define EpicScope behavior.
+`EpicHub-Tablet-Landscape-0.0.45(2).html` remains a historical reviewed source reference, but this document plus later explicit owner decisions define EpicScope behavior.
 
 Prototype changes do not silently supersede these rules. Meaningful changes require explicit review and corresponding decision/document updates.
