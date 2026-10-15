@@ -1,21 +1,32 @@
 # EpicScope research index
 
-This directory preserves external behavioral research that materially informed EpicScope design. It exists so design rationale does not depend on chat history or on access to third-party binaries.
+This directory preserves external behavioral research that materially informed EpicScope design. It exists so design rationale does not depend on chat history or continued access to third-party binaries.
 
-The research policy is:
+## Research policy
 
 - treat mature third-party tools as behavioral/stability references, not design authorities;
 - do not copy proprietary source or architecture;
 - distinguish observed behavior from inference;
-- convert useful behavior into EpicScope requirements, regression tests and explicit design decisions;
-- prefer EpicScope's evidence-first, source-provenance and semantic-channel architecture when it can improve on the reference behavior;
+- convert useful behavior into EpicScope requirements, regression tests and explicit decisions;
+- prefer EpicScope's evidence-first, source-provenance and semantic-channel architecture where it can improve on the reference behavior;
 - **do not rewrite historical research observations merely because EpicScope later implemented a different or stronger design.**
 
-## Current implementation disposition
+Historical notes may therefore contain contemporaneous wording such as “planned” or “not yet implemented”. That wording is not present-tense product authority. Use `STATUS.md`, `../HANDOFF.md`, the relevant subsystem contract and current `main` for current state.
 
-Read `STATUS.md` alongside the historical research notes.
+## Current implementation disposition — 2026-10-15
 
-`STATUS.md` records whether each major research conclusion is currently:
+Read `STATUS.md` alongside the historical notes.
+
+Current high-level disposition:
+
+- generic Histogram/Table Generator/Distribution/Scatter/Math Channel research selected for EpicScope is implemented or deliberately closed/deferred;
+- VE Analyzer is implemented and real-log/browser validated, not planned-only;
+- the accepted VE lambda-delay working model is **RPM × load table only**;
+- VE currently retains known state-ownership debt after PR #449 restored the browser-known-good #441-era runtime;
+- MLG v3 remains researched but not implemented;
+- TunerStudio live table-editing/write semantics primarily belong to EpicHub, with only transferable explicit-state/apply invariants carried into EpicScope.
+
+`STATUS.md` uses these disposition terms:
 
 - **Implemented**;
 - **Improved in EpicScope**;
@@ -24,81 +35,78 @@ Read `STATUS.md` alongside the historical research notes.
 - **Deferred**;
 - **Not applicable to EpicScope**.
 
-The historical research files remain the evidence/rationale record. `STATUS.md` is the living mapping to current product state.
-
 ## Research records
 
 ### `MLV_BEHAVIORAL_RESEARCH.md`
 
-MegaLogViewer HD 4.6.14 research covering:
+MegaLogViewer HD 4.6.14 behavioral research covering Histogram/Table Generator weighting and persistence, Math/calculated fields, Scatter, compare/navigation, MLG reliability and VE Analyze safeguards/limitations.
 
-- Histogram / Table Generator weighting, thresholds, persistence and evidence behavior;
-- calculated fields / math channels, history semantics, smoothing and dependency resolution;
-- Scatter aggregation and evidence navigation;
-- compare / playback / alignment behavior;
-- MLG reader reliability, corruption recovery and partial-tail behavior;
-- VE Analyze safeguards, confidence/prior behavior, delay handling and limitations.
-
-**Current EpicScope disposition:** much of the generic Histogram/Table Generator/Scatter/Math Channel research is implemented or improved beyond the reference. VE Analyze findings are preserved as planned VE Analyzer behavior. See `STATUS.md`.
+**Current disposition:** generic Histogram findings are largely implemented/improved; VE findings are now historical inputs to the implemented VE Analyzer. See `STATUS.md`.
 
 ### `MLV_VE_ANALYZE_WORKFLOW_PASS.md`
 
-Second, workflow-focused MegaLogViewer VE Analyze pass added after real UI validation exposed a gap in the original research. It covers:
+Second workflow-focused MegaLogViewer VE Analyze pass covering the two-table VE + target-mixture workbench, Run/Accept/Exit lifecycle, selective revert/edit, Cell Change authority, Lambda Delay placement, target authority, EGO correction and quick filters.
 
-- the two-table VE + Target AFR workbench as the primary user model;
-- Run Analysis / Accept New Table / Exit lifecycle;
-- selective revert/edit of proposed cells;
-- Cell Change / starting-table authority;
-- Lambda Delay Table placement;
-- target-table authority;
-- EGO sensor/correction field handling;
-- quick RPM/load/CLT/time/custom filters;
-- how EpicScope should preserve the mature fast workflow while adding stronger evidence and safety semantics.
-
-**Current EpicScope disposition:** this pass changes the intended primary VE Analyzer UX. PR #399's readiness shell remains useful plumbing, but the normative workbench direction is now recorded in `../VE_ANALYZER_WORKBENCH.md`.
+**Current disposition:** its workbench conclusions informed the implemented VE surface. Current UI authority is `../VE_ANALYZER_WORKBENCH.md`.
 
 ### `VE_AUTOTUNE_REFERENCE_RESEARCH.md`
 
-Cross-tool VE/autotune research comparing MegaLogViewer HD and ECUMaster EMU PRO VE Tuner, with explicit EpicScope design conclusions for qualification, lambda-delay discovery, correction authority, confidence and evidence presentation.
+Cross-tool VE/autotune research comparing MegaLogViewer HD and ECUMaster EMU PRO VE Tuner, with design conclusions around qualification, lambda delay, correction authority, confidence and evidence presentation.
 
-**Current EpicScope disposition:** supporting foundations exist in Fueling, AFR-delay analysis, Qualification, Table Generator weighting, semantic roles and MSQ tune context. VE Analyzer has now started as an experimental shell; the next implementation step is the two-table workbench defined in `../VE_ANALYZER_WORKBENCH.md` before recommendation math proceeds.
+**Current disposition:** the principal VE evidence/delay/proposal concepts are implemented in EpicScope, with current remaining state-ownership/result-continuity work tracked in `STATUS.md` and `../HANDOFF.md`.
+
+### `VE_ANALYZER_MLV_EMUPRO_IMPLEMENTATION_AUDIT.md`
+
+Dated implementation audit comparing EpicScope's then-current VE work against the preserved MLV/EMU PRO research.
+
+**Interpretation:** historical snapshot. Do not treat its “remaining/planned” wording as current without checking `STATUS.md`.
+
+### `VE_ANALYZER_STATE_OWNERSHIP_AUDIT.md`
+
+Dated architectural audit from the PR #442–#447 regression investigation.
+
+**Current disposition:** still directly relevant as debt/evidence. PR #449 restored the browser-known-good runtime rather than completing the attempted continuity redesign. Current next steps remain staged state-ownership cleanup with browser verification.
 
 ### `MLG_V3_RESEARCH.md`
 
-Bounded MLG v3 compatibility investigation using TunerStudio 3.6.00.06 Beta, MLV 4.6.14 and controlled fixture testing. Records what is confirmed, what remains unresolved and the exact compatibility implications for EpicScope.
+Bounded MLG v3 compatibility investigation using TunerStudio 3.6.00.06 Beta, MLV 4.6.14 and controlled fixture testing.
 
-**Current EpicScope disposition:** research complete enough for planning; runtime support remains v1/v2. MLG v3 is a compatibility extension rather than a parser rewrite or current EpicEFI blocker.
+**Current disposition:** research complete enough for planning; production parser remains v1/v2. v3 is a compatibility extension, not a parser rewrite/current blocker.
 
 ### `STATUS.md`
 
-Living research-to-product mapping. Update this file when a researched behavior becomes implemented, is improved in EpicScope, is intentionally deferred, or moves to another EpicEFI product.
+Living research-to-product mapping. Update it whenever a researched behavior becomes implemented, improved, deliberately deferred or assigned elsewhere.
 
-## Related product specifications
+## Related current product authorities
 
-- `../VE_ANALYZER.md` — EpicScope VE Analyzer evidence/algorithm behavior contract derived from MLV/EMU PRO research.
-- `../VE_ANALYZER_WORKBENCH.md` — normative primary VE Analyzer workflow/layout contract from the second MLV VE Analyze pass.
-- `../FUELING_ANALYZER.md` — current Fueling Analyzer maturity and reusable delay/qualification foundations.
-- `../ANALYZER.md` — present Analyzer family maturity and sequencing.
-- `../HISTOGRAM.md` — present generic Histogram/Table Generator/Distribution/Scatter state.
-- `../LOG_MLG_PLAN.md` — production MLG parser/support policy.
+- `../HANDOFF.md` — present-tense continuation authority.
+- `../DOCUMENTATION_MAP.md` — document authority classification.
+- `../VE_ANALYZER.md` — current VE algorithm/evidence/product contract.
+- `../VE_ANALYZER_WORKBENCH.md` — current VE UI/workflow contract.
+- `../FUELING_ANALYZER.md` — Fueling Analyzer authority.
+- `../ANALYZER.md` — Analyzer family maturity/semantics.
+- `../HISTOGRAM.md` — generic Histogram authority.
+- `../LOG_MLG_PLAN.md` — MLG parser/support policy.
 
 ## Cross-project TunerStudio research
 
-Recent TunerStudio table-interaction/persistence/stability research primarily targets **EpicHub**, because EpicHub owns live tune editing and ECU write semantics.
+TunerStudio table-interaction/persistence/stability research primarily targets **EpicHub**, because EpicHub owns live tune editing and ECU write semantics.
 
 The parts that transfer to EpicScope are product invariants rather than feature-parity requirements:
 
-- analysis/proposal state must remain separate from tune/ECU state;
+- analysis/proposal state remains separate from tune/ECU state;
 - closing a dialog must not imply Apply/Burn;
-- any future VE proposal application must be explicit and diff-first;
-- shared table/curve interaction components may be reused where EpicScope eventually gains editable proposal surfaces.
+- any future VE proposal application is explicit and diff-first;
+- shared table/curve interaction components may be reused where appropriate;
+- EpicScope must not become a live tune editor merely to mirror TunerStudio.
 
-Do not turn EpicScope into a live tune editor merely to mirror TunerStudio.
+## Traceability rule
 
-## Traceability
+When current implementation diverges from an old research recommendation:
 
-The VE Analyzer specifications in `../VE_ANALYZER.md` and `../VE_ANALYZER_WORKBENCH.md` should be read together with the research notes in this directory. The specifications record intended EpicScope behavior; these research documents record the external evidence and reasoning that motivated those decisions; `STATUS.md` records current implementation disposition.
+1. preserve the historical observation;
+2. update `STATUS.md`;
+3. update the relevant current product/spec document;
+4. add/refine a durable decision if the change is architectural/product policy.
 
-## Research status
-
-The broad MLV and VE/autotune investigations are considered complete enough for product work after the second VE Analyze workflow pass. Future MLV/EMU PRO/TunerStudio inspection should be triggered by a concrete EpicScope behavior question, regression or compatibility need rather than open-ended reverse engineering.
+This avoids both losing research history and allowing old “planned” text to contradict current product state.
