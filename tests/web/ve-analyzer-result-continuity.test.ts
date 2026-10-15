@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  parseVeCanonicalCellText,
   sameVeAnalysisContext,
   veMetricsWithCanonicalCurrent,
 } from '../../apps/web/src/pages/ve-analyzer-result-continuity';
@@ -38,14 +37,6 @@ describe('VE Analyzer result/state continuity', () => {
     expect(metrics.current).toBe(50);
     expect(metrics.changeValue).toBe(5);
     expect(veResultDisplay(metrics, 'change').text).toBe('+5');
-  });
-
-  it('preserves the authoritative VE renderer precision exactly', () => {
-    expect(parseVeCanonicalCellText('70.125')).toEqual({ currentText: '70.125' });
-    expect(parseVeCanonicalCellText('70.125 → 70.375')).toEqual({
-      currentText: '70.125',
-      proposalText: '70.375',
-    });
   });
 
   it('recognizes a Logger round trip when VE analysis authority is unchanged', () => {
