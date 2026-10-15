@@ -51,10 +51,14 @@ function orientLoadAxisFromBottom(table: HTMLTableElement): void {
   table.dataset.veLoadOrigin = 'lower-left';
 }
 
-function refineInteractiveCell(cell: HTMLTableCellElement): void {
+function compactProposalCell(cell: HTMLTableCellElement): void {
   if (cell.dataset.veCellRefined === 'true') return;
-  // Result text is owned by the VE table/result-view renderer. Global UI
-  // refinement must never compact or otherwise rewrite analysis values.
+  if (cell.title.startsWith('Measured proposal')) {
+    const main = cell.querySelector<HTMLElement>(':scope > span');
+    const text = main?.textContent ?? '';
+    const arrow = text.indexOf('→');
+    if (main && arrow >= 0) main.textContent = text.slice(arrow + 1).trim();
+  }
   if (cell.title) {
     cell.tabIndex = 0;
     cell.setAttribute('role', 'button');
@@ -147,7 +151,7 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
 
       for (const table of analyzerPage.querySelectorAll<HTMLTableElement>('.ve-analyzer-view .ve-workbench-table')) {
         orientLoadAxisFromBottom(table);
-        for (const cell of table.querySelectorAll<HTMLTableCellElement>('tbody td')) refineInteractiveCell(cell);
+        for (const cell of table.querySelectorAll<HTMLTableCellElement>('tbody td')) compactProposalCell(cell);
       }
     } finally {
       applying = false;
