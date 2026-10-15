@@ -189,4 +189,23 @@ describe('VE evidence map', () => {
     expect(result.eligibleSampleCount).toBe(2);
     expect(result.transientRejectedSampleCount).toBe(3);
   });
+
+  it('handles a 320k-sample continuous stable segment without argument-spread overflow', () => {
+    const sampleCount = 320_458;
+    const actual = new Array<number>(sampleCount).fill(14);
+    const rpm = new Array<number>(sampleCount).fill(1000);
+    const load = new Array<number>(sampleCount).fill(50);
+    const result = buildVeEvidenceMap({
+      actualMixture: range(actual, 10),
+      rpm: range(rpm, 10),
+      load: range(load, 10),
+      target,
+      veRpmBins: [500],
+      veLoadBins: [50],
+    }, { minimumStableDurationMs: 0 });
+
+    expect(result.validAlignedSampleCount).toBe(sampleCount);
+    expect(result.eligibleSampleCount).toBe(sampleCount);
+    expect(result.veOutOfRangeSampleCount).toBe(sampleCount);
+  });
 });
