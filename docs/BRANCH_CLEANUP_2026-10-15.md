@@ -1,84 +1,92 @@
-# Branch cleanup and authority consolidation — 2026-10-15
+# Branch cleanup and authority consolidation — 2026-10-15 / 2026-10-16 follow-up
 
-This note records the completed repository cleanup pass performed after restoring the VE Analyzer browser-known-good runtime.
+This note records the repository cleanup passes around the VE Analyzer runtime restoration and the later accepted Analyzer points 1–11 integration.
 
-## Runtime baseline preserved during cleanup
+## First cleanup pass — 2026-10-15
 
-- Branch: `main`
-- Browser-validated VE runtime baseline before documentation cleanup: `86357400be6971b1f8edfe98d70816fa55b3bec5`
-- Merge: PR #449 — **Restore VE Analyzer runtime to browser-known good state**
-- Browser verification: Analyzer entry works again after rollback.
+The repository had accumulated roughly 195 remote branches. The first cleanup reduced that historical branch population aggressively after auditing merged, patch-equivalent and superseded work.
 
-The documentation/branch cleanup itself did not intentionally alter VE runtime behavior.
+At that point PR #449 / the #441-era VE composition was the browser-known-good runtime boundary. That runtime snapshot is now historical: it was later superseded by the accepted PR #462 integration.
 
-## Cleanup result
+## Current accepted runtime authority
 
-The repository had accumulated roughly 195 remote branches.
+- Production/continuation branch: `main`
+- Accepted integration PR: #462 — **Integrate Analyzer ownership and correctness fixes through point 11**
+- PR #462 merge commit: `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`
+- Exact pre-merge runtime accepted by owner browser testing: `b435702412642f039a8a7f49d33037c309bef9d8`
+- Observability architecture/research ported onto the accepted `main` baseline without runtime changes: `aa92d48f2671a1cd2f75f3b4fbcfb66e4dc35f19`
 
-Cleanup proceeded conservatively:
+The accepted baseline includes Analyzer points 1–11, VE Result View source-authority/heat-map repair, retained VE session behavior and cooperative analysis responsiveness improvements.
 
-1. delete branches fully contained by `main`;
-2. delete patch-equivalent branches already represented in `main`;
-3. audit every remaining branch family against current `main` before deleting it;
-4. preserve useful research/behavior/decisions in `main`, documentation or Git/PR history;
-5. remove the remaining superseded historical refs.
+## Second cleanup pass — 2026-10-16
 
-Final remote state verified from the local clone:
+After #462 merged, remaining open PRs and remote refs were audited again.
 
-```text
-origin/HEAD -> origin/main
-origin/main
-```
+### PR disposition
 
-No historical remote development branch remains active.
+The following PRs are superseded by #462 and should remain closed as historical evidence only:
 
-## What was audited before final deletion
+- #452 — `fix/ve-owner-state-retention`
+- #457 — `test/codex-point2-browser`
+- #458 — `test/codex-point3-browser`
+- #459 — `fix/ve-result-view-untouched-values`
 
-The final review covered:
+PR #460 — `docs/observability-architecture-plan` — contained unique and valuable diagnostics/observability architecture rather than disposable stale code. Its authority/research documents were therefore ported onto the current accepted `main` tree instead of merging the old divergent branch wholesale. The stale PR can then be closed without losing the work.
 
-- VE Analyzer implementation/research/state-ownership branches;
-- Fuel Pressure / Injector analysis branches;
-- Histogram/Table Generator/Distribution/Scatter/Math Channel branches;
-- semantic starter/workspace branches;
-- Inspector filter/performance work;
-- `ts_shim`/source-transition work;
-- documentation/research branches.
+### Remote branch classification
 
-The audit found no remaining branch that needed to stay as an authority. Apparent `git cherry` uniqueness was largely caused by later refactoring, squash/rebase differences, temporary transformation/workflow commits or superseded implementations whose useful behavior already existed in evolved form on `main`.
+Product authority:
 
-## Current authority rules
+- `main`
 
-- `main` is the production authority.
+Infrastructure/deployment refs that may legitimately remain:
+
+- `browser-previews` — generated/deployment preview state;
+- `infra/pr-browser-previews` — retain only while its infrastructure work is not otherwise proven redundant; it is not product authority.
+
+Superseded/historical development refs identified in this cleanup pass:
+
+- `diagnostic/ve-session-guard-only`
+- `docs/observability-architecture-plan` after its documentation was ported to `main`
+- `fix/large-segment-spread-overflow`
+- `fix/ve-owner-state-retention`
+- `fix/ve-result-retention`
+- `fix/ve-result-view-untouched-values`
+- `fix/ve-session-authority`
+- `integrate/points-2-11-20261015`
+- `integrate/points-2-11-clean`
+- `perf/general-ui-tracing` (despite the name, its current lineage is old VE ownership/result work)
+- `temp/epicscope-fixes-points-1-2-20261015`
+- `test/codex-point2-browser`
+- `test/codex-point3-browser`
+
+`fix/large-segment-spread-overflow` contains point-1 large-log safety work that is already represented in the accepted `main` history/tests, so the branch itself is no longer needed as an authority.
+
+## Branch deletion tooling limitation
+
+The GitHub connector available during the 2026-10-16 cleanup exposes PR close/update and branch-ref inspection/update, but it does **not** expose remote branch deletion.
+
+Therefore this cleanup can close obsolete PRs and classify obsolete refs, but it must not falsely claim the remote refs were physically deleted. The superseded refs above can be deleted safely with ordinary Git/GitHub branch controls after verifying no new commits were added after this audit.
+
+Typical manual cleanup from a normal Git clone would be equivalent to deleting the superseded remote branch names after a final `git fetch --prune` / head check. Do not delete `main` or the active preview deployment ref.
+
+## Authority rules after cleanup
+
+- `main` is the only product/continuation authority.
 - `HANDOFF.md` is the present-tense continuation authority.
-- `DOCUMENTATION_MAP.md` defines current-vs-historical document authority.
-- current subsystem contracts (`VE_ANALYZER.md`, `VE_ANALYZER_WORKBENCH.md`, `HISTOGRAM.md`, `PREPOPULATED_WORKSPACES.md`, `TS_SHIM_STATUS.md`, etc.) define current behavior.
-- `research/` preserves historical external-tool evidence; `research/STATUS.md` is the living disposition.
-- Git history and merged PRs preserve old implementation provenance.
+- `DOCUMENTATION_MAP.md` defines current-vs-historical documentation authority.
+- subsystem contracts define current behavior.
+- D-058 / `OBSERVABILITY.md` define the approved upcoming diagnostics architecture.
+- historical branches are not knowledge stores; current docs, Git history and PR history preserve provenance.
 
-Historical branches are not required as knowledge stores.
+## Next project sequence
 
-## VE Analyzer cleanup boundary
+The accepted points 1–11 integration is complete and should not be reopened as a cleanup project.
 
-The current runtime after PR #449 remains the browser-known-good baseline. Do not reintroduce the post-#441 continuity/render wrappers as a batch.
+Next work is:
 
-Known remaining VE issues:
-
-- Result View fallback/precision behavior;
-- loss of VE Analyzer result state after Logger round-trip;
-- destructive lifecycle rebuilds;
-- duplicated cell-evidence analysis;
-- working-delay ownership partly reconstructed from rendered DOM.
-
-Future VE work should address those one structural change at a time with browser validation after each change.
-
-## Documentation correction completed
-
-The documentation consolidation completed with these current facts made explicit:
-
-- PR #449 / the #441-era composition is the browser-validated VE runtime boundary;
-- VE Analyzer is implemented and real-log/browser validated, not planned-only;
-- the accepted lambda-delay working model is **RPM × load table only**;
-- repository remote branch authority is `main` only;
-- current-state docs and historical research/plan docs have distinct authority roles;
-- D-056/D-057 record table-only delay authority and browser-validation requirements;
-- `DOCUMENTATION_MAP.md` defines how future readers resolve historical-vs-current wording.
+1. focused UI polish from current `main`;
+2. browser sanity/regression verification after interaction-affecting polish;
+3. staged implementation of D-058 unified observability/diagnostics;
+4. later targeted Analyzer/MLG v3 work only where evidence or demand justifies it;
+5. Web functional maturity review before Linux production implementation becomes primary.
