@@ -18,13 +18,13 @@ function context(
 
 describe('VE Analyzer session retention boundary', () => {
   it('recognizes a same-source Logger round trip with unchanged scope state', () => {
-    const channels: LoggerAnalysisContext['channels'] = [];
-    const previous = context(channels, {
+    const channel = { id: 'rpm' } as LoggerAnalysisContext['channels'][number];
+    const previous = context([channel], {
       aTimeMs: 100,
       bTimeMs: 200,
       savedRanges: [{ label: 'Pull', startMs: 100, endMs: 200 }],
     });
-    const next = context(channels, {
+    const next = context([channel], {
       aTimeMs: 100,
       bTimeMs: 200,
       savedRanges: [{ label: 'Pull', startMs: 100, endMs: 200 }],
@@ -33,15 +33,26 @@ describe('VE Analyzer session retention boundary', () => {
     expect(sameVeAnalysisContext(previous, next)).toBe(true);
   });
 
-  it('invalidates retention when the Logger source identity changes', () => {
+  it('accepts a fresh channels array when it contains the same source objects', () => {
+    const channel = { id: 'rpm' } as LoggerAnalysisContext['channels'][number];
+    expect(sameVeAnalysisContext(context([channel]), context([channel]))).toBe(true);
+  });
+
+  it('invalidates retention when the Logger source channel objects change', () => {
+    const previousChannel = { id: 'rpm' } as LoggerAnalysisContext['channels'][number];
+    const nextChannel = { id: 'rpm' } as LoggerAnalysisContext['channels'][number];
+    expect(sameVeAnalysisContext(context([previousChannel]), context([nextChannel]))).toBe(false);
+  });
+
+  it('does not treat two unrelated empty catalogs as the same source', () => {
     expect(sameVeAnalysisContext(context([]), context([]))).toBe(false);
   });
 
   it('invalidates retention when A/B analysis scope changes', () => {
-    const channels: LoggerAnalysisContext['channels'] = [];
+    const channel = { id: 'rpm' } as LoggerAnalysisContext['channels'][number];
     expect(sameVeAnalysisContext(
-      context(channels, { aTimeMs: 100, bTimeMs: 200 }),
-      context(channels, { aTimeMs: 110, bTimeMs: 210 }),
+      context([channel], { aTimeMs: 100, bTimeMs: 200 }),
+      context([channel], { aTimeMs: 110, bTimeMs: 210 }),
     )).toBe(false);
   });
 });
