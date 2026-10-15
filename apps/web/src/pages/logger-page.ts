@@ -174,6 +174,7 @@ export interface LoggerAnalysisContext {
   }) => void;
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
+  readonly sourceSampleCount?: number;
   readonly savedRanges: readonly import('../state/workspace-state').SavedTimelineRangeState[];
 }
 
@@ -2419,6 +2420,7 @@ export function createLoggerPage(): LoggerPageController {
       traces,
       channels,
       loadTraces,
+      sourceSampleCount: channelDataSource?.sampleCount,
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
       savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),

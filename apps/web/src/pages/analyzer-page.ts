@@ -72,6 +72,7 @@ function sameVeAnalysisContext(
     && sameChannelCatalog(left.channels, right.channels)
     && left.aTimeMs === right.aTimeMs
     && left.bTimeMs === right.bTimeMs
+    && left.sourceSampleCount === right.sourceSampleCount
     && sameSavedRanges(left.savedRanges, right.savedRanges);
 }
 
