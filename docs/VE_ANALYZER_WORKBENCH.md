@@ -4,7 +4,9 @@
 
 This document is the normative UI/workflow companion to `VE_ANALYZER.md`.
 
-VE Analyzer is implemented. The current browser-known-good runtime is the #441-era composition restored by PR #449. Future changes to workbench lifecycle/rendering/input behavior require browser validation; CI alone is not sufficient acceptance evidence.
+VE Analyzer is implemented and browser-accepted on the PR #462 runtime lineage now merged into `main`. The exact pre-merge runtime accepted by the owner was `b435702412642f039a8a7f49d33037c309bef9d8`.
+
+Future changes to workbench lifecycle/rendering/input behavior require browser validation; CI alone is not sufficient acceptance evidence.
 
 ## Primary layout
 
@@ -30,7 +32,7 @@ On narrower screens the layout may reflow, but tables remain primary.
 
 ## Header/control ownership
 
-The current accepted control grouping is:
+The accepted control grouping is:
 
 ```text
 [Table view] [VE table selector] [Target table selector / scale]
@@ -40,15 +42,15 @@ The current accepted control grouping is:
 
 Table title/description belongs on the left; compact controls/tabs belong on the right where space allows.
 
-There must be one authoritative owner for table layout/tabs/header controls. Do not add later wrappers that re-parent the same nodes.
+There must be one authoritative owner for table layout/tabs/header controls. Do not add later wrappers that re-parent the same nodes or create a second lifecycle owner.
 
 ## VE / proposal table
 
 Before analysis, the VE surface represents the original selected tune table.
 
-After analysis, the same spatial surface can show proposal/result overlays while the original value remains conceptually distinct.
+After analysis, the same spatial surface can show proposal/result overlays while the original value remains conceptually and technically distinct.
 
-Current/required capabilities include:
+Required capabilities include:
 
 - original VE display;
 - proposed VE/result overlays;
@@ -58,138 +60,103 @@ Current/required capabilities include:
 - confidence/spread;
 - delay-used view;
 - compact evidence/proposal state markers;
-- click/tap evidence detail;
-- strongest source-visit navigation to Logger;
-- future selective proposal review/revert without mutating original tune state.
+- per-cell evidence access and strongest-visit Logger navigation.
 
-Running analysis never mutates the loaded tune.
+The rendered cell text is presentation only. It must not become authoritative state for later Result Views.
+
+## Result View behavior
+
+Accepted Result View semantics after PR #462:
+
+- **Proposed VE** — proposal where emitted, original VE otherwise; normal VE heat-map.
+- **Alternate Result Views** — cells with a real selected metric use that metric’s heat scale.
+- **Fallback/untouched cells in alternate views** — preserve original VE text/value but use neutral heat.
+- **Lambda Delay** — a valid interpolated working delay is a real metric even if the VE evidence state is no-evidence.
+- repeated view cycling preserves the same authoritative source VE and primary-analysis identity;
+- presentation-only switching must not trigger new trace loading.
+
+App-level UI refinement may reorient load rows for presentation. Result View/model mapping must therefore use authoritative coordinates/stable metadata rather than rendered row position as model index.
 
 ## Target mixture table
 
-The target AFR/lambda table is a first-class analysis input and remains visible/reachable beside the VE table.
+Target AFR/lambda remains a separate tune table surface. Scale semantics must remain explicit. Loading or changing presentation must not silently reinterpret actual-mixture scale or mutate VE analysis state.
 
-Table selection normally resolves matching RPM/load axes automatically. Manual axis mapping belongs under Advanced as an escape hatch for ambiguous/non-standard tunes rather than occupying normal workflow space.
+## Lambda-delay workflow
 
-AFR/Lambda scale semantics must be explicit. Literal table/source names remain preserved.
+The accepted working model is **RPM × load table only**.
 
-## Setup and quick controls
+Normal lifecycle:
 
-Keep normal-use controls compact and near the workbench:
+```text
+Load/derive working delay table
+      or
+Grab lambda delays from log
+        ↓
+review recommendation/provenance
+        ↓
+Use recommendation (explicit)
+        ↓
+edit individual cells if needed
+        ↓
+Run Analysis
+```
 
-- VE table;
-- target table / mixture scale;
-- Scope where applicable;
-- optional Min/Max RPM/load;
-- optional CLT/TPS qualification;
-- actual mixture source;
-- fuel-correction compensation source/mode;
-- Cell Change / prior authority;
-- minimum evidence authority;
-- maximum absolute/percentage VE change safeguards;
-- Lambda Delay access.
+Expensive delay discovery is explicit. It must not run merely because the app/log/analyzer opened.
 
-Optional operating bounds are not required proposal-safety inputs. Blank optional bounds mean full range/no bound and must not block Run Analysis.
+Direct cell editing is the primary delay-edit workflow. Recommendation and working delay remain distinct states.
 
-## Advanced controls
+## Run readiness
 
-Advanced configuration may include:
+**Run Analysis** remains explicit and should be accompanied by actionable readiness/blocker information.
 
-- manual VE/target axis mapping;
-- detailed qualification/state exclusions;
-- recovery/stability settings;
-- prior/evidence numeric detail;
-- non-standard source overrides.
+Hard blockers should be limited to genuinely required semantics/inputs. Optional qualification bounds left blank are not blockers. Missing optional safeguards should be visible as unavailable context rather than fabricated.
 
-Progressive disclosure is preferred over placing every semantic input in the main table area.
+## Qualification and mapping
 
-## Run Analysis and readiness
+Normal workflow should resolve VE/target axes and common channel roles automatically where unambiguous. Manual overrides remain an Advanced escape hatch rather than consuming primary workflow space.
 
-**Run Analysis** is explicit and user-triggered.
+Qualification controls must state what they actually do. Custom qualification must not silently imply that normal safety/state exclusions remain active if they do not.
 
-No expensive VE analysis runs merely because the app/log/MSQ/analyzer opened or because a control changed.
+## Session/navigation behavior
 
-Readiness must explain specific blockers. The current `Run blocked · N issues` information UI should state why each blocker matters and offer a Fix/focus action when a concrete control can be targeted.
+The completed VE session remains authoritative when Logger/Analyzer navigation does not semantically change source/tune/scope.
 
-Do not replace specific readiness rows with vague aggregate “Proposal settings” status.
+Accepted behavior includes:
 
-## Lambda Delay
+- switching to another Analyzer and back retains completed VE result;
+- leaving Analyzer and returning retains the session when source/tune/scope are unchanged;
+- cell evidence consumes retained primary analysis;
+- genuine source/tune/scope changes invalidate conservatively;
+- stale asynchronous completions/errors cannot publish into a newer session.
 
-### Current accepted model
-
-Lambda Delay uses **RPM × load table only**.
-
-Scalar/single-delay and RPM-curve modes are historical planning options and are not current product behavior.
-
-### Discovery/workflow
-
-- **Grab lambda delays from log** explicitly performs discovery.
-- discovery recommendation and working delay table remain separate states.
-- **Use recommendation** promotes the current recommendation into the working table.
-- loading/saving a working delay table is explicit.
-- grabbing a new recommendation must not silently destroy an existing loaded/saved working table.
-
-Delay discovery must never run automatically.
-
-### Delay table evidence states
-
-Cells distinguish Measured, Interpolated, Insufficient and user-edited/manual working values where applicable. Interpolated evidence must not look identical to directly measured evidence.
-
-### Direct delay-cell editing
-
-Current browser-validated interaction:
-
-- click/tap selects a cell;
-- click-drag selects a rectangular range;
-- typing digits starts replacement immediately;
-- preview is visible in the selected cell/range;
-- Enter commits;
-- Escape cancels;
-- Backspace edits;
-- Delete clears to explicit no working delay (`—`);
-- repeated edits to the same cell must work without clicking elsewhere;
-- focus/selection should return after commit/rerender;
-- user provenance is a compact marker rather than a persistent border that conflicts with selection.
-
-Do not restore the old external value/apply controls as the primary interaction.
-
-## Mixture and fuel-correction semantics
-
-Actual mixture source is explicit. Calibrated wideband Lambda/AFR is the normal priority.
-
-If a known correction source is used to compensate evidence, provenance must state that. Unknown correction semantics remain context-only unless the user explicitly declares a supported interpretation.
-
-Do not require closed-loop correction to be disabled merely for reference parity when a correction layer can be modeled safely.
-
-## Result lifecycle
-
-Conceptual states remain separate:
-
-1. **Original** — tune table loaded as analysis input.
-2. **Analyzing** — explicit Run operation.
-3. **Proposal/evidence** — Analyzer result.
-4. **Reviewed proposal** — future/partial review state.
-5. **Exported/applied** — only through a separate explicit future action.
-
-Leaving/re-entering Analyzer should eventually preserve appropriate analysis-session state, but current Logger → Analyzer round-trip result persistence is a known defect. Fix it without conflating original tune, proposal and reviewed state.
-
-## Result View
-
-Current Result View includes proposal/change/percent-change/mixture-error/evidence/confidence/spread/delay-related perspectives.
-
-Known issue: fallback/precision behavior remains imperfect. Fix Result View from authoritative structured state rather than repeatedly parsing/reusing rendered DOM as source data.
+UI polish must preserve these ownership semantics.
 
 ## Cell evidence
 
-Cell evidence is field-tested and currently useful. It can show supporting evidence and navigate to the strongest contiguous source visit in Logger.
+Cell evidence should explain why a node has its current state, including retained source evidence, proposal/candidate context, confidence/spread and strongest contiguous source visit where available.
 
-Current architecture debt: the cell-evidence layer recomputes VE analysis instead of consuming retained authoritative primary results. Future cleanup should remove that duplication after stable state ownership exists.
+Opening evidence must not rerun the full VE analysis merely to reconstruct what the completed primary result already owns.
 
-## Browser-known-good boundary
+## Visual polish direction
 
-The #441-era cell-evidence composition is the last explicit browser-confirmed good baseline. PR #449 restored runtime files to that composition after post-#441 lifecycle/continuity wrappers froze Analyzer entry.
+The immediate project task is a focused UI polish pass. For VE workbench specifically, useful polish includes:
 
-Do not batch-reintroduce those wrappers. Any state-ownership redesign must be staged and browser-tested after each structural change.
+- consistent spacing between table header controls, tabs and descriptions;
+- stronger distinction between setup controls, Run action, readiness and result-review controls;
+- consistent numeric alignment and table density;
+- clear selected Result View and active table/tab states;
+- overflow behavior that preserves table readability;
+- keyboard/focus/hover/disabled states;
+- error/blocker copy that is compact but actionable.
 
-## Product invariant
+Do not turn polish into another lifecycle/state wrapper refactor.
 
-> VE Analyzer should feel first like a calibration-table workbench and second like an evidence inspector. Evidence explains and constrains the proposal without hiding the VE table and target table behind configuration forms.
+## Remaining ownership debt
+
+The working delay surface is still partly reconstructed from rendered DOM by `readDelaySurface()`. This is later cleanup, not a blocker for current UI polish or observability work.
+
+## Safety boundary
+
+Original tune/VE data, Analyzer evidence/proposal and user-reviewed application result remain distinct states.
+
+Nothing in the workbench may automatically write or Burn to the ECU.
