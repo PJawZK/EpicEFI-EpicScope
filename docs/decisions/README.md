@@ -17,9 +17,9 @@ File: `2026-10-15-unified-observability-authority.md`
 File: `2026-10-15-ve-runtime-and-delay-authority.md`
 
 - **D-056** — VE lambda-delay working model is **RPM × load table only**. Scalar/single and RPM-curve modes are historical/rejected options unless explicitly reopened by a later decision.
-- **D-057** — VE lifecycle/render/state/input changes require browser acceptance evidence in addition to automated CI and should proceed one structural change at a time from the PR #449 browser-known-good boundary.
+- **D-057** — VE lifecycle/render/state/input changes require browser acceptance evidence in addition to automated CI and should proceed one structural change at a time.
 
-These are current accepted decisions.
+D-057 was recorded when PR #449 was the browser-known-good boundary. That specific runtime boundary is historical; the browser-validation principle remains current. The accepted runtime lineage is now PR #462 merged into `main`, with exact pre-merge browser acceptance at `b435702412642f039a8a7f49d33037c309bef9d8`.
 
 ## Historical/refining decisions
 
