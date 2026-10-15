@@ -2,7 +2,7 @@
 
 EpicScope Analyzer answers specific tuning questions from log evidence. Logger remains the raw-trace/navigation authority; Histogram/Table Generator/Distribution/Scatter remain the generic statistical/relationship tools.
 
-For present-tense continuation state, `HANDOFF.md` remains authoritative. Research-derived requirements and their current implementation status are mapped in `research/STATUS.md`.
+For present-tense continuation state, `HANDOFF.md` remains authoritative. Research-derived requirements and current disposition are mapped in `research/STATUS.md`.
 
 ## Current surfaces
 
@@ -19,7 +19,7 @@ For present-tense continuation state, `HANDOFF.md` remains authoritative. Resear
 
 The Analyzer selector is a compact dropdown in the global analysis header.
 
-## Current development position — 2026-10-15
+## Current development position — 2026-10-16
 
 Analyzer maturity is deliberately uneven rather than falsely uniform.
 
@@ -29,10 +29,12 @@ Analyzer maturity is deliberately uneven rather than falsely uniform.
 - **Idle** — useful foundation; later refinement.
 - **AE / MAP Predict** — useful foundation; later refinement.
 - **Fuel Pressure / Injector** — substantially improved; remaining work is targeted maturity.
-- **Trigger / Sync** — still thinner; later broad-coverage maturity target.
-- **VE Analyzer** — implemented, real-log/browser validated, and the current highest-value Analyzer maturity target.
+- **Trigger / Sync** — thinner; later broad-coverage maturity target.
+- **VE Analyzer** — implemented, real-log/browser validated and stable at the current maturity checkpoint.
 
-VE work is currently constrained by the browser-known-good runtime restored in PR #449. Browser behavior, not CI alone, is the acceptance authority for VE runtime changes.
+PR #462 merged the ownership/correctness/performance cleanup through points 1–11 into `main`. The exact pre-merge runtime accepted by owner browser testing was `b435702412642f039a8a7f49d33037c309bef9d8`; merge commit `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b` carries that accepted lineage.
+
+Browser behavior remains acceptance authority for VE lifecycle/render/state changes; CI is necessary but not sufficient.
 
 ## Shared workflow foundation
 
@@ -50,7 +52,7 @@ Shared Analyzer infrastructure includes Logger ↔ Analyzer evidence navigation,
 
 ## Analyzer invariant
 
-> An analyzer should not merely report channel averages. It should find the relevant operating events/conditions, show the evidence that produced the result, quantify repeatability/error, explain what can and cannot be concluded, and let the user move directly between the analysis and the original log without overstating causation.
+> An analyzer should not merely report channel averages. It should find the relevant operating events/conditions, show the evidence that produced the result, quantify repeatability/error, explain what can and cannot be concluded, and let the user move directly between analysis and original log without overstating causation.
 
 ## Fueling analyzer
 
@@ -96,45 +98,23 @@ Current evidence can include TPS, measured MAP, predicted/effective MAP and mixt
 
 Current architecture separates Conventional / port-injection and GDI / high-pressure behavior.
 
-Established evidence includes:
+Established evidence includes calibrated low-side/high-side pressure-role separation, CEL/raw-electrical exclusions from engineering pressure evidence, source-continuity-correct threshold events, exact event-extreme sample/time, injector-duty headroom/saturation evidence and core RPM/load/pressure/PW/duty/deadtime context.
 
-- calibrated low-side/high-side pressure-role separation;
-- CEL/raw electrical pressure exclusions from engineering pressure evidence;
-- source-continuity-correct threshold events;
-- exact event-extreme sample/time;
-- injector duty headroom and ≥100% saturation evidence;
-- core event context for RPM/load/pressure/differential/PW/duty/deadtime;
-- decision-facing summaries and unit-aware presentation.
-
-Remaining useful work:
-
-1. expose full event-extreme context in the visible evidence view;
-2. quantify pressure sag/recovery;
-3. characterize repeated-event behavior;
-4. add pump/prime/recovery evidence where logged;
-5. add battery-voltage/deadtime and calibration-comparison evidence;
-6. strengthen direct Logger navigation/ranked review.
+Remaining useful work is targeted: visible full extreme context, sag/recovery, repeated-event behavior, pump/prime/recovery evidence where logged, battery-voltage/deadtime calibration evidence and stronger Logger navigation/ranked review.
 
 The analyzer remains observational and must not jump from a pressure event to an unsupported causal verdict.
 
 ## Trigger / Sync analyzer
 
-Trigger / Sync remains thinner. Useful later work includes:
+Trigger / Sync remains thinner. Useful later work includes sync/error/loss context, glitch-versus-sustained classification, RPM/voltage/load context, pre/post evidence, frequency by RPM band and direct Logger navigation/ranked review.
 
-- sync/error/loss counter/reason context;
-- one-sample glitch versus sustained-loss classification;
-- RPM/voltage/load event context;
-- pre/post evidence;
-- frequency by RPM band;
-- direct Logger navigation and ranked review areas.
+A waveform-style Trigger Logger remains a separate future capability from the statistical Trigger / Sync analyzer.
 
-A waveform-style Trigger Logger remains a separate future product capability from the statistical Trigger / Sync analyzer.
-
-## VE Analyzer — implemented active maturity track
+## VE Analyzer — stable current checkpoint
 
 `VE_ANALYZER.md` is the current algorithm/evidence/product contract. `VE_ANALYZER_WORKBENCH.md` is the current UI/workflow contract.
 
-Implemented behavior includes:
+Implemented and accepted behavior includes:
 
 - VE table, target mixture table and matching tune axes from MSQ/INI metadata;
 - strict actual-mixture semantics and explicit AFR/Lambda scale handling;
@@ -150,33 +130,35 @@ Implemented behavior includes:
 - robust weighted-median VE evidence, P10/P90 spread, cumulative evidence and confidence;
 - starting-table prior authority and independent absolute/percentage proposal safeguards;
 - out-of-authority proposals withheld rather than silently clamped;
-- Result View modes;
-- cell evidence and strongest contiguous Logger-visit navigation.
+- source-authoritative Result View modes;
+- cell evidence and strongest contiguous Logger-visit navigation;
+- completed-session retention across semantically unchanged navigation;
+- retained-primary evidence reuse rather than duplicate full-log analysis;
+- active-domain routing/stale-completion rejection;
+- cooperative bounded analysis with progress and Cancel;
+- recoverable persistence/load failures and transactional MSQ replacement.
 
 The original VE table is analysis input. Running analysis must never mutate tune/ECU state.
 
-### Browser-known-good boundary
+### Accepted Result View/session behavior
 
-The last explicitly browser-confirmed good VE composition before the regression investigation is the #441 cell-evidence state (`fd21e4d4a390a4f6607d0290ef273749fc7fd915`). PR #449 restored runtime files to that known-good composition while retaining later audit documentation. The project owner confirmed Analyzer entry works again after the rollback.
+The earlier #449-era known defects are closed. Owner browser acceptance confirms:
 
-Do not reintroduce the post-#441 continuity/render wrappers as a batch.
+- switching Result Views repeatedly does not consume mutable rendered text or lose original VE values;
+- Proposed VE restores normal VE heat;
+- alternate Result Views scale real metrics while untouched/fallback cells use neutral heat;
+- Lambda Delay retains real interpolated delay values;
+- weak/evidence-only/no-evidence cells remain stable;
+- Logger/other-Analyzer round trips retain the completed VE session when semantics are unchanged;
+- presentation-only changes do not trigger extra trace loading.
 
-### Known remaining VE issues
+Do not restore the old pre-integration wrapper/controller stacks from historical branches.
 
-- Result View fallback/precision behavior is imperfect.
-- VE result/session state is lost after Logger → Analyzer round-trip.
-- v2 `setContext` / `setTuneModel` still rebuild destructively.
-- cell-evidence review duplicates VE analysis instead of consuming retained primary result state.
-- working delay state is still partly reconstructed/controlled through rendered DOM.
-- Custom qualification semantics need redesign before advanced formula support so Custom does not silently disable normal safety/state exclusions.
+### Remaining VE ownership debt
 
-### Preferred next sequence
+Working delay state is still partly reconstructed from rendered DOM (`readDelaySurface()`). This is later cleanup rather than a current blocker. Custom qualification semantics can also be revisited later before advanced formula support.
 
-1. keep the browser-known-good runtime stable;
-2. fix Result View state/precision behavior with one isolated change and browser verification;
-3. fix Logger → Analyzer result persistence with one isolated change and browser verification;
-4. then migrate authoritative result/proposal/working-delay/session state out of rendered DOM and remove duplicate cell-evidence analysis;
-5. only after ownership is stable, continue review/application-strength/export/diff refinement.
+The immediate project task is UI polish, not another VE lifecycle refactor.
 
 Never automatically write or Burn to the ECU. Original VE, Analyzer evidence/proposal and user-reviewed/application result remain distinct states.
 
@@ -186,6 +168,6 @@ Range Compare remains the general before/after experiment tool. Current capabili
 
 ## Cleanup/consolidation policy
 
-The repository branch cleanup is complete, but broad runtime refactoring remains evidence-driven. Do not destabilize mature Logger/Histogram/Analyzer behavior merely for internal tidiness.
+The points 1–11 cleanup is complete and merged. Do not destabilize mature Logger/Histogram/Analyzer behavior merely for internal tidiness.
 
-Current cleanup priority inside VE is state ownership and removal of DOM-derived duplicated authority, performed one browser-verified structural change at a time. Broader Logger/Histogram optimization remains paused unless a measured regression appears.
+The next broad architecture track is D-058 observability after focused UI polish. Any further Analyzer refactor should be driven by a concrete correctness, performance or maintainability need and browser-verified when it touches lifecycle/render/state semantics.
