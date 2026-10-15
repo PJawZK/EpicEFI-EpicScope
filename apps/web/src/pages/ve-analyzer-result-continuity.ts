@@ -52,27 +52,11 @@ export function sameVeAnalysisContext(left: LoggerAnalysisContext | undefined, r
   return left !== undefined && rangeSignature(left) === rangeSignature(right);
 }
 
-export interface VeCanonicalCellText {
-  readonly currentText: string;
-  readonly proposalText?: string;
-}
-
-/** Preserve exactly what the authoritative VE renderer showed, including its precision. */
-export function parseVeCanonicalCellText(renderedText: string): VeCanonicalCellText | undefined {
-  const parts = renderedText.split('→').map((part) => part.trim());
-  const currentText = parts[0];
-  if (!currentText || finite(currentText) === undefined) return undefined;
-  const proposalText = parts[1];
-  return proposalText && finite(proposalText) !== undefined
-    ? { currentText, proposalText }
-    : { currentText };
-}
-
 function selectedCoordinates(
   root: HTMLElement,
   cell: HTMLTableCellElement,
   model: TuneModel | undefined,
-): { row: number; col: number; current: number } | undefined {
+): { row: number; col: number; current: number; digits: number } | undefined {
   const table = cell.closest<HTMLTableElement>('table');
   const rowElement = cell.parentElement as HTMLTableRowElement | null;
   const header = table?.tHead?.rows[0];
@@ -95,7 +79,11 @@ function selectedCoordinates(
   if (row < 0 || col < 0) return undefined;
   const current = entry.numericValues[row * entry.cols + col];
   if (current === undefined || !Number.isFinite(current)) return undefined;
-  return { row, col, current };
+  return { row, col, current, digits: entry.digits ?? 1 };
+}
+
+function clean(value: number, digits: number): string {
+  return value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
 
 export function veMetricsWithCanonicalCurrent(
@@ -128,17 +116,6 @@ function baseLevel(value: number, scale: { min: number; max: number } | undefine
   return Math.max(0, Math.min(1, (value - scale.min) / (scale.max - scale.min)));
 }
 
-function cellKey(root: HTMLElement, cell: HTMLTableCellElement): string | undefined {
-  const table = cell.closest<HTMLTableElement>('table');
-  const row = cell.parentElement as HTMLTableRowElement | null;
-  const header = table?.tHead?.rows[0];
-  if (!table || !row || !header || cell.cellIndex <= 0) return undefined;
-  const rpm = header.cells[cell.cellIndex]?.textContent?.trim();
-  const load = row.cells[0]?.textContent?.trim();
-  const veName = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]')?.value ?? '';
-  return rpm && load ? `${veName}\u0000${load}\u0000${rpm}` : undefined;
-}
-
 /**
  * Keeps result-view rendering non-destructive. v7 remains the control/layout
  * owner; this layer only re-resolves displayed values from immutable tune data
@@ -148,37 +125,9 @@ export function installVeAnalyzerResultContinuity(inner: VeAnalyzerViewControlle
   const root = inner.element;
   const veHost = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]');
   const resultSelect = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer result view"]');
-  const canonicalText = new Map<string, VeCanonicalCellText>();
   let tuneModel: TuneModel | undefined;
-  let tuneSourceName: string | undefined;
   let previousContext: LoggerAnalysisContext | undefined;
-  let sameContextForReentry = false;
-  let suppressNextRefresh = false;
   let renderQueued = false;
-
-  const captureCanonicalText = (clear = false): void => {
-    const table = veHost?.querySelector<HTMLTableElement>('.ve-workbench-table');
-    if (!table) return;
-    if (clear) canonicalText.clear();
-    for (const row of [...(table.tBodies[0]?.rows ?? [])]) {
-      for (let index = 1; index < row.cells.length; index += 1) {
-        const cell = row.cells[index] as HTMLTableCellElement;
-        const main = cell.querySelector<HTMLElement>(':scope > span');
-        const key = cellKey(root, cell);
-        if (!main || !key) continue;
-        const parsed = parseVeCanonicalCellText(main.textContent ?? '');
-        if (!parsed) continue;
-        const previous = canonicalText.get(key);
-        canonicalText.set(key, {
-          currentText: parsed.currentText,
-          ...(parsed.proposalText ? { proposalText: parsed.proposalText } : previous?.proposalText ? { proposalText: previous.proposalText } : {}),
-        });
-        if (!cell.title.startsWith('Measured proposal') && !parsed.proposalText) {
-          canonicalText.set(key, { currentText: parsed.currentText });
-        }
-      }
-    }
-  };
 
   const applyStablePresentation = (): void => {
     renderQueued = false;
@@ -194,31 +143,17 @@ export function installVeAnalyzerResultContinuity(inner: VeAnalyzerViewControlle
         const main = cell.querySelector<HTMLElement>(':scope > span');
         if (!main) continue;
         const coordinates = selectedCoordinates(root, cell, tuneModel);
-        const key = cellKey(root, cell);
-        if (!coordinates || !key) continue;
+        if (!coordinates) continue;
 
         const parsed = parseVeRenderedCellMetrics(cell.title, '');
         const metrics = veMetricsWithCanonicalCurrent(parsed, coordinates.current);
         const v7DelayValue = view === 'delay' ? finite(cell.dataset.veResultValue) : undefined;
         const display = veResultDisplay(metrics, view, v7DelayValue);
-        const canonical = canonicalText.get(key);
-
-        if (view === 'proposal') {
-          const exactText = metrics.state === 'measured'
-            ? canonical?.proposalText
-            : canonical?.currentText;
-          main.textContent = exactText ?? display.text;
-          cell.dataset.veResultValue = display.numericValue === undefined ? String(coordinates.current) : String(display.numericValue);
-          delete cell.dataset.veResultFallback;
-          cell.classList.remove('ve-result-missing');
-          cell.style.setProperty('--ve-cell-level', String(baseLevel(coordinates.current, baseScale)));
-          continue;
-        }
 
         if (display.numericValue === undefined) {
           // Alternate views are overlays. A cell without that metric still
-          // shows the exact immutable source VE text instead of a rounded none/fallback.
-          main.textContent = canonical?.currentText ?? String(coordinates.current);
+          // shows the immutable source VE instead of becoming a misleading none.
+          main.textContent = clean(coordinates.current, coordinates.digits);
           cell.dataset.veResultValue = String(coordinates.current);
           cell.dataset.veResultFallback = 'base-ve';
           cell.classList.remove('ve-result-missing');
@@ -230,7 +165,9 @@ export function installVeAnalyzerResultContinuity(inner: VeAnalyzerViewControlle
         cell.dataset.veResultValue = String(display.numericValue);
         delete cell.dataset.veResultFallback;
         cell.classList.remove('ve-result-missing');
-        if (display.scaleMode !== 'base') {
+        if (view === 'proposal') {
+          cell.style.setProperty('--ve-cell-level', String(baseLevel(coordinates.current, baseScale)));
+        } else if (display.scaleMode !== 'base') {
           rendered.push({ cell, value: display.numericValue, mode: display.scaleMode });
         }
       }
@@ -260,57 +197,28 @@ export function installVeAnalyzerResultContinuity(inner: VeAnalyzerViewControlle
 
   resultSelect?.addEventListener('change', scheduleStablePresentation);
   if (veHost) {
-    new MutationObserver(() => {
-      // Direct children change only when the authoritative table renderer replaces
-      // the table. Capture its exact text before continuity overlays are reapplied.
-      captureCanonicalText();
-      scheduleStablePresentation();
-    }).observe(veHost, { childList: true });
+    new MutationObserver(scheduleStablePresentation).observe(veHost, { childList: true });
   }
 
   return {
     element: root,
     setContext(next) {
-      const same = sameVeAnalysisContext(previousContext, next);
-      previousContext = next;
-      sameContextForReentry = same;
-      suppressNextRefresh = false;
-      if (same) {
+      if (sameVeAnalysisContext(previousContext, next)) {
+        previousContext = next;
         scheduleStablePresentation();
         return;
       }
-      canonicalText.clear();
+      previousContext = next;
       inner.setContext(next);
-      captureCanonicalText();
       scheduleStablePresentation();
     },
     setTuneModel(model, sourceName) {
-      const sameTune = model === tuneModel && sourceName === tuneSourceName;
       tuneModel = model;
-      tuneSourceName = sourceName;
-      if (sameTune) {
-        // app-shell calls setContext -> setTuneModel -> refresh whenever Analyzer
-        // is reopened. Suppress only that redundant final refresh.
-        suppressNextRefresh = sameContextForReentry;
-        scheduleStablePresentation();
-        return;
-      }
-      suppressNextRefresh = false;
-      canonicalText.clear();
       inner.setTuneModel(model, sourceName);
-      captureCanonicalText();
       scheduleStablePresentation();
     },
     refresh() {
-      if (suppressNextRefresh) {
-        suppressNextRefresh = false;
-        sameContextForReentry = false;
-        scheduleStablePresentation();
-        return;
-      }
       inner.refresh();
-      captureCanonicalText();
-      sameContextForReentry = false;
       scheduleStablePresentation();
     },
   };
