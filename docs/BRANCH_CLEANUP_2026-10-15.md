@@ -20,18 +20,20 @@ The accepted baseline includes Analyzer points 1–11, VE Result View source-aut
 
 ## Second cleanup pass — 2026-10-16
 
-After #462 merged, remaining open PRs and remote refs were audited again.
+After #462 merged, all remaining open PRs and the visible remote branch set were audited again.
 
 ### PR disposition
 
-The following PRs are superseded by #462 and should remain closed as historical evidence only:
+All formerly open PRs are now closed. Zero open PRs remain.
+
+Superseded by #462 and closed as historical evidence only:
 
 - #452 — `fix/ve-owner-state-retention`
 - #457 — `test/codex-point2-browser`
 - #458 — `test/codex-point3-browser`
 - #459 — `fix/ve-result-view-untouched-values`
 
-PR #460 — `docs/observability-architecture-plan` — contained unique and valuable diagnostics/observability architecture rather than disposable stale code. Its authority/research documents were therefore ported onto the current accepted `main` tree instead of merging the old divergent branch wholesale. The stale PR can then be closed without losing the work.
+PR #460 — `docs/observability-architecture-plan` — contained unique diagnostics/observability architecture rather than disposable stale code. Its authority/research documents were ported onto the current accepted `main` tree in `aa92d48f2671a1cd2f75f3b4fbcfb66e4dc35f19`, after which the stale divergent PR was closed.
 
 ### Remote branch classification
 
@@ -39,36 +41,42 @@ Product authority:
 
 - `main`
 
-Infrastructure/deployment refs that may legitimately remain:
+Infrastructure/deployment ref that should remain:
 
-- `browser-previews` — generated/deployment preview state;
-- `infra/pr-browser-previews` — retain only while its infrastructure work is not otherwise proven redundant; it is not product authority.
+- `browser-previews` — generated/deployment preview state, not product authority.
 
-Superseded/historical development refs identified in this cleanup pass:
+Superseded/historical refs safe to remove after a final head check:
 
 - `diagnostic/ve-session-guard-only`
-- `docs/observability-architecture-plan` after its documentation was ported to `main`
+- `docs/observability-architecture-plan`
 - `fix/large-segment-spread-overflow`
 - `fix/ve-owner-state-retention`
 - `fix/ve-result-retention`
 - `fix/ve-result-view-untouched-values`
 - `fix/ve-session-authority`
+- `infra/pr-browser-previews`
 - `integrate/points-2-11-20261015`
 - `integrate/points-2-11-clean`
-- `perf/general-ui-tracing` (despite the name, its current lineage is old VE ownership/result work)
+- `perf/general-ui-tracing`
 - `temp/epicscope-fixes-points-1-2-20261015`
 - `test/codex-point2-browser`
 - `test/codex-point3-browser`
 
-`fix/large-segment-spread-overflow` contains point-1 large-log safety work that is already represented in the accepted `main` history/tests, so the branch itself is no longer needed as an authority.
+Audit notes:
+
+- `fix/large-segment-spread-overflow` contains point-1 large-log safety work already represented in accepted `main` history/tests.
+- `fix/ve-result-retention` contains the rejected v10/session-wrapper direction and is superseded by current owner-level state retention.
+- `fix/ve-session-authority`, `diagnostic/ve-session-guard-only`, the point integration/temp branches and browser-test branches are all historical staging/validation lines now represented by #462.
+- `perf/general-ui-tracing` is misleadingly named; its lineage is older VE ownership/result work, not an independent performance feature that needs preservation.
+- `infra/pr-browser-previews` is older than the preview workflow already present on `main`. Current `main` has the improved `/preview` workflow, including guarded cancellation, exact preview base-path verification and non-fatal preview-link commenting, so the source branch is redundant.
 
 ## Branch deletion tooling limitation
 
 The GitHub connector available during the 2026-10-16 cleanup exposes PR close/update and branch-ref inspection/update, but it does **not** expose remote branch deletion.
 
-Therefore this cleanup can close obsolete PRs and classify obsolete refs, but it must not falsely claim the remote refs were physically deleted. The superseded refs above can be deleted safely with ordinary Git/GitHub branch controls after verifying no new commits were added after this audit.
+Therefore the cleanup closes obsolete PRs and classifies obsolete refs but must not falsely claim the remote refs were physically deleted. The superseded refs above can be deleted safely with ordinary Git/GitHub branch controls after verifying no new commits were added after this audit.
 
-Typical manual cleanup from a normal Git clone would be equivalent to deleting the superseded remote branch names after a final `git fetch --prune` / head check. Do not delete `main` or the active preview deployment ref.
+Do not delete `main` or the active `browser-previews` deployment ref.
 
 ## Authority rules after cleanup
 
