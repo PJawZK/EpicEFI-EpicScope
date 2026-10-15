@@ -19,7 +19,12 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # issue_comment fires for every PR comment, including bot/review comments.
+  # Only an actual /preview request (or manual dispatch) may cancel an older
+  # Pages deployment; otherwise an unrelated comment could kill a valid preview.
+  cancel-in-progress: >-
+    ${{ github.event_name == 'workflow_dispatch' ||
+        (github.event.issue.pull_request && github.event.comment.body == '/preview') }}
 
 jobs:
   build:
