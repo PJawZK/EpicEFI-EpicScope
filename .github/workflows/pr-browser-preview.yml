@@ -90,12 +90,23 @@ jobs:
         working-directory: preview-src
         env:
           VITE_EPICSCOPE_BUILD_SHA: ${{ steps.pr.outputs.sha }}
-          EPICSCOPE_BASE_PATH: /EpicEFI-EpicScope/previews/pr-${{ steps.pr.outputs.number }}/
         run: |
           npm ci
           npm run typecheck
           npm test
-          npm run build
+          npm run build -- --base "/EpicEFI-EpicScope/previews/pr-${{ steps.pr.outputs.number }}/"
+
+      - name: Verify preview asset paths
+        working-directory: preview-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="/EpicEFI-EpicScope/previews/pr-${{ steps.pr.outputs.number }}/assets/"
+          if ! grep -q "$expected" dist/web/index.html; then
+            echo "Preview build does not reference the expected preview asset path: $expected"
+            cat dist/web/index.html
+            exit 1
+          fi
 
       - name: Assemble Pages artifact
         shell: bash
