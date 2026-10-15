@@ -1,22 +1,10 @@
 # EpicEFI specialized workspace coverage audit
 
-Status: 2026-10-13, catalog expansion complete through Launch, Traction and Transmission Control.
+Status: **closed current catalog audit, 2026-10-15**.
 
-This document audits the current EpicEFI runtime channel catalog against EpicScope's existing generic and capability-gated Logger starters. Its purpose is to prevent the specialized starter catalog from growing mechanically: a new starter should exist only when the ECU exposes a coherent live diagnostic/control bundle that adds a materially different workflow.
+This document records why the current EpicEFI capability-gated starter catalog stops where it does. `PREPOPULATED_WORKSPACES.md` is the current product authority and `STARTER_SYSTEM_VALIDATION.md` records the close-out validation boundary.
 
-## Decision rule
-
-A specialized starter is justified when all of the following are true:
-
-1. the active schema exposes a coherent **runtime** capability bundle, not only tune/configuration values;
-2. the bundle contains enough state/command/feedback or condition/action evidence to tell a useful story in graphs;
-3. the workflow is materially more specific than an existing generic starter;
-4. capability detection can be conservative and avoid unlocking from similarly named configuration channels;
-5. the starter can still materialize into an ordinary user-owned workspace with no new lifecycle logic.
-
-A large number of channels alone is not sufficient.
-
-## Current specialized coverage
+## Current production coverage
 
 Twelve EpicEFI-specific starters are implemented:
 
@@ -33,88 +21,43 @@ Twelve EpicEFI-specific starters are implemented:
 - **EpicEFI · Traction Control**
 - **EpicEFI · Transmission Control**
 
-Together with the twelve generic starters, these already cover most ordinary engine-state, fuel, ignition, cooling, transient, electrical, driveline, trigger and startup workflows.
+Together with 12 generic starters, the production catalog has 24 starter definitions.
 
-## Tier A — implementation complete; validation cutoff reached
+The starter track is closed for broad feature expansion. The previous Tier A implementation/validation sequence is complete and should not remain as a to-do list.
 
-The evidence-ranked Tier A candidates are now implemented. No further ordinary specialized starters should be added before product validation.
+## Specialized-starter decision rule
 
-The next phase is deliberately:
+A new specialized starter is justified only when all are true:
 
-```text
-INI-only catalog/discovery smoke test
-→ materialize every generic and supported EpicEFI starter
-→ refresh/persistence test
-→ MLG + INI resolution test
-→ source transition test
-→ ts_shim/live schema test when available
-→ fix resolver or lifecycle defects exposed by evidence
-```
+1. runtime schema exposes a coherent live capability bundle, not only tune/config values;
+2. bundle has enough state/command/feedback or condition/action evidence for a useful graph workflow;
+3. workflow is materially different from existing generic/specialized starters or dedicated Analyzer behavior;
+4. capability detection is conservative and does not unlock from lookalike config channels;
+5. materialization still creates an ordinary user-owned workspace with no new lifecycle logic.
 
-Only after that validation pass should Tier B be reconsidered.
+More channels alone are not sufficient.
 
-## Tier B — valid candidates after Tier A
+## Deferred candidates
 
 ### Staged Injection
 
-Runtime support is strong:
-
-```text
-fuelPulsePrimary
-fuelPulseSecondary
-fuelDutyPrimary
-fuelDutySecondary
-injectionStage2Percent
-actualLastInjectionStage2
-actualLastInjectionRatioStage2
-injectorDutyCycleStage2
-stage1InjSmallPwActive
-stage2InjSmallPwActive
-```
-
-A dedicated starter would be useful for staged-injection transition and load sharing. It should not replace the generic Fuel or Fuel System starters; availability should require live secondary-stage evidence.
+Runtime support is rich enough to justify future consideration if field use demands a dedicated transition/load-sharing view. It should remain capability-gated and must not replace generic Fuel/Fuel System workflows.
 
 ### Closed-loop Fuel / STFT / LTFT
 
-The runtime catalog exposes bank-specific STFT/LTFT corrections, lambda input errors, learning/correcting state and LTFT persistence state.
-
-Representative channels:
-
-```text
-stftCorrection1 / stftCorrection2
-stftInputError1 / stftInputError2
-stftCorrectionState
-stftLearningState1 / stftLearningState2
-ltftCorrection1 / ltftCorrection2
-ltftAccummulatedCorrection1 / ltftAccummulatedCorrection2
-ltftLearning
-ltftCorrecting
-ltftLoadError
-```
-
-This is a legitimate future starter, but it overlaps the generic Fuel view enough that VVT/ALS/Launch/Traction are higher-value additions first.
+Bank-specific STFT/LTFT correction/learning state is a legitimate future diagnostic workflow, but it overlaps generic Fuel and dedicated Fueling analysis enough that no new starter is currently justified.
 
 ### Detailed Idle Controller
 
-EpicEFI exposes both generic idle PID telemetry and DC-idle position-controller telemetry:
+EpicEFI exposes rich idle/DC-idle controller terms, but the generic Idle starter plus Idle Analyzer already cover the ordinary workflow. Add a specialized starter only if repeated real use demonstrates a persistent graphing need not served by Analyzer.
 
-```text
-idleStatus_pTerm / iTerm / dTerm / output / error / resetCounter
-dcIdleTarget
-dcIdleDutyCycle
-dcIdleFaultCode
-dcIdlePositionStatus_pTerm / iTerm / dTerm / output / error / resetCounter
-```
-
-The data is sufficient, but EpicScope already has a mature Idle analyzer plus a generic Idle starter. Add an EpicEFI-specific idle starter only if browser use shows a real need to keep this controller detail continuously graphed; otherwise it would duplicate existing analysis functionality.
-
-## Tier C — do not add as ordinary starters yet
+## Do not add as ordinary starters yet
 
 ### Per-cylinder / EGT / cylinder balance
 
-The schema is extremely rich: up to 12 per-cylinder ignition channels, MAP/MAF-per-cylinder values, cylinder RPM/delta families, knock-per-cylinder families, and up to eight EGT channels.
+The schema has rich indexed cylinder/EGT families. Do **not** solve this by adding dozens of fixed `cyl1`, `cyl2`, etc. semantic roles.
 
-This is **not** a reason to add dozens of fixed semantic role IDs. The correct prerequisite is indexed/channel-family support such as conceptually:
+Prerequisite: clean indexed/channel-family semantics, conceptually such as:
 
 ```text
 ignition.advance.cylinder[n]
@@ -123,56 +66,47 @@ engine.cylinderRpmDelta[n]
 exhaust.egt[n]
 ```
 
-Once EpicScope can resolve indexed channel families cleanly, a Cylinder Balance / Per-Cylinder Combustion workspace becomes a strong candidate.
+Only then should Cylinder Balance / Per-Cylinder Combustion workspace design be reconsidered.
 
 ### Alternator controller detail
 
-EpicEFI exposes alternator PID terms, target voltage and duty. The generic Electrical starter already covers battery voltage, alternator duty and electrical load context. Controller PID detail alone does not currently justify another starter.
+Generic Electrical already covers ordinary electrical context. PID-detail channels alone do not justify another starter.
 
 ### ECU / ADC runtime health
 
-Channels such as CPU temperature/usage, ADC error/overrun counters and conversion timing are useful developer diagnostics, but they are not primarily a tuning graph workflow. They belong in runtime-health/diagnostic surfaces unless a concrete field-debugging use case requires a starter.
+CPU/ADC/runtime-health signals belong primarily in diagnostics/developer surfaces unless a concrete field-debugging workflow warrants a starter.
 
 ### MAF / airflow-model diagnostics
 
-There are raw/frequency/measured/modelled MAF channels, airflow estimates and cylinder-airmass values. This is useful data, but the concept is not EpicEFI-specific. If a recurring workflow emerges, prefer a portable **Airflow / MAF** generic starter or analyzer rather than an `EpicEFI · MAF` starter.
+This is not inherently EpicEFI-specific. If a recurring workflow emerges, prefer a portable Airflow/MAF starter/analyzer rather than an EpicEFI-branded duplicate.
 
 ### Flex fuel
 
-`flexPercent`, raw flex frequency and flex-fault state are useful context but do not form a sufficiently rich independent control workflow. They fit better as optional channels in Fuel/Fuel System workspaces.
+Flex percentage/frequency/fault state are useful context but not a sufficiently independent control workflow by themselves.
 
 ### Nitrous
 
-The INI exposes arm/eligibility condition state (`isNitrousArmed`, speed/TPS/CLT/MAP/AFR/RPM conditions and `isNitrousCondition`) but the audited runtime set does not show a similarly coherent command/output/enrichment bundle. Do not add a Nitrous starter from condition booleans alone.
+Eligibility/condition booleans without a coherent runtime command/output/enrichment bundle are insufficient to justify a starter.
 
-### Generic-system duplicates
+## Guardrails
 
-Do not add EpicEFI-branded variants merely because extra native channels exist for systems already covered by Boost / Dual Chamber Boost, Fuel / Fuel System / Fuel Rail Diagnostics, Ignition / Injector + Ignition Timing, Cooling, Trigger / Sync / Trigger + Sync Detailed, Startup / Warmup, Electrical, Vehicle / Driveline, ETB Control, Engine Protection, and MAP Predict + Wall Wetting.
+For any future starter:
 
-A specialized variant needs a distinct diagnostic question, not just more channels.
+- availability comes from live runtime telemetry/capabilities, not board name or tune constants;
+- use semantic roles and one-time materialization;
+- add negative tests for lookalike/configuration channels;
+- do not require every optional bank/cylinder/device instance;
+- prefer a focused diagnostic story over channel dumping;
+- once materialized, the workspace is ordinary user-owned state;
+- adding a starter requires evidence of a real workflow gap, not merely catalog completeness.
 
-## Recommended implementation order
+## Reopen criteria
 
-```text
-1. EpicEFI · Launch Control
-2. EpicEFI · Traction Control
-3. EpicEFI · Transmission Control
-4. Staged Injection
-5. Closed-loop Fuel / STFT / LTFT
-```
+Reopen this audit only if:
 
-Per-cylinder/EGT work should wait for indexed semantic channel families.
+- field feedback exposes a concrete missing workflow;
+- a new ECU family reveals a portability gap;
+- indexed semantic channel-family support unlocks a high-value per-cylinder/EGT workflow;
+- an existing starter proves too broad and a specialized workflow materially improves diagnosis.
 
-This order is not a promise to implement every item. After each starter, re-check whether the catalog still has a clear user-visible gap before adding the next one.
-
-## Implementation guardrails
-
-For every future specialized starter:
-
-- availability must be based on **live runtime telemetry**, not tune/config constants;
-- use semantic roles and the existing one-time materialization path;
-- add negative tests for configuration/lookalike channels that must not unlock the starter;
-- avoid requiring every optional bank/cylinder/device instance just to expose the starter;
-- prefer a focused two-pane diagnostic story over dumping all available channels into one workspace;
-- do not add board-name conditionals;
-- once materialized, the workspace remains ordinary user-owned state.
+Otherwise, leave the production catalog stable and spend development effort on Analyzer maturity or other higher-value product work.
