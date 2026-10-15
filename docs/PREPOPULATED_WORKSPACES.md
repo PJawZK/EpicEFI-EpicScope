@@ -4,11 +4,12 @@ This document is the current product/implementation authority for EpicScope Logg
 
 Related authority:
 
-- [`HANDOFF.md`](HANDOFF.md)
-- [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- [`DATA_MODEL.md`](DATA_MODEL.md)
-- [`DECISIONS.md`](DECISIONS.md) — D-055 is the starter/workspace ownership invariant.
-- [`STARTER_SYSTEM_VALIDATION.md`](STARTER_SYSTEM_VALIDATION.md)
+- `HANDOFF.md`
+- `ARCHITECTURE.md`
+- `DATA_MODEL.md`
+- `DECISIONS.md` — D-051–D-055 historical/current starter rules
+- `STARTER_SYSTEM_VALIDATION.md` — closed validation boundary
+- `SPECIALIZED_WORKSPACE_COVERAGE.md` — closed specialized-coverage audit
 
 ## Core product model
 
@@ -34,7 +35,7 @@ New graph
                    └─ capability-gated EpicEFI starters
 ```
 
-The flyout is viewport-bounded and vertically scrollable. Selecting a template creates a normal workspace. No template metadata is required for ownership afterward.
+The flyout is viewport-bounded and vertically scrollable. Selecting a template creates a normal workspace. No persistent template metadata is required for ownership afterward.
 
 ## Fresh-state seeding
 
@@ -51,29 +52,28 @@ Starters bind to semantic channel roles rather than hard-coded ECU channel IDs.
 Resolution preference:
 
 1. explicit user/schema override;
-2. exact EpicEFI/native alias;
+2. exact native/known alias;
 3. ECU-family/cross-ECU compatibility alias;
 4. conservative normalized-name fallback;
 5. unresolved.
 
 Missing values remain explicit. Required/preferred/optional slots degrade gracefully; EpicScope never fabricates a channel merely to fill a template.
 
-Compatibility aliases never define the visible EpicScope vocabulary. For example, legacy `TP` may resolve throttle position while EpicScope displays **TPS**.
+Compatibility aliases never redefine literal source identity. A legacy alias such as `TP` may help resolve throttle position while the exact source channel name remains inspectable/preserved.
 
 ## Layout model
 
-Layout describes geometry only. Current production starter use centers on:
+Layout describes geometry only. Current production starters primarily use:
 
 - **Single** — one full graph pane;
 - **Dual** — two vertically stacked panes.
 
-Single uses the normal overlay readout presentation with channel names and NOW / MIN / MAX context. The old stretched lane-label presentation is not used.
+Single uses normal overlay readouts with channel names and NOW / MIN / MAX context.
 
-## Generic starter catalog
-
-The portable generic catalog is complete at 12 starters.
+## Generic starter catalog — 12
 
 ### General
+
 Single broad engine overview:
 
 - RPM
@@ -86,172 +86,76 @@ Single broad engine overview:
 - Ignition Advance
 
 ### Idle
-Dual idle-speed/control overview:
 
-Pane 1:
-- RPM
-- Idle Target
-- MAP
-- TPS
+Pane 1: RPM, Idle Target, MAP, TPS.
 
-Pane 2:
-- Idle Air Command
-- Ignition Advance
-- Coolant Temp
-- Lambda
+Pane 2: Idle Air Command, Ignition Advance, Coolant Temp, Lambda.
 
 ### Boost
-Dual general-purpose boost response view with no closed-loop-control or special-sensor assumptions.
 
-Pane 1:
-- RPM
-- MAP
-- TPS
-- Intake Air Temp
+General-purpose boost response without requiring closed-loop control or special sensors.
 
-Pane 2:
-- Ignition Advance
-- Injector Pulse Width
-- Injector Duty
-- Battery Voltage
+Pane 1: RPM, MAP, TPS, Intake Air Temp.
 
-Generic Boost deliberately does **not** require Boost Target, Wastegate Command, Boost Error or EMAP. Those belong in capability-specific control diagnostics.
+Pane 2: Ignition Advance, Injector Pulse Width, Injector Duty, Battery Voltage.
 
 ### Fuel
-Pane 1:
-- RPM
-- MAP
-- Lambda
-- Lambda Target
 
-Pane 2:
-- Injector Pulse Width
-- Injector Duty
-- Fuel Pressure
-- Fuel Correction
+Pane 1: RPM, MAP, Lambda, Lambda Target.
+
+Pane 2: Injector Pulse Width, Injector Duty, Fuel Pressure, Fuel Correction.
 
 ### Ignition
-Generic ignition must not assume knock hardware.
 
-Pane 1:
-- RPM
-- MAP
-- TPS
-- Ignition Advance
+Does not assume knock hardware.
 
-Pane 2:
-- Dwell
-- Battery Voltage
-- Intake Air Temp
-- Coolant Temp
+Pane 1: RPM, MAP, TPS, Ignition Advance.
+
+Pane 2: Dwell, Battery Voltage, Intake Air Temp, Coolant Temp.
 
 ### Cooling
-Pane 1:
-- Coolant Temp
-- Intake Air Temp
-- RPM
-- Vehicle Speed
 
-Pane 2:
-- Fan Active
-- Oil Temp
-- Oil Pressure
-- Coolant Pressure when available
-- Battery Voltage
+Pane 1: Coolant Temp, Intake Air Temp, RPM, Vehicle Speed.
 
-`Fan Active` is the generic binary state. PWM fan duty remains a separate controller-specific semantic and is not required here.
+Pane 2: Fan Active, Oil Temp, Oil Pressure, optional Coolant Pressure, Battery Voltage.
 
 ### Transient / AE
-Pane 1:
-- RPM
-- TPS
-- TPS Change
-- MAP
 
-Pane 2:
-- Effective MAP
-- Lambda
-- Lambda Target
-- Injector Pulse Width
-- AE Fuel
-- Wall Fuel Correction
+Pane 1: RPM, TPS, TPS Change, MAP.
+
+Pane 2: Effective MAP, Lambda, Lambda Target, Injector Pulse Width, AE Fuel, Wall Fuel Correction.
 
 ### Fuel System
-Pane 1:
-- RPM
-- Fuel Pressure
-- MAP
-- TPS
 
-Pane 2:
-- Fuel Pressure Delta
-- Injector Pulse Width
-- Injector Duty
-- Fuel Pump Command
-- Battery Voltage
-- Lambda
+Pane 1: RPM, Fuel Pressure, MAP, TPS.
+
+Pane 2: Fuel Pressure Delta, Injector Pulse Width, Injector Duty, Fuel Pump Command, Battery Voltage, Lambda.
 
 ### Trigger / Sync
-Pane 1:
-- RPM
-- Trigger Sync State
-- Phase Synchronized
-- Trigger Error
 
-Pane 2:
-- Trigger Error Count
-- Resync Count
-- Engine Phase
-- Battery Voltage
+Pane 1: RPM, Trigger Sync State, Phase Synchronized, Trigger Error.
+
+Pane 2: Trigger Error Count, Resync Count, Engine Phase, Battery Voltage.
 
 ### Startup / Warmup
-Pane 1:
-- RPM
-- Coolant Temp
-- Intake Air Temp
-- Battery Voltage
-- Engine Cycles Since Start
 
-Pane 2:
-- Cranking Fuel
-- After-start Correction
-- Warmup Correction
-- Injector Pulse Width
-- Lambda
-- Idle Target
+Pane 1: RPM, Coolant Temp, Intake Air Temp, Battery Voltage, Engine Cycles Since Start.
+
+Pane 2: Cranking Fuel, After-start Correction, Warmup Correction, Injector Pulse Width, Lambda, Idle Target.
 
 ### Electrical
-Pane 1:
-- Battery Voltage
-- RPM
-- Injector Pulse Width
-- Dwell
 
-Pane 2:
-- Injector Duty
-- Fuel Pump Command
-- Fan Active
-- Alternator Duty
-- Sensor Supply Voltage
-- Sensor Supply Fault
+Pane 1: Battery Voltage, RPM, Injector Pulse Width, Dwell.
+
+Pane 2: Injector Duty, Fuel Pump Command, Fan Active, Alternator Duty, Sensor Supply Voltage, Sensor Supply Fault.
 
 ### Vehicle / Driveline
-Pane 1:
-- RPM
-- Vehicle Speed
-- TPS
-- MAP
-- Gear
 
-Pane 2:
-- Clutch State
-- Brake State
-- Wheel Speed FL / FR / RL / RR
-- Longitudinal Acceleration
+Pane 1: RPM, Vehicle Speed, TPS, MAP, Gear.
 
-## EpicEFI-specific starter tier
+Pane 2: Clutch State, Brake State, Wheel Speed FL/FR/RL/RR, Longitudinal Acceleration.
 
-These are capability-gated from runtime/schema semantics, not board names.
+## EpicEFI capability-gated starter tier — 12
 
 Current production set:
 
@@ -270,11 +174,10 @@ Current production set:
 
 Capability gating affects discovery only. Once materialized, the workspace is ordinary user-owned state.
 
-### MAP Predict + Wall Wetting current definition
-
-This starter is intentionally more model-focused than the generic Transient / AE workspace.
+### MAP Predict + Wall Wetting definition
 
 Pane 1 — MAP model:
+
 - RPM
 - TPS
 - MAP
@@ -283,6 +186,7 @@ Pane 1 — MAP model:
 - Effective MAP
 
 Pane 2 — wall-film/fueling response:
+
 - Wall Fuel Amount
 - Wall Fuel Correction
 - Injector Pulse Width
@@ -290,32 +194,23 @@ Pane 2 — wall-film/fueling response:
 - Lambda Target
 - Coolant Temp
 
-The semantic `Wall Fuel Correction` prefers EpicEFI `wallFuelCorrectionValue` / **Fuel: wall correction** (mass-domain correction) rather than the separate `wallFuelCorrection` wall-wetting injection-time telemetry.
-
-The specialized view deliberately no longer centers `MAP Prediction Active`, TPS Delta or generic TPS-AE fuel contribution.
+`Wall Fuel Correction` prefers the EpicEFI mass-domain correction source rather than the separate wall-wetting injection-time telemetry.
 
 ## Deferred candidates
 
-Template expansion is stopped for the validation phase.
+The starter catalog is **closed for broad expansion**. Deferred candidates such as Staged Injection or Closed-loop Fuel / STFT / LTFT should be reconsidered only if field use exposes a real persistent graphing workflow gap.
 
-Potential future candidates:
-
-- Staged Injection;
-- Closed-loop Fuel / STFT / LTFT.
-
-Per-cylinder/EGT work remains deferred until the semantic layer supports indexed channel families cleanly. Do not create dozens of fixed `cyl1`, `cyl2`, etc. roles as a shortcut.
+Per-cylinder/EGT work remains deferred until indexed semantic channel families are supported cleanly. Do not create dozens of fixed `cyl1`, `cyl2`, etc. roles as a shortcut.
 
 ## Validation/ownership guardrails
 
-The following must remain true:
-
-- generic starters are portable and always discoverable;
+- generic starters remain portable;
 - only generic starters seed fresh state;
-- EpicEFI-specific starters appear only when their complete capability bundle resolves;
+- specialized starters appear only when their complete capability bundle resolves;
 - materialized workspaces use normal `graph-*` ownership;
 - user edits/deletions persist and are not re-seeded;
 - MLG/INI/Shim source transitions normalize identities only;
-- unavailable channels remain explicit rather than being silently substituted;
-- template updates affect future materializations only.
+- unavailable channels remain explicit;
+- template definition changes affect future materializations only.
 
-See [`STARTER_SYSTEM_VALIDATION.md`](STARTER_SYSTEM_VALIDATION.md) for the close-out validation matrix.
+The current close-out validation matrix is in `STARTER_SYSTEM_VALIDATION.md`.
