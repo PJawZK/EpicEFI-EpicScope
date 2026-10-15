@@ -6,26 +6,27 @@
 
 ## Roadmap principles
 
-The roadmap describes intended capability and implementation order. It does not authorize code to bypass `FILE_ARCHITECTURE.md` or the evidence/safety rules established elsewhere.
+The roadmap describes intended capability and implementation order. It does not authorize code to bypass `FILE_ARCHITECTURE.md`, subsystem ownership, browser acceptance requirements or ECU safety rules.
 
-Research documents are behavioral references, not implementation authorities. Preserve original notes under `docs/research/`; update `docs/research/STATUS.md` when EpicScope implements, improves, defers or supersedes researched behavior.
+Research documents are behavioral references, not implementation authorities. Preserve original research under `docs/research/`; current disposition belongs in `research/STATUS.md`, subsystem authorities and this roadmap.
 
-## Current execution position — 2026-10-15
+## Current execution position — 2026-10-16
 
 EpicScope Web remains the functional reference for Logger, Histogram and Analyzer behavior.
 
-Current product maturity:
+Current maturity:
 
 - **Logger:** mature functional reference; broad optimization paused unless a measured regression appears.
-- **Histogram:** generic research-parity checkpoint closed; maintenance/cleanup only unless field use exposes a concrete gap.
-- **Analyzer:** uneven maturity; Fueling/Ignition mature checkpoints, Boost strong, Idle/AE useful but thinner, Fuel / Injector and Trigger / Sync retain targeted gaps.
-- **VE Analyzer:** implemented, real-log/browser validated and the highest-value active maturity target.
-- **Observability:** unified diagnostics/performance/report architecture approved in D-058 and `OBSERVABILITY.md`; implementation starts after the current correctness/ownership/CPU cleanup reaches a stable browser-validated baseline.
-- **MLG v3:** researched compatibility extension, not yet implemented.
-- **Repository cleanup:** remote branch cleanup completed; `main` is the only authoritative remote branch.
-- **Linux production implementation:** future work after Web maturity review.
+- **Histogram:** generic research-parity checkpoint closed for the approved scope.
+- **Analyzer:** points 1–11 ownership/correctness/performance cleanup merged into `main` through PR #462 and browser-accepted.
+- **VE Analyzer:** stable maturity checkpoint. Result View value authority, heat-map behavior and session/navigation retention are accepted; no current blocker remains.
+- **UI:** immediate next task is a focused visual/workflow polish pass from the accepted baseline.
+- **Observability / diagnostics:** D-058 architecture is approved and documented on `main`; implementation is the next substantial engineering track after UI polish.
+- **Point 12 telemetry async conversion/socket identity:** reproduction-gated; not active work.
+- **MLG v3:** researched compatibility extension; not implemented and not a current blocker.
+- **Linux production implementation:** future work after Web functional maturity and observability consolidation.
 
-Approved product workflow:
+Approved primary workflow:
 
 > **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
 
@@ -41,7 +42,7 @@ VE sub-flow:
 
 Status: **Complete**
 
-Established product identity/scope, architecture/file ownership, normalized data model, performance/platform requirements, workflow/handoff/decision process and privacy/security/input rules.
+Product identity/scope, architecture/file ownership, normalized data model, performance/platform requirements, workflow/handoff/decision process and privacy/security/input rules are established.
 
 ## Phase 1 — Web log, navigation and source foundation
 
@@ -69,76 +70,91 @@ EpicScope remains an analysis product, not a live ECU tune editor. Future tune a
 
 ## Phase 4 — Specialized analyzers
 
-Status: **Implemented; maturity uneven; ongoing targeted maturity work**
+Status: **Implemented; maturity uneven; targeted work only**
 
-### Fueling
-
-Status: **Mature experimental checkpoint — freeze unless bug/regression**
-
-### Ignition
-
-Status: **Mature non-knock experimental checkpoint — freeze unless bug/regression**
-
-### Boost
-
-Status: **Strong experimental foundation — paused unless a concrete gap appears**
-
-### Idle
-
-Status: **Useful foundation — later refinement**
-
-### AE / MAP Predict
-
-Status: **Useful foundation — later refinement**
-
-### Fuel Pressure / Injector
-
-Status: **Substantially improved; targeted maturity work remains**
-
-Remaining useful work is visible event-extreme context, pressure sag/recovery, repeatability, pump/prime evidence, voltage/deadtime evidence and stronger Logger navigation.
-
-### Trigger / Sync
-
-Status: **Thin but useful foundation; later broad-coverage maturity target**
-
-Target work includes sync/loss context, glitch-vs-sustained classification, pre/post evidence, RPM/voltage/load context, frequency by RPM band and direct Logger navigation.
+- **Fueling:** mature experimental checkpoint — freeze unless bug/regression.
+- **Ignition:** mature non-knock experimental checkpoint — freeze unless bug/regression.
+- **Boost:** strong experimental foundation — paused unless a concrete gap appears.
+- **Idle:** useful foundation — later refinement.
+- **AE / MAP Predict:** useful foundation — later refinement.
+- **Fuel Pressure / Injector:** substantially improved; targeted maturity remains around visible extreme context, sag/recovery, repeatability, pump/prime and voltage/deadtime evidence.
+- **Trigger / Sync:** thin but useful foundation; later broad-coverage maturity target.
 
 ### VE Analyzer
 
-Status: **Implemented, real-log/browser validated; current highest-value maturity target**
+Status: **Implemented, real-log/browser validated and stable at the current maturity checkpoint**
 
-Authoritative behavior contract: `VE_ANALYZER.md`.
-
-UI/workbench contract: `VE_ANALYZER_WORKBENCH.md`.
+Authority: `VE_ANALYZER.md` and `VE_ANALYZER_WORKBENCH.md`.
 
 Implemented behavior includes:
 
 - VE/target table correlation from tune metadata;
 - strict actual-mixture/scale semantics;
 - qualification controls and actionable Run readiness;
-- **RPM × load lambda-delay table only**;
-- explicit **Grab lambda delays from log** discovery;
-- measured/interpolated/insufficient delay provenance;
-- separate recommendation and working delay state;
-- direct delay-table editing and save/load;
+- RPM × load lambda-delay table with explicit discovery, provenance, editing and save/load;
 - timestamp-based mixture alignment;
 - optional known fuel-correction compensation;
 - robust weighted-median VE evidence with P10/P90 spread, cumulative evidence and confidence;
 - starting-table prior authority and withheld out-of-authority proposals;
 - Result View overlays;
-- per-cell evidence with strongest-visit Logger navigation.
+- per-cell evidence with strongest-visit Logger navigation;
+- source-authoritative Result View switching that does not consume mutable presentation text;
+- retained completed analysis across semantically unchanged Analyzer/navigation transitions;
+- cooperative analysis batches with progress/cancel;
+- retained-primary evidence reuse without duplicate full-log analysis.
 
-The browser-known-good runtime is the #441-era composition restored by PR #449. Do not reintroduce the later continuity/render wrapper stack wholesale.
+PR #462 merged the accepted points 1–11 cleanup into `main`. The exact pre-merge runtime accepted by the owner was `b435702412642f039a8a7f49d33037c309bef9d8`; the merge commit is `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`.
 
-#### Current VE maturity sequence
+Remaining VE debt is no longer a blocker. In particular, working lambda-delay reconstruction remains partly DOM-derived and can be cleaned up later if justified.
 
-1. preserve the browser-known-good runtime;
-2. fix Result View fallback/precision behavior with an isolated change and browser verification;
-3. fix Logger → Analyzer result persistence with an isolated change and browser verification;
-4. then move authoritative session/result/proposal/working-delay state out of rendered DOM;
-5. remove duplicate cell-evidence analysis and synthetic/DOM-derived state bridges;
-6. later refine proposal review/application strength/export/diff behavior;
-7. never auto write/Burn to ECU.
+Never auto write/Burn to the ECU.
+
+## Current UI polish pass
+
+Status: **Next active task**
+
+Purpose: improve visual coherence and interaction quality without reopening accepted runtime architecture.
+
+Focus areas should include:
+
+- spacing, alignment and density consistency;
+- control hierarchy and grouping;
+- consistent table/heat-map/header treatment across Logger, Histogram and Analyzer surfaces;
+- responsive sizing/overflow rough edges;
+- typography, emphasis and status/error presentation;
+- keyboard/focus/hover/disabled states and obvious accessibility issues;
+- removal of duplicated cosmetic overrides where consolidation is safe.
+
+Constraints:
+
+- no semantic analysis changes hidden inside visual cleanup;
+- no broad controller/lifecycle rewrite;
+- preserve current Result View/session behavior;
+- keep browser verification proportional to any interaction-affecting UI change.
+
+## Unified observability consolidation
+
+Status: **Architecture approved; implementation queued immediately after UI polish**
+
+Authority: `OBSERVABILITY.md`, D-058 and `research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md`.
+
+The track replaces fragmented durable ownership across Performance diagnostics, runtime health/bug-report assembly, runtime-error history and report generation with one bounded correlated observability/session model. Existing useful probes remain in their current owners and feed the shared model.
+
+Implementation sequence:
+
+1. record the stable baseline and benchmark workloads/overhead budgets;
+2. add versioned record, session, operation and retention contracts plus bounded in-memory storage;
+3. add lifecycle/runtime-error/operation producers at existing owners;
+4. bridge current detailed performance measurements and rebuild Performance as a projection;
+5. bridge parser/source-integrity evidence;
+6. add compact state/render/async/storage/resource producers only where they provide diagnostic value;
+7. add cheap streaming anomaly rules and deferred report-time analysis;
+8. add bounded batched previous-session persistence and abnormal-end recovery;
+9. converge Diagnostics UI/report generation onto the shared record/session authority;
+10. remove redundant old collectors/builders only after parity is demonstrated;
+11. add local workload-relative baseline/regression intelligence only if real usage justifies it.
+
+First-release constraints: local-first, bounded, low-overhead, no silent telemetry/upload, no raw log/tune payload recording, and no automatic runtime self-repair from anomaly detection.
 
 ## MLG v3 compatibility extension
 
@@ -146,66 +162,32 @@ Status: **Researched; not implemented; not a current blocker**
 
 Extend the existing parser rather than creating a separate architecture when implementation becomes justified. Unknown/reserved mappings must remain unsupported until evidence exists.
 
-## Cleanup/consolidation
+## Repository cleanup / consolidation
 
-Status: **Repository branch cleanup complete; runtime cleanup remains evidence-driven**
+Status: **Product authority consolidated; historical remote refs remain removable**
 
-Completed on 2026-10-15:
+PR #462 is merged and accepted. The observability documentation from former PR #460 has been ported onto current `main` rather than merging its stale divergent runtime ancestry.
 
-- audited roughly 195 accumulated remote branches;
-- removed fully merged, patch-equivalent and superseded historical branches;
-- preserved useful conclusions in `main`/docs/Git history;
-- reduced remote branch authority to `main` only.
+Historical VE/Codex validation branches and PRs are not product authorities. Git/PR history plus current docs preserve their useful evidence. `browser-previews` remains infrastructure/deployment state; `main` is the only product authority.
 
-Remaining runtime cleanup should be deliberate rather than broad. Current highest-value cleanup is VE state ownership and removal of duplicate/DOM-derived authority. Logger/Histogram cleanup should only proceed for concrete correctness/maintenance/performance needs.
-
-The active cleanup sequence also includes narrowing document-wide DOM ownership, routing expensive work away from hidden views and then measured CPU cleanup before considering workers/batching.
-
-## Unified observability consolidation
-
-Status: **Architecture approved; implementation not started**
-
-Authority: `OBSERVABILITY.md` and D-058.
-
-This track replaces fragmented long-lived ownership across Performance diagnostics, runtime health/bug-report assembly, runtime error history and report generation with one bounded correlated observability/session model.
-
-The migration preserves useful existing probes and parser/source evidence while changing where diagnostic history and report ownership live.
-
-Approved sequence:
-
-1. freeze a stable browser-validated baseline after current correctness/ownership/CPU cleanup;
-2. add versioned event/metric/snapshot records plus session/operation correlation and bounded in-memory history;
-3. migrate runtime/lifecycle/error capture;
-4. bridge existing detailed performance measurements and rebuild Performance as a projection;
-5. bridge parser/source-integrity evidence;
-6. add state/render/async/storage/resource producers at existing owners;
-7. add generic anomaly detection;
-8. add bounded previous-session persistence and abnormal-end recovery;
-9. converge Diagnostics UI/reports;
-10. delete redundant old collectors/builders after parity;
-11. later add local baseline/regression intelligence if real usage justifies it.
-
-The first release must remain local-first, bounded and low-overhead. No cloud telemetry or raw log/tune payload recording is authorized.
+The available GitHub connector does not expose remote branch deletion, so refs classified as superseded in `BRANCH_CLEANUP_2026-10-15.md` may still physically exist until removed with ordinary Git/GitHub branch controls.
 
 ## Phase 5 — Sessions, sharing and reporting
 
 Status: **Not started — explicit owner approval required**
 
-Potential future scope: versioned full-session persistence, annotations/bookmarks, result snapshots and explicit sharing/publishing. No silent upload/telemetry of local log/tune content.
-
-The observability black-box/session history is **not** Phase-5 full-session persistence. It is bounded runtime diagnostic history and must not grow into a general user-session store.
+Potential future scope: versioned full-session persistence, annotations/bookmarks, result snapshots and explicit sharing/publishing. Observability black-box history is bounded diagnostics and must not grow into a general user-session store.
 
 ## Phase 6 — Web functional maturity review
 
 Before Linux becomes the primary focus:
 
-- resolve current VE Analyzer state/continuity defects;
-- bring remaining high-value Analyzer gaps to sensible checkpoints;
-- complete the approved observability consolidation far enough that current diagnostics/performance/report ownership is coherent and redundant paths are removed;
-- perform deliberate cleanup/consolidation where it reduces real maintenance risk;
-- review workflow/feature completeness;
+- complete the current UI polish pass;
+- implement observability far enough that diagnostics/performance/report ownership is coherent and redundant paths are removed;
+- bring any remaining high-value Analyzer gaps to sensible checkpoints only where justified;
+- review workflow/feature completeness and accessibility;
 - freeze/version key contracts;
-- profile representative workloads after cleanup;
+- profile representative workloads;
 - define Linux benchmark/hardware baselines;
 - decide which Web internals are retained/replaced/ported.
 
@@ -227,15 +209,14 @@ TunerStudio interaction/stability research primarily informs EpicHub. EpicScope 
 
 ## Current recommended sequence
 
-1. preserve browser-known-good VE behavior while completing the active correctness/ownership cleanup;
-2. finish DOM-ownership and hidden-view routing cleanup;
-3. perform measured CPU cleanup, then consider workers/batching only if still justified;
-4. freeze a stable browser-validated Web baseline;
-5. implement the unified observability migration from `OBSERVABILITY.md`;
-6. continue targeted Fuel / Injector and Trigger / Sync maturity work as useful;
-7. add MLG v3 compatibility when evidence/demand justifies it;
-8. perform Web functional maturity review;
-9. begin Linux production work.
+1. focused UI polish from the accepted `main` baseline;
+2. CI plus browser sanity acceptance for interaction-affecting polish;
+3. observability baseline benchmarks and record/session/operation/retention foundation;
+4. staged diagnostics/performance/error/report migration and old-owner removal after parity;
+5. reproduction-gated point 12 only if a concrete reproducer appears;
+6. targeted remaining Analyzer or MLG v3 work only where demand/evidence justifies it;
+7. Web functional maturity review;
+8. Linux production work.
 
 ## Roadmap change control
 
