@@ -116,3 +116,13 @@ describe('Fueling analyzer canonical channel roles', () => {
     expect(suggestAnalyzerChannel('ae-map', 'afr', channels)?.sourceName).toBe('lambdaValue');
   });
 });
+
+it('uses current catalog definitions when IDs are reused with different role metadata', () => {
+  const first = Object.freeze({ ...channel('unusual'), displayName: 'engine RPM' });
+  const replacement = Object.freeze({ ...first, displayName: 'ignition advance' });
+  expect(suggestAnalyzerChannel('idle', 'rpm', [first])).toBe(first);
+  expect(suggestAnalyzerChannel('ignition', 'advance', [first])).toBeUndefined();
+  expect(suggestAnalyzerChannel('idle', 'rpm', [replacement])).toBeUndefined();
+  expect(suggestAnalyzerChannel('ignition', 'advance', [replacement])).toBe(replacement);
+  expect(suggestAnalyzerChannel('idle', 'rpm', [first])).toBe(first);
+});

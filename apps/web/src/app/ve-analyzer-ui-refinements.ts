@@ -139,10 +139,6 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
         return;
       }
 
-      const actual = analyzerPage.querySelector<HTMLSelectElement>('.ve-analyzer-view select[data-role="actual"]');
-      const scale = analyzerPage.querySelector<HTMLSelectElement>('.ve-analyzer-view select[data-role="mixture-scale"]')?.value ?? '';
-      if (actual) preferGasScaleAfrOption(actual, scale);
-
       const delayMinEvents = analyzerPage.querySelector<HTMLInputElement>('.ve-analyzer-view input[data-role="delay-min-events"]');
       if (delayMinEvents && delayMinEvents.dataset.veDefaultAdjusted !== 'true') {
         if (delayMinEvents.value === '2') delayMinEvents.value = '3';

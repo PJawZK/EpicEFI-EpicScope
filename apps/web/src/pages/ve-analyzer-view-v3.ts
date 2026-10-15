@@ -1,3 +1,4 @@
+import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
@@ -15,10 +16,6 @@ import {
   type VeAnalyzerViewController,
 } from './ve-analyzer-view-v2';
 
-function sourceOptionLabel(channel: ChannelDefinition): string {
-  return `${channel.sourceName}${channel.unit ? ` [${channel.unit}]` : ''}`;
-}
-
 function finiteInput(input: HTMLInputElement | null): number | undefined {
   const raw = input?.value.trim() ?? '';
   if (!raw) return undefined;
@@ -32,7 +29,7 @@ function celsiusLike(unit: string | undefined): boolean {
 }
 
 function optionForChannel(channel: ChannelDefinition): HTMLOptionElement {
-  return new Option(sourceOptionLabel(channel), channel.id);
+  return new Option(analyzerChannelOptionLabel(channel), channel.id);
 }
 
 export function createVeAnalyzerView(): VeAnalyzerViewController {
@@ -211,6 +208,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    setActive(active) { inner.setActive(active); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },

@@ -1,6 +1,7 @@
+import { VE_ANALYSIS_BATCH_SIZE, finishVeAnalysis, runVeAnalysis, type VeAnalysisSteps, type VeAnalysisWorkOptions } from './ve-analysis-work';
 import type { NumericChannelRange } from '../log-model/log-types';
 import {
-  buildVeEvidenceMap,
+  buildVeEvidenceMapSteps,
   interpolateNumericRangeAtTime,
   type VeEvidenceConfig,
   type VeEvidenceInputs,
@@ -42,6 +43,14 @@ export function buildVeEvidenceMapWithDelayTable(
   inputs: VeDelayAlignedEvidenceInputs,
   config: Omit<VeEvidenceConfig, 'delayMs'> = {},
 ): VeDelayAlignedEvidenceResult {
+  return finishVeAnalysis(buildVeDelayAlignedEvidenceSteps(inputs, config));
+}
+
+export function buildVeEvidenceMapWithDelayTableAsync(inputs: VeDelayAlignedEvidenceInputs, config: Omit<VeEvidenceConfig, 'delayMs'> = {}, options: VeAnalysisWorkOptions = {}): Promise<VeDelayAlignedEvidenceResult> {
+  return runVeAnalysis(buildVeDelayAlignedEvidenceSteps(inputs, config, true), options);
+}
+
+function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs, config: Omit<VeEvidenceConfig, 'delayMs'>, cooperative = false): VeAnalysisSteps<VeDelayAlignedEvidenceResult> {
   const length = inputs.actualMixture.values.length;
   const actualValues = new Float64Array(inputs.actualMixture.values);
   const actualValidity = new Uint8Array(inputs.actualMixture.validity);
@@ -60,6 +69,7 @@ export function buildVeEvidenceMapWithDelayTable(
   };
 
   for (let local = 0; local < length; local += 1) {
+    if (local % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Aligning mixture delay', completed: local, total: length };
     if (actualValidity[local] !== 1) continue;
     const mixtureTimeMs = inputs.actualMixture.timeMs[local];
     if (mixtureTimeMs === undefined || !Number.isFinite(mixtureTimeMs)) {
@@ -123,7 +133,7 @@ export function buildVeEvidenceMapWithDelayTable(
     ? alignedRange(inputs.fuelCorrectionPercent, correctionValues, correctionValidity, alignedTimes)
     : undefined;
 
-  const base = buildVeEvidenceMap({
+  const base = yield* buildVeEvidenceMapSteps({
     actualMixture,
     rpm,
     load,
@@ -135,7 +145,7 @@ export function buildVeEvidenceMapWithDelayTable(
   }, {
     ...config,
     delayMs: 0,
-  });
+  }, cooperative);
 
   return {
     ...base,

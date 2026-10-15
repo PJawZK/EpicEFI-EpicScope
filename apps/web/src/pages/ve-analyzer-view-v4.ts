@@ -247,6 +247,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    setActive(active) { inner.setActive(active); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },

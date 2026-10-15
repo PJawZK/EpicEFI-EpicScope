@@ -14,6 +14,7 @@ interface DelayCellPosition {
 export function createVeAnalyzerView(): VeAnalyzerViewController {
   const inner = createVeAnalyzerViewV8();
   const root = inner.element;
+  let cancelRegrab: (() => void) | undefined;
 
   // Table layout/header ownership lives entirely in v7. This layer is limited
   // to the lambda-delay interaction fixes introduced in the known-good baseline.
@@ -67,6 +68,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const hadWorkingTable = saveDelayButton ? !saveDelayButton.disabled : false;
     if (!hadWorkingTable || !useDelayButton || !delayResultTitle) return;
 
+    cancelRegrab?.();
     const revision = inner.sessionRevision;
     let completed = false;
     const finishIfReady = (): void => {
@@ -79,6 +81,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       useDelayButton.click();
     };
     const observer = new MutationObserver(finishIfReady);
+    cancelRegrab = () => { completed = true; observer.disconnect(); };
     observer.observe(delayResultTitle, { childList: true, subtree: true, characterData: true });
     observer.observe(useDelayButton, { attributes: true, attributeFilter: ['disabled'] });
     setTimeout(() => observer.disconnect(), 30000);
@@ -87,6 +90,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    setActive(active) { if (!active) cancelRegrab?.(); inner.setActive(active); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },

@@ -136,6 +136,9 @@ export function installVeAnalyzerCellEvidence(
   let context: LoggerAnalysisContext = {
     traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [],
   };
+  let active = true;
+  let pendingContext: LoggerAnalysisContext | undefined;
+  let pendingTune: readonly [import('../../../../core/tune/tune-model').TuneModel | undefined, string | undefined] | undefined;
   const details = new Map<number, { readonly heading: string; readonly content: readonly HTMLElement[]; readonly open: HTMLButtonElement; readonly hasVisit: boolean }>();
   const invalidate = (): void => {
     details.clear();
@@ -249,12 +252,23 @@ export function installVeAnalyzerCellEvidence(
     showDetail(target);
   }, { capture: true });
 
-  return {
+  const controller: VeAnalyzerViewController = {
     element: root,
+    setActive(next) {
+      if (active === next) return;
+      active = next;
+      inner.setActive(next);
+      if (!active) return;
+      const tune = pendingTune; pendingTune = undefined;
+      const nextContext = pendingContext; pendingContext = undefined;
+      if (tune) controller.setTuneModel(tune[0], tune[1]);
+      if (nextContext) controller.setContext(nextContext);
+    },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(next) {
+      if (!active) { pendingContext = next; return false; }
       context = next;
       const changed = inner.setContext(next);
       if (changed) invalidate();
@@ -264,6 +278,7 @@ export function installVeAnalyzerCellEvidence(
       return changed;
     },
     setTuneModel(model, sourceName) {
+      if (!active) { pendingTune = [model, sourceName]; return false; }
       const changed = inner.setTuneModel(model, sourceName);
       if (changed) invalidate();
       return changed;
@@ -272,4 +287,5 @@ export function installVeAnalyzerCellEvidence(
       inner.refresh();
     },
   };
+  return controller;
 }

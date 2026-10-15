@@ -44,9 +44,8 @@ function graphScale(): number {
   return Number.isFinite(value) ? Math.min(1.8, Math.max(0.8, value)) : 1;
 }
 
-function percentile(values: number[], p: number): number | undefined {
+function sortedPercentile(values: readonly number[], p: number): number | undefined {
   if (!values.length) return undefined;
-  values.sort((a, b) => a - b);
   const position = (values.length - 1) * p;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
@@ -277,9 +276,11 @@ function drawPane(
         const value = valueAt(entry.range, event.startTimeMs + relativeMs);
         if (value !== undefined) values.push(value);
       }
-      const median = percentile([...values], 0.5);
-      const low = percentile([...values], 0.1);
-      const high = percentile([...values], 0.9);
+      // This bin owns its values. Sort once for all three interpolated quantiles.
+      values.sort((a, b) => a - b);
+      const median = sortedPercentile(values, 0.5);
+      const low = sortedPercentile(values, 0.1);
+      const high = sortedPercentile(values, 0.9);
       if (median !== undefined) medians.push({ x: relativeMs, value: median });
       if (low !== undefined) lows.push({ x: relativeMs, value: low });
       if (high !== undefined) highs.push({ x: relativeMs, value: high });

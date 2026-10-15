@@ -17,45 +17,52 @@ interface RoleRule {
   readonly exclude?: readonly RegExp[];
 }
 
-let analyzerChannelCatalog: readonly ChannelDefinition[] = [];
-let analyzerChannelDecorationQueued = false;
-let analyzerChannelObserver: MutationObserver | undefined;
+export { channelOptionLabel as analyzerChannelOptionLabel } from './channel-option-label';
 
-export function analyzerChannelOptionLabel(channel: ChannelDefinition): string {
-  const name = channel.sourceName;
-  const unit = channel.unit?.trim();
-  return unit ? `${name} [${unit}]` : name;
+interface ChannelRoleIdentity {
+  readonly normalized: string;
+  readonly exact: readonly string[];
+  readonly source: string;
+  readonly unit: string;
+  readonly sameSourceAndDisplay: boolean;
 }
 
-function normalizedIdentity(channel: ChannelDefinition): string {
-  return `${channel.id} ${channel.sourceName} ${channel.displayName}`
-    .replace(/[_:./\\-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+// Catalog definitions are immutable. Replacement definitions get fresh entries, even when
+// they reuse a channel ID; removed catalogs are not retained by this weak cache.
+const roleIdentities = new WeakMap<ChannelDefinition, ChannelRoleIdentity>();
+
+function channelRoleIdentity(channel: ChannelDefinition): ChannelRoleIdentity {
+  let identity = roleIdentities.get(channel);
+  if (!identity) {
+    const source = channel.sourceName.toLowerCase();
+    const display = channel.displayName.toLowerCase();
+    identity = {
+      normalized: `${channel.id} ${channel.sourceName} ${channel.displayName}`
+        .replace(/[_:./\\-]+/g, ' ').replace(/\s+/g, ' ').trim(),
+      exact: [channel.id.toLowerCase(), source, display],
+      source: source.trim(),
+      unit: channel.unit?.trim().toLowerCase() ?? '',
+      sameSourceAndDisplay: source === display,
+    };
+    roleIdentities.set(channel, identity);
+  }
+  return identity;
 }
 
 const INVALID_ACTUAL_MIXTURE_IDENTITY = /(target|error|err|trim|correction|offset|delta|difference|diff|command|desired|setpoint|table|axis|bin)/i;
-
-function sourceIdentity(channel: ChannelDefinition): string {
-  return channel.sourceName.trim().toLowerCase();
-}
-
-function normalizedUnit(channel: ChannelDefinition): string {
-  return channel.unit?.trim().toLowerCase() ?? '';
-}
 
 export function isVeActualMixtureChannelEligible(
   channel: ChannelDefinition,
   scale: VeActualMixtureScale,
 ): boolean {
   if (channel.valueType === 'bitfield') return false;
-  const identity = normalizedIdentity(channel);
+  const identity = channelRoleIdentity(channel).normalized;
   if (INVALID_ACTUAL_MIXTURE_IDENTITY.test(identity)) return false;
 
-  const unit = normalizedUnit(channel);
+  const unit = channelRoleIdentity(channel).unit;
   if (unit === '%' || unit.includes('percent')) return false;
 
-  const source = sourceIdentity(channel);
+  const source = channelRoleIdentity(channel).source;
   if (scale === 'afr') {
     if (unit === 'afr') return true;
     if (['afrgasolinescale', 'afrvalue', 'realafrvalue', 'smoothedafrvalue'].includes(source)) return true;
@@ -69,7 +76,7 @@ export function isVeActualMixtureChannelEligible(
 
 function actualMixturePreference(channel: ChannelDefinition, scale: VeActualMixtureScale): number {
   if (!isVeActualMixtureChannelEligible(channel, scale)) return Number.NEGATIVE_INFINITY;
-  const source = sourceIdentity(channel);
+  const source = channelRoleIdentity(channel).source;
   const priorities = scale === 'afr'
     ? ['afrgasolinescale', 'afrvalue', 'realafrvalue', 'smoothedafrvalue']
     : ['lambdavalue', 'reallambdavalue1', 'smoothedlambdavalue', 'lambdavalue2', 'reallambdavalue2'];
@@ -77,10 +84,10 @@ function actualMixturePreference(channel: ChannelDefinition, scale: VeActualMixt
   if (exactIndex >= 0) return 1000 - exactIndex * 20;
 
   let score = 100;
-  if (normalizedUnit(channel) === scale) score += 100;
+  if (channelRoleIdentity(channel).unit === scale) score += 100;
   if (channel.id.startsWith('ini:')) score += 5;
-  if (/\b(actual|real|measured)\b/i.test(normalizedIdentity(channel))) score += 10;
-  if (/\b2\b|value2/i.test(normalizedIdentity(channel))) score -= 25;
+  if (/\b(actual|real|measured)\b/i.test(channelRoleIdentity(channel).normalized)) score += 10;
+  if (/\b2\b|value2/i.test(channelRoleIdentity(channel).normalized)) score -= 25;
   return score;
 }
 
@@ -100,64 +107,22 @@ export function preferredVeActualMixtureChannel(
   return Number.isFinite(bestScore) ? best : undefined;
 }
 
-function enforceVeActualMixtureSelection(root: ParentNode, channels: readonly ChannelDefinition[]): void {
+/** Update only this owner's actual-mixture selector. Never dispatch a synthetic change. */
+export function updateVeActualMixtureOptions(control: HTMLSelectElement, channels: readonly ChannelDefinition[], scale: VeActualMixtureScale): boolean {
   const byId = new Map(channels.map((channel) => [channel.id, channel]));
-  for (const control of root.querySelectorAll<HTMLSelectElement>('.ve-analyzer-view select[data-role="actual"]')) {
-    const view = control.closest<HTMLElement>('.ve-analyzer-view');
-    const scaleControl = view?.querySelector<HTMLSelectElement>('select[data-role="mixture-scale"]');
-    const scale = scaleControl?.value === 'lambda' ? 'lambda' : 'afr';
-
-    for (const option of control.options) {
-      if (!option.value) continue;
-      const channel = byId.get(option.value);
-      option.disabled = channel ? !isVeActualMixtureChannelEligible(channel, scale) : true;
-    }
-
-    const selected = byId.get(control.value);
-    if (selected && isVeActualMixtureChannelEligible(selected, scale)) continue;
-    // A hidden VE view may still own an older (or empty) catalog. Assigning a
-    // channel absent from its options leaves value empty; dispatching change in
-    // that case makes its table rebuild retrigger this decorator indefinitely.
-    const availableIds = new Set([...control.options].map((option) => option.value));
-    const preferred = preferredVeActualMixtureChannel(channels.filter((channel) => availableIds.has(channel.id)), scale);
-    const next = preferred?.id ?? '';
-    if (control.value === next) continue;
-    const previous = control.value;
-    control.value = next;
-    if (control.value !== previous) control.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-}
-
-export function decorateAnalyzerChannelOptions(root: ParentNode, channels: readonly ChannelDefinition[]): void {
-  const byId = new Map(channels.map((channel) => [channel.id, channel]));
-  for (const option of root.querySelectorAll<HTMLOptionElement>('select option')) {
+  for (const option of control.options) {
+    if (!option.value) continue;
     const channel = byId.get(option.value);
-    if (!channel) continue;
-    const expected = analyzerChannelOptionLabel(channel);
-    if (option.textContent !== expected) option.textContent = expected;
+    const disabled = !channel || !isVeActualMixtureChannelEligible(channel, scale);
+    if (option.disabled !== disabled) option.disabled = disabled;
   }
-  enforceVeActualMixtureSelection(root, channels);
-}
-
-function queueAnalyzerChannelDecoration(): void {
-  if (analyzerChannelDecorationQueued || typeof document === 'undefined') return;
-  analyzerChannelDecorationQueued = true;
-  queueMicrotask(() => {
-    analyzerChannelDecorationQueued = false;
-    for (const root of document.querySelectorAll<HTMLElement>('.analyzer-page')) {
-      decorateAnalyzerChannelOptions(root, analyzerChannelCatalog);
-    }
-  });
-}
-
-function registerAnalyzerChannelCatalog(channels: readonly ChannelDefinition[]): void {
-  analyzerChannelCatalog = channels;
-  if (typeof document === 'undefined') return;
-  if (!analyzerChannelObserver && typeof MutationObserver !== 'undefined') {
-    analyzerChannelObserver = new MutationObserver(() => { queueAnalyzerChannelDecoration(); });
-    analyzerChannelObserver.observe(document.documentElement, { childList: true, subtree: true });
-  }
-  queueAnalyzerChannelDecoration();
+  const selected = byId.get(control.value);
+  if (selected && isVeActualMixtureChannelEligible(selected, scale)) return false;
+  const availableIds = new Set([...control.options].map((option) => option.value));
+  const preferred = preferredVeActualMixtureChannel(channels.filter((channel) => availableIds.has(channel.id)), scale);
+  const previous = control.value;
+  control.value = preferred?.id ?? '';
+  return control.value !== previous;
 }
 
 // Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
@@ -309,11 +274,12 @@ const RULES: Readonly<Record<string, RoleRule>> = {
 };
 
 function scoreChannel(channel: ChannelDefinition, rule: RoleRule): number {
-  const exactIdentities = [channel.id, channel.sourceName, channel.displayName].map((value) => value.toLowerCase());
+  const metadata = channelRoleIdentity(channel);
+  const exactIdentities = metadata.exact;
   const exactIndex = rule.exact?.findIndex((candidate) => exactIdentities.includes(candidate.toLowerCase())) ?? -1;
   if (exactIndex >= 0) return 1000 - exactIndex;
 
-  const identity = normalizedIdentity(channel);
+  const identity = channelRoleIdentity(channel).normalized;
   if (rule.exclude?.some((pattern) => pattern.test(identity))) return Number.NEGATIVE_INFINITY;
   let best = Number.NEGATIVE_INFINITY;
   rule.include.forEach((pattern, index) => {
@@ -321,9 +287,7 @@ function scoreChannel(channel: ChannelDefinition, rule: RoleRule): number {
     if (pattern.test(identity)) best = Math.max(best, 100 - index * 12);
   });
   if (!Number.isFinite(best)) return best;
-  const source = channel.sourceName.toLowerCase();
-  const display = channel.displayName.toLowerCase();
-  if (source === display) best += 2;
+  if (metadata.sameSourceAndDisplay) best += 2;
   if (channel.id.startsWith('ini:')) best += 1;
   return best;
 }
@@ -333,7 +297,6 @@ export function suggestAnalyzerChannel(
   role: string,
   channels: readonly ChannelDefinition[],
 ): ChannelDefinition | undefined {
-  registerAnalyzerChannelCatalog(channels);
   const rule = RULES[`${domain}:${role}`];
   if (!rule) return undefined;
   let selected: ChannelDefinition | undefined;

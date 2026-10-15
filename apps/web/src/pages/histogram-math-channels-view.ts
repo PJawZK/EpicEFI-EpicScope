@@ -1,3 +1,4 @@
+import { createLocalPersistenceFeedback } from './local-persistence-feedback';
 import { compileCalculatedField, evaluateCalculatedFieldRange, splitCalculatedFieldOffsetReference, type CalculatedFieldRangeBinding } from '../../../../core/analysis/calculated-field';
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext } from './histogram-page';
@@ -154,6 +155,9 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   if (!list || !search || !count || !title || !nameInput || !unitInput || !formulaInput || !validation || !newButton || !saveButton || !resetButton || !deleteButton || !sourceSearch || !sourceList) {
     throw new Error('Math Channels page structure is incomplete.');
   }
+
+  const persistenceFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.math-channel-actions')!.parentElement!, 'math-channels',
+    () => saveHistogramCalculatedFields(loadHistogramCalculatedFields()));
 
   const stat = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-math-stat="${name}"]`);
@@ -339,14 +343,15 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       };
       fields = existing ? fields.map((candidate) => candidate.id === existing.id ? field : candidate) : [...fields, field];
       const persisted = saveHistogramCalculatedFields(fields);
+      persistenceFeedback.report(persisted, 'save');
       editingId = field.id;
       deleteButton.hidden = false;
       title.textContent = 'Edit Math Channel';
       renderList();
       notifyChanged();
       if (!persisted) {
-        validation.className = 'math-channel-validation math-channel-validation--warning';
-        validation.textContent = 'Available this session; could not save locally.';
+        validation.className = 'math-channel-validation math-channel-validation--good';
+        validation.textContent = 'Formula is available for calculation.';
       } else {
         void preview();
       }
@@ -359,7 +364,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   const remove = (): void => {
     if (!editingId) return;
     fields = fields.filter((field) => field.id !== editingId);
-    saveHistogramCalculatedFields(fields);
+    persistenceFeedback.report(saveHistogramCalculatedFields(fields), 'delete');
     notifyChanged();
     resetEditor();
   };

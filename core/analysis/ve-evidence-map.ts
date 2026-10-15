@@ -1,6 +1,7 @@
+import { VE_ANALYSIS_BATCH_SIZE, finishVeAnalysis, sortVeAnalysisValues, type VeAnalysisSteps } from './ve-analysis-work';
 import type { NumericChannelRange } from '../log-model/log-types';
 import type { NumericHeatmapAxisBin } from './heatmap';
-import { robustWeightedEstimate, type WeightedObservation } from './ve-evidence-statistics';
+import { robustWeightedEstimate, robustWeightedEstimateSteps, type WeightedObservation } from './ve-evidence-statistics';
 import { axisBreakpointContributions } from './weighted-cell-mean';
 
 export interface VeTableGeometry {
@@ -161,6 +162,8 @@ function selectedIndices(reference: NumericChannelRange, selected?: ArrayLike<nu
   return Array.from({ length: selected.length }, (_, index) => selected[index]!).filter(Number.isSafeInteger).sort((a, b) => a - b);
 }
 
+// Keep ordinary short windows on the scalar path; generator delegation per sample
+// adds substantial overhead. Only wide scans need their own cancellation checkpoints.
 function slope(samples: readonly Sample[], start: number, end: number, pick: (sample: Sample) => number): number {
   if (end <= start) return 0;
   const origin = samples[start]!.timeMs;
@@ -174,15 +177,34 @@ function slope(samples: readonly Sample[], start: number, end: number, pick: (sa
   return denominator > 0 ? (n * sxy - sx * sy) / denominator : 0;
 }
 
-function stableSegment(samples: readonly Sample[], durationMs: number, maxRpmRate: number, maxLoadRate: number): Sample[] {
-  if (durationMs <= 0) return [...samples];
+function* wideSlope(samples: readonly Sample[], start: number, end: number, pick: (sample: Sample) => number): VeAnalysisSteps<number> {
+  if (end <= start) return 0;
+  const origin = samples[start]!.timeMs;
+  let sx = 0, sy = 0, sxy = 0, sx2 = 0, n = 0;
+  for (let index = start; index <= end; index += 1) {
+    if ((index - start + 1) % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Checking steady slope', completed: index - start + 1, total: end - start + 1 };
+    const x = (samples[index]!.timeMs - origin) / 1000;
+    const y = pick(samples[index]!);
+    sx += x; sy += y; sxy += x * y; sx2 += x * x; n += 1;
+  }
+  const denominator = n * sx2 - sx * sx;
+  return denominator > 0 ? (n * sxy - sx * sy) / denominator : 0;
+}
+
+function* stableSegment(samples: readonly Sample[], durationMs: number, maxRpmRate: number, maxLoadRate: number): VeAnalysisSteps<Sample[]> {
   const accepted: Sample[] = [];
   let start = 0;
   for (let end = 0; end < samples.length; end += 1) {
+    // Each end can scan two windows: use a smaller outer batch even on the scalar path.
+    if (end % 32 === 0) yield { phase: 'Qualifying steady samples', completed: end, total: samples.length };
+    if (durationMs <= 0) { accepted.push(samples[end]!); continue; }
     while (start + 1 <= end && samples[end]!.timeMs - samples[start + 1]!.timeMs >= durationMs) start += 1;
     if (samples[end]!.timeMs - samples[start]!.timeMs < durationMs) continue;
-    if (Math.abs(slope(samples, start, end, (sample) => sample.rpm)) > maxRpmRate) continue;
-    if (Math.abs(slope(samples, start, end, (sample) => sample.load)) > maxLoadRate) continue;
+    const bounded = end - start + 1 <= VE_ANALYSIS_BATCH_SIZE;
+    const rpmRate = bounded ? slope(samples, start, end, (sample) => sample.rpm) : yield* wideSlope(samples, start, end, (sample) => sample.rpm);
+    if (Math.abs(rpmRate) > maxRpmRate) continue;
+    const loadRate = bounded ? slope(samples, start, end, (sample) => sample.load) : yield* wideSlope(samples, start, end, (sample) => sample.load);
+    if (Math.abs(loadRate) > maxLoadRate) continue;
     accepted.push(samples[end]!);
   }
   return accepted;
@@ -206,7 +228,26 @@ function evidenceConfidence(totalWeight: number, sampleCount: number, spreadPerc
 }
 
 export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceConfig = {}): VeEvidenceMapResult {
-  const indices = selectedIndices(inputs.actualMixture, inputs.sampleIndices);
+  return finishVeAnalysis(buildVeEvidenceMapSteps(inputs, config));
+}
+
+export function* buildVeEvidenceMapSteps(inputs: VeEvidenceInputs, config: VeEvidenceConfig = {}, cooperative = false): VeAnalysisSteps<VeEvidenceMapResult> {
+  let indices: number[];
+  if (cooperative) {
+    indices = [];
+    let ordered = true;
+    let previous = Number.NEGATIVE_INFINITY;
+    const length = inputs.sampleIndices?.length ?? inputs.actualMixture.values.length;
+    for (let index = 0; index < length; index += 1) {
+      const value = inputs.sampleIndices ? inputs.sampleIndices[index]! : inputs.actualMixture.startSampleIndex + index;
+      if (Number.isSafeInteger(value)) {
+        if (value < previous) ordered = false;
+        previous = value; indices.push(value);
+      }
+      if (index % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Preparing sample scope', completed: index, total: length };
+    }
+    if (inputs.sampleIndices && !ordered) indices = yield* sortVeAnalysisValues(indices, (a, b) => a - b, 'Sorting sample scope');
+  } else indices = selectedIndices(inputs.actualMixture, inputs.sampleIndices);
   const minRpm = config.minimumRpm ?? Number.NEGATIVE_INFINITY;
   const maxRpm = config.maximumRpm ?? Number.POSITIVE_INFINITY;
   const minLoad = config.minimumLoad ?? Number.NEGATIVE_INFINITY;
@@ -228,41 +269,46 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const aligned: Sample[] = [];
   let segment: Sample[] = [];
   const stable: Sample[] = [];
-  const finish = (): void => {
+  const finish = function* (): VeAnalysisSteps<void> {
     if (!segment.length) return;
-    for (const sample of stableSegment(segment, duration, maxRpmRate, maxLoadRate)) stable.push(sample);
+    const accepted = yield* stableSegment(segment, duration, maxRpmRate, maxLoadRate);
+    for (let index = 0; index < accepted.length; index += 1) {
+      stable.push(accepted[index]!);
+      if (index % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Retaining steady samples', completed: index, total: accepted.length };
+    }
     segment = [];
   };
 
   for (let position = 0; position < indices.length; position += 1) {
+    if (position % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Matching engine samples', completed: position, total: indices.length };
     const sampleIndex = indices[position]!;
     const actual = value(inputs.actualMixture, sampleIndex);
-    if (!actual || !(actual.value > 0)) { finish(); invalidSampleCount += 1; continue; }
+    if (!actual || !(actual.value > 0)) { yield* finish(); invalidSampleCount += 1; continue; }
     const engineTimeMs = actual.timeMs - delayMs;
     const rpmValue = delayMs === 0 ? value(inputs.rpm, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs);
     const loadValue = delayMs === 0 ? value(inputs.load, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.load, engineTimeMs);
-    if (rpmValue === undefined || loadValue === undefined) { finish(); delayUnavailableSampleCount += 1; continue; }
-    if (rpmValue < minRpm || rpmValue > maxRpm || loadValue < minLoad || loadValue > maxLoad) { finish(); rangeRejectedSampleCount += 1; continue; }
+    if (rpmValue === undefined || loadValue === undefined) { yield* finish(); delayUnavailableSampleCount += 1; continue; }
+    if (rpmValue < minRpm || rpmValue > maxRpm || loadValue < minLoad || loadValue > maxLoad) { yield* finish(); rangeRejectedSampleCount += 1; continue; }
     const target = interpolateVeTable(inputs.target, rpmValue, loadValue);
-    if (!(target !== undefined && target > 0)) { finish(); targetOutOfRangeSampleCount += 1; continue; }
+    if (!(target !== undefined && target > 0)) { yield* finish(); targetOutOfRangeSampleCount += 1; continue; }
 
     let fuelCorrectionFactor = 1;
     if (compensateFuelCorrection) {
       const correctionPercent = delayMs === 0
         ? value(inputs.fuelCorrectionPercent!, sampleIndex)?.value
         : interpolateNumericRangeAtTime(inputs.fuelCorrectionPercent!, engineTimeMs);
-      if (correctionPercent === undefined) { finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
+      if (correctionPercent === undefined) { yield* finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
       fuelCorrectionFactor = 1 + correctionPercent / 100;
-      if (!(fuelCorrectionFactor > 0) || !Number.isFinite(fuelCorrectionFactor)) { finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
+      if (!(fuelCorrectionFactor > 0) || !Number.isFinite(fuelCorrectionFactor)) { yield* finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
       fuelCorrectionCompensatedSampleCount += 1;
     }
 
     const current: Sample = { sampleIndex, timeMs: engineTimeMs, actual: actual.value, rpm: rpmValue, load: loadValue, target, fuelCorrectionFactor };
     aligned.push(current);
-    if (position === 0 || sampleIndex !== indices[position - 1]! + 1 || (segment.length && !(current.timeMs > segment[segment.length - 1]!.timeMs))) finish();
+    if (position === 0 || sampleIndex !== indices[position - 1]! + 1 || (segment.length && !(current.timeMs > segment[segment.length - 1]!.timeMs))) yield* finish();
     segment.push(current);
   }
-  finish();
+  yield* finish();
 
   const rpmBins = heatmapBins(inputs.veRpmBins);
   const loadBins = heatmapBins(inputs.veLoadBins);
@@ -274,7 +320,9 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   let veOutOfRangeSampleCount = 0;
   let contributingSampleCount = 0;
 
-  for (const sample of stable) {
+  for (let position = 0; position < stable.length; position += 1) {
+    if (position % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Accumulating cell evidence', completed: position, total: stable.length };
+    const sample = stable[position]!;
     if (sample.rpm < inputs.veRpmBins[0]! || sample.rpm > inputs.veRpmBins[inputs.veRpmBins.length - 1]!
       || sample.load < inputs.veLoadBins[0]! || sample.load > inputs.veLoadBins[inputs.veLoadBins.length - 1]!) {
       veOutOfRangeSampleCount += 1;
@@ -300,7 +348,8 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const cells: VeEvidenceCell[] = [];
   for (let row = 0; row < loadBins.length; row += 1) for (let col = 0; col < rpmBins.length; col += 1) {
     const index = row * rpmBins.length + col;
-    const estimate = robustWeightedEstimate(observationLists[index]!);
+    yield { phase: 'Estimating cells', completed: index, total: cellCount };
+    const estimate = cooperative ? yield* robustWeightedEstimateSteps(observationLists[index]!) : robustWeightedEstimate(observationLists[index]!);
     const ratio = estimate.median;
     const spreadPercent = estimate.spread === undefined ? undefined : estimate.spread * 100;
     cells.push({
