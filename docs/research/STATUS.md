@@ -19,8 +19,9 @@ Status vocabulary:
 - Generic Histogram research parity is closed for the approved scope.
 - VE Analyzer is implemented and real-log/browser validated. It is no longer a planned-only feature.
 - PR #449 restored the VE Analyzer runtime to the browser-known-good #441-era composition after later continuity/render wrappers caused Analyzer-entry regression. The project owner confirmed Analyzer entry works again after that rollback.
-- Fuel / Injector and Trigger / Sync remain useful maturity targets outside VE.
+- Fuel / Injector and Trigger / Sync remain useful targeted maturity areas outside VE.
 - MLG v3 remains researched but not implemented.
+- Remote branch cleanup is complete; `main` is the only current remote branch authority.
 
 ## MegaLogViewer Histogram / Table Generator research
 
@@ -81,7 +82,7 @@ Generic Histogram research parity is considered closed unless field use exposes 
 
 ## VE Analyze / VE-autotune research
 
-The current product/behavior contract is preserved in `../VE_ANALYZER.md`.
+The current product/behavior contract is preserved in `../VE_ANALYZER.md` and the current UI/workflow contract in `../VE_ANALYZER_WORKBENCH.md`.
 
 | Research conclusion | EpicScope status | Current disposition |
 |---|---|---|
@@ -89,7 +90,7 @@ The current product/behavior contract is preserved in `../VE_ANALYZER.md`.
 | Semantic qualification presets | Partial | Useful qualification controls and state exclusions exist; richer preset semantics remain future work. |
 | Trailing-window stability and recovery | Implemented foundation | Reused from mature Fueling qualification behavior. |
 | Observed mixture-response delay analysis | Implemented | VE uses explicit RPM×load lambda-delay discovery and a separate working delay table. |
-| Single / RPM-curve / RPM×load lambda-delay models | Deliberately narrowed | Current VE product uses RPM×load table only. Scalar/curve modes are not part of the accepted product direction. |
+| Single / RPM-curve / RPM×load lambda-delay models | Deliberately narrowed | Current VE product uses **RPM×load table only**. Scalar/curve modes are historical/rejected options, not accepted product direction. |
 | Explicit Grab lambda delays from log | Implemented | Expensive discovery remains explicit user action. |
 | Timestamp-based delay alignment | Implemented | Mixture observations are aligned back to the earlier engine/fuel state by time. |
 | Starting-table prior / confidence authority | Implemented | Proposal authority remains anchored to the starting VE table. |
@@ -129,7 +130,7 @@ The browser-known-good runtime restored by PR #449 intentionally retains some ol
 - hidden one-shot qualification/load state;
 - Custom qualification semantics that need redesign before advanced formula support.
 
-Future VE work should move authoritative result/proposal/delay/session state out of rendered DOM one structural change at a time, with browser verification after each change.
+Do not attack all of this debt in one refactor. Preserve the browser-known-good composition and make one structural change at a time with browser verification.
 
 ## ECUMaster EMU PRO reference research
 
@@ -163,11 +164,11 @@ Current state is partial but substantially improved:
 - exact event-extreme source sample/time are retained;
 - event-context core supports pressure/PW/duty/deadtime/RPM/load evidence.
 
-Remaining high-value work includes visible event-extreme context, pressure sag/recovery, repeated-event behavior, pump/prime evidence where logged, voltage/deadtime evidence and stronger Logger navigation.
+Remaining useful work includes visible event-extreme context, pressure sag/recovery, repeated-event behavior, pump/prime evidence where logged, voltage/deadtime evidence and stronger Logger navigation.
 
 ## Trigger / Sync research direction
 
-Current state remains partial. Useful next work includes:
+Current state remains partial. Useful later work includes:
 
 - sync state / trigger error / loss count / loss reason context;
 - one-sample glitch versus sustained loss classification;
@@ -195,10 +196,11 @@ Do not turn EpicScope into a live tune editor merely to mirror TunerStudio behav
 
 As of 2026-10-15:
 
-1. preserve the PR #449 browser-known-good VE runtime while cleaning state ownership;
-2. expose authoritative VE session/result/proposal/working-delay state;
-3. remove duplicate cell-evidence analysis and DOM-derived delay ownership;
-4. fix Result View state/precision behavior and Logger round-trip persistence one verified step at a time;
-5. continue remaining Fuel / Injector and Trigger / Sync maturity work as useful;
-6. add MLG v3 compatibility when remaining type mapping is sufficiently verified or real need appears;
-7. perform deliberate Web cleanup/consolidation without reopening closed Histogram/Logger feature tracks.
+1. preserve the PR #449 browser-known-good VE runtime;
+2. fix Result View fallback/precision behavior as one isolated change and browser-verify it;
+3. fix Logger → Analyzer VE result/session persistence as one isolated change and browser-verify it;
+4. then expose authoritative VE session/result/proposal/working-delay state;
+5. remove duplicate cell-evidence analysis and DOM-derived delay ownership after that state API exists;
+6. continue remaining Fuel / Injector and Trigger / Sync maturity work where useful;
+7. add MLG v3 compatibility when remaining type mapping is sufficiently verified or real need appears;
+8. perform deliberate Web cleanup/consolidation without reopening closed Histogram/Logger feature tracks.
