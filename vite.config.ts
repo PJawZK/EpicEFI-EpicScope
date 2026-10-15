@@ -3,10 +3,11 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   const shimTarget = env.EPICSCOPE_SHIM_TARGET || 'http://127.0.0.1:29002';
+  const basePath = env.EPICSCOPE_BASE_PATH || '/EpicEFI-EpicScope/';
 
   return {
     root: 'apps/web',
-    base: '/EpicEFI-EpicScope/',
+    base: basePath,
     server: {
       port: 5173,
       strictPort: true,
