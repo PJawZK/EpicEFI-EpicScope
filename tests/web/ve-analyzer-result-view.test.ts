@@ -35,7 +35,7 @@ describe('VE Analyzer result views', () => {
     expect(veResultDisplay(metrics, 'change-percent').text).toBe('+10%');
   });
 
-  it('exposes evidence and delay views without inventing unavailable values', () => {
+  it('exposes evidence and delay views while preserving the original VE when a view has no value', () => {
     const metrics = parseVeRenderedCellMetrics(
       'Robust median -3.5%; P10 -5.0%; P90 -1.0%; spread 4.0%; confidence moderate; weight 9.250; samples 18.',
       '72',
@@ -46,7 +46,19 @@ describe('VE Analyzer result views', () => {
     expect(veResultDisplay(metrics, 'weight').text).toBe('9.25');
     expect(veResultDisplay(metrics, 'confidence').text).toBe('Moderate');
     expect(veResultDisplay(metrics, 'spread').text).toBe('4%');
-    expect(veResultDisplay(metrics, 'delay').text).toBe('—');
+    expect(veResultDisplay(metrics, 'delay').text).toBe('72');
     expect(veResultDisplay(metrics, 'delay', 187.6).text).toBe('188');
+  });
+
+  it('keeps untouched VE-table values visible in every non-proposal result view', () => {
+    const metrics = parseVeRenderedCellMetrics('', '47.8');
+
+    for (const view of ['change', 'change-percent', 'mixture-error', 'samples', 'weight', 'confidence', 'spread', 'delay'] as const) {
+      expect(veResultDisplay(metrics, view)).toEqual({
+        text: '47.8',
+        numericValue: 47.8,
+        scaleMode: 'base',
+      });
+    }
   });
 });
