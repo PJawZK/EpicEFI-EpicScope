@@ -296,7 +296,12 @@ export function installVeAnalyzerCellEvidence(
   let cache: Promise<VeEvidenceReviewCache | undefined> | undefined;
   let detailGeneration = 0;
 
-  const invalidate = (): void => { cache = undefined; };
+  const invalidate = (): void => {
+    cache = undefined;
+    detailGeneration += 1;
+    const panel = root.closest<HTMLElement>('.analyzer-page')?.querySelector<HTMLElement>('.ve-cell-detail-popover');
+    if (panel) panel.hidden = true;
+  };
 
   const buildCache = async (): Promise<VeEvidenceReviewCache | undefined> => {
     const delayTable = workingDelayTableFromDom(root);
