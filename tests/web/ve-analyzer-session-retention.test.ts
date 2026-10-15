@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LoggerAnalysisContext } from '../../apps/web/src/pages/logger-page';
-import { sameVeAnalysisContext } from '../../apps/web/src/pages/ve-analyzer-view-v10';
+import { sameVeAnalysisContext } from '../../apps/web/src/pages/ve-analyzer-session-retention';
 
 function context(
   channels: LoggerAnalysisContext['channels'],
