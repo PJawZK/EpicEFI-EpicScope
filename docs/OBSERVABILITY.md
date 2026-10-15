@@ -23,18 +23,26 @@ The system must answer, after a slowdown, freeze, failed load, stale result, per
 - how long each operation took;
 - whether async work completed against obsolete state;
 - whether resources grew abnormally;
-- whether the previous session ended normally;
+- whether the previous session ended cleanly or merely lacks a confirmed clean end;
 - what anomaly pattern best explains the sequence.
 
 The design is intentionally broader than VE, Analyzer or any current bug.
 
-## Core invariant
+## Core invariants
 
 > **One authoritative observability record stream. Specialized diagnostics and reports are projections of it.**
+
+> **The recorder behaves like a bounded flight recorder, not a normal debug logger.**
+
+> **Observability must not become a new source of feedback loops, runaway allocation, synchronous I/O or application state authority.**
 
 Do not keep long-lived parallel systems for the same facts.
 
 Existing measurements/probes may remain where they naturally belong, but durable diagnostic history, operation correlation, anomalies and report assembly should converge on the shared observability model.
+
+Observability records evidence about application/domain state; they do not own that state. Source, tune, analysis, controller and generation/revision ownership stays with the subsystem that already owns it.
+
+Instrumentation must be added at existing owners. Do **not** add wrapper stacks around controllers/views merely to observe them.
 
 ## Current-state assessment
 
@@ -83,6 +91,83 @@ Once replacement paths are validated, remove redundant ownership such as:
 
 Do **not** delete underlying parser diagnostics or measurement probes that are still the canonical source of domain evidence. Parser diagnostics remain parser/source-model evidence; observability records their occurrence/summary and correlates them with the session.
 
+## Flight-recorder behavior
+
+The recorder must remain useful precisely when the application is misbehaving. Event storms must make the recorder **cheaper**, not more expensive.
+
+### Priority tiers
+
+Records should have retention/priority semantics so high-value evidence survives pressure.
+
+**Critical evidence** should not be silently discarded under normal bounded operation:
+
+- runtime errors/unhandled rejections;
+- operation start/terminal records;
+- anomalies;
+- session start/checkpoint/end state;
+- persistence failures;
+- stale/superseded completion evidence;
+- recorder/persistence internal failure summaries.
+
+**Normal evidence** includes lifecycle, navigation, state changes, render boundaries and async transitions.
+
+**High-frequency detail** such as repeated render/observer/event-dispatch records may be coalesced once repetition becomes obvious.
+
+Example:
+
+```text
+observability.records-coalesced
+component=ve-analyzer
+name=render.completed
+count=487
+windowMs=320
+firstSequence=18447
+lastSequence=18933
+```
+
+Coalescing/drop activity is itself observable. Never silently hide that diagnostic pressure occurred.
+
+### Two-tier recording
+
+Use a two-tier model:
+
+**Tier A — always-on core**
+
+- session/lifecycle;
+- major operations;
+- errors;
+- owner-provided revisions/fingerprints;
+- persistence outcomes;
+- major performance metrics;
+- anomalies/checkpoints.
+
+**Tier B — short-lived detailed context**
+
+- render/rebuild boundaries;
+- observer callbacks;
+- programmatic/user event dispatches;
+- detailed async transitions;
+- low-frequency resource samples.
+
+Tier B lives in the short current-session ring. When an anomaly/error occurs, bounded context windows around that sequence can be promoted into persisted previous-session evidence.
+
+### Recursion guard / emergency path
+
+Observability must not recursively observe its own recorder/persistence/reporting work.
+
+Examples to prevent:
+
+```text
+observability persistence failure
+  -> record persistence failure
+    -> observability persistence failure
+      -> ...
+```
+
+Provide an internal recursion/re-entry guard and a tiny emergency failure summary path that does not use the normal recorder/persistence pipeline.
+
+Observability-internal work should normally be excluded from ordinary UI/DOM/storage instrumentation unless explicitly recorded as an internal health event.
+
 ## Target model
 
 The system has three data shapes with a common envelope.
@@ -103,7 +188,7 @@ Examples:
 - async start/finish/cancel/failure;
 - runtime error;
 - parser/source-integrity finding;
-- session start/normal end.
+- session start/checkpoint/confirmed-normal end.
 
 ### Metrics
 
@@ -150,6 +235,7 @@ severity
 subsystem
 component
 name
+origin
 operationId
 parentOperationId
 activeView
@@ -157,11 +243,45 @@ visibility
 sourceIdentity/sourceRevision
 tuneIdentity/tuneRevision
 stateRevision
+semanticFingerprint
 durationMs
 outcome
 reason
 metadata
 ```
+
+### Stable machine identity
+
+`subsystem`, `component`, `name`, anomaly/rule codes and outcomes should use stable machine-readable identifiers. Human wording belongs in UI/report formatters.
+
+Prefer:
+
+```text
+analyzer.context.changed
+analyzer.render.completed
+storage.write.failed
+source.load.started
+async.completion.stale
+observer.callback
+```
+
+Do not make anomaly rules depend on English report sentences.
+
+### Origin
+
+Record the causal origin where it materially helps reconstruction:
+
+```text
+user
+programmatic
+observer
+async
+worker
+system
+persistence
+```
+
+The origin should identify how the transition was triggered, not invent causality beyond what the producer actually knows.
 
 Metadata must stay compact and typed/structured where practical. Do not use the recorder as an unrestricted debug-string dumping ground.
 
@@ -183,6 +303,47 @@ activate Analyzer
 
 This is more useful than independent counters because it shows causality.
 
+### Explicit operation API
+
+Do not depend on an implicit global "current operation" across browser promises/events/workers. Browser execution does not provide a universal reliable async-local context for this use.
+
+Use explicit operation tokens/handles conceptually like:
+
+```ts
+const operation = observability.beginOperation({
+  subsystem: 'analyzer',
+  component: 've-analyzer',
+  name: 'analyzer.run',
+});
+
+try {
+  const child = operation.child('analyzer.load-traces');
+  // ...
+  child.succeed();
+  operation.succeed();
+} catch (error) {
+  operation.fail(error);
+}
+```
+
+Worker requests/responses should carry the relevant operation ID explicitly when correlation matters.
+
+### Terminal operation semantics
+
+An operation terminates exactly once with a defined outcome such as:
+
+```text
+success
+failure
+cancelled
+superseded
+stale
+```
+
+A generation/source/tune change that intentionally invalidates pending work should produce a `superseded`/`cancelled` terminal record rather than simply disappear from history.
+
+A later completion against obsolete state is separate stale-completion evidence.
+
 ## State-transition recording
 
 Record relationships and compact deltas, not entire application state.
@@ -193,11 +354,60 @@ Prefer:
 selection: veTable1 -> veTable2
 sourceRevision: 14 -> 15
 renderCountDelta: 1
-stateHashBefore: ...
-stateHashAfter: ...
+semanticFingerprintBefore: ...
+semanticFingerprintAfter: ...
 ```
 
 Avoid serializing full channel catalogs, tune tables, log samples or entire workspaces into every record.
+
+### Revisions remain owner-controlled
+
+Observability may record `sourceRevision`, `tuneRevision`, `analysisGeneration`, etc., but must never become their owner or independently create competing revision authority.
+
+### Semantic fingerprints
+
+Do not hash arbitrary large application objects inside the recorder.
+
+Owners may expose compact stable fingerprints/revision tuples representing the semantics that matter for no-op/repetition detection, for example:
+
+```text
+sourceRevision=14
+tuneRevision=6
+qualificationRevision=3
+delayRevision=2
+resultRevision=8
+```
+
+A compact derived hash of such fields is acceptable. Hashing/serializing full tune/source/UI state is not.
+
+## Healthy checkpoints
+
+Record bounded high-value checkpoints where the application reaches a known coherent state.
+
+Candidate checkpoints include:
+
+- source load accepted and UI usable;
+- workspace restore completed;
+- mode/Analyzer entry completed and quiescent;
+- analysis completed successfully;
+- persistence transaction completed successfully;
+- navigation/render activity returned to a stable idle state.
+
+A diagnostic report should be able to show:
+
+```text
+Last confirmed healthy checkpoint:
+Analyzer entered successfully
+sequence 18,420
+14:28:31.583
+
+First anomaly:
+Repeated observer/render cycle
+sequence 18,447
++212 ms
+```
+
+A checkpoint is evidence of a coherent boundary, not proof that every subsystem is healthy.
 
 ## Generic anomaly detection
 
@@ -206,19 +416,48 @@ Anomaly rules should be broad and architecture-oriented rather than tied to know
 Initial rule families:
 
 1. **Repetition/burst** — the same event or operation repeats unusually often in a short window.
-2. **No-op work** — render/rebuild/analysis repeats while semantic state hash is unchanged.
+2. **No-op work** — render/rebuild/analysis repeats while owner-provided semantic fingerprint is unchanged.
 3. **Feedback cycle** — event A causes B which causes A repeatedly (observer/event/render loops).
 4. **Hidden work** — hidden/inactive controllers perform material work repeatedly.
 5. **Stale completion** — async work completes against a superseded generation/source/tune/state revision.
-6. **Unfinished work** — operation starts but has no success/failure/cancel terminal record.
+6. **Unfinished work** — operation starts but has no success/failure/cancel/superseded terminal record.
 7. **Persistence divergence** — storage write/delete fails but in-memory state changes as if it succeeded.
 8. **Resource growth** — DOM/listener/observer/cache/retained-memory counts grow monotonically across repeated equivalent workflows.
 9. **Unexpected I/O** — physical reads/cache misses spike for an operation that normally reuses resident/cache-backed data.
 10. **State inconsistency** — selected value missing from available options, active count exceeds available/renderable state, or source/tune/result revisions disagree.
-11. **Performance regression** — operation duration deviates strongly from its recent baseline rather than merely crossing a single universal threshold.
-12. **Abnormal session end** — previous session lacks a normal end marker.
+11. **Performance regression** — operation duration deviates strongly from an appropriate recent workload baseline rather than merely crossing one universal threshold.
+12. **Unconfirmed session termination** — previous session lacks a confirmed normal-end marker.
+13. **Recorder pressure** — excessive coalescing/dropping/queue pressure indicates a pathological event storm or insufficient recorder bounds.
 
 The first implementation does not need all rules at once. The recorder and operation model must make them possible without another architecture change.
+
+### Streaming vs report-time detection
+
+Use two classes of detector.
+
+**Cheap streaming detectors** may cover:
+
+- repetition/burst;
+- stale completion;
+- unfinished-operation timeout;
+- runtime errors;
+- persistence divergence;
+- obvious resource/queue pressure.
+
+**Report-time/deferred analysis** may cover:
+
+- causal cycle reconstruction;
+- long-term resource trends;
+- workload-relative performance regressions;
+- complex cross-component patterns.
+
+Do not run expensive graph/cycle/baseline analysis in every record insertion path.
+
+### Detection is not automatic repair
+
+The initial observability system records and reports anomalies. It must not automatically disconnect observers, cancel controllers, rewrite selections or mutate domain state merely because an anomaly was detected.
+
+Any future runtime self-protection mechanism is a separate safety feature and requires its own behavioral decision/testing.
 
 ## Baselines
 
@@ -232,36 +471,117 @@ Examples:
 
 Fixed thresholds may still be used for safety limits and clearly pathological values, but should not be the only detection mechanism.
 
+### Workload identity
+
+Do not compare unlike workloads blindly. Baseline keys should use coarse non-sensitive workload identity such as:
+
+```text
+operation type
+build/schema family
+source type
+record-count bucket
+channel-count bucket
+cache/cold-warm state
+active domain/feature where material
+```
+
+Do not require filenames for baseline identity.
+
 ## Bounded black-box retention
 
-The observability store must be bounded.
+The observability store must be bounded by **bytes, record count and age**, whichever limit is reached first.
 
 Initial implementation target:
 
 - current-session in-memory ring: approximately **20,000–25,000 compact records** with a rolling time cap of roughly **30 minutes**;
-- persisted previous sessions: retain the final tail plus session summary for up to **3 sessions**;
-- persisted previous-session tail: approximately **5,000 records per session**;
+- persisted previous sessions: retain session summary plus final tail plus bounded anomaly/error context windows for up to **3 sessions**;
+- persisted previous-session tail: approximately **5,000 records per session** before byte-budget pruning;
+- anomaly/error context windows: retain bounded records before/after the event when available rather than relying only on the final tail;
 - total persisted observability payload: bounded by an implementation-level byte budget, initially around **5 MiB** for Web;
 - explicit user-exported reports are separate artifacts and are not governed by the automatic ring expiry.
 
 Exact limits should be measured and may be adjusted, but unbounded history is not allowed.
 
-Persistence should use an appropriate versioned browser store; do not make `localStorage` the architectural contract for the event history.
+The byte budget is authoritative when estimated payload size and record count disagree materially.
+
+Persistence should use an appropriate versioned browser store; do not make `localStorage` the architectural contract for event history.
+
+## Persistence strategy
+
+The persistent writer should batch. Never synchronously persist one record per event.
+
+Conceptually:
+
+```text
+bounded in-memory ring
+      ↓
+periodic / lifecycle / anomaly-triggered batch
+      ↓
+versioned persistent session summary + selected tail/windows
+```
+
+Persistence must tolerate quota/transaction failures without recursively flooding the recorder.
+
+A persistence failure should preserve current in-memory evidence where possible and surface one bounded high-value failure record/summary.
 
 ## Session lifecycle
 
 On startup:
 
 1. open a new session record;
-2. inspect the previous session summary;
-3. if no normal-end marker exists, classify it as an abnormal previous-session end;
-4. retain its bounded black-box tail for diagnostics.
+2. inspect the previous persisted session summary;
+3. if no confirmed normal-end marker exists, classify it as **unconfirmed/unclean termination**, not automatically as an EpicScope crash;
+4. retain/show its bounded black-box tail and anomaly/error windows for diagnostics.
+
+A missing normal end can result from browser exit, forced refresh, OS/process termination, power loss or application failure. Reports must not overclaim the cause.
 
 On normal page/app shutdown where the platform permits:
 
 - write a normal session-end marker/summary.
 
 The system must tolerate the browser killing the page before that marker is written.
+
+### Lightweight heartbeat/checkpoint summary
+
+Persist/update a tiny bounded session summary periodically or at major workflow boundaries rather than relying only on unload/end callbacks.
+
+Useful fields include:
+
+```text
+lastSeen
+lastSequence
+lastActiveView
+lastCompletedOperation
+lastHealthyCheckpoint
+anomalyCount
+errorCount
+```
+
+This summary must remain cheap and should not cause continuous synchronous storage churn.
+
+## Session summary
+
+Each retained session should have a compact summary that can be shown without loading the full record tail:
+
+```text
+sessionId
+buildSha/schemaVersion
+start/lastSeen
+terminationStatus
+duration
+sourceType
+record/sample/channel count buckets
+modes visited
+operation count
+error/warning/anomaly count
+max DOM/resource/outstanding-async counters where available
+slowest major operations
+lastHealthySequence
+lastRecordSequence
+coalesced/dropped record counts
+```
+
+Do not include raw log/tune payloads.
 
 ## Data minimization and privacy
 
@@ -276,9 +596,15 @@ Default records should avoid:
 - unnecessary filesystem paths;
 - secrets or credentials.
 
-Use IDs, revisions, counts, durations, hashes and compact state deltas instead.
+Use IDs, revisions, counts, durations, fingerprints and compact state deltas instead.
 
-Exports should make sensitive source naming/context obvious and should support later redaction policy if sharing becomes a product capability.
+### Export/redaction direction
+
+The export schema should make later redaction possible before its format freezes.
+
+Source filenames/environment details that are useful locally may be sensitive when shared.
+
+A later UI may support levels such as Standard / Developer / Full local, but the first implementation only needs a schema that can distinguish/redact sensitive fields cleanly.
 
 ## Proposed production structure
 
@@ -316,6 +642,8 @@ This is an approved responsibility map, not a requirement to create every file i
 
 Underlying parser/cache/source measurement code remains in its existing core/adapter owner and publishes measurements into observability through producers/adapters.
 
+Do not create `v2`/wrapper-style observability layers around existing controllers. Producers call the recorder from the actual ownership boundary.
+
 ## Diagnostics UI target
 
 The current separate diagnostic surfaces should converge toward one Diagnostics experience with multiple lenses:
@@ -324,6 +652,7 @@ The current separate diagnostic surfaces should converge toward one Diagnostics 
 Diagnostics
 ├── Health
 ├── Session timeline
+├── Causal operations
 ├── Anomalies
 ├── Performance
 ├── Parser / source integrity
@@ -335,6 +664,57 @@ Diagnostics
 
 The parser/source-integrity lens may keep its current compact indicator semantics where useful; the key change is that report/history ownership becomes unified.
 
+### Causal operation tree
+
+The UI should use operation relationships, not only a flat event list.
+
+Example:
+
+```text
+Analyzer activation      431 ms
+├─ context update         12 ms
+├─ channel decoration     91 ms
+│  └─ programmatic change
+│     └─ VE rebuild      214 ms
+│        └─ observer callback
+└─ final render           83 ms
+```
+
+The chronological timeline remains available underneath.
+
+### Useful filters
+
+Plan filters for:
+
+```text
+subsystem
+component
+operation
+origin
+severity
+active/hidden
+record kind
+outcome
+source/tune revision
+anomaly code
+```
+
+This is important for making a 20k-record session navigable.
+
+## Export target
+
+Prefer one user action that can produce both human-readable and structured evidence, for example:
+
+```text
+EpicScope diagnostic bundle
+├── report.txt
+└── observability.json
+```
+
+A compact `session-summary.json` may be added if useful.
+
+The structured export preserves exact record relationships for future automated analysis/regression tooling. It must not silently include raw MLG/MSQ/INI contents.
+
 ## Migration plan
 
 ### Step 0 — freeze the baseline
@@ -344,38 +724,46 @@ Before implementation:
 - finish/settle the current DOM-ownership, hidden-view and CPU cleanup work;
 - choose an exact browser-validated baseline SHA;
 - capture representative current Performance, Parser and Bug report outputs as parity fixtures;
+- capture representative observability-overhead workloads for later before/after comparison;
 - do not combine this architecture migration with unrelated Analyzer behavior changes.
 
-Exit: stable baseline and parity fixtures exist.
+Exit: stable baseline, parity fixtures and benchmark workloads exist.
 
 ### Step 1 — core record/session/operation contract
 
 Implement:
 
 - versioned record envelope;
+- stable machine record/anomaly names;
+- origin field;
 - session IDs and sequence numbers;
-- operation/parent-operation correlation;
-- bounded in-memory recorder;
+- explicit operation/parent-operation handles;
+- strict terminal operation outcomes;
+- bounded in-memory recorder by records/time/estimated bytes;
+- priority/coalescing rules;
+- recursion/re-entry guard and emergency internal-failure path;
 - typed metadata helpers;
-- unit tests for ordering, bounds and correlation.
+- owner-provided semantic fingerprint support;
+- unit tests for ordering, bounds, coalescing, terminal semantics, recursion protection and correlation.
 
 No current diagnostic UI is removed yet.
 
-Exit: records can be produced/queried without changing existing behavior.
+Exit: records can be produced/queried under normal and event-storm conditions without changing existing behavior.
 
 ### Step 2 — runtime/lifecycle/error producer
 
 Migrate:
 
 - runtime `error`/`unhandledrejection` capture;
-- application session start/end;
+- application session start/end/last-seen summary;
 - mode/view navigation;
 - active/hidden state transitions;
-- source/tune/context revision events.
+- source/tune/context revision events;
+- initial healthy checkpoints.
 
 Keep existing bug-report output temporarily by adapting it from the new recorder where practical.
 
-Exit: the new stream can reconstruct application lifecycle and runtime failures.
+Exit: the new stream can reconstruct application lifecycle and runtime failures without owning application state.
 
 ### Step 3 — performance bridge
 
@@ -391,7 +779,9 @@ Route existing high-value timings/counters into operations/metrics without losin
 
 Rebuild the Performance report as a projection over observability records.
 
-Exit: new Performance view/report matches or improves current evidence; old performance run arrays/report builder can be removed.
+Measure recorder-enabled overhead against the Step-0 workloads.
+
+Exit: new Performance view/report matches or improves current evidence; overhead is small/bounded; old performance run arrays/report builder can be removed.
 
 ### Step 4 — parser/source-integrity bridge
 
@@ -405,14 +795,17 @@ Exit: no source-integrity information is lost and diagnostics can correlate pars
 
 Add broad instrumentation at existing owners for:
 
-- semantic invalidations/state revisions;
+- semantic invalidations/state revisions/fingerprints;
 - render/rebuild boundaries;
-- observer/event dispatch boundaries where relevant;
-- async start/end/cancel/failure/generation;
+- observer/event-dispatch boundaries where relevant;
+- user vs programmatic origin where known;
+- async start/end/cancel/failure/supersede/stale generation;
 - persistence operations and success/failure;
 - resource-count snapshots at low frequency or workflow boundaries.
 
 Do not instrument every function call. Record high-value ownership transitions.
+
+Do not add controller wrapper layers merely for instrumentation.
 
 Exit: the stream can explain repeated/no-op work, stale completions, hidden work and failed persistence.
 
@@ -422,6 +815,10 @@ Port current health rules first, then add generic rule families incrementally.
 
 Anomalies themselves are records with evidence references/operation IDs, not opaque strings.
 
+Implement cheap streaming rules first; keep expensive causal/baseline analysis deferred/report-time.
+
+Anomaly detection must not automatically mutate application state.
+
 Exit: current bug-report health coverage is preserved and at least repetition/no-op/unfinished/stale/persistence-divergence classes have regression tests.
 
 ### Step 7 — bounded persistence and previous-session black box
@@ -429,12 +826,16 @@ Exit: current bug-report health coverage is preserved and at least repetition/no
 Add:
 
 - versioned local persistence adapter;
-- automatic retention/byte limits;
-- previous-session summary/tail restore;
-- abnormal-end detection;
-- schema migration/unsupported-version behavior.
+- batched writes;
+- automatic record/time/byte retention limits;
+- compact session summary/last-seen/checkpoint updates;
+- previous-session final-tail restore;
+- bounded anomaly/error context-window preservation;
+- unconfirmed/unclean termination detection without claiming crash causality;
+- schema migration/unsupported-version behavior;
+- recursion-safe quota/storage failure handling.
 
-Exit: forced reload/crash-like termination can be followed by a useful previous-session diagnostic view without unbounded storage growth.
+Exit: forced reload/crash-like termination can be followed by a useful previous-session diagnostic view without unbounded storage growth or one-write-per-event behavior.
 
 ### Step 8 — unified Diagnostics UI and reports
 
@@ -443,13 +844,15 @@ Replace separate report ownership with the shared Diagnostics lenses.
 Provide:
 
 - current health/anomalies;
-- operation/session timeline;
+- chronological session timeline;
+- causal operation tree;
 - performance view;
 - parser/source-integrity view;
 - resources/cache view;
 - errors;
 - previous-session black box;
-- one coherent export report.
+- filterable records;
+- coherent text + structured export.
 
 Exit: users no longer need separate unrelated report systems to describe one session.
 
@@ -469,7 +872,7 @@ Exit: one authoritative observability architecture remains.
 
 After enough real usage data exists locally:
 
-- add recent-baseline comparison for recurring operations;
+- add workload-keyed recent-baseline comparison for recurring operations;
 - surface significant regressions without noisy universal thresholds;
 - add targeted workflow summaries for exported developer reports.
 
@@ -481,15 +884,37 @@ Each migration step must preserve normal product behavior.
 
 Required validation layers:
 
-- unit tests for record ordering/bounds/correlation;
+- unit tests for record ordering/bounds/correlation/coalescing/recursion protection;
+- operation terminal-state/supersession/stale-completion tests;
 - report projection fixtures;
-- storage/version/retention tests;
+- storage/version/retention/byte-budget tests;
+- persistence-failure/recursion tests;
 - anomaly detector tests with synthetic event sequences;
-- browser checks for session recovery, previous-session abnormal end and Diagnostics UI;
+- browser checks for session recovery, previous-session unconfirmed end and Diagnostics UI;
+- browser checks for causal operation correlation across user/programmatic/observer/async paths;
 - representative large-log performance comparison to ensure observability overhead is small and bounded;
+- explicit observability-on vs minimal/off benchmark for important workflows;
+- explicit event-storm test proving coalescing/backpressure prevents diagnostic amplification;
 - explicit check that disabling/clearing diagnostic history does not alter source/tune/analysis state.
 
 Instrumentation must not become a new source of feedback loops or materially change application scheduling.
+
+## Failure-mode requirements for observability itself
+
+Before calling the subsystem mature, prove that it behaves sensibly when:
+
+- the application emits a rapid render/observer/event storm;
+- persistence is unavailable or quota-limited;
+- the browser is killed without unload/end callbacks;
+- an observability producer throws;
+- structured metadata is malformed/oversized;
+- a worker returns after its parent operation was superseded;
+- record count/age/byte limits are all reached;
+- Diagnostics UI is open while new records arrive;
+- previous-session schema is unsupported/corrupt;
+- report/export generation fails.
+
+The failure mode should be bounded evidence loss or a compact internal warning, not recursive failure or product-state mutation.
 
 ## Non-goals
 
@@ -501,7 +926,9 @@ This work does not authorize:
 - indefinite session history;
 - a new general application state store;
 - replacing domain/source truth with diagnostic records;
-- changing Analyzer calculations merely to make them easier to instrument.
+- changing Analyzer calculations merely to make them easier to instrument;
+- automatic runtime repair based solely on anomaly detection;
+- controller/view wrapper layers added only for observability.
 
 ## Implementation order relative to current work
 
