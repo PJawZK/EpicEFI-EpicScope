@@ -11,21 +11,23 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
   issues: write
   pull-requests: write
 
 concurrency:
-  group: epicscope-browser-preview-${{ github.event.issue.number || inputs.pr_number || github.run_id }}
-  # issue_comment starts a workflow run for every PR comment. Those non-/preview
-  # runs are skipped by the job condition below, but workflow-level concurrency
-  # is evaluated before jobs, so they must not cancel a real preview in flight.
+  group: pages
+  # issue_comment fires for every PR comment, including bot/review comments.
+  # Only an actual /preview request (or manual dispatch) may cancel an older
+  # Pages deployment; otherwise an unrelated comment could kill a valid preview.
   cancel-in-progress: >-
     ${{ github.event_name == 'workflow_dispatch' ||
         (github.event.issue.pull_request && github.event.comment.body == '/preview') }}
 
 jobs:
-  preview:
+  build:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request && github.event.comment.body == '/preview')
@@ -33,7 +35,6 @@ jobs:
     outputs:
       pr_number: ${{ steps.pr.outputs.number }}
       pr_sha: ${{ steps.pr.outputs.sha }}
-      preview_url: ${{ steps.publish.outputs.preview_url }}
     steps:
       - name: Resolve pull request
         id: pr
@@ -60,6 +61,12 @@ jobs:
             core.setOutput('number', String(prNumber));
             core.setOutput('sha', pr.head.sha);
 
+      - name: Checkout production main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: main-src
+
       - name: Checkout pull request head
         uses: actions/checkout@v6
         with:
@@ -71,93 +78,87 @@ jobs:
         with:
           node-version: '22.12.0'
           cache: npm
-          cache-dependency-path: preview-src/package-lock.json
+          cache-dependency-path: |
+            main-src/package-lock.json
+            preview-src/package-lock.json
 
-      - name: Validate and build isolated preview
+      - name: Build production root
+        working-directory: main-src
+        env:
+          VITE_EPICSCOPE_BUILD_SHA: ${{ github.sha }}
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Validate and build PR preview
         working-directory: preview-src
         env:
           VITE_EPICSCOPE_BUILD_SHA: ${{ steps.pr.outputs.sha }}
         run: |
-          set -euo pipefail
           npm ci
           npm run typecheck
           npm test
-          # Relative asset URLs keep the build independent of the production
-          # GitHub Pages path and allow it to be hosted from an isolated origin.
-          npm run build -- --base "./"
+          npm run build -- --base "/EpicEFI-EpicScope/previews/pr-${{ steps.pr.outputs.number }}/"
 
-      - name: Verify relative preview asset paths
+      - name: Verify preview asset paths
         working-directory: preview-src
         shell: bash
         run: |
           set -euo pipefail
-          if grep -q '/EpicEFI-EpicScope/' dist/web/index.html; then
-            echo 'Preview build still contains the production Pages base path.'
-            cat dist/web/index.html
-            exit 1
-          fi
-          if ! grep -Eq '(\./)?assets/' dist/web/index.html; then
-            echo 'Preview build does not reference relative asset paths.'
+          expected="/EpicEFI-EpicScope/previews/pr-${{ steps.pr.outputs.number }}/assets/"
+          if ! grep -q "$expected" dist/web/index.html; then
+            echo "Preview build does not reference the expected preview asset path: $expected"
             cat dist/web/index.html
             exit 1
           fi
 
-      - name: Publish to isolated browser-preview branch
-        id: publish
+      - name: Assemble Pages artifact
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          PR_SHA: ${{ steps.pr.outputs.sha }}
         run: |
           set -euo pipefail
-          git clone --branch browser-previews --single-branch \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" preview-host
-          cd preview-host
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-          # The branch was bootstrapped from main. Convert it once into a
-          # dedicated static-preview store, then preserve other PR previews.
-          if [ ! -f .epicscope-browser-preview-root ]; then
-            git rm -rf .
-            touch .epicscope-browser-preview-root
-          fi
-
-          preview_dir="pr-${PR_NUMBER}"
-          rm -rf "$preview_dir"
+          preview_dir="deploy/previews/pr-${{ steps.pr.outputs.number }}"
           mkdir -p "$preview_dir"
-          cp -a ../preview-src/dist/web/. "$preview_dir/"
+          cp -a main-src/dist/web/. deploy/
+          cp -a preview-src/dist/web/. "$preview_dir/"
           cat > "$preview_dir/preview-meta.json" <<EOF
           {
-            "pullRequest": ${PR_NUMBER},
-            "headSha": "${PR_SHA}",
-            "isolatedOrigin": true
+            "pullRequest": ${{ steps.pr.outputs.number }},
+            "headSha": "${{ steps.pr.outputs.sha }}"
           }
           EOF
 
-          git add -A
-          if git diff --cached --quiet; then
-            echo 'Preview content is unchanged.'
-          else
-            git commit -m "preview: PR ${PR_NUMBER} at ${PR_SHA}"
-            git push origin browser-previews
-          fi
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
 
-          preview_url="https://raw.githack.com/${GITHUB_REPOSITORY}/browser-previews/${preview_dir}/index.html"
-          echo "preview_url=${preview_url}" >> "$GITHUB_OUTPUT"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: deploy
 
-      - name: Comment isolated preview link
+  deploy:
+    if: needs.build.result == 'success'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages-preview
+      url: ${{ steps.deployment.outputs.page_url }}previews/pr-${{ needs.build.outputs.pr_number }}/
+    steps:
+      - name: Deploy production + PR preview
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Comment preview link
         if: github.event_name == 'issue_comment'
         continue-on-error: true
         uses: actions/github-script@v8
         env:
-          PREVIEW_URL: ${{ steps.publish.outputs.preview_url }}
+          PREVIEW_URL: ${{ steps.deployment.outputs.page_url }}previews/pr-${{ needs.build.outputs.pr_number }}/
         with:
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: Number('${{ steps.pr.outputs.number }}'),
-              body: `Isolated browser preview published: ${process.env.PREVIEW_URL}\n\nPreview SHA: \`${{ steps.pr.outputs.sha }}\`\n\nThis preview is served from a different origin than production GitHub Pages and does not redeploy the production site.`
+              issue_number: Number('${{ needs.build.outputs.pr_number }}'),
+              body: `Browser preview deployed: ${process.env.PREVIEW_URL}\n\nPreview SHA: \`${{ needs.build.outputs.pr_sha }}\`\n\nThe production root remains built from \`main\`; only the preview subpath contains the PR build.`
             });
