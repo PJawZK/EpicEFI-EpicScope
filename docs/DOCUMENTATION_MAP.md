@@ -32,6 +32,7 @@ The following classes intentionally preserve older observations or design stages
 - `SHIM7_CAPTURE_BINDING.md`
 - superseded/historical sections inside `DECISIONS.md`
 - `BRANCH_CLEANUP_2026-10-15.md`
+- `DOCUMENTATION_AUDIT_2026-10-15.md`
 
 Historical documents may correctly use wording such as “planned”, “not yet implemented” or describe an older architecture because that was true at the time. Do not edit those observations merely to make them read like current state. Instead, keep current disposition in `research/STATUS.md`, the relevant subsystem authority, `HANDOFF.md`, or an explicit later decision.
 
@@ -42,7 +43,7 @@ Historical documents may correctly use wording such as “planned”, “not yet
 - **D-056** — VE lambda-delay working model is **RPM × load table only**; scalar/single and RPM-curve modes are historical/rejected options unless a new decision explicitly reopens them.
 - **D-057** — VE lifecycle/render/state/input changes require browser acceptance evidence in addition to normal automated CI, and structural work proceeds one change at a time from the PR #449 browser-known-good boundary.
 
-These are current accepted decisions even though they are stored in the dated decision record rather than duplicated into the older monolithic decision log.
+These are current accepted decisions even though they are stored in the dated decision record rather than duplicated into the older monolithic decision log. `decisions/README.md` indexes dated decision records and their current/historical disposition.
 
 ## Current project snapshot
 
@@ -63,7 +64,7 @@ As of 2026-10-15:
 
 - `VE_ANALYZER.md` is the current algorithm/evidence/product contract.
 - `VE_ANALYZER_WORKBENCH.md` is the current UI/workflow contract.
-- `research/VE_ANALYZER_STATE_OWNERSHIP_AUDIT.md` records architectural debt discovered around PRs #442–#447; it is an audit snapshot, not a replacement product spec.
+- `research/VE_ANALYZER_STATE_OWNERSHIP_AUDIT.md` records architectural debt discovered around PRs #442–#447 plus the PR #449 rollback disposition; it is supporting audit evidence, not a replacement product spec.
 - browser behavior is acceptance authority for VE runtime changes; green CI alone is insufficient.
 - the accepted lambda-delay working model is **RPM × load table only**. Scalar and RPM-curve modes are historical/rejected options and must not be reintroduced as current product direction.
 - original VE, analysis evidence/proposal, and user-reviewed/application state remain distinct.
