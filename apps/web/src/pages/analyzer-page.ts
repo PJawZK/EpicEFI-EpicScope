@@ -49,6 +49,32 @@ function sameChannelCatalog(
   return left.length === right.length && left.every((channel, index) => channel === right[index]);
 }
 
+function sameSavedRanges(
+  left: LoggerAnalysisContext['savedRanges'],
+  right: LoggerAnalysisContext['savedRanges'],
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  return left.every((range, index) => {
+    const other = right[index];
+    return other !== undefined
+      && range.label === other.label
+      && range.startMs === other.startMs
+      && range.endMs === other.endMs;
+  });
+}
+
+function sameVeAnalysisContext(
+  left: LoggerAnalysisContext | undefined,
+  right: LoggerAnalysisContext,
+): boolean {
+  return left !== undefined
+    && sameChannelCatalog(left.channels, right.channels)
+    && left.aTimeMs === right.aTimeMs
+    && left.bTimeMs === right.bTimeMs
+    && sameSavedRanges(left.savedRanges, right.savedRanges);
+}
+
 export function createAnalyzerPage(): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
@@ -64,6 +90,22 @@ export function createAnalyzerPage(): AnalyzerPageController {
   const fuelInjectorView = createFuelInjectorAnalyzerView();
   const veAnalyzerView = createVeAnalyzerView();
   const specializedView = createSpecializedAnalyzerSuiteView();
+  let veContext: LoggerAnalysisContext | undefined;
+  let veTuneModel: TuneModel | undefined;
+  let veTuneSourceName: string | undefined;
+
+  const syncVeContext = (nextContext: LoggerAnalysisContext): void => {
+    if (sameVeAnalysisContext(veContext, nextContext)) return;
+    veContext = nextContext;
+    veAnalyzerView.setContext(nextContext);
+  };
+
+  const syncVeTuneModel = (model: TuneModel | undefined, sourceName?: string): void => {
+    if (veTuneModel === model && veTuneSourceName === sourceName) return;
+    veTuneModel = model;
+    veTuneSourceName = sourceName;
+    veAnalyzerView.setTuneModel(model, sourceName);
+  };
 
   const headerControl = document.createElement('label');
   headerControl.className = 'histogram-header-view analyzer-header-view';
@@ -365,7 +407,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     if (veActive) {
       heading.textContent = 'VE Analyzer';
       description.textContent = 'Validate VE-table geometry, semantic fueling inputs and scope before building evidence-backed VE recommendations.';
-      veAnalyzerView.setContext(context);
+      syncVeContext(context);
       return;
     }
     if (ignitionActive) {
@@ -402,7 +444,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     else if (currentView === 'boost') boostView.setContext(nextContext);
     else if (currentView === 'ignition') ignitionView.setContext(nextContext);
     else if (currentView === 'fuel-injector') fuelInjectorView.setContext(nextContext);
-    else if (currentView === 've') veAnalyzerView.setContext(nextContext);
+    else if (currentView === 've') syncVeContext(nextContext);
     specializedView.setContext(nextContext);
     if (channelsChanged) fillChannelSelect(previousChannel);
     const hasCurrentAb = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
@@ -431,7 +473,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     setTuneModel: (model, sourceName) => {
       tuneTableView.setTuneModel(model, sourceName);
       ignitionView.setTuneModel(model, sourceName);
-      veAnalyzerView.setTuneModel(model, sourceName);
+      syncVeTuneModel(model, sourceName);
     },
     openRangeCompareScope: (scopeValue) => {
       setView('compare');
