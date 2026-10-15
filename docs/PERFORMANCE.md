@@ -128,6 +128,23 @@ The live-source instrumentation uses weak references/finalization tracking so di
 
 Persistent decoded columns, bound ranges and graph-active ranges can reference overlapping payload. Their reported byte estimates must **not** simply be summed and described as unique process RAM.
 
+## Observability migration rule
+
+D-058 and `OBSERVABILITY.md` define the approved future ownership of performance diagnostics.
+
+The current detailed timing/counter probes are valuable and should be preserved, but their long-lived storage/reporting should migrate into the shared bounded observability/session model. Performance becomes one projection/lens over correlated operations rather than a standalone diagnostics universe.
+
+During migration:
+
+- keep exact load/validation/binding/workspace/channel/physical-read/cache/memory measurements that are still useful;
+- attach them to operation/session IDs where practical;
+- preserve cold/warm/cache/source-state context needed to interpret measurements;
+- compare observability-enabled builds against the same representative workloads to ensure instrumentation overhead remains small and bounded;
+- remove the old performance-run arrays/report-only ownership only after output parity or improvement is demonstrated;
+- do not turn the observability recorder into a high-frequency per-sample profiler.
+
+Generic anomaly detection may later compare recurring operation durations against recent local baselines, but this does not replace deliberate benchmark discipline.
+
 ## Cross-log lifetime test — 2026-10-06
 
 Test sequence in one browser page:
@@ -203,6 +220,8 @@ Resume focused performance engineering when:
 - Web functional maturity requires a final profiling pass;
 - Linux production implementation begins.
 
+The observability migration is an architectural consolidation, not permission to restart broad Logger optimization. Its overhead must be measured against current baselines.
+
 ## Benchmark categories
 
 Performance tests should eventually cover:
@@ -219,7 +238,8 @@ Performance tests should eventually cover:
 - event detection;
 - Analyzer throughput;
 - comparison throughput;
-- retained-channel growth across many unique channel selections.
+- retained-channel growth across many unique channel selections;
+- observability recorder/report overhead under representative workflows.
 
 Representative benchmark names may include:
 
@@ -233,6 +253,7 @@ histogram_large_log
 boost_analysis_large_log
 memory_ceiling_1gb_log
 many_channels_memory_1gb_log
+observability_overhead_large_log
 ```
 
 ## Benchmark discipline
@@ -251,6 +272,7 @@ A performance result should record where applicable:
 - workspace restore breakdown;
 - arbitrary-channel breakdown;
 - retained-memory counters/source lifetime;
+- observability enabled/disabled or instrumentation version when comparing overhead;
 - subjective responsiveness;
 - memory/GC pressure where observable.
 
