@@ -79,7 +79,7 @@ function selectedCoordinates(
   if (row < 0 || col < 0) return undefined;
   const current = entry.numericValues[row * entry.cols + col];
   if (current === undefined || !Number.isFinite(current)) return undefined;
-  return { row, col, current, digits: entry.digits };
+  return { row, col, current, digits: entry.digits ?? 1 };
 }
 
 function clean(value: number, digits: number): string {
