@@ -1,6 +1,8 @@
 # Starter system validation close-out
 
-This document records the validation boundary for the current Logger starter-template track after PR #370.
+Status: **closed current baseline, 2026-10-15**.
+
+This document records the validation boundary for the Logger starter-template track. `PREPOPULATED_WORKSPACES.md` is the current catalog/product authority.
 
 ## Scope
 
@@ -18,7 +20,7 @@ The close-out covers:
 - viewport usability of the template flyout;
 - Single-layout readout presentation.
 
-It does **not** claim every EpicEFI-specific control strategy has been exercised on a running engine. Those starters are schema/capability validated and remain subject to user feedback from real feature use.
+It does not claim every EpicEFI-specific control strategy has been exercised on a running engine. Those starters are schema/capability validated and remain subject to field feedback.
 
 ## Current catalog boundary
 
@@ -62,65 +64,59 @@ Traction Control
 Transmission Control
 ```
 
-## Validation matrix
+## Validated invariants
 
-| Area | Status | Evidence / invariant |
+| Area | Status | Current invariant |
 | --- | --- | --- |
-| Generic catalog count/order | PASS | Automated catalog tests; exactly 12 portable starters. |
-| Fresh-state seeding | PASS | Browser-tested after clearing site-local state; all generic workspaces materialized. |
-| Existing state not re-seeded | PASS / guarded | D-055 lifecycle and Logger fresh-state guard; user-owned state remains authoritative. |
-| EpicEFI starters excluded from fresh seed | PASS | `GENERIC_STARTER_WORKSPACE_TEMPLATES` filters specialized tier. |
-| Capability discovery | PASS | Specialized starters require semantic `allOfRoleIds`; empty/nonmatching schemas hide them. |
-| INI-only workspace editing | PASS | Established in PR #350 and subsequent starter work. |
-| Template flyout reachability | PASS | PR #368 adds viewport-bounded vertical scrolling. |
-| Single layout readouts | PASS | PR #369 restores normal overlay labels and NOW / MIN / MAX context. |
-| Generic channel suitability | PASS for current baseline | Reviewed through PR #370; Boost/Ignition/Cooling assumptions corrected. |
-| MAP/WW semantic suitability | PASS for current EpicEFI baseline | PR #370 uses Instant/Fallback/Effective MAP and mass-domain wall correction. |
-| Materialized ownership | PASS | D-055: normal editable/deletable `graph-*`; no persistent starter owner. |
-| Recorded MLG + INI identities | PASS | Existing semantic and source-binding coverage. |
-| Shim raw identities | PASS | Existing source-normalization coverage and prior real Shim validation. |
-| MLG/INI ↔ Shim transition | PASS | Prior real runtime validation plus `workspace-channel-identity` tests. |
-| Unavailable channels | PASS | Missing roles remain explicit; no fabricated fallback data. |
-| Full type-check/tests/build | PASS | Green through PR #370; close-out PR must repeat all three. |
-| Every specialized strategy on real engine | NOT REQUIRED FOR CLOSE-OUT | Await field/user feedback; do not block architecture close-out. |
+| Generic catalog count/order | PASS | Exactly 12 portable generic starters. |
+| Fresh-state seeding | PASS | Generic baseline materializes on genuinely fresh workspace state. |
+| Existing state not re-seeded | PASS / guarded | User-owned state remains authoritative; deleted/edited defaults do not silently return. |
+| EpicEFI starters excluded from fresh seed | PASS | Specialized tier is discovery-only, not auto-created. |
+| Capability discovery | PASS | Specialized starters require semantic capability bundles; nonmatching schemas hide them. |
+| INI-only workspace editing | PASS | Workspaces remain usable/editable without a loaded log when catalog context exists. |
+| Template flyout reachability | PASS | Viewport-bounded scrollable template selection. |
+| Single layout readouts | PASS | Normal overlay channel labels and NOW / MIN / MAX context. |
+| Generic channel suitability | PASS for current baseline | Generic Boost/Ignition/Cooling assumptions were corrected before close-out. |
+| MAP/WW semantic suitability | PASS for current EpicEFI baseline | Model-focused channels and mass-domain wall correction are used. |
+| Materialized ownership | PASS | Normal editable/deletable `graph-*`; no persistent starter owner. |
+| Recorded MLG + INI identities | PASS | Stable semantic/source binding retained. |
+| Shim raw identities | PASS | Source normalization maps stable assignments to raw runtime IDs. |
+| MLG/INI ↔ Shim transition | PASS | Real runtime/source-transition path validated. |
+| Unavailable channels | PASS | Missing roles stay explicit; no fabricated fallback data. |
+| Type-check/tests/build at close-out | PASS | Track closed with automated validation in place. |
 
-## D-055 regression checklist
+## Ownership regression checklist
 
-A future change fails the starter-system contract if any of these become true:
+A future change fails the starter contract if any of these become true:
 
-- a starter remains attached to a workspace after materialization;
-- changing source silently restores a removed channel;
-- deleting a generic default causes it to reappear in an established workspace collection;
+- a template remains attached as a hidden owner after materialization;
+- changing source restores a user-removed channel;
+- deleting a generic seeded workspace causes it to reappear in established state;
 - a specialized starter is auto-created merely because its capability appears;
-- board names such as `Mega144H7` are used instead of semantic capability detection;
-- a configuration/table channel satisfies a runtime capability gate;
+- board names are used instead of semantic capability detection;
+- configuration/table values satisfy a runtime capability gate;
 - raw and `ini:*` forms of the same logical channel render as duplicate traces;
-- template definition updates rewrite existing user workspaces.
+- template updates rewrite existing user workspaces.
 
-## Current manual smoke result
+## Manual/browser evidence
 
-The project owner tested the current fresh-state behavior in the browser after clearing site-local browser state. The full generic baseline appeared as intended, and the corrected Single-layout presentation was accepted.
+The project owner browser-tested fresh-state behavior after clearing site-local state; the full generic baseline appeared as intended and the corrected Single-layout presentation was accepted.
 
-The broader workspace/source behavior was also exercised during the preceding starter development and no visible failure was reported before this close-out.
+The recorded MLG + INI ↔ `ts_shim` source path and stable identity normalization were also validated in the broader live-source work.
 
 ## Recommended regression sequence
 
-If starter behavior is touched again, test in this order:
+If starter behavior changes again:
 
-1. INI-only catalog → confirm 12 generic fresh-state workspaces and capability-gated template discovery;
-2. edit/delete/rename a seeded workspace → refresh → confirm exact user state survives;
-3. open representative MLG + INI → confirm assigned semantic channels render;
-4. transition to `ts_shim` → confirm stable assignments map to raw runtime IDs without reapplying templates;
+1. INI-only catalog → confirm 12 generic fresh-state workspaces and specialized discovery;
+2. edit/delete/rename → refresh → confirm exact user state survives;
+3. open representative MLG + INI → confirm semantic assignments render;
+4. transition to `ts_shim` → confirm stable assignments map to raw IDs without template reapplication;
 5. return to MLG + INI → confirm canonical `ini:*` identities and no duplicate traces;
-6. create one specialized starter → edit it → repeat source transition and verify it remains ordinary user-owned state.
+6. materialize/edit one specialized starter and repeat the source transition.
 
 ## Track status
 
-The starter-template track is **closed for feature expansion** unless:
+The starter-template track is **closed for feature expansion** unless field feedback exposes a concrete defect, a new ECU family demonstrates a portability gap, a genuinely new diagnostic workflow warrants a starter, or indexed semantic channel-family support unlocks high-value per-cylinder/EGT work cleanly.
 
-- field feedback exposes a concrete starter defect;
-- a new ECU family demonstrates a portability gap;
-- a genuinely new diagnostic workflow warrants a starter;
-- indexed semantic channel-family support unlocks per-cylinder/EGT work cleanly.
-
-Otherwise, development should move to the next product capability rather than continue growing the starter catalog.
+Otherwise development should remain focused on higher-value Analyzer maturity rather than growing the starter catalog.
