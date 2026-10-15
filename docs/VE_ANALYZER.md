@@ -4,7 +4,9 @@
 
 VE Analyzer is implemented and real-log/browser validated. This document is the current algorithm/evidence/product contract. `VE_ANALYZER_WORKBENCH.md` is the companion UI/workflow contract.
 
-The browser-known-good runtime is the #441-era composition restored by PR #449 after later continuity/render wrappers froze Analyzer entry. Browser behavior is the acceptance authority for VE runtime changes; green CI alone is insufficient.
+The current accepted runtime lineage is PR #462 merged to `main` at `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`. The exact pre-merge runtime accepted by owner browser testing was `b435702412642f039a8a7f49d33037c309bef9d8`.
+
+Browser behavior remains the acceptance authority for VE lifecycle/render/state changes; green CI alone is insufficient.
 
 ## Purpose
 
@@ -58,177 +60,92 @@ State exclusions and stability/recovery are conceptually separate:
 1. **State exclusions** — DFCO, fuel cut, AE/decel activity, invalid running/protection states where semantic evidence exists.
 2. **Stability/recovery** — sufficiently stable RPM/load/TPS context and recovery after transients.
 
-Missing optional safeguards must remain visible/unavailable rather than being silently fabricated.
+Missing optional safeguards must remain visible/unavailable rather than silently fabricated.
 
-`Custom` qualification semantics remain an architectural debt area: future advanced formula support must not make Custom silently disable normal safety/state exclusions.
+`Custom` qualification semantics remain a later debt area: future advanced formula support must not make Custom silently disable normal safety/state exclusions.
 
 ## Lambda-delay model
 
-### Accepted working model
+The accepted working model is **RPM × load delay table only**. Scalar/single-delay and RPM-curve modes are historical/rejected options unless a new explicit decision reopens them.
 
-The current and accepted product model is **RPM × load delay table only**.
+Delay is expressed in time, not record count.
 
-Scalar/single-delay and RPM-curve modes were considered during research/planning but are **not** current EpicScope product direction and must not be reintroduced as supported modes without a new explicit decision.
+The expensive scan runs only when the user presses **Grab lambda delays from log**. Discovery produces recommendation/provenance; the working table remains a distinct explicit state that may be loaded, edited or activated from the recommendation.
 
-Delay is expressed in **time**, not record count.
+Each working cell should retain provenance such as measured, interpolated or insufficient where available. A valid interpolated delay is a real Result View metric even when a VE cell itself has no retained fueling evidence.
 
-### Explicit discovery
+Timestamp alignment must map observed mixture response back to the earlier engine/fuel state by time rather than by fixed sample count.
 
-The expensive scan runs only when the user presses:
+## Evidence model
 
-**Grab lambda delays from log**
+VE evidence is accumulated against selected VE-table geometry. The implementation uses robust weighted evidence rather than simple rectangular averaging.
 
-No automatic discovery on startup/log load/analyzer open.
+Current evidence includes:
 
-Candidate events should have a meaningful fuel-command change, valid mixture evidence, sufficient separation from conflicting changes, contiguous source samples and valid RPM/load context.
-
-The result is observed mixture-response delay, not a claim of pure sensor delay. Combustion, exhaust transport, turbo/manifold volume, sensor/controller/filtering and logging latency may all contribute.
-
-### Recommendation versus working table
-
-Recommendation and working delay table are distinct states.
-
-- discovery creates/replaces the **recommendation** for the current evidence;
-- **Use recommendation** promotes reviewed recommendation into the working table;
-- a loaded/saved working table remains independent from newly grabbed recommendation until explicitly replaced;
-- user edits retain user provenance and must not destroy the raw recommendation/evidence underneath.
-
-### Delay cell states
-
-Delay-table cells distinguish:
-
-- **Measured** — direct usable event evidence;
-- **Interpolated** — bounded/local interpolation from supported measured regions;
-- **Insufficient** — no trustworthy delay estimate;
-- **User-edited/manual working value** where applicable.
-
-Sparse evidence must not manufacture a full believable surface.
-
-### Direct editing
-
-Current browser-validated interaction supports selection/range selection, typing to replace, Enter commit, Escape cancel, Backspace edit and Delete clear to explicit no working delay (`—`). Repeated edits must remain reliable and focus/selection must survive re-render.
-
-The old external apply/value editor is not the normal workflow.
-
-### Saving/loading
-
-Working delay tables use a versioned reusable JSON format. Saved/loaded origin remains distinct from current-log measured evidence.
-
-## Delay application
-
-VE correction aligns each mixture observation against the earlier engine/fuel state most plausibly responsible for it using timestamps.
-
-Do not shift by integer record count. Delay is resolved in RPM/load operating space and applied through time-based sample alignment.
-
-If delay is unavailable for an operating region, evidence is unavailable there. Do not silently fall back to a global delay.
-
-## Fuel-correction compensation
-
-Known correction layers may be compensated when their semantics are explicit. For example, a verified percent-fuel-applied STFT channel may be modeled as compensation; unknown correction semantics remain context-only unless explicitly declared.
-
-The analyzer must never blindly attribute correction-layer behavior to base VE.
-
-## VE evidence calculation
-
-### Operating-point geometry
-
-VE-table breakpoints are nodes, not rectangular buckets. Qualifying operating points contribute spatially to surrounding nodes using breakpoint/bilinear relevance.
-
-Outside-axis behavior must remain explicit; silent extrapolation is not allowed.
-
-### Robust evidence
-
-Current VE evidence uses a robust weighted estimate rather than an outlier-sensitive arithmetic mean.
-
-Per-node evidence retains/derives:
-
-- contributing sample count;
-- cumulative spatial weight;
-- accepted source sample indices/provenance;
-- robust central correction estimate;
+- qualifying sample count;
+- cumulative spatial evidence weight;
+- robust correction estimate;
 - P10/P90 correction spread;
-- confidence;
-- delay used;
-- qualification/proposal state.
+- confidence/evidence state;
+- source provenance for review/navigation.
 
-A simple minimum-samples threshold is insufficient by itself.
+The starting VE table is the prior/authority anchor. Proposal safeguards are independent of evidence collection: out-of-authority cells are withheld rather than silently clamped into a plausible-looking value.
 
-## Prior authority and safeguards
+Weak/withheld/evidence-only/no-evidence states must remain distinguishable from measured proposal state.
 
-The starting/current VE table acts as a prior. Weak evidence should move the proposal little or not at all; strong repeated evidence gains authority.
+## Fuel-correction handling
 
-Current tuner-facing Cell Change authority maps to prior weight while Advanced exposes explicit controls when appropriate.
+Known fuel-correction channels may be incorporated only with explicit semantics. The analyzer must not assume that every logged correction is equivalent to base-VE error. Missing correction context must remain visible rather than fabricated.
 
-Independent safeguards include minimum evidence authority and absolute/percentage maximum VE change. When evidence exceeds configured proposal authority, the recommendation is **withheld**, not silently clamped.
+## Result Views
 
-## Result states and Result View
+Result Views are presentation over retained authoritative analysis state. They must never use whichever text is currently rendered in a cell as the source of truth for the next view.
 
-The workbench supports spatial result views including proposal, change, percent change, mixture-error/evidence perspectives, sample count, cumulative weight, confidence/spread and delay used.
+Accepted behavior:
 
-Cells must distinguish meaningful evidence/proposal states and must not make unvisited cells look measured.
+- **Proposed VE** — displays proposal where one exists and original VE otherwise; uses normal VE-table heat.
+- **VE change / change %** — derived from the original authoritative VE plus retained proposal/candidate evidence.
+- **Mixture error %** — retained robust correction evidence where available.
+- **Samples / Evidence weight / Confidence / Spread** — retained evidence metrics where available.
+- **Lambda delay** — valid interpolated/working delay where available.
+- a cell without the selected alternate metric keeps its original VE value but uses neutral alternate-view heat rather than carrying Proposed VE coloring.
 
-Per-cell evidence can navigate to the strongest contiguous source visit in Logger.
+Repeated view switching must preserve the same underlying VE values, retained primary-analysis identity and trace-load count.
 
-### Current known Result View defect
+## Session and ownership semantics
 
-Result View fallback/precision behavior remains imperfect in the browser-known-good runtime. Fix it as an isolated change with browser validation; do not use the defect as justification to reintroduce the reverted post-#441 wrapper stack.
+Points 1–11 merged through PR #462 establish the accepted ownership model:
 
-## Original tune and review authority
+- semantically unchanged context/tune/navigation preserves the completed VE session, working delay, primary result and proposal;
+- genuine source/catalog/sample-count/validity/tune/scope changes invalidate conservatively;
+- asynchronous generations reject stale completion/error publication;
+- only the active Analyzer domain receives expensive work;
+- cell evidence consumes retained primary analysis rather than running a second full-log VE analysis;
+- VE work is cooperatively batched with progress and explicit Cancel;
+- persistence/load failures are surfaced and recoverable;
+- MSQ replacement is transactional and latest-selection-wins.
 
-Maintain separately:
+Do not restore historical wrapper/controller stacks to change presentation.
 
-- original/current VE table;
-- Analyzer evidence/proposal;
-- user-reviewed/application result.
+## Browser-accepted regression behavior
 
-Running analysis must never mutate tune/ECU state.
+Owner acceptance on `b435702412642f039a8a7f49d33037c309bef9d8` confirmed:
 
-Future review/application strength may support partial application, but application strength must remain separate from evidence authority.
+- repeated Result View cycling preserves VE values;
+- heat-map behavior matches intended semantics;
+- Lambda Delay values remain correct;
+- weak/evidence-only/no-evidence cells remain sensible;
+- completed VE analysis survives switching analyzers and leaving/re-entering Analyzer when semantics are unchanged;
+- responsiveness is substantially improved versus the problematic pre-Codex state.
 
-Any eventual export/apply/write must be explicit and diff-first. EpicScope must never automatically Burn/write a VE proposal to the ECU.
+## Remaining debt
 
-## Current state-ownership debt
+`readDelaySurface()` still reconstructs the working delay surface from rendered headers/cells/datasets even though the VE owner has authoritative working-delay state. This is later ownership cleanup and is not a current blocker.
 
-The current browser-known-good runtime intentionally retains older wrapper/DOM patterns because the later continuity/render redesign regressed Analyzer entry.
+Future review/application-strength/export/diff work remains separate from evidence authority.
 
-Known debt includes:
+## Safety boundary
 
-- destructive `setContext` / `setTuneModel` rebuild semantics;
-- Logger → Analyzer result-state loss;
-- cell-evidence review recomputing VE analysis rather than consuming retained primary results;
-- working delay reconstruction/control partly through rendered DOM/synthetic handler paths;
-- hidden one-shot qualification/load state;
-- Result View rendering that consumes rendered presentation state in places where authoritative structured data should be used.
+The original VE table is analysis input. Running analysis must never mutate tune/ECU state.
 
-## Required next architecture direction
-
-Proceed one structural change at a time from the current browser-known-good runtime:
-
-1. fix Result View fallback/precision with isolated browser validation;
-2. fix Logger → Analyzer result persistence with isolated browser validation;
-3. expose explicit authoritative VE session/result/proposal/working-delay state;
-4. make cell evidence consume retained primary results;
-5. remove delay-table reconstruction from rendered DOM;
-6. replace hidden one-shot analysis configuration with explicit request/session configuration;
-7. only then continue broader review/application/export refinements.
-
-Do not stack new lifecycle wrappers/MutationObservers around the current surface. Prefer one authoritative owner per structural area.
-
-## Edge/regression requirements
-
-Maintain regression coverage for table breakpoints/corners/edges, sparse evidence, invalid mixture data, source-index discontinuities, variable sample rate, timestamp delay interpolation, fuel-state exclusions, correction-layer presence/absence, proposal limits and delay-table provenance/editing.
-
-Browser testing is mandatory for lifecycle/render/input changes.
-
-## Performance requirements
-
-No VE-specific full-log work during ordinary app/log load.
-
-- VE analysis runs only from explicit **Run Analysis**.
-- lambda-delay discovery runs only from explicit **Grab lambda delays from log**.
-- cache/reuse safe artifacts where practical.
-- changing settings may mark results stale but must not automatically trigger expensive recomputation.
-
-## Product invariant
-
-> EpicScope may recommend a VE change only when it can show what log evidence produced it, what operating-state rules qualified that evidence, what lambda-delay table aligned it, how strong/confident the evidence is, and why the requested change is inside or outside configured authority.
+Never automatically write or Burn to the ECU. Original tune/VE data, Analyzer evidence/proposal and any user-reviewed application result remain distinct states.
