@@ -14,17 +14,15 @@ Current integration PR:
 
 PR #462 — **Integrate Analyzer ownership and correctness fixes through point 11**
 
-Current PR #462 head before this documentation update:
+Current accepted browser-preview head before this documentation update:
 
-`088ac51a801ab35496d02abab78fec1bfb8e79a7`
-
-The branch is based directly on production `main`; it is intentionally not a continuation of the divergent temporary branch history.
+`b435702412642f039a8a7f49d33037c309bef9d8`
 
 Hosted production application:
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-PR preview pattern:
+PR preview:
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/previews/pr-462/`
 
@@ -34,9 +32,9 @@ This file is the present-tense continuation authority. `DOCUMENTATION_MAP.md` de
 
 - **Logger** — mature functional reference. Broad performance/micro-optimization work remains paused unless a measured regression appears.
 - **Histogram** — generic research-parity checkpoint closed for the approved scope. Table Generator, Distribution, Scatter and Math Channels are mature unless field use exposes a concrete correctness gap.
-- **Analyzer** — current ownership/correctness/performance cleanup through points 1–11 has been implemented and reconstructed onto the clean PR #462 integration branch. Browser acceptance is still required before merge.
-- **VE Analyzer** — current highest-value active maturity target. Session retention, retained-primary evidence reuse, semantic invalidation, active-domain routing and cooperative analysis are in the integration candidate. One Result View authority defect remains open and currently blocks acceptance of PR #462.
-- **Diagnostics / observability** — architecture/research work is documented separately; implementation should begin only after the current correctness/performance baseline is stable.
+- **Analyzer** — ownership/correctness/performance cleanup through points 1–11 is implemented on PR #462 and has now passed owner browser acceptance on the exact preview head listed above.
+- **VE Analyzer** — current Result View source-authority and heat-map regressions are fixed and browser-accepted. Session retention, retained-primary evidence reuse, semantic invalidation, active-domain routing and cooperative analysis all remain intact.
+- **Diagnostics / observability** — architecture/research work is documented separately; implementation may begin after PR #462 is merged/reconciled and the baseline is confirmed stable on `main`.
 - **MLG v3** — researched compatibility extension, not yet implemented; v1/v2 remain production support.
 - **Linux production implementation** — future work after Web maturity/cleanup.
 
@@ -44,9 +42,11 @@ This file is the present-tense continuation authority. `DOCUMENTATION_MAP.md` de
 
 Historical remote-branch cleanup was completed earlier; old branches are not knowledge stores. Recover old implementation detail from Git history/merged PRs when needed.
 
-The current active integration work is deliberately isolated on `integrate/points-2-11-clean` / PR #462. Do not merge PR #462 until the current Result View defect is fixed and browser acceptance is repeated on the exact resulting SHA.
+The current integration work is isolated on `integrate/points-2-11-clean` / PR #462. The branch was reconstructed directly on production `main` instead of merging divergent temporary ancestry wholesale.
 
-The temporary source branch `temp/epicscope-fixes-points-1-2-20261015` remains historical evidence for the points work. Its implementation was reconstructed onto current `main` instead of merging its divergent ancestry wholesale.
+The temporary source branch `temp/epicscope-fixes-points-1-2-20261015` remains historical evidence for the points work only.
+
+PR #462 is still draft/open at the time of this handoff update. Do not silently merge it. Merge/reconcile only as an explicit next action after confirming the PR head and CI still correspond to the accepted build or a documentation-only descendant of it.
 
 ## Documentation authority map
 
@@ -136,7 +136,7 @@ Point 9 on PR #462 adds explicit, recoverable persistence-failure feedback for s
 
 ## Analyzer checkpoint — integrated points 1–11
 
-The clean integration candidate preserves the current Codex-era ownership model. Do **not** restore older controller files wholesale or roll back the points 5–11 architecture to fix local VE presentation defects.
+The integration candidate preserves the current Codex-era ownership model. Do **not** restore older controller files wholesale or roll back the points 5–11 architecture to fix local presentation defects.
 
 ### Point 1 — large-log correctness
 
@@ -147,32 +147,28 @@ Complete and already represented on production history before the clean integrat
 
 ### Point 2 — VE session authority
 
-Complete in the integration candidate.
+Complete.
 
 - Unchanged context/tune updates preserve working delay, retained primary result and proposal.
 - Real source/catalog/sample-count/validity/tune/selected-scope changes invalidate conservatively.
 - Existing generations reject stale asynchronous completions.
 - Logger → Analyzer navigation preserves completed VE session authority.
 
-The Analyzer-entry loop exposed by this preservation work was traced to the old global channel decorator assigning a preferred AFR channel absent from a hidden selector and dispatching `change` despite no real value transition. The narrow loop guard was retained, and point 5 subsequently removed the global decorator ownership itself.
-
 ### Point 3 — retained primary evidence
 
 Complete.
 
 - VE v2 owns `getPrimaryAnalysis()` and publishes borrowed read-only references to the current completed analysis.
-- Cell evidence consumes the retained primary evidence/proposal instead of performing a second full-log VE analysis.
+- Cell evidence consumes retained primary evidence/proposal instead of performing a second full-log VE analysis.
 - No duplicate trace load / qualification / evidence-map / proposal run is required to open a cell.
 
 ### Point 4 — semantic detail invalidation
 
-Complete for retained primary/cell-detail lifetime.
+Complete.
 
-- Result View changes are presentation-only with respect to primary analysis identity.
+- Result View changes are presentation-only with respect to primary-analysis identity.
 - Cell-detail cache invalidation follows semantic owner notifications rather than broad root input/change observers.
 - Popup detail/strongest-visit work is reusable for the current primary analysis.
-
-Important: this point did **not** prove that the visible Result View cell text itself remains source-authoritative. The current open Result View defect is documented below.
 
 ### Point 5 — selector / DOM ownership
 
@@ -211,7 +207,7 @@ Complete for the profiled VE evidence pipeline.
 - VE calculation uses cooperative bounded batches/yields rather than adding an unjustified new worker/lifecycle model.
 - Progress and explicit Cancel are present.
 - Existing generation/activity ownership performs cancellation/stale rejection.
-- This is primarily a responsiveness/cancellation improvement; total analysis latency is not claimed to be lower in every environment.
+- Browser acceptance reports Analyzer responsiveness is substantially improved versus the earlier pre-Codex regression state.
 
 ### Point 9 — persistence failure visibility/recovery
 
@@ -241,182 +237,82 @@ Complete.
 
 ### Point 12 — telemetry async conversion/socket identity
 
-Not implemented. Remains a lower-priority, reproduction-gated candidate. Existing ArrayBuffer transport and frame-generation guards reduce exposure. Do not implement without a controlled deferred-conversion/reconnect reproducer.
+Not implemented. Remains lower-priority and reproduction-gated. Existing ArrayBuffer transport and frame-generation guards reduce exposure. Do not implement without a controlled deferred-conversion/reconnect reproducer.
 
-## Validation state of the clean integration
+## VE Result View blocker — RESOLVED and browser-accepted
 
-PR #462 was reconstructed on current `main` specifically to avoid reintroducing divergent branch ancestry and to preserve production regression tests.
+The earlier blocker was that v7 reparsed mutable visible cell text when switching Result Views. Because the UI refinement layer also rewrites presentation text, one Result View could become the next Result View's source and original VE values could degrade or disappear.
 
-The clean integration passed CI at earlier heads. Source-branch validation for the included points was extensive (automated tests, production build/typecheck and focused Chromium checks), but browser acceptance of the exact integrated build remains mandatory.
+### Source-authority repair
 
-The owner tested the PR #462 preview and confirmed the major integrated behaviors remain functional, including Analyzer entry and VE session/navigation behavior. However, the preview also reproduced the open Result View value-loss defect described below. Therefore PR #462 is **not accepted for merge yet**.
+Commit lineage on PR #462 now resolves current VE from retained primary analysis/model coordinates, with stable cell metadata as fallback, instead of treating the currently rendered Result View text as authoritative source state.
 
-## Open blocker — VE Result View uses mutable presentation as source state
+Important implementation constraint retained:
 
-This is the immediate continuation task.
+- app-level UI refinement reverses rendered load rows;
+- model lookup therefore maps RPM/load coordinates back to authoritative axes rather than deriving model index from DOM row position.
 
-### Confirmed primary failure
+The earlier value-loss repair was introduced in commit:
 
-Current `ve-analyzer-view-v7.ts` reparses each cell from presentation state on every Result View change:
+`5608edd00a7a5781d29d488c61fbb5e5bfd07cf3`
 
-```ts
-const metrics = parseVeRenderedCellMetrics(
-  cell.title,
-  main.textContent ?? '',
-);
+A full-stack browser regression module was then added in:
 
-main.textContent = veResultDisplay(metrics, view, delayMs).text;
-```
+`c23fabeeedf11295cb900ee3d00076f048b5f251`
 
-This makes the output of one Result View become the input/source for the next Result View.
+The regression exercises the VE controller together with `installVeAnalyzerUiRefinements()`, repeated Result View switching, measured/weak/evidence-only/no-evidence presentation classes, retained primary identity, no extra trace loading and valid interpolated Lambda Delay behavior.
 
-Example: an evidence cell whose original VE is 60 can display `18` in Samples, then `Moderate` in Confidence; when the next view reparses `Moderate`, the numeric original VE is no longer recoverable from visible text. This is a confirmed code-level failure, not an I/O/cache issue.
+### Heat-map behavior
 
-### Why cells fail irregularly
+Owner browser testing showed that value retention was fixed but the first repair did not match the intended historical heat-map behavior.
 
-Measured proposal cells often include `Current <VE>` in their title, so the parser can sometimes recover the original VE even after visible text changes.
+The accepted visual rule is now:
 
-Weak/withheld/evidence-only cells do not consistently encode the original VE in their title. Those cells depend much more heavily on whatever is currently visible, so corruption varies across cell classes.
+- **Proposed VE** — use the VE-table heat-map.
+- **Alternate Result Views** — cells with a real selected metric use that Result View's metric scale.
+- **Untouched/fallback cells in alternate views** — show the preserved VE value but use neutral heat, rather than carrying Proposed VE coloring into the metric view.
+- **Lambda Delay** — valid interpolated delay remains a real metric and keeps the delay view's metric/range behavior.
 
-### Second presentation writer in the full app
+The accepted preview head containing this heat-map correction is:
 
-`ve-analyzer-ui-refinements.ts` independently compacts measured proposal text after render, e.g. changing a visible `60 → 63` form to `63`. It also observes Analyzer subtree child mutations for its presentation refinements.
+`b435702412642f039a8a7f49d33037c309bef9d8`
 
-Therefore `main.textContent` is categorically not authoritative VE state: multiple presentation layers deliberately modify it.
+Web CI run `38813570272` passed type-check, tests and production build for that head.
 
-This refinement code predates the Codex points work and is not treated as the newly introduced root cause, but it proves that a Result View fix must not depend on timing of visible-text capture.
+### Owner browser acceptance on exact preview head
 
-### Why the existing tests missed it
+The owner tested the exact PR preview build at `b435702412642f039a8a7f49d33037c309bef9d8` with the normal real-data workflow and confirmed:
 
-The restored Result View unit test exercises the pure formatter repeatedly against one pristine metrics object. It proves fallback formatting, not the browser's destructive sequence of render → reparse rendered output → render another view.
+- VE values remain stable through repeated Result View switching;
+- heat-map behavior now matches the intended pre-regression behavior;
+- Lambda Delay table values remain correct;
+- completed VE analysis survives switching to other analyzers and leaving/re-entering Analyzer;
+- weak cells remain sensible;
+- no noticeable Result View/session regression remains;
+- Analyzer responsiveness is substantially better than the problematic pre-Codex state.
 
-The current VE Chromium lifecycle test cycles Result Views, but its assertions cover retained primary identity, trace-read count and popup/detail identity. It does not assert visible VE table values through each view.
+Therefore the Result View blocker is **closed** and the points 1–11 integration is **browser-accepted at the exact preview head above**.
 
-The controller-level lifecycle environment also does not reproduce the complete app-shell presentation stack with `installVeAnalyzerUiRefinements()` active.
+A documentation-only descendant of that accepted head does not require repeating the runtime browser test if no runtime/build source changes are introduced. Any subsequent runtime code change before merge requires fresh CI and exact-head browser acceptance proportional to the change.
 
-So CI/browser component checks can pass while the full preview still loses displayed values.
+## Remaining VE ownership debt
 
-### Confirmed heat-map issue
+`readDelaySurface()` still reconstructs the working delay surface from rendered DOM headers/cells/datasets even though the VE owner has authoritative working-delay state.
 
-Fallback/base values are marked by the formatter as `scaleMode: 'base'`, but current v7 assigns neutral `--ve-cell-level: 0.5` for that path instead of restoring the original VE base heat level.
-
-When a Result View has no real metric for a cell, both the original VE value and its original VE-table heat intensity should be preserved.
-
-### Lambda Delay exception
-
-Lambda Delay is semantically different from Samples/Confidence/Spread. A cell with no VE evidence can still have a valid interpolated delay metric from the working delay surface.
-
-Rule:
-
-> If the selected Result View has a real metric for the cell, display that metric. If it has no metric, fall back to the original VE value/base heat level.
-
-A valid interpolated delay is a real metric even when VE evidence is absent.
-
-### Remaining DOM-derived delay debt
-
-`readDelaySurface()` currently reconstructs delay information from rendered headers/cells/datasets. This is not the cause of the current VE value-loss bug, but it remains presentation-derived authority debt because the Codex VE owner already owns `workingDelayTable`.
-
-Do not broaden the immediate Result View repair into a delay-ownership refactor. Record the debt and address it separately after the current blocker is closed.
-
-### Load-axis orientation trap
-
-App-level VE UI refinement physically reverses rendered load rows. Do not map a DOM row position directly to `primaryAnalysis.cells[row * cols + col]`.
-
-Any source-authoritative Result View mapping must use a stable cell index assigned at render time or model coordinates mapped back to authoritative axes.
-
-### v8/v9 boundary
-
-Current investigation found no independent Result View overwrite in v8 or v9. The problematic ownership region is:
-
-```text
-v2 authoritative table render
-        ↓
-v7 Result View presentation
-        ↕
-app-level VE UI refinements
-        ↓
-pure Result View formatter
-```
-
-## Required forward fix — adapt Codex-era owners, do not restore old files
-
-This is an explicit project constraint.
-
-**Do not restore the pre-Codex VE files or replace current point-5–11 implementations with older branch versions.** Keep the current Codex-era owners and adapt them forward.
-
-Recommended repair:
-
-1. In current v2, where the owner already has `entry.numericValues[index]`, stamp immutable model-derived metadata on each freshly created VE cell, e.g.:
-
-   ```ts
-   td.dataset.veCellIndex = String(index);
-   td.dataset.veCurrentValue = String(current);
-   td.dataset.veBaseLevel = String(baseLevel);
-   ```
-
-2. In current v7, stop using mutable `main.textContent` as the `current` VE source. Parse Result View metrics against `cell.dataset.veCurrentValue` (or another explicit owner-provided stable model value).
-
-3. A per-cell `WeakMap` may still cache parsed title/evidence metrics to avoid repeated regex work, but it must not be the only authority for original VE because capture timing can race with presentation mutators.
-
-4. When `display.scaleMode === 'base'`, restore `cell.dataset.veBaseLevel`; do not force neutral 0.5.
-
-5. Preserve legitimate real metrics, including interpolated Lambda Delay, even for cells without VE evidence.
-
-6. Do not use DOM row order as model index because app-level row orientation can differ from model order.
-
-7. Keep all points 5–11 architecture, cooperative analysis, activity routing, generation guards, retained primary evidence, persistence/error handling and transactional replacement behavior intact.
-
-## Required Result View regression coverage
-
-Add a real Chromium regression that checks visible cell values, not only primary identity/popup lifetime.
-
-Test at least these cell classes:
-
-| Cell class | Required coverage |
-|---|---|
-| measured | title contains current/proposed data |
-| weak / withheld | candidate evidence but no guaranteed `Current` title field |
-| evidence-only | evidence metrics without proposal |
-| no-evidence | original VE only |
-
-Cycle repeatedly:
-
-```text
-Proposed VE
-→ VE change
-→ VE change %
-→ Mixture error %
-→ Samples
-→ Evidence weight
-→ Confidence
-→ Spread %
-→ Lambda delay
-→ Proposed VE
-```
-
-Assertions must compare against model-derived `TuneEntry.numericValues`, not against whatever was visible in the preceding Result View.
-
-Also verify:
-
-- fallback always returns the original VE value;
-- base heat-map intensity returns exactly;
-- measured/weak/withheld calculations remain based on original VE;
-- valid delay metrics remain visible where applicable;
-- repeated cycles are stable;
-- primary-analysis identity is unchanged by presentation-only switching;
-- no additional trace loading occurs;
-- full integration with `installVeAnalyzerUiRefinements()` active passes, not only a bare VE controller fixture.
+This is **not** the cause of the resolved Result View bug and must not block PR #462. Treat it as later ownership cleanup, not as justification for widening the accepted integration before merge.
 
 ## Observability / diagnostics continuation
 
 A separate planned feature track consolidates current Diagnostics, Performance and Report systems into one bounded observability/flight-recorder architecture.
 
-The implementation authority is `docs/OBSERVABILITY.md`; performance-specific pre-build research is in `docs/research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md`.
+Implementation authority: `docs/OBSERVABILITY.md`.
 
-Important implementation constraints already established:
+Performance-specific research: `docs/research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md`.
+
+Established constraints include:
 
 - one authoritative bounded observability/session stream;
-- specialized reports are projections rather than parallel stores;
+- specialized reports as projections rather than parallel stores;
 - packed/efficient hot-path representation, separate critical/detail retention, pre-insertion coalescing and backpressure;
 - numeric stable IDs for common fields, monotonic timestamps and primitive operation IDs;
 - owner-provided revisions/fingerprints; no arbitrary state hashing;
@@ -428,22 +324,21 @@ Important implementation constraints already established:
 - explicit observability-on versus minimal/off overhead benchmarks;
 - no automatic runtime mutation/repair from anomaly detection initially.
 
-Do not begin this implementation until the current PR #462 correctness baseline is browser-accepted and stable.
+Do not begin a broad observability implementation by disturbing the now-accepted PR #462 runtime baseline. Merge/reconcile the accepted integration first unless a concrete merge blocker appears.
 
 ## Immediate continuation order
 
-1. Fix the open Result View source-authority defect by adapting current v2/v7 forward as specified above.
-2. Add the full-stack browser regressions for visible Result View values and base heat levels.
-3. Re-run CI and deploy a fresh PR #462 preview from the exact resulting SHA.
-4. Owner browser acceptance: load the real INI/MSQ/log workflow, run VE, cycle all Result Views repeatedly, verify untouched/base values, evidence states, heat map, Logger round-trip/session retention and general Analyzer responsiveness.
-5. Only after browser acceptance, merge/reconcile the clean points 1–11 integration with `main`.
-6. Point 12 remains reproduction-gated and lower priority.
-7. After the correctness/performance baseline is stable, begin the observability implementation plan from its documented step 1.
+1. Confirm PR #462 current head is the accepted runtime head `b435702412642f039a8a7f49d33037c309bef9d8` or only a documentation-only descendant with passing CI.
+2. Merge/reconcile PR #462 with `main` when explicitly requested/approved.
+3. After merge, verify `main` contains the accepted points 1–11 integration and Result View fixes; do not redo already accepted work.
+4. Point 12 remains reproduction-gated and lower priority.
+5. The DOM-derived Lambda Delay surface remains a later ownership-cleanup candidate, not a current blocker.
+6. After the correctness/performance baseline is stable on `main`, begin the observability implementation plan from its documented step 1 or continue the next explicitly chosen EpicScope maturity target.
 
 ## Acceptance rule
 
-For VE/Analyzer runtime work, CI is necessary but not sufficient. Browser behavior on the actual integrated build is acceptance authority.
+For VE/Analyzer runtime work, CI is necessary but not sufficient. Browser behavior on the actual integrated build is the acceptance authority.
 
-Do not claim the Result View defect is fixed until the exact PR preview is browser-tested after the source-authority repair.
+The Result View source-authority and heat-map repairs are accepted for preview SHA `b435702412642f039a8a7f49d33037c309bef9d8`.
 
 Never automatically write or Burn to the ECU. Original VE/tune data, Analyzer evidence/proposal and any user-reviewed application result remain distinct states.
