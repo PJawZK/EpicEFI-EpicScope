@@ -1,6 +1,6 @@
 # Branch cleanup and authority consolidation — 2026-10-15
 
-This note records the repository cleanup pass performed after restoring the VE Analyzer browser-known-good runtime.
+This note records the completed repository cleanup pass performed after restoring the VE Analyzer browser-known-good runtime.
 
 ## Runtime baseline preserved during cleanup
 
@@ -73,10 +73,12 @@ Future VE work should address those one structural change at a time with browser
 
 ## Documentation correction completed
 
-The repository documentation is now being consolidated around the following current facts:
+The documentation consolidation completed with these current facts made explicit:
 
 - PR #449 / the #441-era composition is the browser-validated VE runtime boundary;
 - VE Analyzer is implemented and real-log/browser validated, not planned-only;
 - the accepted lambda-delay working model is **RPM × load table only**;
 - repository remote branch authority is `main` only;
-- current-state docs and historical research/plan docs have distinct authority roles.
+- current-state docs and historical research/plan docs have distinct authority roles;
+- D-056/D-057 record table-only delay authority and browser-validation requirements;
+- `DOCUMENTATION_MAP.md` defines how future readers resolve historical-vs-current wording.
