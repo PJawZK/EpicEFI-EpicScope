@@ -5,6 +5,7 @@ import {
   VE_RESULT_VIEW_OPTIONS,
   parseVeRenderedCellMetrics,
   veResultDisplay,
+  type VeRenderedCellMetrics,
   type VeResultView,
 } from './ve-analyzer-result-view';
 import {
@@ -172,6 +173,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const veSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
   const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
   let activeTableTab: VeTableTab = 've';
+  const renderedMetrics = new WeakMap<HTMLTableCellElement, VeRenderedCellMetrics>();
 
   // v7 is the single owner of table layout, result-view selection and table-header controls.
   // Later enhancement layers must not re-parent these nodes.
@@ -247,7 +249,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         const main = cell.querySelector<HTMLElement>(':scope > span');
         if (!main) continue;
         if (cell.dataset.veBaseLevel === undefined) cell.dataset.veBaseLevel = cell.style.getPropertyValue('--ve-cell-level');
-        const metrics = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '');
+        let metrics = renderedMetrics.get(cell);
+        if (!metrics) {
+          metrics = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '');
+          renderedMetrics.set(cell, metrics);
+        }
         const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpmBins[col - 1], load) : undefined;
         const display = veResultDisplay(metrics, view, delayMs);
         main.textContent = display.text;
