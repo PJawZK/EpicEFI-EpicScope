@@ -174,7 +174,7 @@ export interface LoggerAnalysisContext {
   }) => void;
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
-  readonly sourceSampleCount?: number;
+  readonly sourceSampleCount?: number | undefined;
   readonly savedRanges: readonly import('../state/workspace-state').SavedTimelineRangeState[];
 }
 
