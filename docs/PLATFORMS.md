@@ -1,5 +1,5 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. `docs/DOCUMENTATION_MAP.md` defines documentation authority.
 <!-- CURRENT_STATE:handoff-pointer:END -->
 
 # EpicScope Platform Policy
@@ -12,100 +12,72 @@ EpicScope is intentionally developed in this order:
 2. Linux
 3. Android / EpicHub
 
-This order is architectural and product-driven, not merely chronological.
+This is an architectural/product order, not merely chronology.
 
 ## Web
 
-EpicScope Web is the functional reference during early development.
+EpicScope Web is the **current functional reference and feature-validation platform**.
 
-Primary responsibilities:
-
-- prove product features and workflows;
-- validate analyzer concepts;
-- establish data contracts;
-- support testing across the user's different computers and operating systems;
-- serve as the fastest iteration environment.
+It establishes product behavior/workflows, validates Analyzer concepts/data contracts, supports cross-machine testing and serves as the validated browser client for the read-only EpicEFI `ts_shim` contract.
 
 ### Browser target
 
-Chromium is the primary browser family for development and validation.
+Chromium is primary. Brave is a first-class practical target. Firefox/Safari support may be considered later but should not block current work unless a dependency would create unnecessary lock-in.
 
-Brave is the user's normal browser and should be treated as a first-class practical test target.
+### Validation classes
 
-Firefox/Safari compatibility may be considered later, but must not delay core Web development unless a dependency choice would create unnecessary long-term lock-in.
+Performance-sensitive Web work has been checked on both faster desktop-class Linux/Chromium systems and a deliberately low-spec 2-thread / 4 GB class machine with slower storage.
 
-<!-- CURRENT_STATE:current-web-validation-classes:START -->
-## Current Web validation classes
+Hardware-adaptive scheduling is acceptable when product semantics remain identical. Changes affecting I/O/allocation/GC/responsiveness should be checked on the low-spec class before being called settled.
 
-Performance-sensitive Web changes are currently checked on two deliberately different Chromium/Linux classes:
+### Browser-behavior authority
 
-- **desktop class:** about 5 logical threads, fast storage, where the 1.19 GB benchmark log indexes in roughly one second and arbitrary-channel full materialization is sub-second;
-- **low-spec class:** 2 logical threads / 4 GB RAM class hardware with much slower storage, where the same source scans can take several seconds.
+Automated typecheck/tests/build remain mandatory, but UI/lifecycle claims require representative browser evidence when automation cannot prove them.
 
-Hardware-adaptive Web policy already exists for CRC validation and active-channel materialization timing. This is allowed as an implementation optimization when both paths preserve the same product semantics. Desktop improvements that can affect I/O, allocation, GC or interaction behavior should be checked on the low-spec class before the performance task is considered settled.
-<!-- CURRENT_STATE:current-web-validation-classes:END -->
+For VE Analyzer lifecycle/render/state/direct-edit changes this is a locked acceptance rule (D-057) after CI-green post-#441 changes caused a real Analyzer-entry freeze.
 
 ## Linux
 
-EpicScope Linux is the intended primary production application.
+EpicScope Linux remains the intended primary production application after Web functional maturity review.
 
 ### Minimum baseline
 
-The initial Linux compatibility baseline is:
-
 - Debian 13 Stable or later;
-- suitably compatible newer Debian-based distributions where dependencies permit.
+- compatible newer Debian-based distributions where dependencies permit.
 
-Ubuntu support may be validated separately, but Debian 13 is the authoritative minimum target.
-
-### Platform compatibility rule
-
-A newer minimum OS requirement may replace Debian 13 only when it provides a substantial demonstrated benefit to:
-
-- performance;
-- memory efficiency;
-- hardware support;
-- security/maintainability;
-- or another clearly material EpicScope capability.
-
-Development convenience alone is not sufficient justification.
+A newer minimum may replace Debian 13 only for substantial demonstrated benefit such as performance, memory efficiency, hardware support or security/maintenance—not development convenience alone.
 
 ### Runtime dependency discipline
 
-Build tooling may be newer than the user's runtime environment.
+Build tooling may be newer than the end-user runtime. Do not accidentally turn compiler/build-host versions into unnecessary libc/toolkit/runtime requirements.
 
-The project must avoid accidentally turning compiler/build-host versions into unnecessary end-user runtime requirements.
-
-Dependencies that force newer libc/toolkit/runtime requirements must be reviewed against the platform baseline before adoption.
+Linux may replace Web implementation internals with native mmap/indexed/columnar/etc. techniques while preserving established product semantics.
 
 ## Android / EpicHub
 
-Android integration begins only after the Web functional model and Linux production model are sufficiently mature.
+Android/EpicHub reuse begins only after Web behavior and Linux production architecture are sufficiently mature.
 
-Goals include:
+Goals:
 
-- reuse proven analyzer behaviour where practical;
-- reuse portable core logic where justified;
-- adapt UX to mobile/tablet constraints rather than forcing desktop layouts unchanged;
-- avoid duplicating domain logic unnecessarily.
+- reuse proven Analyzer/domain behavior where practical;
+- reuse portable core logic when justified;
+- design mobile/tablet UX for that platform rather than forcing desktop layouts;
+- avoid duplicated domain logic.
 
-Android requirements must not prematurely constrain the Web or Linux implementations.
+TunerStudio live table-editing/write research primarily belongs to EpicHub, not EpicScope. EpicScope carries only transferable invariants such as explicit proposal-vs-tune state and no implicit Apply/Burn.
 
 ## Platform-specific adapters
 
-Platform-specific capabilities should be isolated behind adapters or dedicated application layers.
+Platform capabilities stay behind adapters/application layers, for example:
 
-Examples:
-
-- browser file picker / File API;
-- Linux native file access, memory mapping, file watching;
+- browser File/Blob/OPFS APIs;
+- browser WebSocket/HTTP `ts_shim` transport;
+- Linux native file access/mmap/file watching;
 - Android storage/document APIs;
-- future direct serial/CAN interfaces.
+- future direct serial/CAN only if separately approved.
 
-Core analyzers should consume normalized abstractions rather than platform APIs directly.
+Core analyzers consume normalized abstractions rather than platform APIs directly.
 
 ## Distribution philosophy
 
-Web should remain easy to access for development and cross-machine testing.
-
-Linux distribution should prioritize reliable operation and low overhead over packaging fashion. Packaging format should be decided later against compatibility, update, and dependency requirements.
+Web remains easy to access for development/cross-machine validation. Linux distribution should prioritize reliable operation and low overhead over packaging fashion; packaging/update format is a later production decision.
