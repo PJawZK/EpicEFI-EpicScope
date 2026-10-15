@@ -20,7 +20,7 @@ function sameChannelCatalog(
   right: LoggerAnalysisContext['channels'],
 ): boolean {
   if (left === right) return true;
-  if (left.length !== right.length) return false;
+  if (left.length !== right.length || left.length === 0) return false;
   return left.every((channel, index) => channel === right[index]);
 }
 
