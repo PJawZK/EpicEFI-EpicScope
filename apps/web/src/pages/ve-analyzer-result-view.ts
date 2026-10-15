@@ -105,6 +105,14 @@ function signed(value: number, digits: number, suffix = ''): string {
   return `${value > 0 ? '+' : ''}${clean(value, digits)}${suffix}`;
 }
 
+function baseDisplay(metrics: VeRenderedCellMetrics): VeResultDisplay {
+  return {
+    text: metrics.current === undefined ? '—' : clean(metrics.current, 2),
+    numericValue: metrics.current,
+    scaleMode: 'base',
+  };
+}
+
 export function confidenceRank(confidence: VeRenderedConfidence | undefined): number | undefined {
   switch (confidence) {
     case 'limited': return 1;
@@ -126,25 +134,38 @@ export function veResultDisplay(
       return { text: value === undefined ? '—' : clean(value, 2), numericValue: value, scaleMode: 'base' };
     }
     case 'change':
-      return { text: metrics.changeValue === undefined ? '—' : signed(metrics.changeValue, 2), numericValue: metrics.changeValue, scaleMode: 'magnitude' };
+      return metrics.changeValue === undefined
+        ? baseDisplay(metrics)
+        : { text: signed(metrics.changeValue, 2), numericValue: metrics.changeValue, scaleMode: 'magnitude' };
     case 'change-percent':
-      return { text: metrics.changePercent === undefined ? '—' : signed(metrics.changePercent, 1, '%'), numericValue: metrics.changePercent, scaleMode: 'magnitude' };
+      return metrics.changePercent === undefined
+        ? baseDisplay(metrics)
+        : { text: signed(metrics.changePercent, 1, '%'), numericValue: metrics.changePercent, scaleMode: 'magnitude' };
     case 'mixture-error':
-      return { text: metrics.correctionPercent === undefined ? '—' : signed(metrics.correctionPercent, 1, '%'), numericValue: metrics.correctionPercent, scaleMode: 'magnitude' };
+      return metrics.correctionPercent === undefined
+        ? baseDisplay(metrics)
+        : { text: signed(metrics.correctionPercent, 1, '%'), numericValue: metrics.correctionPercent, scaleMode: 'magnitude' };
     case 'samples':
-      return { text: metrics.samples === undefined ? '—' : String(Math.round(metrics.samples)), numericValue: metrics.samples, scaleMode: 'quality' };
+      return metrics.samples === undefined
+        ? baseDisplay(metrics)
+        : { text: String(Math.round(metrics.samples)), numericValue: metrics.samples, scaleMode: 'quality' };
     case 'weight':
-      return { text: metrics.weight === undefined ? '—' : clean(metrics.weight, 2), numericValue: metrics.weight, scaleMode: 'quality' };
+      return metrics.weight === undefined
+        ? baseDisplay(metrics)
+        : { text: clean(metrics.weight, 2), numericValue: metrics.weight, scaleMode: 'quality' };
     case 'confidence': {
       const rank = confidenceRank(metrics.confidence);
-      const text = metrics.confidence && metrics.confidence !== 'none'
-        ? `${metrics.confidence[0]!.toUpperCase()}${metrics.confidence.slice(1)}`
-        : '—';
+      if (rank === undefined || !metrics.confidence || metrics.confidence === 'none') return baseDisplay(metrics);
+      const text = `${metrics.confidence[0]!.toUpperCase()}${metrics.confidence.slice(1)}`;
       return { text, numericValue: rank, scaleMode: 'quality' };
     }
     case 'spread':
-      return { text: metrics.spreadPercent === undefined ? '—' : `${clean(metrics.spreadPercent, 1)}%`, numericValue: metrics.spreadPercent, scaleMode: 'magnitude' };
+      return metrics.spreadPercent === undefined
+        ? baseDisplay(metrics)
+        : { text: `${clean(metrics.spreadPercent, 1)}%`, numericValue: metrics.spreadPercent, scaleMode: 'magnitude' };
     case 'delay':
-      return { text: delayMs === undefined ? '—' : `${Math.round(delayMs)}`, numericValue: delayMs, scaleMode: 'range' };
+      return delayMs === undefined
+        ? baseDisplay(metrics)
+        : { text: `${Math.round(delayMs)}`, numericValue: delayMs, scaleMode: 'range' };
   }
 }
