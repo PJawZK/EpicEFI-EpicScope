@@ -2,166 +2,116 @@
 
 Date: 2026-10-15
 
-This note records the architectural findings from the VE Analyzer regression investigation around PRs #442-#447.
+> **Status: current architectural-debt evidence, with the attempted PR #445–#447 stabilization superseded at runtime by PR #449.**
+>
+> The root ownership findings below remain relevant. The continuity/render implementations from PRs #445–#447 are **not** the current runtime authority because Analyzer entry regressed and PR #449 restored the #441-era browser-known-good composition.
+>
+> Current engineering sequence is authoritative in `../HANDOFF.md`, `../VE_ANALYZER.md` and `../ROADMAP.md`.
 
 ## Trigger
 
-After cell-evidence/Logger navigation was added, attempts to preserve VE result rendering across Logger -> Analyzer round trips caused an Analyzer-entry freeze/regression. The immediate failed continuity implementation was rolled back, then the complete VE render/lifecycle stack was audited.
+After PR #441 added cell evidence/Logger navigation, attempts to preserve VE result rendering/session continuity across Logger → Analyzer navigation introduced regressions culminating in an Analyzer-entry freeze.
 
-Known-good behavioral reference before the continuity experiments:
+Known-good browser reference before those experiments:
 
-- `fd21e4d4a390a4f6607d0290ef273749fc7fd915`
+`fd21e4d4a390a4f6607d0290ef273749fc7fd915`
 
-## Main findings
+PR #449 restored runtime files to that known-good composition. The project owner then confirmed Analyzer entry works again.
 
-### 1. Base v2 lifecycle is destructive
+## Root findings that remain valid
 
-`ve-analyzer-view-v2.ts` owns the real VE analysis state:
+### 1. Base lifecycle is destructive
 
-- `result`
-- `proposal`
-- `delayDiscovery`
-- `delayRecommendation`
-- `workingDelayTable`
-- selected delay state
+The underlying VE controller owns state such as analysis result, proposal, delay discovery/recommendation and working delay state. `setContext()` / `setTuneModel()` paths rebuild the surface and can clear analysis state.
 
-`setContext()` and `setTuneModel()` call `rebuild()`, and `rebuild()` clears those values before recreating the UI.
+Long-term rule: true source/tune authority changes may invalidate analysis; ordinary navigation/view refresh must not destroy a valid same-source analysis session.
 
-Therefore a navigation/context refresh is not merely a view refresh; it destroys the VE analysis session.
+### 2. Rendered DOM must not be both source and output
 
-Long-term direction: source/tune authority changes should explicitly invalidate state, while ordinary view navigation should not.
+Result View previously parsed rendered cell text/title and then overwrote that same presentation. Switching views could therefore consume previous presentation output rather than authoritative analysis/proposal data.
 
-### 2. Rendered DOM had become both input and output
+Observed symptoms included missing `—` fallbacks and precision/value degradation after switching result views.
 
-The initial Result View implementation in v7 parsed cell title/text, then overwrote the same text with another result representation. Reapplying another view could therefore consume the previous view's output instead of authoritative VE/proposal state.
+Target design: Result View renders from structured authoritative result/proposal state, never from presentation it previously wrote.
 
-Symptoms included:
+### 3. One result renderer/owner
 
-- unchanged VE values turning into `—` in alternate result views;
-- switching back losing the original/proposed value;
-- precision changing after view switches.
+The failed continuity work added overlapping full-table rendering/lifecycle responsibilities. Multiple owners increased work and made ordering fragile.
 
-PR #446 introduced a lightweight authoritative render snapshot. It captures fresh v2 table output only when the table is replaced, restores that input before v7 performs a user result-view switch, and repairs exact source/proposal precision/fallback afterward. It does not intercept Analyzer lifecycle calls or recompute analysis.
+Rule: one authoritative result renderer/owner per structural surface.
 
-### 3. PR #442 duplicated result rendering
+### 4. Cell evidence duplicates analysis
 
-The old continuity layer installed another full-table renderer outside v7. It could run after:
+`ve-analyzer-cell-evidence.ts` independently rebuilds qualification/evidence/proposal information rather than consuming the retained primary Run Analysis result.
 
-- `setContext()`;
-- `setTuneModel()`;
-- `refresh()`;
-- result-view changes;
-- table replacement.
+This is not the known Analyzer-entry freeze cause, but it creates drift/performance/ownership risk.
 
-That doubled work already performed by v7 and sat on top of a rebuild-heavy lifecycle. It was removed in PR #445.
+Target: expose retained `VeEvidenceMapResult` / `VeProposalResult` (or equivalent authoritative session state) to cell evidence.
 
-Rule going forward: there must be one result-table renderer/owner.
+### 5. Working delay state is partly reconstructed from DOM
 
-### 4. Logger has a usable source identity anchor
+Cell-evidence/review paths can reconstruct working delay data from rendered cells, losing authoritative metadata such as direct source events/confidence/event counts.
 
-`logger-page.ts` caches `analysisChannels()` and invalidates that cache when the loaded source/catalog changes.
+Target: expose the real working `VeDelayTable` through explicit controller/session state.
 
-That means the `channels` array identity from `LoggerAnalysisContext` is a meaningful source revision key. It is safer than comparing only channel names/sample counts/timestamps.
+### 6. Qualification has hidden one-shot state
 
-PR #447 uses:
+Quick qualification currently depends on hidden call-order state around trace loading.
 
-- cached channel-array identity as the primary source identity;
-- unchanged A/B authority;
-- unchanged saved ranges;
-- unchanged trace extent;
+Target: make qualification explicit analysis request/session configuration rather than a one-shot loader flag.
 
-to recognize a same-source Logger round trip.
+### 7. Custom qualification semantics are unsafe/unclear
 
-Only redundant `setContext()` and identical `setTuneModel()` calls are suppressed. `refresh()` is never suppressed. No DOM work occurs in this continuity guard.
+Current `Custom` behavior effectively disables normal state exclusions in affected paths. Before advanced formula exclusion is added, Custom must be redesigned so it means explicit user-selected qualification rules rather than silently turning DFCO/fuel-cut/AE/decel safeguards off.
 
-This also means two different logs with identical dimensions do not compare equal merely because they look the same.
+### 8. Wrapper chain remains architectural debt
 
-### 5. v4 contained dead delay-editor functionality
+Historical VE layers (`v2` … `v9` plus global refinements/cell evidence) contain useful validated behavior but too many lifecycle/render owners.
 
-v4 created a bulk lambda-delay editor and attached selection/event behavior. v5 then immediately removed that DOM and replaced it with the inline editor.
+Do not “clean this up” by adding another wrapper. Long-term consolidation should converge toward explicit responsibilities:
 
-PR #445 removed the dead v4 bulk editor and deprecated synchronous `DOMSubtreeModified` handling. v4 now owns only lambda-delay workflow status; v5 owns delay-cell selection/editing.
+1. VE session/request state;
+2. analysis orchestration/result/proposal state;
+3. one table/result renderer;
+4. review/evidence UI.
 
-### 6. Global VE UI refinement was also rewriting result text
+Consolidation is behavioral work, not cosmetic renaming, and must preserve the browser-validated direct delay editor.
 
-`ve-analyzer-ui-refinements.ts` compacted measured-proposal cells by rewriting their text. That created another presentation owner outside v7.
+## Historical attempted stabilization — not current runtime authority
 
-PR #446 removed that text mutation. The global refinement layer now handles layout/accessibility/help only; VE result values remain owned by the result renderer.
+PRs #445–#447 attempted to reduce duplicate rendering and preserve same-source continuity. Although parts of their design were directionally useful, the post-#441 runtime stack still produced an Analyzer-entry regression in real browser use.
 
-## Remaining architectural debt
+Therefore do **not** treat merged state after PR #447 (`4edd39880eea84f8e18c05354e3636a177b04346`) as the current baseline. PR #449 is the runtime boundary.
 
-### A. Cell evidence recomputes the VE analysis
+The useful design lessons from the failed sequence are retained here; the runtime implementation itself was rolled back.
 
-`ve-analyzer-cell-evidence.ts` currently reloads traces and independently rebuilds:
+## Current known defects/debt
 
-- qualification;
-- delay-table representation;
-- VE evidence map;
-- VE proposal.
+- Result View fallback/precision behavior remains imperfect.
+- Logger → Analyzer VE result/session continuity is incomplete.
+- lifecycle context/tune setters remain destructive.
+- cell evidence duplicates primary analysis.
+- working delay ownership is partly DOM-derived.
+- qualification request state is partly implicit.
+- Custom qualification semantics need redesign.
 
-This is lazy/cached, so it is not the Analyzer-entry freeze cause, but it duplicates analysis logic and can drift from the actual Run Analysis result.
+## Current recommended engineering order
 
-Target design: v2/session state should expose the retained `VeEvidenceMapResult` and `VeProposalResult` directly to the cell evidence UI.
-
-### B. Cell evidence reconstructs working delay state from DOM
-
-`workingDelayTableFromDom()` recreates a `VeDelayTable` from rendered cells and necessarily loses authoritative metadata such as direct source events and original confidence/event counts.
-
-Target design: expose the actual working `VeDelayTable` from session state.
-
-### C. v3 qualification uses one-shot `qualificationLoadPending`
-
-Quick qualification is applied by setting a flag before Run Analysis, then consuming that flag on the next `loadTraces()` call.
-
-This relies on async call ordering and becomes fragile as more analysis consumers are added.
-
-Target design: qualification must be an explicit parameter of the VE analysis request/session, not hidden state in a wrapped loader.
-
-### D. `Custom` currently disables normal state exclusions
-
-Both the primary VE path and cell-evidence path use behavior equivalent to:
-
-`useStateExclusions = preset !== 'custom'`
-
-So `Custom` implicitly disables DFCO/fuel-cut/AE/decel exclusion.
-
-Before the planned MLV-style custom formula exclusion feature is implemented, this should be redesigned so Custom means explicit user-selected qualification rules rather than silently turning normal safety exclusions off.
-
-### E. Wrapper chain remains larger than ideal
-
-Current historical chain still includes v2 through v9. The immediate conflicting/dead responsibilities have been reduced, but long-term consolidation should move toward explicit modules:
-
-1. VE session/state
-2. analysis orchestration
-3. one table/result renderer
-4. review/evidence UI
-
-The goal is not cosmetic renaming. Consolidation should happen only when a responsibility can be moved without changing behavior.
-
-## Implemented stabilization sequence
-
-- PR #445: remove duplicate continuity renderer, dead v4 bulk editor, `DOMSubtreeModified`
-- PR #446: authoritative render snapshot; stop global proposal-text rewriting
-- PR #447: source-identity-aware same-source Logger round-trip continuity
-
-Merged main after PR #447:
-
-- `4edd39880eea84f8e18c05354e3636a177b04346`
-
-## Recommended next engineering order
-
-1. Validate Analyzer entry, Result View switching, and Logger -> Analyzer round-trip behavior in the browser with a real VE analysis.
-2. Expose authoritative VE session state (`result`, `proposal`, `workingDelayTable`) through a proper state/controller API.
-3. Change cell evidence to consume that retained state instead of recalculating analysis or reconstructing delay state from DOM.
-4. Replace one-shot qualification-loader state with explicit qualification input.
-5. Define Custom qualification semantics and then add the advanced math-formula exclusion feature.
-6. Only after state ownership is stable, proceed to proposal edit/revert, application strength, and final diff/export workflow.
+1. preserve the PR #449 browser-known-good runtime;
+2. fix Result View fallback/precision as one isolated change and browser-verify it;
+3. fix Logger → Analyzer result/session persistence as one isolated change and browser-verify it;
+4. then expose authoritative VE session/result/proposal/working-delay state;
+5. make cell evidence consume retained primary results;
+6. remove rendered-DOM delay reconstruction and hidden one-shot qualification state;
+7. define Custom qualification semantics before adding advanced formulas;
+8. only after state ownership is stable, continue proposal edit/revert/application-strength/export refinement.
 
 ## Invariants
 
-- Run Analysis produces a proposal, never tune mutation.
-- Result View is presentation only and must not alter analysis state.
-- Logger navigation must not erase a valid VE session unless source/scope/tune authority actually changed.
-- A different source must always invalidate retained VE results even if its dimensions happen to match.
-- One component owns result-table rendering.
-- Evidence review should consume the same retained analysis result that produced the visible proposal.
+- browser behavior is acceptance authority for VE lifecycle/render/input changes;
+- CI remains required but is not sufficient;
+- one structural change at a time;
+- no automatic ECU write/Burn;
+- original VE, Analyzer evidence/proposal and user-reviewed result remain separate;
+- accepted lambda-delay working model is **RPM × load table only**;
+- do not destabilize the currently working direct delay-table editor.
