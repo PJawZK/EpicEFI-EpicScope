@@ -1,552 +1,234 @@
 # VE Analyzer specification
 
+## Status
+
+VE Analyzer is implemented and real-log/browser validated. This document is the current algorithm/evidence/product contract. `VE_ANALYZER_WORKBENCH.md` is the companion UI/workflow contract.
+
+The browser-known-good runtime is the #441-era composition restored by PR #449 after later continuity/render wrappers froze Analyzer entry. Browser behavior is the acceptance authority for VE runtime changes; green CI alone is insufficient.
+
 ## Purpose
 
 VE Analyzer turns recorded fueling evidence into a reviewable VE-table recommendation without silently treating every mixture deviation as a VE error.
 
-The feature is deliberately **evidence-first**. Analysis output is a proposal, not tune state. The analyzer must preserve source provenance, expose why samples were accepted/rejected, separate measured evidence from interpolation, and keep user authority explicit.
+The feature is deliberately **evidence-first**. Analysis output is a proposal, not tune state. EpicScope must preserve source provenance, expose qualification, keep measured evidence distinct from interpolation and preserve explicit user authority.
 
-Research inputs for this specification include mature behavior observed in MegaLogViewer HD VE Analyze and ECUMaster EMU PRO VE Tuner. Those products are behavioral references, not implementation authorities. EpicScope should preserve useful mature safeguards while using its existing qualification, source-evidence, timestamp and semantic-channel architecture.
-
-Detailed supporting research is preserved in:
-
-- `research/MLV_BEHAVIORAL_RESEARCH.md`;
-- `research/VE_AUTOTUNE_REFERENCE_RESEARCH.md`;
-- `research/MLG_V3_RESEARCH.md` for the related MLG compatibility side-track.
+Research inputs include mature behavior observed in MegaLogViewer HD VE Analyze and ECUMaster EMU PRO VE Tuner. Those products are behavioral references, not implementation authorities.
 
 ## Product workflow
 
-Visible workflow:
-
 ```text
-Load Data
-  -> choose VE table / axes
-  -> choose scope
-  -> Qualification
-  -> Lambda Delay
-  -> Analyze
-  -> inspect evidence/confidence
-  -> review proposed VE
-  -> compare/export/apply explicitly
+Load INI + MSQ + Log
+  -> select VE table / target table
+  -> verify actual mixture / RPM / load
+  -> qualify operating evidence
+  -> discover or load lambda-delay table
+  -> activate working delay table
+  -> Run Analysis
+  -> inspect Result View / cell evidence
+  -> review proposal explicitly
 ```
 
-Opening EpicScope, loading a log, or opening VE Analyzer must not automatically launch expensive lambda-delay discovery.
+Opening EpicScope, loading a log/MSQ or entering VE Analyzer must not automatically launch expensive delay discovery or VE analysis.
 
-## Required inputs
+## Required inputs and source semantics
 
-The analyzer should resolve semantic roles rather than hard-code one ECU's raw names.
-
-Primary calculation roles:
+Primary roles:
 
 - RPM;
-- VE-table load axis;
-- actual mixture, preferring lambda;
-- target mixture on the same scale;
-- current/effective VE at the operating point where available;
-- editable VE table and its RPM/load breakpoints.
+- VE-table load coordinate;
+- actual mixture, preferring lambda where appropriate;
+- target mixture on a compatible scale;
+- selected VE table and its RPM/load breakpoints;
+- selected target mixture table and its matching breakpoints.
 
-Important qualification/context roles where available:
+Useful qualification/context roles may include DFCO, fuel-cut reason, AE/decel state, coolant temperature, TPS, injector command, fuel corrections, injector duty/headroom, fuel pressure, engine-running/sync validity and limiter/protection state.
 
-- DFCO state;
-- fuel-cut reason;
-- AE state;
-- decel enrichment/enleanment state;
-- coolant temperature;
-- warm-up enrichment / coolant fuel correction;
-- TPS;
-- fuel command / final injector pulse width;
-- total fuel correction;
-- STFT/EGO correction;
-- LTFT correction;
-- injector duty/headroom;
-- fuel pressure / rail differential;
-- sync/engine-running validity;
-- limiter/protection state;
-- lambda validity/heater/fault state.
+Literal INI/MSQ/channel/table names remain user-facing authority. Semantic roles may guide selection but must not rename source data.
 
-Missing optional roles must degrade visibly. A preset must not silently pretend an unresolved exclusion is active.
+Actual-mixture selection must reject derived/error/target channels masquerading as measured mixture. AFR/Lambda interpretation must remain explicit and scale-aware.
 
-## Scope
+## Scope and qualification
 
-VE Analyzer uses the shared scope model:
+VE Analyzer uses the shared source/scope model and practical visible operating filters.
 
-- Full Log;
-- current A/B range;
-- Saved Range.
+Current normal-use qualification supports optional bounds such as RPM/load/CLT/TPS plus state/stability logic. Blank optional bounds mean no bound and must never become artificial Run blockers.
 
-All recommendations, delay discovery and evidence counts are tied to the selected scope.
+State exclusions and stability/recovery are conceptually separate:
 
-## Qualification architecture
+1. **State exclusions** — DFCO, fuel cut, AE/decel activity, invalid running/protection states where semantic evidence exists.
+2. **Stability/recovery** — sufficiently stable RPM/load/TPS context and recovery after transients.
 
-Basic functionality must not require users to write formulas.
+Missing optional safeguards must remain visible/unavailable rather than being silently fabricated.
 
-VE Analyzer uses reusable semantic qualification modules. Built-in presets compose those modules, while custom formulas remain available for niche or ECU-specific conditions.
+`Custom` qualification semantics remain an architectural debt area: future advanced formula support must not make Custom silently disable normal safety/state exclusions.
 
-### Recommended VE Analysis preset
+## Lambda-delay model
 
-Default intent: steady-state base-fueling evidence from a fully warmed, normally operating engine.
+### Accepted working model
 
-When the required semantic signals exist, the preset should exclude:
+The current and accepted product model is **RPM × load delay table only**.
 
-- DFCO;
-- other fuel cuts;
-- AE-active samples;
-- decel enrichment/enleanment-active samples;
-- cold engine operation;
-- active warm-up enrichment/coolant correction outside neutral bounds;
-- strong RPM transients;
-- strong load transients;
-- strong TPS transients where available;
-- lambda invalid/not-ready/faulted state;
-- limiter/protection events;
-- sync-loss/not-running regions;
-- injector/fuel-pressure limitation when sufficient evidence exists to identify it safely.
+Scalar/single-delay and RPM-curve modes were considered during research/planning but are **not** current EpicScope product direction and must not be reintroduced as supported modes without a new explicit decision.
 
-It should require a configurable settling/recovery window after a transient before samples become eligible again.
+Delay is expressed in **time**, not record count.
 
-### Other predefined modes
+### Explicit discovery
 
-Initial useful modes:
-
-- Recommended VE Analysis;
-- Steady-state only;
-- Warm engine only;
-- Cruise / light load;
-- Boost / high load;
-- Custom.
-
-Presets are editable compositions, not opaque hard-coded modes.
-
-### Two layers of qualification
-
-The UI separates:
-
-1. **State exclusions** — e.g. DFCO, fuel cut, AE, cold/warm-up, limiter/protection, invalid lambda.
-2. **Stability requirements** — e.g. RPM/load/TPS stability and recovery/settling time.
-
-This avoids conflating "not in a forbidden state" with "stable enough to use for VE correction."
-
-### Custom conditions
-
-Advanced users can add custom formulas on top of a preset or switch to full Custom mode.
-
-The UI should always expose the resolved logic and unresolved semantic roles.
-
-Example:
-
-```text
-Recommended VE Analysis
-
-Resolved:
-✓ Fuel cut == inactive
-✓ TPS AE == inactive
-✓ TPS Decel == inactive
-✓ Coolant >= 70 C
-✓ |RPM trend| <= configured limit
-✓ |Load trend| <= configured limit
-✓ settled >= configured recovery
-
-Unavailable:
-! Lambda heater state not exposed by this ECU
-
-Custom additions:
-[ expression ]
-```
-
-## Stability and recovery
-
-Reuse the Fueling Analyzer's mature trailing-window approach rather than brittle adjacent-sample derivatives.
-
-A sample becomes VE-eligible only when:
-
-- the required trailing window is contiguous and valid;
-- RPM trend remains inside the configured limit;
-- load trend remains inside the configured limit;
-- optional TPS trend remains inside the configured limit;
-- broader span guards do not show oscillation hidden by a near-zero net trend;
-- the configured post-transient recovery interval has elapsed.
-
-A transient restarts eligibility recovery; it must not merely reject one isolated record and immediately resume tuning evidence.
-
-## Lambda delay model
-
-Lambda delay is expressed in **time**, not record count.
-
-Supported working models:
-
-- single delay value;
-- RPM -> delay curve;
-- RPM × load delay table.
-
-The **table is the primary/full model**. Curve and single-value modes are supported because they are useful for simpler setups and compatibility workflows.
-
-### On-demand discovery only
-
-Lambda-delay discovery must not run:
-
-- at application startup;
-- when a log is loaded;
-- when VE Analyzer is opened.
-
-The Lambda Delay section is collapsed by default. Opening it may initialize lightweight UI/state only. The expensive discovery scan runs only when the user presses:
+The expensive scan runs only when the user presses:
 
 **Grab lambda delays from log**
 
-### Lambda Delay Discovery preset
+No automatic discovery on startup/log load/analyzer open.
 
-Delay discovery has a separate preset from VE correction because it intentionally needs controlled fuel-command changes rather than steady-state samples.
+Candidate events should have a meaningful fuel-command change, valid mixture evidence, sufficient separation from conflicting changes, contiguous source samples and valid RPM/load context.
 
-Candidate events should require:
+The result is observed mixture-response delay, not a claim of pure sensor delay. Combustion, exhaust transport, turbo/manifold volume, sensor/controller/filtering and logging latency may all contribute.
 
-- a meaningful final fuel-command / injector-PW change;
-- valid actual-mixture evidence;
-- sufficient spacing from prior events;
-- no hard fuel cut;
-- no ambiguous overlapping strong command change before mixture response;
-- contiguous source samples;
-- valid RPM/load context.
+### Recommendation versus working table
 
-AE/decel transitions may be usable delay evidence when their command effect is explicit and isolated. They should remain visible as context instead of being blindly discarded.
+Recommendation and working delay table are distinct states.
 
-### Discovery output
+- discovery creates/replaces the **recommendation** for the current evidence;
+- **Use recommendation** promotes reviewed recommendation into the working table;
+- a loaded/saved working table remains independent from newly grabbed recommendation until explicitly replaced;
+- user edits retain user provenance and must not destroy the raw recommendation/evidence underneath.
 
-The discovery operation should estimate observed mixture-response delay, not claim pure sensor delay. The measured interval may contain combustion-cycle, exhaust transport, turbo/manifold volume, sensor/controller, filtering and logging latency.
+### Delay cell states
 
-For each usable event retain at least:
-
-- command sample/time;
-- first-response sample/time;
-- command delta;
-- baseline mixture;
-- first-response mixture;
-- onset delay;
-- peak response and delay;
-- T50/T90 where useful;
-- RPM/load context;
-- transient context;
-- source sample indices.
-
-Aggregate evidence into the selected working model:
-
-- single value: robust central estimate with spread;
-- curve: RPM-binned robust estimates;
-- table: RPM × load robust estimates.
-
-### Recommendation versus working values
-
-Never overwrite user-adjusted delay values invisibly.
-
-Keep separate state for:
-
-- recommendation from log;
-- working value/model used by VE Analyzer;
-- difference between them.
-
-Example:
-
-```text
-2500 rpm / 100 kPa
-Recommended: 195 ms
-Working:     220 ms
-Difference:  +25 ms
-Events:      18
-Spread:      24 ms
-Confidence:  Strong
-```
-
-Actions:
-
-- Grab lambda delays from log;
-- Reset working values to recommendation;
-- Clear recommendation.
-
-### Measured, interpolated and unsupported cells
-
-For delay curves/tables, distinguish:
+Delay-table cells distinguish:
 
 - **Measured** — direct usable event evidence;
-- **Interpolated** — derived from neighboring measured regions;
-- **Insufficient evidence** — no trustworthy estimate.
+- **Interpolated** — bounded/local interpolation from supported measured regions;
+- **Insufficient** — no trustworthy delay estimate;
+- **User-edited/manual working value** where applicable.
 
-Interpolation must never be visually indistinguishable from direct measurement.
+Sparse evidence must not manufacture a full believable surface.
 
-### Caching
+### Direct editing
 
-Delay-discovery results should be cached by an identity containing at least:
+Current browser-validated interaction supports selection/range selection, typing to replace, Enter commit, Escape cancel, Backspace edit and Delete clear to explicit no working delay (`—`). Repeated edits must remain reliable and focus/selection must survive re-render.
 
-- log/source identity;
-- selected scope;
-- selected command/mixture/RPM/load channel identities;
-- discovery thresholds/settings;
-- relevant qualification configuration.
+The old external apply/value editor is not the normal workflow.
 
-Changing any of these marks the recommendation **stale**. Do not automatically trigger another expensive scan; offer the button again.
+### Saving/loading
+
+Working delay tables use a versioned reusable JSON format. Saved/loaded origin remains distinct from current-log measured evidence.
 
 ## Delay application
 
-VE correction aligns mixture evidence against the earlier engine/fuel state most plausibly responsible for it by timestamp.
+VE correction aligns each mixture observation against the earlier engine/fuel state most plausibly responsible for it using timestamps.
 
-Do not shift by integer record count. Use time-based interpolation against source timestamps so behavior is independent of logger rate.
+Do not shift by integer record count. Delay is resolved in RPM/load operating space and applied through time-based sample alignment.
 
-The UI must expose:
+If delay is unavailable for an operating region, evidence is unavailable there. Do not silently fall back to a global delay.
 
-- delay model used;
-- whether each region is measured/interpolated/manual;
-- confidence/evidence behind the model;
-- uncompensated evidence alongside compensated evidence where practical.
+## Fuel-correction compensation
 
-Weak or missing delay evidence must not silently enable compensation.
+Known correction layers may be compensated when their semantics are explicit. For example, a verified percent-fuel-applied STFT channel may be modeled as compensation; unknown correction semantics remain context-only unless explicitly declared.
+
+The analyzer must never blindly attribute correction-layer behavior to base VE.
 
 ## VE evidence calculation
 
 ### Operating-point geometry
 
-VE-table breakpoints are nodes, not rectangular buckets.
+VE-table breakpoints are nodes, not rectangular buckets. Qualifying operating points contribute spatially to surrounding nodes using breakpoint/bilinear relevance.
 
-A qualifying operating point contributes spatially to the surrounding VE nodes using bilinear breakpoint relevance. Outside the outer axes, behavior must be explicitly defined and tested; silent extrapolation is not allowed.
+Outside-axis behavior must remain explicit; silent extrapolation is not allowed.
 
-The runtime/effective VE at the exact operating point should be used where available. If it must be reconstructed from the tune table, use the same explicit interpolation model.
+### Robust evidence
 
-### Mixture correction evidence
+Current VE evidence uses a robust weighted estimate rather than an outlier-sensitive arithmetic mean.
 
-Base correction evidence starts from target-vs-actual mixture on a compatible scale.
-
-For lambda, conceptually:
-
-```text
-fuel ratio correction ~= actual lambda / target lambda
-```
-
-The final estimator must also account for known correction layers where sufficient semantic information exists. STFT/EGO/total correction are explanatory and potentially compensable inputs; they must not be ignored or blindly attributed to base VE.
-
-The analyzer must avoid claiming that mixture error proves VE is the cause. Injector characterization, fuel pressure, stoichiometric setup, transient models and other corrections can produce similar evidence.
-
-### Per-node evidence accumulator
-
-Each VE node should retain, at minimum:
+Per-node evidence retains/derives:
 
 - contributing sample count;
 - cumulative spatial weight;
-- accepted source sample indices;
+- accepted source sample indices/provenance;
 - robust central correction estimate;
-- correction spread;
-- mixture-error central estimate/spread;
-- RPM/load context summary;
-- exclusion/qualification provenance;
-- delay model/value used;
-- confidence grade.
-
-A single `minimum samples` threshold is insufficient. Recommendation authority should consider both sample count and weighted evidence.
-
-## Confidence and prior authority
-
-Adopt the useful mature concept behind MLV's starting-cell weight, but make it explicit.
-
-The current tune value acts as a **prior**. New log evidence must overcome that prior before moving the proposed VE cell substantially.
-
-Conceptually:
-
-```text
-proposal =
-  (currentVE * priorWeight + sum(candidateVE * evidenceWeight))
-  / (priorWeight + sum(evidenceWeight))
-```
-
-Exact implementation may evolve, but the behavioral contract is:
-
-- weak evidence moves the tune little or not at all;
-- strong repeated evidence gains authority;
-- prior authority is configurable and visible;
-- evidence confidence and user apply strength are separate concepts.
-
-Possible user-facing prior labels may be descriptive rather than MLV's Easy/Normal/Hard names.
-
-## Correction limits
-
-Support independent safeguards such as:
-
-- minimum individual contribution weight;
-- minimum cumulative evidence;
-- minimum meaningful proposed change;
-- maximum absolute VE change;
-- maximum percentage VE change.
-
-When a raw proposal exceeds authority/safety limits, **withhold/reject the recommendation rather than silently clamp it**.
-
-Example:
-
-```text
-Current VE:       60
-Raw proposal:     78 (+30%)
-Allowed change:   ±10%
-Result:           withheld — exceeds recommendation authority
-```
-
-This preserves the fact that the evidence is outside the trusted correction envelope.
-
-## Result states
-
-Each VE-table cell must visibly distinguish:
-
-- Measured recommendation;
-- Interpolated suggestion;
-- Weak evidence / observational only;
-- Recommendation withheld by limit;
-- No usable evidence.
-
-Do not fill unvisited cells in a way that looks measured.
-
-## Result views
-
-Useful switchable views should include at least:
-
-- Proposed VE;
-- VE change / percent change;
-- mixture error;
-- contributing samples;
-- cumulative weighted evidence;
+- P10/P90 correction spread;
 - confidence;
 - delay used;
-- excluded/qualification context summary.
+- qualification/proposal state.
 
-Every cell should offer evidence navigation into Logger or an evidence panel.
+A simple minimum-samples threshold is insufficient by itself.
 
-## Evidence grades
+## Prior authority and safeguards
 
-Initial descriptive grades may reuse the established Weak / Moderate / Strong language, but VE recommendation confidence should incorporate more than count alone.
+The starting/current VE table acts as a prior. Weak evidence should move the proposal little or not at all; strong repeated evidence gains authority.
 
-Relevant dimensions include:
+Current tuner-facing Cell Change authority maps to prior weight while Advanced exposes explicit controls when appropriate.
 
-- cumulative spatial weight;
-- number of independent/repeated observations;
-- error spread;
-- stable fraction;
-- delay confidence;
-- correction-layer ambiguity;
-- proximity to injector/fuel-pressure limitations.
+Independent safeguards include minimum evidence authority and absolute/percentage maximum VE change. When evidence exceeds configured proposal authority, the recommendation is **withheld**, not silently clamped.
 
-A confidence grade is explanatory, not proof of causation.
+## Result states and Result View
 
-## User application authority
+The workbench supports spatial result views including proposal, change, percent change, mixture-error/evidence perspectives, sample count, cumulative weight, confidence/spread and delay used.
 
-Keep **what the evidence recommends** separate from **how aggressively the user chooses to apply it**.
+Cells must distinguish meaningful evidence/proposal states and must not make unvisited cells look measured.
 
-The analyzer first computes a proposal using its evidence/prior model. The review layer may then offer application authority such as:
+Per-cell evidence can navigate to the strongest contiguous source visit in Logger.
 
-- 25%;
-- 50%;
-- 75%;
-- 100%;
-- custom.
+### Current known Result View defect
 
-This application factor does not change the evidence result itself.
+Result View fallback/precision behavior remains imperfect in the browser-known-good runtime. Fix it as an isolated change with browser validation; do not use the defect as justification to reintroduce the reverted post-#441 wrapper stack.
 
-## Original tune preservation
-
-The starting VE table is immutable analysis input.
+## Original tune and review authority
 
 Maintain separately:
 
-- original/current tune table;
-- analysis proposal;
+- original/current VE table;
+- Analyzer evidence/proposal;
 - user-reviewed/application result.
 
-Never mutate tune state merely by running Analyze.
+Running analysis must never mutate tune/ECU state.
 
-Any eventual write/apply operation must be explicit and must present a diff against the current tune first.
+Future review/application strength may support partial application, but application strength must remain separate from evidence authority.
 
-## Edge and regression requirements
+Any eventual export/apply/write must be explicit and diff-first. EpicScope must never automatically Burn/write a VE proposal to the ECU.
 
-Explicit automated tests are required for:
+## Current state-ownership debt
 
-- exact RPM breakpoint;
-- exact load breakpoint;
-- four-node center contribution;
-- first/last RPM row;
-- first/last load column;
-- all four table corners;
-- operating points outside the configured table axes;
-- equality at contribution/evidence thresholds;
-- sparse evidence;
-- invalid/NaN mixture data;
-- scope/source-index discontinuities;
-- variable sample rate;
-- delay interpolation by timestamp;
-- stale delay recommendation detection;
-- overlapping fuel-command events;
-- DFCO/fuel-cut exclusion;
-- AE/decel state behavior;
-- cold/warm-up exclusion;
-- correction-layer presence/absence;
-- recommendation over absolute/percentage authority limit;
-- user-edited delay values surviving re-render/reopen;
-- measured versus interpolated delay-table cells.
+The current browser-known-good runtime intentionally retains older wrapper/DOM patterns because the later continuity/render redesign regressed Analyzer entry.
+
+Known debt includes:
+
+- destructive `setContext` / `setTuneModel` rebuild semantics;
+- Logger → Analyzer result-state loss;
+- cell-evidence review recomputing VE analysis rather than consuming retained primary results;
+- working delay reconstruction/control partly through rendered DOM/synthetic handler paths;
+- hidden one-shot qualification/load state;
+- Result View rendering that consumes rendered presentation state in places where authoritative structured data should be used.
+
+## Required next architecture direction
+
+Proceed one structural change at a time from the current browser-known-good runtime:
+
+1. fix Result View fallback/precision with isolated browser validation;
+2. fix Logger → Analyzer result persistence with isolated browser validation;
+3. expose explicit authoritative VE session/result/proposal/working-delay state;
+4. make cell evidence consume retained primary results;
+5. remove delay-table reconstruction from rendered DOM;
+6. replace hidden one-shot analysis configuration with explicit request/session configuration;
+7. only then continue broader review/application/export refinements.
+
+Do not stack new lifecycle wrappers/MutationObservers around the current surface. Prefer one authoritative owner per structural area.
+
+## Edge/regression requirements
+
+Maintain regression coverage for table breakpoints/corners/edges, sparse evidence, invalid mixture data, source-index discontinuities, variable sample rate, timestamp delay interpolation, fuel-state exclusions, correction-layer presence/absence, proposal limits and delay-table provenance/editing.
+
+Browser testing is mandatory for lifecycle/render/input changes.
 
 ## Performance requirements
 
-No VE-specific full-log work should occur during ordinary application/log load.
+No VE-specific full-log work during ordinary app/log load.
 
-VE correction runs only when explicitly requested by the user.
-
-Lambda-delay discovery runs only from **Grab lambda delays from log**.
-
-Reuse cached aligned ranges/qualification artifacts where safe, and cache delay-discovery output by analysis identity.
-
-Changing settings invalidates the relevant result but should not automatically recompute expensive analysis.
-
-## Architecture direction
-
-VE Analyzer should reuse rather than duplicate:
-
-- `core/analysis/afr-delay-analyzer.ts` for observed mixture-response event timing, extended for curve/table aggregation;
-- Fueling context/state qualification;
-- Fueling trailing-window stability logic;
-- shared scope selection;
-- weighted breakpoint/table geometry used by Histogram/Table Generator;
-- shared Logger evidence navigation;
-- semantic channel-role resolution;
-- loaded MSQ/tune-table representation.
-
-New VE-specific layers should focus on:
-
-- qualification preset composition;
-- delay model recommendation/working-state management;
-- delay-compensated sample alignment;
-- VE-node evidence accumulation;
-- prior/confidence/authority model;
-- review/proposal state.
-
-## Non-goals for the first implementation
-
-Do not initially require:
-
-- fully automatic tune writes;
-- 4D/switched-table editing;
-- live closed-loop autotune;
-- automatic filling of wholly unvisited table areas;
-- causal claims that VE is definitely responsible for a mixture error.
-
-The internal evidence model should nevertheless avoid assumptions that make later switched/4D/context-aware calibration impossible.
-
-## Initial implementation sequence
-
-A low-risk sequence is:
-
-1. VE Analyzer shell using shared scope/channel-role patterns;
-2. built-in Recommended VE Analysis qualification preset and visible exclusion counts;
-3. table-aware RPM/load alignment and evidence-only operating map;
-4. Lambda Delay section with single/curve/table working models;
-5. explicit **Grab lambda delays from log** using existing delay-event analysis;
-6. curve/table aggregation, confidence, stale-state and caching;
-7. timestamp-based delay-compensated mixture alignment;
-8. spatial VE-node weighted evidence;
-9. prior/authority model and correction-limit rejection;
-10. result views and evidence-to-Logger navigation;
-11. review/application percentage layer and export/diff;
-12. only after validation, consider tune-write integration.
+- VE analysis runs only from explicit **Run Analysis**.
+- lambda-delay discovery runs only from explicit **Grab lambda delays from log**.
+- cache/reuse safe artifacts where practical.
+- changing settings may mark results stale but must not automatically trigger expensive recomputation.
 
 ## Product invariant
 
-The core promise is:
-
-> EpicScope may recommend a VE change only when it can show what log evidence produced it, what operating-state rules qualified that evidence, what lambda-delay model aligned it, how strong/confident the evidence is, and why the requested change is inside or outside the configured authority.
+> EpicScope may recommend a VE change only when it can show what log evidence produced it, what operating-state rules qualified that evidence, what lambda-delay table aligned it, how strong/confident the evidence is, and why the requested change is inside or outside configured authority.
