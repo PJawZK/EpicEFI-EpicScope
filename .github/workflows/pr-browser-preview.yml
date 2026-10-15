@@ -17,7 +17,12 @@ permissions:
 
 concurrency:
   group: epicscope-browser-preview-${{ github.event.issue.number || inputs.pr_number || github.run_id }}
-  cancel-in-progress: true
+  # issue_comment starts a workflow run for every PR comment. Those non-/preview
+  # runs are skipped by the job condition below, but workflow-level concurrency
+  # is evaluated before jobs, so they must not cancel a real preview in flight.
+  cancel-in-progress: >-
+    ${{ github.event_name == 'workflow_dispatch' ||
+        (github.event.issue.pull_request && github.event.comment.body == '/preview') }}
 
 jobs:
   preview:
