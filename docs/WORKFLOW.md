@@ -1,25 +1,6 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. `docs/DOCUMENTATION_MAP.md` defines documentation authority.
 <!-- CURRENT_STATE:handoff-pointer:END -->
-
-<!-- CURRENT_STATE:current-performance-workflow:START -->
-## Current large-log performance workflow
-
-For performance work, the normal repository workflow is supplemented by measured A/B validation:
-
-1. start from authoritative `main`;
-2. make one focused performance change on a short-lived branch;
-3. run type-check, full tests and production build;
-4. merge only after the final diff contains no temporary patch/workflow artifacts;
-5. verify post-merge Web CI and GitHub Pages deployment;
-6. benchmark the deployed build with the same representative log and interaction sequence;
-7. compare physical reads/bytes/time, decode/render time and subjective interaction behavior;
-8. when relevant, repeat on the 2-thread / 4 GB laptop before calling the optimization settled.
-
-Temporary branch-only GitHub workflows/scripts are acceptable for controlled patching/validation but must remove themselves before the PR. Do not require the project owner to create a local clone for normal testing.
-
-Current caution: a prior channel concurrency/pipelining experiment (PR #89) regressed behavior and was reverted. Reintroducing similar concurrency requires new evidence rather than assumption.
-<!-- CURRENT_STATE:current-performance-workflow:END -->
 
 # EpicScope Development Workflow
 
@@ -29,219 +10,170 @@ EpicScope uses a controlled repository workflow so implementation follows approv
 
 ## Project-owner approval authority
 
-Architectural approval belongs to the project owner.
+Architectural/product-direction approval belongs to the project owner. Contributors/agents may propose changes but must not self-authorize structural deviation merely by editing a decision file or introducing a new layer.
 
-Contributors, future chats, and implementation agents may propose architectural changes, but they must not self-approve a deviation by merely editing `DECISIONS.md` or introducing a new structure in code.
+## Repository/branch model
 
-A change that requires approval must be presented clearly enough that the project owner can approve, reject, or request revision before implementation proceeds.
+`main` is authoritative.
 
-## Branching model
-
-`main` is the authoritative integration branch.
-
-Normal development uses short-lived branches created for a defined task or tightly related task group.
-
-Examples:
-
-```text
-feature/mlg-parser
-feature/timeline-navigation
-feature/boost-analyzer-foundation
-fix/mlg-corrupt-header
-perf/viewport-query
-```
+The 2026-10-15 historical branch cleanup reduced remote branch authority to `main` only. That does **not** prohibit future branches: normal implementation work should still use focused short-lived branches/PRs when appropriate, then delete those branch refs after merge/closeout so the repository does not accumulate another long-lived branch archive.
 
 Long-running parallel architecture branches are discouraged unless explicitly approved.
 
-## Pull requests
+## Pull requests and direct main updates
 
-Changes intended for `main` should normally be reviewed through a pull request.
+Changes intended for production should normally use a focused PR with:
 
-A PR should state:
-
-- task/goal;
-- affected architectural areas;
-- files added/changed;
-- tests/validation performed;
+- objective;
+- affected ownership areas;
+- files changed;
+- tests/validation;
 - performance impact where relevant;
-- architecture/decision references where applicable.
+- decision/document references.
 
-Direct commits to `main` should be limited to controlled repository initialization/foundation work, urgent maintenance, or other explicitly approved cases.
+Direct `main` changes are acceptable only for controlled/explicitly approved maintenance such as repository/document consolidation where creating another branch would add no review value. Runtime/product behavior changes should normally retain focused branch/PR review.
 
 ## Task definition
 
-Before implementation, a task should identify:
+Before implementation, identify:
 
-1. **Objective** — what behaviour/outcome is required.
-2. **Architectural owner** — which approved subsystem owns it.
-3. **Expected files/location** — where new/changed code belongs.
-4. **Dependencies** — other modules/contracts required.
-5. **Validation** — tests, fixtures, manual checks, or benchmarks.
-6. **Completion criteria** — what makes the task done.
+1. objective;
+2. architectural owner;
+3. expected files/location;
+4. dependencies;
+5. validation;
+6. completion criteria.
 
-Large requests should be split into smaller architectural tasks before coding.
+Large changes should be split into smaller ownership-safe tasks.
 
 ## Architecture gate
 
-If a task cannot be implemented cleanly inside the approved architecture:
+If a task does not fit approved ownership:
 
-1. stop implementation at the design level;
+1. stop at design level;
 2. describe the mismatch;
-3. propose an architecture change;
+3. propose a change;
 4. obtain project-owner approval;
-5. record the approved decision in `DECISIONS.md`;
-6. update affected architecture documents;
-7. only then implement the change.
-
-"We may need this later" is not authorization to bypass the current plan.
+5. record the durable decision;
+6. update affected architecture/documentation;
+7. then implement.
 
 ## Dependency policy
 
-New dependencies must be justified against:
-
-- runtime size/overhead;
-- RAM/CPU cost;
-- browser/Linux compatibility;
-- maintenance activity;
-- security exposure;
-- lock-in;
-- whether a small local implementation would be clearer/cheaper.
-
-Major dependencies or dependencies that materially affect architecture/platform support require explicit approval and a decision entry.
+New dependencies must justify runtime/RAM/CPU cost, browser/Linux compatibility, maintenance/security exposure, lock-in and whether a small local implementation is clearer/cheaper.
 
 ## Web coding direction
 
-The Web implementation uses lightweight TypeScript as the approved direction.
+Lightweight TypeScript/browser-native DOM remains the approved Web direction. Framework/library adoption requires explicit benefit and architecture review.
 
-Framework adoption is not automatic. If a framework is proposed, it must demonstrate that its benefits justify runtime weight, complexity, and future Linux migration implications.
+## Naming
 
-## Naming conventions
+Default conventions:
 
-Unless an approved subsystem has a stronger external convention, use these defaults:
+- directories/files: `kebab-case`;
+- exported types/classes/interfaces: `PascalCase`;
+- functions/variables/properties: `camelCase`;
+- true global/module constants: `UPPER_SNAKE_CASE` where useful;
+- decisions: `D-NNN`;
+- exact external/source channel/table names preserved in metadata/presentation.
 
-- directories: `kebab-case`;
-- TypeScript source files: `kebab-case.ts`;
-- TypeScript test files: `kebab-case.test.ts`;
-- exported types, interfaces, enums, and classes: `PascalCase`;
-- functions, methods, variables, and object properties: `camelCase`;
-- true global/module constants: `UPPER_SNAKE_CASE` when appropriate;
-- task identifiers: `AREA-NNN` or a documented task-family equivalent;
-- decision identifiers: `D-NNN`;
-- exact external/source channel names should be preserved in metadata even when an internal canonical identifier differs.
+Avoid `new`, `final`, `helper2`, `temp`, or ever-growing `vN` naming as a substitute for ownership design. Historical VE `v2`…`v9` layers are known debt, not the preferred pattern for new work.
 
-Naming should favor stable domain meaning over implementation-history labels such as `new`, `final`, `v2`, `helper2`, or `temp`.
+## Input security/privacy
 
-A subsystem may define a more specific naming rule if documented and approved.
+All imported logs/tunes/metadata/session artifacts are untrusted. Validate sizes/counts/offsets/encodings/expressions before allocation/execution.
 
-## Input-security policy
+Local analysis is local by default. No silent transmission of log/tune contents, filenames, derived values or analysis results.
 
-All imported logs, tune files, metadata, session files, and shared analysis artifacts are untrusted input.
+## Automated validation
 
-Parsers/importers must not trust file-provided sizes, counts, offsets, strings, expressions, or metadata without validation.
+Normal Web CI gate:
 
-Implementations should defend against at least:
+- TypeScript/typecheck;
+- Vitest/regression tests;
+- production Vite build.
 
-- truncated or malformed structures;
-- invalid offsets/lengths/counts;
-- absurd allocation requests;
-- unexpected encodings/strings;
-- invalid numeric values;
-- recursive or pathological structures where applicable;
-- resource-exhaustion behavior.
+New parser/persistence/channel-binding/analysis work extends this gate rather than treating build success alone as validation.
 
-A malformed file should fail or degrade predictably rather than crash the whole application or allocate unbounded memory.
+## Browser/runtime validation
 
-## Privacy and network behavior
+Automated validation does not prove all browser behavior.
 
-Local-first privacy applies to more than file upload.
+For VE Analyzer lifecycle/render/state/direct-edit changes, browser validation is **required acceptance evidence** (D-057). PRs #442–#447 demonstrated that CI-green changes can still freeze Analyzer entry in a real browser.
 
-Without explicit user action/consent, EpicScope must not transmit log contents, tune contents, derived values, analysis results, filenames, or other user analysis data to remote services.
+VE rule:
 
-Any future telemetry/analytics must be separately reviewed and must not silently include tune/log content.
+1. make one structural change at a time;
+2. run normal CI/tests/build;
+3. verify affected browser workflow;
+4. only then describe the change as fixed/validated.
 
-## Testing
+Preserve the PR #449 browser-known-good baseline while doing state-ownership work.
 
-Testing should follow the architecture.
+Other UI changes also require representative browser/manual validation when automated tests cannot exercise the behavior being claimed.
 
-Expected categories include:
+## Performance workflow
 
-- unit tests for parsers and analysis primitives;
-- parser fixtures for supported/invalid files;
-- analyzer regression cases;
-- integration tests across normalized data boundaries;
-- performance benchmarks;
-- compatibility/schema tests for persisted artifacts and migrations;
-- malformed/untrusted-input tests for importers.
+Performance work is evidence-driven:
 
-Large real logs should not be committed casually into normal Git history.
+1. start from authoritative `main`;
+2. make one focused change;
+3. typecheck/test/build;
+4. benchmark with the same representative workload;
+5. compare physical reads/bytes/time, decode/render time, retained memory and interaction behavior;
+6. repeat on low-spec hardware when the change can affect I/O/allocation/GC/responsiveness.
 
-The current Web CI gate runs TypeScript checking, Vitest, and the production Vite build. New parser, persistence, channel-binding, and analysis work should extend that existing automated test gate rather than treating the repository as build-only.
+Broad Logger/Histogram micro-optimization is paused unless a measured regression appears.
 
-## Validation and feature maturity
+## Feature maturity
 
-New analyzers/features begin as **Experimental** unless a specific reason supports a higher maturity level.
+New analyzers/features begin Experimental unless evidence supports a higher maturity level. Promotion to Beta/Stable is based on validation evidence, not age.
 
-Promotion to **Beta** or **Stable** should be based on validation evidence, not time or subjective confidence alone.
+## Documentation completion rule
 
-## Versioning
+A product/architecture change is incomplete if authoritative docs still contradict it.
 
-EpicScope uses semantic-style versioning.
+Update the smallest affected authority set:
 
-- `0.x` — architecture/features may still evolve significantly.
-- `1.0` — reserved for a stable production baseline, expected to correspond to a mature Linux product rather than merely the first Web prototype.
+- `HANDOFF.md` — continuation/current state;
+- `ROADMAP.md` — sequencing/status;
+- `PRODUCT.md` — user-visible product contract;
+- subsystem authority docs — detailed behavior;
+- `research/STATUS.md` — research disposition;
+- decision record — durable invariant;
+- `DOCUMENTATION_MAP.md` — if authority relationships changed.
 
-Breaking changes to persisted/public schemas require explicit migration/version handling even during `0.x` once real user data depends on them.
-
-## Commit quality
-
-Commits should be focused and have messages that describe the project change rather than generic text such as `updates` or `fix stuff`.
-
-Where practical, architectural/docs changes should be committed before or with the implementation they authorize.
+Historical research/decision observations should generally remain historical rather than being rewritten to pretend they were always current.
 
 ## Handoff system
 
-EpicScope uses one continuously updated handoff file:
+`docs/HANDOFF.md` is the single continuously updated continuation authority.
 
-```text
-docs/HANDOFF.md
-```
+When updating it:
 
-When the user requests a handoff:
+1. inspect current `main`;
+2. reconcile code/runtime with existing handoff;
+3. retain only current progress/open issues/next sequence;
+4. link subsystem authorities instead of duplicating unnecessary history;
+5. distinguish browser-validated behavior from CI-only claims;
+6. never imply the SHA embedded in the handoff is necessarily the latest docs commit; identify runtime baselines explicitly when needed.
 
-1. inspect the current repository/branch/commit state;
-2. update `HANDOFF.md` in place;
-3. preserve only the latest valid project state;
-4. reference authoritative documents rather than duplicating them;
-5. record completed work, current objective, open tasks, unresolved issues, and next action;
-6. record the repository state that was validated before the handoff update;
-7. clearly distinguish approved state from pending ideas;
-8. provide the user a short continuation prompt.
+A new chat should be able to continue with:
 
-Do not create a growing sequence of handoff files.
-
-Because a file cannot reliably contain the SHA of the commit that writes itself, `HANDOFF.md` must not pretend that its embedded SHA is necessarily the current repository head. A resumed chat must inspect current `main` and reconcile it with the handoff before making changes.
-
-A new chat should be able to continue with a prompt such as:
-
-> Read the EpicScope repository handoff and continue from there.
-
-The new chat should read `docs/HANDOFF.md` first, then inspect the referenced authoritative files/current repository state before making changes.
+> Read `docs/HANDOFF.md`, verify current `main`, then continue from the documented boundary.
 
 ## Authority hierarchy
 
-When resolving project state:
+For present-tense work:
 
-1. approved architecture/product documents define intended rules;
-2. repository/code defines what currently exists;
-3. `HANDOFF.md` defines current progress, context, and next work;
-4. old chat discussion does not override newer approved repository state.
+1. current `main` implementation/runtime evidence describes what actually exists;
+2. `HANDOFF.md` describes current continuation boundary;
+3. current product/subsystem/architecture documents describe intended rules;
+4. explicit later accepted decisions refine older decisions;
+5. historical research/plans/chats do not override newer repository authority.
+
+When there is a mismatch, stop and reconcile the documents/code rather than choosing whichever old text is convenient.
 
 ## Release workflow
 
-Detailed release automation will be designed later. At minimum, a release candidate should require:
-
-- clean build/test state;
-- known benchmark status;
-- documented compatibility target;
-- version/changelog update;
-- no unresolved architecture mismatch relevant to the release.
+Detailed release automation remains future work. A release candidate should at least require clean validation, known benchmark/compatibility status, version/changelog update and no unresolved architecture mismatch relevant to the release.
