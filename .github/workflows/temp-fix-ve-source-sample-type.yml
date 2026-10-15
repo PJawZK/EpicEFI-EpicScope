@@ -1,0 +1,39 @@
+name: Temp fix VE source sample type
+
+on:
+  push:
+    branches:
+      - fix/ve-session-authority
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ve-session-authority
+          fetch-depth: 0
+      - name: Fix exact optional type
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/logger-page.ts')
+          text = path.read_text()
+          old = '  readonly sourceSampleCount?: number;\n'
+          new = '  readonly sourceSampleCount?: number | undefined;\n'
+          if old not in text:
+              raise SystemExit('sourceSampleCount type anchor not found')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/temp-fix-ve-source-sample-type.yml').unlink()
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/pages/logger-page.ts .github/workflows/temp-fix-ve-source-sample-type.yml
+          git commit -m "fix: allow absent VE source sample count"
+          git push origin HEAD:fix/ve-session-authority
