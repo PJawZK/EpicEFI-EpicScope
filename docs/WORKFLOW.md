@@ -14,9 +14,13 @@ Architectural/product-direction approval belongs to the project owner. Contribut
 
 ## Repository/branch model
 
-`main` is authoritative.
+`main` is the only product/continuation authority.
 
-The 2026-10-15 historical branch cleanup reduced remote branch authority to `main` only. That does **not** prohibit future branches: normal implementation work should still use focused short-lived branches/PRs when appropriate, then delete those branch refs after merge/closeout so the repository does not accumulate another long-lived branch archive.
+Short-lived focused branches/PRs are still normal for runtime/product changes. After merge/closeout, branch refs should be deleted so the repository does not become a long-lived branch archive. Historical branches are never knowledge stores; Git/PR history and authoritative docs preserve provenance.
+
+`browser-previews` is deployment infrastructure, not product authority.
+
+The 2026-10-16 connector-based cleanup could close PRs and classify refs but did not expose remote branch deletion. `BRANCH_CLEANUP_2026-10-15.md` records refs that may be removed with normal Git/GitHub controls.
 
 Long-running parallel architecture branches are discouraged unless explicitly approved.
 
@@ -31,7 +35,7 @@ Changes intended for production should normally use a focused PR with:
 - performance impact where relevant;
 - decision/document references.
 
-Direct `main` changes are acceptable only for controlled/explicitly approved maintenance such as repository/document consolidation where creating another branch would add no review value. Runtime/product behavior changes should normally retain focused branch/PR review.
+Direct `main` changes are acceptable for controlled/explicitly approved maintenance such as documentation/repository consolidation where another review branch adds no value. Runtime/product behavior changes should normally retain focused branch/PR review.
 
 ## Task definition
 
@@ -99,18 +103,20 @@ New parser/persistence/channel-binding/analysis work extends this gate rather th
 
 Automated validation does not prove all browser behavior.
 
-For VE Analyzer lifecycle/render/state/direct-edit changes, browser validation is **required acceptance evidence** (D-057). PRs #442–#447 demonstrated that CI-green changes can still freeze Analyzer entry in a real browser.
+For VE Analyzer lifecycle/render/state/direct-edit changes, browser validation is **required acceptance evidence** (D-057). Historical PRs #442–#447 demonstrated that CI-green changes can still freeze or corrupt a real browser workflow.
+
+Current accepted VE/Analyzer baseline is PR #462 on `main`, with exact pre-merge runtime acceptance at `b435702412642f039a8a7f49d33037c309bef9d8`.
 
 VE rule:
 
 1. make one structural change at a time;
 2. run normal CI/tests/build;
-3. verify affected browser workflow;
+3. verify the affected browser workflow;
 4. only then describe the change as fixed/validated.
 
-Preserve the PR #449 browser-known-good baseline while doing state-ownership work.
-
 Other UI changes also require representative browser/manual validation when automated tests cannot exercise the behavior being claimed.
+
+For the immediate UI polish pass, purely cosmetic CSS changes may use proportionate browser sanity checks; interaction, focus, re-parenting, lifecycle or table behavior changes require explicit workflow verification.
 
 ## Performance workflow
 
@@ -124,6 +130,8 @@ Performance work is evidence-driven:
 6. repeat on low-spec hardware when the change can affect I/O/allocation/GC/responsiveness.
 
 Broad Logger/Histogram micro-optimization is paused unless a measured regression appears.
+
+The D-058 observability implementation must establish an explicit baseline before inserting hot-path instrumentation and must benchmark enabled/minimal overhead plus deliberate event-storm behavior.
 
 ## Feature maturity
 
@@ -153,10 +161,10 @@ When updating it:
 
 1. inspect current `main`;
 2. reconcile code/runtime with existing handoff;
-3. retain only current progress/open issues/next sequence;
+3. retain current progress/open issues/next sequence;
 4. link subsystem authorities instead of duplicating unnecessary history;
 5. distinguish browser-validated behavior from CI-only claims;
-6. never imply the SHA embedded in the handoff is necessarily the latest docs commit; identify runtime baselines explicitly when needed.
+6. identify runtime baselines explicitly when needed rather than assuming the handoff commit itself is a tested runtime SHA.
 
 A new chat should be able to continue with:
 
@@ -172,7 +180,7 @@ For present-tense work:
 4. explicit later accepted decisions refine older decisions;
 5. historical research/plans/chats do not override newer repository authority.
 
-When there is a mismatch, stop and reconcile the documents/code rather than choosing whichever old text is convenient.
+When there is a mismatch, reconcile documents/code rather than choosing whichever old text is convenient.
 
 ## Release workflow
 
