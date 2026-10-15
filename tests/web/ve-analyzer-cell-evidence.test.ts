@@ -27,4 +27,15 @@ describe('VE Analyzer cell evidence review', () => {
   it('returns undefined when none of the retained samples have timestamps', () => {
     expect(strongestVeEvidenceVisit([1, 2, 3], () => undefined)).toBeUndefined();
   });
+
+  it('handles a 320k-sample evidence visit without Math extrema argument overflow', () => {
+    const sampleCount = 320_458;
+    const samples = Uint32Array.from({ length: sampleCount }, (_, index) => index);
+    const visit = strongestVeEvidenceVisit(samples, (sample) => sample * 10);
+
+    expect(visit?.sampleIndices).toHaveLength(sampleCount);
+    expect(visit?.startSampleIndex).toBe(0);
+    expect(visit?.endSampleIndex).toBe(sampleCount - 1);
+    expect(visit?.durationMs).toBe((sampleCount - 1) * 10);
+  });
 });

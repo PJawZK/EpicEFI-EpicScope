@@ -97,7 +97,13 @@ export function strongestVeEvidenceVisit(
 
   const timed = runs.map((run) => {
     const times = run.map(timeForSample).filter((value): value is number => value !== undefined);
-    const durationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : times.length === 1 ? 0 : undefined;
+    let minimumTime = Number.POSITIVE_INFINITY;
+    let maximumTime = Number.NEGATIVE_INFINITY;
+    for (const time of times) {
+      if (time < minimumTime) minimumTime = time;
+      if (time > maximumTime) maximumTime = time;
+    }
+    const durationMs = times.length > 1 ? maximumTime - minimumTime : times.length === 1 ? 0 : undefined;
     return { run, times, durationMs };
   }).filter((entry) => entry.times.length > 0);
   if (timed.length === 0) return undefined;
