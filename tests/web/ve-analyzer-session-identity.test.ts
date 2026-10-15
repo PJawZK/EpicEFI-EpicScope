@@ -26,6 +26,10 @@ describe('VE Analyzer session identity', () => {
     const right = context({ savedRanges: [{ label: 'Pull', startMs: 100, endMs: 200 }] });
 
     expect(sameVeAnalysisContext(left, right)).toBe(true);
+    expect(sameVeAnalysisContext(
+      context({ sourceSampleCount: undefined }),
+      context({ sourceSampleCount: undefined }),
+    )).toBe(true);
   });
 
   it('invalidates when a growing source exposes a different sample count', () => {
