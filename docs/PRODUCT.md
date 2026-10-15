@@ -6,7 +6,7 @@
 
 ## Purpose
 
-EpicScope is an ECU log analysis and tuning-diagnostics application intended to help a tuner **scope a tune**: inspect recorded/live behaviour, find faults, quantify weak areas, compare changes, and identify opportunities for improvement.
+EpicScope is an ECU log analysis and tuning-diagnostics application intended to help a tuner **scope a tune**: inspect recorded/live behaviour, find faults, quantify weak areas, compare changes and identify opportunities for improvement.
 
 It is not only a graph viewer and it is not a live ECU tune editor. Tune/MSQ data may enrich analysis and VE proposals may be reviewed, but analysis/proposal state remains separate from tune/ECU state unless a future explicitly approved apply/write workflow is invoked.
 
@@ -16,7 +16,7 @@ It is not only a graph viewer and it is not a live ECU tune editor. Tune/MSQ dat
 2. **EpicScope Linux** — primary production target after Web maturity review.
 3. **EpicScope for EpicHub / Android** — later reuse of proven analysis concepts without forcing Android constraints into earlier stages.
 
-## Current Web implementation state — 2026-10-15
+## Current Web implementation state — 2026-10-16
 
 EpicScope Web is a usable large-log/live-source analysis reference with:
 
@@ -41,12 +41,14 @@ Current maturity:
 - Fueling/Ignition: mature experimental Analyzer checkpoints.
 - Boost: strong experimental foundation.
 - Idle/AE: useful but thinner.
-- Fuel Pressure / Injector and Trigger / Sync: targeted maturity gaps remain.
-- VE Analyzer: implemented, real-log/browser validated and the highest-value active maturity target.
-- Unified observability: architecture approved, implementation not yet started.
+- Fuel Pressure / Injector and Trigger / Sync: targeted lower-priority maturity gaps remain.
+- VE Analyzer: implemented, real-log/browser validated and stable at the current maturity checkpoint.
+- Analyzer points 1–11: merged and browser-accepted through PR #462.
+- UI polish: immediate next work.
+- Unified observability: D-058 architecture approved and queued immediately after UI polish.
 - MLG v3: researched compatibility extension, not yet implemented.
 
-The browser-known-good VE runtime is the #441-era composition restored by PR #449. Browser behavior is the acceptance authority for VE runtime changes; CI is necessary but not sufficient.
+The exact pre-merge VE/Analyzer runtime accepted by the project owner was `b435702412642f039a8a7f49d33037c309bef9d8`; PR #462 merged that accepted lineage into `main` at `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`. Browser behavior remains the acceptance authority for VE runtime changes; CI is necessary but not sufficient.
 
 ## Primary user workflow
 
@@ -120,13 +122,13 @@ Shared flow:
 
 > **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
-The current generic research-parity track is closed. Table Generator, Distribution, Scatter and Math Channels should receive correctness/regression maintenance or deliberate cleanup unless field use exposes a concrete gap.
+The current generic research-parity track is closed. Table Generator, Distribution, Scatter and Math Channels should receive correctness/regression maintenance or deliberate polish unless field use exposes a concrete gap.
 
 ## Specialized Analyzer product contract
 
 An analyzer should find relevant operating events/conditions, quantify results, show evidence/provenance, distinguish observation from causation, expose missing inputs and navigate back to Logger.
 
-Fueling and non-knock Ignition are mature checkpoints. Boost is strong. Fuel / Injector and Trigger / Sync retain targeted maturity work. VE Analyzer is the current highest-value maturity target.
+Fueling and non-knock Ignition are mature checkpoints. Boost is strong. Fuel / Injector and Trigger / Sync retain targeted maturity work. VE Analyzer is stable at its current maturity checkpoint after the points 1–11 integration.
 
 ## VE Analyzer product contract
 
@@ -145,14 +147,17 @@ Current accepted behavior includes:
 - starting-table prior authority;
 - separate original VE, analysis proposal and user-reviewed result;
 - independent proposal safeguards that withhold rather than silently clamp;
-- Result View overlays and per-cell evidence/Logger navigation;
+- source-authoritative Result View overlays and per-cell evidence/Logger navigation;
+- retained completed analysis across semantically unchanged navigation;
+- retained-primary evidence reuse;
+- cooperative bounded analysis with progress/cancel;
 - no automatic tune/ECU writes.
 
-Known remaining VE issues are Result View fallback/precision and Logger → Analyzer result persistence. State ownership cleanup should proceed one browser-verified structural change at a time.
+The earlier Result View value-loss/heat-map and Logger → Analyzer continuity defects are closed and browser-accepted. Remaining DOM-derived working-delay ownership is later cleanup, not a current blocker.
 
 ## Diagnostics / observability product contract
 
-`docs/OBSERVABILITY.md` defines the approved consolidation direction.
+`docs/OBSERVABILITY.md` defines the approved consolidation direction and D-058 records the durable architectural decision.
 
 The current diagnostic capabilities are useful but fragmented. The target product behavior is one coherent local Diagnostics experience that can show:
 
@@ -165,9 +170,9 @@ The current diagnostic capabilities are useful but fragmented. The target produc
 - a bounded previous-session black-box tail;
 - one coherent export report.
 
-The system should discover broad failure patterns rather than only collect probes for already-known bugs. It must remain bounded, low-overhead and local-first. It must not silently upload telemetry, record raw log/tune payloads, or become a second application/domain state store.
+The system should discover broad failure patterns rather than only collect probes for already-known bugs. It must remain bounded, low-overhead and local-first. It must not silently upload telemetry, record raw log/tune payloads or become a second application/domain state store.
 
-Existing detailed performance/source/parser measurements should be migrated into the new architecture where useful, not thrown away.
+Existing detailed performance/source/parser measurements should be migrated into the new architecture where useful, not discarded. The implementation sequence starts with benchmark baseline and record/session/operation/retention ownership, not a UI-first rewrite.
 
 ## Fuel Pressure / Injector product semantics
 
@@ -207,10 +212,19 @@ Opening/analyzing a local log must not require upload. EpicScope must not silent
 
 The same applies to diagnostics/observability. Automatic diagnostic retention is local and bounded; explicit export is a user action.
 
+## Immediate product direction
+
+1. focused UI polish from the accepted `main` baseline;
+2. browser sanity verification for interaction-affecting polish;
+3. staged D-058 observability implementation;
+4. lower-priority Analyzer/MLG v3 work only where evidence or demand justifies it;
+5. Web functional maturity review;
+6. Linux production implementation.
+
 ## Current non-goals
 
-Current Web work does not need to solve final native Linux runtime design/packaging, Android integration, direct ECU acquisition outside the validated Shim path, live tune editing/Burn semantics, cloud telemetry, or decorative polish that conflicts with clarity/performance.
+Current Web work does not need to solve final native Linux runtime design/packaging, Android integration, direct ECU acquisition outside the validated Shim path, live tune editing/Burn semantics, cloud telemetry, or broad new feature expansion during the UI-polish/observability sequence.
 
 ## Repository authority
 
-Remote branch cleanup completed on 2026-10-15. `main` is the only authoritative remote branch. Git/PR history preserves implementation provenance; historical branch refs are not product authorities.
+`main` is the only product authority. Historical development branches are not knowledge stores; current documentation plus Git/PR history preserve implementation provenance. `browser-previews` is deployment infrastructure rather than product authority.
