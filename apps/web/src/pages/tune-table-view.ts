@@ -1,3 +1,5 @@
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { TuneModel, TuneEntry } from '../../../../core/tune/tune-model';
@@ -10,6 +12,7 @@ import type { LoggerAnalysisContext } from './logger-page';
 
 export interface TuneTableViewController {
   readonly element: HTMLElement;
+  setActive(active: boolean): void;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
@@ -33,11 +36,16 @@ function sameChannelCatalog(
   left: readonly LoggerAnalysisContext['channels'][number][],
   right: readonly LoggerAnalysisContext['channels'][number][],
 ): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+  return sameChannelOptionCatalog(left, right);
 }
 
 export function createTuneTableView(): TuneTableViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+
+  let active = true;
+  let applyingPending = false;
+  let pendingContext: LoggerAnalysisContext | undefined;
+  let pendingTune: readonly [TuneModel | undefined, string | undefined] | undefined;
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
   let currentResult: TuneTableCorrelationResult | undefined;
@@ -105,6 +113,12 @@ export function createTuneTableView(): TuneTableViewController {
     throw new Error('Tune Table view structure is incomplete.');
   }
 
+  const emptyTitle = empty.querySelector<HTMLElement>('strong')!;
+  const emptyHint = empty.querySelector<HTMLElement>('span')!;
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.textContent;
+  let traceLoadFailed = false;
+
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-tune-table="${name}"]`);
     if (!node) throw new Error(`Tune Table field is missing: ${name}`);
@@ -124,7 +138,7 @@ export function createTuneTableView(): TuneTableViewController {
 
   const fillTraceSelect = (select: HTMLSelectElement, preferred: string, fallbackIndex: number): void => {
     select.replaceChildren();
-    for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    for (const channel of context.channels) select.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
     if (context.channels.some((channel) => channel.id === preferred)) select.value = preferred;
     else if (context.channels[fallbackIndex]) select.value = context.channels[fallbackIndex]!.id;
   };
@@ -168,7 +182,13 @@ export function createTuneTableView(): TuneTableViewController {
   };
 
   const render = async (): Promise<void> => {
+    if (!active || applyingPending) return;
     const generation = ++renderGeneration;
+    if (traceLoadFailed) {
+      traceLoadFailed = false;
+      emptyTitle.textContent = defaultEmptyTitle;
+      emptyHint.textContent = defaultEmptyHint;
+    }
     field('source').textContent = tuneSourceName ?? 'No MSQ loaded';
     field('signature').textContent = tuneModel?.identity.signature ?? tuneModel?.identity.firmwareInfo ?? '—';
 
@@ -202,8 +222,21 @@ export function createTuneTableView(): TuneTableViewController {
 
     const startMs = Math.min(scope.startMs, scope.endMs);
     const endMs = Math.max(scope.startMs, scope.endMs);
-    const loaded = await context.loadTraces([xId, yId, observedId], startMs, endMs);
-    if (generation !== renderGeneration) return;
+    let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    try {
+      loaded = await context.loadTraces([xId, yId, observedId], startMs, endMs);
+    } catch (error) {
+      if (!active || generation !== renderGeneration) return;
+      currentResult = undefined;
+      refreshButton.disabled = false;
+      traceLoadFailed = true;
+      empty.hidden = false; content.hidden = true;
+      emptyTitle.textContent = 'Tune table could not load log channels.';
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The log data could not be loaded.';
+      emptyHint.textContent = `${detail} Retry with Refresh. If it keeps failing, reload the log or choose another scope.`;
+      return;
+    }
+    if (!active || generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
@@ -260,6 +293,7 @@ export function createTuneTableView(): TuneTableViewController {
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
+    if (!active) { pendingContext = nextContext; return; }
     const previousX = xChannelSelect.value;
     const previousY = yChannelSelect.value;
     const previousObserved = observedSelect.value;
@@ -276,14 +310,16 @@ export function createTuneTableView(): TuneTableViewController {
   };
 
   const setTuneModel = (model: TuneModel | undefined, sourceName?: string): void => {
+    if (!active) { pendingTune = [model, sourceName]; return; }
     if (tuneModel === model && tuneSourceName === sourceName) return;
+    renderGeneration += 1;
     const previousTable = tableSelect.value;
     const previousX = xAxisSelect.value;
     const previousY = yAxisSelect.value;
     tuneModel = model;
     tuneSourceName = sourceName;
     fillTuneSelectors(previousTable, previousX, previousY);
-    if (!root.hidden) void render();
+    void render();
   };
 
   tableSelect.addEventListener('change', () => { syncAxisCandidates(); void render(); });
@@ -296,5 +332,25 @@ export function createTuneTableView(): TuneTableViewController {
   errorToggle.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { void render(); });
 
-  return { element: root, setContext, setTuneModel, refresh: () => { void render(); } };
+  const setActive = (next: boolean): void => {
+    if (active === next) return;
+    active = next;
+    if (!active) { renderGeneration += 1; return; }
+    applyingPending = true;
+    const tune = pendingTune; pendingTune = undefined;
+    if (tune) controller.setTuneModel(tune[0], tune[1]);
+    const nextContext = pendingContext; pendingContext = undefined;
+    if (nextContext) controller.setContext(nextContext);
+    applyingPending = false;
+    void render();
+  };
+
+  const controller: TuneTableViewController = {
+    element: root,
+    setActive,
+    setContext,
+    setTuneModel,
+    refresh: () => { void render(); },
+  };
+  return controller;
 }

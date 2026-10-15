@@ -1,0 +1,14 @@
+.local-persistence-feedback {
+  grid-column: 1 / -1;
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.local-persistence-feedback[hidden] { display: none; }
+.local-persistence-feedback[data-state="error"] { color: #f2cc60; }
+.local-persistence-feedback button { display: block; margin-top: 5px; }
+.local-persistence-feedback button[hidden] { display: none; }
+.histogram-table-preset-popover > .local-persistence-feedback { display: block; }
+.histogram-table-preset-popover > .local-persistence-feedback[hidden] { display: none; }
+.histogram-filter-library > .local-persistence-feedback { margin: 7px; }

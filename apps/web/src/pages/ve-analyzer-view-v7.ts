@@ -68,6 +68,31 @@ function finiteNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function matchingAxisIndex(value: number | undefined, bins: readonly number[]): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  for (let index = 0; index < bins.length; index += 1) {
+    const bin = bins[index]!;
+    const tolerance = Math.max(1e-9, Math.abs(bin) * 1e-9);
+    if (Math.abs(bin - value) <= tolerance) return index;
+  }
+  return undefined;
+}
+
+function primaryCellCurrent(
+  owner: VeAnalyzerViewController,
+  rpm: number | undefined,
+  load: number | undefined,
+): number | undefined {
+  const primary = owner.getPrimaryAnalysis();
+  const values = primary?.veTable.numericValues;
+  if (!primary || !values) return undefined;
+  const col = matchingAxisIndex(rpm, primary.rpmBins);
+  const row = matchingAxisIndex(load, primary.loadBins);
+  if (row === undefined || col === undefined) return undefined;
+  const value = values[row * primary.veTable.cols + col];
+  return value !== undefined && Number.isFinite(value) ? value : undefined;
+}
+
 function readDelaySurface(root: HTMLElement): DelaySurface | undefined {
   const table = root.querySelector<HTMLTableElement>('.ve-delay-table');
   const header = table?.tHead?.rows[0];
@@ -227,6 +252,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   };
 
+  const restoreBaseLevel = (cell: HTMLTableCellElement): void => {
+    const base = cell.dataset.veBaseLevel;
+    if (base) cell.style.setProperty('--ve-cell-level', base);
+    else cell.style.removeProperty('--ve-cell-level');
+  };
+
   const applyResultView = (): void => {
     const table = veHost?.querySelector<HTMLTableElement>('.ve-workbench-table');
     if (!table) return;
@@ -247,23 +278,29 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         const main = cell.querySelector<HTMLElement>(':scope > span');
         if (!main) continue;
         if (cell.dataset.veBaseLevel === undefined) cell.dataset.veBaseLevel = cell.style.getPropertyValue('--ve-cell-level');
-        const metrics = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '');
-        const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpmBins[col - 1], load) : undefined;
+
+        const rpm = rpmBins[col - 1];
+        let current = primaryCellCurrent(inner, rpm, load) ?? finiteNumber(cell.dataset.veCurrentValue);
+        if (current === undefined) {
+          current = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '').current;
+        }
+        if (current !== undefined) cell.dataset.veCurrentValue = String(current);
+
+        const metrics = parseVeRenderedCellMetrics(cell.title, current === undefined ? '' : String(current));
+        const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpm, load) : undefined;
         const display = veResultDisplay(metrics, view, delayMs);
         main.textContent = display.text;
         cell.dataset.veResultValue = display.numericValue === undefined ? '' : String(display.numericValue);
         cell.classList.toggle('ve-result-missing', display.numericValue === undefined);
 
-        if (view === 'proposal') {
-          const base = cell.dataset.veBaseLevel;
-          if (base) cell.style.setProperty('--ve-cell-level', base);
-          else cell.style.removeProperty('--ve-cell-level');
+        if (view === 'proposal' || display.scaleMode === 'base') {
+          restoreBaseLevel(cell);
           continue;
         }
-        if (display.numericValue !== undefined && display.scaleMode !== 'base') {
+        if (display.numericValue !== undefined) {
           rendered.push({ cell, value: display.numericValue, mode: display.scaleMode });
         } else {
-          cell.style.setProperty('--ve-cell-level', '0.5');
+          restoreBaseLevel(cell);
         }
       }
     }
@@ -477,13 +514,21 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    setActive(active) { inner.setActive(active); },
+    get sessionRevision() { return inner.sessionRevision; },
+    getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
+    onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(context: LoggerAnalysisContext) {
-      inner.setContext(context);
+      const changed = inner.setContext(context);
+      if (!changed) return false;
       queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); applyResultView(); });
+      return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
-      inner.setTuneModel(model, sourceName);
+      const changed = inner.setTuneModel(model, sourceName);
+      if (!changed) return false;
       queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); applyResultView(); });
+      return true;
     },
     refresh() {
       inner.refresh();

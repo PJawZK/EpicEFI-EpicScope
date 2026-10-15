@@ -1,3 +1,6 @@
+import { createLocalPersistenceFeedback } from './local-persistence-feedback';
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { histogramChannelOptionLabel } from './histogram-channel-options';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import { distributionValueInsideGeometry, resolveFixedDistributionGeometry } from '../../../../core/analysis/distribution-geometry';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
@@ -208,7 +211,7 @@ function metricBins(trace: HistogramTraceContext, localIndices: readonly number[
 }
 
 function sameChannelCatalog(left: HistogramPageContext['channels'], right: HistogramPageContext['channels']): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+  return sameChannelOptionCatalog(left, right);
 }
 
 export function createHistogramDistributionView(): HistogramDistributionViewController {
@@ -704,6 +707,9 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     if (lastSeries.length > 0) renderChart(lastSeries, lastRangeMin, lastRangeMax);
   });
 
+  const presetFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.distribution-preset-popover')!, 'distribution-presets',
+    () => saveHistogramDistributionPresets(loadHistogramDistributionPresets()));
+
   presetSelect.addEventListener('change', () => {
     presetApply.disabled = !presetSelect.value;
     presetDelete.disabled = !presetSelect.value;
@@ -733,14 +739,14 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     const id = existing?.id ?? createHistogramLocalId('distribution-preset');
     const next = currentPresetState(id, name);
     distributionPresets = existing ? distributionPresets.map((candidate) => candidate.id === id ? next : candidate) : [...distributionPresets, next];
-    saveHistogramDistributionPresets(distributionPresets);
+    presetFeedback.report(saveHistogramDistributionPresets(distributionPresets), 'save');
     populatePresetSelect(id);
   });
   presetDelete.addEventListener('click', () => {
     const id = presetSelect.value;
     if (!id) return;
     distributionPresets = distributionPresets.filter((candidate) => candidate.id !== id);
-    saveHistogramDistributionPresets(distributionPresets);
+    presetFeedback.report(saveHistogramDistributionPresets(distributionPresets), 'delete');
     populatePresetSelect();
   });
   exportCsvButton.addEventListener('click', () => {
@@ -793,7 +799,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     qualificationSets = loadHistogramQualificationSets();
     if (channelsChanged) {
       channelSelect.replaceChildren();
-      for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
+      for (const channel of context.channels) channelSelect.add(new Option(histogramChannelOptionLabel(channel), channel.id));
       if (previousChannel && context.channels.some((channel) => channel.id === previousChannel)) channelSelect.value = previousChannel;
     }
     populateHistogramQualificationSelect(qualificationSelect, qualificationSets, context.channels, previousQualification);

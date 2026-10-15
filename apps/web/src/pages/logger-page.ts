@@ -160,6 +160,8 @@ export interface LoggerAnalysisTraceContext {
 }
 
 export interface LoggerAnalysisContext {
+  /** Stable source lifetime plus changes to its sample/validity data, independent of navigation. */
+  readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number };
   readonly traces: readonly LoggerAnalysisTraceContext[];
   readonly channels: readonly ChannelDefinition[];
   readonly loadTraces: (
@@ -507,6 +509,7 @@ export function createLoggerPage(): LoggerPageController {
   let channelIdAliases = new Map<string, string>();
   const unavailableChannelIds = new Set<string>();
   let channelDataSource: NumericChannelDataSource | undefined;
+  let analysisDataRevision = 0;
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
   let workspaceRestorePerformanceListener:
@@ -2419,6 +2422,7 @@ export function createLoggerPage(): LoggerPageController {
       traces,
       channels,
       loadTraces,
+      ...(channelDataSource ? { source: { identity: channelDataSource, sampleCount: channelDataSource.sampleCount, revision: analysisDataRevision } } : {}),
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
       savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),
@@ -2484,6 +2488,7 @@ export function createLoggerPage(): LoggerPageController {
     setImportError,
     setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
     refreshValidity: () => {
+      analysisDataRevision += 1;
       paneRuntimes.forEach((runtime) => runtime.graph.refreshValidity());
       timeline.refreshValidity();
       timeline.refreshOverview();

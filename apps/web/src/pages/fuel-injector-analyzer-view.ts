@@ -1,16 +1,17 @@
+import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzeFuelInjectorHeadroomContext, type FuelInjectorEventContext } from '../../../../core/analysis/fuel-injector-headroom';
 import { analyzeFuelPressureArchitecture, type FuelPressureArchitecture, type FuelPressureEvidenceQuality } from '../../../../core/analysis/fuel-pressure-architecture';
 import { analyzeFuelPressureInjector } from '../../../../core/analysis/specialized-analyzers';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
-import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
-import { suggestAnalyzerChannel } from './analyzer-channel-roles';
+import { analyzerChannelOptionLabel, suggestAnalyzerChannel } from './analyzer-channel-roles';
 import { isFuelPressureChannelEligible, suggestFuelPressureChannel, type FuelPressureChannelRole } from './fuel-pressure-channel-selection';
 
 export interface FuelInjectorAnalyzerViewController {
   readonly element: HTMLElement;
+  setActive(active: boolean): void;
   setContext(context: LoggerAnalysisContext): void;
   refresh(): void;
 }
@@ -58,10 +59,6 @@ function pressureRoleForKey(key: RoleKey): FuelPressureChannelRole | undefined {
   return undefined;
 }
 
-function optionText(channel: ChannelDefinition): string {
-  const name = channel.displayName || channel.sourceName;
-  return channel.unit ? `${name} [${channel.unit}]` : name;
-}
 
 function pressureQualityLabel(quality: FuelPressureEvidenceQuality | undefined): string {
   if (!quality) return 'Unavailable';
@@ -94,6 +91,10 @@ function pressureQualityMessages(
 
 export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+
+  let active = true;
+  let applyingPending = false;
+  let pendingContext: LoggerAnalysisContext | undefined;
   let generation = 0;
   const remembered = new Map<string, string>();
 
@@ -143,6 +144,12 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
   const gdiMinimum = root.querySelector<HTMLInputElement>('input[data-option="gdiMinimum"]');
   const highDuty = root.querySelector<HTMLInputElement>('input[data-option="highDuty"]');
   if (!controls || !summary || !empty || !content || !tableHead || !tableBody || !minimumRunningRpm || !conventionalMinimum || !gdiMinimum || !highDuty) throw new Error('Fuel / Injector analyzer structure is incomplete.');
+
+  const emptyTitle = empty.querySelector<HTMLElement>('strong')!;
+  const emptyHint = empty.querySelector<HTMLElement>('span')!;
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.textContent;
+  let traceLoadFailed = false;
 
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-fuel-injector="${name}"]`);
@@ -279,7 +286,13 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
   };
 
   const analyze = async (): Promise<void> => {
+    if (!active || applyingPending) return;
     const run = ++generation;
+    if (traceLoadFailed) {
+      traceLoadFailed = false;
+      emptyTitle.textContent = defaultEmptyTitle;
+      emptyHint.textContent = defaultEmptyHint;
+    }
     const selected = new Map<RoleKey, string>();
     for (const role of ROLES) {
       const id = roleSelect(role.key)?.value;
@@ -296,8 +309,19 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     const scope = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;
     if (!scope) return;
     const bounds = analyzerScopeBounds(scope);
-    const loaded = await context.loadTraces([...selected.values()], bounds.startMs, bounds.endMs);
-    if (run !== generation) return;
+    let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    try {
+      loaded = await context.loadTraces([...selected.values()], bounds.startMs, bounds.endMs);
+    } catch (error) {
+      if (!active || run !== generation) return;
+      traceLoadFailed = true;
+      empty.hidden = false; content.hidden = true;
+      emptyTitle.textContent = 'Fuel / Injector analysis could not load log channels.';
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The log data could not be loaded.';
+      emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
+      return;
+    }
+    if (!active || run !== generation) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<RoleKey, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
@@ -453,7 +477,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       const availableChannels = pressureRole
         ? context.channels.filter((channel) => isFuelPressureChannelEligible(pressureRole, channel))
         : context.channels;
-      for (const channel of availableChannels) select.add(new Option(optionText(channel), channel.id));
+      for (const channel of availableChannels) select.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
       const rememberedValue = remembered.get(role.key);
       if (rememberedValue && [...select.options].some((option) => option.value === rememberedValue)) select.value = rememberedValue;
       else {
@@ -494,9 +518,32 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
 
   for (const input of [minimumRunningRpm, conventionalMinimum, gdiMinimum, highDuty]) input.addEventListener('change', () => { void analyze(); });
 
-  return {
+  const setActive = (next: boolean): void => {
+    if (active === next) return;
+    active = next;
+    if (!active) { generation += 1; return; }
+    applyingPending = true;
+    const nextContext = pendingContext; pendingContext = undefined;
+    if (nextContext) controller.setContext(nextContext);
+    applyingPending = false;
+    void analyze();
+  };
+
+  const controller: FuelInjectorAnalyzerViewController = {
     element: root,
-    setContext(nextContext) { context = nextContext; rebuild(); },
+    setActive,
+    setContext(nextContext) {
+      if (!active) { pendingContext = nextContext; return; }
+      const channelsChanged = !sameChannelOptionCatalog(context.channels, nextContext.channels);
+      context = nextContext;
+      if (channelsChanged || !controls.children.length) rebuild();
+      else {
+        const scope = controls.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+        if (scope) populateAnalyzerScopeSelect(scope, context, scope.value);
+        void analyze();
+      }
+    },
     refresh: () => { void analyze(); },
   };
+  return controller;
 }

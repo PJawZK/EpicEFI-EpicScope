@@ -1,3 +1,4 @@
+import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
@@ -11,12 +12,9 @@ import {
 } from './ve-analyzer-qualification';
 import {
   createVeAnalyzerView as createVeAnalyzerViewV2,
+  sameVeSourceContext,
   type VeAnalyzerViewController,
 } from './ve-analyzer-view-v2';
-
-function sourceOptionLabel(channel: ChannelDefinition): string {
-  return `${channel.sourceName}${channel.unit ? ` [${channel.unit}]` : ''}`;
-}
 
 function finiteInput(input: HTMLInputElement | null): number | undefined {
   const raw = input?.value.trim() ?? '';
@@ -31,7 +29,7 @@ function celsiusLike(unit: string | undefined): boolean {
 }
 
 function optionForChannel(channel: ChannelDefinition): HTMLOptionElement {
-  return new Option(sourceOptionLabel(channel), channel.id);
+  return new Option(analyzerChannelOptionLabel(channel), channel.id);
 }
 
 export function createVeAnalyzerView(): VeAnalyzerViewController {
@@ -184,6 +182,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const wrappedContext = (next: LoggerAnalysisContext): LoggerAnalysisContext => ({
     ...next,
+    source: next.source ?? { identity: next.loadTraces, sampleCount: 0, revision: 0 },
     loadTraces: async (channelIds, startMs, endMs): Promise<readonly LoggerAnalysisTraceContext[]> => {
       const applyQualification = qualificationLoadPending;
       qualificationLoadPending = false;
@@ -209,17 +208,24 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    setActive(active) { inner.setActive(active); },
+    get sessionRevision() { return inner.sessionRevision; },
+    getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
+    onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(next) {
+      const sourceChanged = !sameVeSourceContext(sourceContext, next);
       sourceContext = next;
-      populateQualificationSources();
+      if (sourceChanged) populateQualificationSources();
       applyUi(false);
-      inner.setContext(wrappedContext(next));
-      applyUi(false);
+      const changed = inner.setContext(wrappedContext(next));
+      if (changed) applyUi(false);
+      return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       applyUi(false);
-      inner.setTuneModel(model, sourceName);
-      applyUi(false);
+      const changed = inner.setTuneModel(model, sourceName);
+      if (changed) applyUi(false);
+      return changed;
     },
     refresh() {
       applyUi(false);
