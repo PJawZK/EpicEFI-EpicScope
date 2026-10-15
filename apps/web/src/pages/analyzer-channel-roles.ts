@@ -115,11 +115,16 @@ function enforceVeActualMixtureSelection(root: ParentNode, channels: readonly Ch
 
     const selected = byId.get(control.value);
     if (selected && isVeActualMixtureChannelEligible(selected, scale)) continue;
-    const preferred = preferredVeActualMixtureChannel(channels, scale);
+    // A hidden VE view may still own an older (or empty) catalog. Assigning a
+    // channel absent from its options leaves value empty; dispatching change in
+    // that case makes its table rebuild retrigger this decorator indefinitely.
+    const availableIds = new Set([...control.options].map((option) => option.value));
+    const preferred = preferredVeActualMixtureChannel(channels.filter((channel) => availableIds.has(channel.id)), scale);
     const next = preferred?.id ?? '';
     if (control.value === next) continue;
+    const previous = control.value;
     control.value = next;
-    control.dispatchEvent(new Event('change', { bubbles: true }));
+    if (control.value !== previous) control.dispatchEvent(new Event('change', { bubbles: true }));
   }
 }
 

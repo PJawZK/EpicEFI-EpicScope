@@ -30,9 +30,24 @@ import {
 
 export interface VeAnalyzerViewController {
   readonly element: HTMLElement;
-  setContext(context: LoggerAnalysisContext): void;
-  setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
+  readonly sessionRevision: number;
+  /** Return true only when semantic session inputs changed. */
+  setContext(context: LoggerAnalysisContext): boolean;
+  setTuneModel(model: TuneModel | undefined, sourceName?: string): boolean;
   refresh(): void;
+}
+
+export function sameVeSourceContext(left: LoggerAnalysisContext, right: LoggerAnalysisContext): boolean {
+  if ((left.source?.identity ?? left.loadTraces) !== (right.source?.identity ?? right.loadTraces)
+    || left.source?.sampleCount !== right.source?.sampleCount
+    || left.source?.revision !== right.source?.revision
+    || left.channels.length !== right.channels.length) return false;
+  return left.channels.every((channel, index) => {
+    const other = right.channels[index]!;
+    return channel.id === other.id && channel.sourceName === other.sourceName
+      && channel.displayName === other.displayName && channel.valueType === other.valueType
+      && channel.unit === other.unit && channel.category === other.category && channel.precision === other.precision;
+  });
 }
 
 type RoleKey = 'rpm' | 'load' | 'actual' | 'target' | 've' | 'fuelCommand' | 'dfco' | 'fuelCutReason' | 'aeActive' | 'decelActive' | 'totalCorrection' | 'stft' | 'ltft';
@@ -150,6 +165,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   let tuneSourceName: string | undefined;
   let runGeneration = 0;
   let delayGeneration = 0;
+  let delayLoadGeneration = 0;
+  let sessionRevision = 0;
   let result: VeEvidenceMapResult | undefined;
   let proposal: VeProposalResult | undefined;
   let delayDiscovery: AfrDelayAnalyzerResult | undefined;
@@ -443,12 +460,16 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   const invalidate = (): void => {
-    runGeneration += 1; result = undefined; proposal = undefined; renderTables();
+    sessionRevision += 1;
+    delayGeneration += 1;
+    delayLoadGeneration += 1;
+    runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren(); renderTables();
     stageText.textContent = 'Setup changed. Run Analysis to rebuild the delay-table-aligned evidence and guarded VE proposal; no tune state is modified.';
     renderReadiness();
   };
 
   const clearDelayRecommendation = (): void => {
+    sessionRevision += 1;
     delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery();
   };
 
@@ -507,7 +528,17 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const rpmId = roleSelect('rpm')?.value; const loadId = roleSelect('load')?.value; const ids = [...new Set([actualId, fuelId, rpmId, loadId].filter((id): id is string => Boolean(id)))];
     const veRpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const veLoad = axisValues(tuneModel, select('load-axis')?.value ?? ''); if (!veRpm || !veLoad) return;
     const bounds = analyzerScopeBounds(scope); const generation = ++delayGeneration; delayResultTitle.textContent = 'Analyzing current-log delay evidence…'; delayResultText.textContent = 'Searching isolated fuel-command transitions and building a recommendation without replacing the working table.';
-    const loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs); if (generation !== delayGeneration) return;
+    let loaded: readonly import('./logger-page').LoggerAnalysisTraceContext[];
+    try {
+      loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
+    } catch (error) {
+      if (generation === delayGeneration) {
+        delayResultTitle.textContent = 'Could not discover lambda delays';
+        delayResultText.textContent = error instanceof Error ? error.message : String(error);
+      }
+      return;
+    }
+    if (generation !== delayGeneration) return;
     const ranges = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); const actual = ranges.get(actualId); const fuel = ranges.get(fuelId); if (!actual || !fuel) { delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery(); return; }
     delayDiscovery = analyzeAfrDelay({ actualAfr: actual, fuelCommand: fuel, ...(rpmId && ranges.get(rpmId) ? { rpm: ranges.get(rpmId)! } : {}), ...(loadId && ranges.get(loadId) ? { load: ranges.get(loadId)! } : {}) }, {
       commandDeltaThreshold: positiveSetting('delay-command-threshold')!, afrResponseThreshold: positiveSetting('delay-response-threshold')!, searchWindowMs: positiveSetting('delay-search-window')!, minimumEventSpacingMs: nonNegativeSetting('delay-event-spacing')!, responsePolarity: 'inverse',
@@ -523,7 +554,15 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined; const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
     const veRpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const veLoad = axisValues(tuneModel, select('load-axis')?.value ?? ''); const targetRpm = axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''); const targetLoad = axisValues(tuneModel, select('target-load-axis')?.value ?? '');
     if (!scope || !ve?.numericValues || !target?.numericValues || !veRpm || !veLoad || !targetRpm || !targetLoad) return;
-    const ids = [...new Set(ROLES.map((role) => roleSelect(role.key)?.value).filter((id): id is string => Boolean(id)))]; const bounds = analyzerScopeBounds(scope); const loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs); if (run !== runGeneration) return;
+    const ids = [...new Set(ROLES.map((role) => roleSelect(role.key)?.value).filter((id): id is string => Boolean(id)))]; const bounds = analyzerScopeBounds(scope);
+    let loaded: readonly import('./logger-page').LoggerAnalysisTraceContext[];
+    try {
+      loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
+    } catch (error) {
+      if (run === runGeneration) stageText.textContent = error instanceof Error ? error.message : String(error);
+      return;
+    }
+    if (run !== runGeneration) return;
     const rangeMap = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); if (!renderReadiness(rangeMap)) return;
     const rpm = rangeMap.get(roleSelect('rpm')!.value); const load = rangeMap.get(roleSelect('load')!.value); const actual = rangeMap.get(roleSelect('actual')!.value); if (!rpm || !load || !actual) return;
     const filtered = stateFilteredIndices(rpm, rangeMap); const minimumRpm = readNumber('min-rpm'); const maximumRpm = readNumber('max-rpm'); const minimumLoad = readNumber('min-load'); const maximumLoad = readNumber('max-load');
@@ -558,6 +597,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   const rebuild = (): void => {
+    sessionRevision += 1;
+    runGeneration += 1;
+    delayGeneration += 1;
+    delayLoadGeneration += 1;
+    summary.replaceChildren();
+    stageText.textContent = 'Session inputs changed. Verify setup and Run Analysis; no tune state is modified.';
     controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined; selectedDelayCell = undefined;
     const veSelect = select('ve-table')!; const targetSelect = select('target-table')!; const scaleSelect = select('mixture-scale')!; const scopeSelect = select('scope')!; const presetSelect = select('preset')!; const correctionModeSelect = select('fuel-correction-mode')!;
     veSelect.replaceChildren(new Option('(select VE table)', ''), ...veTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name))); veSelect.value = remembered.get('ve-table') && [...veSelect.options].some((option) => option.value === remembered.get('ve-table')) ? remembered.get('ve-table')! : preferredVeTableName(tuneModel) ?? '';
@@ -581,13 +626,19 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     loadDelayButton.onclick = () => { loadDelayFile.value = ''; loadDelayFile.click(); };
     loadDelayFile.onchange = () => {
       const file = loadDelayFile.files?.[0]; if (!file) return;
+      const generation = ++delayLoadGeneration;
       void file.text().then((text) => {
+        if (generation !== delayLoadGeneration) return;
         try {
           workingDelayTable = parseVeDelayTableFile(text, file.name); selectedDelayCell = undefined; invalidate(); renderDelayDiscovery();
           delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Current-log discovery remains separate until Use recommendation is pressed.`;
         } catch (error) {
           delayResultTitle.textContent = 'Could not load delay table'; delayResultText.textContent = error instanceof Error ? error.message : String(error);
         }
+      }).catch((error: unknown) => {
+        if (generation !== delayLoadGeneration) return;
+        delayResultTitle.textContent = 'Could not load delay table';
+        delayResultText.textContent = error instanceof Error ? error.message : String(error);
       });
     };
     delayCellApply.onclick = () => {
@@ -614,8 +665,29 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
-    setContext(next) { context = next; rebuild(); },
-    setTuneModel(model, sourceName) { tuneModel = model; tuneSourceName = sourceName; rebuild(); },
+    get sessionRevision() { return sessionRevision; },
+    setContext(next) {
+      const sourceChanged = !sameVeSourceContext(context, next);
+      const scopeSelect = select('scope')!;
+      const scopeKey = (value: LoggerAnalysisContext): string => {
+        const scope = selectedAnalyzerScope(scopeSelect, value);
+        return scope ? JSON.stringify([scope.kind, ...Object.values(analyzerScopeBounds(scope))]) : 'unavailable';
+      };
+      const previousScope = scopeKey(context);
+      const preferred = scopeSelect.value || remembered.get('scope') || 'full';
+      context = next;
+      populateAnalyzerScopeSelect(scopeSelect, next, preferred);
+      const scopeChanged = previousScope !== scopeKey(next);
+      if (!sourceChanged && !scopeChanged) return false;
+      remembered.set('scope', scopeSelect.value);
+      rebuild();
+      return true;
+    },
+    setTuneModel(model, sourceName) {
+      if (model === tuneModel && sourceName === tuneSourceName) return false;
+      tuneModel = model; tuneSourceName = sourceName; rebuild();
+      return true;
+    },
     refresh() { renderTables(); renderReadiness(); },
   };
 }

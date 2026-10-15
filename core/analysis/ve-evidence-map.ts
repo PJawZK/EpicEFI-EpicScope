@@ -228,7 +228,11 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
   const aligned: Sample[] = [];
   let segment: Sample[] = [];
   const stable: Sample[] = [];
-  const finish = () => { if (segment.length) stable.push(...stableSegment(segment, duration, maxRpmRate, maxLoadRate)); segment = []; };
+  const finish = (): void => {
+    if (!segment.length) return;
+    for (const sample of stableSegment(segment, duration, maxRpmRate, maxLoadRate)) stable.push(sample);
+    segment = [];
+  };
 
   for (let position = 0; position < indices.length; position += 1) {
     const sampleIndex = indices[position]!;

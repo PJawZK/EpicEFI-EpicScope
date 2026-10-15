@@ -97,7 +97,13 @@ export function strongestVeEvidenceVisit(
 
   const timed = runs.map((run) => {
     const times = run.map(timeForSample).filter((value): value is number => value !== undefined);
-    const durationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : times.length === 1 ? 0 : undefined;
+    let minimum = Number.POSITIVE_INFINITY;
+    let maximum = Number.NEGATIVE_INFINITY;
+    for (const time of times) {
+      minimum = Math.min(minimum, time);
+      maximum = Math.max(maximum, time);
+    }
+    const durationMs = times.length > 1 ? maximum - minimum : times.length === 1 ? 0 : undefined;
     return { run, times, durationMs };
   }).filter((entry) => entry.times.length > 0);
   if (timed.length === 0) return undefined;
@@ -289,10 +295,19 @@ export function installVeAnalyzerCellEvidence(
   let tuneModel: TuneModel | undefined;
   let cache: Promise<VeEvidenceReviewCache | undefined> | undefined;
   let detailGeneration = 0;
+  let cacheGeneration = 0;
 
-  const invalidate = (): void => { cache = undefined; };
+  const invalidate = (): void => {
+    cache = undefined;
+    cacheGeneration += 1;
+    detailGeneration += 1;
+    const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
+    const panel = page.querySelector<HTMLElement>('.ve-cell-detail-popover');
+    if (panel) panel.hidden = true;
+  };
 
   const buildCache = async (): Promise<VeEvidenceReviewCache | undefined> => {
+    const generation = cacheGeneration;
     const delayTable = workingDelayTableFromDom(root);
     if (!delayTable || !tuneModel) return undefined;
     const select = (role: string) => root.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`);
@@ -316,6 +331,7 @@ export function installVeAnalyzerCellEvidence(
     const requested = [...new Set([...ids.values(), quick.cltChannelId, quick.tpsChannelId].filter((id): id is string => Boolean(id)))];
     const bounds = analyzerScopeBounds(scope);
     const loaded = await context.loadTraces(requested, bounds.startMs, bounds.endMs);
+    if (generation !== cacheGeneration) return undefined;
     const raw = new Map(loaded.map((trace) => [trace.channel.id, trace.range]));
     const clt = quick.cltChannelId ? raw.get(quick.cltChannelId) : undefined;
     const tps = quick.tpsChannelId ? raw.get(quick.tpsChannelId) : undefined;
@@ -393,7 +409,13 @@ export function installVeAnalyzerCellEvidence(
     body.append(loading);
     panel.hidden = false;
 
-    const resolved = await reviewCache();
+    let resolved: VeEvidenceReviewCache | undefined;
+    try {
+      resolved = await reviewCache();
+    } catch (error) {
+      if (generation === detailGeneration) loading.textContent = error instanceof Error ? error.message : String(error);
+      return;
+    }
     if (generation !== detailGeneration || !resolved) {
       if (generation === detailGeneration) loading.textContent = 'Evidence is unavailable until a valid VE analysis has been run with an active working delay table.';
       return;
@@ -483,15 +505,18 @@ export function installVeAnalyzerCellEvidence(
 
   return {
     element: root,
+    get sessionRevision() { return inner.sessionRevision; },
     setContext(next) {
       context = next;
-      invalidate();
-      inner.setContext(next);
+      const changed = inner.setContext(next);
+      if (changed) invalidate();
+      return changed;
     },
     setTuneModel(model, sourceName) {
       tuneModel = model;
-      invalidate();
-      inner.setTuneModel(model, sourceName);
+      const changed = inner.setTuneModel(model, sourceName);
+      if (changed) invalidate();
+      return changed;
     },
     refresh() {
       inner.refresh();

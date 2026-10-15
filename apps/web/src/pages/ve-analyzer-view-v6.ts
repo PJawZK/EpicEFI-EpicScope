@@ -266,13 +266,18 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    get sessionRevision() { return inner.sessionRevision; },
     setContext(context: LoggerAnalysisContext) {
-      inner.setContext(context);
+      const changed = inner.setContext(context);
+      if (!changed) return false;
       scheduleRenderBlockers();
+      return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
-      inner.setTuneModel(model, sourceName);
+      const changed = inner.setTuneModel(model, sourceName);
+      if (!changed) return false;
       scheduleRenderBlockers();
+      return true;
     },
     refresh() {
       inner.refresh();

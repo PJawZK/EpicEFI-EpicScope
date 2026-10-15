@@ -67,9 +67,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const hadWorkingTable = saveDelayButton ? !saveDelayButton.disabled : false;
     if (!hadWorkingTable || !useDelayButton || !delayResultTitle) return;
 
+    const revision = inner.sessionRevision;
     let completed = false;
     const finishIfReady = (): void => {
       if (completed) return;
+      if (revision !== inner.sessionRevision) { completed = true; observer.disconnect(); return; }
       const analyzing = /^Analyzing current-log delay evidence/i.test(delayResultTitle.textContent?.trim() ?? '');
       if (analyzing || useDelayButton.disabled) return;
       completed = true;
@@ -85,11 +87,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    get sessionRevision() { return inner.sessionRevision; },
     setContext(context: LoggerAnalysisContext) {
-      inner.setContext(context);
+      return inner.setContext(context);
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
-      inner.setTuneModel(model, sourceName);
+      return inner.setTuneModel(model, sourceName);
     },
     refresh() {
       inner.refresh();

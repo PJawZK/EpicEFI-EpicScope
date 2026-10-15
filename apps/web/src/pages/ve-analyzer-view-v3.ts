@@ -11,6 +11,7 @@ import {
 } from './ve-analyzer-qualification';
 import {
   createVeAnalyzerView as createVeAnalyzerViewV2,
+  sameVeSourceContext,
   type VeAnalyzerViewController,
 } from './ve-analyzer-view-v2';
 
@@ -184,6 +185,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   const wrappedContext = (next: LoggerAnalysisContext): LoggerAnalysisContext => ({
     ...next,
+    source: next.source ?? { identity: next.loadTraces, sampleCount: 0, revision: 0 },
     loadTraces: async (channelIds, startMs, endMs): Promise<readonly LoggerAnalysisTraceContext[]> => {
       const applyQualification = qualificationLoadPending;
       qualificationLoadPending = false;
@@ -209,17 +211,21 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
+    get sessionRevision() { return inner.sessionRevision; },
     setContext(next) {
+      const sourceChanged = !sameVeSourceContext(sourceContext, next);
       sourceContext = next;
-      populateQualificationSources();
+      if (sourceChanged) populateQualificationSources();
       applyUi(false);
-      inner.setContext(wrappedContext(next));
-      applyUi(false);
+      const changed = inner.setContext(wrappedContext(next));
+      if (changed) applyUi(false);
+      return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       applyUi(false);
-      inner.setTuneModel(model, sourceName);
-      applyUi(false);
+      const changed = inner.setTuneModel(model, sourceName);
+      if (changed) applyUi(false);
+      return changed;
     },
     refresh() {
       applyUi(false);
