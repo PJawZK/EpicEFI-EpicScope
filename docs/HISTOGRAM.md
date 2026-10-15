@@ -1,42 +1,27 @@
 # Histogram
 
-Histogram is EpicScope's general-purpose statistical/relationship analysis workspace. It sits between raw Logger inspection and question-specific Analyzer surfaces.
+Histogram is EpicScope's general-purpose statistical/relationship analysis workspace between raw Logger inspection and question-specific Analyzer surfaces.
 
-The shared user-facing flow is:
+For repository-wide current state use `HANDOFF.md`; `DOCUMENTATION_MAP.md` defines authority and `research/STATUS.md` maps research to current implementation.
 
-> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
+## Current status — 2026-10-15
 
-For repository-wide continuation state, `docs/HANDOFF.md` remains authoritative. Research-derived behavior and current implementation disposition are tracked in `docs/research/STATUS.md`.
+The generic Histogram research-parity track is **closed at the approved checkpoint**.
 
-## Current status — 2026-10-14
-
-The generic Histogram research-parity track is **closed at the current checkpoint**.
-
-Histogram currently contains:
+Current surfaces:
 
 - **Table Generator**
 - **Distribution**
 - **Scatter**
 - **Math Channels**
 
-These surfaces share scope, Qualification, evidence and reusable calculated-channel concepts rather than maintaining unrelated workflows.
-
 Further Histogram work should be correctness/regression maintenance or deliberate cleanup unless field use exposes a concrete missing behavior.
 
-## Shared channel-selector convention
+## Shared flow
 
-Histogram channel selectors show unit metadata when available:
+> **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
-```text
-MAP [kPa]
-RPM [rpm]
-Injector duty [%]
-ƒ Rail Differential [kPa]
-```
-
-This applies across Table Generator, Distribution and Scatter and includes Math Channels when they carry unit metadata.
-
-Non-channel selectors such as Scope, Qualification, metric, mode and saved setup choices are not rewritten as channel labels.
+Shared selectors show units when metadata exists (`MAP [kPa]`, `RPM [rpm]`, etc.). Non-channel selectors are not rewritten as channel labels.
 
 ## Table Generator
 
@@ -46,17 +31,9 @@ Current mature capability includes:
 - shared Qualification;
 - physical channels and Math Channels;
 - automatic, custom and MSQ/tune geometry;
-- Count;
-- Mean;
-- Median;
-- Min;
-- Max;
-- Sum;
-- Std Dev;
-- Variance;
-- Weighted Mean;
+- Count, Mean, Median, Min, Max, Sum, Std Dev, Variance and Weighted Mean;
 - Z reference/subtraction;
-- weighted breakpoint-node behavior matching the useful mature MegaLogViewer model;
+- weighted breakpoint-node behavior;
 - exact aligned cell evidence with X/Y/Z/reference/delta values;
 - source/time provenance;
 - Logger navigation;
@@ -66,11 +43,7 @@ Current mature capability includes:
 
 Tune-table breakpoints are nodes, not rectangular buckets. A qualifying operating point may contribute to surrounding nodes according to fractional X/Y relevance.
 
-This weighting model is also an important reusable foundation for the planned VE Analyzer.
-
-### Evidence advantage over the reference research
-
-MegaLogViewer demonstrated useful weighting and cell-statistic behavior, but EpicScope retains exact source-sample provenance behind evidence where practical. That is considered an intentional EpicScope improvement, not a compatibility mismatch.
+This same geometry is a foundation used by the implemented VE Analyzer evidence model.
 
 ## Distribution
 
@@ -86,13 +59,13 @@ Current mature capability includes:
 - saved setups;
 - CSV bins/summary export;
 - bin → Logger evidence;
-- correct treatment of timestamp gaps in Time mode;
+- timestamp-gap-aware Time mode;
 - exact repeatable Fixed Min / Max / Width geometry;
-- explicit outside-geometry provenance rather than silent edge clamping.
+- explicit outside-geometry provenance rather than edge clamping.
 
 ## Scatter
 
-Current targeted maturity includes:
+Current mature capability includes:
 
 - Full Log / Current A/B / Saved Range;
 - shared Qualification;
@@ -103,16 +76,12 @@ Current targeted maturity includes:
 - bounded browser rendering while analysis uses the full qualified population;
 - point evidence;
 - box-region evidence;
-- prominent selected-region evidence summary;
+- selected-region evidence summary;
 - strongest contiguous selected-region visit → Logger;
 - saved setups;
 - qualified/region CSV export.
 
-### Research ideas deliberately deferred
-
-MegaLogViewer research also exposed viewport-pixel aggregation, true Z mean/min/max coloring and polynomial-fit-style options.
-
-These are **deferred**, not forgotten. The current Scatter track is closed because existing evidence/navigation/export behavior is sufficient for the approved scope. Revisit only if field use or measured performance demonstrates a real need.
+Research ideas such as viewport-pixel aggregation with retained provenance, true Z mean/min/max coloring and polynomial-fit-style options are deliberately deferred unless field use or measured performance creates a real need.
 
 ## Math Channels
 
@@ -130,62 +99,29 @@ Current expression language includes:
 
 Math Channels can be reused as Histogram numeric inputs and Qualification dependencies.
 
-### Deliberate differences from MegaLogViewer
-
-EpicScope intentionally improves on several historical behaviors observed in the reference tool:
-
-- conventional operator precedence remains the default;
-- missing history should not silently fabricate a zero unless an explicit compatibility mode is ever introduced;
-- qualification/filter failures remain visible rather than silently disabling the filter and broadening the analyzed population.
-
-Nested saved Math Channel references remain deliberately unsupported at this checkpoint.
+EpicScope intentionally keeps conventional operator precedence and explicit invalid/unavailable semantics rather than copying historical quirks. Nested saved Math Channel references remain deliberately unsupported at this checkpoint.
 
 ## Shared Qualification
 
-The same saved grouped ALL/ANY Qualification sets work across Table Generator, Distribution and Scatter.
-
-Qualification occurs before the analysis-specific aggregation step.
-
-Unavailable required dependencies remain visible/disabled rather than silently changing meaning.
+The same saved grouped ALL/ANY Qualification sets work across Table Generator, Distribution and Scatter. Qualification occurs before analysis-specific aggregation. Unavailable required dependencies remain visible rather than silently changing meaning.
 
 ## Shared timeline/docking invariant
 
 Logger owns the authoritative timeline component.
 
-Table Generator, Distribution and Scatter reuse the **complete `.timeline-wrap`** intact.
-
-Do not move `.timeline-shell` and `.edge-toggle--timeline` independently. The wrapper is the positioning context for the centered Hide/Show-controls edge tab. Splitting them recreates the placement/overlap regression fixed in PR #381.
+Table Generator, Distribution and Scatter reuse the **complete `.timeline-wrap`** intact. Do not move `.timeline-shell` and `.edge-toggle--timeline` independently; the wrapper is their positioning context.
 
 ## Research-parity milestones
 
-Important maturity milestones include:
+The closed checkpoint includes shared scope/evidence/Qualification/Math/help, Scatter box-region evidence and strongest visit, saved Scatter setups/export, Distribution setups/export/fixed geometry, expanded Math Channels, unit-aware selectors and the timeline-wrapper docking fix.
 
-- #339 — shared scope/evidence flow;
-- #340 — shared Qualification;
-- #344 — shared Math Channels;
-- #345 — unified help;
-- #372 — Scatter box-region evidence;
-- #373 — strongest contiguous Logger visit;
-- #374 — saved Scatter setups;
-- #375 — Scatter qualified/region CSV export;
-- #376 — Distribution saved setups + CSV;
-- #377 — Table Generator exact Median + aligned evidence;
-- #378 — Distribution exact fixed geometry;
-- #379 — expanded Math Channels;
-- #380 — research-parity closeout documentation;
-- #381 — shared timeline-wrapper docking fix;
-- #392 — unit-aware Histogram channel selectors.
+Historical PR numbers remain available through Git history; this document records the current product contract rather than serving as a chronological changelog.
 
 ## Cleanup direction
 
-Later cleanup may:
+Later cleanup may consolidate dormant editor paths, reduce DOM-derived state bridges and consolidate shared rendering/control helpers where doing so solves a concrete maintenance/correctness issue.
 
-- consolidate dormant/duplicate editor paths;
-- replace remaining text/DOM state bridges where they become a maintenance problem;
-- reduce runtime UI surgery;
-- consolidate shared rendering/control helpers.
-
-Do not reopen Histogram for broad feature expansion merely because cleanup opportunities exist.
+Do not reopen Histogram for broad feature expansion merely because internal cleanup opportunities exist.
 
 ## Histogram invariant
 
