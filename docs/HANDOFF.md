@@ -4,71 +4,77 @@
 
 Repository: `PJawZK/EpicEFI-EpicScope`
 
-Authoritative production branch: `main`
+Authoritative production and continuation branch: `main`.
 
-Current integration candidate branch:
+PR #462 — **Integrate Analyzer ownership and correctness fixes through point 11** — is merged.
 
-`integrate/points-2-11-clean`
+Merge commit:
 
-Current integration PR:
+`2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`
 
-PR #462 — **Integrate Analyzer ownership and correctness fixes through point 11**
-
-Current accepted browser-preview head before this documentation update:
+The exact runtime build accepted in browser before merge was:
 
 `b435702412642f039a8a7f49d33037c309bef9d8`
 
-Hosted production application:
+The later `7d0be605ecd11a35f46ea8552893842fbb1fedb4` commit was documentation-only. The merge commit incorporated that accepted runtime lineage. The observability architecture/research was then ported onto the accepted `main` baseline without runtime changes in `aa92d48f2671a1cd2f75f3b4fbcfb66e4dc35f19`.
+
+Hosted application:
 
 `https://pjawzk.github.io/EpicEFI-EpicScope/`
 
-PR preview:
+This file is the present-tense continuation authority. If older documentation conflicts, use current `main`, this handoff, the relevant subsystem authority, and current browser/runtime evidence.
 
-`https://pjawzk.github.io/EpicEFI-EpicScope/previews/pr-462/`
+## Current project position — 2026-10-16
 
-This file is the present-tense continuation authority. `DOCUMENTATION_MAP.md` defines how to interpret historical/reference documents. If older wording conflicts, use current `main`, this handoff, the relevant subsystem authority and current browser/runtime evidence.
-
-## Current project position — 2026-10-15
-
-- **Logger** — mature functional reference. Broad performance/micro-optimization work remains paused unless a measured regression appears.
-- **Histogram** — generic research-parity checkpoint closed for the approved scope. Table Generator, Distribution, Scatter and Math Channels are mature unless field use exposes a concrete correctness gap.
-- **Analyzer** — ownership/correctness/performance cleanup through points 1–11 is implemented on PR #462 and has now passed owner browser acceptance on the exact preview head listed above.
-- **VE Analyzer** — current Result View source-authority and heat-map regressions are fixed and browser-accepted. Session retention, retained-primary evidence reuse, semantic invalidation, active-domain routing and cooperative analysis all remain intact.
-- **Diagnostics / observability** — architecture/research work is documented separately; implementation may begin after PR #462 is merged/reconciled and the baseline is confirmed stable on `main`.
+- **Logger** — mature functional reference. Broad optimization remains paused unless a measured regression appears.
+- **Histogram** — generic research-parity checkpoint is closed for the approved scope. Table Generator, Distribution, Scatter and Math Channels are mature unless field use exposes a concrete gap.
+- **Analyzer** — ownership/correctness/performance cleanup through points 1–11 is merged into `main` and browser-accepted.
+- **VE Analyzer** — stable current maturity checkpoint. The Result View source-authority and heat-map regressions are closed; session retention, retained-primary evidence reuse, semantic invalidation, active-domain routing and cooperative analysis are accepted.
+- **UI** — immediate next work is a focused polish/consistency pass. Keep this visual/workflow-focused and avoid reopening accepted ownership architecture without a concrete defect.
+- **Diagnostics / observability** — D-058 is approved and the architecture/research now lives on `main`. This is the next substantial implementation track after UI polish.
+- **Point 12 telemetry async conversion/socket identity** — still reproduction-gated and lower priority.
 - **MLG v3** — researched compatibility extension, not yet implemented; v1/v2 remain production support.
-- **Linux production implementation** — future work after Web maturity/cleanup.
+- **Linux production implementation** — future work after Web functional maturity and observability consolidation.
 
-## Repository and branch state
+## Accepted Analyzer / VE baseline
 
-Historical remote-branch cleanup was completed earlier; old branches are not knowledge stores. Recover old implementation detail from Git history/merged PRs when needed.
+Points 1–11 are complete on `main`:
 
-The current integration work is isolated on `integrate/points-2-11-clean` / PR #462. The branch was reconstructed directly on production `main` instead of merging divergent temporary ancestry wholesale.
+1. large-log correctness and >320k-sample regression coverage;
+2. VE session authority and navigation retention;
+3. retained-primary evidence reuse;
+4. semantic cell-detail invalidation;
+5. selector/DOM ownership cleanup;
+6. active Analyzer routing and stale hidden-work rejection;
+7. measured CPU/correctness cleanup;
+8. cooperative VE batching/progress/cancel;
+9. visible/recoverable persistence failures;
+10. controller-owned analysis trace-load errors;
+11. transactional MSQ replacement with latest-generation authority.
 
-The temporary source branch `temp/epicscope-fixes-points-1-2-20261015` remains historical evidence for the points work only.
+Do not restore older controller/wrapper stacks or redo these points from historical branches.
 
-PR #462 is still draft/open at the time of this handoff update. Do not silently merge it. Merge/reconcile only as an explicit next action after confirming the PR head and CI still correspond to the accepted build or a documentation-only descendant of it.
+### Result View acceptance
 
-## Documentation authority map
+The prior defect used mutable rendered cell text as the source for later Result Views. Current behavior resolves source VE from retained authoritative analysis/model state instead.
 
-- `HANDOFF.md` — present-tense continuation authority.
-- `FIX_PLAN.md` — consolidated correctness/performance work list and scope boundaries.
-- `POINTS_5_11_INTEGRATION_REVIEW.md` — clean-integration review/evidence for points 5–11.
-- `OBSERVABILITY.md` — planned observability/flight-recorder architecture authority.
-- `research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md` — efficiency/performance implementation research for observability.
-- `DOCUMENTATION_MAP.md` — document authority/history classification.
-- `PRODUCT.md` — current product contract.
-- `ROADMAP.md` — current sequence/status.
-- `ANALYZER.md` — Analyzer family authority.
-- `HISTOGRAM.md` — Histogram authority.
-- `VE_ANALYZER.md` — VE algorithm/evidence/product contract.
-- `VE_ANALYZER_WORKBENCH.md` — VE UI/workflow contract.
-- `PREPOPULATED_WORKSPACES.md` / `STARTER_SYSTEM_VALIDATION.md` — Logger starter/workspace authority.
-- `TS_SHIM_STATUS.md` — current live-source validation authority.
-- `research/STATUS.md` — living research-to-product disposition.
+Owner browser acceptance confirmed on the exact preview runtime SHA `b435702412642f039a8a7f49d33037c309bef9d8`:
 
-Literal INI/MSQ/channel/table names remain preserved in user-facing behavior. Semantic roles may guide selection internally but must not rename source data.
+- VE values remain stable through repeated Result View switching;
+- Proposed VE uses normal VE heat;
+- alternate views scale cells that have a real selected metric;
+- untouched/fallback cells in alternate views keep the VE value but use neutral heat;
+- Lambda Delay values remain correct;
+- weak/evidence-only/no-evidence presentation remains sensible;
+- completed VE analysis survives switching analyzers and leaving/re-entering Analyzer;
+- no additional trace loading is caused by presentation-only view changes;
+- Analyzer responsiveness is substantially improved compared with the problematic pre-Codex state.
 
-## Approved visible workflow
+### Remaining VE ownership debt
+
+`readDelaySurface()` still reconstructs working delay information from rendered DOM even though the VE owner has authoritative working-delay state. This is later cleanup, not a current blocker. Do not broaden UI polish into this refactor unless a concrete issue makes it worthwhile.
+
+## Approved visible workflows
 
 Primary:
 
@@ -82,7 +88,7 @@ VE Analyzer:
 
 > **Load INI + MSQ + Log → select VE/target tables → verify actual mixture/RPM/load → qualify → discover/load lambda delay → activate working delay table → Run Analysis → review evidence/proposal**
 
-Load Data order:
+Load Data order remains:
 
 1. Load INI
 2. Load MSQ
@@ -108,237 +114,54 @@ EpicScope same-origin Vite proxy
 Logger / Analyzer / Histogram
 ```
 
-Stable workspace assignments normalize between canonical `ini:*` identities and matching raw Shim identities. Source transitions must never reapply starter templates, resurrect deleted channels or create raw + `ini:*` duplicate traces.
-
 The Pi Zero 2 W phone-hotspot workflow is validated: Pi and laptop can share the phone hotspot for `ts_shim`, and the Pi returns to the configured home network when the hotspot is disabled.
 
-## Logger checkpoint
+Stable workspace assignments normalize between canonical `ini:*` identities and matching raw Shim identities. Source transitions must never reapply starter templates, resurrect deleted channels or create raw + `ini:*` duplicate traces.
 
-Mature behavior includes MLG v1/v2 staged import, CRC/source diagnostics, large-log reuse, INI-backed channel binding, reusable workspaces, multi-pane Logger, A/B ranges, stable recorded/Shim channel identity, semantic starters, unavailable-channel handling and retained-memory/performance/runtime diagnostics.
+## Observability / diagnostics authority
 
-Starter invariant:
+D-058 establishes one bounded correlated observability/session architecture. Implementation authority is `docs/OBSERVABILITY.md`; performance-first implementation research is `docs/research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md`.
 
-- **Layout** = geometry.
-- **Starter template** = semantic recipe.
-- **Workspace** = ordinary user-owned state.
-
-A starter resolves once. Later source transitions normalize identities only.
-
-Do not resume broad Logger/performance micro-optimization without a concrete measured problem.
-
-## Histogram checkpoint
-
-Generic Histogram research parity is closed for the approved scope.
-
-Current mature surfaces are Table Generator, Distribution, Scatter and Math Channels. Logger owns the authoritative timeline; Histogram reuses the complete timeline shell.
-
-Point 9 on PR #462 adds explicit, recoverable persistence-failure feedback for saved Histogram/Math state without replacing the existing storage/cache owners.
-
-## Analyzer checkpoint — integrated points 1–11
-
-The integration candidate preserves the current Codex-era ownership model. Do **not** restore older controller files wholesale or roll back the points 5–11 architecture to fix local presentation defects.
-
-### Point 1 — large-log correctness
-
-Complete and already represented on production history before the clean integration reconstruction.
-
-- Removed sample-sized argument spreads in VE, Fueling and Ignition large evidence/segment paths and VE visit extrema.
-- >320k continuous-valid-sample regressions are retained in the clean integration.
-
-### Point 2 — VE session authority
-
-Complete.
-
-- Unchanged context/tune updates preserve working delay, retained primary result and proposal.
-- Real source/catalog/sample-count/validity/tune/selected-scope changes invalidate conservatively.
-- Existing generations reject stale asynchronous completions.
-- Logger → Analyzer navigation preserves completed VE session authority.
-
-### Point 3 — retained primary evidence
-
-Complete.
-
-- VE v2 owns `getPrimaryAnalysis()` and publishes borrowed read-only references to the current completed analysis.
-- Cell evidence consumes retained primary evidence/proposal instead of performing a second full-log VE analysis.
-- No duplicate trace load / qualification / evidence-map / proposal run is required to open a cell.
-
-### Point 4 — semantic detail invalidation
-
-Complete.
-
-- Result View changes are presentation-only with respect to primary-analysis identity.
-- Cell-detail cache invalidation follows semantic owner notifications rather than broad root input/change observers.
-- Popup detail/strongest-visit work is reusable for the current primary analysis.
-
-### Point 5 — selector / DOM ownership
-
-Complete.
-
-- Analyzer and Histogram document-wide option-decoration scans/observers were removed.
-- Existing selector owners create/label/validate their own options.
-- VE actual-mixture eligibility/default correction is selector-local.
-- No replacement global observer/listener/lifecycle wrapper was introduced.
-
-### Point 6 — active Analyzer routing
-
-Complete.
-
-- Only the selected active Analyzer domain receives expensive work.
-- Hidden controllers retain latest pending input and defer calculation until activated.
-- Deactivation/real replacement advances existing generations so obsolete completions/errors cannot update a newer session.
-- Completed VE authority survives navigation where semantics remain unchanged.
-
-### Point 7 — CPU/correctness cleanup
-
-Complete for the profiled scope.
-
-- VE robust weighted estimates prepare/sort observations once and reuse the sorted input for median/P10/P90.
-- Channel-role normalization is cached by immutable definition identity.
-- Idle/AE extrema use bounded iteration rather than argument spreads.
-- Event-table preparation is capped to the displayed 200 rows while summaries retain full evidence.
-- Event-envelope percentiles sort each bin once and reuse it.
-
-No unprofiled rolling-window/recovery rewrite was performed.
-
-### Point 8 — cooperative VE work
-
-Complete for the profiled VE evidence pipeline.
-
-- VE calculation uses cooperative bounded batches/yields rather than adding an unjustified new worker/lifecycle model.
-- Progress and explicit Cancel are present.
-- Existing generation/activity ownership performs cancellation/stale rejection.
-- Browser acceptance reports Analyzer responsiveness is substantially improved versus the earlier pre-Codex regression state.
-
-### Point 9 — persistence failure visibility/recovery
-
-Complete.
-
-- Distribution, Scatter, Table Generator presets/filters and Math Channel save/delete paths surface storage failure.
-- Failed changes remain usable in current-session state and expose Retry.
-- Existing storage schemas, keys and caches remain authoritative; no automatic retry loop or parallel persistence architecture was added.
-
-### Point 10 — analysis trace-load errors
-
-Complete.
-
-- Range comparison, Tune correlation, Boost, specialized suite, Ignition and Fuel/Injector handle current-generation trace-load rejection at their existing controller boundaries.
-- Obsolete/hidden failures remain ignored through point-6 guards.
-- Current failures hide stale output, present safe actionable error text and allow retry through the existing control.
-
-### Point 11 — transactional MSQ replacement
-
-Complete.
-
-- The last valid tune/session stays authoritative while a replacement is read, parsed, structurally validated and normalized.
-- Failed replacement preserves the old tune and valid VE working delay/result/proposal/evidence.
-- Latest selection wins through an app-shell generation token, including when the latest selection fails.
-- A successful accepted replacement publishes the new model once through the existing tune owner and invalidates dependent analysis normally.
-- This remains a transactional MSQ replacement change only; it is not a general file-loading refactor.
-
-### Point 12 — telemetry async conversion/socket identity
-
-Not implemented. Remains lower-priority and reproduction-gated. Existing ArrayBuffer transport and frame-generation guards reduce exposure. Do not implement without a controlled deferred-conversion/reconnect reproducer.
-
-## VE Result View blocker — RESOLVED and browser-accepted
-
-The earlier blocker was that v7 reparsed mutable visible cell text when switching Result Views. Because the UI refinement layer also rewrites presentation text, one Result View could become the next Result View's source and original VE values could degrade or disappear.
-
-### Source-authority repair
-
-Commit lineage on PR #462 now resolves current VE from retained primary analysis/model coordinates, with stable cell metadata as fallback, instead of treating the currently rendered Result View text as authoritative source state.
-
-Important implementation constraint retained:
-
-- app-level UI refinement reverses rendered load rows;
-- model lookup therefore maps RPM/load coordinates back to authoritative axes rather than deriving model index from DOM row position.
-
-The earlier value-loss repair was introduced in commit:
-
-`5608edd00a7a5781d29d488c61fbb5e5bfd07cf3`
-
-A full-stack browser regression module was then added in:
-
-`c23fabeeedf11295cb900ee3d00076f048b5f251`
-
-The regression exercises the VE controller together with `installVeAnalyzerUiRefinements()`, repeated Result View switching, measured/weak/evidence-only/no-evidence presentation classes, retained primary identity, no extra trace loading and valid interpolated Lambda Delay behavior.
-
-### Heat-map behavior
-
-Owner browser testing showed that value retention was fixed but the first repair did not match the intended historical heat-map behavior.
-
-The accepted visual rule is now:
-
-- **Proposed VE** — use the VE-table heat-map.
-- **Alternate Result Views** — cells with a real selected metric use that Result View's metric scale.
-- **Untouched/fallback cells in alternate views** — show the preserved VE value but use neutral heat, rather than carrying Proposed VE coloring into the metric view.
-- **Lambda Delay** — valid interpolated delay remains a real metric and keeps the delay view's metric/range behavior.
-
-The accepted preview head containing this heat-map correction is:
-
-`b435702412642f039a8a7f49d33037c309bef9d8`
-
-Web CI run `38813570272` passed type-check, tests and production build for that head.
-
-### Owner browser acceptance on exact preview head
-
-The owner tested the exact PR preview build at `b435702412642f039a8a7f49d33037c309bef9d8` with the normal real-data workflow and confirmed:
-
-- VE values remain stable through repeated Result View switching;
-- heat-map behavior now matches the intended pre-regression behavior;
-- Lambda Delay table values remain correct;
-- completed VE analysis survives switching to other analyzers and leaving/re-entering Analyzer;
-- weak cells remain sensible;
-- no noticeable Result View/session regression remains;
-- Analyzer responsiveness is substantially better than the problematic pre-Codex state.
-
-Therefore the Result View blocker is **closed** and the points 1–11 integration is **browser-accepted at the exact preview head above**.
-
-A documentation-only descendant of that accepted head does not require repeating the runtime browser test if no runtime/build source changes are introduced. Any subsequent runtime code change before merge requires fresh CI and exact-head browser acceptance proportional to the change.
-
-## Remaining VE ownership debt
-
-`readDelaySurface()` still reconstructs the working delay surface from rendered DOM headers/cells/datasets even though the VE owner has authoritative working-delay state.
-
-This is **not** the cause of the resolved Result View bug and must not block PR #462. Treat it as later ownership cleanup, not as justification for widening the accepted integration before merge.
-
-## Observability / diagnostics continuation
-
-A separate planned feature track consolidates current Diagnostics, Performance and Report systems into one bounded observability/flight-recorder architecture.
-
-Implementation authority: `docs/OBSERVABILITY.md`.
-
-Performance-specific research: `docs/research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md`.
-
-Established constraints include:
+Core constraints already accepted:
 
 - one authoritative bounded observability/session stream;
-- specialized reports as projections rather than parallel stores;
-- packed/efficient hot-path representation, separate critical/detail retention, pre-insertion coalescing and backpressure;
-- numeric stable IDs for common fields, monotonic timestamps and primitive operation IDs;
-- owner-provided revisions/fingerprints; no arbitrary state hashing;
+- specialized diagnostics/reports are projections rather than parallel durable stores;
+- existing useful probes stay in their natural owners;
+- packed/efficient hot-path representation and separate critical/detail retention;
+- pre-insertion coalescing/backpressure so event storms make recording cheaper rather than worse;
+- stable machine IDs and explicit numeric operation correlation;
+- owner-provided revisions/fingerprints, never arbitrary full-state hashing;
 - event/boundary-driven snapshots, not broad polling;
-- O(1) streaming anomaly state; expensive causal analysis deferred;
-- batched/chunked persistence rather than per-event writes;
-- previous-session black-box tail plus anomaly/error context windows;
+- O(1)-amortized streaming anomaly state with expensive causal analysis deferred;
+- batched/chunked structured persistence rather than one write per event;
+- bounded previous-session tail plus anomaly/error context windows;
 - recursion/self-observation protection;
-- explicit observability-on versus minimal/off overhead benchmarks;
-- no automatic runtime mutation/repair from anomaly detection initially.
+- explicit minimal/off versus enabled overhead benchmarks;
+- anomaly detection initially reports evidence and does not automatically mutate/repair runtime state;
+- local-first behavior with no silent telemetry or raw log/tune upload.
 
-Do not begin a broad observability implementation by disturbing the now-accepted PR #462 runtime baseline. Merge/reconcile the accepted integration first unless a concrete merge blocker appears.
+## Repository cleanup state
+
+PR #462 is merged and is the accepted runtime baseline. The old Codex/VE validation PRs and the stale observability PR are historical only and should be closed after their useful content is represented on `main`.
+
+Remote branches are not knowledge stores. Git/merged PR history and current documentation preserve provenance. `browser-previews` remains an infrastructure/deployment branch; `main` is the only product authority.
+
+The GitHub connector available in this session can close PRs and audit refs but does not expose remote-branch deletion. Any branch refs classified as superseded in `BRANCH_CLEANUP_2026-10-15.md` may be deleted manually or by normal Git tooling without losing current authority.
 
 ## Immediate continuation order
 
-1. Confirm PR #462 current head is the accepted runtime head `b435702412642f039a8a7f49d33037c309bef9d8` or only a documentation-only descendant with passing CI.
-2. Merge/reconcile PR #462 with `main` when explicitly requested/approved.
-3. After merge, verify `main` contains the accepted points 1–11 integration and Result View fixes; do not redo already accepted work.
-4. Point 12 remains reproduction-gated and lower priority.
-5. The DOM-derived Lambda Delay surface remains a later ownership-cleanup candidate, not a current blocker.
-6. After the correctness/performance baseline is stable on `main`, begin the observability implementation plan from its documented step 1 or continue the next explicitly chosen EpicScope maturity target.
+1. Complete a focused UI polish pass from current `main`: consistency, spacing, control hierarchy, visual rough edges and accessibility/interaction details. Preserve accepted runtime semantics.
+2. Run normal CI and browser sanity checks after UI work, especially Logger/Analyzer/Histogram navigation and VE Result Views.
+3. Begin D-058 observability implementation from the staged plan in `OBSERVABILITY.md`, starting with benchmark baseline plus record/session/operation/retention contracts rather than UI-first diagnostics work.
+4. Migrate existing diagnostics/performance/runtime-error/report paths incrementally; delete old collectors/builders only after parity.
+5. Keep point 12 reproduction-gated.
+6. Resume lower-priority Analyzer maturity or MLG v3 only when justified after observability consolidation.
+7. Perform Web functional maturity review before Linux becomes the primary implementation target.
 
-## Acceptance rule
+## Acceptance and safety rules
 
-For VE/Analyzer runtime work, CI is necessary but not sufficient. Browser behavior on the actual integrated build is the acceptance authority.
+For VE/Analyzer runtime work, CI is necessary but not sufficient; browser behavior on the integrated build remains acceptance authority.
 
-The Result View source-authority and heat-map repairs are accepted for preview SHA `b435702412642f039a8a7f49d33037c309bef9d8`.
+UI polish must not silently alter analysis semantics, qualification, source/tune authority, persistence, or ECU interaction.
 
-Never automatically write or Burn to the ECU. Original VE/tune data, Analyzer evidence/proposal and any user-reviewed application result remain distinct states.
+Never automatically write or Burn to the ECU. Original tune/VE data, Analyzer evidence/proposal and any user-reviewed application result remain distinct states.
