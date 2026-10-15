@@ -1,3 +1,6 @@
+import { createLocalPersistenceFeedback } from './local-persistence-feedback';
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { histogramChannelOptionLabel } from './histogram-channel-options';
 import { buildNumericHeatmap, type NumericHeatmapResult } from '../../../../core/analysis/heatmap';
 import { buildCellCenteredWeightedMean } from '../../../../core/analysis/weighted-cell-mean';
 import { buildTableCellEvidenceRows } from '../../../../core/analysis/table-cell-evidence';
@@ -399,8 +402,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const refillChannelSelect = (select: HTMLSelectElement, previous: string, includeNone = false): void => {
     select.replaceChildren();
     if (includeNone) select.add(new Option('(none)', ''));
-    for (const channel of context.channels) select.add(new Option(channelLabel(channel), channel.id));
-    for (const field of calculatedFields) select.add(new Option(`ƒ ${field.name}`, formulaChannelId(field.id)));
+    for (const channel of context.channels) select.add(new Option(histogramChannelOptionLabel(channel), channel.id));
+    for (const field of calculatedFields) select.add(new Option(histogramChannelOptionLabel({ sourceName: field.name, unit: field.unit }), formulaChannelId(field.id)));
     if (previous && logicalChannelExists(previous)) select.value = previous;
   };
 
@@ -435,13 +438,20 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     formulaDeleteButton.disabled = !formulaSelect.value;
   };
 
+  const formulaFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.histogram-formula-popover')!, 'calculated-fields',
+    () => saveHistogramCalculatedFields(loadHistogramCalculatedFields()));
+  const filterFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.histogram-filter-library')!, 'filter-sets',
+    () => saveHistogramFilterSets(loadHistogramFilterSets()));
+  const presetFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.histogram-table-preset-popover')!, 'table-presets',
+    () => saveHistogramTablePresets(loadHistogramTablePresets()));
+
   const loadSelectedFormulaEditor = (): void => {
     const field = calculatedFields.find((candidate) => candidate.id === formulaSelect.value);
     formulaNameInput.value = field?.name ?? '';
     formulaExpressionInput.value = field?.expression ?? '';
     formulaUnitInput.value = field?.unit ?? '';
     formulaDeleteButton.disabled = !field;
-    formulaStatus.textContent = field ? 'Editing saved calculated field.' : 'Use [Channel Name] references. No JavaScript is executed.';
+    formulaStatus.textContent = field ? 'Editing calculated field.' : 'Use [Channel Name] references. No JavaScript is executed.';
   };
 
   const saveFormula = (): void => {
@@ -461,13 +471,12 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       calculatedFields = existing
         ? calculatedFields.map((candidate) => candidate.id === existing.id ? field : candidate)
         : [...calculatedFields, field];
-      const persisted = saveHistogramCalculatedFields(calculatedFields);
+      formulaFeedback.report(saveHistogramCalculatedFields(calculatedFields), 'save');
       populateFormulaManager();
       formulaSelect.value = field.id;
+      formulaDeleteButton.disabled = false;
       refreshLogicalSelectors();
-      formulaStatus.textContent = persisted
-        ? `Saved ${field.name}.`
-        : `${field.name} is available this session; could not save locally.`;
+      formulaStatus.textContent = `${field.name} is available for calculation.`;
       scheduleRender();
     } catch (error) {
       formulaStatus.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
@@ -477,7 +486,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const deleteFormula = (): void => {
     if (!formulaSelect.value) return;
     calculatedFields = calculatedFields.filter((field) => field.id !== formulaSelect.value);
-    saveHistogramCalculatedFields(calculatedFields);
+    formulaFeedback.report(saveHistogramCalculatedFields(calculatedFields), 'delete');
     formulaSelect.value = '';
     populateFormulaManager();
     loadSelectedFormulaEditor();
@@ -705,15 +714,16 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       conditions: filterStates(),
     };
     filterSets = existing ? filterSets.map((candidate) => candidate.id === existing.id ? set : candidate) : [...filterSets, set];
-    saveHistogramFilterSets(filterSets);
+    filterFeedback.report(saveHistogramFilterSets(filterSets), 'save');
     populateFilterSets();
     filterSetSelect.value = set.id;
+    filterSetApplyButton.disabled = false; filterSetDeleteButton.disabled = false;
   };
 
   const deleteSelectedFilterSet = (): void => {
     if (!filterSetSelect.value) return;
     filterSets = filterSets.filter((set) => set.id !== filterSetSelect.value);
-    saveHistogramFilterSets(filterSets);
+    filterFeedback.report(saveHistogramFilterSets(filterSets), 'delete');
     filterSetSelect.value = '';
     populateFilterSets();
   };
@@ -763,12 +773,11 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!name) return;
     const preset = capturePreset(selected?.id ?? createHistogramLocalId('preset'), name);
     tablePresets = selected ? tablePresets.map((candidate) => candidate.id === selected.id ? preset : candidate) : [...tablePresets, preset];
-    const persisted = saveHistogramTablePresets(tablePresets);
+    presetFeedback.report(saveHistogramTablePresets(tablePresets), 'save');
     populatePresets();
     presetSelect.value = preset.id;
-    presetSaveButton.title = persisted
-      ? 'Save the current Table Generator setup'
-      : 'Available this session; could not save locally.';
+    presetApplyButton.disabled = false; presetDeleteButton.disabled = false;
+    presetSaveButton.title = 'Save the current Table Generator setup';
   };
 
   const setIfPresent = (select: HTMLSelectElement, value: string): void => {
@@ -816,7 +825,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const deleteSelectedPreset = (): void => {
     if (!presetSelect.value) return;
     tablePresets = tablePresets.filter((preset) => preset.id !== presetSelect.value);
-    saveHistogramTablePresets(tablePresets);
+    presetFeedback.report(saveHistogramTablePresets(tablePresets), 'delete');
     presetSelect.value = '';
     populatePresets();
   };
@@ -1474,24 +1483,27 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const previousY = ySelect.value;
     const previousZ = zSelect.value;
     const previousDelta = deltaSelect.value;
+    const channelsChanged = !sameChannelOptionCatalog(context.channels, nextContext.channels) || xSelect.options.length === 0;
     context = nextContext;
     closeCellInspector();
-    refillChannelSelect(xSelect, previousX);
-    refillChannelSelect(ySelect, previousY);
-    refillChannelSelect(zSelect, previousZ);
-    refillChannelSelect(deltaSelect, previousDelta, true);
-    if (!previousX || !logicalChannelExists(previousX)) {
-      xSelect.value = preferredChannel(context.channels, [/\brpm\b/i, /engine.*speed/i], 0)?.id ?? '';
-    }
-    if (!previousY || !logicalChannelExists(previousY)) {
-      ySelect.value = preferredChannel(context.channels, [/\bmap\b/i, /manifold.*pressure/i, /\bload\b/i], 1)?.id ?? xSelect.value;
-    }
-    if (!previousZ || !logicalChannelExists(previousZ)) {
-      zSelect.value = preferredChannel(context.channels, [/\bafr\b/i, /lambda/i, /spark.*adv/i], 2)?.id ?? xSelect.value;
-    }
-    for (const filter of filters) {
-      const previous = filter.channel.value;
-      refillChannelSelect(filter.channel, previous);
+    if (channelsChanged) {
+      refillChannelSelect(xSelect, previousX);
+      refillChannelSelect(ySelect, previousY);
+      refillChannelSelect(zSelect, previousZ);
+      refillChannelSelect(deltaSelect, previousDelta, true);
+      if (!previousX || !logicalChannelExists(previousX)) {
+        xSelect.value = preferredChannel(context.channels, [/\brpm\b/i, /engine.*speed/i], 0)?.id ?? '';
+      }
+      if (!previousY || !logicalChannelExists(previousY)) {
+        ySelect.value = preferredChannel(context.channels, [/\bmap\b/i, /manifold.*pressure/i, /\bload\b/i], 1)?.id ?? xSelect.value;
+      }
+      if (!previousZ || !logicalChannelExists(previousZ)) {
+        zSelect.value = preferredChannel(context.channels, [/\bafr\b/i, /lambda/i, /spark.*adv/i], 2)?.id ?? xSelect.value;
+      }
+      for (const filter of filters) {
+        const previous = filter.channel.value;
+        refillChannelSelect(filter.channel, previous);
+      }
     }
     populateFormulaManager();
     populateFilterSets();

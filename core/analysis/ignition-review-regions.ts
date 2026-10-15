@@ -431,8 +431,7 @@ export function analyzeIgnitionReviewRegions(
 
   const finishSegment = (): void => {
     if (!segment.length) return;
-    const accepted = stableSamplesFromSegment(segment, minimumStableDurationMs, maxRpmRate, maxLoadRate);
-    for (const sample of accepted) stableSamples.push(sample);
+    for (const sample of stableSamplesFromSegment(segment, minimumStableDurationMs, maxRpmRate, maxLoadRate)) stableSamples.push(sample);
     segment = [];
   };
 

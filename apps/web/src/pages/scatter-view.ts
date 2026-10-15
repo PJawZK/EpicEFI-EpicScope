@@ -1,3 +1,6 @@
+import { createLocalPersistenceFeedback } from './local-persistence-feedback';
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { histogramChannelOptionLabel } from './histogram-channel-options';
 import { buildNumericScatter, selectNumericScatterRegion, summarizeNumericScatterRegionRuns, type NumericScatterRegionSelection, type NumericScatterResult } from '../../../../core/analysis/scatter';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import type { HistogramPageContext, HistogramTraceContext } from './histogram-page';
@@ -300,7 +303,7 @@ function drawHeatLegend(ctx: CanvasRenderingContext2D, x: number, y: number, hei
 }
 
 function sameChannelCatalog(left: HistogramPageContext['channels'], right: HistogramPageContext['channels']): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+  return sameChannelOptionCatalog(left, right);
 }
 
 export function createScatterView(): ScatterViewController {
@@ -472,7 +475,7 @@ export function createScatterView(): ScatterViewController {
 
   const fillSelect = (select: HTMLSelectElement, preferred: string, fallbackIndex: number): void => {
     select.replaceChildren();
-    for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    for (const channel of context.channels) select.add(new Option(histogramChannelOptionLabel(channel), channel.id));
     if (context.channels.some((channel) => channel.id === preferred)) select.value = preferred;
     else if (context.channels[fallbackIndex]) select.value = context.channels[fallbackIndex]!.id;
   };
@@ -957,6 +960,9 @@ export function createScatterView(): ScatterViewController {
     });
   }
 
+  const presetFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.scatter-preset-popover')!, 'scatter-presets',
+    () => saveHistogramScatterPresets(loadHistogramScatterPresets()));
+
   presetSelect.addEventListener('change', () => { presetApply.disabled = !presetSelect.value; presetDelete.disabled = !presetSelect.value; });
   presetApply.addEventListener('click', () => {
     const preset = scatterPresets.find((candidate) => candidate.id === presetSelect.value);
@@ -979,14 +985,14 @@ export function createScatterView(): ScatterViewController {
     const id = existing?.id ?? createHistogramLocalId('scatter-preset');
     const next = currentPresetState(id, name);
     scatterPresets = existing ? scatterPresets.map((candidate) => candidate.id === id ? next : candidate) : [...scatterPresets, next];
-    saveHistogramScatterPresets(scatterPresets);
+    presetFeedback.report(saveHistogramScatterPresets(scatterPresets), 'save');
     populatePresetSelect(id);
   });
   presetDelete.addEventListener('click', () => {
     const id = presetSelect.value;
     if (!id) return;
     scatterPresets = scatterPresets.filter((candidate) => candidate.id !== id);
-    saveHistogramScatterPresets(scatterPresets);
+    presetFeedback.report(saveHistogramScatterPresets(scatterPresets), 'delete');
     populatePresetSelect();
   });
   exportPaneSelect.addEventListener('change', updateExportActions);

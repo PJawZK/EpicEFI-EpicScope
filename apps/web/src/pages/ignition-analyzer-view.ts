@@ -1,3 +1,5 @@
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { analyzeIgnitionBehavior, type IgnitionCorrectionEvent, type IgnitionTimingStepEvent } from '../../../../core/analysis/ignition-behavior-analyzer';
 import {
   analyzeIgnitionReviewRegions,
@@ -21,6 +23,7 @@ import { createIgnitionTuneSetup } from './ignition-tune-setup';
 
 export interface IgnitionAnalyzerController {
   readonly element: HTMLElement;
+  setActive(active: boolean): void;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
@@ -347,6 +350,13 @@ type CombinedEvent =
 
 export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+
+  let active = true;
+  let applyingPending = false;
+  let pendingContext: LoggerAnalysisContext | undefined;
+  let pendingTune: readonly [TuneModel | undefined, string | undefined] | undefined;
+  let appliedTuneModel: TuneModel | undefined;
+  let appliedTuneSource: string | undefined;
   let analysisGeneration = 0;
   const rememberedSelections = new Map<string, string>();
   let analyzeCurrent: () => Promise<void> = async () => {};
@@ -435,6 +445,12 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   if (!controls || !optionsGrid || !tuneSetupHost || !empty || !content || !summary || !reviewSection || !reviewTitle || !reviewNote || !reviewHead || !reviewBody || !detailsBody || !evidence || !evidenceCanvas || !evidenceAll || !eventsHead || !eventsBody || !guidance || !eventsCount || !eventsPrev || !eventsNext || !eventsPage || !evidenceNote) {
     throw new Error('Ignition Analyzer structure is incomplete.');
   }
+
+  const emptyTitle = empty.querySelector<HTMLElement>('strong')!;
+  const emptyHint = empty.querySelector<HTMLElement>('span')!;
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.textContent;
+  let traceLoadFailed = false;
   tuneSetupHost.append(tuneSetup.element);
   addInlineHelpButton(reviewTitle, REVIEW_HELP, showInlineHelpPopover);
 
@@ -712,7 +728,13 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   };
 
   analyzeCurrent = async (): Promise<void> => {
+    if (!active || applyingPending) return;
     const generation = ++analysisGeneration;
+    if (traceLoadFailed) {
+      traceLoadFailed = false;
+      emptyTitle.textContent = defaultEmptyTitle;
+      emptyHint.textContent = defaultEmptyHint;
+    }
     const advanceId = roleSelect('advance')?.value;
     const scope = selectedScope();
     if (!advanceId || !scope) {
@@ -727,8 +749,21 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       if (id) selected.set(role.key, id);
     }
     const { startMs, endMs } = analyzerScopeBounds(scope);
-    const loaded = await context.loadTraces([...selected.values()], startMs, endMs);
-    if (generation !== analysisGeneration) return;
+    let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    try {
+      loaded = await context.loadTraces([...selected.values()], startMs, endMs);
+    } catch (error) {
+      if (!active || generation !== analysisGeneration) return;
+      reviewSection.hidden = true;
+      currentEvents = []; currentEventSeries = []; restoreAllEvidence = undefined;
+      traceLoadFailed = true;
+      empty.hidden = false; content.hidden = true;
+      emptyTitle.textContent = 'Ignition analysis could not load log channels.';
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The log data could not be loaded.';
+      emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
+      return;
+    }
+    if (!active || generation !== analysisGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<RoleKey, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
@@ -873,7 +908,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       const select = document.createElement('select');
       select.dataset.role = role.key;
       select.add(new Option(role.required ? '(select channel)' : '(none)', ''));
-      for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+      for (const channel of context.channels) select.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
       const remembered = rememberedSelections.get(role.key);
       if (remembered && [...select.options].some((option) => option.value === remembered)) {
         select.value = remembered;
@@ -931,10 +966,42 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     void analyzeCurrent();
   };
 
-  return {
+  const setActive = (next: boolean): void => {
+    if (active === next) return;
+    active = next;
+    if (!active) { analysisGeneration += 1; return; }
+    applyingPending = true;
+    const tune = pendingTune; pendingTune = undefined;
+    if (tune) controller.setTuneModel(tune[0], tune[1]);
+    const nextContext = pendingContext; pendingContext = undefined;
+    if (nextContext) controller.setContext(nextContext);
+    applyingPending = false;
+    void analyzeCurrent();
+  };
+
+  const controller: IgnitionAnalyzerController = {
     element: root,
-    setContext(nextContext) { context = nextContext; rebuild(); },
-    setTuneModel(model, sourceName) { tuneSetup.setTuneModel(model, sourceName); },
+    setActive,
+    setContext(nextContext) {
+      if (!active) { pendingContext = nextContext; return; }
+      const channelsChanged = !sameChannelOptionCatalog(context.channels, nextContext.channels);
+      context = nextContext;
+      if (channelsChanged || !controls.children.length) rebuild();
+      else {
+        const scope = controls.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+        if (scope) populateAnalyzerScopeSelect(scope, context, scope.value);
+        void analyzeCurrent();
+      }
+    },
+    setTuneModel(model, sourceName) {
+      if (!active) { pendingTune = [model, sourceName]; return; }
+      if (model === appliedTuneModel && sourceName === appliedTuneSource) return;
+      appliedTuneModel = model; appliedTuneSource = sourceName;
+      analysisGeneration += 1;
+      tuneSetup.setTuneModel(model, sourceName);
+      void analyzeCurrent();
+    },
     refresh: () => { void analyzeCurrent(); },
   };
+  return controller;
 }

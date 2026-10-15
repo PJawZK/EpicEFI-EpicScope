@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { strongestVeEvidenceVisit } from '../../apps/web/src/pages/ve-analyzer-cell-evidence';
 
 describe('VE Analyzer cell evidence review', () => {
+  it('preserves a visit above 320k samples and calculates extrema across its full timestamp range', () => {
+    const count = 320_459;
+    const indices = Uint32Array.from({ length: count }, (_, index) => index);
+    const visit = strongestVeEvidenceVisit(indices, (sample) => sample === 160_000 ? -500 : sample * 10);
+    expect(visit?.sampleIndices).toHaveLength(count);
+    expect(visit?.timeMs).toHaveLength(count);
+    expect(visit?.startSampleIndex).toBe(0);
+    expect(visit?.endSampleIndex).toBe(count - 1);
+    expect(visit?.timeMs[160_000]).toBe(-500);
+    expect(visit?.durationMs).toBe((count - 1) * 10 + 500);
+  });
+
   it('selects the longest contiguous source visit for Logger navigation', () => {
     const times = new Map<number, number>([
       [10, 1000], [11, 1010], [12, 1020],
@@ -26,16 +38,5 @@ describe('VE Analyzer cell evidence review', () => {
 
   it('returns undefined when none of the retained samples have timestamps', () => {
     expect(strongestVeEvidenceVisit([1, 2, 3], () => undefined)).toBeUndefined();
-  });
-
-  it('handles a 320k-sample evidence visit without Math extrema argument overflow', () => {
-    const sampleCount = 320_458;
-    const samples = Uint32Array.from({ length: sampleCount }, (_, index) => index);
-    const visit = strongestVeEvidenceVisit(samples, (sample) => sample * 10);
-
-    expect(visit?.sampleIndices).toHaveLength(sampleCount);
-    expect(visit?.startSampleIndex).toBe(0);
-    expect(visit?.endSampleIndex).toBe(sampleCount - 1);
-    expect(visit?.durationMs).toBe((sampleCount - 1) * 10);
   });
 });

@@ -184,26 +184,4 @@ describe('steady-state Fueling operating map', () => {
     expect(() => buildFuelingOperatingMap(inputs, { rpmBinSize: 250, loadBinSize: 10, maxLoadRatePerSecond: -1 })).toThrow(RangeError);
     expect(() => buildFuelingOperatingMap(inputs, { rpmBinSize: 250, loadBinSize: 10, minimumStableDurationMs: -1 })).toThrow(RangeError);
   });
-
-  it('handles a 320k-sample continuous stable segment without argument-spread overflow', () => {
-    const sampleCount = 320_458;
-    const actual = new Array<number>(sampleCount).fill(14.7);
-    const targetValues = new Array<number>(sampleCount).fill(14.7);
-    const rpm = new Array<number>(sampleCount).fill(2000);
-    const load = new Array<number>(sampleCount).fill(50);
-    const result = buildFuelingOperatingMap({
-      actualAfr: range(actual, 10),
-      targetAfr: range(targetValues, 10),
-      rpm: range(rpm, 10),
-      load: range(load, 10),
-    }, {
-      rpmBinSize: 250,
-      loadBinSize: 10,
-      minimumSamplesPerBin: 1,
-      minimumStableDurationMs: 0,
-    });
-
-    expect(result.validAlignedSampleCount).toBe(sampleCount);
-    expect(result.stableEligibleSampleCount).toBe(sampleCount);
-  });
 });

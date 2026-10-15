@@ -1,3 +1,5 @@
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { analyzeBoost, compareBoostOperatingPoints, summarizeBoostDutyResponse, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
 import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
@@ -8,6 +10,7 @@ import { ensureBoostAnalyzerHelp } from './boost-analyzer-help';
 
 export interface BoostAnalyzerViewController {
   readonly element: HTMLElement;
+  setActive(active: boolean): void;
   setContext(context: LoggerAnalysisContext): void;
   refresh(): void;
 }
@@ -28,11 +31,15 @@ function sameChannelCatalog(
   left: LoggerAnalysisContext['channels'],
   right: LoggerAnalysisContext['channels'],
 ): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+  return sameChannelOptionCatalog(left, right);
 }
 
 export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+
+  let active = true;
+  let applyingPending = false;
+  let pendingContext: LoggerAnalysisContext | undefined;
   let currentResult: BoostAnalyzerResult | undefined;
   let renderGeneration = 0;
   let analysisFilterSets = loadAnalysisFilterSets();
@@ -201,6 +208,12 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     throw new Error('Boost Analyzer view structure is incomplete.');
   }
 
+  const emptyTitle = empty.querySelector<HTMLElement>('strong')!;
+  const emptyHint = empty.querySelector<HTMLElement>('span')!;
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.textContent;
+  let traceLoadFailed = false;
+
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-boost="${name}"]`);
     if (!node) throw new Error(`Boost Analyzer field is missing: ${name}`);
@@ -251,7 +264,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
 
   const addOptionalTraceOptions = (select: HTMLSelectElement, preferred: string): void => {
     select.replaceChildren(new Option('(none)', ''));
-    for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    for (const channel of context.channels) select.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
     if ([...select.options].some((option) => option.value === preferred)) select.value = preferred;
   };
 
@@ -277,7 +290,13 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   const render = async (): Promise<void> => {
+    if (!active || applyingPending) return;
     const generation = ++renderGeneration;
+    if (traceLoadFailed) {
+      traceLoadFailed = false;
+      emptyTitle.textContent = defaultEmptyTitle;
+      emptyHint.textContent = defaultEmptyHint;
+    }
     const closedLoop = isClosedLoop();
     const measuredId = measuredSelect.value || context.channels[0]?.id;
     const targetId = closedLoop ? (targetSelect.value || undefined) : undefined;
@@ -307,8 +326,21 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       ...[measuredId, targetId, rpmId, tpsId, upperId, lowerId].filter((id): id is string => id !== undefined),
       ...filterChannelIds,
     ])];
-    const loaded = comparisonScope ? await context.loadTraces(requestedIds) : await context.loadTraces(requestedIds, startMs, endMs);
-    if (generation !== renderGeneration) return;
+    let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    try {
+      loaded = comparisonScope ? await context.loadTraces(requestedIds) : await context.loadTraces(requestedIds, startMs, endMs);
+    } catch (error) {
+      if (!active || generation !== renderGeneration) return;
+      currentResult = undefined;
+      refreshButton.disabled = false;
+      traceLoadFailed = true;
+      empty.hidden = false; content.hidden = true;
+      emptyTitle.textContent = 'Boost analysis could not load log channels.';
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The log data could not be loaded.';
+      emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
+      return;
+    }
+    if (!active || generation !== renderGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const measured = byId.get(measuredId);
     const target = targetId ? byId.get(targetId) : undefined;
@@ -587,6 +619,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
+    if (!active) { pendingContext = nextContext; return; }
     const previousMeasured = measuredSelect.value;
     const previousTarget = targetSelect.value;
     const previousRpm = rpmSelect.value;
@@ -599,7 +632,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     if (channelsChanged) {
-      measuredSelect.replaceChildren(...context.channels.map((channel) => new Option(channel.displayName || channel.sourceName, channel.id)));
+      measuredSelect.replaceChildren(...context.channels.map((channel) => new Option(analyzerChannelOptionLabel(channel), channel.id)));
       if (context.channels.some((channel) => channel.id === previousMeasured)) measuredSelect.value = previousMeasured;
       addOptionalTraceOptions(targetSelect, previousTarget);
       addOptionalTraceOptions(rpmSelect, previousRpm);
@@ -619,5 +652,22 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   syncControlModeUi();
   ensureBoostAnalyzerHelp(root);
 
-  return { element: root, setContext, refresh: () => { void render(); } };
+  const setActive = (next: boolean): void => {
+    if (active === next) return;
+    active = next;
+    if (!active) { renderGeneration += 1; return; }
+    applyingPending = true;
+    const nextContext = pendingContext; pendingContext = undefined;
+    if (nextContext) controller.setContext(nextContext);
+    applyingPending = false;
+    void render();
+  };
+
+  const controller: BoostAnalyzerViewController = {
+    element: root,
+    setActive,
+    setContext,
+    refresh: () => { void render(); },
+  };
+  return controller;
 }

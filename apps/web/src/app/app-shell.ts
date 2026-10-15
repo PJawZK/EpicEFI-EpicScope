@@ -10,8 +10,8 @@ import {
 } from '../../../../core/channels/channel-binding';
 import type { ChannelCatalog } from '../../../../core/channels/channel-catalog';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
-import { parseMsq } from '../../../../core/parsers/msq/msq-parser';
-import { normalizeMsqTune, type TuneModel } from '../../../../core/tune/tune-model';
+import { prepareMsqCandidate } from '../adapters/msq-candidate';
+import { type TuneModel } from '../../../../core/tune/tune-model';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
 import { importMlgFile } from '../adapters/mlg-file-import';
@@ -62,6 +62,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   const loggerPage = createLoggerPage();
   const analyzerPage = createAnalyzerPage();
+  analyzerPage.setActive(false);
   const histogramPage = createHistogramPage();
   const performanceDiagnostics = createPerformanceDiagnostics();
   performanceDiagnostics.setRuntimeMemoryProvider(() => ({
@@ -500,6 +501,7 @@ export function mountAppShell(root: HTMLElement): void {
   let activeIniCatalog: ChannelCatalog | undefined;
   let activeIniSourceName: string | undefined;
   let activeIniBinding: BoundChannelCatalog | undefined;
+  let msqLoadGeneration = 0;
   let activeTuneModel: TuneModel | undefined;
   let activeTuneSourceName: string | undefined;
   let currentRawLog: {
@@ -942,6 +944,7 @@ export function mountAppShell(root: HTMLElement): void {
     const analyzerActive = mode === 'analyzer';
     const histogramActive = mode === 'histogram';
     loggerPage.element.hidden = !loggerActive;
+    analyzerPage.setActive(false);
     analyzerPage.element.hidden = !analyzerActive;
     histogramPage.element.hidden = !histogramActive;
     graphSelectorSlot.hidden = !loggerActive;
@@ -978,6 +981,7 @@ export function mountAppShell(root: HTMLElement): void {
         },
       });
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
+      analyzerPage.setActive(true);
       analyzerPage.refresh();
     } else if (histogramActive) {
       histogramPage.setContext({
@@ -1123,32 +1127,45 @@ export function mountAppShell(root: HTMLElement): void {
     const file = msqInput.files?.item(0);
     msqInput.value = '';
     if (!file) return;
+    const generation = ++msqLoadGeneration;
+    // Keep the picker usable: a later selection supersedes this read.
+    setSourceLoadState(loadMsqButton, 'loading', `Reading ${file.name}; the current tune remains active until validation succeeds.`);
+    appStatus.textContent = 'Validating MSQ candidate…';
+    parserStatus.textContent = 'TUNE-MSQ · reading local candidate';
 
-    loadMsqButton.disabled = true;
-    setSourceLoadState(loadMsqButton, 'loading', `Loading ${file.name}`);
-    appStatus.textContent = 'Loading MSQ…';
-    parserStatus.textContent = 'TUNE-MSQ · reading local file';
-
-    void file.text().then((source) => {
-      const model = normalizeMsqTune(parseMsq(source));
+    void (async () => {
+      let model: TuneModel;
+      try {
+        const source = await file.text();
+        if (generation !== msqLoadGeneration) return;
+        model = prepareMsqCandidate(source);
+      } catch (error) {
+        if (generation !== msqLoadGeneration) return;
+        const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The MSQ file could not be read.';
+        const retained = activeTuneModel ? `${activeTuneSourceName ?? 'The current tune'} remains active.` : 'No tune has been loaded.';
+        setSourceLoadState(loadMsqButton, 'issue', `${file.name}: ${detail} ${retained} Choose an MSQ file to retry.`);
+        appStatus.textContent = `MSQ candidate rejected · ${retained}`;
+        parserStatus.textContent = `TUNE-MSQ · ${detail}`;
+        return;
+      }
+      if (generation !== msqLoadGeneration) return;
+      // Acceptance is complete. New model identity advances existing tune-owner generations.
       activeTuneModel = model;
       activeTuneSourceName = file.name;
-      analyzerPage.setTuneModel(model, file.name);
       const tableCount = model.entries.filter((entry) => entry.kind === 'table').length;
       setSourceLoadState(loadMsqButton, 'success', `${file.name} · ${model.entries.length.toLocaleString()} tune entries · ${tableCount.toLocaleString()} table(s)`);
       appStatus.textContent = `${file.name} loaded · ${model.entries.length.toLocaleString()} tune entries`;
       parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only`;
-      if (activeMode === 'analyzer') analyzerPage.refresh();
-    }).catch((error: unknown) => {
-      activeTuneModel = undefined;
-      activeTuneSourceName = undefined;
-      analyzerPage.setTuneModel(undefined);
-      setSourceLoadState(loadMsqButton, 'issue', error instanceof Error ? error.message : 'MSQ load failed');
-      appStatus.textContent = 'MSQ load failed';
-      parserStatus.textContent = 'TUNE-MSQ · parser error';
-    }).finally(() => {
-      loadMsqButton.disabled = false;
-    });
+      try {
+        analyzerPage.setTuneModel(model, file.name);
+        if (activeMode === 'analyzer') analyzerPage.refresh();
+      } catch (error) {
+        // Presentation failure after acceptance is not a rejected replacement or a rollback.
+        const detail = error instanceof Error ? error.message : 'Analyzer update failed.';
+        setSourceLoadState(loadMsqButton, 'issue', `${file.name} was accepted, but the Analyzer could not update: ${detail}`);
+        appStatus.textContent = `${file.name} loaded · reopen Analyzer to retry its display`;
+      }
+    })();
   });
 
   iniInput.addEventListener('change', () => {

@@ -1,3 +1,4 @@
+import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzeIdleControlDiagnostics } from '../../../../core/analysis/idle-control-diagnostics';
 import { aggregateNumericSamples } from '../../../../core/analysis/numeric-aggregation';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
@@ -14,7 +15,7 @@ import {
   analyzeTriggerSync,
 } from '../../../../core/analysis/specialized-analyzers';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
-import { suggestAnalyzerChannel } from './analyzer-channel-roles';
+import { analyzerChannelOptionLabel, suggestAnalyzerChannel } from './analyzer-channel-roles';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { renderAlignedAnalyzerEvidence, type AnalyzerEvidenceSeries } from './analyzer-event-evidence';
 import { ensureFuelingAnalyzerHelp } from './fueling-analyzer-help';
@@ -29,6 +30,7 @@ export type SpecializedAnalyzerDomain =
 
 export interface SpecializedAnalyzerSuiteController {
   readonly element: HTMLElement;
+  setActive(active: boolean): void;
   setContext(context: LoggerAnalysisContext): void;
   setDomain(domain: SpecializedAnalyzerDomain): void;
   refresh(): void;
@@ -241,6 +243,11 @@ function fuelCutReasonSummary(counts: readonly FuelingCutReasonCount[]): string 
 
 export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+
+  let active = true;
+  let applyingPending = false;
+  let pendingContext: LoggerAnalysisContext | undefined;
+  let pendingDomain: SpecializedAnalyzerDomain | undefined;
   let domain: SpecializedAnalyzerDomain = 'idle';
   let analysisGeneration = 0;
   const rememberedSelections = new Map<string, string>();
@@ -299,6 +306,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const tableHead = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-events:not(.specialized-analyzer-map-section) .specialized-analyzer-table thead');
   const tableBody = root.querySelector<HTMLTableSectionElement>('.specialized-analyzer-events:not(.specialized-analyzer-map-section) .specialized-analyzer-table tbody');
   if (!controls || !guidance || !optionsGrid || !empty || !content || !summary || !mapSection || !mapHead || !mapBody || !evidence || !evidenceCanvas || !evidenceAll || !tableHead || !tableBody) throw new Error('Specialized Analyzer suite structure is incomplete.');
+
+  const emptyTitle = empty.querySelector<HTMLElement>('strong')!;
+  const emptyHint = empty.querySelector<HTMLElement>('span')!;
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.textContent;
+  let traceLoadFailed = false;
 
   const field = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-specialized="${name}"]`);
@@ -413,15 +426,18 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     readonly label: string;
   }
 
+  const EVENT_ROW_LIMIT = 200;
+
   const renderTable = (
     title: string,
     headers: readonly string[],
     rows: readonly (readonly string[])[],
     navigation: readonly EvidenceNavigation[] = [],
     onSelect?: (index: number) => void,
+    totalCount = rows.length,
   ): void => {
     field('events-title').textContent = title;
-    field('events-count').textContent = rows.length.toLocaleString();
+    field('events-count').textContent = totalCount.toLocaleString();
     const headerRow = document.createElement('tr');
     for (const header of headers) {
       const th = document.createElement('th');
@@ -429,7 +445,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       headerRow.append(th);
     }
     tableHead.replaceChildren(headerRow);
-    tableBody.replaceChildren(...rows.slice(0, 200).map((values, index) => {
+    tableBody.replaceChildren(...rows.slice(0, EVENT_ROW_LIMIT).map((values, index) => {
       const tr = document.createElement('tr');
       for (const value of values) {
         const td = document.createElement('td');
@@ -490,9 +506,10 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   };
 
   const eventNavigation = (
-    events: readonly { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number }[],
+    event: { startSampleIndex: number; endSampleIndex: number; startTimeMs: number; endTimeMs: number },
+    index: number,
     label: string,
-  ): readonly EvidenceNavigation[] => events.map((event, index) => ({
+  ): EvidenceNavigation => ({
     sampleIndices: event.startSampleIndex === event.endSampleIndex
       ? [event.startSampleIndex]
       : [event.startSampleIndex, event.endSampleIndex],
@@ -500,7 +517,22 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       ? [event.startTimeMs]
       : [event.startTimeMs, event.endTimeMs],
     label: `${label} ${index + 1}`,
-  }));
+  });
+
+  // Formatting and navigation belong to the displayed rows. Summaries/analysis retain
+  // all events; row indices still refer to the original, unfiltered event order.
+  const renderEventTable = <T,>(
+    title: string,
+    headers: readonly string[],
+    events: readonly T[],
+    format: (event: T, index: number) => readonly string[],
+    navigate: (event: T, index: number) => EvidenceNavigation,
+    onSelect?: (index: number) => void,
+    totalCount = events.length,
+  ): void => {
+    const displayed = events.slice(0, EVENT_ROW_LIMIT);
+    renderTable(title, headers, displayed.map(format), displayed.map(navigate), onSelect, totalCount);
+  };
 
   const scopeForPrimary = (primary: LoggerAnalysisTraceContext, selected: readonly LoggerAnalysisTraceContext[]) => {
     const scope = selectedScope();
@@ -521,7 +553,13 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   };
 
   const analyzeCurrent = async (): Promise<void> => {
+    if (!active || applyingPending) return;
     const generation = ++analysisGeneration;
+    if (traceLoadFailed) {
+      traceLoadFailed = false;
+      emptyTitle.textContent = defaultEmptyTitle;
+      emptyHint.textContent = defaultEmptyHint;
+    }
     const spec = SPECS[domain];
     const selected = new Map<string, string>();
     const idleSystem = domain === 'idle' ? currentIdleSystem() : 'combined';
@@ -539,8 +577,20 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     const scope = selectedScope();
     if (!scope) { empty.hidden = false; content.hidden = true; return; }
     const { startMs, endMs } = analyzerScopeBounds(scope);
-    const loaded = await context.loadTraces([...selected.values()], startMs, endMs);
-    if (generation !== analysisGeneration) return;
+    let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    try {
+      loaded = await context.loadTraces([...selected.values()], startMs, endMs);
+    } catch (error) {
+      if (!active || generation !== analysisGeneration) return;
+      restoreAllEvidence = undefined;
+      traceLoadFailed = true;
+      empty.hidden = false; content.hidden = true;
+      emptyTitle.textContent = 'Analyzer could not load log channels.';
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The log data could not be loaded.';
+      emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
+      return;
+    }
+    if (!active || generation !== analysisGeneration) return;
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<string, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
@@ -629,14 +679,20 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ...(ignitionAdvance ? [{ label: 'Ignition advance', range: ignitionAdvance.range }] : []),
           ...(ignitionCorrection ? [{ label: 'Idle ignition correction', range: ignitionCorrection.range }] : []),
         ];
-        const idleAfterMs = Math.min(4000, Math.max(1200, ...result.sagEvents.map((event) => event.durationMs + (event.recoveryMs ?? 0) + 300)));
+        let idleAfterMs = 1200;
+        let worstSag: number | undefined;
+        for (const event of result.sagEvents) {
+          idleAfterMs = Math.max(idleAfterMs, event.durationMs + (event.recoveryMs ?? 0) + 300);
+          worstSag = Math.min(worstSag ?? Number.POSITIVE_INFINITY, event.minimumErrorRpm);
+        }
+        idleAfterMs = Math.min(4000, idleAfterMs);
         showAlignedEvidence('Idle sag / recovery · aligned evidence', idleSeries, result.sagEvents, 500, idleAfterMs);
         renderSummary([
           ['Idle system', IDLE_SYSTEMS.find((entry) => entry.value === idleSystem)?.label ?? 'Combined'],
           ['Scope', scoped.scope.label], ['Coverage', result.complete ? 'Complete' : 'Partial decoded'],
           ['RPM mean', numberText(result.rpm.mean)], ['Target mean', numberText(result.target?.mean)],
           ['RPM error MAE / RMSE', `${numberText(result.tracking?.meanAbsoluteError)} / ${numberText(result.tracking?.rmse)}`],
-          ['Worst sag', numberText(result.sagEvents.length ? Math.min(...result.sagEvents.map((event) => event.minimumErrorRpm)) : undefined)],
+          ['Worst sag', numberText(worstSag)],
           ['Median recovery', result.sagEvents.length ? `${numberText(finiteMedian(result.sagEvents.map((event) => event.recoveryMs)), 0)} ms` : '—'],
           ['Base / CL / final position', `${numberText(diagnostics.basePosition?.mean)} / ${numberText(diagnostics.closedLoop?.mean)} / ${numberText(diagnostics.finalPosition?.mean)}`],
           ['CL effort |mean| / RMS', `${numberText(diagnostics.closedLoop?.meanAbsolute)} / ${numberText(diagnostics.closedLoop?.rootMeanSquare)}`],
@@ -656,7 +712,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Ign advance / correction', `${numberText(ignitionAdvance ? aggregateNumericSamples(ignitionAdvance.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)} / ${numberText(ignitionCorrection ? aggregateNumericSamples(ignitionCorrection.range, { sampleIndices: scoped.sampleIndices }).mean : undefined)}`],
           ['Sag events', String(result.sagEvents.length)], ['Input samples', result.rpm.inputSampleCount.toLocaleString()],
         ]);
-        renderTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`]), eventNavigation(result.sagEvents, 'Idle sag'), (index) => {
+        renderEventTable('Sag / recovery events', ['#', 'Start', 'End', 'Duration', 'Min error RPM', 'Recovery'], result.sagEvents, (event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.minimumErrorRpm), event.recoveryMs === undefined ? '—' : `${event.recoveryMs.toFixed(0)} ms`], (event, index) => eventNavigation(event, index, 'Idle sag'), (index) => {
           const event = result.sagEvents[index];
           if (event) { field('evidence-note').textContent = `Event ${index + 1} · ${event.minimumErrorRpm.toFixed(0)} RPM minimum error · t=0 onset`; renderAlignedAnalyzerEvidence(evidenceCanvas, idleSeries, [event], 500, idleAfterMs); }
         });
@@ -666,7 +722,14 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         const predicted = traces.get('predictedMap');
         const afr = traces.get('afr');
         const result = analyzeAeMapPredict({ tps: tps.range, ...(map ? { map: map.range } : {}), ...(predicted ? { predictedMap: predicted.range } : {}), ...(afr ? { afr: afr.range } : {}) }, { sampleIndices: scoped.sampleIndices, complete: scoped.complete, tpsDeltaThreshold: optionNumber('tpsThreshold', 2), eventWindowMs: optionNumber('window', 500) });
-        const tipIns = result.events.filter((event) => event.direction === 'tip-in').length;
+        let tipIns = 0;
+        let peakLean: number | undefined;
+        let peakRich: number | undefined;
+        for (const event of result.events) {
+          if (event.direction === 'tip-in') tipIns += 1;
+          peakLean = Math.max(peakLean ?? Number.NEGATIVE_INFINITY, event.afrLeanExcursion ?? 0);
+          peakRich = Math.min(peakRich ?? Number.POSITIVE_INFINITY, event.afrRichExcursion ?? 0);
+        }
         const transientSeries: AnalyzerEvidenceSeries[] = [
           { label: 'TPS', range: tps.range },
           ...(map ? [{ label: 'MAP', range: map.range }] : []),
@@ -681,11 +744,11 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['TPS mean', numberText(result.tps.mean)], ['MAP mean', numberText(result.map?.mean)],
           ['Predict error mean', numberText(finiteMean(result.events.map((event) => event.predictionErrorAtEnd)))],
           ['Predict error MAE', numberText(finiteMean(result.events.map((event) => event.predictionErrorAtEnd === undefined ? undefined : Math.abs(event.predictionErrorAtEnd))))],
-          ['Peak lean excursion', numberText(result.events.length ? Math.max(...result.events.map((event) => event.afrLeanExcursion ?? 0)) : undefined)],
-          ['Peak rich excursion', numberText(result.events.length ? Math.min(...result.events.map((event) => event.afrRichExcursion ?? 0)) : undefined)],
+          ['Peak lean excursion', numberText(peakLean)],
+          ['Peak rich excursion', numberText(peakRich)],
           ['Predicted MAP mean', numberText(result.predictedMap?.mean)], ['Mixture mean', numberText(result.afr?.mean)],
         ]);
-        renderTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'Lean excursion', 'Rich excursion'], result.events.map((event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)]), eventNavigation(result.events, 'AE / MAP transient'), (index) => {
+        renderEventTable('Transient events', ['#', 'Type', 'Start', 'Duration', 'TPS Δ', 'MAP Δ', 'Predict error', 'Lean excursion', 'Rich excursion'], result.events, (event, index) => [String(index + 1), event.direction, timeText(event.startTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.tpsDelta), numberText(event.mapDelta), numberText(event.predictionErrorAtEnd), numberText(event.afrLeanExcursion), numberText(event.afrRichExcursion)], (event, index) => eventNavigation(event, index, 'AE / MAP transient'), (index) => {
           const event = result.events[index];
           if (event) { field('evidence-note').textContent = `Event ${index + 1} · ${event.direction} · TPS Δ ${numberText(event.tpsDelta)} · t=0 onset`; renderAlignedAnalyzerEvidence(evidenceCanvas, transientSeries, [event], 200, Math.max(300, eventWindow)); }
         });
@@ -823,12 +886,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Delay rejected no-response / overlap / gap', delay ? `${delay.rejectedNoResponseCount} / ${delay.rejectedOverlapCount} / ${delay.rejectedGapCount}` : '—'],
         ]);
         if (delay && delay.events.length > 0) {
-          const navigation: EvidenceNavigation[] = delay.events.map((event, index) => ({
-            sampleIndices: event.commandSampleIndex === event.responseSampleIndex ? [event.commandSampleIndex] : [event.commandSampleIndex, event.responseSampleIndex],
-            timeMs: event.commandTimeMs === event.responseTimeMs ? [event.commandTimeMs] : [event.commandTimeMs, event.responseTimeMs],
-            label: `Mixture delay event ${index + 1}`,
-          }));
-          renderTable('Mixture response-delay events', ['#', 'Command time', 'Onset delay', 'Command Δ', 'Mixture Δ @ onset', 'Peak mixture Δ', 'Peak delay', 'T50', 'T90', 'RPM', 'Load'], delay.events.map((event, index) => [
+          renderEventTable('Mixture response-delay events', ['#', 'Command time', 'Onset delay', 'Command Δ', 'Mixture Δ @ onset', 'Peak mixture Δ', 'Peak delay', 'T50', 'T90', 'RPM', 'Load'], delay.events, (event, index) => [
             String(index + 1),
             timeText(event.commandTimeMs),
             `${event.onsetDelayMs.toFixed(0)} ms`,
@@ -840,7 +898,11 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
             event.t90Ms === undefined ? '—' : `${event.t90Ms.toFixed(0)} ms`,
             numberText(event.rpm, 0),
             numberText(event.load),
-          ]), navigation, (index) => {
+          ], (event, index) => ({
+            sampleIndices: event.commandSampleIndex === event.responseSampleIndex ? [event.commandSampleIndex] : [event.commandSampleIndex, event.responseSampleIndex],
+            timeMs: event.commandTimeMs === event.responseTimeMs ? [event.commandTimeMs] : [event.commandTimeMs, event.responseTimeMs],
+            label: `Mixture delay event ${index + 1}`,
+          }), (index) => {
             const event = delay.events[index];
             if (!event) return;
             field('evidence-note').textContent = `Event ${index + 1} · onset ${event.onsetDelayMs.toFixed(0)} ms · command Δ ${numberText(event.commandDelta)} · t=0 command change`;
@@ -875,7 +937,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Retard mean', numberText(result.retard?.mean)], ['Knock mean / max', `${numberText(result.knock?.mean)} / ${numberText(result.knock?.max)}`],
           ['Knock events', String(result.knockEvents.length)], ['Valid advance', result.advance.validSampleCount.toLocaleString()],
         ]);
-        renderTable('Knock events', ['#', 'Start', 'End', 'Duration', 'Peak knock', 'Advance @ peak', 'Retard @ peak'], result.knockEvents.map((event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakKnock), numberText(event.advanceAtPeak), numberText(event.retardAtPeak)]), eventNavigation(result.knockEvents, 'Knock event'));
+        renderEventTable('Knock events', ['#', 'Start', 'End', 'Duration', 'Peak knock', 'Advance @ peak', 'Retard @ peak'], result.knockEvents, (event, index) => [String(index + 1), timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakKnock), numberText(event.advanceAtPeak), numberText(event.retardAtPeak)], (event, index) => eventNavigation(event, index, 'Knock event'));
       } else if (domain === 'fuel-injector') {
         const reference = traces.get('reference')!;
         const fuelPressure = traces.get('fuelPressure');
@@ -893,15 +955,17 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['High duty events', String(result.highDutyEvents.length)],
         ]);
         const pressureEvents = [
-          ...result.lowPressureEvents.map((event) => ({ type: 'Low pressure', event })),
-          ...result.highDutyEvents.map((event) => ({ type: 'High duty', event })),
+          ...result.lowPressureEvents.slice(0, EVENT_ROW_LIMIT).map((event) => ({ type: 'Low pressure', event })),
+          ...result.highDutyEvents.slice(0, Math.max(0, EVENT_ROW_LIMIT - result.lowPressureEvents.length)).map((event) => ({ type: 'High duty', event })),
         ];
-        const rows = pressureEvents.map(({ type, event }, index) => [String(index + 1), type, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.extremeValue)]);
-        renderTable(
+        renderEventTable(
           'Pressure / injector threshold events',
           ['#', 'Type', 'Start', 'End', 'Duration', 'Extreme'],
-          rows,
-          eventNavigation(pressureEvents.map(({ event }) => event), 'Fuel / injector event'),
+          pressureEvents,
+          ({ type, event }, index) => [String(index + 1), type, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.extremeValue)],
+          ({ event }, index) => eventNavigation(event, index, 'Fuel / injector event'),
+          undefined,
+          result.lowPressureEvents.length + result.highDutyEvents.length,
         );
       } else {
         const reference = traces.get('reference')!;
@@ -916,7 +980,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
           ['Trigger error max', numberText(result.triggerError?.max)], ['Loss counter max', numberText(result.syncLossCounter?.max)],
           ['RPM mean / max', `${numberText(result.rpm?.mean)} / ${numberText(result.rpm?.max)}`],
         ]);
-        renderTable('Sync / trigger events', ['#', 'Reason', 'Start', 'End', 'Duration', 'Peak error', 'Loss Δ'], result.events.map((event, index) => [String(index + 1), event.reason, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakError), numberText(event.lossCountDelta)]), eventNavigation(result.events, 'Trigger / sync event'));
+        renderEventTable('Sync / trigger events', ['#', 'Reason', 'Start', 'End', 'Duration', 'Peak error', 'Loss Δ'], result.events, (event, index) => [String(index + 1), event.reason, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakError), numberText(event.lossCountDelta)], (event, index) => eventNavigation(event, index, 'Trigger / sync event'));
       }
       empty.hidden = true;
       content.hidden = false;
@@ -955,7 +1019,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       const select = document.createElement('select');
       select.dataset.role = role.key;
       select.add(new Option(role.required ? '(select channel)' : '(none)', ''));
-      for (const channel of context.channels) select.add(new Option(channel.displayName || channel.sourceName, channel.id));
+      for (const channel of context.channels) select.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
       const remembered = rememberedSelections.get(`${domain}:${role.key}`);
       if (remembered && [...select.options].some((option) => option.value === remembered)) {
         select.value = remembered;
@@ -1012,10 +1076,37 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     void analyzeCurrent();
   };
 
-  return {
+  const setActive = (next: boolean): void => {
+    if (active === next) return;
+    active = next;
+    if (!active) { analysisGeneration += 1; return; }
+    applyingPending = true;
+    const domainChanged = pendingDomain !== undefined && pendingDomain !== domain;
+    if (pendingDomain !== undefined) { domain = pendingDomain; pendingDomain = undefined; }
+    if (domainChanged) controls.replaceChildren();
+    const nextContext = pendingContext; pendingContext = undefined;
+    if (nextContext) controller.setContext(nextContext);
+    else if (domainChanged) rebuild();
+    applyingPending = false;
+    void analyzeCurrent();
+  };
+
+  const controller: SpecializedAnalyzerSuiteController = {
     element: root,
-    setContext(nextContext) { context = nextContext; rebuild(); },
-    setDomain(nextDomain) { domain = nextDomain; rebuild(); },
+    setActive,
+    setContext(nextContext) {
+      if (!active) { pendingContext = nextContext; return; }
+      const channelsChanged = !sameChannelOptionCatalog(context.channels, nextContext.channels);
+      context = nextContext;
+      if (channelsChanged || !controls.children.length) rebuild();
+      else {
+        const scope = controls.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+        if (scope) populateAnalyzerScopeSelect(scope, context, scope.value);
+        void analyzeCurrent();
+      }
+    },
+    setDomain(nextDomain) { if (!active) { pendingDomain = nextDomain; return; } if (domain === nextDomain && controls.children.length) return; domain = nextDomain; rebuild(); },
     refresh: () => { void analyzeCurrent(); },
   };
+  return controller;
 }

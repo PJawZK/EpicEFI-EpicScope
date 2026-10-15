@@ -1,3 +1,5 @@
+import { sameChannelOptionCatalog } from './channel-option-label';
+import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { compareNumericCohorts, type NumericCompareResult } from '../../../../core/analysis/numeric-compare';
 import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../../../../core/analysis/sample-qualification';
 import type { TuneModel } from '../../../../core/tune/tune-model';
@@ -16,6 +18,7 @@ import {
 
 export interface AnalyzerPageController {
   readonly element: HTMLElement;
+  setActive(active: boolean): void;
   readonly headerControl: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
@@ -46,7 +49,7 @@ function sameChannelCatalog(
   left: LoggerAnalysisContext['channels'],
   right: LoggerAnalysisContext['channels'],
 ): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
+  return sameChannelOptionCatalog(left, right);
 }
 
 export function createAnalyzerPage(): AnalyzerPageController {
@@ -58,12 +61,18 @@ export function createAnalyzerPage(): AnalyzerPageController {
   let contextUpdateGeneration = 0;
   type AnalyzerView = 'compare' | 'tune-table' | 'boost' | 've' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
+  let active = true;
+  let tuneModel: TuneModel | undefined;
+  let tuneSourceName: string | undefined;
+  let comparisonChannels: LoggerAnalysisContext['channels'] = [];
   const tuneTableView = createTuneTableView();
   const boostView = createBoostAnalyzerView();
   const ignitionView = createIgnitionAnalyzerView();
   const fuelInjectorView = createFuelInjectorAnalyzerView();
   const veAnalyzerView = createVeAnalyzerView();
   const specializedView = createSpecializedAnalyzerSuiteView();
+  const domainViews = [tuneTableView, boostView, ignitionView, fuelInjectorView, veAnalyzerView, specializedView];
+  for (const view of domainViews) view.setActive(false);
 
   const headerControl = document.createElement('label');
   headerControl.className = 'histogram-header-view analyzer-header-view';
@@ -160,6 +169,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
     throw new Error('Analyzer page structure is incomplete.');
   }
 
+  const emptyTitle = empty.querySelector<HTMLElement>('strong')!;
+  const emptyHint = empty.querySelector<HTMLElement>('span')!;
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.textContent;
+  let traceLoadFailed = false;
+
   const field = (name: string): HTMLElement => {
     const element = root.querySelector<HTMLElement>(`[data-analyzer="${name}"]`);
     if (!element) throw new Error(`Analyzer field is missing: ${name}`);
@@ -184,7 +199,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
-    if (currentView !== 'compare') return;
+    if (!active || currentView !== 'compare') return;
+    if (traceLoadFailed) {
+      traceLoadFailed = false;
+      emptyTitle.textContent = defaultEmptyTitle;
+      emptyHint.textContent = defaultEmptyHint;
+    }
     const channelId = channelSelect.value || context.channels[0]?.id;
     const leftScope = selectedAnalyzerScope(leftSelect, context);
     const rightScope = selectedAnalyzerScope(rightSelect, context);
@@ -207,8 +227,21 @@ export function createAnalyzerPage(): AnalyzerPageController {
       ? [...new Set(filterSet.conditions.filter((condition) => condition.enabled).map((condition) => condition.channelId))]
       : [];
     const requestedChannelIds = [channelId, ...filterChannelIds.filter((id) => id !== channelId)];
-    const traces = await context.loadTraces(requestedChannelIds, loadStartMs, loadEndMs);
-    if (generation !== renderGeneration || currentView !== 'compare') return;
+    let traces: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    try {
+      traces = await context.loadTraces(requestedChannelIds, loadStartMs, loadEndMs);
+    } catch (error) {
+      if (!active || generation !== renderGeneration || currentView !== 'compare') return;
+      currentResult = undefined;
+      refreshButton.disabled = false;
+      traceLoadFailed = true;
+      empty.hidden = false; content.hidden = true;
+      emptyTitle.textContent = 'Range comparison could not load log channels.';
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The log data could not be loaded.';
+      emptyHint.textContent = `${detail} Retry with Refresh. If it keeps failing, reload the log or choose another scope.`;
+      return;
+    }
+    if (!active || generation !== renderGeneration || currentView !== 'compare') return;
     const trace = traces.find((candidate) => candidate.channel.id === channelId);
     if (!trace) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map(traces.map((candidate) => [candidate.channel.id, { range: candidate.range, complete: candidate.complete }]));
@@ -291,7 +324,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
 
   const fillChannelSelect = (preferred: string): void => {
     channelSelect.replaceChildren();
-    for (const channel of context.channels) channelSelect.add(new Option(channel.displayName || channel.sourceName, channel.id));
+    for (const channel of context.channels) channelSelect.add(new Option(analyzerChannelOptionLabel(channel), channel.id));
     if (context.channels.some((channel) => channel.id === preferred)) channelSelect.value = preferred;
   };
 
@@ -324,94 +357,98 @@ export function createAnalyzerPage(): AnalyzerPageController {
     'trigger-sync': ['Trigger / sync analysis', 'Synchronization dropouts, trigger errors and sync-loss counter events.'],
   };
 
-  const setView = (view: AnalyzerView): void => {
-    renderGeneration += 1;
-    currentView = view;
-    const compareActive = view === 'compare';
-    const tuneActive = view === 'tune-table';
-    const boostActive = view === 'boost';
-    const ignitionActive = view === 'ignition';
-    const fuelInjectorActive = view === 'fuel-injector';
-    const veActive = view === 've';
-    const specializedActive = !compareActive && !tuneActive && !boostActive && !ignitionActive && !fuelInjectorActive && !veActive;
-    compareControls.hidden = !compareActive;
-    tuneTableView.element.hidden = !tuneActive;
-    boostView.element.hidden = !boostActive;
-    ignitionView.element.hidden = !ignitionActive;
-    fuelInjectorView.element.hidden = !fuelInjectorActive;
-    veAnalyzerView.element.hidden = !veActive;
-    specializedView.element.hidden = !specializedActive;
-    viewSelect.value = view;
-    if (compareActive) {
-      heading.textContent = 'Range comparison';
-      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges with optional saved qualification.';
-      void render();
-      return;
-    }
-    empty.hidden = true;
-    content.hidden = true;
-    if (tuneActive) {
-      heading.textContent = 'Tune table correlation';
-      description.textContent = 'Map decoded operating points and observed values into an explicitly selected MSQ table.';
-      tuneTableView.setContext(context);
-      return;
-    }
-    if (boostActive) {
-      heading.textContent = 'Boost analysis';
-      description.textContent = 'Analyze boost tracking, spool and steady-state behavior using any channels available in the loaded log.';
-      boostView.setContext(context);
-      return;
-    }
-    if (veActive) {
-      heading.textContent = 'VE Analyzer';
-      description.textContent = 'Validate VE-table geometry, semantic fueling inputs and scope before building evidence-backed VE recommendations.';
-      veAnalyzerView.setContext(context);
-      return;
-    }
-    if (ignitionActive) {
-      heading.textContent = 'Ignition analysis';
-      description.textContent = specializedTitles.ignition[1];
-      ignitionView.setContext(context);
-      return;
-    }
-    if (fuelInjectorActive) {
-      heading.textContent = specializedTitles['fuel-injector'][0];
-      description.textContent = specializedTitles['fuel-injector'][1];
-      fuelInjectorView.setContext(context);
-      return;
-    }
-    const [title, detail] = specializedTitles[view];
-    heading.textContent = title;
-    description.textContent = detail;
-    specializedView.setDomain(view);
-  };
-
-  const setContext = (nextContext: LoggerAnalysisContext): void => {
-    const generation = ++contextUpdateGeneration;
-    suppressImmediateRefresh = true;
-    queueMicrotask(() => {
-      if (generation === contextUpdateGeneration) suppressImmediateRefresh = false;
-    });
+  const configureComparison = (): void => {
     const previousChannel = channelSelect.value;
     const previousLeft = leftSelect.value;
     const previousRight = rightSelect.value;
     const previousQualification = qualificationSelect.value;
-    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
-    context = nextContext;
-    if (currentView === 'tune-table') tuneTableView.setContext(nextContext);
-    else if (currentView === 'boost') boostView.setContext(nextContext);
-    else if (currentView === 'ignition') ignitionView.setContext(nextContext);
-    else if (currentView === 'fuel-injector') fuelInjectorView.setContext(nextContext);
-    else if (currentView === 've') veAnalyzerView.setContext(nextContext);
-    specializedView.setContext(nextContext);
-    if (channelsChanged) fillChannelSelect(previousChannel);
+    if (!sameChannelCatalog(comparisonChannels, context.channels)) fillChannelSelect(previousChannel);
+    comparisonChannels = context.channels;
     const hasCurrentAb = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
     const leftFallback = context.savedRanges.length > 0 ? 'saved:0' : hasCurrentAb ? 'ab' : 'full';
     const rightFallback = context.savedRanges.length > 1 ? 'saved:1' : hasCurrentAb && leftFallback !== 'ab' ? 'ab' : 'full';
     fillScopeSelect(leftSelect, previousLeft, leftFallback);
     fillScopeSelect(rightSelect, previousRight, rightFallback);
     fillQualificationSelect(previousQualification);
-    if (currentView === 'compare') void render();
+  };
+
+  const routeActiveView = (renderComparison = true, tuneOnly = false): void => {
+    renderGeneration += 1;
+    const selected = currentView === 'compare' ? undefined
+      : currentView === 'tune-table' ? tuneTableView
+      : currentView === 'boost' ? boostView
+      : currentView === 'ignition' ? ignitionView
+      : currentView === 'fuel-injector' ? fuelInjectorView
+      : currentView === 've' ? veAnalyzerView : specializedView;
+    for (const view of domainViews) if (!active || view !== selected) view.setActive(false);
+    if (!active) return;
+    if (currentView === 'compare') {
+      configureComparison();
+      if (renderComparison) void render();
+    } else if (currentView === 'tune-table') {
+      tuneTableView.setTuneModel(tuneModel, tuneSourceName);
+      if (!tuneOnly) tuneTableView.setContext(context);
+      tuneTableView.setActive(true);
+    } else if (currentView === 'boost') {
+      boostView.setContext(context);
+      boostView.setActive(true);
+    } else if (currentView === 'ignition') {
+      ignitionView.setTuneModel(tuneModel, tuneSourceName);
+      if (!tuneOnly) ignitionView.setContext(context);
+      ignitionView.setActive(true);
+    } else if (currentView === 'fuel-injector') {
+      fuelInjectorView.setContext(context);
+      fuelInjectorView.setActive(true);
+    } else if (currentView === 've') {
+      veAnalyzerView.setTuneModel(tuneModel, tuneSourceName);
+      if (!tuneOnly) veAnalyzerView.setContext(context);
+      veAnalyzerView.setActive(true);
+    } else {
+      specializedView.setDomain(currentView);
+      specializedView.setContext(context);
+      specializedView.setActive(true);
+    }
+  };
+
+  const setView = (view: AnalyzerView, renderComparison = true): void => {
+    if (currentView !== view) for (const domain of domainViews) domain.setActive(false);
+    currentView = view;
+    const compareActive = view === 'compare';
+    const specializedActive = view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'trigger-sync';
+    compareControls.hidden = !compareActive;
+    tuneTableView.element.hidden = view !== 'tune-table';
+    boostView.element.hidden = view !== 'boost';
+    ignitionView.element.hidden = view !== 'ignition';
+    fuelInjectorView.element.hidden = view !== 'fuel-injector';
+    veAnalyzerView.element.hidden = view !== 've';
+    specializedView.element.hidden = !specializedActive;
+    viewSelect.value = view;
+    if (compareActive) {
+      heading.textContent = 'Range comparison';
+      description.textContent = 'Compare any available log channel across Full Log, Current A/B, or saved Logger ranges with optional saved qualification.';
+    } else {
+      empty.hidden = true;
+      content.hidden = true;
+      if (specializedActive) [heading.textContent, description.textContent] = specializedTitles[view as SpecializedAnalyzerDomain];
+      else if (view === 'tune-table') { heading.textContent = 'Tune table correlation'; description.textContent = 'Map decoded operating points and observed values into an explicitly selected MSQ table.'; }
+      else if (view === 'boost') { heading.textContent = 'Boost analysis'; description.textContent = 'Analyze boost tracking, spool and steady-state behavior using any channels available in the loaded log.'; }
+      else if (view === 've') { heading.textContent = 'VE Analyzer'; description.textContent = 'Validate VE-table geometry, semantic fueling inputs and scope before building evidence-backed VE recommendations.'; }
+      else if (view === 'ignition') [heading.textContent, description.textContent] = specializedTitles.ignition;
+      else [heading.textContent, description.textContent] = specializedTitles['fuel-injector'];
+    }
+    routeActiveView(renderComparison);
+  };
+
+  const suppressNextRefresh = (): void => {
+    const generation = ++contextUpdateGeneration;
+    suppressImmediateRefresh = true;
+    queueMicrotask(() => { if (generation === contextUpdateGeneration) suppressImmediateRefresh = false; });
+  };
+
+  const setContext = (nextContext: LoggerAnalysisContext): void => {
+    context = nextContext;
+    suppressNextRefresh();
+    if (active) routeActiveView();
   };
 
   channelSelect.addEventListener('change', () => { void render(); });
@@ -427,14 +464,20 @@ export function createAnalyzerPage(): AnalyzerPageController {
   return {
     element: root,
     headerControl,
+    setActive(next) {
+      if (active === next) return;
+      active = next;
+      routeActiveView();
+    },
     setContext,
     setTuneModel: (model, sourceName) => {
-      tuneTableView.setTuneModel(model, sourceName);
-      ignitionView.setTuneModel(model, sourceName);
-      veAnalyzerView.setTuneModel(model, sourceName);
+      if (model === tuneModel && sourceName === tuneSourceName) return;
+      tuneModel = model; tuneSourceName = sourceName;
+      suppressNextRefresh();
+      if (active && (currentView === 'tune-table' || currentView === 'ignition' || currentView === 've')) routeActiveView(true, true);
     },
     openRangeCompareScope: (scopeValue) => {
-      setView('compare');
+      setView('compare', false);
       const leftHasScope = [...leftSelect.options].some((option) => option.value === scopeValue);
       const rightHasScope = [...rightSelect.options].some((option) => option.value === scopeValue);
       if (!leftHasScope && !rightHasScope) return;
@@ -442,6 +485,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       void render();
     },
     refresh: () => {
+      if (!active) return;
       if (suppressImmediateRefresh) {
         suppressImmediateRefresh = false;
         return;
