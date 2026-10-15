@@ -38,40 +38,28 @@ The Web implementation establishes **what EpicScope should do** and is also the 
 - Linux target baseline: Debian 13 Stable.
 - License: Apache License 2.0.
 
-## Current Web state — 2026-10-15
+## Current Web state — 2026-10-16
 
 EpicScope Web has mature functional foundations across Logger, Histogram and Analyzer and remains the product-semantics/reference implementation.
 
-Implemented foundations include:
-
-- MLG v1/v2 import, indexing, staged CRC validation and source-integrity diagnostics;
-- INI-backed channel catalog/binding and optional MSQ tune enrichment;
-- reusable named graph workspaces plus exact-log navigation persistence;
-- multi-pane fixed/freeform graphs, Single/Dual layouts, timeline/cursor, A/B ranges, markers and saved ranges;
-- semantic channel-role resolution and capability-gated workspace starters;
-- 12 generic starter workspaces plus 12 capability-gated EpicEFI-specific starters;
-- Histogram surfaces for Table Generator, Distribution, Scatter and Math Channels at the closed generic research-parity checkpoint;
-- Analyzer surfaces for Range Compare, Tune Table, Boost, Idle, AE / MAP Predict, Fueling, Ignition, Fuel Pressure / Injector, Trigger / Sync and VE Analyzer;
-- unit-aware Analyzer and Histogram channel selectors;
-- evidence navigation back to Logger;
-- runtime-health, parser, retained-memory and performance diagnostics;
-- `ts_shim` protocol/binary decoding, schema discovery, reconnect/lifecycle handling and selected-channel series recording;
-- live/retained Shim captures exposed through the same normalized source path used by recorded analysis;
-- same-origin Vite proxy for local/LAN Shim testing.
-
-Current maturity summary:
+Current maturity:
 
 - **Logger:** mature functional reference; broad optimization paused unless a measured regression appears.
 - **Histogram:** generic research-parity checkpoint closed for the approved scope.
 - **Fueling / Ignition:** mature experimental Analyzer checkpoints.
 - **Boost:** strong experimental foundation.
 - **Idle / AE:** useful but thinner.
-- **Fuel Pressure / Injector:** substantially improved; remaining work is targeted maturity rather than broad expansion.
-- **Trigger / Sync:** still thinner and remains a useful later maturity target.
-- **VE Analyzer:** implemented and real-log/browser validated; currently the highest-value active maturity target.
+- **Fuel Pressure / Injector:** substantially improved; remaining work is targeted maturity.
+- **Trigger / Sync:** thinner and a later maturity target.
+- **VE Analyzer:** implemented, real-log/browser validated and stable at the current maturity checkpoint.
+- **Analyzer points 1–11:** merged and browser-accepted through PR #462.
+- **UI polish:** immediate next work.
+- **Unified observability / diagnostics:** D-058 architecture approved and queued after UI polish.
 - **MLG v3:** researched compatibility extension, not yet implemented.
 
-The browser-known-good VE runtime is the #441-era composition restored by PR #449. Browser behavior, not CI alone, is the acceptance authority for VE changes.
+PR #462 merged the accepted Analyzer ownership/correctness/performance work into `main` at `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`. The exact pre-merge runtime accepted by owner browser testing was `b435702412642f039a8a7f49d33037c309bef9d8`.
+
+Browser behavior remains the acceptance authority for VE lifecycle/render/state changes; CI is necessary but not sufficient.
 
 ## Current source model
 
@@ -97,10 +85,6 @@ Unload Log
 Connect Shim
 ```
 
-## Stable channel identity
-
-A recorded INI-bound workspace may contain canonical `ini:*` identities while the Shim exposes matching raw runtime IDs. During source transitions, EpicScope resolves those identities without duplicating raw + `ini:*` traces and restores canonical recorded identities when the INI-bound source returns.
-
 ## Workspace/starter model
 
 EpicScope distinguishes:
@@ -115,21 +99,15 @@ Starters resolve once into editable/deletable workspaces. Source transitions nor
 
 The generic Histogram maturity/research-parity track is closed for the currently approved scope.
 
-Current mature behavior includes:
+Current mature behavior includes Table Generator, Distribution, Scatter and Math Channels with shared scope/Qualification, provenance, Logger evidence navigation and export where appropriate.
 
-- Table Generator with shared scopes/Qualification, tune/custom geometry, weighted breakpoint-node behavior, Median and broader statistics, aligned evidence, Logger navigation and export;
-- Distribution with fixed repeatable geometry, comparisons, saved setups, export and bin evidence;
-- Scatter with point/box evidence, density, strongest contiguous Logger navigation, saved setups and export;
-- Math Channels with arithmetic, logic, lazy conditionals, historical references and temporal helpers;
-- unit-aware channel labels.
-
-Future Histogram work should be correctness/regression maintenance or deliberate cleanup unless a concrete field-use gap appears.
+Future Histogram work should be correctness/regression maintenance or deliberate UI polish unless a concrete field-use gap appears.
 
 ## Analyzer checkpoint
 
 Fueling and non-knock Ignition are mature experimental checkpoints and should remain frozen unless a concrete defect appears. Boost remains a strong foundation. Fuel Pressure / Injector and Trigger / Sync retain specific maturity gaps documented in `docs/ANALYZER.md`.
 
-VE Analyzer is now implemented with:
+VE Analyzer now includes:
 
 - VE/target table correlation from tune metadata;
 - strict actual-mixture semantics and AFR/Lambda scale handling;
@@ -142,48 +120,42 @@ VE Analyzer is now implemented with:
 - optional known fuel-correction compensation;
 - robust weighted-median VE evidence with P10/P90 spread, cumulative evidence and confidence;
 - starting-table prior authority and withheld out-of-authority proposals;
-- Result View modes;
-- cell evidence with strongest contiguous visit navigation to Logger.
+- source-authoritative Result View modes;
+- retained completed analysis across semantically unchanged navigation;
+- retained-primary cell evidence reuse;
+- cooperative bounded analysis with progress/cancel;
+- transactional MSQ replacement and recoverable analysis/persistence failures.
 
-Known remaining VE issues are Result View fallback/precision behavior and loss of Analyzer result state after a Logger round-trip. State ownership should be improved one browser-verified structural change at a time rather than by reintroducing the reverted post-#441 wrapper stack.
+The earlier Result View value-loss/heat-map and Logger → Analyzer continuity regressions are closed and browser-accepted. Remaining DOM-derived working-delay ownership is later cleanup, not a current blocker.
+
+Never automatically write or Burn to the ECU.
+
+## Unified observability / diagnostics
+
+D-058 and `docs/OBSERVABILITY.md` define the next substantial architecture track after UI polish.
+
+The target is one bounded local observability/session authority with Health, Performance, Parser/Source Integrity, Resources, Errors, Previous Session and report/export as projections. Existing useful probes remain in their natural owners and are migrated incrementally.
+
+Key constraints: bounded low-overhead flight-recorder behavior, explicit session/operation correlation, event-storm coalescing/backpressure, batched persistence, no silent telemetry/raw log upload, no competing application-state authority and no automatic runtime self-repair from anomaly detection.
 
 ## MLG v3 research
 
-`docs/research/MLG_V3_RESEARCH.md` records the bounded TunerStudio/MLV investigation.
-
-Current conclusion:
-
-- v3 extends the v2-style container rather than requiring a parser rewrite;
-- little-endian scalar IDs 9..14 are confirmed;
-- descriptor IDs 8/15 must not be guessed as F64;
-- extended bitfield mapping still requires fixture validation;
-- current EpicEFI logs may remain v2 under a v3-capable TunerStudio.
-
-Production support therefore remains v1/v2 until the extension is implemented and regression-tested.
+`docs/research/MLG_V3_RESEARCH.md` records the bounded TunerStudio/MLV investigation. Production support remains v1/v2 until the extension is implemented and regression-tested.
 
 ## Repository state
 
-The historical remote-branch cleanup completed on 2026-10-15. The remote repository now has one authoritative branch, `main` (plus the normal `origin/HEAD -> origin/main` symbolic reference in clones). Historical implementation provenance remains available through Git history and merged PRs; old branch refs are not knowledge authorities.
+`main` is the only product/continuation authority. Historical development branches and closed PRs are provenance, not knowledge authorities. The `browser-previews` branch is deployment infrastructure rather than product state.
 
-## Research preservation
-
-Historical behavioral research lives under `docs/research/`.
-
-- `docs/research/README.md` explains the research policy and distinguishes historical research from current product authority.
-- `docs/research/STATUS.md` maps research conclusions to current EpicScope state.
-
-The original observations are preserved even when EpicScope later implements a stronger or deliberately different behavior.
+The available connector used for the 2026-10-16 cleanup could close obsolete PRs and classify remote refs but did not expose branch deletion. Superseded refs are listed in `docs/BRANCH_CLEANUP_2026-10-15.md` and may be deleted with normal Git/GitHub controls.
 
 ## Recommended continuation
 
-1. preserve the PR #449 browser-known-good VE runtime while improving state ownership;
-2. fix Result View state/precision behavior and Logger → Analyzer result persistence one verified step at a time;
-3. remove duplicate cell-evidence analysis and DOM-derived delay ownership when safe;
-4. continue targeted Fuel / Injector and Trigger / Sync maturity work as useful;
-5. add MLG v3 compatibility when remaining mapping is verified or real demand appears;
-6. perform deliberate Web cleanup/consolidation without reopening closed Logger/Histogram feature tracks;
-7. perform the Web functional maturity review;
-8. then move toward Linux production implementation.
+1. focused UI polish from the accepted `main` baseline;
+2. CI plus browser sanity checks for interaction-affecting polish;
+3. staged D-058 observability implementation beginning with baseline benchmarks and record/session/operation/retention ownership;
+4. lower-priority Analyzer or MLG v3 work only where evidence/demand justifies it;
+5. Web functional maturity review;
+6. Linux production implementation.
 
 ## Documentation
 
@@ -193,11 +165,13 @@ Start with:
 - `docs/DOCUMENTATION_MAP.md` — document authority/maintenance map;
 - `docs/ROADMAP.md` — sequencing and phase status;
 - `docs/PRODUCT.md` — product contract;
+- `docs/UI_REFERENCE.md` — current UI hierarchy/polish constraints;
 - `docs/ANALYZER.md` — Analyzer family behavior/maturity;
 - `docs/HISTOGRAM.md` — Histogram contract/maturity;
-- `docs/VE_ANALYZER.md` — current VE Analyzer product/behavior contract;
-- `docs/VE_ANALYZER_WORKBENCH.md` — current VE workbench UI/workflow contract;
-- `docs/research/README.md` — research index/policy;
+- `docs/VE_ANALYZER.md` — VE Analyzer product/behavior contract;
+- `docs/VE_ANALYZER_WORKBENCH.md` — VE workbench UI/workflow contract;
+- `docs/OBSERVABILITY.md` — approved diagnostics/observability architecture;
+- `docs/research/OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md` — observability performance implementation research;
 - `docs/research/STATUS.md` — living research-to-product disposition;
-- `docs/TS_SHIM_STATUS.md` — current live-source validation authority;
+- `docs/TS_SHIM_STATUS.md` — live-source validation authority;
 - `docs/LOG_MLG_PLAN.md` — MLG support/compatibility policy.
