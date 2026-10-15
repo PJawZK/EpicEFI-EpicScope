@@ -270,7 +270,8 @@ export function buildFuelingOperatingMap(
 
   const finishSegment = (): void => {
     if (!segment.length) return;
-    stableSamples.push(...stableSamplesFromSegment(segment, minimumStableDurationMs, maxRpmRate, maxLoadRate));
+    const accepted = stableSamplesFromSegment(segment, minimumStableDurationMs, maxRpmRate, maxLoadRate);
+    for (const sample of accepted) stableSamples.push(sample);
     segment = [];
   };
 

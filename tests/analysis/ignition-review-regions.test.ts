@@ -109,4 +109,23 @@ describe('Ignition review regions', () => {
     expect(() => analyzeIgnitionReviewRegions(input, { timingStepThreshold: 0 })).toThrow(RangeError);
     expect(() => analyzeIgnitionReviewRegions(input, { correctionThreshold: -1 })).toThrow(RangeError);
   });
+
+  it('handles a 320k-sample continuous stable segment without argument-spread overflow', () => {
+    const sampleCount = 320_458;
+    const advance = new Array<number>(sampleCount).fill(15);
+    const rpm = new Array<number>(sampleCount).fill(2000);
+    const load = new Array<number>(sampleCount).fill(50);
+    const result = analyzeIgnitionReviewRegions({
+      advance: range(advance),
+      rpm: range(rpm),
+      load: range(load),
+    }, {
+      minimumSamplesPerRegion: 1,
+      minimumStableDurationMs: 0,
+      maxTransitionGapMs: 100,
+    });
+
+    expect(result.validAlignedSampleCount).toBe(sampleCount);
+    expect(result.stableSampleCount).toBe(sampleCount);
+  });
 });
