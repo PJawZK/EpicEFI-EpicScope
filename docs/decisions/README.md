@@ -10,7 +10,7 @@ For current project state, always read `../HANDOFF.md` and `../DOCUMENTATION_MAP
 
 File: `2026-10-15-unified-observability-authority.md`
 
-- **D-058** — EpicScope diagnostics, performance history, runtime errors and report assembly converge on one versioned, bounded observability/session architecture. Specialized reports become projections over the shared record stream; useful existing probes remain in their natural owners and redundant collectors/builders are removed after parity.
+- **D-058** — EpicScope diagnostics, performance history, runtime errors and report assembly converge on one versioned, bounded observability/session architecture. The shared stream behaves as a flight recorder with explicit operation correlation, owner-provided revisions/fingerprints, priority/coalescing/backpressure, recursion protection, batched bounded persistence and previous-session evidence. Specialized reports become projections over the shared record stream; useful existing probes remain in their natural owners and redundant collectors/builders are removed after parity.
 
 ### 2026-10-15 — VE runtime validation and lambda-delay authority
 
