@@ -15,6 +15,7 @@ permissions:
   pages: write
   id-token: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: pages
@@ -133,6 +134,7 @@ jobs:
 
       - name: Comment preview link
         if: github.event_name == 'issue_comment'
+        continue-on-error: true
         uses: actions/github-script@v8
         env:
           PREVIEW_URL: ${{ steps.deployment.outputs.page_url }}previews/pr-${{ needs.build.outputs.pr_number }}/
