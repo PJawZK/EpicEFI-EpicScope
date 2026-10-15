@@ -2,267 +2,194 @@
 
 ## Status
 
-This document is a normative UI/workflow companion to `VE_ANALYZER.md`.
+This document is the normative UI/workflow companion to `VE_ANALYZER.md`.
 
-It was added after a second focused MegaLogViewer VE Analyze research pass exposed an under-specified part of the original EpicScope plan: the mature VE Analyze workflow is fundamentally a **two-table calibration workbench**, not a form-first analyzer.
-
-Where this document and the earlier shell layout disagree, use this workbench contract for the primary VE Analyzer UX while preserving the evidence/safety rules in `VE_ANALYZER.md`.
+VE Analyzer is implemented. The current browser-known-good runtime is the #441-era composition restored by PR #449. Future changes to workbench lifecycle/rendering/input behavior require browser validation; CI alone is not sufficient acceptance evidence.
 
 ## Primary layout
 
-Desktop VE Analyzer should devote most available space to two calibration surfaces:
+VE Analyzer is a **table-first calibration workbench**, not a form-first analyzer.
+
+Desktop layout keeps the VE and target-mixture tables as the dominant visual surfaces. Current layout controls allow Side-by-side or Single-table presentation while preserving the same two-table authority.
+
+Conceptually:
 
 ```text
 ┌──────────────────────────────┬──────────────────────────────┐
-│ VE table / proposed VE       │ Target AFR / lambda table    │
-│                              │                              │
+│ VE / proposal table          │ Target AFR / lambda table    │
 │ load ↑                       │ load ↑                       │
-│      cells...                │      cells...                │
-│                              │                              │
 │          RPM →               │          RPM →               │
 └──────────────────────────────┴──────────────────────────────┘
 
-[ Run Analysis ]
-
-quick filters / authority / mixture fields / lambda delay
-
-[proposal review controls] [Accept / Apply explicitly] [Exit / discard]
+[table/result controls]
+[Run Analysis + readiness]
+[quick qualification / mixture / authority / lambda delay]
 ```
 
-The exact responsive arrangement may change on narrower screens, but the VE and target tables remain the dominant visual objects.
+On narrower screens the layout may reflow, but tables remain primary.
 
-## Left table — VE / proposal surface
+## Header/control ownership
 
-The left table represents the selected VE table from the loaded tune.
+The current accepted control grouping is:
 
-Before analysis it shows the original/current VE table.
+```text
+[Table view] [VE table selector] [Target table selector / scale]
+[VE table] [Target table]
+[Result View]
+```
 
-After analysis the same spatial surface should show the proposal, with the original value still available for inspection and selective revert.
+Table title/description belongs on the left; compact controls/tabs belong on the right where space allows.
 
-Required capabilities over time:
+There must be one authoritative owner for table layout/tabs/header controls. Do not add later wrappers that re-parent the same nodes.
+
+## VE / proposal table
+
+Before analysis, the VE surface represents the original selected tune table.
+
+After analysis, the same spatial surface can show proposal/result overlays while the original value remains conceptually distinct.
+
+Current/required capabilities include:
 
 - original VE display;
-- proposed VE display;
-- value-based coloring;
-- selected cell/range interaction;
-- original vs proposed value inspection;
-- sample/hit count;
-- cumulative evidence/weight;
-- confidence;
-- change / percent-change view;
-- selective revert to original;
-- optional manual proposal editing;
-- evidence navigation to Logger.
+- proposed VE/result overlays;
+- change / percent-change views;
+- mixture/evidence views;
+- sample count and cumulative evidence;
+- confidence/spread;
+- delay-used view;
+- compact evidence/proposal state markers;
+- click/tap evidence detail;
+- strongest source-visit navigation to Logger;
+- future selective proposal review/revert without mutating original tune state.
 
-Running analysis must not mutate the loaded tune.
+Running analysis never mutates the loaded tune.
 
-## Right table — target mixture surface
+## Target mixture table
 
-The right table represents the target AFR/lambda calibration used by the VE calculation.
+The target AFR/lambda table is a first-class analysis input and remains visible/reachable beside the VE table.
 
-It is a first-class analysis input and should be visible beside the VE table.
+Table selection normally resolves matching RPM/load axes automatically. Manual axis mapping belongs under Advanced as an escape hatch for ambiguous/non-standard tunes rather than occupying normal workflow space.
 
-Supported target authorities should include:
+AFR/Lambda scale semantics must be explicit. Literal table/source names remain preserved.
 
-- target AFR/lambda table from loaded MSQ;
-- logged target AFR/lambda channel where available;
-- explicit comparison when both are available.
+## Setup and quick controls
 
-The UI must state which authority is used for analysis.
+Keep normal-use controls compact and near the workbench:
 
-AFR/lambda conversion must be explicit and use the configured stoichiometric scale rather than silently mixing units/scales.
+- VE table;
+- target table / mixture scale;
+- Scope where applicable;
+- optional Min/Max RPM/load;
+- optional CLT/TPS qualification;
+- actual mixture source;
+- fuel-correction compensation source/mode;
+- Cell Change / prior authority;
+- minimum evidence authority;
+- maximum absolute/percentage VE change safeguards;
+- Lambda Delay access.
 
-## Compact setup controls
+Optional operating bounds are not required proposal-safety inputs. Blank optional bounds mean full range/no bound and must not block Run Analysis.
 
-The setup controls added in PR #399 remain useful but should become compact setup/advanced controls rather than dominate the page.
+## Advanced controls
 
-They include:
+Advanced configuration may include:
 
-- VE table selection;
-- VE RPM-axis selection;
-- VE load-axis selection;
-- target table selection;
-- target RPM/load-axis mapping when required;
-- semantic RPM/load/actual-mixture channel overrides;
-- optional logged-target override/context;
-- optional correction/context channels.
+- manual VE/target axis mapping;
+- detailed qualification/state exclusions;
+- recovery/stability settings;
+- prior/evidence numeric detail;
+- non-standard source overrides.
 
-Suggestions are allowed. All important mapping remains visible and user-overridable.
+Progressive disclosure is preferred over placing every semantic input in the main table area.
 
-## Primary actions
+## Run Analysis and readiness
 
-### Run Analysis
+**Run Analysis** is explicit and user-triggered.
 
-Prominent and explicit.
+No expensive VE analysis runs merely because the app/log/MSQ/analyzer opened or because a control changed.
 
-No expensive VE analysis should run merely because:
+Readiness must explain specific blockers. The current `Run blocked · N issues` information UI should state why each blocker matters and offer a Fix/focus action when a concrete control can be targeted.
 
-- the app opened;
-- a log loaded;
-- an MSQ loaded;
-- VE Analyzer opened;
-- a table/control changed.
-
-Changing analysis inputs marks prior results stale. User presses **Run Analysis** to recompute.
-
-### Accept / Apply proposal
-
-Analysis result and tune state remain separate.
-
-The eventual acceptance workflow must be explicit and diff-first.
-
-Before EpicScope supports tune-state application, export/copy/review actions may be provided instead. No UI should imply that `Run Analysis` has changed the tune.
-
-### Exit / discard
-
-The user can leave VE Analyzer or discard the proposal without accepting it.
-
-### Revert selected cells
-
-Selected proposal cells/ranges can be restored to original VE values without discarding the entire result.
-
-Use shared EpicEFI table-interaction behavior rather than introducing incompatible VE-only gestures.
-
-## Quick controls visible near the workbench
-
-Keep common tuning controls accessible without opening advanced semantic configuration:
-
-- Scope / time range;
-- Min RPM;
-- Max RPM;
-- Min Load;
-- Max Load;
-- Min CLT;
-- Cell Change / evidence-prior authority;
-- actual mixture field;
-- EGO/STFT correction field;
-- Custom Filter status;
-- Lambda Delay model/table access.
-
-The exact visual arrangement may use one or two rows beneath the tables.
-
-## Advanced qualification
-
-EpicScope should improve on MLV with semantic qualification, but progressively disclose it.
-
-Advanced qualification can include:
-
-- DFCO exclusion;
-- fuel-cut exclusion;
-- AE exclusion;
-- decel enrichment/enleanment exclusion;
-- warm-up/coolant correction neutrality;
-- RPM/load/TPS stability;
-- post-transient recovery/settling;
-- lambda validity;
-- limiter/protection state;
-- sync/engine-running validity;
-- injector/fuel-pressure limitation context.
-
-The Recommended VE Analysis preset should resolve these automatically where semantic channels exist and visibly report unavailable safeguards.
-
-## Cell Change / prior authority
-
-Provide a simple tuner-facing setting near the primary controls.
-
-Its behavior represents the authority of the starting VE value relative to new log evidence.
-
-The UI may use descriptive labels rather than copying MLV naming, but it should remain quick to understand.
-
-Advanced detail may show the actual prior/evidence weighting model.
+Do not replace specific readiness rows with vague aggregate “Proposal settings” status.
 
 ## Lambda Delay
 
-Lambda Delay is a prominent workbench tool.
+### Current accepted model
 
-Supported working models:
+Lambda Delay uses **RPM × load table only**.
 
-- single time value;
-- RPM → delay curve;
-- RPM × load delay table.
+Scalar/single-delay and RPM-curve modes are historical planning options and are not current product behavior.
 
-The full/table model remains preferred when evidence supports it.
+### Discovery/workflow
 
-EpicScope-specific improvement:
+- **Grab lambda delays from log** explicitly performs discovery.
+- discovery recommendation and working delay table remain separate states.
+- **Use recommendation** promotes the current recommendation into the working table.
+- loading/saving a working delay table is explicit.
+- grabbing a new recommendation must not silently destroy an existing loaded/saved working table.
 
-- delay is time-based rather than record-count based;
-- **Grab lambda delays from log** is an explicit user action;
-- discovered recommendation and user working model remain separate;
-- measured/interpolated/manual delay regions remain distinguishable.
+Delay discovery must never run automatically.
 
-Delay discovery must not run automatically.
+### Delay table evidence states
 
-## Mixture and EGO correction
+Cells distinguish Measured, Interpolated, Insufficient and user-edited/manual working values where applicable. Interpolated evidence must not look identical to directly measured evidence.
 
-Actual mixture source is explicit.
+### Direct delay-cell editing
 
-Initial production priority is calibrated wideband lambda/AFR.
+Current browser-validated interaction:
 
-If an EGO/STFT correction channel is selected and used to compensate evidence, the result provenance must say so.
+- click/tap selects a cell;
+- click-drag selects a rectangular range;
+- typing digits starts replacement immediately;
+- preview is visible in the selected cell/range;
+- Enter commits;
+- Escape cancels;
+- Backspace edits;
+- Delete clears to explicit no working delay (`—`);
+- repeated edits to the same cell must work without clicking elsewhere;
+- focus/selection should return after commit/rerender;
+- user provenance is a compact marker rather than a persistent border that conflicts with selection.
 
-Do not require closed-loop correction to be disabled when a correction layer can be modeled safely.
+Do not restore the old external value/apply controls as the primary interaction.
 
-Narrowband-specific autotune behavior is not required for first implementation merely for reference parity.
+## Mixture and fuel-correction semantics
+
+Actual mixture source is explicit. Calibrated wideband Lambda/AFR is the normal priority.
+
+If a known correction source is used to compensate evidence, provenance must state that. Unknown correction semantics remain context-only unless the user explicitly declares a supported interpretation.
+
+Do not require closed-loop correction to be disabled merely for reference parity when a correction layer can be modeled safely.
 
 ## Result lifecycle
 
-The VE table surface has these conceptual states:
+Conceptual states remain separate:
 
-1. **Original** — loaded tune table.
-2. **Analyzing** — explicit Run Analysis operation in progress.
-3. **Proposal** — analysis result shown spatially on the VE table.
-4. **Reviewed proposal** — user may revert/edit cells or choose application authority.
-5. **Accepted/exported/applied** — only through a separate explicit action.
+1. **Original** — tune table loaded as analysis input.
+2. **Analyzing** — explicit Run operation.
+3. **Proposal/evidence** — Analyzer result.
+4. **Reviewed proposal** — future/partial review state.
+5. **Exported/applied** — only through a separate explicit future action.
 
-The original table remains available throughout the review lifecycle.
+Leaving/re-entering Analyzer should eventually preserve appropriate analysis-session state, but current Logger → Analyzer round-trip result persistence is a known defect. Fix it without conflating original tune, proposal and reviewed state.
 
-## Result views
+## Result View
 
-The primary VE table should support switchable result overlays/modes rather than separate disconnected reports:
+Current Result View includes proposal/change/percent-change/mixture-error/evidence/confidence/spread/delay-related perspectives.
 
-- Proposed VE;
-- VE change;
-- VE percent change;
-- mixture error;
-- contributing sample/hit count;
-- cumulative weighted evidence;
-- confidence;
-- delay used;
-- qualification/exclusion state.
+Known issue: fallback/precision behavior remains imperfect. Fix Result View from authoritative structured state rather than repeatedly parsing/reusing rendered DOM as source data.
 
-A cell should be able to open detailed evidence and navigate to Logger.
+## Cell evidence
 
-## Result-state semantics
+Cell evidence is field-tested and currently useful. It can show supporting evidence and navigate to the strongest contiguous source visit in Logger.
 
-Cells must visually distinguish:
+Current architecture debt: the cell-evidence layer recomputes VE analysis instead of consuming retained authoritative primary results. Future cleanup should remove that duplication after stable state ownership exists.
 
-- measured recommendation;
-- interpolated suggestion;
-- weak/observational evidence;
-- withheld recommendation;
-- no usable evidence;
-- manually edited proposal where applicable;
-- reverted/original value.
+## Browser-known-good boundary
 
-Unvisited regions must not look measured.
+The #441-era cell-evidence composition is the last explicit browser-confirmed good baseline. PR #449 restored runtime files to that composition after post-#441 lifecycle/continuity wrappers froze Analyzer entry.
 
-## Immediate implementation correction after PR #399
-
-PR #399's evidence-readiness shell is retained as useful plumbing, not final UX.
-
-Before implementing full recommendation math, reshape the page in this order:
-
-1. VE table renderer on the left;
-2. target AFR/lambda table renderer on the right;
-3. compact table/axis mapping controls;
-4. Run Analysis as the primary action;
-5. quick RPM/load/CLT/scope/custom-filter controls;
-6. Cell Change/prior-authority control;
-7. actual-mixture and EGO-correction selectors;
-8. Lambda Delay access from the primary workbench;
-9. Recommended VE Analysis qualification details;
-10. evidence-only operating map and recommendation math.
+Do not batch-reintroduce those wrappers. Any state-ownership redesign must be staged and browser-tested after each structural change.
 
 ## Product invariant
 
-> VE Analyzer should feel first like a calibration-table workbench and second like an evidence inspector. EpicScope's stronger evidence model should explain and constrain the proposal without hiding the VE table and target table behind configuration forms.
+> VE Analyzer should feel first like a calibration-table workbench and second like an evidence inspector. Evidence explains and constrains the proposal without hiding the VE table and target table behind configuration forms.
