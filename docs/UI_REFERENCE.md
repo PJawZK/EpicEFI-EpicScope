@@ -8,6 +8,8 @@
 
 This document records the approved EpicHub-derived interaction reference plus current EpicScope-specific hierarchy. EpicScope inherits useful Logger/Analyzer interaction patterns, not EpicHub's wider Dashboard/Tuner/Diagnostics shell or Android architecture.
 
+Current runtime authority is `main` after browser-accepted PR #462. UI polish should refine presentation and interaction from that baseline without reopening accepted Analyzer/VE lifecycle architecture unless a concrete defect requires it.
+
 ## Core UI principle
 
 > **Load Data → Channels → Navigate → Select / qualify range → Analyze → Compare / Export**
@@ -91,7 +93,7 @@ Shared flow:
 
 > **Scope → Channels → Qualification → analysis-specific controls → evidence → Logger / Export**
 
-Current Histogram track is closed for broad feature expansion. UI changes should be correctness/regression/cleanup driven unless field use exposes a real gap.
+Current Histogram track is closed for broad feature expansion. UI changes should be correctness/regression/polish driven unless field use exposes a real gap.
 
 ### Table Generator
 
@@ -139,7 +141,7 @@ Shared Analyzer rules:
 
 - table-first VE + target-mixture workbench;
 - table title/description left, compact controls right;
-- current single ownership of table layout/tabs/header controls;
+- single ownership of table layout/tabs/header controls;
 - Side-by-side / Single-table presentation without changing underlying table authority;
 - compact normal-use mapping/qualification/authority controls;
 - explicit **Run Analysis** and actionable blocker information;
@@ -150,7 +152,16 @@ Shared Analyzer rules:
 - per-cell evidence and strongest-visit Logger navigation;
 - original tune, Analyzer proposal/evidence and user-reviewed result remain distinct.
 
-Known UI defects: Result View fallback/precision and Logger → Analyzer result continuity. Fix one at a time from the browser-known-good PR #449 runtime and browser-verify each lifecycle/render/input change.
+Accepted Result View/session behavior after PR #462:
+
+- repeated Result View switching preserves source VE values;
+- Proposed VE uses VE heat;
+- alternate views use selected-metric heat for real metric cells and neutral heat for untouched/fallback cells;
+- valid Lambda Delay values remain real metrics;
+- completed VE analysis survives semantically unchanged Analyzer/navigation round trips;
+- presentation-only switching does not trigger additional trace loading.
+
+These are no longer known UI defects. Future workbench UI changes should preserve them.
 
 ## Idle Analyzer UI
 
@@ -158,7 +169,26 @@ Idle system selector remains subsystem-aware: Combined, DC Idle, IAC Valve, ETB,
 
 ## Diagnostics / Perf / Report
 
-Diagnostics should visually recede when healthy. Report exposes current health summary; log-specific warnings must not imply a log problem before a log exists.
+Current diagnostics/performance/reporting remain useful but fragmented. D-058 / `OBSERVABILITY.md` defines their future convergence into one bounded local observability/session authority with Health, Performance, Parser/Source Integrity, Resources, Errors, Previous Session and report/export as projections.
+
+Diagnostics should visually recede when healthy. Report/health language must not imply a log problem before a log exists. The upcoming implementation should not be UI-first; shared recorder/session/operation ownership comes before consolidating the visible Diagnostics experience.
+
+## Immediate UI polish direction — 2026-10-16
+
+The next active task is a focused UI polish pass from the accepted runtime baseline.
+
+Priorities:
+
+1. consistent spacing/alignment/density across Logger, Analyzer and Histogram;
+2. stronger visual hierarchy for primary versus secondary controls;
+3. consistent table headers, status blocks, inline help and error/warning presentation;
+4. responsive sizing/overflow cleanup without hiding useful data;
+5. typography and numeric alignment consistency;
+6. complete hover/focus/active/disabled/selected states;
+7. obvious keyboard/accessibility fixes;
+8. removal/consolidation of duplicate cosmetic CSS only where behavior is unchanged.
+
+Do not hide semantic changes inside polish. Any interaction/lifecycle-affecting change still requires representative browser verification.
 
 ## Approved EpicScope refinements
 
@@ -174,6 +204,7 @@ Diagnostics should visually recede when healthy. Report exposes current health s
 10. Analysis controls state what thresholds/values actually do.
 11. Shared components preserve their owning positioning/context wrapper when re-parented.
 12. VE Analyzer is a table-first workbench with browser-validated behavior taking precedence over CI-only assumptions.
+13. UI polish must preserve established data/analysis authority rather than creating new DOM-owned state.
 
 ## Reference change control
 
