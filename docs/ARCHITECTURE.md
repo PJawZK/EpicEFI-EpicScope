@@ -35,6 +35,8 @@ Source files / platform data sources
 
 `core/log-model/` remains a neutral contract boundary. Semantic roles/capabilities are metadata/identity logic; they do not duplicate sample arrays or replace provenance.
 
+Observability is a cross-cutting Web/runtime concern that records compact lifecycle/state/performance/error evidence about these layers without becoming authoritative domain state.
+
 ## Source and parser ownership
 
 Parsers decode/validate untrusted source syntax and produce normalized contracts. They do not own Analyzer conclusions, tune recommendations or UI behavior.
@@ -147,6 +149,23 @@ Presentation/workspace persistence remains separate from log-specific navigation
 
 VE session/result persistence is currently incomplete across Logger → Analyzer navigation and is an active maturity issue, not a reason to collapse domain/presentation ownership.
 
+## Observability ownership
+
+EpicScope will converge the current fragmented diagnostics/performance/report ownership into one bounded Web observability/session architecture as defined in `OBSERVABILITY.md` and D-058.
+
+Durable rules:
+
+- observability records **what happened**, but does not become source/tune/analysis truth;
+- existing measurement probes remain in their natural parser/core/adapter/UI owners and publish compact evidence into observability;
+- events, metrics and snapshots share operation/session correlation;
+- specialized Health, Performance, Parser / Source Integrity, Resources, Errors and export surfaces become projections over the shared observability data;
+- current-session and previous-session history is bounded by time/count/bytes;
+- no silent upload/telemetry or raw log/tune payload capture;
+- redundant diagnostic stores/builders are deleted after migration parity rather than kept permanently beside the new path;
+- instrumentation must not materially alter scheduling or create observer/render/event feedback loops.
+
+Observability is Web/runtime infrastructure, not a new general application state store.
+
 ## Presentation/UI ownership
 
 UI owns layout, interaction and navigation; it should not become the sole owner of reusable analysis truth.
@@ -180,9 +199,13 @@ Architecture claims move from proposed to validated only with appropriate automa
 
 For VE Analyzer lifecycle/render/input changes, browser behavior is required acceptance evidence; CI/typecheck/tests/build alone are insufficient after the PR #442–#447 regression experience.
 
+Observability migration steps also require browser validation and representative performance comparison because instrumentation itself can perturb timing/lifecycle behavior.
+
 ## Privacy boundary
 
 Local analysis remains local by default. Sharing/publishing/telemetry are separate explicit capabilities and must not silently transmit log/tune contents, filenames, derived values or results.
+
+Observability follows the same boundary and should prefer IDs, revisions, counts, durations, hashes and compact deltas over raw payloads.
 
 ## Change control
 

@@ -43,6 +43,7 @@ Current maturity:
 - Idle/AE: useful but thinner.
 - Fuel Pressure / Injector and Trigger / Sync: targeted maturity gaps remain.
 - VE Analyzer: implemented, real-log/browser validated and the highest-value active maturity target.
+- Unified observability: architecture approved, implementation not yet started.
 - MLG v3: researched compatibility extension, not yet implemented.
 
 The browser-known-good VE runtime is the #441-era composition restored by PR #449. Browser behavior is the acceptance authority for VE runtime changes; CI is necessary but not sufficient.
@@ -92,6 +93,8 @@ Current primary entries:
 - Histogram.
 
 Analyzer and Histogram use compact secondary selectors for their own subviews.
+
+Diagnostics remains a supporting utility surface rather than a new primary analysis mode.
 
 ## Graph workspace model
 
@@ -147,6 +150,25 @@ Current accepted behavior includes:
 
 Known remaining VE issues are Result View fallback/precision and Logger → Analyzer result persistence. State ownership cleanup should proceed one browser-verified structural change at a time.
 
+## Diagnostics / observability product contract
+
+`docs/OBSERVABILITY.md` defines the approved consolidation direction.
+
+The current diagnostic capabilities are useful but fragmented. The target product behavior is one coherent local Diagnostics experience that can show:
+
+- current health/anomalies;
+- causal session/operation timeline;
+- Performance;
+- Parser / Source Integrity;
+- Resources / caches;
+- runtime errors;
+- a bounded previous-session black-box tail;
+- one coherent export report.
+
+The system should discover broad failure patterns rather than only collect probes for already-known bugs. It must remain bounded, low-overhead and local-first. It must not silently upload telemetry, record raw log/tune payloads, or become a second application/domain state store.
+
+Existing detailed performance/source/parser measurements should be migrated into the new architecture where useful, not thrown away.
+
 ## Fuel Pressure / Injector product semantics
 
 Current architecture separates calibrated low-side pressure, high-side/GDI pressure, rail differential, raw electrical pressure channels and CEL/status channels. Raw electrical/CEL signals must not masquerade as engineering pressure evidence.
@@ -183,9 +205,11 @@ Every table/histogram/heatmap should make axes, cell meaning, aggregation method
 
 Opening/analyzing a local log must not require upload. EpicScope must not silently transmit log/tune contents, filenames, derived values or analysis results.
 
+The same applies to diagnostics/observability. Automatic diagnostic retention is local and bounded; explicit export is a user action.
+
 ## Current non-goals
 
-Current Web work does not need to solve final native Linux runtime design/packaging, Android integration, direct ECU acquisition outside the validated Shim path, live tune editing/Burn semantics, or decorative polish that conflicts with clarity/performance.
+Current Web work does not need to solve final native Linux runtime design/packaging, Android integration, direct ECU acquisition outside the validated Shim path, live tune editing/Burn semantics, cloud telemetry, or decorative polish that conflicts with clarity/performance.
 
 ## Repository authority
 

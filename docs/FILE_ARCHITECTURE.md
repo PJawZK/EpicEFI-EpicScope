@@ -71,13 +71,47 @@ Right-side browser/detail/tool surfaces such as Inspector/channel search/detail 
 
 Reusable Web presentation components: graph/timeline, diagnostics, report/health and other focused UI pieces.
 
+Current diagnostics/report components remain production until the approved observability migration reaches parity. They are migration sources, not the target long-term ownership model.
+
+### `apps/web/src/observability/` — approved future ownership
+
+D-058 approves a bounded Web observability subsystem. Create this directory incrementally when implementation begins; do not scaffold empty files merely to match the plan.
+
+Approved responsibility map:
+
+```text
+apps/web/src/observability/
+├── record.ts          # versioned event/metric/snapshot envelope
+├── recorder.ts        # bounded current-session record stream
+├── session.ts         # session lifecycle/summary
+├── operation.ts       # operation + parent-operation correlation
+├── retention.ts       # count/time/byte limits
+├── persistence.ts     # versioned recent-session local persistence
+├── anomaly-detector.ts
+├── snapshots.ts
+├── producers/         # adapters from existing owners into observability
+└── reports/           # Health/Performance/Source/Session/export projections
+```
+
+Boundary rules:
+
+- parser/source/cache/analysis code keeps ownership of the measurements or domain evidence it produces;
+- observability producers publish compact correlated records from those owners;
+- observability must not parse raw MLG/INI/MSQ, own tune/session domain truth, or replace application state management;
+- report views should consume observability/session projections rather than maintain duplicate long-lived stores;
+- old `performance-diagnostics*`, `bug-report-*` and related report-only ownership should be removed only after the replacement reaches parity and browser validation.
+
 ### `apps/web/src/state/`
 
 Web-specific presentation/application state and persistence coordination, including workspace/template/semantic-role state. Domain Session remains conceptually separate.
 
+Observability history does not belong here; it has its own bounded/versioned persistence boundary and must not become a hidden general state store.
+
 ### `apps/web/src/adapters/`
 
 Browser-specific file/storage/runtime adapters, including Blob/File access, OPFS sidecar/native-column caches and `ts_shim` transport/source adapters.
+
+Measurement probes in adapters remain owned here and may publish compact counters/timings through observability producers.
 
 ### `apps/web/src/workers/`
 
@@ -90,6 +124,8 @@ Web presentation styles. CSS must not become authoritative domain state.
 ### `tests/`
 
 Core/Web regression, parser, analysis, persistence and behavior tests. Browser acceptance testing remains separately required for VE lifecycle/render/input changes where automated DOM tests cannot prove real behavior.
+
+Observability adds tests for bounded retention, operation correlation, anomaly sequences, report projections, versioned previous-session recovery and runtime overhead.
 
 ### `tools/`
 
@@ -126,6 +162,7 @@ docs/
 ├── FILE_ARCHITECTURE.md
 ├── DATA_MODEL.md
 ├── DECISIONS.md
+├── OBSERVABILITY.md
 ├── WORKFLOW.md
 ├── UI_REFERENCE.md
 ├── ANALYZER.md
@@ -158,6 +195,8 @@ source formats
   parsers ─────→ normalized contracts ←──── core/analyzer consumers
                                             ↑
                                          apps/web
+                                            ↓
+                                     observability records
 ```
 
 Prohibited coupling includes:
@@ -166,7 +205,9 @@ Prohibited coupling includes:
 - generic analysis depending on presentation DOM;
 - specialized domain logic parsing raw MLG binary directly;
 - tune services duplicating raw INI/MSQ syntax parsing;
-- rendered DOM becoming the only owner of reusable analysis truth.
+- rendered DOM becoming the only owner of reusable analysis truth;
+- observability becoming the authoritative source/tune/analysis model;
+- report formatters owning a second copy of long-lived runtime state once observability migration is complete.
 
 ## VE-specific ownership rule
 

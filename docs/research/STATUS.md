@@ -21,7 +21,33 @@ Status vocabulary:
 - PR #449 restored the VE Analyzer runtime to the browser-known-good #441-era composition after later continuity/render wrappers caused Analyzer-entry regression. The project owner confirmed Analyzer entry works again after that rollback.
 - Fuel / Injector and Trigger / Sync remain useful targeted maturity areas outside VE.
 - MLG v3 remains researched but not implemented.
-- Remote branch cleanup is complete; `main` is the only current remote branch authority.
+- Remote branch cleanup is complete; `main` is the production/merge authority while temporary development/browser-validation branches may exist.
+- Unified observability is an accepted future architecture under D-058 / `../OBSERVABILITY.md`; implementation waits for the active runtime cleanup sequence to reach a stable browser-validated baseline.
+- `OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md` records the current performance-first implementation research for that future system.
+
+## Observability / diagnostics implementation research
+
+| Research conclusion | EpicScope status | Current disposition |
+|---|---|---|
+| Observability should be a bounded flight recorder, not a normal debug logger | Planned / accepted architecture | D-058 and `../OBSERVABILITY.md` establish one bounded correlated record/session system. |
+| Common hot-path records should avoid one large JS object allocation per event | Planned implementation direction | Prefer packed/hybrid bounded ring storage with optional payloads; exact layout remains benchmark-driven. |
+| Critical evidence and high-frequency detail should not compete for the same retention space | Planned implementation direction | Research favors separate critical/detail rings sharing one sequence domain. |
+| Repeated render/observer/event storms should be coalesced before normal insertion | Planned implementation direction | Event storms should make recording cheaper per repetition, not amplify the fault. |
+| Common event dimensions should use compact stable IDs internally | Planned implementation direction | Map numeric codes back to stable machine names/human labels at query/report/export boundaries. |
+| Common records only need monotonic time when session wall-time origin is retained | Planned implementation direction | Reconstruct wall time for presentation rather than storing/calling both clocks for every record. |
+| Operation correlation should use primitive numeric tokens internally | Planned implementation direction | Explicit IDs remain the correlation contract; convenience wrappers must not force per-operation object/closure churn. |
+| Existing large performance structs should remain typed optional payloads rather than bloating every generic record | Planned implementation direction | Preserve current detailed measurements while keeping common record headers compact. |
+| Revisions/fingerprints must come from owning subsystems | Accepted architecture | No hot-path full-state serialization or automatic `JSON.stringify`/hashing by observability. |
+| Snapshots should be workflow-boundary driven rather than broad periodic polling | Planned implementation direction | Prefer owner-maintained counters/snapshots and meaningful operation boundaries over DOM/controller scans. |
+| Streaming anomaly detection should be O(1) amortized | Planned implementation direction | Keep small bounded maps for bursts/open operations/etc.; defer graph/cycle/baseline analysis. |
+| Web persistence should be batched and structured, not one write per event | Planned implementation direction | Native IndexedDB is the preferred candidate; chunk sizes/cadence remain benchmark-driven. |
+| Persistent history need not mirror the entire current RAM ring | Planned implementation direction | Session summaries, bounded tails, critical evidence and anomaly/error windows are sufficient first targets. |
+| Byte accounting must not serialize each record merely to estimate size | Planned implementation direction | Use cheap estimated packed/payload sizes on the hot path and exact size at persistence/export boundaries. |
+| Performance baselines should use compact online summaries | Planned implementation direction | Keep count/mean/variance/min/max plus a bounded recent window or bounded quantile estimator, keyed to comparable workloads. |
+| Diagnostics UI must not render per incoming record | Planned implementation direction | No diagnostic DOM work while closed; bounded refresh cadence/lazy causal-tree/report construction while open. |
+| Observability overhead must be benchmarked against the stable baseline | Required validation | Compare startup, large-log open, workspace restore, channel activation, Analyzer/VE workflows and deliberate event storms. |
+
+Implementation authority remains `../OBSERVABILITY.md`; the research note preserves why the low-level design should prioritize bounded CPU, allocation, GC, storage and rendering costs.
 
 ## MegaLogViewer Histogram / Table Generator research
 
@@ -196,11 +222,9 @@ Do not turn EpicScope into a live tune editor merely to mirror TunerStudio behav
 
 As of 2026-10-15:
 
-1. preserve the PR #449 browser-known-good VE runtime;
-2. fix Result View fallback/precision behavior as one isolated change and browser-verify it;
-3. fix Logger → Analyzer VE result/session persistence as one isolated change and browser-verify it;
-4. then expose authoritative VE session/result/proposal/working-delay state;
-5. remove duplicate cell-evidence analysis and DOM-derived delay ownership after that state API exists;
-6. continue remaining Fuel / Injector and Trigger / Sync maturity work where useful;
-7. add MLG v3 compatibility when remaining type mapping is sufficiently verified or real need appears;
-8. perform deliberate Web cleanup/consolidation without reopening closed Histogram/Logger feature tracks.
+1. preserve the browser-validated VE fixes and cleanly integrate them onto current `main` without reintroducing wrapper stacks;
+2. complete the approved runtime cleanup sequence: DOM ownership → hidden-view routing → measured CPU cleanup → workers/batching only if justified;
+3. finish the queued correctness items around persistence failure visibility, async load rejection ownership, remaining large-input spread risks, bounded presentation preparation and transactional replacement loading;
+4. freeze a stable browser-validated baseline and parity/performance workloads;
+5. implement unified observability in the staged order defined by `../OBSERVABILITY.md`, using the performance-first constraints in `OBSERVABILITY_PERFORMANCE_IMPLEMENTATION_RESEARCH.md`;
+6. only after observability consolidation resume lower-priority Analyzer maturity, MLG v3 or other feature expansion as justified.
