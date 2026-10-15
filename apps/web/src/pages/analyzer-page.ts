@@ -3,6 +3,7 @@ import { qualifyNumericSampleGroups, type NumericQualificationGroup } from '../.
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import { loadAnalysisFilterSets, type AnalysisFilterSetState } from '../state/analysis-filter-storage';
 import type { LoggerAnalysisContext } from './logger-page';
+import { sameAnalyzerChannelCatalog, sameVeAnalysisContext } from './ve-analyzer-session-identity';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope, type AnalyzerScope } from './analyzer-scope';
 import { createTuneTableView } from './tune-table-view';
 import { createBoostAnalyzerView } from './boost-analyzer-view';
@@ -40,40 +41,6 @@ function formatScope(scope: AnalyzerScope): string {
   if (scope.startMs === undefined || scope.endMs === undefined) return '—';
   const seconds = Math.abs(scope.endMs - scope.startMs) / 1000;
   return seconds < 60 ? `${seconds.toFixed(3)} s` : `${(seconds / 60).toFixed(2)} min`;
-}
-
-function sameChannelCatalog(
-  left: LoggerAnalysisContext['channels'],
-  right: LoggerAnalysisContext['channels'],
-): boolean {
-  return left.length === right.length && left.every((channel, index) => channel === right[index]);
-}
-
-function sameSavedRanges(
-  left: LoggerAnalysisContext['savedRanges'],
-  right: LoggerAnalysisContext['savedRanges'],
-): boolean {
-  if (left === right) return true;
-  if (left.length !== right.length) return false;
-  return left.every((range, index) => {
-    const other = right[index];
-    return other !== undefined
-      && range.label === other.label
-      && range.startMs === other.startMs
-      && range.endMs === other.endMs;
-  });
-}
-
-function sameVeAnalysisContext(
-  left: LoggerAnalysisContext | undefined,
-  right: LoggerAnalysisContext,
-): boolean {
-  return left !== undefined
-    && sameChannelCatalog(left.channels, right.channels)
-    && left.aTimeMs === right.aTimeMs
-    && left.bTimeMs === right.bTimeMs
-    && left.sourceSampleCount === right.sourceSampleCount
-    && sameSavedRanges(left.savedRanges, right.savedRanges);
 }
 
 export function createAnalyzerPage(): AnalyzerPageController {
@@ -439,7 +406,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     const previousLeft = leftSelect.value;
     const previousRight = rightSelect.value;
     const previousQualification = qualificationSelect.value;
-    const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
+    const channelsChanged = !sameAnalyzerChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     if (currentView === 'tune-table') tuneTableView.setContext(nextContext);
     else if (currentView === 'boost') boostView.setContext(nextContext);
