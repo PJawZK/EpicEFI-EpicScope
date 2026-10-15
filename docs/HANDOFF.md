@@ -6,13 +6,7 @@ Repository: `PJawZK/EpicEFI-EpicScope`
 
 Authoritative production branch: `main`
 
-Browser-validated VE runtime baseline:
-
-`86357400be6971b1f8edfe98d70816fa55b3bec5`
-
-PR #449 — **Restore VE Analyzer runtime to browser-known good state**.
-
-Documentation commits after that runtime baseline do not intentionally alter VE runtime behavior.
+Current production `main` remains the merge authority. Browser-validated candidate branches/PRs may temporarily contain accepted fixes that still require clean integration onto `main`; those are explicitly identified below and must not be confused with production state.
 
 Hosted application:
 
@@ -25,26 +19,15 @@ This file is the present-tense continuation authority. `DOCUMENTATION_MAP.md` de
 - **Logger** — mature functional reference. Broad performance/micro-optimization work remains paused unless a measured regression appears.
 - **Histogram** — generic research-parity checkpoint closed for the approved scope. Table Generator, Distribution, Scatter and Math Channels are mature unless field use exposes a concrete correctness gap.
 - **Analyzer** — maturity remains uneven. Fueling and non-knock Ignition are mature experimental checkpoints, Boost is strong, Idle/AE are useful but thinner, Fuel / Injector and Trigger / Sync retain targeted maturity gaps.
-- **VE Analyzer** — implemented, real-log/browser validated and currently the highest-value active maturity target.
+- **VE Analyzer** — implemented and real-log/browser validated. A browser-tested candidate line now fixes Analyzer-entry looping, Logger → Analyzer result retention, retained cell-evidence reuse and Result View untouched-value preservation; clean integration onto `main` is still required.
+- **Runtime cleanup** — remaining approved sequence is DOM ownership → hidden-view routing → measured CPU cleanup → workers/batching only if still justified.
+- **Observability** — D-058 / `OBSERVABILITY.md` approve a unified bounded diagnostics/performance/report architecture. Implementation waits for a stable browser-validated baseline after the active cleanup sequence.
 - **MLG v3** — researched compatibility extension, not yet implemented; v1/v2 remain production support.
 - **Linux production implementation** — future work after Web maturity/cleanup.
 
 ## Repository state
 
-Remote branch cleanup is complete.
-
-The repository had accumulated roughly 195 remote branches. Cleanup removed:
-
-1. branches fully contained by `main`;
-2. patch-equivalent branches already represented in `main`;
-3. remaining historical branches after family-by-family audit confirmed their useful behavior/research was preserved in current `main` or Git/PR history.
-
-Current remote branch authority is now only:
-
-```text
-origin/HEAD -> origin/main
-origin/main
-```
+Historical branch cleanup completed on 2026-10-15. `main` remains the only production/merge authority. Temporary active development/browser-validation branches may exist while work is in progress; they are not independent product authorities.
 
 Historical branches are no longer knowledge stores. Recover old implementation detail from Git history/merged PRs when needed.
 
@@ -56,6 +39,8 @@ See `BRANCH_CLEANUP_2026-10-15.md`.
 - `DOCUMENTATION_MAP.md` — document authority/history classification.
 - `PRODUCT.md` — current product contract.
 - `ROADMAP.md` — current sequence/status.
+- `ARCHITECTURE.md` / `FILE_ARCHITECTURE.md` — ownership/dependency authority.
+- `OBSERVABILITY.md` — approved diagnostics/performance/report consolidation architecture and implementation plan.
 - `ANALYZER.md` — Analyzer family authority.
 - `HISTOGRAM.md` — Histogram authority.
 - `VE_ANALYZER.md` — VE algorithm/evidence/product contract.
@@ -189,9 +174,9 @@ Still thinner. Later useful work: sync/loss context, glitch-vs-sustained classif
 
 Useful foundations; later refinement after current VE priorities.
 
-## VE Analyzer — current implemented state
+## VE Analyzer — current implemented and browser-validation state
 
-Current behavior includes:
+Current implemented behavior includes:
 
 - VE/target tables and matching axes from tune metadata;
 - strict actual-mixture semantics and scale-aware AFR/Lambda handling;
@@ -208,35 +193,75 @@ Current behavior includes:
 - Result View overlays;
 - cell evidence with strongest contiguous visit → Logger.
 
-### Browser-known-good boundary
+### Production/browser-known-good boundary
 
-The last explicitly browser-confirmed good runtime before the regression investigation is the #441 cell-evidence state:
+PR #449 restored runtime files to the earlier browser-known-good composition after later wrapper/lifecycle experiments froze Analyzer entry.
 
-`fd21e4d4a390a4f6607d0290ef273749fc7fd915`
+Future VE lifecycle/render/input work still requires browser acceptance; green CI alone is insufficient.
 
-PR #449 restored runtime files to that known-good composition while retaining later audit documentation. The project owner confirmed Analyzer entry works again after rollback.
+### Browser-validated candidate line after #449
 
-Do **not** claim a future VE change is fixed merely because CI passes. Browser behavior is acceptance authority for this surface.
+The following candidate work has been field-tested successfully but still needs clean integration onto current `main` rather than merging the divergent browser-test PR stack wholesale:
 
-### Known remaining VE issues
+- `dbecb07b1dbee53d24fd023b8d10a417b9d812df` — semantic lifecycle/source revision work plus narrow channel-role decorator loop fix; user confirmed Analyzer entry works and Logger → Analyzer analysis values survive.
+- `b3d1709cc7311fc5256c582eaf2c7c4c0d5ea2f4` — retained VE evidence/proposal reused by cell evidence with semantic detail invalidation; user confirmed the broader workflow remains functional.
+- PR #459 / `31f6a2954072bb0e60ec32f4b0f6ad7d89b6279e` — Result View untouched/original VE values preserved while selected metrics still drive relevant evidence cells; user confirmed it works correctly in browser.
 
-- Result View fallback/precision behavior remains imperfect.
-- VE result/session state is lost on Logger → Analyzer round-trip.
-- v2 `setContext` / `setTuneModel` remain destructive rebuild paths.
-- cell evidence still duplicates VE analysis instead of consuming retained primary result state.
-- working delay ownership is still partly reconstructed/controlled through rendered DOM.
-- Custom qualification semantics need redesign before advanced formula support.
+This candidate state resolves the two originally reported user-visible problems on the tested line:
 
-### Required next sequence
+1. analysis/result state survives Logger → Analyzer navigation;
+2. untouched/original VE values survive Result View switching.
 
-1. preserve the current browser-known-good runtime;
-2. fix Result View fallback/precision with one isolated browser-verified change;
-3. fix Logger → Analyzer result persistence with one isolated browser-verified change;
-4. then expose authoritative VE session/result/proposal/working-delay state;
-5. remove duplicate cell-evidence analysis and DOM-derived delay ownership;
-6. later refine review/application strength/export/diff behavior.
+Do not merge PR #457/#458/#459 as-is merely because they are browser accepted; cleanly integrate accepted owner-level changes onto current `main` after reconciling the already-merged large-log correctness fix.
 
-Never automatically write or Burn to the ECU. Original VE, Analyzer evidence/proposal and user-reviewed/application result remain distinct states.
+### Remaining VE/runtime cleanup
+
+- clean integration of the accepted point-2/point-3/Result View fixes onto `main`;
+- broader DOM ownership cleanup (Analyzer/Histogram document-wide decoration ownership);
+- route context/tune work only to active Analyzer domains where possible;
+- measured CPU cleanup after ownership/lifecycle work;
+- workers/batching only if profiling still justifies them;
+- later review/application/export/diff maturity.
+
+Never automatically write or Burn to the ECU. Original VE, analyzed evidence/proposal and user-reviewed/application result remain distinct states.
+
+## Broader static findings queued after current cleanup
+
+Read-only audit findings that should remain on the backlog:
+
+- persistence handlers that ignore failed save/delete results should make failure visible and recoverable;
+- analysis controllers that await trace/data loading need owned rejection handling so failures do not become unhandled/stale states;
+- extend large-input correctness checks to remaining Idle/AE extrema paths that still use spread-style extrema on event arrays;
+- bound presentation preparation where full event arrays are formatted even when only a limited row count is rendered;
+- review transactional replacement-file loading so a malformed replacement need not discard a valid session before acceptance;
+- hidden/pending analyzer work should invalidate correctly when tune/context changes;
+- lower-priority Shim telemetry completion hardening should be promoted only with a reproducing deferred-conversion regression test.
+
+These findings do not supersede the active sequence; they are candidates for later targeted fixes.
+
+## Unified observability — approved future track
+
+D-058 and `OBSERVABILITY.md` define the approved replacement/consolidation of current diagnostics, performance and report ownership.
+
+Current repository assets worth preserving include:
+
+- load/validation/binding/workspace/channel timing breakdowns;
+- source read/cache counters;
+- retained-memory probes;
+- parser/source-integrity classification;
+- Logger runtime snapshots;
+- runtime error/unhandled-rejection capture;
+- application/source/environment context used by bug reports.
+
+The architectural problem is fragmentation, not lack of useful measurements.
+
+Target invariant:
+
+> **One bounded correlated observability record/session stream; Health, Performance, Parser / Source Integrity, Resources, Errors, Previous Session and export reports are projections of it.**
+
+Implementation begins only after the active DOM-ownership/hidden-view/CPU cleanup reaches a stable browser-validated baseline. Migration must proceed in stages and delete old redundant collectors/builders after parity rather than stacking a second permanent diagnostics system beside them.
+
+The target system records compact events/metrics/snapshots with session and parent/child operation correlation, supports broad anomaly detection, preserves a bounded previous-session black-box tail, remains local-first, and does not record raw log/tune payloads by default.
 
 ## Preserved VE behavioral constraints
 
@@ -244,4 +269,8 @@ Do not regress table-first workflow, spatial/bilinear weighting, starting-table 
 
 ## Current continuation boundary
 
-The documentation/remote-branch consolidation is complete. Continue product work from current `main`; do not resurrect old historical branches or stale planned-only VE wording as authority.
+1. cleanly integrate the browser-accepted VE lifecycle/evidence/Result View fixes onto current `main` without reintroducing wrapper stacks;
+2. continue the already-approved runtime cleanup sequence: DOM ownership → hidden-view routing → measured CPU cleanup → workers/batching only if justified;
+3. freeze a stable browser-validated baseline;
+4. then implement `OBSERVABILITY.md` in staged migration steps, preserving useful current measurements and removing redundant old diagnostics/report ownership after parity;
+5. afterwards resume lower-priority Analyzer maturity and compatibility work.
