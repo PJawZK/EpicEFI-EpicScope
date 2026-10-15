@@ -47,12 +47,13 @@ function loadFile(root, text) {
   Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'delays.json', text }] });
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
-async function setup(factory = createVeAnalyzerView) {
+async function setup(factory = createVeAnalyzerView, fixture = {}) {
   let gate;
+  let loadCount = 0;
   const model = tune();
   const context = {
-    source: { identity: {}, sampleCount: 60, revision: 0 }, channels, traces: [],
-    loadTraces: async (ids) => gate ? gate.promise : traces.filter((trace) => ids.includes(trace.channel.id)),
+    source: { identity: {}, sampleCount: 60, revision: 0 }, channels: fixture.channels ?? channels, traces: [],
+    loadTraces: async (ids) => { loadCount += 1; return gate ? gate.promise : (fixture.traces ?? traces).filter((trace) => ids.includes(trace.channel.id)); },
     aTimeMs: 0, bTimeMs: 3000, savedRanges: [{ label: 'saved', startMs: 0, endMs: 2000 }],
   };
   const view = factory();
@@ -64,7 +65,7 @@ async function setup(factory = createVeAnalyzerView) {
   loadFile(view.element, () => Promise.resolve(delayFile())); await settle();
   const run = () => view.element.querySelector('.ve-workbench-run').click();
   assert(!view.element.querySelector('.ve-workbench-run').disabled, 'Fixture must be ready to run');
-  return { view, root: view.element, host, context, model, run, hold: () => { gate = deferred(); return gate; } };
+  return { view, root: view.element, host, context, model, run, reads: () => loadCount, hold: () => { gate = deferred(); return gate; } };
 }
 function summary(root) { return root.querySelector('[data-ve-analyzer="summary"]').textContent; }
 function measured(root) { return [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find((cell) => cell.title.startsWith('Measured proposal')); }
@@ -103,10 +104,13 @@ export async function runVeAnalyzerLifecycleChecks() {
       s.run(); await settle(); assert(measured(s.root), 'Initial proposal missing');
       const oldSummary = summary(s.root), oldTable = s.root.querySelector('[data-ve-analyzer="ve-table-view"] table');
       const oldRevision = s.view.sessionRevision;
+      const primary = s.view.getPrimaryAnalysis();
+      assert(primary, 'Completed primary analysis missing');
       assert(s.view.setContext({ ...s.context, loadTraces: async (ids) => traces.filter((t) => ids.includes(t.channel.id)), openSamplesInLogger: () => {} }) === false, 'Equivalent context reset');
       assert(s.view.setTuneModel(s.model, 'test.msq') === false, 'Same tune reset');
       await settle();
       assert(s.view.sessionRevision === oldRevision, 'Unchanged session revision advanced');
+      assert(s.view.getPrimaryAnalysis() === primary, 'Unchanged update replaced retained primary analysis');
       assert(s.root.querySelector('[data-ve-analyzer="ve-table-view"] table') === oldTable, 'Unchanged table rebuilt');
       assert(summary(s.root) === oldSummary, 'Primary result/proposal lost');
       assert(s.root.querySelector('[data-delay-row="0"][data-delay-col="0"]').dataset.delayValue === '125', 'Working delay edit lost');
@@ -138,7 +142,7 @@ export async function runVeAnalyzerLifecycleChecks() {
         assert(s.view.setContext(next) === true, `${kind} was not detected`);
       }
       pending.resolve(traces); await settle();
-      assert(!measured(s.root) && summary(s.root) === '', 'Old analysis wrote into new session');
+      assert(!measured(s.root) && summary(s.root) === '' && !s.view.getPrimaryAnalysis(), 'Old analysis wrote into new session');
       assert(s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled, 'Old working delay survived replacement');
       s.host.remove();
     });
@@ -170,13 +174,122 @@ export async function runVeAnalyzerLifecycleChecks() {
     assert(s.root.querySelector('[data-delay-row="0"][data-delay-col="0"]').dataset.delayValue === '200', 'Older file overwrote newer selection');
     s.host.remove();
   });
-  await check('pending cell detail closes on semantic session replacement', async () => {
-    const s = await setup(); s.run(); await settle(); const pending = s.hold();
-    measured(s.root).click(); await settle();
+  await check('cell detail reuses retained primary objects without loading traces and closes on replacement', async () => {
+    const s = await setup(); s.run(); await settle();
+    const primary = s.view.getPrimaryAnalysis(), reads = s.reads();
+    assert(primary, 'Missing retained primary result');
+    let request;
+    s.view.setContext({ ...s.context, openSamplesInLogger: (next) => { request = next; } });
+    const measuredCells = [...s.root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].filter((c) => c.title.startsWith('Measured proposal'));
+    for (const cell of [measuredCells[0], measuredCells.at(-1), measuredCells[0]]) {
+      cell.click(); await settle();
+      assert(!s.host.querySelector('.ve-cell-detail-popover').hidden, 'Popup failed to open');
+      assert(s.host.querySelector('.ve-evidence-detail-grid'), 'Retained evidence not rendered');
+      assert(s.view.getPrimaryAnalysis() === primary && s.reads() === reads, 'Popup reloaded/replaced primary analysis');
+    }
+    s.host.querySelector('.ve-evidence-detail-actions button').click();
+    assert(request?.sampleIndices.length > 0 && request.timeMs.length > 0, 'Logger visit callback missing');
+    assert(request.sampleIndices.every((i) => primary.evidence.cells[0].sampleIndices.includes(i)), 'Visit differs from retained evidence');
     s.view.setContext({ ...s.context, source: { ...s.context.source, identity: {} } });
-    pending.resolve(traces); await settle();
-    assert(s.host.querySelector('.ve-cell-detail-popover').hidden, 'Stale detail remained visible');
-    assert(!s.host.querySelector('.ve-evidence-detail-grid'), 'Stale detail rendered after replacement');
+    assert(!s.view.getPrimaryAnalysis() && s.host.querySelector('.ve-cell-detail-popover').hidden, 'Replacement retained stale result/detail');
+    s.host.remove();
+  });
+  await check('popup before a primary run does not load or analyze the log', async () => {
+    const s = await setup(), reads = s.reads();
+    s.root.querySelector('[data-ve-analyzer="ve-table-view"] td').click(); await settle();
+    assert(s.host.querySelector('.ve-evidence-detail-loading')?.textContent.includes('valid VE analysis'), 'Missing run guidance');
+    assert(s.reads() === reads && !s.view.getPrimaryAnalysis(), 'Popup started implicit analysis');
+    s.host.remove();
+  });
+  await check('rerun withdraws old primary authority until the newer run completes', async () => {
+    const s = await setup(); s.run(); await settle();
+    const old = s.view.getPrimaryAnalysis(), pending = s.hold();
+    s.run(); await settle();
+    assert(!s.view.getPrimaryAnalysis(), 'Old snapshot exposed during a pending rerun');
+    s.root.querySelector('[data-ve-analyzer="ve-table-view"] td').click(); await settle();
+    assert(s.host.querySelector('.ve-evidence-detail-loading')?.textContent.includes('valid VE analysis'), 'Old popup evidence used during rerun');
+    const reads = s.reads(); pending.resolve(traces); await settle();
+    const current = s.view.getPrimaryAnalysis();
+    assert(current && current !== old && current.evidence !== old.evidence && current.proposal !== old.proposal, 'New run did not replace primary result');
+    measured(s.root).click(); await settle();
+    assert(s.host.querySelector('.ve-evidence-detail-grid') && s.reads() === reads, 'New result not reused');
+    s.host.remove();
+  });
+  await check('popup uses primary CLT/TPS-qualified evidence and timestamps without a second qualification pass', async () => {
+    const extra = [
+      { id: 'clt', sourceName: 'CLT', displayName: 'CLT', unit: 'C', valueType: 'number' },
+      { id: 'tps', sourceName: 'TPS', displayName: 'TPS', unit: '%', valueType: 'number' },
+    ];
+    const extraTraces = extra.map((channel, index) => ({ ...traces[0], channel, range: { ...traces[0].range, values: Float64Array.from({ length: 60 }, (_, i) => index === 0 ? i < 20 ? 50 : 90 : i >= 40 ? 80 : 20) } }));
+    const s = await setup(createVeAnalyzerView, { channels: [...channels, ...extra], traces: [...traces, ...extraTraces] });
+    const maxTps = s.root.querySelector('[data-ve-quick="max-tps"]');
+    maxTps.value = '30'; maxTps.dispatchEvent(new Event('change', { bubbles: true }));
+    s.run(); await settle();
+    const primary = s.view.getPrimaryAnalysis(), reads = s.reads();
+    assert(primary && primary.actualRange.validity[0] === 0 && primary.actualRange.validity[25] === 1 && primary.actualRange.validity[59] === 0, 'Primary qualification fixture failed');
+    assert(traces[2].range.validity[0] === 1, 'Source validity mutated');
+    measured(s.root).click(); await settle();
+    const metrics = Object.fromEntries([...s.host.querySelectorAll('.ve-evidence-detail-metric')].map((el) => [el.querySelector('span').textContent, el.querySelector('strong').textContent]));
+    assert(metrics.Samples === primary.evidence.cells[0].sampleCount.toLocaleString(), 'Popup sample count differs from qualified primary evidence');
+    assert(metrics['Proposal state'] === primary.proposal.cells[0].state, 'Popup proposal differs from primary');
+    assert(s.reads() === reads && s.view.getPrimaryAnalysis() === primary, 'Popup repeated loading/analysis');
+    s.host.remove();
+  });
+  await check('all Result Views, layouts and refresh preserve open cached detail and primary identity', async () => {
+    const s = await setup(); s.run(); await settle(); measured(s.root).click(); await settle();
+    const primary = s.view.getPrimaryAnalysis(), reads = s.reads();
+    const panel = s.host.querySelector('.ve-cell-detail-popover');
+    const grid = panel.querySelector('.ve-evidence-detail-grid'), visit = panel.querySelector('.ve-evidence-detail-visit');
+    let notifications = 0; const unsubscribe = s.view.onPrimaryAnalysisChange(() => { notifications += 1; });
+    const resultView = s.root.querySelector('select[aria-label="VE Analyzer result view"]');
+    for (const option of resultView.options) {
+      resultView.value = option.value; resultView.dispatchEvent(new Event('change', { bubbles: true })); await settle();
+      assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') === grid && panel.querySelector('.ve-evidence-detail-visit') === visit, `Result View ${option.value} invalidated detail`);
+      assert(s.view.getPrimaryAnalysis() === primary && s.reads() === reads && notifications === 0, 'Presentation invalidated primary authority');
+    }
+    const layout = s.root.querySelector('select[aria-label="VE Analyzer table view"]');
+    for (const value of ['single', 'side-by-side']) { layout.value = value; layout.dispatchEvent(new Event('change', { bubbles: true })); await settle(); }
+    const discovery = s.root.querySelector('input[data-role="delay-command-threshold"]');
+    discovery.value = String(Number(discovery.value) + 0.1); discovery.dispatchEvent(new Event('change', { bubbles: true }));
+    s.view.refresh(); await settle();
+    assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') === grid && s.view.getPrimaryAnalysis() === primary && notifications === 0, 'Refresh/layout/recommendation-only settings invalidated detail');
+    panel.querySelector('header button').click(); measured(s.root).click(); await settle();
+    assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') === grid && panel.querySelector('.ve-evidence-detail-visit') === visit, 'Reopening cell rebuilt cached detail');
+    let request;
+    s.view.setContext({ ...s.context, openSamplesInLogger: (next) => { request = next; } });
+    const open = panel.querySelector('.ve-evidence-detail-actions button');
+    assert(!open.disabled && s.view.getPrimaryAnalysis() === primary && notifications === 0, 'Callback-only update invalidated cache or left navigation disabled');
+    open.click(); assert(request?.sampleIndices.length > 0, 'Cached visit did not use current Logger callback');
+    unsubscribe(); s.view.setTuneModel(tune(), 'different.msq');
+    assert(notifications === 0, 'Unsubscribed owner listener fired');
+    s.host.remove();
+  });
+  for (const kind of ['qualification', 'delay-edit', 'delay-file', 'scope', 'tune', 'source']) {
+    await check(`${kind} invalidates open detail and its per-cell cache at the owner`, async () => {
+      const s = await setup(); s.run(); await settle(); measured(s.root).click(); await settle();
+      const panel = s.host.querySelector('.ve-cell-detail-popover');
+      let notifications = 0; const unsubscribe = s.view.onPrimaryAnalysisChange(() => { notifications += 1; });
+      if (kind === 'qualification') {
+        const input = s.root.querySelector('[data-ve-quick="min-tps"]'); input.value = '10'; input.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (kind === 'delay-edit') {
+        const cell = s.root.querySelector('[data-delay-row="0"][data-delay-col="0"]'); cell.onclick.call(cell, new PointerEvent('click'));
+        s.root.querySelector('[data-ve-analyzer="delay-cell-working"]').value = '175'; s.root.querySelector('[data-ve-analyzer="delay-cell-apply"]').click();
+      } else if (kind === 'delay-file') loadFile(s.root, () => Promise.resolve(delayFile(200)));
+      else if (kind === 'scope') change(s.root, 'scope', 'ab');
+      else if (kind === 'tune') s.view.setTuneModel(tune(), 'replacement.msq');
+      else s.view.setContext({ ...s.context, source: { ...s.context.source, identity: {} } });
+      await settle();
+      assert(panel.hidden && !panel.querySelector('.ve-evidence-detail-grid') && !s.view.getPrimaryAnalysis() && notifications === 1, 'Semantic change retained stale detail or duplicated owner notifications');
+      unsubscribe(); s.host.remove();
+    });
+  }
+  await check('rerun start closes existing detail and completed rerun generates new cell detail', async () => {
+    const s = await setup(); s.run(); await settle(); measured(s.root).click(); await settle();
+    const panel = s.host.querySelector('.ve-cell-detail-popover'), oldGrid = panel.querySelector('.ve-evidence-detail-grid');
+    const pending = s.hold(); s.run();
+    assert(panel.hidden && !panel.querySelector('.ve-evidence-detail-grid'), 'Rerun left old detail active');
+    pending.resolve(traces); await settle(); measured(s.root).click(); await settle();
+    assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') !== oldGrid, 'Rerun reused invalidated cell detail');
     s.host.remove();
   });
   return { passed: passed.length, checks: passed };

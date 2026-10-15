@@ -212,6 +212,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   return {
     element: root,
     get sessionRevision() { return inner.sessionRevision; },
+    getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
+    onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(next) {
       const sourceChanged = !sameVeSourceContext(sourceContext, next);
       sourceContext = next;

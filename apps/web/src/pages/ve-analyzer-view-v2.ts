@@ -28,9 +28,25 @@ import {
   type VeMixtureScale,
 } from './ve-analyzer-model';
 
+/** Borrowed, read-only primary run data. Consumers must not mutate these references. */
+export interface VeAnalyzerPrimaryAnalysis {
+  readonly evidence: VeEvidenceMapResult;
+  readonly proposal: VeProposalResult;
+  readonly veTable: TuneEntry;
+  readonly rpmBins: readonly number[];
+  readonly loadBins: readonly number[];
+  readonly actualRange: NumericChannelRange;
+  readonly qualificationLabel: string;
+  readonly stateExcludedCount: number;
+}
+
 export interface VeAnalyzerViewController {
   readonly element: HTMLElement;
   readonly sessionRevision: number;
+  /** Current completed run only; undefined while invalidated or a new run is pending. */
+  getPrimaryAnalysis(): VeAnalyzerPrimaryAnalysis | undefined;
+  /** Owner notification when completed-run authority is withdrawn or replaced. */
+  onPrimaryAnalysisChange(listener: () => void): () => void;
   /** Return true only when semantic session inputs changed. */
   setContext(context: LoggerAnalysisContext): boolean;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): boolean;
@@ -167,6 +183,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   let delayGeneration = 0;
   let delayLoadGeneration = 0;
   let sessionRevision = 0;
+  let primaryAnalysis: VeAnalyzerPrimaryAnalysis | undefined;
+  const primaryAnalysisListeners = new Set<() => void>();
+  const publishPrimaryAnalysis = (next: VeAnalyzerPrimaryAnalysis | undefined): void => {
+    if (primaryAnalysis === next) return;
+    primaryAnalysis = next;
+    for (const listener of primaryAnalysisListeners) listener();
+  };
   let result: VeEvidenceMapResult | undefined;
   let proposal: VeProposalResult | undefined;
   let delayDiscovery: AfrDelayAnalyzerResult | undefined;
@@ -460,6 +483,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   const invalidate = (): void => {
+    publishPrimaryAnalysis(undefined);
     sessionRevision += 1;
     delayGeneration += 1;
     delayLoadGeneration += 1;
@@ -551,6 +575,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   async function runAnalysis(): Promise<void> {
     if (!renderReadiness() || !workingDelayTable) return; const run = ++runGeneration; result = undefined; proposal = undefined;
+    publishPrimaryAnalysis(undefined);
     const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined; const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
     const veRpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const veLoad = axisValues(tuneModel, select('load-axis')?.value ?? ''); const targetRpm = axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''); const targetLoad = axisValues(tuneModel, select('target-load-axis')?.value ?? '');
     if (!scope || !ve?.numericValues || !target?.numericValues || !veRpm || !veLoad || !targetRpm || !targetLoad) return;
@@ -579,6 +604,10 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     });
 
     proposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, result, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')! }); if (run !== runGeneration) return;
+    publishPrimaryAnalysis({
+      evidence: result, proposal, veTable: ve, rpmBins: veRpm, loadBins: veLoad,
+      actualRange: actual, qualificationLabel: selectedText(select('preset')), stateExcludedCount: filtered.excluded,
+    });
     const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTables();
     const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
     const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length; const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length; const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length; const delayCounts = delayTableCounts(workingDelayTable);
@@ -597,6 +626,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   const rebuild = (): void => {
+    publishPrimaryAnalysis(undefined);
     sessionRevision += 1;
     runGeneration += 1;
     delayGeneration += 1;
@@ -666,6 +696,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   return {
     element: root,
     get sessionRevision() { return sessionRevision; },
+    getPrimaryAnalysis() { return primaryAnalysis; },
+    onPrimaryAnalysisChange(listener) {
+      primaryAnalysisListeners.add(listener);
+      return () => { primaryAnalysisListeners.delete(listener); };
+    },
     setContext(next) {
       const sourceChanged = !sameVeSourceContext(context, next);
       const scopeSelect = select('scope')!;

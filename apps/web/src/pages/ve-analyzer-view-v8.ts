@@ -40,6 +40,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   return {
     element: root,
     get sessionRevision() { return inner.sessionRevision; },
+    getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
+    onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       if (!changed) return false;
