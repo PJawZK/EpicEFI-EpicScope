@@ -1,167 +1,90 @@
 <!-- CURRENT_STATE:handoff-pointer:START -->
-> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. If a status statement in this document describes an older milestone, use the handoff plus current `main`/CI state for present-tense continuation.
+> Current implementation/continuation state is authoritative in `docs/HANDOFF.md`. `docs/DOCUMENTATION_MAP.md` defines document authority.
 <!-- CURRENT_STATE:handoff-pointer:END -->
-
-<!-- CURRENT_STATE:current-range-residency-note:START -->
-## Current Web range/residency implementation note
-
-`NumericChannelRange` is currently used both for bounded/partial reads and for complete decoded active-channel ranges. A Web graph trace may therefore begin with partial coverage and later replace its backing range with the complete resident range without changing logical channel identity.
-
-This does not redefine the normalized model: partial/full coverage is execution state. Recorded MLG values/validity remain authoritative, and analyzers must not infer absent samples from an unloaded portion of a partial range.
-<!-- CURRENT_STATE:current-range-residency-note:END -->
 
 # EpicScope Data Model
 
 ## Purpose
 
-EpicScope uses normalized internal models so import formats, analyzers, UI, and future native implementations remain decoupled.
+EpicScope normalizes source data so parsers, analyzers, UI and future Linux/Android implementations share stable semantics without coupling product behavior to one file format or browser representation.
 
-Log sources such as MLG, CSV, future MDF4 support, and later log formats normalize into common log/channel/time concepts before general analysis.
+## Core ownership concepts
 
-Tune/configuration sources such as INI and MSQ normalize into source-context/tune concepts rather than being forced into the log model. INI may also contribute the stable runtime/output-channel catalog used to bind logs into persistent workspaces.
+### Domain Session
 
-Pre-populated graph starters add a semantic role layer above source-local/logical channel identities so task definitions are not tied to one ECU vendor or one acquisition source.
+A domain **Session** composes analysis context such as sources, channel/tune context, events, results, annotations and comparisons.
 
-Related authority:
+It does **not** own general presentation layout/workspace state.
 
-- `HANDOFF.md` — latest runtime/continuation state;
-- `PREPOPULATED_WORKSPACES.md` — product catalog and current starter implementation;
-- `ARCHITECTURE.md` — semantic/capability/materialization boundaries;
-- `DECISIONS.md` — D-051–D-055 approved semantic workspace rules.
+### Application workspace state
 
-This document defines the initial authority. Exact TypeScript/native structures may evolve through approved decisions while preserving these responsibilities.
+Reusable presentation state may exist without a log and includes named graph workspaces, pane/layout geometry, stable channel assignments, favorites/display preferences and other user-owned UI configuration.
 
-## Core concepts
+Starter-template provenance may be retained for compatibility/history, but a materialized workspace is ordinary user data; template logic has no continuing ownership.
 
-### Session
+### Log-specific view state
 
-A **Session** is the top-level domain analysis context.
+Recording-specific state includes viewport/cursor, A/B boundaries, markers/saved ranges and source-specific navigation/filter context.
 
-A session may contain:
+Application workspace and exact-log view state remain separate persistence concerns.
 
-- one or more imported logs;
-- source metadata;
-- channel catalog;
-- derived channels;
-- event collections;
-- tune/firmware context;
-- annotations/bookmarks;
-- analyzer state/results;
-- comparison relationships.
+## Source model
 
-A session must not require cloud storage.
+### Log/source authority
 
-The domain Session does not own presentation layout or become a general UI-state container.
-
-### Workspace state
-
-**WorkspaceState** represents presentation/application state and is conceptually separate from the domain Session.
-
-EpicScope distinguishes two persistence scopes inside presentation state:
-
-**Application workspace state** may exist with no log loaded and may include:
-
-- named graph workspaces;
-- pane layout/geometry and active-pane identity;
-- stable logical channel assignments;
-- historical starter/template provenance where useful for compatibility, without implying continuing template ownership;
-- favorites and display preferences;
-- panel visibility/sizing;
-- reusable UI configuration that should survive opening/closing different logs.
-
-**Log-specific view state** is associated with a recording/session and may include:
-
-- viewport/cursor position;
-- A/B boundaries;
-- user markers and saved ranges;
-- source-specific navigation state;
-- UI filters that only make sense for that recording.
-
-The Web implementation uses the split above: `epicscope.web-application-workspace` v1 stores reusable presentation structure independently of log identity, while `epicscope.web-workspace` v1 remains keyed to an exact log for recording-specific navigation/annotation state. A separate normalized INI channel-catalog artifact allows stable channel definitions to be restored without storing raw INI text.
-
-Workspace state may also be persisted alongside a session artifact for convenience, but it remains conceptually separate from the domain Session so `core/session/` does not become coupled to a particular UI implementation.
-
-Web, Linux, and Android may have different workspace-state representations while sharing the same underlying Session semantics.
-
-### Persisted session artifact
-
-A **PersistedSessionArtifact** is a versioned saved representation that may contain:
-
-- domain Session data/references;
-- analyzer results that are intended to persist;
-- compatible annotations/bookmarks;
-- optional platform/application workspace state;
-- schema/version metadata;
-- migration/compatibility metadata.
-
-The persistence layer owns serialization/version/migration concerns. Saving workspace state with a session does not make workspace state part of the core domain Session.
-
-### Log source
-
-A **LogSource** represents one imported recording.
-
-Minimum conceptual fields:
-
-- stable internal identifier;
-- source filename/display name;
-- source format;
-- source size;
-- source metadata/provenance;
-- start/end or duration information when available;
-- parser warnings/errors;
-- channel references;
-- validity state.
-
-The raw format remains parser-owned. Higher layers operate on normalized data.
-
-### Channel definition
-
-A **ChannelDefinition** describes a signal independent of any specific displayed sample.
-
-Conceptual fields include:
-
-- stable session-local identifier;
-- source/original name;
-- canonical/display name;
-- unit;
-- data type;
-- source provenance;
-- validity/availability metadata;
-- optional aliases;
-- optional category/group;
-- optional semantic role;
-- optional precision/display hints.
-
-Source names should be preserved so EpicScope can show exact TunerStudio/MegaLogViewer naming where useful.
-
-Once an INI-backed catalog is available, a channel may additionally have a **stable logical key** intended to survive changes in MLG field ordering. A source-local identifier such as `mlg:<field-index>` remains useful for a specific recording but should not become the sole long-term persisted identity of a workspace channel assignment.
-
-### Semantic channel role
-
-A **SemanticChannelRole** describes what a channel means to EpicScope independently of how an ECU/source names it.
-
-Examples:
+Only one Logger sample source family is authoritative at a time:
 
 ```text
-engine.rpm
-engine.map
-engine.throttle.position
-temperature.coolant
-temperature.intakeAir
-electrical.batteryVoltage
-fuel.lambda
-ignition.advance
+Recorded MLG + optional INI binding
+              ↕
+         INI catalog only
+              ↕
+      ts_shim live/capture
 ```
 
-Semantic roles are intentionally separate from:
+Loaded INI/MSQ are independent application resources and survive source transitions.
 
-- source-local IDs such as `mlg:31`;
-- stable logical/catalog IDs such as `ini:RPMValue`;
-- raw Shim runtime IDs such as `RPMValue`;
-- legacy/vendor/import aliases such as `TP`, `CLT`, `ECT`, `PW` or `Batt V`;
-- preferred EpicScope display names.
+### LogSource
 
-Conceptual identity stack:
+A normalized source retains stable internal identity, display/source name, format, size/metadata/provenance, time coverage, diagnostics, channel references and validity/completeness state.
+
+### ChannelDefinition
+
+A channel definition retains:
+
+- stable identity;
+- exact source/original name;
+- display metadata;
+- unit/type/category/precision;
+- provenance;
+- availability/validity metadata;
+- aliases/semantic-role hints where appropriate.
+
+**Literal source identity is presentation authority.** Semantic resolution may provide a task-oriented label or mapping but must not erase/rename the original INI/MSQ/log channel/table name.
+
+### ChannelCatalog
+
+Catalog entries distinguish at least:
+
+- known + data;
+- known, no data;
+- log-only/current-source-only.
+
+INI provides stable known runtime/output context. Shim schema becomes temporary live catalog authority while Shim owns Logger.
+
+### ChannelBinding
+
+Bindings connect logical/catalog identities to source-local data without copying sample arrays. Recorded `ini:*` identities may map to matching raw Shim IDs during live-source ownership, then normalize back when recorded/INI authority returns.
+
+### ChannelData / NumericChannelRange
+
+Channel data is time-associated numeric/state data with explicit validity/coverage. Efficient implementations may provide bounded partial ranges or complete resident ranges without changing logical channel identity.
+
+Consumers must not infer missing values from portions that were simply not loaded/materialized.
+
+## Semantic roles and capabilities
+
+A semantic role expresses product meaning independently of vendor/source naming:
 
 ```text
 semantic role
@@ -171,27 +94,7 @@ logical ECU channel
 current source identity
 ```
 
-Example:
-
-```text
-engine.rpm → RPMValue → ini:RPMValue  (recorded MLG + INI)
-engine.rpm → RPMValue → RPMValue      (ts_shim)
-```
-
-The semantic layer allows a starter template/analyzer to express intent without becoming a source-format or vendor-name parser.
-
-A role definition may contain:
-
-- stable semantic ID;
-- preferred EpicScope display name;
-- ordered exact aliases;
-- conservative pattern fallbacks;
-- exclusions that prevent obvious false matches;
-- optional ECU-family/schema specialization;
-- optional user/schema override;
-- optional capability/category metadata.
-
-Resolution preference is:
+Resolution preference:
 
 1. explicit user/schema override;
 2. exact native/known alias;
@@ -199,274 +102,132 @@ Resolution preference is:
 4. conservative normalized-name fallback;
 5. unresolved.
 
-User/schema overrides take precedence over automatic inference.
+Compatibility aliases are matching input, not display-name authority. Missing roles remain explicit and do not fabricate data.
 
-Legacy aliases are compatibility input only and do not determine the preferred display name. For example, `TP` may resolve `engine.throttle.position`, but the visible EpicScope name is **TPS**.
+## StarterWorkspaceTemplate
 
-### Channel catalog
+A starter template contains stable template identity, name/category, layout, pane definitions, semantic role slots, requirement levels and optional capability gating.
 
-A **ChannelCatalog** represents the set of logical channels known to the current ECU/firmware context independently of one recording.
+Role requirements:
 
-It may be built from:
+- required;
+- preferred;
+- optional.
 
-- normalized INI runtime/output-channel definitions;
-- channels discovered from an opened log;
-- Shim schema channels while Shim owns the live source;
-- approved user aliases/derived-channel metadata later.
+Materialization resolves roles once and creates an ordinary workspace with concrete channel assignments. Reusing the template creates another workspace. Existing user workspaces are not rewritten when templates change.
 
-Catalog entries must expose availability state without fabricating data. At minimum the model must distinguish:
+Historical `built-in:*` IDs are compatibility data only and confer no protected semantics.
 
-- **known + data** — catalog channel successfully bound to the current source;
-- **known, no data** — channel exists in the catalog but is absent from the current source;
-- **log-only** — current log contains a usable channel not known by the loaded INI.
+## Timebase
 
-Semantic-role resolution operates over the authoritative current catalog/channel set; it does not make unavailable source values appear.
+Time is first-class. The model must support monotonic navigation, source timestamps, irregular spacing, gaps/missing samples, event/range alignment and timestamp-based analysis.
 
-### Channel binding
+Fixed sample rate must never be assumed unless guaranteed by the source.
 
-A **ChannelBinding** relates a logical/catalog channel to a source-local channel for a particular log.
+## TuneContext
 
-Conceptually it may contain:
+Tune context may include firmware/INI identity, MSQ identity, tables/axes/scalars/curves, channel/table relationships and compatibility metadata.
 
-- logical channel key;
-- source log identifier;
-- source-local channel identifier;
-- exact source/original name;
-- binding method/quality where ambiguity is possible;
-- availability/compatibility state.
+Responsibilities remain distinct:
 
-The binding does not copy channel samples. It points consumers to the log's existing bounded `ChannelData` source.
+- MLG/Shim — measured sample authority;
+- INI — channel/firmware/table metadata and stable logical identities;
+- MSQ — actual tune/calibration values.
 
-### Channel data
+### TuneTable
 
-**ChannelData** is the time-associated numeric or state data for a channel.
+A normalized tune table exposes identity/name, X/Y axes, values, units, source references, lookup/interpolation metadata where known and validation state.
 
-The model must support efficient implementations where time and channel values are not expanded into per-sample objects.
+Analysis can therefore correlate samples with tune geometry without UI parsing raw MSQ/INI syntax.
 
-The conceptual API should allow bounded queries such as:
+## Derived channels
 
-- values in a time range;
-- nearest value at time;
-- min/max/statistics for a range;
-- downsampled values for a viewport;
-- filtered/qualified values;
-- sample count and validity information.
+A derived channel retains formula/function identity, dependencies, unit, validity/provenance and persistence/version metadata where saved. Derived values should use the same normalized query/validity model where practical.
 
-The data model must not require all values to be resident in memory.
+## Events
 
-### Starter workspace template
+An event is a bounded occurrence with type, source/time bounds, optional peak/reference time, quality/confidence, evidence/metrics and detector identity.
 
-A **StarterWorkspaceTemplate** is a product-defined task recipe used to create an initial graph workspace.
+Events are reusable by navigation, analyzers, comparison and reporting.
 
-It conceptually contains:
+## Analyzer results
 
-- stable template identity;
-- visible name/category;
-- layout reference;
-- pane definitions;
-- semantic role slots per pane;
-- role requirement level (`required`, `preferred`, `optional`);
-- optional ECU-family/schema specialization.
+An `AnalyzerResult` is structured evidence, not rendered DOM.
 
-The template does not persist one source's concrete channel IDs as its product meaning.
+It should retain:
 
-Materialization resolves semantic role slots against the authoritative current channel set and creates concrete channel assignments in a new **ordinary editable workspace**.
+- source/session/tune identity;
+- analysis request/configuration/qualification;
+- accepted/excluded evidence and provenance;
+- calculated metrics/findings;
+- quality/confidence/limitations;
+- proposal/recommendation where applicable;
+- analyzer/version identity.
 
-Template identity and workspace identity are separate. Reusing a template creates another workspace; editing or deleting one materialized workspace does not modify the template or any other workspace.
+Findings remain traceable to source evidence.
 
-After materialization, the workspace is authoritative for its own layout and concrete assignments. Template logic must not automatically repopulate or reset it.
+### VE Analyzer state separation
 
-Historical persisted IDs such as `built-in:*` are compatibility data only. They do not imply immutability, protected deletion, protected rename, or continued template ownership.
+VE requires explicit conceptual separation between:
 
-### Workspace role requirement
+1. **original tune/table state** — immutable analysis input;
+2. **analysis session/request state** — source/tune identity, qualification, working lambda-delay table and analysis settings;
+3. **evidence/result/proposal state** — retained structured output of Run Analysis;
+4. **user review/application state** — future selective edits/reverts/application-strength/export decisions.
 
-Role requirement levels are:
+Rendered table cells are presentation, not the long-term source of truth for these states.
 
-- **required** — central to the starter purpose;
-- **preferred** — normally expected and materially useful;
-- **optional** — enhancement when available.
+The current browser implementation has known debt because lifecycle rebuilds, cell-evidence recomputation and DOM-derived working-delay reconstruction still blur this ideal. Future cleanup should expose explicit controller/session state without changing the proven user behavior.
 
-Unresolved preferred/optional roles do not invalidate workspace creation. Unresolved required roles are reported explicitly, but the workspace still degrades rather than fabricating data.
+The accepted VE delay state shape is **RPM × load table only**; scalar and RPM-curve alternatives are not current product models.
 
-### Timebase
+## Comparison
 
-EpicScope treats time as a first-class shared dimension.
+Comparison links sessions/logs/events/ranges/tune revisions with explicit alignment method, matched/unmatched evidence, metric deltas and quality metadata.
 
-The model must support:
+Current Range Compare is primarily cohort/range comparison inside the active source; true independent multi-log comparison remains future/deferred unless explicitly prioritized.
 
-- monotonic timeline navigation;
-- source timestamps where present;
-- irregular sample spacing;
-- missing samples;
-- alignment between multiple logs/events;
-- range queries.
+## Validity/missing data
 
-Assuming a single fixed sample rate is not allowed unless a specific source guarantees it.
+Consumers must distinguish:
 
-### Derived channel
-
-A **DerivedChannel** is computed from one or more existing channels.
-
-It should preserve:
-
-- formula/expression or generating function identity;
-- dependencies;
-- unit;
-- validity rules;
-- provenance;
-- version/schema information when persisted.
-
-Derived channels should use the same consumer-facing query model as imported channels where practical.
-
-### Event
-
-An **Event** represents a meaningful bounded occurrence within a log/session.
-
-Conceptual fields:
-
-- type;
-- start time;
-- optional peak/reference time;
-- end time;
-- source log;
-- quality/confidence state where appropriate;
-- evidence/metrics;
-- detector/version identity;
-- optional user annotation.
-
-Examples include WOT pull, tip-in, gear change, boost overshoot, idle sag, or DFCO transition.
-
-Events should be reusable by navigation, analyzers, comparisons, and reports.
-
-### Tune context
-
-A **TuneContext** represents loaded ECU configuration information relevant to analysis.
-
-It may include:
-
-- firmware/INI identity;
-- tune/MSQ identity;
-- tables;
-- axes;
-- scalar settings;
-- channel/table relationships;
-- compatibility/validation metadata.
-
-Tune context is optional. Generic log analysis must still work without it.
-
-INI and MSQ have different responsibilities: INI may define firmware/channel/table metadata and stable logical channel identity; MSQ supplies actual tune/calibration values. Neither source replaces MLG as the authority for recorded sample values.
-
-### Tune table
-
-A normalized **TuneTable** should expose at least:
-
-- identity/name;
-- X axis;
-- optional Y axis;
-- cell values;
-- units;
-- source setting references;
-- interpolation/lookup metadata where known;
-- validation state.
-
-Analysis may then map operating samples to table cells without UI code interpreting raw MSQ/INI structures.
-
-### Analyzer result
-
-An **AnalyzerResult** is structured evidence produced by a specialized analyzer.
-
-It should distinguish:
-
-- qualifying data/event selection;
-- calculated metrics;
-- findings/observations;
-- confidence/quality limitations;
-- optional proposed action;
-- analyzer version/maturity;
-- source session/log/tune references.
-
-A finding must remain traceable back to its supporting data.
-
-### Comparison
-
-A **Comparison** links two or more sessions/logs/events/tune revisions for aligned analysis.
-
-Conceptual fields may include:
-
-- compared entities;
-- alignment method;
-- matched event pairs/groups;
-- metric deltas;
-- exclusions/unmatched data;
-- comparison quality metadata.
-
-## Validity and missing data
-
-EpicScope must represent unavailable/invalid data explicitly rather than silently substituting zeros or fabricated values.
-
-Consumers should be able to distinguish:
-
-- valid value;
-- missing value;
-- invalid/corrupt value;
-- channel unavailable;
+- valid;
+- missing;
+- invalid/corrupt;
+- unavailable;
 - semantic role unresolved;
 - derived result unavailable because dependencies are missing.
 
+Zero/fallback values must not be fabricated to hide missing evidence.
+
 ## Units
 
-Internal calculations must not rely only on display labels.
+Calculations must not rely on display strings alone. Machine-readable unit identity should be retained where feasible; conversions belong in approved unit/channel services, not ad-hoc UI code.
 
-Where feasible, channel definitions should include machine-readable unit identity in addition to display text.
+## Provenance
 
-Unit conversion should occur through approved channel/unit services rather than ad-hoc UI calculations.
+The model should answer:
 
-## Source provenance
+- which source produced a channel/value;
+- the exact original source name;
+- which concrete source identity backs a semantic role;
+- mapping method/override quality;
+- imported versus derived status;
+- which analyzer/detector/version produced a result;
+- which source samples support a recommendation.
 
-Normalized data must retain enough provenance to answer questions such as:
+## Persistence/versioning
 
-- Which source file produced this channel?
-- What was the original channel name?
-- Which source identity is currently backing this semantic role?
-- Was a semantic mapping exact, overridden, family-based or heuristic?
-- Was this value imported or derived?
-- Which detector/analyzer version created this event/result?
+Persisted/public artifacts carry schema versions. Changes require backward-compatible extension, explicit migration or clear unsupported-version rejection.
 
-## Persistence and compatibility
+No silent incompatibility.
 
-Saved EpicScope sessions and analysis artifacts must carry a schema version.
+## Performance constraint
 
-Schema changes must follow one of these paths:
+The conceptual model must not require source-sized object graphs or multiple uncontrolled full copies. Contracts must permit streaming/indexed/columnar/lazy/bounded/native implementations.
 
-- backward-compatible extension;
-- explicit migration;
-- clearly rejected unsupported version with a useful error.
-
-Silent incompatibility is prohibited.
-
-Starter-template identity and user workspace identity remain separate. A template may optionally be recorded as provenance, but visible names and historical `built-in:*` prefixes are not authority for automatic repopulation.
-
-## Performance constraint on model design
-
-The conceptual data model must not force a memory representation proportional to source file size plus multiple full duplicates.
-
-The Web prototype may initially use simpler implementations, but public contracts should allow later Linux implementations to use:
-
-- streaming parsing;
-- indexed storage;
-- memory mapping;
-- chunked/channel-oriented storage;
-- lazy decoding;
-- bounded viewport queries;
-- multiresolution/downsample caches.
-
-Semantic-role resolution is metadata work and must not require duplicating channel sample arrays.
+Semantic-role resolution and starter materialization are metadata operations and must not duplicate source sample arrays.
 
 ## Change control
 
-Adding a new core persisted entity or changing the meaning of an existing entity requires review against:
-
-- `ARCHITECTURE.md`;
-- `FILE_ARCHITECTURE.md`;
-- compatibility requirements;
-- `DECISIONS.md`.
+Adding/changing a persisted/core entity requires review against `ARCHITECTURE.md`, `FILE_ARCHITECTURE.md`, compatibility requirements and current decision authority.
