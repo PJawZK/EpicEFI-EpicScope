@@ -17,6 +17,7 @@ import {
   buildViewportEnvelopeFromBlocks,
   type ViewportEnvelopeColumn,
 } from '../../../../core/timeline/viewport-series';
+import { createSourceIntegrityCanvasOverlay } from './source-integrity-canvas-overlay';
 
 const MAX_ACTIVE_TRACES = 8;
 const TRACE_COLORS = ['#42a5f5', '#26c6a3', '#f0b44d', '#c98cff', '#ef6c75', '#70d6ff', '#b8d95a', '#ff8c42'] as const;
@@ -350,6 +351,8 @@ export function createGraphViewport(): GraphViewportController {
       }, 180);
     }, 3200);
   };
+
+  const sourceIntegrityOverlay = createSourceIntegrityCanvasOverlay(canvas, showToast);
 
   const emitCursorValues = (): void => {
     const values = [...activeTraces.entries()].map(([channelId, trace]) => ({
@@ -747,6 +750,15 @@ export function createGraphViewport(): GraphViewportController {
       context.lineTo(cursorX + 0.5, height - inset);
       context.stroke();
     }
+
+    sourceIntegrityOverlay.draw(context, {
+      width,
+      height,
+      inset,
+      visibleStartMs,
+      visibleEndMs,
+      xForTime,
+    });
 
     if (measureEnvelopeBuild) {
       measuredDrawOverlayMs += (globalThis.performance?.now() ?? Date.now()) - overlayPhaseStarted;
