@@ -135,9 +135,11 @@ The shared table controller scopes document pointer/keyboard listeners to active
 
 ## Responsive/visual acceptance gate
 
-The normal browser acceptance runner now includes v50 geometry checks at 1024, 1366 and 1920 px desktop widths. For each width it verifies that the VE root and primary work surfaces remain bounded, the table remains an internally scrollable dominant surface, every compact setup disclosure stays inside the viewport, and the Logger range handoff remains visible. The runner also captures a VE screenshot for each width in both staged and Worker-disabled fallback runs.
+The normal browser acceptance runner includes v50 geometry checks at 1024, 1366 and 1920 px desktop widths. For each width it verifies that the VE root and primary work surfaces remain bounded, the table remains an internally scrollable dominant surface, every compact setup disclosure stays inside the viewport, and the Logger range handoff remains visible. The runner also captures a VE screenshot for each width in both staged and Worker-disabled fallback runs.
 
-This gate is intentionally running before user hands-on acceptance so any deterministic overflow/layout defect is fixed first. Screenshots are evidence for visual review, not a substitute for the user's final UI test.
+The first responsive attempt (`38983564863`) failed before measuring v50 geometry because focused component tests had left the real application shell on Table Generator; the test selected another non-hidden VE fixture root that was not the active application view. The gate now explicitly activates the real shell's Analyzer/VE domain and resolves the v50 root only inside `.analyzer-page:not([hidden])` before any geometry assertion. That was a test-targeting defect, not evidence of a v50 layout defect.
+
+This gate runs before user hands-on acceptance so any deterministic overflow/layout defect is fixed first. Screenshots are evidence for visual review, not a substitute for the user's final UI test.
 
 ## Current-main synchronization
 
@@ -145,7 +147,7 @@ The reconciliation branch was merged forward to current `main` after PR #465 lan
 
 ## Current validation gate
 
-A full Web CI run is required on the current branch head with responsive acceptance enabled. It must pass:
+The responsive gate is being rerun on the visible application VE surface. It must pass:
 
 1. TypeScript type-check.
 2. Full Vitest suite, including uneven-axis interpolation tests.
