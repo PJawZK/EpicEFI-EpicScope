@@ -1,4 +1,5 @@
 // Real-browser check for the canvas source-integrity bridge and click explanation.
+import { buildRawViewportSeries } from '../../core/timeline/viewport-series';
 import { createGraphViewport } from '../../apps/web/src/components/graph-viewport';
 import { SOURCE_INTEGRITY_DIAGNOSTICS_EVENT } from '../../apps/web/src/app/source-integrity-events';
 
@@ -68,6 +69,29 @@ export async function runSourceIntegrityMarkerChecks() {
   };
 
   try {
+    const count = 320_005;
+    for (const recovered of [false, true]) {
+      const timeMs = new Float64Array(count).fill(10);
+      const values = new Float64Array(count).fill(99);
+      const validity = new Uint8Array(count);
+      timeMs[0] = 0; values[0] = 1; validity[0] = 1;
+      timeMs[count - 1] = 20; values[count - 1] = 3; validity[count - 1] = 1;
+      if (recovered) { values[count - 2] = 2; validity[count - 2] = 1; }
+      const points = buildRawViewportSeries({ startSampleIndex: 0, timeMs, values, validity }, 0, 20);
+      assert(points.length === (recovered ? 3 : 2) && points[0].breakBefore && points.at(-1).breakBefore === !recovered, 'Large retry run changed source-gap continuity');
+      if (recovered) assert(points[1].timeMs === 10 && points[1].value === 2 && !points[1].breakBefore, 'Large retry run lost its valid replacement');
+      checks.push(`>320k retry samples preserve continuity with replacement=${recovered}`);
+    }
+    const range = {
+      startSampleIndex: 0,
+      timeMs: Float64Array.from({ length: count }, (_, i) => i),
+      values: Float64Array.from({ length: count }, (_, i) => i),
+      validity: new Uint8Array(count).fill(1),
+    };
+    const points = buildRawViewportSeries(range, 0, count - 1);
+    assert(points.length === count && points[0].breakBefore && points.slice(1).every(point => !point.breakBefore) && points.at(-1).value === count - 1, 'Continuous large raw series lost samples or introduced gaps');
+    checks.push('>320k continuous valid raw samples remain complete without artificial gaps');
+
     graph.setLog([channel], source, { startMs: 0, endMs: 1000, durationMs: 1000 });
     graph.setViewport(full);
     await graph.toggleChannel('rpm');

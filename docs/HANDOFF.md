@@ -1,5 +1,15 @@
 # EpicScope Handoff
 
+## Integration target 3 — bounded retry traversal (2026-10-16)
+
+Branch: `integration/source-integrity-target1-20261016`; base `0529406`. Target 3 is local/unpublished; main unchanged.
+
+Removed per-invalid-sample forward lookahead from `buildRawViewportSeries`. A pending invalid timestamp defers continuity until a valid same-timestamp sample or timestamp change; an earlier unrecovered group still forces a break. This uses constant auxiliary state and a linear output traversal without changing source validity, sample ordering, viewport bounds or existing cadence calculation/sorting. No worker, lifecycle, cache or rendering ownership changes.
+
+Tests: old code fails a deterministic bounded-index-read test; no fragile timing threshold. Focused 16 tests pass including >320k recovered attempts, >320k unrecovered attempts, >320k continuous valid samples, earlier-gap preservation, invalid suffix after a valid same-time sample and nonfinite values. Chromium runs the three >320k cases in both configurations while retaining marker/UI checks. Read-only seeded differential probe matched the prior implementation in 10000 finite-timestamp cases with random retries, validity, nonfinite values and viewport bounds. Single-run Node 16000-invalid-sample measurement: before 407.8 ms, after 0.154 ms; this is not target-hardware/browser latency or an original-MLG speedup claim.
+
+Validation: 131 files / 808 automated tests, 16 focused tests, production build/typecheck and 532 Chromium checks (266/configuration) passed. Native downloaded ZIP CRC and diff checks passed. Target 3 complete locally. Evidence: `/workspace/epicscope-integration-target3/evidence/`. Stop before target 4; targets 4–7 and optional observability stage 10 remain deferred. Original large recording/target hardware and hosted CI unrun. Account usage is not exposed.
+
 ## Integration target 2 — source-integrity evidence preservation (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`, based on local integration commit `663e7d5`. Target 2 changes are local and unpublished; main is unchanged.
