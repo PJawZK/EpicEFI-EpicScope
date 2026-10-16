@@ -133,14 +133,28 @@ export async function runVeSharedTableInteractionChecks() {
     assert(cells().slice(0, 2).every((cell) => cell.dataset.tableSelected === 'true' && cell.dataset.delaySelected === 'true'), 'Shared selection did not decorate compatibility and v50 state');
     button(root, 'Increase selected cells').click();
     await settle();
-    assert(values()[0] === 110 && values()[1] === 110 && view.sessionRevision === initial + 1, 'Shared +/- edit did not publish one semantic change');
+    assert(values()[0] === 105 && values()[1] === 105 && view.sessionRevision === initial + 1, 'Shared +/- edit did not publish one semantic change');
     checks.push('additive selection and +/- use one semantic owner transaction');
 
     button(root, 'Undo').click(); await settle();
     assert(values()[0] === 100 && values()[1] === 100, 'Undo did not restore owner values');
     button(root, 'Redo').click(); await settle();
-    assert(values()[0] === 110 && values()[1] === 110, 'Redo did not restore shared edit');
+    assert(values()[0] === 105 && values()[1] === 105, 'Redo did not restore shared edit');
     checks.push('shared owner-backed undo/redo works');
+
+    const decrementButton = button(root, 'Decrease selected cells');
+    decrementButton.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+    const stepDialog = root.querySelector('.ve-table-tool-options');
+    const stepInput = stepDialog?.querySelector('input[type="number"]');
+    assert(stepDialog && stepInput && stepDialog.getAttribute('aria-label') === 'Increment step', 'Right-click did not open increment-step configuration');
+    stepInput.value = '7';
+    stepInput.dispatchEvent(new Event('change', { bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(button(root, 'Increase selected cells').title.includes('by 7'), 'Configured increment step did not refresh toolbar presentation');
+    const storedTools = JSON.parse(localStorage.getItem('epicscope.veAnalyzer.tableTools.v1') || '{}');
+    assert(storedTools.delay?.adjustmentStep === 7, 'Configured table step was not persisted by the production preference owner');
+    assert(button(root, 'Interpolate horizontally') && button(root, 'Interpolate vertically') && button(root, 'Interpolate both directions'), 'Explicit H/V/2D interpolation tools are missing');
+    checks.push('right-click tool configuration persists and explicit H/V/2D interpolation controls are present');
 
     selectCell(cells()[0]);
     button(root, 'Pin').click();
@@ -149,7 +163,7 @@ export async function runVeSharedTableInteractionChecks() {
     selectCell(cells()[0]);
     selectCell(cells()[1], true);
     button(root, 'Decrease selected cells').click(); await settle();
-    assert(values()[0] === pinnedBefore && values()[1] === 100, 'Pinned cell was changed by destructive bulk adjustment');
+    assert(values()[0] === pinnedBefore && values()[1] === 98, 'Pinned cell was changed by destructive bulk adjustment');
     checks.push('pins remain session-local and protect bulk edits');
 
     selectCell(cells()[0]);
