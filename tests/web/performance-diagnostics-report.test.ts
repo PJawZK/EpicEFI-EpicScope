@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ChannelPerformanceRun } from '../../apps/web/src/components/performance-diagnostics';
-import { buildPerformanceDiagnosticsReport } from '../../apps/web/src/components/performance-diagnostics-report';
+import type { ChannelPerformanceRun } from '../../apps/web/src/observability/performance-types';
+import { buildPerformanceDiagnosticsReport } from '../../apps/web/src/observability/reports/performance-report';
 
 describe('performance diagnostics report formatter', () => {
   it('formats captured channel selections independently of the DOM controller', () => {

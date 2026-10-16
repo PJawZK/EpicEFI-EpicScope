@@ -277,8 +277,6 @@ function applyFuelInjectorAnalyzerPresentation(view: HTMLElement): void {
   eventBody.append(row);
 }
 
-export function ensureFuelInjectorAnalyzerPresentation(root: HTMLElement): void {
-  for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) {
-    applyFuelInjectorAnalyzerPresentation(view);
-  }
+export function ensureFuelInjectorAnalyzerPresentation(view: HTMLElement): void {
+  applyFuelInjectorAnalyzerPresentation(view);
 }

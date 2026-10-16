@@ -1,7 +1,8 @@
+import { runDiagnosticsAcceptance } from './diagnostics.mjs';
 import fs from 'node:fs/promises';
 
 // Run against the real application shell using native file inputs.
-export async function runAcceptance({ call, evaluate, file, wait, fixture, moduleBase, mode, record, log }) {
+export async function runAcceptance({ call, evaluate, file, wait, fixture, moduleBase, mode, record, log, downloadDir }) {
  async function step(label, fn) {
    log('start ' + label);
    const started = Date.now();
@@ -9,11 +10,24 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
    log('done ' + label, { ms: Date.now() - started });
    return value;
  }
+ await record('shim-socket-ownership.json', await evaluate(`(async()=>{const m=await import('${moduleBase}shim-socket-ownership.browser.mjs');return m.runShimSocketOwnershipChecks();})()`,60000));
+ await record('diagnostics-view.json', await evaluate(`(async()=>{const m=await import('${moduleBase}diagnostics.browser.mjs');return m.runDiagnosticsChecks();})()`,60000));
+ await record('persistence-native.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-persistence.browser.mjs');return m.runPersistenceChecks();})()`,60000));
+ await record('anomaly-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runAnomalyChecks();})()`,60000));
+ await record('owner-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}owner-evidence.browser.mjs');return m.runOwnerEvidenceChecks();})()`,60000));
+ await record('parser-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}parser-evidence.browser.mjs');return m.runParserEvidenceParity();})()`,60000));
+ await record('performance-migration.json', await evaluate(`(async()=>{const m=await import('${moduleBase}performance-migration.browser.mjs');return m.capturePerformanceParity();})()`,60000));
+ await record('observability-foundation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-foundation.browser.mjs');return m.runObservabilityFoundationChecks();})()`,60000));
+ await record('presentation-ownership.json', await evaluate(`(async()=>{const m=await import('${moduleBase}presentation-ownership.browser.mjs');return m.runPresentationOwnershipChecks();})()`,60000));
+ await record('ve-readiness-owner.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-readiness-owner.browser.mjs');return m.runVeReadinessOwnerChecks();})()`,60000));
  await record('histogram-math-preview.json', await evaluate(`(async()=>{const m=await import('${moduleBase}histogram-math-preview.browser.mjs');return m.runHistogramMathPreviewChecks();})()`,60000));
+ await record('local-persistence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}local-persistence.browser.mjs');return m.runLocalPersistenceChecks();})()`,60000));
  await record('histogram-formula.json', await evaluate(`(async()=>{const m=await import('${moduleBase}histogram-formula-pipeline.browser.mjs');return m.runHistogramFormulaPipelineChecks();})()`,60000));
  await step('INI',async()=>{await file('input[accept=".ini,text/plain"]',fixture('navigation.ini'));await wait('document.querySelector(".load-ini").dataset.loadState==="success"');});
  await step('MSQ',async()=>{await file('input[accept^=".msq"]',fixture('audit.msq'));await wait('document.querySelector(".load-msq").dataset.loadState==="success"');});
  await step('MLG',async()=>{await file('input[accept^=".mlg"]',fixture('navigation.mlg'));await wait(mode === 'staged' ? 'document.querySelector(".parser-status").textContent.includes("CRC validated")' : 'document.querySelector(".open-log").dataset.loadState==="success"');});
+ const authorityInputs = {iniSource: await fs.readFile(fixture('navigation.ini'), 'utf8'), msqSource: await fs.readFile(fixture('audit.msq'), 'utf8')};
+ await record('ini-table-authority.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ini-table-authority.browser.mjs');return m.runIniTableAuthorityChecks(${JSON.stringify(authorityInputs)});})()`,60000));
  await step('Analyzer click',()=>evaluate('document.querySelector("[data-epicscope-mode=analyzer]").click()'));
  await step('VE select',()=>evaluate('(()=>{const s=document.querySelector(".analyzer-header-view-select");s.value="ve";s.dispatchEvent(new Event("change",{bubbles:true}));return document.querySelector("[data-ve-analyzer=stage]").textContent;})()'));
  const select=async(selector,value)=>evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(selector)});s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
@@ -22,6 +36,11 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await wait('!document.querySelector(".ve-workbench-run").disabled');
  await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.onclick.call(cell,new PointerEvent('click'));document.querySelector('[data-ve-analyzer="delay-cell-working"]').value='125';document.querySelector('[data-ve-analyzer="delay-cell-apply"]').click();})()`));
  await step('Run Analysis',async()=>{await evaluate('document.querySelector(".ve-workbench-run").click()',60000);await wait('document.querySelector("[data-ve-analyzer=stage]").textContent.startsWith("Guarded")');});
+ await runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,downloadDir,record});
+ await record('anomaly-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runIntegratedAnomalyChecks();})()`,60000));
+ await record('owner-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}owner-evidence.browser.mjs');return m.runIntegratedOwnerEvidence();})()`,60000));
+ await record('parser-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}parser-evidence.browser.mjs');return m.runIntegratedParserEvidence();})()`,60000));
+ await record('performance-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}performance-migration.browser.mjs');return m.runIntegratedPerformanceChecks();})()`,60000));
  const goodSource=await fs.readFile(fixture('audit.msq'),'utf8');
  const result=await evaluate(`(async()=>{const m=await import('${moduleBase}msq-replacement.browser.mjs');return m.runMsqReplacementChecks(${JSON.stringify(goodSource)});})()`,60000);
  log('replacement checks',{result});await record('replacement-result.json',result);

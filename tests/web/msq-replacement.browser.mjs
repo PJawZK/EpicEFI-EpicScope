@@ -10,13 +10,31 @@ export async function runMsqReplacementChecks(goodSource){
  await check('candidate validation accepts supported namespaced MSQ, text metadata and inferred vectors',()=>{
   const m=prepareMsqCandidate('<msq xmlns="http://www.msefi.com/:msq"><page><pcVariable name="label">"My tune"</pcVariable><constant name="bins">1 2 3</constant></page></msq>');assert(m.entries.length===2&&m.byName.get('label').kind==='text'&&m.byName.get('bins').kind==='vector','Valid non-VE tune was rejected');
  });
+ await check('candidate preserves literal entity text and decodes numeric references once',()=>{
+  const m=prepareMsqCandidate('<msq><versionInfo signature="&amp;#65;"/><page><pcVariable name="label">"&amp;lt; &#x1F600;"</pcVariable><constant name="value">&#49;</constant></page></msq>');
+  assert(m.identity.signature==='&#65;'&&m.byName.get('label').textValue==='&lt; 😀'&&m.byName.get('value').numericValues[0]===1,'Entities decoded more than once');
+ });
+ await check('candidate keeps quoted numeric/empty values and dimensioned strings as text',()=>{
+  const m=prepareMsqCandidate('<msq><page><constant name="numericLabel">"123"</constant><constant name="empty">""</constant><constant name="text" rows="1" cols="20">"Tune label"</constant><constant name="metadata">Unquoted metadata</constant></page></msq>');
+  for(const name of ['numericLabel','empty','text','metadata'])assert(m.byName.get(name).kind==='text',name+' was coerced to numeric');
+  assert(m.byName.get('empty').textValue==='','Quoted empty text was lost');
+ });
+ await check('candidate accepts finite dimensioned numbers and undimensioned vectors',()=>{
+  const m=prepareMsqCandidate('<msq><page><constant name="x" rows="1" cols="3">-1 2.5 3e2</constant><constant name="bins">1 2 3</constant></page></msq>');
+  assert(JSON.stringify(m.byName.get('x').numericValues)==='[-1,2.5,300]'&&m.byName.get('bins').kind==='vector','Valid numeric data rejected');
+ });
+ for(const [name,value]of [['mixed numeric table','1 2 bad 4'],['nonfinite numeric table','1 2 NaN 4'],['infinite numeric table','1 2 1e999 4'],['blank numeric table','']])await check('candidate rejects '+name,()=>{
+  let error;try{prepareMsqCandidate(`<msq><page><constant name="veTable" rows="2" cols="2">${value}</constant></page></msq>`);}catch(e){error=e;}
+  assert(error?.message.includes('veTable'),'Malformed numeric data was silently treated as text');
+ });
+ await check('candidate rejects blank declared dimensions',()=>{let error;try{prepareMsqCandidate('<msq><page><constant name="x" rows=" ">1</constant></page></msq>');}catch(e){error=e;}assert(error?.message.includes('positive integer'),'Blank dimension accepted');});
  for(const [name,source]of [['wrong root','<xml/>'],['empty','<msq/>'],['truncated',goodSource.slice(0,-6)],['mismatched XML','<msq><page></msq>'],['bad dimensions','<msq><page><constant name="x" rows="bad">1</constant></page></msq>'],['zero dimensions','<msq><page><constant name="x" rows="0">1</constant></page></msq>'],['incomplete numeric table','<msq><page><constant name="x" rows="2" cols="2">1 2 3</constant></page></msq>']])await check('candidate rejects '+name,()=>{let threw=false;try{prepareMsqCandidate(source);}catch{threw=true;}assert(threw,'Invalid candidate accepted');});
  const initial=snapshot();assert(initial.delay==='125'&&initial.titles.some(t=>t.startsWith('Measured proposal')),'Baseline VE session not ready');
  [...document.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find(c=>c.title.startsWith('Measured proposal')).click();await settle();
  const panel=document.querySelector('.ve-cell-detail-popover'),grid=panel.querySelector('.ve-evidence-detail-grid');assert(grid,'Missing cached popup');
  const preserved=()=>{assert(JSON.stringify(snapshot())===JSON.stringify(initial),'Existing VE session changed');assert(!panel.hidden&&panel.querySelector('.ve-evidence-detail-grid')===grid,'Retained popup/evidence replaced');};
  await check('cancelled file selection leaves the current session and status untouched',async()=>{const title=button().title;pick(null);await settle();preserved();assert(button().title===title,'Cancel changed load status');});
- for(const [name,read]of [['broken.msq',async()=>'<msq><page>'],['unreadable.msq',async()=>{throw Error('Local read denied');}],['bad-shape.msq',async()=>'<msq><page><constant name="veTable" rows="2" cols="2">1 2 3</constant></page></msq>']])await check('failed replacement preserves the active tune/session: '+name,async()=>{
+ for(const [name,read]of [['broken.msq',async()=>'<msq><page>'],['unreadable.msq',async()=>{throw Error('Local read denied');}],['mixed-table.msq',async()=>'<msq><page><constant name="veTable" rows="2" cols="2">1 2 bad 4</constant></page></msq>'],['invalid-entity.msq',async()=>'<msq><page><constant name="x">&#0;</constant></page></msq>'],['bad-shape.msq',async()=>'<msq><page><constant name="veTable" rows="2" cols="2">1 2 3</constant></page></msq>']])await check('failed replacement preserves the active tune/session: '+name,async()=>{
   pick(name,read);await settle();preserved();assert(button().dataset.loadState==='issue'&&button().title.includes('remains active')&&button().title.includes('retry'),'Failure feedback does not explain retained authority/recovery');
  });
  await check('failed replacement survives Logger navigation with retained shell tune authority',async()=>{

@@ -1,3 +1,6 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { recordParserEvidence, type ParserEvidenceContext } from '../observability/producers/parser';
 import type {
   ChannelDefinition,
   ImportedLogSummary,
@@ -5,6 +8,7 @@ import type {
   NumericChannelRange,
   LogMarker,
   ParserDiagnostic,
+  LogSourceIdentity,
 } from '../../../../core/log-model/log-types';
 import { extendLiveViewport } from '../../../../core/timeline/live-follow';
 import {
@@ -197,7 +201,9 @@ export interface LoggerPageController {
   ): LoggerUiPopulationPerformance;
   setChannelCatalog(channels: readonly ChannelDefinition[], sourceName: string): void;
   clearChannelCatalog(): void;
-  setImportError(message: string): void;
+  setImportError(message: string, context?: ParserEvidenceContext): void;
+  getParserDiagnosticsReport(): string;
+  getParserDiagnosticsEvidence(): readonly ParserDiagnostic[];
   setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
   refreshValidity(): void;
   refreshGrowingLog(
@@ -217,6 +223,7 @@ export interface LoggerPageController {
   getWorkspaceState(): LoggerWorkspaceState;
   getRuntimeDiagnosticSnapshot(): LoggerRuntimeDiagnosticSnapshot;
   getAnalysisContext(): LoggerAnalysisContext;
+  getAnalysisSourceState(): { readonly identity: object | undefined; readonly revision: number; readonly sampleCount: number; readonly aTimeMs: number | undefined; readonly bTimeMs: number | undefined };
   focusAnalysisTimes(timeMs: readonly number[]): void;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
@@ -269,9 +276,8 @@ function createGraphSelector(): GraphSelectorController {
   const root = document.createElement('div');
   root.className = 'graph-selector-wrap';
   root.innerHTML = `
-    <span class="graph-selector-context">Graphs</span>
     <button type="button" class="graph-selector-button" aria-haspopup="menu" aria-expanded="false">
-      <span>General</span>
+      <span>General - Graph</span>
       <span class="graph-selector-chevron" aria-hidden="true"></span>
     </button>
     <div class="graph-selector-menu" role="menu" hidden>
@@ -346,7 +352,8 @@ function createGraphSelector(): GraphSelectorController {
 
   const render = (): void => {
     const active = workspaces.find((workspace) => workspace.id === activeId) ?? workspaces[0];
-    buttonLabel.textContent = active?.name ?? 'General';
+    const displayName = (name: string): string => /\s-\sGraph$/.test(name) ? name : `${name} - Graph`;
+    buttonLabel.textContent = displayName(active?.name ?? 'General');
     button.disabled = !enabled;
 
     const fragment = document.createDocumentFragment();
@@ -360,7 +367,7 @@ function createGraphSelector(): GraphSelectorController {
       choice.dataset.workspaceId = workspace.id;
 
       const label = document.createElement('span');
-      label.textContent = workspace.name;
+      label.textContent = displayName(workspace.name);
       const detail = document.createElement('small');
       detail.textContent = workspace.id === activeId ? 'Current graph workspace' : 'Switch workspace';
       choice.append(label, detail);
@@ -480,10 +487,14 @@ function createInitialWorkspace(
   };
 }
 
-export function createLoggerPage(): LoggerPageController {
+export function createLoggerPage(parserEvidence?: { readonly recorder: ObservabilityRecorder; readonly sourceContext: (source: LogSourceIdentity) => ParserEvidenceContext }): LoggerPageController {
+  const ownerEvidence = createOwnerEvidence(parserEvidence?.recorder, 'logger-context');
+  let parserContext: ParserEvidenceContext = {};
   const inspector = createInspectorPanel();
   const timeline = createTimelineShell();
-  const diagnostics = createParserDiagnosticsIndicator();
+  const diagnostics = createParserDiagnosticsIndicator(model => {
+    if (parserEvidence) recordParserEvidence(parserEvidence.recorder, model, parserContext);
+  });
   const valueSearch = createChannelValueSearchPanel();
   const rangeQualification = createRangeQualificationPanel();
   const graphSelector = createGraphSelector();
@@ -511,6 +522,10 @@ export function createLoggerPage(): LoggerPageController {
   const unavailableChannelIds = new Set<string>();
   let channelDataSource: NumericChannelDataSource | undefined;
   let analysisDataRevision = 0;
+  const publishDiagnostics = (value: readonly ParserDiagnostic[]): void => {
+    parserContext = { ...parserContext, sourceRevision: analysisDataRevision };
+    diagnostics.setDiagnostics(value);
+  };
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
   let workspaceRestorePerformanceListener:
@@ -2154,7 +2169,8 @@ export function createLoggerPage(): LoggerPageController {
     const viewportMs = now() - viewportStarted;
 
     const diagnosticsStarted = now();
-    diagnostics.setDiagnostics(summary.diagnostics);
+    parserContext = parserEvidence?.sourceContext(summary.source) ?? { sourceIdentity: summary.source.id };
+    publishDiagnostics(summary.diagnostics);
     const diagnosticsMs = now() - diagnosticsStarted;
 
     return {
@@ -2178,7 +2194,8 @@ export function createLoggerPage(): LoggerPageController {
   ): Promise<void> => {
     if (!channelDataSource) return;
     logMarkers = summary.markers;
-    diagnostics.setDiagnostics(summary.diagnostics);
+    parserContext = parserEvidence?.sourceContext(summary.source) ?? { sourceIdentity: summary.source.id };
+    publishDiagnostics(summary.diagnostics);
     timeline.extendTimeRange(summary.timeRange, recordCount, logMarkers);
 
     if (summary.timeRange) {
@@ -2195,7 +2212,8 @@ export function createLoggerPage(): LoggerPageController {
     refreshSelectedChannelStatistics();
   };
 
-  const setImportError = (message: string): void => {
+  const setImportError = (message: string, context: ParserEvidenceContext = {}): void => {
+    parserContext = context;
     workspaceGeneration += 1;
     workspaces = workspaces.map((workspace) => ({
       ...workspace,
@@ -2226,7 +2244,7 @@ export function createLoggerPage(): LoggerPageController {
     paneRuntimes.forEach((runtime) => runtime.graph.clear());
     renderGraphLayout();
     valueSearch.clear();
-    diagnostics.setDiagnostics([{
+    publishDiagnostics([{
       code: 'import-failed',
       severity: 'error',
       message,
@@ -2365,6 +2383,7 @@ export function createLoggerPage(): LoggerPageController {
         })
       : [];
 
+    ownerEvidence.event('logger.context.created', { channels: channels.length, traces: traces.length, sampleExtent }, { sourceRevision });
     const activeColors = new Map(traces.map((trace) => [trace.channel.id, trace.color]));
     const palette = ['#58aef6', '#ffb15a', '#7ddf8a', '#df7dcb', '#ffd45a', '#67d8d2', '#ff7f7f', '#9ca7ff'];
     const colorFor = (channelId: string): string => {
@@ -2400,29 +2419,37 @@ export function createLoggerPage(): LoggerPageController {
       }
       if (sampleCount <= 0) return [];
 
-      const ranges = new Map<string, NumericChannelRange>();
-      if (source.readChannelsRange && requestedIds.length > 1) {
-        const batch = await source.readChannelsRange(requestedIds, startSampleIndex, sampleCount);
-        for (const [channelId, range] of batch.ranges) ranges.set(channelId, range);
-      } else {
-        const resolved = await Promise.all(requestedIds.map(async (channelId) => [
-          channelId,
-          await source.readChannelRange(channelId, startSampleIndex, sampleCount),
-        ] as const));
-        for (const [channelId, range] of resolved) ranges.set(channelId, range);
-      }
+      const operation = ownerEvidence.begin('logger.analysis-traces', { sourceRevision, requested: requestedIds.length, startSampleIndex, sampleCount, currentSource: source === channelDataSource });
+      try {
+        const ranges = new Map<string, NumericChannelRange>();
+        if (source.readChannelsRange && requestedIds.length > 1) {
+          const batch = await source.readChannelsRange(requestedIds, startSampleIndex, sampleCount);
+          for (const [channelId, range] of batch.ranges) ranges.set(channelId, range);
+        } else {
+          const resolved = await Promise.all(requestedIds.map(async (channelId) => [
+            channelId,
+            await source.readChannelRange(channelId, startSampleIndex, sampleCount),
+          ] as const));
+          for (const [channelId, range] of resolved) ranges.set(channelId, range);
+        }
 
-      return requestedIds.flatMap((channelId) => {
-        const channel = definitions.get(channelId);
-        const range = ranges.get(channelId);
-        if (!channel || !range) return [];
-        return [{
-          channel,
-          range,
-          complete: range.startSampleIndex <= startSampleIndex && range.values.length >= sampleCount,
-          color: colorFor(channelId),
-        }];
-      });
+        return requestedIds.flatMap((channelId) => {
+          const channel = definitions.get(channelId);
+          const range = ranges.get(channelId);
+          if (!channel || !range) return [];
+          return [{
+            channel,
+            range,
+            complete: range.startSampleIndex <= startSampleIndex && range.values.length >= sampleCount,
+            color: colorFor(channelId),
+          }];
+        });
+      } catch (error) {
+        operation?.finish('failure', 'channel-read-failed');
+        throw error;
+      } finally {
+        if (operation?.outcome === undefined) operation?.finish('success');
+      }
     };
 
     return {
@@ -2493,7 +2520,9 @@ export function createLoggerPage(): LoggerPageController {
     setChannelCatalog,
     clearChannelCatalog,
     setImportError,
-    setDiagnostics: (nextDiagnostics) => { diagnostics.setDiagnostics(nextDiagnostics); },
+    setDiagnostics: publishDiagnostics,
+    getParserDiagnosticsReport: () => diagnostics.reportText(),
+    getParserDiagnosticsEvidence: () => diagnostics.getDiagnostics(),
     refreshValidity: () => {
       analysisDataRevision += 1;
       paneRuntimes.forEach((runtime) => runtime.graph.refreshValidity());
@@ -2513,6 +2542,7 @@ export function createLoggerPage(): LoggerPageController {
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
     getAnalysisContext,
+    getAnalysisSourceState: () => ({ identity: channelDataSource, revision: analysisDataRevision, sampleCount: channelDataSource?.sampleCount ?? 0, aTimeMs: analysisStartMs, bTimeMs: analysisEndMs }),
     focusAnalysisTimes,
     restoreWorkspaceState,
     restoreActiveWorkspace: async () => {

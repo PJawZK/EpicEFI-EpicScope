@@ -1,3 +1,5 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import {
@@ -7,11 +9,10 @@ import {
 import '../app/font-intensity-settings';
 import '../styles/ve-analyzer-polish.css';
 
-export function createVeAnalyzerView(): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV7();
+export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+  const inner = createVeAnalyzerViewV7(observability);
   const root = inner.element;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
-  const blockerPanel = root.querySelector<HTMLElement>('.ve-run-blocker-panel')!;
   const infoButton = root.querySelector<HTMLButtonElement>('.ve-run-info-button')!;
 
   // Table layout/header ownership lives entirely in v7. This layer only adds
@@ -28,13 +29,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   status.append(infoButton, readiness, quickFix);
 
   const syncQuickFix = (): void => {
-    const firstFix = blockerPanel.querySelector<HTMLButtonElement>('.ve-run-blocker-item button');
+    const state = inner.getReadiness();
+    const firstFix = state.active && !state.pending ? state.blockers.find(blocker => blocker.targetSelector) : undefined;
     quickFix.hidden = !firstFix;
-    quickFix.onclick = firstFix ? () => firstFix.click() : null;
+    quickFix.onclick = firstFix ? () => focusVeReadinessTarget(root, firstFix.targetSelector!) : null;
   };
 
-  const blockerObserver = new MutationObserver(syncQuickFix);
-  blockerObserver.observe(blockerPanel, { childList: true, subtree: true, characterData: true });
+  inner.onReadinessChange(syncQuickFix);
   queueMicrotask(syncQuickFix);
 
   return {
@@ -44,21 +45,20 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       if (!changed) return false;
-      queueMicrotask(syncQuickFix);
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
-      queueMicrotask(syncQuickFix);
       return true;
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(syncQuickFix);
     },
   };
 }

@@ -61,4 +61,23 @@ describe('parseMsq', () => {
   it('rejects non-MSQ input', () => {
     expect(() => parseMsq('<xml/>')).toThrow(/<msq>/);
   });
+  it('decodes entities exactly once in metadata, names, units, raw text and tokens', () => {
+    const parsed = parseMsq('<msq><versionInfo signature="&amp;#65; &#38;lt;"/><page><pcVariable name="a&amp;lt;" units="&amp;#37;">"&amp;lt; &amp;amp; &#38;#65;"</pcVariable></page></msq>');
+    expect(parsed.signature).toBe('&#65; &lt;');
+    expect(parsed.variables[0]).toMatchObject({ name: 'a&lt;', units: '&#37;', rawText: '"&lt; &amp; &#65;"', tokens: ['&lt; &amp; &#65;'] });
+  });
+
+  it('handles decimal, hexadecimal and supplementary XML characters in one pass', () => {
+    const variable = parseMsq('<msq><page><pcVariable name="label">"&#65; &#x41; &#x1F600;"</pcVariable></page></msq>').variables[0];
+    expect(variable?.tokens).toEqual(['A A 😀']);
+  });
+
+  it.each(['0', '55296', '1114112', '99999999999999999999', 'xFFFF'])('rejects invalid XML character reference %s with an actionable error', (code) => {
+    expect(() => parseMsq(`<msq><page><pcVariable name="label">&#${code};</pcVariable></page></msq>`)).toThrow(/Invalid XML character reference/);
+  });
+
+  it.each(['"123"', "'123'", '""', '"1 2"'])('keeps explicitly quoted %s as text', (value) => {
+    expect(parseMsq(`<msq><page><constant name="label">${value}</constant></page></msq>`).variables[0]?.numericValues).toBeUndefined();
+  });
+
 });

@@ -80,9 +80,9 @@ function selectedIndices(reference: NumericChannelRange, sampleIndices?: ArrayLi
   return [...new Set(raw.filter((value): value is number => Number.isSafeInteger(value)))].sort((left, right) => left - right);
 }
 
-function percentile(values: readonly number[], fraction: number): number | undefined {
-  if (values.length === 0) return undefined;
-  const sorted = [...values].sort((left, right) => left - right);
+// Internal contract: callers provide ascending values; interpolation never mutates them.
+function percentileSorted(sorted: readonly number[], fraction: number): number | undefined {
+  if (sorted.length === 0) return undefined;
   const position = Math.max(0, Math.min(1, fraction)) * (sorted.length - 1);
   const lowerIndex = Math.floor(position);
   const upperIndex = Math.ceil(position);
@@ -92,14 +92,18 @@ function percentile(values: readonly number[], fraction: number): number | undef
   return lower + (upper - lower) * (position - lowerIndex);
 }
 
+function percentile(values: readonly number[], fraction: number): number | undefined {
+  return percentileSorted([...values].sort((left, right) => left - right), fraction);
+}
+
 function distribution(values: readonly number[]): AfrDelayDistribution | undefined {
   if (values.length === 0) return undefined;
   const sorted = [...values].sort((left, right) => left - right);
   return {
     minimumMs: sorted[0]!,
-    p10Ms: percentile(sorted, 0.10)!,
-    medianMs: percentile(sorted, 0.50)!,
-    p90Ms: percentile(sorted, 0.90)!,
+    p10Ms: percentileSorted(sorted, 0.10)!,
+    medianMs: percentileSorted(sorted, 0.50)!,
+    p90Ms: percentileSorted(sorted, 0.90)!,
     maximumMs: sorted[sorted.length - 1]!,
   };
 }

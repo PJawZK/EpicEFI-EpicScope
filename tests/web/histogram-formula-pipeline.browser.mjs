@@ -52,6 +52,8 @@ export async function runHistogramFormulaPipelineChecks() {
     assert(!root.querySelector('.histogram-table-export').disabled, 'Historical formula failed in Table Generator: ' + root.querySelector('.histogram-table-empty').textContent);
   };
   try {
+    assert(!root.querySelector('.histogram-table-formulas') && !root.querySelector('.histogram-formula-save'), 'Superseded formula editor still constructed');
+    checks.push('Table Generator constructs only formula consumers; Math Channels owns editing');
     page.setContext(context);
     change('.histogram-table-x', 'formula:pipeline-change');
     change('.histogram-table-y', 'map');
@@ -83,12 +85,39 @@ export async function runHistogramFormulaPipelineChecks() {
     assert(requests.at(-1).ids.join(',') === 'rpm' && requests.at(-1).start === 100 && requests.at(-1).end === 400, 'Preview scope/dependency mismatch');
     checks.push('Math preview uses shared historical binding and preserves finite-sample statistics');
 
-    // Legacy manager still validates and saves through the same physical resolver.
-    change('.histogram-formula-name', 'Legacy History');
-    change('.histogram-formula-expression', '[RPM] - [RPM-1]');
-    root.querySelector('.histogram-formula-save').click();
-    assert(loadHistogramCalculatedFields().some(item => item.name === 'Legacy History'), 'Legacy formula validation rejected historical references');
-    checks.push('legacy calculated-field manager uses the same validation policy');
+    // All legacy editing capabilities must be available through the visible owner.
+    change('.math-channel-name', 'Visible History', 'input');
+    change('.math-channel-unit', 'rpm/sample', 'input');
+    root.querySelector('.math-channel-save').click();
+    let saved = loadHistogramCalculatedFields().find(item => item.name === 'Visible History');
+    assert(saved?.expression === field.expression && saved.unit === 'rpm/sample', 'Visible editor did not save historical expression/metadata');
+    const savedId = saved.id;
+    checks.push('visible Math Channels creates historical formulas with name/unit metadata');
+
+    change('.math-channel-name', 'Edited History', 'input');
+    change('.math-channel-unit', 'edited-unit', 'input');
+    root.querySelector('.math-channel-save').click();
+    saved = loadHistogramCalculatedFields().find(item => item.id === savedId);
+    assert(saved?.name === 'Edited History' && saved.unit === 'edited-unit' && loadHistogramCalculatedFields().filter(item => item.id === savedId).length === 1, 'Edit duplicated or lost saved identity');
+    view('table');
+    change('.histogram-table-x', `formula:${savedId}`);
+    change('.histogram-table-z', `formula:${savedId}`);
+    await pause(100);await readyTable();
+    assert(stat('binned') === '3' && root.querySelector('[data-hist-table-summary="cell"]').textContent.includes('Edited History'), 'Table lost newly edited formula values/metadata');
+    checks.push('visible edits retain saved identity and update Table Generator calculation and labels');
+
+    view('math-channels');
+    const row = [...root.querySelectorAll('.math-channel-row')].find(button => button.querySelector('strong').textContent === 'Edited History');
+    assert(row, 'Saved formula missing from visible list');row.click();
+    change('.math-channel-formula', '[missing]', 'input');
+    root.querySelector('.math-channel-save').click();
+    assert(loadHistogramCalculatedFields().find(item => item.id === savedId)?.expression === field.expression && root.querySelector('.math-channel-validation').textContent === 'Channel not found: [missing]', 'Invalid replacement changed persisted formula or lost actionable feedback');
+    checks.push('visible editor rejects invalid replacement without corrupting accepted formula');
+    root.querySelector('.math-channel-delete').click();
+    assert(!loadHistogramCalculatedFields().some(item => item.id === savedId) && loadHistogramCalculatedFields().some(item => item.id === field.id), 'Delete removed wrong formula or retained selected formula');
+    view('table');
+    assert(![...root.querySelector('.histogram-table-x').options].some(option => option.value === `formula:${savedId}`) && [...root.querySelector('.histogram-table-x').options].some(option => option.value === 'formula:pipeline-change'), 'Table selectors did not follow formula deletion');
+    checks.push('visible deletion removes only selected formula and updates consumer selectors');
 
     view('distribution');
     change('.distribution-channel', 'formula:pipeline-change');

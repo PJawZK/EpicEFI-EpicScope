@@ -1,3 +1,6 @@
+import { createOwnerEvidence, rejectOwnerCompletion } from '../observability/producers/owner';
+import type { Operation } from '../observability/operation';
+import type { ObservabilityRecorder } from '../observability/recorder';
 import { createLocalPersistenceFeedback } from './local-persistence-feedback';
 import { prepareHistogramFormula, evaluateHistogramFormula } from './histogram-logical-context';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
@@ -75,7 +78,7 @@ function formatNumber(value: number | undefined): string {
 const PREVIEW_DEBOUNCE_MS = 180;
 const MAX_PREVIEW_SAMPLES = 10_000;
 
-export function createHistogramMathChannelsView(): HistogramMathChannelsController {
+export function createHistogramMathChannelsView(observability?: ObservabilityRecorder): HistogramMathChannelsController {
   let context: HistogramPageContext = {
     traces: [],
     channels: [],
@@ -85,6 +88,8 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   };
   let fields = loadHistogramCalculatedFields();
   let editingId = '';
+  const ownerEvidence = createOwnerEvidence(observability, 'math-preview');
+  let previewOperation: Operation | undefined;
   let previewGeneration = 0;
   let previewTimer: number | undefined;
 
@@ -153,7 +158,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   }
 
   const persistenceFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.math-channel-actions')!.parentElement!, 'math-channels',
-    () => saveHistogramCalculatedFields(loadHistogramCalculatedFields()));
+    () => saveHistogramCalculatedFields(loadHistogramCalculatedFields()), observability);
 
   const stat = (name: string): HTMLElement => {
     const node = root.querySelector<HTMLElement>(`[data-math-stat="${name}"]`);
@@ -178,6 +183,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   };
 
   const renderList = (): void => {
+    ownerEvidence.event('math.list.render', { fields: fields.length });
     const query = search.value.trim().toLocaleLowerCase();
     const visible = fields.filter((field) => !query || field.name.toLocaleLowerCase().includes(query) || field.expression.toLocaleLowerCase().includes(query));
     list.replaceChildren();
@@ -241,7 +247,9 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     schedulePreview();
   };
 
-  const cancelPreview = (): number => {
+  const cancelPreview = (reason: 'superseded' | 'cancelled' = 'superseded'): number => {
+    previewOperation?.finish(reason, 'preview-invalidated');
+    ownerEvidence.event('math.preview.invalidate', { generation: previewGeneration, timerPending: previewTimer !== undefined });
     if (previewTimer !== undefined) window.clearTimeout(previewTimer);
     previewTimer = undefined;
     return ++previewGeneration;
@@ -271,6 +279,8 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       resetPreviewStats();
       return;
     }
+    const operation = ownerEvidence.begin('math.preview', { generation, active: canPreview() });
+    previewOperation = operation;
     try {
       const plan = prepareHistogramFormula(expression, context.channels, 'Channel');
       validation.className = 'math-channel-validation';
@@ -278,7 +288,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       const startMs = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs ? Math.min(context.aTimeMs, context.bTimeMs) : undefined;
       const endMs = startMs !== undefined ? Math.max(context.aTimeMs!, context.bTimeMs!) : undefined;
       const traces = await context.loadTraces(plan.physicalIds, startMs, endMs);
-      if (generation !== previewGeneration || !canPreview()) return;
+      if (generation !== previewGeneration || !canPreview()) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
       const byId = new Map(traces.map((trace) => [trace.channel.id, trace]));
       // The core evaluator sizes its output from the first referenced range.
       // Bound that anchor with zero-copy views; other dependencies keep their
@@ -328,10 +338,14 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       validation.className = 'math-channel-validation math-channel-validation--good';
       validation.textContent = `Formula valid · preview uses ${previewLabel}.`;
     } catch (error) {
-      if (generation !== previewGeneration || !canPreview()) return;
+      if (generation !== previewGeneration || !canPreview()) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
+      operation?.finish('failure', 'preview-failed');
       validation.className = 'math-channel-validation math-channel-validation--error';
       validation.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
       resetPreviewStats();
+    } finally {
+      if (operation?.outcome === undefined) operation?.finish('success');
+      if (previewOperation === operation) previewOperation = undefined;
     }
   };
 
@@ -424,7 +438,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     element: root, setContext, refresh,
     setActive: (active) => {
       root.hidden = !active;
-      if (!active) cancelPreview();
+      if (!active) cancelPreview('cancelled');
     },
   };
 }

@@ -1,219 +1,8 @@
-import {
-  clearChannelDecodePerformance,
-  latestChannelDecodePerformance,
-} from '../../../../core/parsers/mlg/channel-decode-performance';
-import type { BlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
-import {
-  latestPersistentColumnMemoryDiagnostics,
-  persistentColumnMemoryAggregateDiagnostics,
-} from '../adapters/persistent-channel-cache';
-import {
-  boundChannelMemoryAggregateDiagnostics,
-  latestBoundChannelMemoryDiagnostics,
-} from '../../../../core/channels/channel-binding';
-import {
-  buildPerformanceDiagnosticsReport,
-  decodeMeasuredMs,
-} from './performance-diagnostics-report';
-
-export interface LoadPerformanceRun {
-  readonly fileName: string;
-  readonly importMode: 'worker-staged' | 'main-thread-full';
-  readonly scanMode: 'fixed' | 'general';
-  readonly fileSizeBytes: number;
-  readonly recordCount: number;
-  readonly channelCount: number;
-  readonly importTotalMs: number;
-  readonly headerMs: number;
-  readonly headerReadMs: number;
-  readonly headerCpuMs: number;
-  readonly recordScanMs: number;
-  readonly recordReadMs: number;
-  readonly recordCpuMs: number;
-  readonly checksumBytes: number;
-  readonly checksumCpuMs: number;
-  readonly checksumBenchmarkMs: number;
-  readonly diagnosticCpuMs: number;
-  readonly indexCpuMs: number;
-  readonly finalizeMs: number;
-  readonly uiPopulateMs: number;
-  readonly uiWorkspaceMs?: number;
-  readonly uiChannelModelMs?: number;
-  readonly uiInspectorMs?: number;
-  readonly uiTimelineMs?: number;
-  readonly uiGraphSetupMs?: number;
-  readonly uiLayoutMs?: number;
-  readonly uiValueSearchMs?: number;
-  readonly uiViewportMs?: number;
-  readonly uiDiagnosticsMs?: number;
-  readonly sourceReadCount: number;
-  readonly sourceBytesRead: number;
-  readonly physicalReadCount: number;
-  readonly physicalBytesRead: number;
-  readonly cacheHitBytes: number;
-  readonly cacheBytes: number;
-  readonly cachePageCount: number;
-  readonly workerSourceRuntime?: BlobByteSourceRuntimeDiagnostics;
-  readonly fullyValidatedMs?: number;
-  readonly validationMs?: number;
-  readonly validationReadMs?: number;
-  readonly validationChecksumCpuMs?: number;
-  readonly validationDiagnosticCpuMs?: number;
-  readonly validationChecksumBytes?: number;
-  readonly validationMode?: 'serial' | 'parallel';
-  readonly sidecarStatus?: 'built' | 'reused';
-  readonly sidecarTotalMs?: number;
-  readonly sidecarTransposeMs?: number;
-  readonly sidecarWriteMs?: number;
-  readonly sidecarBytesWritten?: number;
-  readonly sidecarStripeCount?: number;
-  readonly sidecarTargetStripeBytes?: number;
-  readonly sidecarTotalBytes?: number;
-}
-
-
-export interface IniLoadPerformanceRun {
-  readonly fileName: string;
-  readonly fileSizeBytes: number;
-  readonly totalMs: number;
-  readonly textReadMs: number;
-  readonly parseMs: number;
-  readonly catalogBuildMs: number;
-  readonly lineCount: number;
-  readonly outputChannelCount: number;
-  readonly datalogEntryCount: number;
-  readonly catalogEntryCount: number;
-  readonly scalarCount: number;
-  readonly bitCount: number;
-  readonly expressionCount: number;
-  readonly datalogOnlyCount: number;
-  readonly outputOnlyCount: number;
-  readonly diagnosticCount: number;
-  readonly diagnosticGroups: readonly {
-    readonly code: string;
-    readonly severity: 'info' | 'warning' | 'error';
-    readonly count: number;
-  }[];
-}
-
-export interface ChannelBindingPerformanceRun {
-  readonly totalMs: number;
-  readonly catalogChannelCount: number;
-  readonly logChannelCount: number;
-  readonly mergedChannelCount: number;
-  readonly boundChannelCount: number;
-  readonly knownNoDataCount: number;
-  readonly logOnlyCount: number;
-  readonly matchedByLogicalKey: number;
-  readonly matchedByDisplayName: number;
-  readonly matchedByDisplayNameUnit: number;
-  readonly ambiguousLogChannelCount: number;
-}
-
-export interface WorkspaceRestorePerformanceRun {
-  readonly totalMs: number;
-  readonly prepareMs: number;
-  readonly prepareStateMs: number;
-  readonly prepareClearMs: number;
-  readonly prepareLayoutMs: number;
-  readonly prepareViewportMs: number;
-  readonly preparePaneRequestsMs: number;
-  readonly prepareBatchPlanMs: number;
-  readonly sharedBatchMs: number;
-  readonly activationMs: number;
-  readonly activationScheduleMs: number;
-  readonly activationAwaitMs: number;
-  readonly activationToggleDispatchMaxMs: number;
-  readonly activationLoadPendingMaxMs: number;
-  readonly activationToggleAwaitMaxMs: number;
-  readonly activationApplyResultsMaxMs: number;
-  readonly activationGraphTotalMs: number;
-  readonly activationChannelLookupMs: number;
-  readonly activationStatisticsScaleMs: number;
-  readonly activationTraceRegistrationMs: number;
-  readonly activationReadoutMs: number;
-  readonly activationCursorMs: number;
-  readonly activationDrawMs: number;
-  readonly activationEnvelopeMs: number;
-  readonly activationDrawSetupMs: number;
-  readonly activationDrawTraceMs: number;
-  readonly activationDrawOverlayMs: number;
-  readonly finalSyncMs: number;
-  readonly finalSyncResolveMs: number;
-  readonly finalSyncAssignedNormalizeMs: number;
-  readonly finalSyncInspectorActiveMs: number;
-  readonly finalSyncInspectorQueuedMs: number;
-  readonly finalSyncValueSearchMs: number;
-  readonly finalSyncAssignedSyncMs: number;
-  readonly finalSyncOverviewMs: number;
-  readonly visiblePaneCount: number;
-  readonly assignedChannelCount: number;
-  readonly requestedChannelCount: number;
-  readonly uniqueRequestedChannelCount: number;
-  readonly cacheHit: boolean;
-  readonly physicalReadCount: number;
-  readonly physicalBytesRead: number;
-  readonly physicalReadMs: number;
-}
-
-export interface ChannelPerformanceRun {
-  readonly channelName: string;
-  readonly persistentLookupMs?: number | undefined;
-  readonly persistentRangeBuildMs?: number | undefined;
-  readonly delegatedSourceMs?: number | undefined;
-  readonly sidecarManifestMs?: number | undefined;
-  readonly sidecarFileOpenAggregateMs?: number | undefined;
-  readonly sidecarBlobReadAggregateMs?: number | undefined;
-  readonly sidecarDecodeAggregateMs?: number | undefined;
-  readonly sidecarRangeBuildMs?: number | undefined;
-  readonly sidecarReadPath?: 'captured' | 'native' | 'striped' | undefined;
-  readonly phase: 'viewport' | 'full' | 'cache';
-  readonly startSampleIndex: number;
-  readonly requestedSampleCount: number;
-  readonly totalMs: number;
-  readonly readDecodeMs: number;
-  readonly scaleMs: number;
-  readonly renderMs: number;
-  readonly statisticsMs?: number | undefined;
-  readonly applyMs?: number | undefined;
-  readonly readoutMs?: number | undefined;
-  readonly cursorMs?: number | undefined;
-  readonly envelopeMs?: number | undefined;
-  readonly drawSetupMs?: number | undefined;
-  readonly drawTraceMs?: number | undefined;
-  readonly drawOverlayMs?: number | undefined;
-  readonly drawRemainderMs?: number | undefined;
-  readonly sampleCount: number;
-  readonly batchSize: number;
-  readonly cacheHit: boolean;
-  readonly physicalReadCount: number;
-  readonly physicalBytesRead: number;
-  readonly physicalReadMs: number;
-}
-
-export interface ValidationPerformanceRun {
-  readonly fileName: string;
-  readonly fullyValidatedMs: number;
-  readonly validationMs: number;
-  readonly validationReadMs: number;
-  readonly validationChecksumCpuMs: number;
-  readonly validationDiagnosticCpuMs: number;
-  readonly validationChecksumBytes: number;
-  readonly validationMode: 'serial' | 'parallel';
-  readonly sidecarStatus?: 'built' | 'reused';
-  readonly sidecarTotalMs?: number;
-  readonly sidecarTransposeMs?: number;
-  readonly sidecarWriteMs?: number;
-  readonly sidecarBytesWritten?: number;
-  readonly sidecarStripeCount?: number;
-  readonly sidecarTargetStripeBytes?: number;
-  readonly sidecarTotalBytes?: number;
-}
-
-
-export interface PerformanceRuntimeMemorySnapshot {
-  readonly activeTraceRangeBytes: number;
-}
+import type { LoadPerformanceRun, IniLoadPerformanceRun, ChannelBindingPerformanceRun, WorkspaceRestorePerformanceRun, ChannelPerformanceRun, ValidationPerformanceRun, PerformanceRuntimeMemorySnapshot } from '../observability/performance-types';
+import { clearChannelDecodePerformance } from '../../../../core/parsers/mlg/channel-decode-performance';
+import { ObservabilityRecorder } from '../observability/recorder';
+import { PerformanceEvidence, type PerformanceProjection } from '../observability/producers/performance';
+import { buildPerformanceReport, decodeMeasuredMs } from '../observability/reports/performance-report';
 
 export interface PerformanceDiagnosticsController {
   readonly element: HTMLElement;
@@ -225,6 +14,7 @@ export interface PerformanceDiagnosticsController {
   recordWorkspaceRestore(run: WorkspaceRestorePerformanceRun): void;
   recordChannel(run: ChannelPerformanceRun): void;
   reportText(): string;
+  captureEvidence(): PerformanceProjection;
   clear(): void;
 }
 
@@ -239,12 +29,9 @@ function bytes(value: number): string {
   return `${value} B`;
 }
 
-export function createPerformanceDiagnostics(): PerformanceDiagnosticsController {
-  const loadRuns: LoadPerformanceRun[] = [];
-  const iniLoadRuns: IniLoadPerformanceRun[] = [];
-  const bindingRuns: ChannelBindingPerformanceRun[] = [];
-  const workspaceRestoreRuns: WorkspaceRestorePerformanceRun[] = [];
-  const channelRuns: ChannelPerformanceRun[] = [];
+export function createPerformanceDiagnostics(recorder = new ObservabilityRecorder({ sessionId: crypto.randomUUID(), maxRecordBytes: 8192 })): PerformanceDiagnosticsController {
+  const evidence = new PerformanceEvidence(recorder);
+  let decodeChannels: number | undefined;
   let runtimeMemoryProvider: (() => PerformanceRuntimeMemorySnapshot) | undefined;
 
   const root = document.createElement('div');
@@ -330,65 +117,15 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
   closeButton.addEventListener('click', close);
   document.addEventListener('click', close);
 
-  const retainedMemoryReport = (): string[] => {
-    const persistent = latestPersistentColumnMemoryDiagnostics();
-    const persistentAll = persistentColumnMemoryAggregateDiagnostics();
-    const bound = latestBoundChannelMemoryDiagnostics();
-    const boundAll = boundChannelMemoryAggregateDiagnostics();
-    const runtime = runtimeMemoryProvider?.();
-    if (!persistent && !bound && !runtime) return [];
-    return [
-      '',
-      '[Retained memory]',
-      `graphActiveRangeBytes=${runtime?.activeTraceRangeBytes ?? 0}`,
-      `persistentResidentColumns=${persistent?.residentColumnCount ?? 0}`,
-      `persistentResidentBytes=${persistent?.residentBytes ?? 0}`,
-      `persistentPeakResidentColumns=${persistent?.peakResidentColumnCount ?? 0}`,
-      `persistentPeakResidentBytes=${persistent?.peakResidentBytes ?? 0}`,
-      `persistentResidentHits=${persistent?.residentHitCount ?? 0}`,
-      `persistentDiskLoads=${persistent?.diskLoadCount ?? 0}`,
-      `persistentRetainedColumns=${persistent?.retainedColumnCount ?? 0}`,
-      `persistentStoreMisses=${persistent?.storeMissCount ?? 0}`,
-      `persistentEvictions=0`,
-      `persistentLiveSources=${persistentAll.liveSourceCount}`,
-      `persistentPreviousLiveSources=${persistentAll.previousLiveSourceCount}`,
-      `persistentCollectedSources=${persistentAll.collectedSourceCount}`,
-      `persistentAllResidentColumns=${persistentAll.totalResidentColumnCount}`,
-      `persistentAllResidentBytes=${persistentAll.totalResidentBytes}`,
-      `persistentPreviousResidentColumns=${persistentAll.previousResidentColumnCount}`,
-      `persistentPreviousResidentBytes=${persistentAll.previousResidentBytes}`,
-      `boundResidentRanges=${bound?.residentRangeCount ?? 0}`,
-      `boundResidentBytes=${bound?.residentBytes ?? 0}`,
-      `boundPeakResidentRanges=${bound?.peakResidentRangeCount ?? 0}`,
-      `boundPeakResidentBytes=${bound?.peakResidentBytes ?? 0}`,
-      `boundResidentHits=${bound?.residentHitCount ?? 0}`,
-      `boundResidentMisses=${bound?.residentMissCount ?? 0}`,
-      `boundRetainedRanges=${bound?.retainedRangeCount ?? 0}`,
-      `boundEvictions=0`,
-      `boundLiveSources=${boundAll.liveSourceCount}`,
-      `boundPreviousLiveSources=${boundAll.previousLiveSourceCount}`,
-      `boundCollectedSources=${boundAll.collectedSourceCount}`,
-      `boundAllResidentRanges=${boundAll.totalResidentRangeCount}`,
-      `boundAllResidentBytes=${boundAll.totalResidentBytes}`,
-      `boundPreviousResidentRanges=${boundAll.previousResidentRangeCount}`,
-      `boundPreviousResidentBytes=${boundAll.previousResidentBytes}`,
-      'note=Layer byte counts are retained payload estimates and may overlap; do not sum them as unique process memory.',
-      'noteSourceLifetime=Live-source counts use weak references; previous sources can remain until browser garbage collection, so a nonzero previous-live count alone does not prove a strong-reference leak.',
-    ];
+  const projection = (captureSourceRuntime = true) => {
+    evidence.captureProbes(runtimeMemoryProvider, decodeChannels, captureSourceRuntime);
+    return evidence.project();
   };
-
-  const reportText = (): string => {
-    const base = buildPerformanceDiagnosticsReport(
-      loadRuns,
-      iniLoadRuns,
-      bindingRuns,
-      workspaceRestoreRuns,
-      channelRuns,
-    );
-    return `${base}${retainedMemoryReport().join('\n')}`;
-  };
+  const reportText = (): string => buildPerformanceReport(projection());
 
   const render = (): void => {
+    const state = projection(false);
+    const { loadRuns, iniLoadRuns, bindingRuns, workspaceRestoreRuns, channelRuns } = state;
     const hasData = loadRuns.length > 0
       || iniLoadRuns.length > 0
       || bindingRuns.length > 0
@@ -566,7 +303,7 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
         ['Physical bytes', bytes(latestRestore.physicalBytesRead)],
         ['Physical read', ms(latestRestore.physicalReadMs)],
       ];
-      const decode = latestChannelDecodePerformance(latestRestore.uniqueRequestedChannelCount);
+      const decode = state.decode;
       if (decode) {
         rows.push(
           ['Decode · batches', decode.batchCount.toLocaleString()],
@@ -594,35 +331,39 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     }
 
     memoryHost.replaceChildren();
-    const persistentMemory = latestPersistentColumnMemoryDiagnostics();
-    const persistentAllMemory = persistentColumnMemoryAggregateDiagnostics();
-    const boundMemory = latestBoundChannelMemoryDiagnostics();
-    const boundAllMemory = boundChannelMemoryAggregateDiagnostics();
-    const graphMemory = runtimeMemoryProvider?.();
-    const memoryRows: [string, string][] = [
-      ['Graph active ranges', bytes(graphMemory?.activeTraceRangeBytes ?? 0)],
-      ['Persistent resident', `${bytes(persistentMemory?.residentBytes ?? 0)} · ${persistentMemory?.residentColumnCount ?? 0} columns`],
-      ['Persistent peak', `${bytes(persistentMemory?.peakResidentBytes ?? 0)} · ${persistentMemory?.peakResidentColumnCount ?? 0} columns`],
-      ['Persistent disk reloads', (persistentMemory?.diskLoadCount ?? 0).toLocaleString()],
-      ['Persistent live sources', `${persistentAllMemory.liveSourceCount} · previous ${persistentAllMemory.previousLiveSourceCount} · collected ${persistentAllMemory.collectedSourceCount}`],
-      ['Persistent all live', `${bytes(persistentAllMemory.totalResidentBytes)} · ${persistentAllMemory.totalResidentColumnCount} columns`],
-      ['Persistent previous live', `${bytes(persistentAllMemory.previousResidentBytes)} · ${persistentAllMemory.previousResidentColumnCount} columns`],
-      ['Bound resident', `${bytes(boundMemory?.residentBytes ?? 0)} · ${boundMemory?.residentRangeCount ?? 0} ranges`],
-      ['Bound peak', `${bytes(boundMemory?.peakResidentBytes ?? 0)} · ${boundMemory?.peakResidentRangeCount ?? 0} ranges`],
-      ['Bound live sources', `${boundAllMemory.liveSourceCount} · previous ${boundAllMemory.previousLiveSourceCount} · collected ${boundAllMemory.collectedSourceCount}`],
-      ['Bound all live', `${bytes(boundAllMemory.totalResidentBytes)} · ${boundAllMemory.totalResidentRangeCount} ranges`],
-      ['Bound previous live', `${bytes(boundAllMemory.previousResidentBytes)} · ${boundAllMemory.previousResidentRangeCount} ranges`],
-      ['Evictions', '0 · not budgeted yet'],
-    ];
-    for (const [label, value] of memoryRows) {
-      const row = document.createElement('div');
-      row.className = 'performance-row';
-      const left = document.createElement('span');
-      left.textContent = label;
-      const right = document.createElement('strong');
-      right.textContent = value;
-      row.append(left, right);
-      memoryHost.append(row);
+    if (!state.memory) memoryHost.textContent = 'Retained-memory evidence unavailable (check session retention/loss counters).';
+    else {
+      const persistentMemory = state.memory.persistent;
+      const persistentAllMemory = state.memory.persistentAll;
+      const boundMemory = state.memory.bound;
+      const boundAllMemory = state.memory.boundAll;
+      const graphMemory = state.memory.runtime;
+      const memoryRows: [string, string][] = [
+        ['Graph active ranges', bytes(graphMemory?.activeTraceRangeBytes ?? 0)],
+        ['Persistent resident', `${bytes(persistentMemory?.residentBytes ?? 0)} · ${persistentMemory?.residentColumnCount ?? 0} columns`],
+        ['Persistent peak', `${bytes(persistentMemory?.peakResidentBytes ?? 0)} · ${persistentMemory?.peakResidentColumnCount ?? 0} columns`],
+        ['Persistent disk reloads', (persistentMemory?.diskLoadCount ?? 0).toLocaleString()],
+        ['Persistent live sources', `${persistentAllMemory.liveSourceCount} · previous ${persistentAllMemory.previousLiveSourceCount} · collected ${persistentAllMemory.collectedSourceCount}`],
+        ['Persistent all live', `${bytes(persistentAllMemory.totalResidentBytes)} · ${persistentAllMemory.totalResidentColumnCount} columns`],
+        ['Persistent previous live', `${bytes(persistentAllMemory.previousResidentBytes)} · ${persistentAllMemory.previousResidentColumnCount} columns`],
+        ['Bound resident', `${bytes(boundMemory?.residentBytes ?? 0)} · ${boundMemory?.residentRangeCount ?? 0} ranges`],
+        ['Bound peak', `${bytes(boundMemory?.peakResidentBytes ?? 0)} · ${boundMemory?.peakResidentRangeCount ?? 0} ranges`],
+        ['Bound live sources', `${boundAllMemory.liveSourceCount} · previous ${boundAllMemory.previousLiveSourceCount} · collected ${boundAllMemory.collectedSourceCount}`],
+        ['Bound all live', `${bytes(boundAllMemory.totalResidentBytes)} · ${boundAllMemory.totalResidentRangeCount} ranges`],
+        ['Bound previous live', `${bytes(boundAllMemory.previousResidentBytes)} · ${boundAllMemory.previousResidentRangeCount} ranges`],
+        ['Evictions', '0 · not budgeted yet'],
+      ];
+      for (const [label, value] of memoryRows) {
+        const row = document.createElement('div');
+        row.className = 'performance-row';
+        const left = document.createElement('span');
+        left.textContent = label;
+        const right = document.createElement('strong');
+        right.textContent = value;
+        row.append(left, right);
+        memoryHost.append(row);
+      }
+
     }
 
     channelsHost.replaceChildren();
@@ -653,91 +394,28 @@ export function createPerformanceDiagnostics(): PerformanceDiagnosticsController
     });
   });
 
-  clearButton.addEventListener('click', () => {
-    loadRuns.length = 0;
-    iniLoadRuns.length = 0;
-    bindingRuns.length = 0;
-    workspaceRestoreRuns.length = 0;
-    channelRuns.length = 0;
+  const clear = (origin: 'user' | 'programmatic' = 'programmatic'): void => {
+    evidence.clear(origin); decodeChannels = undefined;
     clearChannelDecodePerformance();
-    render();
-  });
-
-  render();
+    if (!popover.hidden) render();
+  };
+  clearButton.addEventListener('click', event => clear(event.isTrusted ? 'user' : 'programmatic'));
 
   return {
     element: root,
-    setRuntimeMemoryProvider: (provider) => { runtimeMemoryProvider = provider; render(); },
+    setRuntimeMemoryProvider: (provider) => { runtimeMemoryProvider = provider; if (!popover.hidden) render(); },
     recordLoad: (run) => {
-      loadRuns.push(run);
-      if (loadRuns.length > 20) loadRuns.shift();
-
-      // A log load starts a new performance context. Workspace restore and
-      // channel-selection runs are asynchronous and are recorded after this
-      // point; keeping entries from the previous log makes the copied report
-      // look like those reads belong to the current load.
-      workspaceRestoreRuns.length = 0;
-      channelRuns.length = 0;
+      evidence.record('load', run); decodeChannels = undefined;
       clearChannelDecodePerformance();
-      render();
-    },
-    recordIniLoad: (run) => {
-      iniLoadRuns.push(run);
-      if (iniLoadRuns.length > 20) iniLoadRuns.shift();
-      render();
-    },
-    recordBinding: (run) => {
-      bindingRuns.push(run);
-      if (bindingRuns.length > 20) bindingRuns.shift();
-      render();
-    },
-    recordWorkspaceRestore: (run) => {
-      workspaceRestoreRuns.push(run);
-      if (workspaceRestoreRuns.length > 20) workspaceRestoreRuns.shift();
-      render();
-    },
-    recordValidation: (run) => {
-      for (let index = loadRuns.length - 1; index >= 0; index -= 1) {
-        const current = loadRuns[index];
-        if (!current || current.fileName !== run.fileName) continue;
-        loadRuns[index] = {
-          ...current,
-          fullyValidatedMs: run.fullyValidatedMs,
-          validationMs: run.validationMs,
-          validationReadMs: run.validationReadMs,
-          validationChecksumCpuMs: run.validationChecksumCpuMs,
-          validationDiagnosticCpuMs: run.validationDiagnosticCpuMs,
-          validationChecksumBytes: run.validationChecksumBytes,
-          validationMode: run.validationMode,
-          ...(run.sidecarStatus ? {
-            sidecarStatus: run.sidecarStatus,
-            sidecarTotalMs: run.sidecarTotalMs ?? 0,
-            sidecarTransposeMs: run.sidecarTransposeMs ?? 0,
-            sidecarWriteMs: run.sidecarWriteMs ?? 0,
-            sidecarBytesWritten: run.sidecarBytesWritten ?? 0,
-            sidecarStripeCount: run.sidecarStripeCount ?? 0,
-            sidecarTargetStripeBytes: run.sidecarTargetStripeBytes ?? 0,
-            sidecarTotalBytes: run.sidecarTotalBytes ?? 0,
-          } : {}),
-        };
-        break;
-      }
-      render();
-    },
-    recordChannel: (run) => {
-      channelRuns.push(run);
-      if (channelRuns.length > 50) channelRuns.shift();
       if (!popover.hidden) render();
     },
+    recordIniLoad: (run) => { evidence.record('ini', run); if (!popover.hidden) render(); },
+    recordBinding: (run) => { evidence.record('binding', run); if (!popover.hidden) render(); },
+    recordWorkspaceRestore: (run) => { evidence.record('restore', run); decodeChannels = run.uniqueRequestedChannelCount; if (!popover.hidden) render(); },
+    recordValidation: (run) => { evidence.record('validation', run); if (!popover.hidden) render(); },
+    recordChannel: (run) => { evidence.record('channel', run); if (!popover.hidden) render(); },
     reportText,
-    clear: () => {
-      loadRuns.length = 0;
-      iniLoadRuns.length = 0;
-      bindingRuns.length = 0;
-      workspaceRestoreRuns.length = 0;
-      channelRuns.length = 0;
-      clearChannelDecodePerformance();
-      render();
-    },
+    captureEvidence: () => projection(),
+    clear,
   };
 }

@@ -56,7 +56,7 @@ async function setup(factory = createVeAnalyzerView, fixture = {}) {
     loadTraces: async (ids) => { loadCount += 1; return gate ? gate.promise : (fixture.traces ?? traces).filter((trace) => ids.includes(trace.channel.id)); },
     aTimeMs: 0, bTimeMs: 3000, savedRanges: [{ label: 'saved', startMs: 0, endMs: 2000 }],
   };
-  const view = factory();
+  const view = factory(fixture.observability);
   const host = document.createElement('section'); host.className = 'analyzer-page';
   host.append(view.element); document.body.append(host);
   view.setContext(context); view.setTuneModel(model, 'test.msq');
@@ -302,3 +302,5 @@ export async function runVeAnalyzerLifecycleChecks() {
   });
   return { passed: passed.length, checks: passed };
 }
+
+export { setup as setupVeLifecycleFixture };

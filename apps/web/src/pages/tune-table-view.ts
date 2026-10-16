@@ -1,3 +1,6 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { createOwnerEvidence } from '../observability/producers/owner';
+import { decorateTuneHelp } from './analyzer-additional-help';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { qualifyNumericSamples } from '../../../../core/analysis/sample-qualification';
@@ -39,7 +42,8 @@ function sameChannelCatalog(
   return sameChannelOptionCatalog(left, right);
 }
 
-export function createTuneTableView(): TuneTableViewController {
+export function createTuneTableView(observability?: ObservabilityRecorder): TuneTableViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 'tune-table-view');
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
 
   let active = true;
@@ -184,6 +188,7 @@ export function createTuneTableView(): TuneTableViewController {
   const render = async (): Promise<void> => {
     if (!active || applyingPending) return;
     const generation = ++renderGeneration;
+    ownerEvidence.event('domain.analysis.request', { generation: generation, active }, { visibility: active ? 'active' : 'hidden' });
     if (traceLoadFailed) {
       traceLoadFailed = false;
       emptyTitle.textContent = defaultEmptyTitle;
@@ -212,6 +217,7 @@ export function createTuneTableView(): TuneTableViewController {
         yAxisName: yAxisSelect.value,
       });
     } catch (error) {
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: renderGeneration });
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -223,10 +229,12 @@ export function createTuneTableView(): TuneTableViewController {
     const startMs = Math.min(scope.startMs, scope.endMs);
     const endMs = Math.max(scope.startMs, scope.endMs);
     let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    ownerEvidence.event('domain.read.started', { generation: generation, active }, { origin: 'async' });
     try {
       loaded = await context.loadTraces([xId, yId, observedId], startMs, endMs);
     } catch (error) {
-      if (!active || generation !== renderGeneration) return;
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: renderGeneration });
+      if (!active || generation !== renderGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: renderGeneration, active }); return; }
       currentResult = undefined;
       refreshButton.disabled = false;
       traceLoadFailed = true;
@@ -236,7 +244,8 @@ export function createTuneTableView(): TuneTableViewController {
       emptyHint.textContent = `${detail} Retry with Refresh. If it keeps failing, reload the log or choose another scope.`;
       return;
     }
-    if (!active || generation !== renderGeneration) return;
+    if (!active || generation !== renderGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: renderGeneration, active }); return; }
+    ownerEvidence.event('domain.read.accepted', { generation: generation });
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
@@ -333,6 +342,7 @@ export function createTuneTableView(): TuneTableViewController {
   refreshButton.addEventListener('click', () => { void render(); });
 
   const setActive = (next: boolean): void => {
+    ownerEvidence.event(active === next ? 'domain.activity.noop' : 'domain.activity.changed', { active: next, generation: renderGeneration });
     if (active === next) return;
     active = next;
     if (!active) { renderGeneration += 1; return; }
@@ -344,6 +354,8 @@ export function createTuneTableView(): TuneTableViewController {
     applyingPending = false;
     void render();
   };
+
+  decorateTuneHelp(root);
 
   const controller: TuneTableViewController = {
     element: root,

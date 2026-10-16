@@ -5,7 +5,7 @@ import {
   buildParserDiagnosticsReport,
   summarizeSourceIntegrity,
   unresolvedParserDiagnostics,
-} from '../../apps/web/src/components/parser-diagnostics-indicator';
+} from '../../apps/web/src/observability/reports/parser-report';
 
 const diagnostic = (
   code: string,

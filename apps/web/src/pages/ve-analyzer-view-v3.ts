@@ -1,3 +1,4 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
 import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { TuneModel } from '../../../../core/tune/tune-model';
@@ -32,8 +33,8 @@ function optionForChannel(channel: ChannelDefinition): HTMLOptionElement {
   return new Option(analyzerChannelOptionLabel(channel), channel.id);
 }
 
-export function createVeAnalyzerView(): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV2();
+export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+  const inner = createVeAnalyzerViewV2(observability);
   const root = inner.element;
   let sourceContext: LoggerAnalysisContext = {
     traces: [],
@@ -213,6 +214,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(next) {
       const sourceChanged = !sameVeSourceContext(sourceContext, next);
       sourceContext = next;

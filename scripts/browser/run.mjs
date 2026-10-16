@@ -1,3 +1,4 @@
+import { runObservabilityRecovery } from './observability-recovery.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'vite';
 import { connect, pause } from './cdp.mjs';
 import { runAcceptance } from './acceptance.mjs';
+import { runStorageStartupChecks } from './storage-startup.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const output = path.resolve(root, process.env.BROWSER_RESULTS_DIR || 'artifacts/browser');
@@ -37,7 +39,12 @@ async function waitUntil(check, label, timeout = 30000) {
   while (Date.now() < end) {
     checkRunning();
     if (child && (child.exitCode !== null || child.signalCode)) throw Error(`Chrome exited while waiting for ${label}`);
-    if (await check()) return;
+    try { if (await check()) return; }
+    catch (error) {
+      // A readiness poll may race document replacement. Retry only DevTools
+      // context/navigation failures; assertions and application errors still fail.
+      if (!/Execution context was destroyed|Cannot find context|Inspected target navigated or closed/i.test(String(error))) throw error;
+    }
     await pause(100);
   }
   throw Error(`Timed out: ${label}`);
@@ -81,7 +88,8 @@ async function run() {
     const wait = expression => waitUntil(() => client.evaluate(expression), expression, 120000);
     await wait('!!document.querySelector(".load-ini")');
     log('configuration', { mode });
-    await runAcceptance({ ...client, wait, moduleBase, mode, fixture: name => path.join(root, 'tests/fixtures/browser', name), record: (name, result) => record(`${mode}-${name}`, result), log });
+    await record(`${mode}-storage-startup.json`, await runStorageStartupChecks({ ...client, wait, moduleBase, fixture: name => path.join(root, 'tests/fixtures/browser', name) }));
+    await runAcceptance({ ...client, wait, moduleBase, mode, downloadDir: path.join(output, `${mode}-downloads`), fixture: name => path.join(root, 'tests/fixtures/browser', name), record: (name, result) => record(`${mode}-${name}`, result), log });
     // Real pointer capture and keyboard entry complement component-dispatched events.
     const coords = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.prepareNativeDelayEdit();})()`, 60000);
     const [start, end] = coords;
@@ -97,6 +105,22 @@ async function run() {
     const observed = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.finishNativeDelayEdit();})()`, 60000);
     await record(`${mode}-native.json`, { passed: 1, checks: ['native pointer capture and keyboard commit preserve range editing'], observed });
     await pause(100);
+    const lifecycle = await client.evaluate(`(async()=>{const m=await import('${moduleBase}observability-lifecycle.browser.mjs');return m.runObservabilityLifecycleChecks();})()`,60000);
+    await record(`${mode}-observability-lifecycle.json`, lifecycle);
+    // Wait for the old document to leave before probing the newly mounted owner.
+    await client.evaluate('window.__observabilityReloadPending = true');
+    await client.call('Page.reload');
+    await waitUntil(async () => {
+      try { return await client.evaluate('!window.__observabilityReloadPending && !!document.querySelector(".load-ini")'); }
+      catch (error) {
+        if (/context.*destroyed|Cannot find context/i.test(String(error))) return false;
+        throw error;
+      }
+    }, 'fresh observability document');
+    const reloaded = await client.evaluate(`(async()=>{const m=await import('${moduleBase}observability-lifecycle.browser.mjs');const s=m.readApplicationObservability();if(!s)throw Error('Reloaded shell has no observability session');return {id:s.sessionId,starts:s.records.filter(r=>r.name==='session.started').length,errors:s.records.filter(r=>r.name.startsWith('runtime.')).length};})()`);
+    if(reloaded.id===lifecycle.observed.sessionId||reloaded.starts!==1||reloaded.errors!==0)throw Error('Reload did not create an isolated fresh observability session');
+    await record(`${mode}-observability-reload.json`, {passed:1,checks:['reload creates a fresh session without reviving previous in-memory runtime errors']});
+    await runObservabilityRecovery({ ...client, wait, moduleBase, record: (name, result) => record(`${mode}-${name}`, result) });
     if (errors.length) throw Error(`Unhandled browser exceptions: ${JSON.stringify(errors)}`);
     await browser.close();
     browser = undefined;

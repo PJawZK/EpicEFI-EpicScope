@@ -139,6 +139,9 @@ export async function runVeAnalyzerResultViewChecks() {
   const primary = view.getPrimaryAnalysis();
   assert(primary, 'Primary analysis missing');
   const readsAfterRun = loadCount;
+  const revisionAfterRun = view.sessionRevision;
+  let primaryNotifications = 0;
+  const unsubscribe = view.onPrimaryAnalysisChange(() => { primaryNotifications += 1; });
   const resultView = view.element.querySelector('select[aria-label="VE Analyzer result view"]');
   assert(resultView, 'Result View selector missing');
 
@@ -166,9 +169,17 @@ export async function runVeAnalyzerResultViewChecks() {
     for (const value of cycle) {
       resultView.value = value;
       resultView.dispatchEvent(new Event('change', { bubbles: true }));
+      // The selected view must commit its value and fallback heat together,
+      // before any observer or post-render correction microtask can run.
+      if (value !== 'proposal' && value !== 'delay') {
+        assert(text(noEvidence) === '90', `${value} did not synchronously preserve source VE`);
+        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === '0.5', `${value} requires a deferred fallback heat correction`);
+      }
       await settle();
 
       assert(view.getPrimaryAnalysis() === primary, `${value} replaced primary-analysis identity`);
+      assert(view.sessionRevision === revisionAfterRun, `${value} invalidated the session`);
+      assert(primaryNotifications === 0, `${value} published an analysis change`);
       assert(loadCount === readsAfterRun, `${value} triggered additional trace loading`);
 
       if (value === 'delay') {
@@ -215,6 +226,7 @@ export async function runVeAnalyzerResultViewChecks() {
     }
   }
 
+  unsubscribe();
   shell.remove();
   return {
     passed: 1,

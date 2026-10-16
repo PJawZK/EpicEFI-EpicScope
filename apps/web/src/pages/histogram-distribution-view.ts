@@ -1,3 +1,5 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
 import { createLocalPersistenceFeedback } from './local-persistence-feedback';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { histogramChannelOptionLabel } from './histogram-channel-options';
@@ -214,7 +216,8 @@ function sameChannelCatalog(left: HistogramPageContext['channels'], right: Histo
   return sameChannelOptionCatalog(left, right);
 }
 
-export function createHistogramDistributionView(): HistogramDistributionViewController {
+export function createHistogramDistributionView(observability?: ObservabilityRecorder): HistogramDistributionViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 'histogram-distribution-view');
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let metric: DistributionMetric = 'count';
   let binMode: DistributionBinMode = 'auto';
@@ -554,6 +557,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
+    ownerEvidence.event('histogram.render.request', { generation, selfHidden: root.hidden });
     selectedBin = undefined;
     lastSeries = [];
     exportCsvButton.disabled = true;
@@ -582,7 +586,8 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
       const qualification = qualifyHistogramSamples(trace, traces, filterSet, request.scope.startMs, request.scope.endMs);
       return qualification ? { trace, qualification, request } : undefined;
     }));
-    if (generation !== renderGeneration) return;
+    if (generation !== renderGeneration) { ownerEvidence.event('histogram.read.stale', { generation, currentGeneration: renderGeneration }); return; }
+    ownerEvidence.event('histogram.completion.current', { generation, domHidden: Boolean(root.closest('[hidden]')), connected: root.isConnected }, { origin: 'async' });
     const available = loaded.filter((item): item is NonNullable<typeof item> => item !== undefined);
     if (available.length !== requests.length) {
       empty.hidden = false;
@@ -641,7 +646,8 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
     }
 
     const series = available.map((item) => buildSeries(item.trace, item.request.scope, item.qualification, resolvedBinCount, rangeMin, rangeMax, item.request.color));
-    if (generation !== renderGeneration) return;
+    if (generation !== renderGeneration) { ownerEvidence.event('histogram.read.stale', { generation, currentGeneration: renderGeneration }); return; }
+    ownerEvidence.event('histogram.completion.current', { generation, domHidden: Boolean(root.closest('[hidden]')), connected: root.isConnected }, { origin: 'async' });
     lastSeries = series;
     lastRangeMin = rangeMin;
     lastRangeMax = rangeMax;
@@ -708,7 +714,7 @@ export function createHistogramDistributionView(): HistogramDistributionViewCont
   });
 
   const presetFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.distribution-preset-popover')!, 'distribution-presets',
-    () => saveHistogramDistributionPresets(loadHistogramDistributionPresets()));
+    () => saveHistogramDistributionPresets(loadHistogramDistributionPresets()), observability);
 
   presetSelect.addEventListener('change', () => {
     presetApply.disabled = !presetSelect.value;

@@ -1,3 +1,10 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { createOwnerEvidence } from '../observability/producers/owner';
+import { installBoostTableEnhancements, updateAnalyzerTablePresentation } from './analyzer-table-presentation';
+import { decorateAnalyzerControls, decorateAnalyzerSummary, decorateAnalyzerTables } from './analyzer-presentation';
+import { ensureIdleAnalyzerHelp } from './idle-analyzer-help';
+import { decorateSpecializedHelp } from './analyzer-additional-help';
+import { ensureAnalyzerSectionHelp } from './analyzer-section-help';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzeIdleControlDiagnostics } from '../../../../core/analysis/idle-control-diagnostics';
 import { aggregateNumericSamples } from '../../../../core/analysis/numeric-aggregation';
@@ -241,7 +248,8 @@ function fuelCutReasonSummary(counts: readonly FuelingCutReasonCount[]): string 
     + (counts.length > 4 ? ` · +${counts.length - 4} more` : '');
 }
 
-export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteController {
+export function createSpecializedAnalyzerSuiteView(observability?: ObservabilityRecorder): SpecializedAnalyzerSuiteController {
+  const ownerEvidence = createOwnerEvidence(observability, 'specialized-analyzer-suite-view');
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
 
   let active = true;
@@ -385,7 +393,6 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       div.append(caption, strong);
       return div;
     }));
-    if (domain === 'fueling') ensureFuelingAnalyzerHelp(root);
   };
 
   let restoreAllEvidence: (() => void) | undefined;
@@ -412,6 +419,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     evidence.hidden = events.length === 0 || series.length === 0;
     if (evidence.hidden) { restoreAllEvidence = undefined; return; }
     field('evidence-title').textContent = title;
+    ensureAnalyzerSectionHelp(field('evidence-title').parentElement!.parentElement!);
     field('evidence-note').textContent = `${events.length.toLocaleString()} event${events.length === 1 ? '' : 's'} · median + 10–90% envelope · t=0 onset`;
     const renderAll = (): void => renderAlignedAnalyzerEvidence(evidenceCanvas, series, events, beforeMs, afterMs);
     restoreAllEvidence = renderAll;
@@ -437,6 +445,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     totalCount = rows.length,
   ): void => {
     field('events-title').textContent = title;
+    ensureAnalyzerSectionHelp(field('events-title').parentElement!);
     field('events-count').textContent = totalCount.toLocaleString();
     const headerRow = document.createElement('tr');
     for (const header of headers) {
@@ -555,6 +564,7 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   const analyzeCurrent = async (): Promise<void> => {
     if (!active || applyingPending) return;
     const generation = ++analysisGeneration;
+    ownerEvidence.event('domain.analysis.request', { generation: generation, active }, { visibility: active ? 'active' : 'hidden' });
     if (traceLoadFailed) {
       traceLoadFailed = false;
       emptyTitle.textContent = defaultEmptyTitle;
@@ -578,10 +588,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     if (!scope) { empty.hidden = false; content.hidden = true; return; }
     const { startMs, endMs } = analyzerScopeBounds(scope);
     let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    ownerEvidence.event('domain.read.started', { generation: generation, active }, { origin: 'async' });
     try {
       loaded = await context.loadTraces([...selected.values()], startMs, endMs);
     } catch (error) {
-      if (!active || generation !== analysisGeneration) return;
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: analysisGeneration });
+      if (!active || generation !== analysisGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: analysisGeneration, active }); return; }
       restoreAllEvidence = undefined;
       traceLoadFailed = true;
       empty.hidden = false; content.hidden = true;
@@ -590,7 +602,8 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
       emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
       return;
     }
-    if (!active || generation !== analysisGeneration) return;
+    if (!active || generation !== analysisGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: analysisGeneration, active }); return; }
+    ownerEvidence.event('domain.read.accepted', { generation: generation });
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<string, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
@@ -982,9 +995,16 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
         ]);
         renderEventTable('Sync / trigger events', ['#', 'Reason', 'Start', 'End', 'Duration', 'Peak error', 'Loss Δ'], result.events, (event, index) => [String(index + 1), event.reason, timeText(event.startTimeMs), timeText(event.endTimeMs), `${event.durationMs.toFixed(0)} ms`, numberText(event.peakError), numberText(event.lossCountDelta)], (event, index) => eventNavigation(event, index, 'Trigger / sync event'));
       }
+      updateAnalyzerTablePresentation(root);
+      if (domain === 'fueling') ensureFuelingAnalyzerHelp(root);
+      if (domain === 'idle') ensureIdleAnalyzerHelp(root, 'summary');
+      decorateSpecializedHelp(root, 'summary');
+      decorateAnalyzerSummary(root);
+      decorateAnalyzerTables(root);
       empty.hidden = true;
       content.hidden = false;
     } catch (error) {
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: analysisGeneration });
       empty.hidden = false;
       content.hidden = true;
       const strong = empty.querySelector('strong');
@@ -993,7 +1013,12 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
   };
 
   const rebuild = (): void => {
+    ownerEvidence.event('domain.rebuild', { generation: analysisGeneration, channels: context.channels.length }, { visibility: active ? 'active' : 'hidden' });
     const spec = SPECS[domain];
+    if (domain !== 'idle') {
+      evidence.querySelector(':scope > header > div > .epicscope-inline-help')?.remove();
+      evidenceCanvas.removeAttribute('title');
+    }
     field('title').textContent = `${spec.title} · Experimental`;
     field('description').textContent = spec.description;
     controls.replaceChildren();
@@ -1073,10 +1098,19 @@ export function createSpecializedAnalyzerSuiteView(): SpecializedAnalyzerSuiteCo
     }
     updateIdleGuidance();
     if (domain === 'fueling') ensureFuelingAnalyzerHelp(root);
+    if (domain === 'idle') ensureIdleAnalyzerHelp(root, 'controls');
+    decorateSpecializedHelp(root, 'controls');
+    ensureAnalyzerSectionHelp(root);
     void analyzeCurrent();
   };
 
+  installBoostTableEnhancements(root);
+  decorateAnalyzerControls(root);
+  decorateAnalyzerSummary(root);
+  decorateAnalyzerTables(root);
+
   const setActive = (next: boolean): void => {
+    ownerEvidence.event(active === next ? 'domain.activity.noop' : 'domain.activity.changed', { active: next, generation: analysisGeneration });
     if (active === next) return;
     active = next;
     if (!active) { analysisGeneration += 1; return; }

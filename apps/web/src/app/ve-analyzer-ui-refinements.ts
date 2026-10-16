@@ -42,32 +42,6 @@ export function preferGasScaleAfrOption(control: HTMLSelectElement, scale: strin
   return true;
 }
 
-function orientLoadAxisFromBottom(table: HTMLTableElement): void {
-  if (table.dataset.veLoadOrigin === 'lower-left') return;
-  const body = table.tBodies[0];
-  if (!body) return;
-  const rows = [...body.rows];
-  for (let index = rows.length - 1; index >= 0; index -= 1) body.append(rows[index]!);
-  table.dataset.veLoadOrigin = 'lower-left';
-}
-
-function compactProposalCell(cell: HTMLTableCellElement): void {
-  if (cell.dataset.veCellRefined === 'true') return;
-  if (cell.title.startsWith('Measured proposal')) {
-    const main = cell.querySelector<HTMLElement>(':scope > span');
-    const text = main?.textContent ?? '';
-    const arrow = text.indexOf('→');
-    if (main && arrow >= 0) main.textContent = text.slice(arrow + 1).trim();
-  }
-  if (cell.title) {
-    cell.tabIndex = 0;
-    cell.setAttribute('role', 'button');
-    cell.setAttribute('aria-label', cell.title);
-    cell.dataset.veHasDetail = 'true';
-  }
-  cell.dataset.veCellRefined = 'true';
-}
-
 function detailTitle(cell: HTMLTableCellElement): string {
   if (cell.classList.contains('ve-delay-table') || cell.closest('.ve-delay-table')) return 'Lambda delay detail';
   if (cell.title.startsWith('Measured proposal')) return 'VE proposed change';
@@ -123,44 +97,15 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
     showCellDetail(cell);
   });
 
-  let applying = false;
   const apply = (): void => {
-    if (applying) return;
-    applying = true;
-    try {
-      const active = viewSelect.value === 've';
-      const analyzerHead = analyzerPage.querySelector<HTMLElement>(':scope > .analyzer-head');
-      if (analyzerHead) analyzerHead.hidden = active;
-      const veBanner = analyzerPage.querySelector<HTMLElement>('.ve-analyzer-view .ve-workbench-banner');
-      if (veBanner) veBanner.hidden = true;
-      if (helpHost) helpHost.hidden = !active;
-      if (!active) {
-        detail.hidden = true;
-        return;
-      }
-
-      const delayMinEvents = analyzerPage.querySelector<HTMLInputElement>('.ve-analyzer-view input[data-role="delay-min-events"]');
-      if (delayMinEvents && delayMinEvents.dataset.veDefaultAdjusted !== 'true') {
-        if (delayMinEvents.value === '2') delayMinEvents.value = '3';
-        delayMinEvents.dataset.veDefaultAdjusted = 'true';
-      }
-
-      for (const table of analyzerPage.querySelectorAll<HTMLTableElement>('.ve-analyzer-view .ve-workbench-table')) {
-        orientLoadAxisFromBottom(table);
-        for (const cell of table.querySelectorAll<HTMLTableCellElement>('tbody td')) compactProposalCell(cell);
-      }
-    } finally {
-      applying = false;
-    }
+    const active = viewSelect.value === 've';
+    const analyzerHead = analyzerPage.querySelector<HTMLElement>(':scope > .analyzer-head');
+    if (analyzerHead) analyzerHead.hidden = active;
+    if (helpHost) helpHost.hidden = !active;
+    if (!active) detail.hidden = true;
   };
 
   viewSelect.addEventListener('change', apply);
-  analyzerPage.addEventListener('change', (event) => {
-    const target = event.target;
-    if (target instanceof HTMLSelectElement && target.matches('.ve-analyzer-view select[data-role="mixture-scale"]')) apply();
-  });
 
-  const observer = new MutationObserver(() => apply());
-  observer.observe(analyzerPage, { childList: true, subtree: true });
   apply();
 }

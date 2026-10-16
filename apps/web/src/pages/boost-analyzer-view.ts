@@ -1,3 +1,8 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { createOwnerEvidence } from '../observability/producers/owner';
+import { installBoostTableEnhancements, updateAnalyzerTablePresentation } from './analyzer-table-presentation';
+import { decorateAnalyzerControls, decorateAnalyzerSummary, decorateAnalyzerTables } from './analyzer-presentation';
+import { ensureAnalyzerSectionHelp } from './analyzer-section-help';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { analyzeBoost, compareBoostOperatingPoints, summarizeBoostDutyResponse, type BoostAnalyzerResult } from '../../../../core/analysis/boost-analyzer';
@@ -34,7 +39,8 @@ function sameChannelCatalog(
   return sameChannelOptionCatalog(left, right);
 }
 
-export function createBoostAnalyzerView(): BoostAnalyzerViewController {
+export function createBoostAnalyzerView(observability?: ObservabilityRecorder): BoostAnalyzerViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 'boost-analyzer-view');
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
 
   let active = true;
@@ -292,6 +298,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   const render = async (): Promise<void> => {
     if (!active || applyingPending) return;
     const generation = ++renderGeneration;
+    ownerEvidence.event('domain.analysis.request', { generation: generation, active }, { visibility: active ? 'active' : 'hidden' });
     if (traceLoadFailed) {
       traceLoadFailed = false;
       emptyTitle.textContent = defaultEmptyTitle;
@@ -327,10 +334,12 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       ...filterChannelIds,
     ])];
     let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    ownerEvidence.event('domain.read.started', { generation: generation, active }, { origin: 'async' });
     try {
       loaded = comparisonScope ? await context.loadTraces(requestedIds) : await context.loadTraces(requestedIds, startMs, endMs);
     } catch (error) {
-      if (!active || generation !== renderGeneration) return;
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: renderGeneration });
+      if (!active || generation !== renderGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: renderGeneration, active }); return; }
       currentResult = undefined;
       refreshButton.disabled = false;
       traceLoadFailed = true;
@@ -340,7 +349,8 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
       return;
     }
-    if (!active || generation !== renderGeneration) return;
+    if (!active || generation !== renderGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: renderGeneration, active }); return; }
+    ownerEvidence.event('domain.read.accepted', { generation: generation });
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const measured = byId.get(measuredId);
     const target = targetId ? byId.get(targetId) : undefined;
@@ -449,6 +459,7 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
         ...(steadyState ? { steadyState } : {}),
       });
     } catch (error) {
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: renderGeneration });
       currentResult = undefined;
       empty.hidden = false;
       content.hidden = true;
@@ -616,6 +627,8 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
       row.innerHTML = `<td>${index + 1}</td><td>${(window.startTimeMs / 1000).toFixed(3)}</td><td>${(window.endTimeMs / 1000).toFixed(3)}</td><td>${window.durationMs.toFixed(0)} ms</td><td>${window.sampleCount.toLocaleString()}</td><td>${formatNumber(window.meanTargetPressure)}</td><td>${formatNumber(window.meanMeasuredPressure)}</td><td>${formatNumber(window.meanError)}</td><td>${formatNumber(window.maxOvershoot)}</td><td>${formatNumber(window.maxUndershoot)}</td>`;
       return row;
     }));
+    updateAnalyzerTablePresentation(root);
+    decorateAnalyzerTables(root);
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
@@ -651,8 +664,15 @@ export function createBoostAnalyzerView(): BoostAnalyzerViewController {
   refreshButton.addEventListener('click', () => { void render(); });
   syncControlModeUi();
   ensureBoostAnalyzerHelp(root);
+  ensureAnalyzerSectionHelp(root);
+
+  installBoostTableEnhancements(root);
+  decorateAnalyzerControls(root);
+  decorateAnalyzerSummary(root);
+  decorateAnalyzerTables(root);
 
   const setActive = (next: boolean): void => {
+    ownerEvidence.event(active === next ? 'domain.activity.noop' : 'domain.activity.changed', { active: next, generation: renderGeneration });
     if (active === next) return;
     active = next;
     if (!active) { renderGeneration += 1; return; }

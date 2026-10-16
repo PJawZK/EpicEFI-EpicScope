@@ -1,3 +1,5 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
 import { createLocalPersistenceFeedback } from './local-persistence-feedback';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { histogramChannelOptionLabel } from './histogram-channel-options';
@@ -306,7 +308,8 @@ function sameChannelCatalog(left: HistogramPageContext['channels'], right: Histo
   return sameChannelOptionCatalog(left, right);
 }
 
-export function createScatterView(): ScatterViewController {
+export function createScatterView(observability?: ObservabilityRecorder): ScatterViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 'scatter-view');
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let layout: ScatterLayout = 'single';
   let traceMode: ScatterTraceMode = 'dots';
@@ -659,6 +662,7 @@ export function createScatterView(): ScatterViewController {
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
+    ownerEvidence.event('histogram.render.request', { generation, selfHidden: root.hidden });
     const visiblePanes = layout === 'dual' ? panes : [panes[0]!];
     const resolvedScope = resolveScope();
     if (context.channels.length < 2 || !resolvedScope) {
@@ -702,11 +706,13 @@ export function createScatterView(): ScatterViewController {
       try {
         loaded = await context.loadTraces(requestedIds, resolvedScope.startMs, resolvedScope.endMs);
       } catch (error) {
-        if (generation !== renderGeneration) return;
+        if (generation !== renderGeneration) { ownerEvidence.event('histogram.read.stale', { generation, currentGeneration: renderGeneration }); return; }
+        ownerEvidence.event('histogram.completion.current', { generation, domHidden: Boolean(root.closest('[hidden]')), connected: root.isConnected }, { origin: 'async' });
         pane.status.textContent = error instanceof Error ? `Unable to load selected channels: ${error.message}` : 'Unable to load selected channels.';
         return;
       }
-      if (generation !== renderGeneration) return;
+      if (generation !== renderGeneration) { ownerEvidence.event('histogram.read.stale', { generation, currentGeneration: renderGeneration }); return; }
+      ownerEvidence.event('histogram.completion.current', { generation, domHidden: Boolean(root.closest('[hidden]')), connected: root.isConnected }, { origin: 'async' });
       const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
       const xTrace = byId.get(xId);
       const yTrace = byId.get(yId);
@@ -961,7 +967,7 @@ export function createScatterView(): ScatterViewController {
   }
 
   const presetFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.scatter-preset-popover')!, 'scatter-presets',
-    () => saveHistogramScatterPresets(loadHistogramScatterPresets()));
+    () => saveHistogramScatterPresets(loadHistogramScatterPresets()), observability);
 
   presetSelect.addEventListener('change', () => { presetApply.disabled = !presetSelect.value; presetDelete.disabled = !presetSelect.value; });
   presetApply.addEventListener('click', () => {

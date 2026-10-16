@@ -1,6 +1,5 @@
 import '../app/font-size-settings';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
-import { ensureIdleAnalyzerHelp } from './idle-analyzer-help';
 
 export interface AnalyzerEvidenceSeries {
   readonly label: string;
@@ -324,7 +323,6 @@ export function renderAlignedAnalyzerEvidence(
 ): void {
   const idleSplit = isIdleEvidence(series);
   const ignitionEvidence = isIgnitionEvidence(series);
-  if (idleSplit) ensureIdleAnalyzerHelp(canvas);
   const scale = graphScale();
   const baseHeight = idleSplit ? 460 : 260;
   const scaledHeight = Math.round(baseHeight * Math.max(1, scale));

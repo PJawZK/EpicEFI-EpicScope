@@ -1,14 +1,14 @@
-import { latestChannelDecodePerformance } from '../../../../core/parsers/mlg/channel-decode-performance';
-import { latestBlobByteSourceRuntimeDiagnostics } from '../adapters/blob-byte-source';
+import type { ChannelDecodePerformanceSnapshot } from '../../../../../core/parsers/mlg/channel-decode-performance';
+import type { PerformanceProjection, PerformanceMemory } from '../producers/performance';
 import type {
   ChannelBindingPerformanceRun,
   ChannelPerformanceRun,
   IniLoadPerformanceRun,
   LoadPerformanceRun,
   WorkspaceRestorePerformanceRun,
-} from './performance-diagnostics';
+} from '../performance-types';
 
-export function decodeMeasuredMs(snapshot: ReturnType<typeof latestChannelDecodePerformance>): number {
+export function decodeMeasuredMs(snapshot: ChannelDecodePerformanceSnapshot | undefined): number {
   if (!snapshot) return 0;
   return snapshot.cacheResolveMs
     + snapshot.batchPlanMs
@@ -24,9 +24,10 @@ export function buildPerformanceDiagnosticsReport(
   bindingRuns: readonly ChannelBindingPerformanceRun[],
   workspaceRestoreRuns: readonly WorkspaceRestorePerformanceRun[],
   channelRuns: readonly ChannelPerformanceRun[],
+  probes: Pick<PerformanceProjection, 'blob' | 'decode'> = {},
 ): string {
     const lines: string[] = ['EpicScope performance diagnostics'];
-    const blobRuntime = latestBlobByteSourceRuntimeDiagnostics();
+    const blobRuntime = probes.blob;
     if (blobRuntime) {
       lines.push(
         '',
@@ -251,7 +252,7 @@ export function buildPerformanceDiagnosticsReport(
         );
       }
 
-      const decode = latestChannelDecodePerformance(latestRestore.uniqueRequestedChannelCount);
+      const decode = probes.decode;
       if (decode) {
         const measured = decodeMeasuredMs(decode);
         lines.push(
@@ -303,4 +304,57 @@ export function buildPerformanceDiagnosticsReport(
       });
     }
     return lines.join('\n');
+}
+
+function retainedMemoryReport(memory: PerformanceMemory | undefined): string[] {
+    if (!memory) return [];
+    const { persistent, persistentAll, bound, boundAll, runtime } = memory;
+    if (!persistent && !bound && !runtime) return [];
+    return [
+      '',
+      '[Retained memory]',
+      `graphActiveRangeBytes=${runtime?.activeTraceRangeBytes ?? 0}`,
+      `persistentResidentColumns=${persistent?.residentColumnCount ?? 0}`,
+      `persistentResidentBytes=${persistent?.residentBytes ?? 0}`,
+      `persistentPeakResidentColumns=${persistent?.peakResidentColumnCount ?? 0}`,
+      `persistentPeakResidentBytes=${persistent?.peakResidentBytes ?? 0}`,
+      `persistentResidentHits=${persistent?.residentHitCount ?? 0}`,
+      `persistentDiskLoads=${persistent?.diskLoadCount ?? 0}`,
+      `persistentRetainedColumns=${persistent?.retainedColumnCount ?? 0}`,
+      `persistentStoreMisses=${persistent?.storeMissCount ?? 0}`,
+      `persistentEvictions=0`,
+      `persistentLiveSources=${persistentAll.liveSourceCount}`,
+      `persistentPreviousLiveSources=${persistentAll.previousLiveSourceCount}`,
+      `persistentCollectedSources=${persistentAll.collectedSourceCount}`,
+      `persistentAllResidentColumns=${persistentAll.totalResidentColumnCount}`,
+      `persistentAllResidentBytes=${persistentAll.totalResidentBytes}`,
+      `persistentPreviousResidentColumns=${persistentAll.previousResidentColumnCount}`,
+      `persistentPreviousResidentBytes=${persistentAll.previousResidentBytes}`,
+      `boundResidentRanges=${bound?.residentRangeCount ?? 0}`,
+      `boundResidentBytes=${bound?.residentBytes ?? 0}`,
+      `boundPeakResidentRanges=${bound?.peakResidentRangeCount ?? 0}`,
+      `boundPeakResidentBytes=${bound?.peakResidentBytes ?? 0}`,
+      `boundResidentHits=${bound?.residentHitCount ?? 0}`,
+      `boundResidentMisses=${bound?.residentMissCount ?? 0}`,
+      `boundRetainedRanges=${bound?.retainedRangeCount ?? 0}`,
+      `boundEvictions=0`,
+      `boundLiveSources=${boundAll.liveSourceCount}`,
+      `boundPreviousLiveSources=${boundAll.previousLiveSourceCount}`,
+      `boundCollectedSources=${boundAll.collectedSourceCount}`,
+      `boundAllResidentRanges=${boundAll.totalResidentRangeCount}`,
+      `boundAllResidentBytes=${boundAll.totalResidentBytes}`,
+      `boundPreviousResidentRanges=${boundAll.previousResidentRangeCount}`,
+      `boundPreviousResidentBytes=${boundAll.previousResidentBytes}`,
+      'note=Layer byte counts are retained payload estimates and may overlap; do not sum them as unique process memory.',
+      'noteSourceLifetime=Live-source counts use weak references; previous sources can remain until browser garbage collection, so a nonzero previous-live count alone does not prove a strong-reference leak.',
+    ];
+}
+
+/** Compatibility text is now a pure lens over retained observability evidence. */
+export function buildPerformanceReport(projection: PerformanceProjection): string {
+  const base = buildPerformanceDiagnosticsReport(projection.loadRuns, projection.iniLoadRuns, projection.bindingRuns, projection.workspaceRestoreRuns, projection.channelRuns, projection);
+  const loss = projection.incomplete || projection.truncated ? `\n\n[Performance evidence loss]\nincompleteMeasurements=${projection.incomplete}; truncatedFields=${projection.truncated}` : '';
+  const { evicted, rejected, internalFailures } = projection.retention;
+  const retention = evicted || rejected || internalFailures ? `\n\n[Shared session retention]\nevicted=${evicted}; rejected=${rejected}; internalFailures=${internalFailures}\nRetained Performance evidence may be incomplete; these counters cover the shared session.` : '';
+  return `${base}${retainedMemoryReport(projection.memory).join('\n')}${loss}${retention}`;
 }

@@ -1,5 +1,5 @@
-import type { LoggerRuntimeDiagnosticSnapshot } from '../pages/logger-page';
-import type { LoggerWorkspaceState } from '../state/workspace-state';
+import type { LoggerRuntimeDiagnosticSnapshot } from '../../pages/logger-page';
+import type { LoggerWorkspaceState } from '../../state/workspace-state';
 
 export interface BugReportRuntimeErrorEntry {
   readonly time: number;
@@ -57,6 +57,8 @@ export interface BuildBugReportInput {
   readonly runtimeErrors: readonly BugReportRuntimeErrorEntry[];
   readonly application: BugReportApplicationContext;
   readonly performanceReport: string;
+  readonly observabilityReport?: string;
+  readonly parserReport?: string;
 }
 
 export interface BuiltBugReport {
@@ -146,6 +148,8 @@ export function buildBugReportText(input: BuildBugReportInput): BuiltBugReport {
     `loadIniTitle=${application.loadIniTitle}`,
     '',
     performanceReport,
+    ...(input.parserReport ? ['', input.parserReport] : []),
+    ...(input.observabilityReport ? ['', input.observabilityReport] : []),
   ];
 
   return { text: lines.join('\n'), issueCount: issues.length };

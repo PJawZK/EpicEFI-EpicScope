@@ -15,26 +15,6 @@ function refineValueSearch(root: HTMLElement): void {
   if (heading) heading.textContent = 'Search Symbol Value';
 }
 
-function normalizeGraphWorkspaceLabels(root: HTMLElement): void {
-  const graphSelector = root.querySelector<HTMLElement>('.graph-selector-wrap');
-  if (!graphSelector) return;
-
-  graphSelector.querySelector<HTMLElement>('.graph-selector-context')?.remove();
-
-  const normalize = (): void => {
-    const buttonLabel = graphSelector.querySelector<HTMLElement>('.graph-selector-button > span:first-child');
-    if (buttonLabel && !/\s-\sGraph$/.test(buttonLabel.textContent ?? '')) {
-      buttonLabel.textContent = `${buttonLabel.textContent ?? 'General'} - Graph`;
-    }
-    for (const label of graphSelector.querySelectorAll<HTMLElement>('.graph-selector-choice > span')) {
-      if (!/\s-\sGraph$/.test(label.textContent ?? '')) label.textContent = `${label.textContent ?? 'General'} - Graph`;
-    }
-  };
-
-  normalize();
-  new MutationObserver(normalize).observe(graphSelector, { childList: true, subtree: true, characterData: true });
-}
-
 function placeLayoutAfterGraph(root: HTMLElement): void {
   const graphSlot = root.querySelector<HTMLElement>('.graph-selector-slot');
   const layout = root.querySelector<HTMLElement>('.logger-layout-menu-wrap');
@@ -48,23 +28,6 @@ function placeLayoutAfterGraph(root: HTMLElement): void {
   };
   sync();
   new MutationObserver(sync).observe(loggerPage, { attributes: true, attributeFilter: ['hidden'] });
-}
-
-function normalizeHistogramScopeLabels(root: HTMLElement): void {
-  const tableScope = root.querySelector<HTMLSelectElement>('.histogram-table-scope');
-  const scatterScope = root.querySelector<HTMLSelectElement>('.scatter-scope');
-  const normalize = (): void => {
-    const tableAb = tableScope ? [...tableScope.options].find((option) => option.value === 'ab') : undefined;
-    const tableFull = tableScope ? [...tableScope.options].find((option) => option.value === 'full') : undefined;
-    if (tableAb) tableAb.textContent = 'Current A/B';
-    if (tableFull) tableFull.textContent = 'Full Log';
-    const scatterRange = scatterScope ? [...scatterScope.options].find((option) => option.value === 'range') : undefined;
-    const scatterFull = scatterScope ? [...scatterScope.options].find((option) => option.value === 'full') : undefined;
-    if (scatterRange) scatterRange.textContent = 'Current A/B';
-    if (scatterFull) scatterFull.textContent = 'Full Log';
-  };
-  normalize();
-  if (tableScope) new MutationObserver(normalize).observe(tableScope, { childList: true });
 }
 
 function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
@@ -125,8 +88,6 @@ function dockLoggerTimelineInHistogramAnalysis(root: HTMLElement): void {
 
 export function applyNavigationRefinements(root: HTMLElement): void {
   refineValueSearch(root);
-  normalizeGraphWorkspaceLabels(root);
   placeLayoutAfterGraph(root);
-  normalizeHistogramScopeLabels(root);
   dockLoggerTimelineInHistogramAnalysis(root);
 }
