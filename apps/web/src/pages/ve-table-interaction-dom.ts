@@ -101,6 +101,7 @@ export function createTableInteractionDomController(
   let brushTimer: number | undefined;
   let inlineInput: HTMLInputElement | undefined;
   let finishInlineEdit: ((commit: boolean) => void) | undefined;
+  let inlinePreviewOriginal = new Map<HTMLTableCellElement, string>();
   let gestureListenersInstalled = false;
   let destroyed = false;
 
@@ -263,6 +264,26 @@ export function createTableInteractionDomController(
     }, 90);
   };
 
+  const restoreInlinePreview = (): void => {
+    for (const [previewCell, text] of inlinePreviewOriginal) {
+      previewCell.textContent = text;
+      delete previewCell.dataset.tablePreview;
+      delete previewCell.dataset.delayPreview;
+    }
+    inlinePreviewOriginal.clear();
+  };
+
+  const previewInlineValue = (activeCell: HTMLTableCellElement, text: string): void => {
+    for (const position of selectedPositions()) {
+      const previewCell = cellFor(position);
+      if (!previewCell || previewCell === activeCell) continue;
+      if (!inlinePreviewOriginal.has(previewCell)) inlinePreviewOriginal.set(previewCell, previewCell.textContent ?? '');
+      previewCell.textContent = text || '—';
+      previewCell.dataset.tablePreview = 'true';
+      if (previewCell.dataset.delayRow !== undefined) previewCell.dataset.delayPreview = 'true';
+    }
+  };
+
   const startInlineEdit = (position: TableCellPosition, initial?: string): void => {
     if (inlineInput) return;
     const cell = cellFor(position);
@@ -282,6 +303,8 @@ export function createTableInteractionDomController(
     if (cell.dataset.delayRow !== undefined) cell.dataset.delayEditing = 'true';
     cell.append(input);
     inlineInput = input;
+    inlinePreviewOriginal = new Map();
+    previewInlineValue(cell, input.value);
     input.focus({ preventScroll: true });
     if (initial === undefined) input.select();
     else input.setSelectionRange(input.value.length, input.value.length);
@@ -296,6 +319,7 @@ export function createTableInteractionDomController(
       input.remove();
       delete cell.dataset.tableEditing;
       delete cell.dataset.delayEditing;
+      restoreInlinePreview();
       if (commit) {
         if (raw === '') {
           const positions = selectedPositions();
@@ -310,6 +334,7 @@ export function createTableInteractionDomController(
       queueMicrotask(focusAnchor);
     };
     finishInlineEdit = finish;
+    input.addEventListener('input', () => previewInlineValue(cell, input.value));
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
