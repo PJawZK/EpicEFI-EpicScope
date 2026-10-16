@@ -12,6 +12,7 @@ import { buildVeDelayTable, type VeDelayTable } from '../../../../core/analysis/
 import {
   activateVeDelayRecommendation,
   editVeDelayCells,
+  editVeDelayCellValues,
   type VeDelayCellPosition,
   type VeDelayEdit,
 } from '../../../../core/analysis/ve-delay-table-editing';
@@ -23,6 +24,7 @@ import type { LoggerAnalysisContext } from './logger-page';
 import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
 import { analyzerChannelOptionLabel, suggestAnalyzerChannel, preferredVeActualMixtureChannel, updateVeActualMixtureOptions } from './analyzer-channel-roles';
 import { assessVeFuelCorrection, type VeFuelCorrectionMode } from './ve-fuel-correction';
+import { registerVeDelayEditOwner, type VeDelayCellValueEdit } from './ve-analyzer-delay-edit-owner';
 import {
   assessTargetMixtureTable,
   inferTuneMixtureScale,
@@ -542,6 +544,37 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     invalidate();
     return true;
   };
+
+  const applyDelayCellValues = (edits: readonly VeDelayCellValueEdit[]): boolean => {
+    if (!viewActive || pendingContext || pendingTune || edits.length === 0) return false;
+    const table = workingDelayTable ?? delayRecommendation;
+    if (!table) return false;
+    let next;
+    try {
+      next = editVeDelayCellValues(table, edits);
+    } catch {
+      return false;
+    }
+    if (next === table) return false;
+    if (workingDelayTable) workingDelayTable = next;
+    else delayRecommendation = next;
+    invalidate();
+    return true;
+  };
+
+  registerVeDelayEditOwner(root, {
+    snapshot: () => {
+      const table = workingDelayTable ?? delayRecommendation;
+      return table ? {
+        revision: sessionRevision,
+        rows: table.rows,
+        cols: table.cols,
+        values: table.cells.map((cell) => cell.workingMs),
+      } : undefined;
+    },
+    applyValues: applyDelayCellValues,
+    revert: (positions) => editDelayCells(positions, { kind: 'revert' }),
+  });
 
   const clearDelayRecommendation = (): void => {
     sessionRevision += 1;
