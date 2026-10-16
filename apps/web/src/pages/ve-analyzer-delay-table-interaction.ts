@@ -243,6 +243,8 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       dom.cancelActiveInteraction();
       const changed = inner.setContext(context);

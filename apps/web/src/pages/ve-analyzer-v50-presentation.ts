@@ -303,6 +303,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       renderScope(context);
