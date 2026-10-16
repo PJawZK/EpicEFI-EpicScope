@@ -11,6 +11,26 @@ function range(values: readonly number[], stepMs = 100, startSampleIndex = 0): N
   };
 }
 
+// Isolated alternating command steps have known onset/peak timing, deliberately
+// out of timing order. Quiet space between events prevents overlap/gap rejection.
+function isolatedEvents(delays: readonly number[], sampleCount = delays.length * 30) {
+  const command = new Float64Array(sampleCount).fill(2);
+  const afr = new Float64Array(sampleCount).fill(16);
+  for (let block = 0; block < delays.length; block += 1) {
+    const start = block * 30;
+    const positive = block % 2 === 0;
+    const before = positive ? 2 : 4;
+    command.fill(before, start, start + 2);
+    command.fill(positive ? 4 : 2, start + 2, start + 30);
+    const response = start + 2 + delays[block]!;
+    afr.fill(16 + (positive ? -1 : 1), response, response + 1);
+    afr.fill(16 + (positive ? -2 : 2), response + 1, start + 30);
+  }
+  const numericRange = (values: Float64Array): NumericChannelRange => ({ startSampleIndex: 0, values, timeMs: Float64Array.from({ length: sampleCount }, (_, index) => index * 10), validity: new Uint8Array(sampleCount).fill(1) });
+  return { fuelCommand: numericRange(command), actualAfr: numericRange(afr) };
+}
+const timingConfig = { commandDeltaThreshold: 1, afrResponseThreshold: 0.5, searchWindowMs: 100, minimumEventSpacingMs: 0 };
+
 describe('AFR response-delay analyzer', () => {
   it('estimates onset delay from isolated fuel-command transitions', () => {
     const result = analyzeAfrDelay({
@@ -83,4 +103,41 @@ describe('AFR response-delay analyzer', () => {
     expect(() => analyzeAfrDelay({ fuelCommand: range([1]), actualAfr: range([14.7]) }, { commandDeltaThreshold: 1, afrResponseThreshold: 0.2, searchWindowMs: 0 })).toThrow(RangeError);
     expect(() => analyzeAfrDelay({ fuelCommand: range([1]), actualAfr: range([14.7]) }, { commandDeltaThreshold: 1, afrResponseThreshold: 0.2, minimumEventSpacingMs: -1 })).toThrow(RangeError);
   });
+  it('interpolates an unsorted duplicate/even distribution without reordering events or changing inputs', () => {
+    const inputs = isolatedEvents([1, 4, 2, 3, 1, 5]);
+    const originalCommand = inputs.fuelCommand.values.slice();
+    const originalAfr = inputs.actualAfr.values.slice();
+    const result = analyzeAfrDelay(inputs, timingConfig);
+    expect(result.usableEventCount).toBe(6);
+    expect(result.events.map(event => event.onsetDelayMs)).toEqual([10, 40, 20, 30, 10, 50]);
+    expect(result.onsetDelay).toEqual({ minimumMs: 10, p10Ms: 10, medianMs: 25, p90Ms: 45, maximumMs: 50 });
+    expect(result.medianT50Ms).toBe(25);
+    expect(result.medianT90Ms).toBe(35);
+    expect(inputs.fuelCommand.values).toEqual(originalCommand);
+    expect(inputs.actualAfr.values).toEqual(originalAfr);
+  });
+
+  it('preserves empty and single-event distribution boundaries', () => {
+    const empty = analyzeAfrDelay({ fuelCommand: range([2, 2]), actualAfr: range([16, 16]) }, timingConfig);
+    expect(empty.onsetDelay).toBeUndefined();
+    expect(empty.medianT50Ms).toBeUndefined();
+    expect(empty.medianT90Ms).toBeUndefined();
+    const single = analyzeAfrDelay(isolatedEvents([3]), timingConfig);
+    expect(single.onsetDelay).toEqual({ minimumMs: 30, p10Ms: 30, medianMs: 30, p90Ms: 30, maximumMs: 30 });
+    expect(single.medianT50Ms).toBe(30);
+    expect(single.medianT90Ms).toBe(40);
+  });
+
+  it('handles more than 320k valid samples with many isolated events and stable percentile results', () => {
+    const delays = Array.from({ length: 10684 }, (_, index) => [1, 4, 2, 3][index % 4]!);
+    const inputs = isolatedEvents(delays); // 320520 continuous valid samples
+    const result = analyzeAfrDelay(inputs, timingConfig);
+    expect(result.usableEventCount).toBe(delays.length);
+    expect(result.rejectedGapCount + result.rejectedOverlapCount + result.rejectedNoResponseCount).toBe(0);
+    expect(result.onsetDelay).toEqual({ minimumMs: 10, p10Ms: 10, medianMs: 25, p90Ms: 40, maximumMs: 40 });
+    expect(result.medianT50Ms).toBe(25);
+    expect(result.medianT90Ms).toBe(35);
+    expect(result.events.at(-1)?.commandSampleIndex).toBe((delays.length - 1) * 30 + 2);
+  });
+
 });

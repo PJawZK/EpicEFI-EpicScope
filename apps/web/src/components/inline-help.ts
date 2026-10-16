@@ -137,7 +137,7 @@ export function addInlineHelpButton(
   installGlobalDismissHandlers();
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'epicscope-inline-help';
+  button.className = 'epicscope-inline-help epicscope-info-icon';
   button.textContent = 'i';
   button.title = `Explain ${help.title}`;
   button.setAttribute('aria-label', `Explain ${help.title}`);

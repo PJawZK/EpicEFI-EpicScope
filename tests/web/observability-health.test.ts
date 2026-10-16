@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LoggerRuntimeDiagnosticSnapshot } from '../../apps/web/src/pages/logger-page';
-import { evaluateBugReportHealth } from '../../apps/web/src/components/bug-report-health';
+import { projectCurrentHealth } from '../../apps/web/src/observability/health-rules';
 
 const cleanSnapshot = (): LoggerRuntimeDiagnosticSnapshot => ({
   hasChannelDataSource: true,
@@ -23,7 +23,7 @@ const cleanSnapshot = (): LoggerRuntimeDiagnosticSnapshot => ({
 
 describe('bug report runtime health', () => {
   it('reports a clean runtime state as having no issues or warnings', () => {
-    expect(evaluateBugReportHealth(cleanSnapshot(), {
+    expect(projectCurrentHealth(cleanSnapshot(), {
       logLoaded: true,
       iniLoaded: true,
       bindingActive: true,
@@ -39,7 +39,7 @@ describe('bug report runtime health', () => {
       renderableAssignedChannelCount: 3,
       activeTraceCount: 1,
     };
-    const health = evaluateBugReportHealth(snapshot, {
+    const health = projectCurrentHealth(snapshot, {
       logLoaded: true,
       iniLoaded: false,
       bindingActive: false,
@@ -64,7 +64,7 @@ describe('bug report runtime health', () => {
       unavailableAssignedChannelCount: 2,
       activeTraceCount: 2,
     };
-    const health = evaluateBugReportHealth(snapshot, {
+    const health = projectCurrentHealth(snapshot, {
       logLoaded: true,
       iniLoaded: true,
       bindingActive: false,
@@ -80,7 +80,7 @@ describe('bug report runtime health', () => {
   });
 
   it('does not require an INI/MLG binding when the active source owns the current catalog', () => {
-    const health = evaluateBugReportHealth(cleanSnapshot(), {
+    const health = projectCurrentHealth(cleanSnapshot(), {
       logLoaded: true,
       iniLoaded: true,
       bindingActive: false,

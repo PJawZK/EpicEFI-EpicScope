@@ -307,27 +307,6 @@ function median(values: readonly number[]): number {
   return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
-function hasValidSameTimestampReplacement(
-  range: NumericChannelRange,
-  index: number,
-  endIndex: number,
-  timeMs: number,
-): boolean {
-  for (let nextIndex = index + 1; nextIndex < endIndex; nextIndex += 1) {
-    const nextTimeMs = range.timeMs[nextIndex];
-    if (nextTimeMs === undefined || nextTimeMs !== timeMs) return false;
-    const nextValue = range.values[nextIndex];
-    if (
-      range.validity[nextIndex] === 1
-      && nextValue !== undefined
-      && Number.isFinite(nextValue)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * Returns the actual valid samples inside a viewport in source order.
  *
@@ -366,6 +345,7 @@ export function buildRawViewportSeries(
   const points: RawViewportPoint[] = [];
   let forceBreak = true;
   let previousValidTime: number | undefined;
+  let pendingInvalidTime: number | undefined;
 
   for (let index = startIndex; index < endIndex; index += 1) {
     const timeMs = range.timeMs[index];
@@ -376,13 +356,19 @@ export function buildRawViewportSeries(
       && Number.isFinite(timeMs)
       && Number.isFinite(value);
 
+    // Defer a finite invalid group's continuity decision until its timestamp
+    // changes or a valid replacement arrives. Each sample is visited once;
+    // an earlier unrecovered group must still break a later recovered group.
+    if (pendingInvalidTime !== undefined && pendingInvalidTime !== timeMs) {
+      forceBreak = true;
+      pendingInvalidTime = undefined;
+    }
     if (!usable) {
-      const recoveredAtSameTimestamp = timeMs !== undefined
-        && Number.isFinite(timeMs)
-        && hasValidSameTimestampReplacement(range, index, endIndex, timeMs);
-      if (!recoveredAtSameTimestamp) forceBreak = true;
+      if (timeMs !== undefined && Number.isFinite(timeMs)) pendingInvalidTime = timeMs;
+      else forceBreak = true;
       continue;
     }
+    pendingInvalidTime = undefined;
 
     const timeGap = previousValidTime === undefined ? 0 : timeMs - previousValidTime;
     points.push({

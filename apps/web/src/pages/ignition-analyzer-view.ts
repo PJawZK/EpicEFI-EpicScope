@@ -1,3 +1,9 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { createOwnerEvidence } from '../observability/producers/owner';
+import { installBoostTableEnhancements, updateAnalyzerTablePresentation } from './analyzer-table-presentation';
+import { decorateAnalyzerControls, decorateAnalyzerSummary, decorateAnalyzerTables } from './analyzer-presentation';
+import { decorateSpecializedHelp } from './analyzer-additional-help';
+import { ensureAnalyzerSectionHelp } from './analyzer-section-help';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { analyzeIgnitionBehavior, type IgnitionCorrectionEvent, type IgnitionTimingStepEvent } from '../../../../core/analysis/ignition-behavior-analyzer';
@@ -348,7 +354,8 @@ type CombinedEvent =
   | { readonly kind: 'Timing step'; readonly event: IgnitionTimingStepEvent }
   | { readonly kind: 'Correction'; readonly event: IgnitionCorrectionEvent };
 
-export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
+export function createIgnitionAnalyzerView(observability?: ObservabilityRecorder): IgnitionAnalyzerController {
+  const ownerEvidence = createOwnerEvidence(observability, 'ignition-analyzer-view');
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
 
   let active = true;
@@ -473,6 +480,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       card.append(caption, strong);
       return card;
     }));
+    decorateSpecializedHelp(root, 'summary');
+    decorateAnalyzerSummary(root);
   };
 
   const renderDetails = (rows: readonly [string, string][]): void => {
@@ -730,6 +739,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   analyzeCurrent = async (): Promise<void> => {
     if (!active || applyingPending) return;
     const generation = ++analysisGeneration;
+    ownerEvidence.event('domain.analysis.request', { generation: generation, active }, { visibility: active ? 'active' : 'hidden' });
     if (traceLoadFailed) {
       traceLoadFailed = false;
       emptyTitle.textContent = defaultEmptyTitle;
@@ -750,10 +760,12 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     }
     const { startMs, endMs } = analyzerScopeBounds(scope);
     let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    ownerEvidence.event('domain.read.started', { generation: generation, active }, { origin: 'async' });
     try {
       loaded = await context.loadTraces([...selected.values()], startMs, endMs);
     } catch (error) {
-      if (!active || generation !== analysisGeneration) return;
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: analysisGeneration });
+      if (!active || generation !== analysisGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: analysisGeneration, active }); return; }
       reviewSection.hidden = true;
       currentEvents = []; currentEventSeries = []; restoreAllEvidence = undefined;
       traceLoadFailed = true;
@@ -763,7 +775,8 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
       return;
     }
-    if (!active || generation !== analysisGeneration) return;
+    if (!active || generation !== analysisGeneration) { ownerEvidence.event('domain.read.stale', { generation: generation, currentGeneration: analysisGeneration, active }); return; }
+    ownerEvidence.event('domain.read.accepted', { generation: generation });
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<RoleKey, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
@@ -887,9 +900,12 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
       ];
       renderEvidence(series, combinedEvents);
       renderEvents(combinedEvents, series);
+      updateAnalyzerTablePresentation(root);
+      decorateAnalyzerTables(root);
       empty.hidden = true;
       content.hidden = false;
     } catch (error) {
+      ownerEvidence.event('domain.failure', { generation: generation, currentGeneration: analysisGeneration });
       empty.hidden = false;
       content.hidden = true;
       reviewSection.hidden = true;
@@ -899,6 +915,7 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
   };
 
   const rebuild = (): void => {
+    ownerEvidence.event('domain.rebuild', { generation: analysisGeneration, channels: context.channels.length }, { visibility: active ? 'active' : 'hidden' });
     controls.replaceChildren();
     for (const role of ROLES) {
       const label = document.createElement('label');
@@ -964,9 +981,17 @@ export function createIgnitionAnalyzerView(): IgnitionAnalyzerController {
     }
     updateGuidance();
     void analyzeCurrent();
+    decorateSpecializedHelp(root, 'controls');
+    ensureAnalyzerSectionHelp(root);
   };
 
+  installBoostTableEnhancements(root);
+  decorateAnalyzerControls(root);
+  decorateAnalyzerSummary(root);
+  decorateAnalyzerTables(root);
+
   const setActive = (next: boolean): void => {
+    ownerEvidence.event(active === next ? 'domain.activity.noop' : 'domain.activity.changed', { active: next, generation: analysisGeneration });
     if (active === next) return;
     active = next;
     if (!active) { analysisGeneration += 1; return; }

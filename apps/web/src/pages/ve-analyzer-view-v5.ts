@@ -1,3 +1,5 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
 import type { VeDelayEdit } from '../../../../core/analysis/ve-delay-table-editing';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
@@ -23,8 +25,9 @@ function cellCoordinates(cell: HTMLTableCellElement): { row: number; col: number
   return Number.isInteger(row) && Number.isInteger(col) ? { row, col } : undefined;
 }
 
-export function createVeAnalyzerView(): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV4();
+export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 've-observer');
+  const inner = createVeAnalyzerViewV4(observability);
   const root = inner.element;
   root.classList.add('ve-inline-delay-editing');
 
@@ -276,7 +279,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   }, { capture: true });
 
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver((mutations) => {
+    ownerEvidence.event('ve.observer.dispatch', { mutations: mutations.length }, { origin: 'observer' });
     if (inlineInput && inlineRevision !== inner.sessionRevision) endInlineEdit(false);
     if (!inlineInput && !committing) {
       refreshSelection();
@@ -298,6 +302,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       if (!changed) return false;

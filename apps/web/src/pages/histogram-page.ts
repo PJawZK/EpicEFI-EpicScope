@@ -1,3 +1,6 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
+import type { Origin } from '../observability/record';
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { IniTableEditorDefinition } from '../../../../core/parsers/ini/ini-table-editor-parser';
@@ -49,18 +52,19 @@ export interface HistogramPageController {
 
 type HistogramView = 'table' | 'distribution' | 'scatter' | 'math-channels';
 
-export function createHistogramPage(): HistogramPageController {
+export function createHistogramPage(observability?: ObservabilityRecorder): HistogramPageController {
   let context: HistogramPageContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined };
   let logicalAnalysisContext = createHistogramLogicalContext(context);
+  const ownerEvidence = createOwnerEvidence(observability, 'histogram-router');
   let activeView: HistogramView = 'table';
   let lastIniMappedTable = '';
   let suppressImmediateRefresh = false;
   let contextUpdateGeneration = 0;
 
-  const tableGeneratorView = createHistogramTableGeneratorView();
-  const distributionView = createHistogramDistributionView();
-  const scatterView = createScatterView();
-  const mathChannelsView = createHistogramMathChannelsView();
+  const tableGeneratorView = createHistogramTableGeneratorView(observability);
+  const distributionView = createHistogramDistributionView(observability);
+  const scatterView = createScatterView(observability);
+  const mathChannelsView = createHistogramMathChannelsView(observability);
 
   const headerControl = document.createElement('label');
   headerControl.className = 'histogram-header-view';
@@ -123,6 +127,7 @@ export function createHistogramPage(): HistogramPageController {
   };
 
   const refreshActive = (): void => {
+    ownerEvidence.event('histogram.refresh', { view: activeView }, { visibility: page.hidden ? 'hidden' : 'active' });
     if (activeView === 'table') tableGeneratorView.refresh();
     else if (activeView === 'distribution') distributionView.refresh();
     else if (activeView === 'scatter') scatterView.refresh();
@@ -130,13 +135,15 @@ export function createHistogramPage(): HistogramPageController {
   };
 
   const setActiveContext = (): void => {
+    ownerEvidence.event('histogram.context.deliver', { view: activeView, channels: context.channels.length }, { visibility: page.hidden ? 'hidden' : 'active' });
     if (activeView === 'table') tableGeneratorView.setContext(context);
     else if (activeView === 'distribution') distributionView.setContext(logicalAnalysisContext);
     else if (activeView === 'scatter') scatterView.setContext(logicalAnalysisContext);
     else mathChannelsView.setContext(context);
   };
 
-  const setActiveView = (view: HistogramView): void => {
+  const setActiveView = (view: HistogramView, origin: Origin = 'programmatic'): void => {
+    if (activeView !== view) observability?.record({ recordKind: 'event', subsystem: 'navigation', component: 'histogram', name: 'navigation.domain.changed', origin, activeView: view, visibility: page.hidden ? 'hidden' : 'active', metadata: { previous: activeView, next: view } });
     activeView = view;
     viewSelect.value = view;
     tableGeneratorView.element.hidden = view !== 'table';
@@ -150,6 +157,7 @@ export function createHistogramPage(): HistogramPageController {
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
+    if (context.tuneTableDefinitions !== nextContext.tuneTableDefinitions || context.tuneModel !== nextContext.tuneModel) lastIniMappedTable = '';
     const generation = ++contextUpdateGeneration;
     suppressImmediateRefresh = true;
     queueMicrotask(() => {
@@ -161,9 +169,9 @@ export function createHistogramPage(): HistogramPageController {
     if (activeView === 'table') applyIniTableAxisAuthority(false);
   };
 
-  viewSelect.addEventListener('change', () => {
+  viewSelect.addEventListener('change', (event) => {
     const value = viewSelect.value;
-    if (value === 'table' || value === 'distribution' || value === 'scatter' || value === 'math-channels') setActiveView(value);
+    if (value === 'table' || value === 'distribution' || value === 'scatter' || value === 'math-channels') setActiveView(value, event.isTrusted ? 'user' : 'programmatic');
   });
 
   page.addEventListener('change', (event) => {
@@ -174,8 +182,11 @@ export function createHistogramPage(): HistogramPageController {
   });
 
   window.addEventListener(INI_TABLE_DEFINITIONS_CHANGED_EVENT, () => {
+    // Explicit context is authoritative. This event remains for standalone
+    // callers using the retained storage/cache fallback.
+    if (context.tuneTableDefinitions !== undefined) return;
     lastIniMappedTable = '';
-    applyIniTableAxisAuthority(true);
+    if (activeView === 'table') applyIniTableAxisAuthority(true);
   });
 
   window.addEventListener(HISTOGRAM_CALCULATED_FIELDS_CHANGED_EVENT, () => {

@@ -5,7 +5,7 @@ export interface VeProposalSettingInputs {
   readonly maximumPercentChange: string;
 }
 
-function numericIssue(label: string, raw: string): string | undefined {
+export function veNumericSettingIssue(label: string, raw: string): string | undefined {
   const text = raw.trim();
   if (!text) return `${label} is blank`;
   const value = Number(text);
@@ -16,9 +16,67 @@ function numericIssue(label: string, raw: string): string | undefined {
 
 export function veProposalSettingIssues(inputs: VeProposalSettingInputs): string[] {
   return [
-    numericIssue('Prior weight', inputs.priorWeight),
-    numericIssue('Minimum evidence weight', inputs.minimumEvidenceWeight),
-    numericIssue('Max VE change', inputs.maximumAbsoluteChange),
-    numericIssue('Max VE change %', inputs.maximumPercentChange),
+    veNumericSettingIssue('Prior weight', inputs.priorWeight),
+    veNumericSettingIssue('Minimum evidence weight', inputs.minimumEvidenceWeight),
+    veNumericSettingIssue('Max VE change', inputs.maximumAbsoluteChange),
+    veNumericSettingIssue('Max VE change %', inputs.maximumPercentChange),
   ].filter((issue): issue is string => Boolean(issue));
+}
+
+export interface VeReadinessRow {
+  readonly id: string;
+  readonly name: string;
+  readonly purpose: string;
+  readonly required: boolean;
+  readonly source: string;
+  readonly status: string;
+  readonly valid: boolean;
+  readonly targetSelector?: string;
+  readonly blockerMessage?: string;
+}
+
+export interface VeReadinessBlocker {
+  readonly code: string;
+  readonly message: string;
+  readonly targetSelector?: string;
+}
+
+export interface VeReadinessState {
+  readonly rows: readonly VeReadinessRow[];
+  readonly blockers: readonly VeReadinessBlocker[];
+  readonly ready: boolean;
+  readonly canRun: boolean;
+  readonly active: boolean;
+  readonly pending: boolean;
+  readonly delayState: 'missing' | 'recommendation' | 'working';
+  readonly text: string;
+  readonly title: string;
+}
+
+export function createVeReadiness(
+  rows: readonly VeReadinessRow[],
+  state: { readonly active: boolean; readonly pending: boolean; readonly proposed: boolean; readonly delayState: VeReadinessState['delayState'] },
+): VeReadinessState {
+  const blockers = rows.filter(row => row.required && !row.valid).map(row => ({
+    code: row.id,
+    message: row.blockerMessage ?? `${row.name}${row.status === 'Missing' ? '' : ` — ${row.status}`}`,
+    ...(row.targetSelector ? { targetSelector: row.targetSelector } : {}),
+  }));
+  const ready = rows.length > 0 && blockers.length === 0;
+  return { rows, blockers, ready, canRun: ready && state.active && !state.pending,
+    active: state.active, pending: state.pending, delayState: state.delayState,
+    text: !state.active ? 'VE inactive' : rows.length === 0 ? 'Not ready' : state.pending ? 'Calculating VE evidence…' : !ready
+      ? `Run blocked · ${blockers.length} ${blockers.length === 1 ? 'issue' : 'issues'}`
+      : state.proposed ? 'VE proposal calculated' : 'Ready · press Run Analysis',
+    title: blockers.map(blocker => blocker.message).join('; '),
+  };
+}
+
+export function focusVeReadinessTarget(root: HTMLElement, selector: string): void {
+  const target = root.querySelector<HTMLElement>(selector);
+  if (!target) return;
+  const details = target.closest<HTMLDetailsElement>('details');
+  if (details) details.open = true;
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  queueMicrotask(() => target.focus({ preventScroll: true }));
 }

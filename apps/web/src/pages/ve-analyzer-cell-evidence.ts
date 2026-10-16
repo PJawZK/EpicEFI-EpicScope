@@ -1,3 +1,5 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { createOwnerEvidence } from '../observability/producers/owner';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
@@ -131,7 +133,9 @@ function metric(label: string, value: string): HTMLElement {
 
 export function installVeAnalyzerCellEvidence(
   inner: VeAnalyzerViewController,
+  observability?: ObservabilityRecorder,
 ): VeAnalyzerViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 've-popup');
   const root = inner.element;
   let context: LoggerAnalysisContext = {
     traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [],
@@ -141,6 +145,7 @@ export function installVeAnalyzerCellEvidence(
   let pendingTune: readonly [import('../../../../core/tune/tune-model').TuneModel | undefined, string | undefined] | undefined;
   const details = new Map<number, { readonly heading: string; readonly content: readonly HTMLElement[]; readonly open: HTMLButtonElement; readonly hasVisit: boolean }>();
   const invalidate = (): void => {
+    ownerEvidence.event('ve.popup.invalidate', { entries: details.size });
     details.clear();
     const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
     const panel = page.querySelector<HTMLElement>('.ve-cell-detail-popover');
@@ -171,6 +176,7 @@ export function installVeAnalyzerCellEvidence(
 
     const index = coords.row * resolved.veTable.cols + coords.col;
     const cached = details.get(index);
+    ownerEvidence.event(cached ? 've.popup.cache-hit' : 've.popup.build', { entries: details.size, cell: index }, { visibility: active ? 'active' : 'hidden', stateRevision: inner.sessionRevision });
     if (cached) {
       cached.open.disabled = !cached.hasVisit || !context.openSamplesInLogger;
       if (heading.textContent !== cached.heading) heading.textContent = cached.heading;
@@ -268,6 +274,8 @@ export function installVeAnalyzerCellEvidence(
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(next) {
       if (!active) { pendingContext = next; return false; }
       context = next;

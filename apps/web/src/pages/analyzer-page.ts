@@ -1,3 +1,7 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
+import type { Origin } from '../observability/record';
+import { decorateCompareHelp } from './analyzer-additional-help';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzerChannelOptionLabel } from './analyzer-channel-roles';
 import { compareNumericCohorts, type NumericCompareResult } from '../../../../core/analysis/numeric-compare';
@@ -52,7 +56,7 @@ function sameChannelCatalog(
   return sameChannelOptionCatalog(left, right);
 }
 
-export function createAnalyzerPage(): AnalyzerPageController {
+export function createAnalyzerPage(observability?: ObservabilityRecorder): AnalyzerPageController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let currentResult: NumericCompareResult | undefined;
   let analysisFilterSets = loadAnalysisFilterSets();
@@ -65,12 +69,12 @@ export function createAnalyzerPage(): AnalyzerPageController {
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
   let comparisonChannels: LoggerAnalysisContext['channels'] = [];
-  const tuneTableView = createTuneTableView();
-  const boostView = createBoostAnalyzerView();
-  const ignitionView = createIgnitionAnalyzerView();
-  const fuelInjectorView = createFuelInjectorAnalyzerView();
-  const veAnalyzerView = createVeAnalyzerView();
-  const specializedView = createSpecializedAnalyzerSuiteView();
+  const tuneTableView = createTuneTableView(observability);
+  const boostView = createBoostAnalyzerView(observability);
+  const ignitionView = createIgnitionAnalyzerView(observability);
+  const fuelInjectorView = createFuelInjectorAnalyzerView(observability);
+  const veAnalyzerView = createVeAnalyzerView(observability);
+  const specializedView = createSpecializedAnalyzerSuiteView(observability);
   const domainViews = [tuneTableView, boostView, ignitionView, fuelInjectorView, veAnalyzerView, specializedView];
   for (const view of domainViews) view.setActive(false);
 
@@ -151,6 +155,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
       </div>
     </section>
   `;
+  decorateCompareHelp(root);
+
   root.append(tuneTableView.element, boostView.element, ignitionView.element, fuelInjectorView.element, veAnalyzerView.element, specializedView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
@@ -199,6 +205,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
+    ownerEvidence.event('analyzer.compare.request', { generation, active, view: currentView });
     if (!active || currentView !== 'compare') return;
     if (traceLoadFailed) {
       traceLoadFailed = false;
@@ -231,7 +238,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     try {
       traces = await context.loadTraces(requestedChannelIds, loadStartMs, loadEndMs);
     } catch (error) {
-      if (!active || generation !== renderGeneration || currentView !== 'compare') return;
+      if (!active || generation !== renderGeneration || currentView !== 'compare') { ownerEvidence.event('analyzer.compare.stale', { generation, currentGeneration: renderGeneration, active }); return; }
       currentResult = undefined;
       refreshButton.disabled = false;
       traceLoadFailed = true;
@@ -241,7 +248,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       emptyHint.textContent = `${detail} Retry with Refresh. If it keeps failing, reload the log or choose another scope.`;
       return;
     }
-    if (!active || generation !== renderGeneration || currentView !== 'compare') return;
+    if (!active || generation !== renderGeneration || currentView !== 'compare') { ownerEvidence.event('analyzer.compare.stale', { generation, currentGeneration: renderGeneration, active }); return; }
     const trace = traces.find((candidate) => candidate.channel.id === channelId);
     if (!trace) { empty.hidden = false; content.hidden = true; return; }
     const channels = new Map(traces.map((candidate) => [candidate.channel.id, { range: candidate.range, complete: candidate.complete }]));
@@ -308,6 +315,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
       { label: 'Maximum', metric: currentResult.metrics.max, unit },
       { label: 'Std dev', metric: currentResult.metrics['standard-deviation'], unit },
     ];
+    ownerEvidence.event('analyzer.compare.rendered', { generation, rows: rows.length });
     tableBody.replaceChildren(...rows.map((row) => {
       const metric = row.metric;
       const tr = document.createElement('tr');
@@ -372,7 +380,9 @@ export function createAnalyzerPage(): AnalyzerPageController {
     fillQualificationSelect(previousQualification);
   };
 
+  const ownerEvidence = createOwnerEvidence(observability, 'analyzer-router');
   const routeActiveView = (renderComparison = true, tuneOnly = false): void => {
+    ownerEvidence.event('analyzer.route', { view: currentView, renderComparison, tuneOnly, active }, { visibility: active ? 'active' : 'hidden' });
     renderGeneration += 1;
     const selected = currentView === 'compare' ? undefined
       : currentView === 'tune-table' ? tuneTableView
@@ -410,7 +420,8 @@ export function createAnalyzerPage(): AnalyzerPageController {
     }
   };
 
-  const setView = (view: AnalyzerView, renderComparison = true): void => {
+  const setView = (view: AnalyzerView, renderComparison = true, origin: Origin = 'programmatic'): void => {
+    if (currentView !== view) observability?.record({ recordKind: 'event', subsystem: 'navigation', component: 'analyzer', name: 'navigation.domain.changed', origin, activeView: view, visibility: active ? 'active' : 'hidden', metadata: { previous: currentView, next: view } });
     if (currentView !== view) for (const domain of domainViews) domain.setActive(false);
     currentView = view;
     const compareActive = view === 'compare';
@@ -456,9 +467,9 @@ export function createAnalyzerPage(): AnalyzerPageController {
   rightSelect.addEventListener('change', () => { void render(); });
   qualificationSelect.addEventListener('change', () => { void render(); });
   refreshButton.addEventListener('click', () => { fillQualificationSelect(qualificationSelect.value); void render(); });
-  viewSelect.addEventListener('change', () => {
+  viewSelect.addEventListener('change', (event) => {
     const view = viewSelect.value;
-    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 've' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view);
+    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 've' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view, true, event.isTrusted ? 'user' : 'programmatic');
   });
 
   return {
@@ -467,6 +478,7 @@ export function createAnalyzerPage(): AnalyzerPageController {
     setActive(next) {
       if (active === next) return;
       active = next;
+      observability?.record({ recordKind: 'event', subsystem: 'navigation', component: 'analyzer', name: 'controller.activity.changed', origin: 'programmatic', activeView: currentView, visibility: next ? 'active' : 'hidden' });
       routeActiveView();
     },
     setContext,

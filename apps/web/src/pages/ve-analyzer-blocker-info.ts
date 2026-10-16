@@ -1,10 +1,22 @@
+import type { VeReadinessBlocker } from './ve-analyzer-readiness';
+
 export interface VeRunBlockerHelp {
   readonly why: string;
   readonly fix: string;
 }
 
-export function describeVeRunBlocker(message: string): VeRunBlockerHelp {
-  const text = message.trim();
+const READINESS_HELP_KEYS: Readonly<Record<string, string>> = {
+  'delay-activate': 'Activate the lambda-delay recommendation', 'delay-create': 'working lambda-delay table',
+  'prior-weight': 'Prior weight', 'min-evidence-weight': 'Minimum evidence weight',
+  'max-percent-change': 'Max VE change %', 'max-absolute-change': 'Max VE change',
+  've-table': 'MSQ VE table', 'rpm-axis': 'VE RPM axis', 'load-axis': 'VE load axis',
+  'target-table': 'target mixture table', 'target-rpm-axis': 'Target RPM axis', 'target-load-axis': 'Target load axis',
+  'mixture-scale': 'Mixture scale', actual: 'Actual mixture', rpm: 'RPM', load: 'VE-table load', 'fuel-correction': 'Fuel correction', 'stable-ms': 'Minimum stable duration', scope: 'Analysis scope',
+};
+
+export function describeVeRunBlocker(message: string | VeReadinessBlocker): VeRunBlockerHelp {
+  // String callers remain compatible; owner-driven UI selects help by stable code.
+  const text = typeof message === 'string' ? message.trim() : READINESS_HELP_KEYS[message.code] ?? '';
   const lower = text.toLowerCase();
 
   if (lower.includes('activate the lambda-delay recommendation')) {
@@ -17,6 +29,18 @@ export function describeVeRunBlocker(message: string): VeRunBlockerHelp {
     return {
       why: 'A working lambda-delay table is required so each AFR/Lambda sample can be shifted back to the correct RPM/load operating point before VE evidence is calculated.',
       fix: 'Open Lambda Delay Table, then either Grab lambda delays from log and use the recommendation, or Load a saved delay table.',
+    };
+  }
+  if (lower === 'minimum stable duration') {
+    return {
+      why: 'The stability window determines how long samples must remain steady after transient or excluded engine states before they can contribute VE evidence.',
+      fix: 'Open Advanced inputs and enter Stable / recovery ms as a number of 0 or greater.',
+    };
+  }
+  if (lower === 'analysis scope') {
+    return {
+      why: 'VE evidence requires an available log scope. A missing A/B selection or saved range cannot supply analysis samples.',
+      fix: 'Choose Full log, define the A/B selection, or choose an available saved range.',
     };
   }
   if (lower.startsWith('prior weight')) {

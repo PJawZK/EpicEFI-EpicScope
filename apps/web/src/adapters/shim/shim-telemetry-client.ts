@@ -250,7 +250,8 @@ export class ShimTelemetryClient {
     });
     socket.addEventListener('message', (event) => {
       if (this.socket !== socket) return;
-      void this.handleMessage(event.data).catch((error) => {
+      void this.handleMessage(event.data, socket).catch((error) => {
+        if (this.socket !== socket) return;
         this.emit({ type: 'protocolError', error: asProtocolError(error) });
         this.setState('error');
       });
@@ -310,12 +311,15 @@ export class ShimTelemetryClient {
     this.socket.send(JSON.stringify(message));
   }
 
-  private async handleMessage(data: unknown): Promise<void> {
+  private async handleMessage(data: unknown, socket: ShimSocketLike): Promise<void> {
     if (typeof data === 'string') {
       this.handleControl(parseShimControlMessage(data));
       return;
     }
     const bytes = await binaryBytes(data);
+    // Transport identity is independent of protocol generation/stream IDs, which
+    // a replacement connection can reuse while an old Blob conversion settles.
+    if (this.socket !== socket) return;
     this.handleTelemetry(bytes);
   }
 

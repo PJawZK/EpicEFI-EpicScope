@@ -1,3 +1,9 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { createOwnerEvidence } from '../observability/producers/owner';
+import { installBoostTableEnhancements, updateAnalyzerTablePresentation } from './analyzer-table-presentation';
+import { decorateAnalyzerControls, decorateAnalyzerSummary, decorateAnalyzerTables } from './analyzer-presentation';
+import { decorateSpecializedHelp } from './analyzer-additional-help';
+import { ensureAnalyzerSectionHelp } from './analyzer-section-help';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { analyzeFuelInjectorHeadroomContext, type FuelInjectorEventContext } from '../../../../core/analysis/fuel-injector-headroom';
 import { analyzeFuelPressureArchitecture, type FuelPressureArchitecture, type FuelPressureEvidenceQuality } from '../../../../core/analysis/fuel-pressure-architecture';
@@ -89,7 +95,8 @@ function pressureQualityMessages(
   return messages;
 }
 
-export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewController {
+export function createFuelInjectorAnalyzerView(observability?: ObservabilityRecorder): FuelInjectorAnalyzerViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 'fuel-injector-analyzer-view');
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
 
   let active = true;
@@ -208,6 +215,8 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       div.append(caption, strong);
       return div;
     }));
+    decorateSpecializedHelp(root, 'summary');
+    decorateAnalyzerSummary(root);
   };
 
   const renderEvents = (
@@ -288,6 +297,7 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
   const analyze = async (): Promise<void> => {
     if (!active || applyingPending) return;
     const run = ++generation;
+    ownerEvidence.event('domain.analysis.request', { generation: run, active }, { visibility: active ? 'active' : 'hidden' });
     if (traceLoadFailed) {
       traceLoadFailed = false;
       emptyTitle.textContent = defaultEmptyTitle;
@@ -310,10 +320,12 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     if (!scope) return;
     const bounds = analyzerScopeBounds(scope);
     let loaded: Awaited<ReturnType<LoggerAnalysisContext['loadTraces']>>;
+    ownerEvidence.event('domain.read.started', { generation: run, active }, { origin: 'async' });
     try {
       loaded = await context.loadTraces([...selected.values()], bounds.startMs, bounds.endMs);
     } catch (error) {
-      if (!active || run !== generation) return;
+      ownerEvidence.event('domain.failure', { generation: run, currentGeneration: generation });
+      if (!active || run !== generation) { ownerEvidence.event('domain.read.stale', { generation: run, currentGeneration: generation, active }); return; }
       traceLoadFailed = true;
       empty.hidden = false; content.hidden = true;
       emptyTitle.textContent = 'Fuel / Injector analysis could not load log channels.';
@@ -321,7 +333,8 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       emptyHint.textContent = `${detail} Retry with Analyze. If it keeps failing, reload the log or choose another scope.`;
       return;
     }
-    if (!active || run !== generation) return;
+    if (!active || run !== generation) { ownerEvidence.event('domain.read.stale', { generation: run, currentGeneration: generation, active }); return; }
+    ownerEvidence.event('domain.read.accepted', { generation: run });
     const byId = new Map(loaded.map((trace) => [trace.channel.id, trace]));
     const traces = new Map<RoleKey, LoggerAnalysisTraceContext>();
     for (const [key, id] of selected) {
@@ -441,11 +454,14 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
       pw: channelUnit(pw),
       deadtime: channelUnit(deadtime),
     }, architecture);
+    updateAnalyzerTablePresentation(root);
+    decorateAnalyzerTables(root);
     empty.hidden = true;
     content.hidden = false;
   };
 
   const rebuild = (): void => {
+    ownerEvidence.event('domain.rebuild', { generation: generation, channels: context.channels.length }, { visibility: active ? 'active' : 'hidden' });
     controls.replaceChildren();
     const architectureLabel = document.createElement('label');
     const architectureCaption = document.createElement('span');
@@ -514,11 +530,19 @@ export function createFuelInjectorAnalyzerView(): FuelInjectorAnalyzerViewContro
     controls.append(button);
     updateModeUi();
     void analyze();
+    decorateSpecializedHelp(root, 'controls');
+    ensureAnalyzerSectionHelp(root);
   };
 
   for (const input of [minimumRunningRpm, conventionalMinimum, gdiMinimum, highDuty]) input.addEventListener('change', () => { void analyze(); });
 
+  installBoostTableEnhancements(root);
+  decorateAnalyzerControls(root);
+  decorateAnalyzerSummary(root);
+  decorateAnalyzerTables(root);
+
   const setActive = (next: boolean): void => {
+    ownerEvidence.event(active === next ? 'domain.activity.noop' : 'domain.activity.changed', { active: next, generation: generation });
     if (active === next) return;
     active = next;
     if (!active) { generation += 1; return; }

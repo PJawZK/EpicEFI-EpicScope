@@ -154,15 +154,15 @@ function specializedTitle(view: HTMLElement): string {
   return view.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent?.split('·')[0]?.trim() ?? '';
 }
 
-function decorateSpecialized(view: HTMLElement): void {
+export function decorateSpecializedHelp(view: HTMLElement, part: 'controls' | 'summary'): void {
   const title = specializedTitle(view);
   const controls = DOMAIN_CONTROL_HELP[title];
   const summaries = DOMAIN_SUMMARY_HELP[title];
-  if (controls) {
+  if (controls && part === 'controls') {
     const entries = [...COMMON_CONTROL_HELP, ...controls];
     for (const span of view.querySelectorAll<HTMLElement>('.specialized-analyzer-controls label > span, .specialized-analyzer-options-grid label > span')) addMatchingHelp(span, entries);
   }
-  if (summaries) {
+  if (summaries && part === 'summary') {
     for (const card of view.querySelectorAll<HTMLElement>('.specialized-analyzer-summary > div')) {
       const label = card.querySelector<HTMLElement>(':scope > span');
       if (!label) continue;
@@ -170,6 +170,7 @@ function decorateSpecialized(view: HTMLElement): void {
       if (help) addInlineHelpButton(card, help, showInlineHelpPopover);
     }
   }
+  if (part !== 'controls') return;
   const optionsSummary = view.querySelector<HTMLElement>('.specialized-analyzer-options > summary');
   if (optionsSummary) addMatchingHelp(optionsSummary, [[/^Analysis thresholds$/i, SECTION_HELP['Analysis thresholds']!]]);
   const mapTitle = view.querySelector<HTMLElement>('[data-specialized="map-title"]');
@@ -186,7 +187,7 @@ function decorateSpecialized(view: HTMLElement): void {
   if (evidenceTitle) addInlineHelpButton(evidenceTitle, SECTION_HELP['Event evidence']!, showInlineHelpPopover);
 }
 
-function decorateCompare(root: HTMLElement): void {
+export function decorateCompareHelp(root: HTMLElement): void {
   for (const span of root.querySelectorAll<HTMLElement>('.analyzer-controls label > span')) addMatchingHelp(span, COMPARE_CONTROL_HELP);
   for (const evidence of root.querySelectorAll<HTMLElement>('.analyzer-evidence > div')) {
     const label = evidence.querySelector<HTMLElement>(':scope > span');
@@ -196,7 +197,7 @@ function decorateCompare(root: HTMLElement): void {
   }
 }
 
-function decorateTune(root: HTMLElement): void {
+export function decorateTuneHelp(root: HTMLElement): void {
   for (const span of root.querySelectorAll<HTMLElement>('.tune-table-controls label > span')) addMatchingHelp(span, TUNE_CONTROL_HELP);
   for (const item of root.querySelectorAll<HTMLElement>('.tune-table-summary > div')) {
     const label = item.querySelector<HTMLElement>(':scope > span');
@@ -204,10 +205,4 @@ function decorateTune(root: HTMLElement): void {
     const help = TUNE_SUMMARY_HELP[ownText(label)];
     if (help) addInlineHelpButton(item, help, showInlineHelpPopover);
   }
-}
-
-export function ensureAdditionalAnalyzerHelp(root: HTMLElement): void {
-  decorateCompare(root);
-  decorateTune(root);
-  for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) decorateSpecialized(view);
 }

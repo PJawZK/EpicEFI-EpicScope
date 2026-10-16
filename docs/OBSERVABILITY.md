@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved architectural direction. Implementation is **not yet started**.
+Approved architectural direction. **Required migration stages implemented locally: foundation and stages 2–9.** Runtime, Perf, canonical Parser reporting and high-value owner state/render/async/persistence evidence are integrated. Explicit owner producers borrow existing revisions/generations and preserve domain behavior; no generic controller wrapper or new observer/listener is installed. Initial bounded anomaly rules and batched IndexedDB previous-session recovery are integrated; unified captured Diagnostics/export is installed; parity-gated report/contract cleanup is complete locally. Optional baseline intelligence is not started. Original-recording/target-hardware acceptance remains pending; see HANDOFF.md.
 
 This document defines the target replacement for the currently fragmented runtime diagnostics, performance diagnostics, parser/source-integrity reporting and bug-report assembly paths.
 
@@ -811,6 +811,8 @@ Exit: the stream can explain repeated/no-op work, stale completions, hidden work
 
 ### Step 6 — anomaly detector
 
+Local checkpoint: implemented the existing seven health rules plus initial repetition, explicit same-state work, rejected stale completion, report-time unfinished operation and known session-only persistence classes. See the stage 6 section in `apps/web/src/observability/README.md` for thresholds, bounds, evidence interpretation and deferred families. The legacy health formatter/status retains its policy and wording; historical anomalies are an additive report lens, not current-health counts. No automatic repair or new hooks/timers are installed.
+
 Port current health rules first, then add generic rule families incrementally.
 
 Anomalies themselves are records with evidence references/operation IDs, not opaque strings.
@@ -822,6 +824,8 @@ Anomaly detection must not automatically mutate application state.
 Exit: current bug-report health coverage is preserved and at least repetition/no-op/unfinished/stale/persistence-divergence classes have regression tests.
 
 ### Step 7 — bounded persistence and previous-session black box
+
+Local checkpoint: implemented a version-1 IndexedDB adapter, shell-owned 30-second/lifecycle batches, compact summary-only idle heartbeats, bounded tail/error-context selection and separate previous-session reporting. Current plus up to three previous sessions are retained, with a 5000-record/1-MiB per-session cap, 5-MiB total UTF-8 payload ceiling and seven-day age limit. Missing end is unconfirmed, never crash causality. Unsupported/corrupt schemas fail closed without replacement. Existing listeners are reused; the writer owns one disposed interval. See the observability README/HANDOFF for exact contracts and validation limits.
 
 Add:
 
@@ -838,6 +842,8 @@ Add:
 Exit: forced reload/crash-like termination can be followed by a useful previous-session diagnostic view without unbounded storage growth or one-write-per-event behavior.
 
 ### Step 8 — unified Diagnostics UI and reports
+
+Local checkpoint: one shell-owned captured Diagnostics surface now exposes Health, Timeline, Operations, Anomalies, Performance, Parser, Resources, Errors, Previous session and Export report. Filters/lens switches reuse the captured stream; only explicit Refresh/open captures new evidence. Timeline/operation DOM is paged at 200 rows, with iterative relationship projection for missing/cyclic/deep histories. Text/copy/ZIP export uses the same full local snapshot regardless of filters; ZIP contains `report.txt` and version-1 `observability.json`, including full canonical current Parser diagnostics and bounded current/previous records. Legacy compact Perf/Parser controls remain compatible pending stage 9 parity-gated cleanup.
 
 Replace separate report ownership with the shared Diagnostics lenses.
 
@@ -857,6 +863,8 @@ Provide:
 Exit: users no longer need separate unrelated report systems to describe one session.
 
 ### Step 9 — delete redundant architecture
+
+Local checkpoint: moved runtime report formatting into `observability/reports/runtime-report.ts`, moved Perf contracts out of the DOM component into `observability/performance-types.ts`, removed the old health facade and Parser formatter re-exports, and centralized explicit capture/health/report assembly in `observability/capture.ts`. The shell supplies actual-owner evidence/context; pure badge/capture health projection shares `health-rules.ts`. The existing badge interval now clears on remount. Earlier stages already removed parallel Runtime/Perf stores. Useful compact Perf/Parser views remain projections of the same authorities, preserving complete frozen UI/report features rather than deleting non-parity presentation. No replacement compatibility shim or second evidence store was added. Original-recording/target-hardware acceptance remains separate.
 
 After browser/test parity is established:
 

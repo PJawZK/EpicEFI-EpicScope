@@ -1,3 +1,9 @@
+import { createOwnerEvidence, rejectOwnerCompletion } from '../observability/producers/owner';
+import type { Origin } from '../observability/record';
+import type { Operation } from '../observability/operation';
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { decorateAnalyzerControls } from './analyzer-presentation';
+import { createVeReadiness, veNumericSettingIssue, type VeReadinessState, type VeReadinessRow } from './ve-analyzer-readiness';
 import { analyzeAfrDelay, type AfrDelayAnalyzerResult } from '../../../../core/analysis/afr-delay-analyzer';
 import { type VeEvidenceMapResult } from '../../../../core/analysis/ve-evidence-map';
 import { buildVeEvidenceMapWithDelayTableAsync } from '../../../../core/analysis/ve-delay-aligned-evidence';
@@ -43,6 +49,8 @@ export interface VeAnalyzerPrimaryAnalysis {
 
 export interface VeAnalyzerViewController {
   readonly element: HTMLElement;
+  getReadiness(): VeReadinessState;
+  onReadinessChange(listener: () => void): () => void;
   setActive(active: boolean): void;
   readonly sessionRevision: number;
   /** Current completed run only; undefined while invalidated or a new run is pending. */
@@ -173,16 +181,22 @@ function downloadText(filename: string, text: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function createVeAnalyzerView(): VeAnalyzerViewController {
+export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let viewActive = true;
   let pendingContext: LoggerAnalysisContext | undefined;
   let pendingTune: readonly [TuneModel | undefined, string | undefined] | undefined;
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
+  const ownerEvidence = createOwnerEvidence(observability, 've');
+  let analysisOperation: Operation | undefined;
   let runGeneration = 0;
   let analysisPending = false;
   let cancelledAnalysis = false;
+  let readinessState = createVeReadiness([], { active: true, pending: false, proposed: false, delayState: 'missing' });
+  const readinessListeners = new Set<() => void>();
+  let readinessRowsKey = '';
+
   let delayGeneration = 0;
   let delayLoadGeneration = 0;
   let sessionRevision = 0;
@@ -191,6 +205,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   const publishPrimaryAnalysis = (next: VeAnalyzerPrimaryAnalysis | undefined): void => {
     if (primaryAnalysis === next) return;
     primaryAnalysis = next;
+    ownerEvidence.event('ve.primary.dispatch', { listeners: primaryAnalysisListeners.size, available: Boolean(next) }, { stateRevision: sessionRevision });
     for (const listener of primaryAnalysisListeners) listener();
   };
   let result: VeEvidenceMapResult | undefined;
@@ -210,7 +225,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       <section class="ve-workbench-panel"><header><div><strong>Target mixture table</strong><span>Exact MSQ target table and its own axes; AFR/Lambda are not relabeled or silently converted.</span></div><select data-role="target-table"></select></header><div class="ve-workbench-table-wrap" data-ve-analyzer="target-table-view"></div></section>
     </div>
     <div class="ve-workbench-actionbar">
-      <button type="button" class="ve-workbench-run">Run Analysis</button>
+      <button type="button" class="ve-workbench-run" disabled>Run Analysis</button>
       <button type="button" data-ve-analyzer="cancel-analysis" hidden>Cancel analysis</button>
       <label><span>Mixture scale</span><select data-role="mixture-scale"><option value="afr">AFR</option><option value="lambda">Lambda</option></select></label>
       <label><span>Scope</span><select data-role="scope"></select></label>
@@ -361,13 +376,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     for (let col = 0; col < entry.cols; col += 1) { const th = document.createElement('th'); th.textContent = x?.[col] !== undefined ? formatValue(x[col]!, 0) : String(col + 1); head.append(th); }
     thead.append(head);
     const tbody = document.createElement('tbody');
-    for (let row = 0; row < entry.rows; row += 1) {
+    for (let row = entry.rows - 1; row >= 0; row -= 1) {
       const tr = document.createElement('tr'); const rowHead = document.createElement('th'); rowHead.textContent = y?.[row] !== undefined ? formatValue(y[row]!, 0) : String(row + 1); tr.append(rowHead);
       for (let col = 0; col < entry.cols; col += 1) {
         const td = document.createElement('td'); const index = row * entry.cols + col; const current = entry.numericValues[index];
         if (current !== undefined && Number.isFinite(current)) {
           const proposalCell = proposed?.cells[index]; const main = document.createElement('span');
-          main.textContent = proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined ? `${formatValue(current, entry.digits)} → ${formatValue(proposalCell.proposedValue, entry.digits)}` : formatValue(current, entry.digits);
+          main.textContent = proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined ? formatValue(proposalCell.proposedValue, entry.digits) : formatValue(current, entry.digits);
           td.append(main); td.style.setProperty('--ve-cell-level', scale.min === scale.max ? '0.5' : String(Math.max(0, Math.min(1, (current - scale.min) / (scale.max - scale.min)))));
           const evidenceCell = evidence?.cells[index];
           if (proposalCell && proposalCell.state !== 'no-evidence') {
@@ -379,10 +394,18 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
                 : `Recommendation withheld by configured change limits. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}). ${evidenceText}`;
           } else if (evidenceCell && evidenceCell.totalWeight > 0) td.title = evidenceDetail(evidenceCell);
         } else td.textContent = '—';
+        if (td.title) {
+          td.tabIndex = 0;
+          td.setAttribute('role', 'button');
+          td.setAttribute('aria-label', td.title);
+          td.dataset.veHasDetail = 'true';
+        }
+        td.dataset.veCellRefined = 'true';
         tr.append(td);
       }
       tbody.append(tr);
     }
+    table.dataset.veLoadOrigin = 'lower-left';
     table.append(thead, tbody); host.replaceChildren(table);
   };
 
@@ -424,7 +447,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     for (const rpm of tableModel.rpmBins) { const th = document.createElement('th'); th.textContent = formatValue(rpm, 0); header.append(th); }
     thead.append(header);
     const tbody = document.createElement('tbody');
-    for (let row = 0; row < tableModel.rows; row += 1) {
+    for (let row = tableModel.rows - 1; row >= 0; row -= 1) {
       const tr = document.createElement('tr'); const rowHead = document.createElement('th'); rowHead.textContent = formatValue(tableModel.loadBins[row]!, 0); tr.append(rowHead);
       for (let col = 0; col < tableModel.cols; col += 1) {
         const cell = tableModel.cells[row * tableModel.cols + col]!; const td = document.createElement('td');
@@ -437,15 +460,24 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         td.textContent = shown === undefined ? '—' : String(Math.round(shown));
         td.title = `${cell.state} delay cell · ${cell.eventCount} events${cell.recommendedMs !== undefined ? ` · raw recommendation ${Math.round(cell.recommendedMs)} ms` : ''}${cell.workingMs !== undefined ? ` · editable value ${Math.round(cell.workingMs)} ms` : ' · editable value none'}${cell.workingProvenance ? ` · provenance ${cell.workingProvenance}` : ''}${cell.p10Ms !== undefined ? ` · P10 ${Math.round(cell.p10Ms)} ms` : ''}${cell.p90Ms !== undefined ? ` · P90 ${Math.round(cell.p90Ms)} ms` : ''} · confidence ${cell.confidence}`;
         td.onclick = () => { selectedDelayCell = { row, col }; renderSelectedDelayCell(); };
+        if (td.title) {
+          td.tabIndex = 0;
+          td.setAttribute('role', 'button');
+          td.setAttribute('aria-label', td.title);
+          td.dataset.veHasDetail = 'true';
+        }
+        td.dataset.veCellRefined = 'true';
         tr.append(td);
       }
       tbody.append(tr);
     }
+    table.dataset.veLoadOrigin = 'lower-left';
     table.append(thead, tbody); delayHost.replaceChildren(table);
     renderSelectedDelayCell();
   };
 
   const renderTuneTables = (): void => {
+    ownerEvidence.event('ve.tables.render', { generation: runGeneration, proposed: Boolean(proposal) }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
     const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
     renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal);
     renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
@@ -464,7 +496,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     summary.replaceChildren(...items.map(([label, value]) => { const div = document.createElement('div'); const span = document.createElement('span'); span.textContent = label; const strong = document.createElement('strong'); strong.textContent = value; div.append(span, strong); return div; }));
   };
 
-  const authoritySettingsValid = (): boolean => ['prior-weight', 'min-evidence-weight', 'max-absolute-change', 'max-percent-change', 'stable-ms'].every((role) => nonNegativeSetting(role) !== undefined);
   const delaySettingsValid = (): boolean => positiveSetting('delay-command-threshold') !== undefined && positiveSetting('delay-response-threshold') !== undefined && positiveSetting('delay-search-window') !== undefined && nonNegativeSetting('delay-event-spacing') !== undefined && positiveSetting('delay-min-events') !== undefined;
 
   const renderDelayDiscovery = (): void => {
@@ -488,12 +519,14 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   const invalidate = (): void => {
+    analysisOperation?.finish('superseded', 'semantic-input-change');
     analysisPending = false; cancelledAnalysis = false;
     publishPrimaryAnalysis(undefined);
     sessionRevision += 1;
     delayGeneration += 1;
     delayLoadGeneration += 1;
     runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren(); renderTuneTables();
+    ownerEvidence.event('ve.invalidate', { generation: runGeneration, scope: select('scope')?.value ?? 'none' }, { stateRevision: sessionRevision });
     stageText.textContent = 'Setup changed. Run Analysis to rebuild the delay-table-aligned evidence and guarded VE proposal; no tune state is modified.';
     renderReadiness();
   };
@@ -515,31 +548,74 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery();
   };
 
+  const publishReadiness = (next: VeReadinessState): void => {
+    readiness.textContent = next.text; readiness.title = next.title;
+    advancedReadiness.textContent = next.text;
+    runButton.disabled = !next.canRun; cancelButton.hidden = !next.pending;
+    if (JSON.stringify(next) === JSON.stringify(readinessState)) return;
+    readinessState = next;
+    for (const listener of readinessListeners) listener();
+  };
+
   const renderReadiness = (loaded?: ReadonlyMap<string, NumericChannelRange>): boolean => {
-    let ready = true; const rows: HTMLTableRowElement[] = [];
-    const add = (name: string, purpose: string, requirement: string, source: string, status: string, ok: boolean) => {
-      const tr = document.createElement('tr'); for (const text of [name, purpose, requirement, source, status]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); } rows.push(tr); if (!ok && requirement === 'Required') ready = false;
+    const rows: VeReadinessRow[] = [];
+    const add = (id: string, name: string, purpose: string, required: boolean, source: string, status: string, valid: boolean, targetSelector?: string, blockerMessage?: string) => {
+      rows.push({ id, name, purpose, required, source, status, valid, ...(targetSelector ? { targetSelector } : {}), ...(blockerMessage ? { blockerMessage } : {}) });
     };
     for (const [role, label] of [['ve-table', 'MSQ VE table'], ['rpm-axis', 'VE RPM axis'], ['load-axis', 'VE load axis'], ['target-table', 'MSQ target mixture table'], ['target-rpm-axis', 'Target RPM axis'], ['target-load-axis', 'Target load axis']] as const) {
-      const control = select(role); add(label, 'Tune geometry', 'Required', selectedText(control), control?.value ? 'Resolved' : 'Missing', Boolean(control?.value));
+      const control = select(role);
+      const values = role === 've-table' || role === 'target-table' ? tableEntry(tuneModel, control?.value ?? '')?.numericValues : axisValues(tuneModel, control?.value ?? '');
+      const valid = Boolean(values?.length);
+      add(role, label, 'Tune geometry', true, selectedText(control), valid ? 'Resolved' : 'Missing', valid, `[data-role="${role}"]`);
     }
-    const mix = mixtureAssessment(); add('Mixture scale', 'Target / actual compatibility', 'Required', displayScale(selectedScale()), mix.valid ? `Resolved · target ${displayScale(mix.targetScale)}` : 'Mismatch / verify', mix.valid);
+    const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined;
+    add('scope', 'Analysis scope', 'Log selection', true, selectedText(select('scope')), scope ? 'Resolved' : 'Missing', Boolean(scope), '[data-role="scope"]');
+    const mix = mixtureAssessment();
+    add('mixture-scale', 'Mixture scale', 'Target / actual compatibility', true, displayScale(selectedScale()), mix.valid ? `Resolved · target ${displayScale(mix.targetScale)}` : 'Mismatch / verify', mix.valid, '[data-role="mixture-scale"]');
     const delayCounts = delayTableCounts(workingDelayTable);
-    add('Lambda delay table', 'Timestamp alignment', 'Required', workingDelayTable ? `${workingDelayTable.origin}${workingDelayTable.originLabel ? ` · ${workingDelayTable.originLabel}` : ''}` : '—', workingDelayTable ? `${delayCounts.measured} measured · ${delayCounts.interpolated} interpolated · ${delayCounts.insufficient} insufficient · ${delayCounts.userEdited} user edited` : 'Discover/use recommendation or load a saved working table', Boolean(workingDelayTable));
-    add('Proposal settings', 'Prior / authority', 'Required', `prior ${nonNegativeSetting('prior-weight') ?? '—'} · min evidence ${nonNegativeSetting('min-evidence-weight') ?? '—'}`, authoritySettingsValid() ? 'Resolved' : 'Enter non-negative numeric values', authoritySettingsValid());
-
+    const recommendationCounts = delayTableCounts(delayRecommendation);
+    const recommendationReady = Boolean(delayRecommendation) && recommendationCounts.measured + recommendationCounts.interpolated > 0;
+    const delayState = workingDelayTable ? 'working' : recommendationReady ? 'recommendation' : 'missing';
+    add(recommendationReady && !workingDelayTable ? 'delay-activate' : 'delay-create', 'Lambda delay table', 'Timestamp alignment', true,
+      workingDelayTable ? `${workingDelayTable.origin}${workingDelayTable.originLabel ? ` · ${workingDelayTable.originLabel}` : ''}` : '—',
+      workingDelayTable ? `${delayCounts.measured} measured · ${delayCounts.interpolated} interpolated · ${delayCounts.insufficient} insufficient · ${delayCounts.userEdited} user edited` : 'Discover/use recommendation or load a saved working table', Boolean(workingDelayTable),
+      recommendationReady ? '[data-ve-analyzer="use-delay"]' : '[data-ve-analyzer="grab-delay"]',
+      recommendationReady ? 'Activate the lambda-delay recommendation with Use recommendation.' : 'Create or load a working lambda-delay table.');
+    for (const [role, name, purpose, location] of [
+      ['prior-weight', 'Prior weight', 'Proposal authority', 'Cell Change preset or Advanced → Prior weight'],
+      ['min-evidence-weight', 'Minimum evidence weight', 'Evidence threshold', 'VE controls → Min evidence weight'],
+      ['max-absolute-change', 'Max VE change', 'Absolute safety limit', 'VE controls → Max VE change'],
+      ['max-percent-change', 'Max VE change %', 'Relative safety limit', 'VE controls → Max VE change %'],
+      ['stable-ms', 'Minimum stable duration', 'Qualification stability', 'Advanced → Minimum stable duration'],
+    ] as const) {
+      const raw = input(role)?.value ?? '';
+      const issue = veNumericSettingIssue(name, raw);
+      add(role, name, purpose, true, raw.trim() || '—', issue ? `${issue} · ${location}` : `Resolved · ${location}`, !issue, `[data-role="${role}"]`);
+    }
     const correctionChannel = selectedChannel('stft');
     const correction = currentFuelCorrection();
     const correctionLoaded = correctionChannel && loaded ? loaded.has(correctionChannel.id) : undefined;
-    const correctionOk = !correction.applicable || (Boolean(correctionChannel) && correctionLoaded !== false);
-    add('Fuel correction compensation', 'Base-VE attribution', correction.applicable ? 'Required' : 'Optional', correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : '—', correction.applicable ? correctionLoaded === false ? 'Required source unavailable in scope' : `${correction.interpretation} · ${correction.reason}` : `Context only · ${correction.reason}`, correctionOk);
-
+    add('fuel-correction', 'Fuel correction compensation', 'Base-VE attribution', correction.applicable, correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : '—', correction.applicable ? correctionLoaded === false ? 'Required source unavailable in scope' : `${correction.interpretation} · ${correction.reason}` : `Context only · ${correction.reason}`, !correction.applicable || (Boolean(correctionChannel) && correctionLoaded !== false), '[data-role="stft"]');
     for (const role of ROLES) {
-      const control = roleSelect(role.key); const id = control?.value ?? ''; const channel = id ? context.channels.find((candidate) => candidate.id === id) : undefined; const loadState = loaded && id ? loaded.has(id) : undefined; const ok = Boolean(channel) && loadState !== false;
-      add(role.label, role.purpose, role.required ? 'Required' : 'Optional', channel ? analyzerChannelOptionLabel(channel) : '—', channel ? loadState === false ? 'Unavailable in scope' : loadState === true ? 'Resolved · loaded' : 'Resolved' : role.required ? 'Missing' : 'Unavailable optional', ok);
+      const id = roleSelect(role.key)?.value ?? '';
+      const channel = id ? context.channels.find(candidate => candidate.id === id) : undefined;
+      const loadState = loaded && id ? loaded.has(id) : undefined;
+      add(role.key, role.label, role.purpose, role.required, channel ? analyzerChannelOptionLabel(channel) : '—', channel ? loadState === false ? 'Unavailable in scope' : loadState === true ? 'Resolved · loaded' : 'Resolved' : role.required ? 'Missing' : 'Unavailable optional', Boolean(channel) && loadState !== false, `[data-role="${role.key}"]`);
     }
-    readinessBody.replaceChildren(...rows);
-    const text = analysisPending ? 'Calculating VE evidence…' : ready ? proposal ? 'VE proposal calculated' : 'Ready · press Run Analysis' : 'Missing / incompatible required inputs'; readiness.textContent = text; advancedReadiness.textContent = text; runButton.disabled = !ready || analysisPending; cancelButton.hidden = !analysisPending; renderDelayDiscovery(); return ready;
+    const rowsKey = JSON.stringify(rows);
+    if (rowsKey !== readinessRowsKey) {
+      readinessRowsKey = rowsKey;
+      readinessBody.replaceChildren(...rows.map(row => {
+        const tr = document.createElement('tr'); tr.dataset.veReadiness = row.id;
+        for (const text of [row.name, row.purpose, row.required ? 'Required' : 'Optional', row.source, row.status]) {
+          const td = document.createElement('td'); td.textContent = text; tr.append(td);
+        }
+        return tr;
+      }));
+    }
+    renderDelayDiscovery();
+    publishReadiness(createVeReadiness(rows, { active: viewActive, pending: analysisPending, proposed: Boolean(proposal), delayState }));
+    return readinessState.ready;
   };
 
   const fillAxis = (role: 'rpm-axis' | 'load-axis' | 'target-rpm-axis' | 'target-load-axis', tableRole: 've-table' | 'target-table', kind: 'rpm' | 'load') => {
@@ -571,29 +647,31 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined; if (!scope) return;
     const rpmId = roleSelect('rpm')?.value; const loadId = roleSelect('load')?.value; const ids = [...new Set([actualId, fuelId, rpmId, loadId].filter((id): id is string => Boolean(id)))];
     const veRpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const veLoad = axisValues(tuneModel, select('load-axis')?.value ?? ''); if (!veRpm || !veLoad) return;
-    const bounds = analyzerScopeBounds(scope); const generation = ++delayGeneration; delayResultTitle.textContent = 'Analyzing current-log delay evidence…'; delayResultText.textContent = 'Searching isolated fuel-command transitions and building a recommendation without replacing the working table.';
+    const bounds = analyzerScopeBounds(scope); const generation = ++delayGeneration; ownerEvidence.event('ve.delay-discovery.started', { generation }); delayResultTitle.textContent = 'Analyzing current-log delay evidence…'; delayResultText.textContent = 'Searching isolated fuel-command transitions and building a recommendation without replacing the working table.';
     let loaded: readonly import('./logger-page').LoggerAnalysisTraceContext[];
     try {
       loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
     } catch (error) {
       if (generation === delayGeneration) {
+        ownerEvidence.event('ve.delay-discovery.failed', { generation });
         delayResultTitle.textContent = 'Could not discover lambda delays';
         delayResultText.textContent = error instanceof Error ? error.message : String(error);
       }
       return;
     }
-    if (generation !== delayGeneration) return;
+    if (generation !== delayGeneration) { ownerEvidence.event('ve.delay-discovery.stale', { generation, currentGeneration: delayGeneration }); return; }
     const ranges = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); const actual = ranges.get(actualId); const fuel = ranges.get(fuelId); if (!actual || !fuel) { delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery(); return; }
     delayDiscovery = analyzeAfrDelay({ actualAfr: actual, fuelCommand: fuel, ...(rpmId && ranges.get(rpmId) ? { rpm: ranges.get(rpmId)! } : {}), ...(loadId && ranges.get(loadId) ? { load: ranges.get(loadId)! } : {}) }, {
       commandDeltaThreshold: positiveSetting('delay-command-threshold')!, afrResponseThreshold: positiveSetting('delay-response-threshold')!, searchWindowMs: positiveSetting('delay-search-window')!, minimumEventSpacingMs: nonNegativeSetting('delay-event-spacing')!, responsePolarity: 'inverse',
     });
-    if (generation !== delayGeneration) return;
+    if (generation !== delayGeneration) { ownerEvidence.event('ve.delay-discovery.stale', { generation, currentGeneration: delayGeneration }); return; }
     delayRecommendation = buildVeDelayTable(delayDiscovery.events, veRpm, veLoad, { minimumMeasuredEvents: Math.max(1, Math.floor(positiveSetting('delay-min-events')!)), originLabel: 'current log' });
     selectedDelayCell = undefined;
+    ownerEvidence.event('ve.delay-discovery.published', { generation });
     renderDelayDiscovery(); renderReadiness();
   }
 
-  async function runAnalysis(): Promise<void> {
+  async function runAnalysis(origin: Origin = 'programmatic'): Promise<void> {
     if (!viewActive || analysisPending) return;
     if (!renderReadiness() || !workingDelayTable) return; const run = ++runGeneration; result = undefined; proposal = undefined;
     publishPrimaryAnalysis(undefined);
@@ -602,6 +680,9 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     if (!scope || !ve?.numericValues || !target?.numericValues || !veRpm || !veLoad || !targetRpm || !targetLoad) return;
     const ids = [...new Set(ROLES.map((role) => roleSelect(role.key)?.value).filter((id): id is string => Boolean(id)))]; const bounds = analyzerScopeBounds(scope);
     const delayTable = workingDelayTable;
+    const operation = ownerEvidence.begin('ve.analysis', { generation: run, sessionRevision, channels: ids.length, scope: scope.kind }, origin);
+    analysisOperation = operation;
+    let accepted = false;
     analysisPending = true;
     renderReadiness(); renderTuneTables(); summary.replaceChildren();
     stageText.textContent = 'Loading analysis channels…';
@@ -610,7 +691,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     let lastProgressAt = Number.NEGATIVE_INFINITY;
     try {
       const loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
-      if (run !== runGeneration || !viewActive) return;
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
       const rangeMap = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); resolvedRanges = rangeMap; if (!renderReadiness(rangeMap)) { stageText.textContent = 'Required analysis channels are unavailable in the selected scope.'; return; }
       const rpm = rangeMap.get(roleSelect('rpm')!.value); const load = rangeMap.get(roleSelect('load')!.value); const actual = rangeMap.get(roleSelect('actual')!.value); if (!rpm || !load || !actual) return;
       const filtered = stateFilteredIndices(rpm, rangeMap); const minimumRpm = readNumber('min-rpm'); const maximumRpm = readNumber('max-rpm'); const minimumLoad = readNumber('min-load'); const maximumLoad = readNumber('max-load');
@@ -634,9 +715,10 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
           }
         },
       });
-      if (run !== runGeneration || !viewActive) return;
-      const nextProposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, nextResult, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')! }); if (run !== runGeneration || !viewActive) return;
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
+      const nextProposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, nextResult, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')! }); if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
       result = nextResult; proposal = nextProposal;
+      accepted = true;
       publishPrimaryAnalysis({
         evidence: result, proposal, veTable: ve, rpmBins: veRpm, loadBins: veLoad,
         actualRange: actual, qualificationLabel: selectedText(select('preset')), stateExcludedCount: filtered.excluded,
@@ -653,9 +735,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       stageText.textContent = correctionAssessment.applicable ? 'Guarded VE proposal calculated with per-operating-point delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged.' : 'Guarded VE proposal calculated with per-operating-point delay alignment. Original MSQ values remain unchanged.';
       empty.hidden = true; content.hidden = false;
     } catch (error) {
-      if (run !== runGeneration || !viewActive) return;
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
+      operation?.finish('failure', 'analysis-failed');
       stageText.textContent = error instanceof Error ? error.message : String(error);
     } finally {
+      if (operation?.outcome === undefined) operation?.finish(accepted ? 'success' : 'failure', accepted ? 'published' : 'unavailable-or-failed');
+      if (analysisOperation === operation) analysisOperation = undefined;
       if (run === runGeneration && viewActive) {
         analysisPending = false;
         renderReadiness(resolvedRanges);
@@ -668,12 +753,14 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   };
 
   const rebuild = (): void => {
+    analysisOperation?.finish('superseded', 'source-or-tune-change');
     analysisPending = false; cancelledAnalysis = false;
     publishPrimaryAnalysis(undefined);
     sessionRevision += 1;
     runGeneration += 1;
     delayGeneration += 1;
     delayLoadGeneration += 1;
+    ownerEvidence.event('ve.rebuild', { generation: runGeneration }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
     summary.replaceChildren();
     stageText.textContent = 'Session inputs changed. Verify setup and Run Analysis; no tune state is modified.';
     controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined; selectedDelayCell = undefined;
@@ -692,7 +779,21 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     fillRole(select('actual')!, ROLES.find((role) => role.key === 'actual')!); fillRole(select('stft')!, ROLES.find((role) => role.key === 'stft')!); for (const role of ROLES.filter((item) => item.key !== 'actual' && item.key !== 'stft')) fillRole(addAdvanced(role), role);
     // Presentation layers move controls; semantic ownership must not depend on their container.
     for (const role of ['min-rpm', 'max-rpm', 'min-load', 'max-load', 'stable-ms', 'prior-weight', 'min-evidence-weight', 'max-absolute-change', 'max-percent-change'] as const) {
-      const field = input(role); if (field) field.onchange = invalidate;
+      const field = input(role);
+      if (field) {
+        let committedInput: string | undefined;
+        field.oninput = () => {
+          if (committedInput === field.value) return;
+          committedInput = field.value; invalidate();
+        };
+        field.onchange = () => {
+          // v3 also uses an explicit change as its qualification invalidation
+          // signal. Only suppress the native change following our own input.
+          const handled = committedInput !== undefined && committedInput === field.value;
+          committedInput = undefined;
+          if (!handled) invalidate();
+        };
+      }
     }
     for (const role of ['delay-command-threshold', 'delay-search-window', 'delay-event-spacing', 'delay-min-events'] as const) { const field = input(role); if (field) field.onchange = () => { clearDelayRecommendation(); renderReadiness(); }; }
     const responseField = input('delay-response-threshold'); if (responseField) responseField.onchange = () => { responseField.dataset.auto = 'false'; clearDelayRecommendation(); renderReadiness(); };
@@ -704,16 +805,18 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       if (!viewActive) return;
       const file = loadDelayFile.files?.[0]; if (!file) return;
       const generation = ++delayLoadGeneration;
+      ownerEvidence.event('ve.delay-file.started', { generation });
       void file.text().then((text) => {
-        if (generation !== delayLoadGeneration) return;
+        if (generation !== delayLoadGeneration) { ownerEvidence.event('ve.delay-file.stale', { generation, currentGeneration: delayLoadGeneration }); return; }
         try {
           workingDelayTable = parseVeDelayTableFile(text, file.name); selectedDelayCell = undefined; invalidate();
+          ownerEvidence.event('ve.delay-file.published', { generation });
           delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Current-log discovery remains separate until Use recommendation is pressed.`;
         } catch (error) {
           delayResultTitle.textContent = 'Could not load delay table'; delayResultText.textContent = error instanceof Error ? error.message : String(error);
         }
       }).catch((error: unknown) => {
-        if (generation !== delayLoadGeneration) return;
+        if (generation !== delayLoadGeneration) { ownerEvidence.event('ve.delay-file.stale', { generation, currentGeneration: delayLoadGeneration }); return; }
         delayResultTitle.textContent = 'Could not load delay table';
         delayResultText.textContent = error instanceof Error ? error.message : String(error);
       });
@@ -729,22 +832,30 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       if (selectedDelayCell) editDelayCells([selectedDelayCell], { kind: 'revert' });
     };
     cancelButton.onclick = () => {
+      analysisOperation?.finish('cancelled', 'user-cancel');
       if (!analysisPending) return;
       runGeneration += 1; analysisPending = false; cancelledAnalysis = false;
       stageText.textContent = 'Analysis cancelled. Run Analysis to rebuild current evidence.';
       renderReadiness();
     };
-    runButton.onclick = () => { void runAnalysis(); }; renderTuneTables(); renderReadiness(); content.hidden = false; empty.hidden = false;
+    runButton.onclick = (event) => { void runAnalysis(event.isTrusted ? 'user' : 'programmatic'); }; renderTuneTables(); renderReadiness(); content.hidden = false; empty.hidden = false;
   };
+
+  decorateAnalyzerControls(root);
 
   const controller: VeAnalyzerViewController = {
     element: root,
+    getReadiness() { return readinessState; },
+    onReadinessChange(listener) { readinessListeners.add(listener); return () => { readinessListeners.delete(listener); }; },
     setActive(next) {
-      if (viewActive === next) return;
+      if (viewActive === next) { ownerEvidence.event('ve.activity.noop', { active: next }); return; }
+      ownerEvidence.event('ve.activity.changed', { active: next, generation: runGeneration }, { visibility: next ? 'active' : 'hidden' });
       viewActive = next;
       if (!viewActive) {
+        analysisOperation?.finish('cancelled', 'view-hidden');
         runGeneration += 1; delayGeneration += 1; delayLoadGeneration += 1;
         if (analysisPending) { cancelledAnalysis = true; analysisPending = false; cancelButton.hidden = true; }
+        publishReadiness(createVeReadiness(readinessState.rows, { active: false, pending: false, proposed: Boolean(proposal), delayState: readinessState.delayState }));
         return;
       }
       const tune = pendingTune; pendingTune = undefined;
@@ -755,9 +866,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         cancelledAnalysis = false;
         summary.replaceChildren(); renderTuneTables();
         stageText.textContent = 'Analysis cancelled after leaving VE. Run Analysis to rebuild current evidence.';
-        renderReadiness();
       }
-      renderDelayDiscovery();
+      renderReadiness();
     },
     editDelayCells,
     get sessionRevision() { return sessionRevision; },
@@ -767,7 +877,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       return () => { primaryAnalysisListeners.delete(listener); };
     },
     setContext(next) {
-      if (!viewActive) { pendingContext = next; return false; }
+      if (!viewActive) { ownerEvidence.event('ve.context.deferred'); pendingContext = next; return false; }
       const sourceChanged = !sameVeSourceContext(context, next);
       const scopeSelect = select('scope')!;
       const scopeKey = (value: LoggerAnalysisContext): string => {
@@ -779,14 +889,16 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       context = next;
       populateAnalyzerScopeSelect(scopeSelect, next, preferred);
       const scopeChanged = previousScope !== scopeKey(next);
+      ownerEvidence.event(!sourceChanged && !scopeChanged ? 've.context.noop' : 've.context.changed', { sourceChanged, scopeChanged }, { stateRevision: sessionRevision, sourceRevision: next.source?.revision ?? 0 });
       if (!sourceChanged && !scopeChanged) return false;
       remembered.set('scope', scopeSelect.value);
       rebuild();
       return true;
     },
     setTuneModel(model, sourceName) {
-      if (!viewActive) { pendingTune = [model, sourceName]; return false; }
-      if (model === tuneModel && sourceName === tuneSourceName) return false;
+      if (!viewActive) { ownerEvidence.event('ve.tune.deferred'); pendingTune = [model, sourceName]; return false; }
+      if (model === tuneModel && sourceName === tuneSourceName) { ownerEvidence.event('ve.tune.noop', {}, { stateRevision: sessionRevision }); return false; }
+      ownerEvidence.event('ve.tune.changed', {}, { stateRevision: sessionRevision });
       tuneModel = model; tuneSourceName = sourceName; rebuild();
       return true;
     },

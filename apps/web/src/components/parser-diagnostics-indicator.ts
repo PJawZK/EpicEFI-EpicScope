@@ -2,182 +2,16 @@ import type {
   ParserDiagnostic,
   ParserDiagnosticSeverity,
 } from '../../../../core/log-model/log-types';
-import { publishSourceIntegrityDiagnostics } from '../app/source-integrity-events';
 
 export interface ParserDiagnosticsIndicatorController {
   readonly element: HTMLElement;
   setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
   clear(): void;
+  reportText(): string;
+  getDiagnostics(): readonly ParserDiagnostic[];
 }
 
-export interface SourceIntegritySummary {
-  readonly recoveredRetryArtifacts: number;
-  readonly validRetryLikeRuns: number;
-  readonly unrecoveredCrcRecords: number;
-  readonly counterAnomalies: number;
-  readonly groupedUnresolvedEvents: number;
-}
-
-interface DiagnosticGroup {
-  count: number;
-  severity: ParserDiagnosticSeverity;
-  message: string;
-}
-
-function severityRank(severity: ParserDiagnosticSeverity): number {
-  if (severity === 'error') return 3;
-  if (severity === 'warning') return 2;
-  return 1;
-}
-
-export function unresolvedParserDiagnostics(
-  diagnostics: readonly ParserDiagnostic[],
-): ParserDiagnostic[] {
-  return diagnostics.filter((diagnostic) =>
-    (diagnostic.severity === 'warning' || diagnostic.severity === 'error')
-    && diagnostic.code !== 'mlg-retry-recovery-summary'
-    && diagnostic.code !== 'mlg-counter-pattern-summary'
-  );
-}
-
-function integerGcd(left: number, right: number): number {
-  let a = Math.abs(Math.trunc(left));
-  let b = Math.abs(Math.trunc(right));
-  while (b !== 0) {
-    const next = a % b;
-    a = b;
-    b = next;
-  }
-  return a;
-}
-
-function estimateMlgRecordStride(diagnostics: readonly ParserDiagnostic[]): number | undefined {
-  const crcOffsets = diagnostics
-    .filter((diagnostic) =>
-      (diagnostic.code === 'mlg-crc-mismatch' || diagnostic.code === 'mlg-crc-retry-recovered')
-      && diagnostic.offset !== undefined
-    )
-    .map((diagnostic) => diagnostic.offset!)
-    .sort((left, right) => left - right);
-  if (crcOffsets.length < 2) return undefined;
-
-  let stride = 0;
-  for (let index = 1; index < crcOffsets.length; index += 1) {
-    const difference = crcOffsets[index]! - crcOffsets[index - 1]!;
-    if (difference <= 0) continue;
-    stride = stride === 0 ? difference : integerGcd(stride, difference);
-    if (stride === 1) return undefined;
-  }
-  return stride >= 8 && stride <= 1_000_000 ? stride : undefined;
-}
-
-function groupedUnresolvedMlgEventCount(diagnostics: readonly ParserDiagnostic[]): number {
-  const unresolved = diagnostics
-    .filter((diagnostic) =>
-      (diagnostic.code === 'mlg-crc-mismatch' || diagnostic.code === 'mlg-counter-discontinuity')
-      && diagnostic.offset !== undefined
-    )
-    .sort((left, right) => left.offset! - right.offset!);
-  if (unresolved.length === 0) return 0;
-
-  const stride = estimateMlgRecordStride(diagnostics);
-  if (!stride) return unresolved.length;
-  const adjacency = stride + 8;
-  let groups = 1;
-  let previousOffset = unresolved[0]!.offset!;
-  for (const diagnostic of unresolved.slice(1)) {
-    const offset = diagnostic.offset!;
-    if (offset - previousOffset > adjacency) groups += 1;
-    previousOffset = offset;
-  }
-  return groups;
-}
-
-export function summarizeSourceIntegrity(
-  diagnostics: readonly ParserDiagnostic[],
-): SourceIntegritySummary {
-  const count = (code: string): number => diagnostics.filter((item) => item.code === code).length;
-  return {
-    recoveredRetryArtifacts: count('mlg-crc-retry-recovered'),
-    validRetryLikeRuns: count('mlg-counter-retry-pattern'),
-    unrecoveredCrcRecords: count('mlg-crc-mismatch'),
-    counterAnomalies: count('mlg-counter-discontinuity'),
-    groupedUnresolvedEvents: groupedUnresolvedMlgEventCount(diagnostics),
-  };
-}
-
-function groupDiagnostics(
-  diagnostics: readonly ParserDiagnostic[],
-): Map<string, DiagnosticGroup> {
-  const grouped = new Map<string, DiagnosticGroup>();
-  for (const diagnostic of diagnostics) {
-    const existing = grouped.get(diagnostic.code);
-    if (existing) {
-      existing.count += 1;
-      if (severityRank(diagnostic.severity) > severityRank(existing.severity)) {
-        existing.severity = diagnostic.severity;
-      }
-    } else {
-      grouped.set(diagnostic.code, {
-        count: 1,
-        severity: diagnostic.severity,
-        message: diagnostic.message,
-      });
-    }
-  }
-  return grouped;
-}
-
-export function buildParserDiagnosticsReport(
-  diagnostics: readonly ParserDiagnostic[],
-): string {
-  const grouped = groupDiagnostics(diagnostics);
-  const sourceIntegrity = summarizeSourceIntegrity(diagnostics);
-  const unresolved = unresolvedParserDiagnostics(diagnostics);
-  const lines = [
-    'EpicScope parser diagnostics',
-    '',
-    `Total: ${diagnostics.length.toLocaleString()}`,
-    `Unresolved: ${unresolved.length.toLocaleString()}`,
-    '',
-    '[Source integrity]',
-    `Recovered retry artifacts: ${sourceIntegrity.recoveredRetryArtifacts.toLocaleString()}`,
-    `Valid retry-like runs: ${sourceIntegrity.validRetryLikeRuns.toLocaleString()}`,
-    `Unrecovered CRC records: ${sourceIntegrity.unrecoveredCrcRecords.toLocaleString()}`,
-    `Counter anomalies: ${sourceIntegrity.counterAnomalies.toLocaleString()}`,
-    `Grouped unresolved MLG events: ${sourceIntegrity.groupedUnresolvedEvents.toLocaleString()}`,
-    '',
-    '[Groups]',
-  ];
-
-  for (const [code, item] of grouped) {
-    lines.push(
-      `${item.severity.toUpperCase()} | ${code} | ${item.count.toLocaleString()}`,
-    );
-  }
-
-  lines.push('', '[Unresolved diagnostics]');
-  unresolved.forEach((diagnostic, index) => {
-    const offset = diagnostic.offset === undefined
-      ? 'byte —'
-      : `byte ${diagnostic.offset.toLocaleString()}`;
-    lines.push(
-      `${index + 1}. ${diagnostic.severity.toUpperCase()} | ${diagnostic.code} | ${offset} | ${diagnostic.message}`,
-    );
-  });
-
-  lines.push('', '[All diagnostics]');
-  diagnostics.forEach((diagnostic, index) => {
-    const offset = diagnostic.offset === undefined
-      ? 'byte —'
-      : `byte ${diagnostic.offset.toLocaleString()}`;
-    lines.push(
-      `${index + 1}. ${diagnostic.severity.toUpperCase()} | ${diagnostic.code} | ${offset} | ${diagnostic.message}`,
-    );
-  });
-
-  return lines.join('\n');
-}
+import { buildParserDiagnosticsReport, prepareParserDiagnostics, type ParserDiagnosticsModel } from '../observability/reports/parser-report';
 
 async function copyText(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
@@ -197,7 +31,8 @@ async function copyText(value: string): Promise<void> {
   if (!copied) throw new Error('Clipboard copy was not available.');
 }
 
-export function createParserDiagnosticsIndicator(): ParserDiagnosticsIndicatorController {
+export function createParserDiagnosticsIndicator(onDiagnostics?: (model: ParserDiagnosticsModel) => void): ParserDiagnosticsIndicatorController {
+  let currentModel = prepareParserDiagnostics([]);
   const root = document.createElement('div');
   root.className = 'parser-indicator-wrap';
   root.innerHTML = `
@@ -232,15 +67,10 @@ export function createParserDiagnosticsIndicator(): ParserDiagnosticsIndicatorCo
   document.addEventListener('click', close);
 
   const setDiagnostics = (diagnostics: readonly ParserDiagnostic[]): void => {
-    publishSourceIntegrityDiagnostics(diagnostics);
-    const grouped = groupDiagnostics(diagnostics);
-    let worst: ParserDiagnosticSeverity | 'good' = 'good';
-
-    for (const diagnostic of diagnostics) {
-      if (worst === 'good' || severityRank(diagnostic.severity) > severityRank(worst)) {
-        worst = diagnostic.severity;
-      }
-    }
+    const model = prepareParserDiagnostics(diagnostics);
+    currentModel = model;
+    const { grouped, worst, unresolved, sourceIntegrity } = model;
+    onDiagnostics?.(model);
 
     button.classList.remove(
       'parser-indicator--good',
@@ -259,8 +89,6 @@ export function createParserDiagnosticsIndicator(): ParserDiagnosticsIndicatorCo
       return;
     }
 
-    const unresolved = unresolvedParserDiagnostics(diagnostics);
-    const sourceIntegrity = summarizeSourceIntegrity(diagnostics);
     count.hidden = false;
     count.textContent = (unresolved.length > 0 ? unresolved.length : diagnostics.length).toLocaleString();
     button.title = `${unresolved.length.toLocaleString()} unresolved · ${diagnostics.length.toLocaleString()} total parser diagnostics`;
@@ -345,7 +173,7 @@ export function createParserDiagnosticsIndicator(): ParserDiagnosticsIndicatorCo
     }
 
     copyButton.addEventListener('click', () => {
-      const report = buildParserDiagnosticsReport(diagnostics);
+      const report = buildParserDiagnosticsReport(diagnostics, model);
       const previousLabel = copyButton.textContent ?? 'Copy report';
       copyButton.disabled = true;
       void copyText(report)
@@ -368,5 +196,5 @@ export function createParserDiagnosticsIndicator(): ParserDiagnosticsIndicatorCo
 
   const clear = (): void => setDiagnostics([]);
   clear();
-  return { element: root, setDiagnostics, clear };
+  return { element: root, setDiagnostics, clear, getDiagnostics: () => currentModel.diagnostics, reportText: () => buildParserDiagnosticsReport(currentModel.diagnostics, currentModel) };
 }

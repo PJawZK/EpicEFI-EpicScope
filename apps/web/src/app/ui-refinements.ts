@@ -1,23 +1,3 @@
-function renameWeightedMean(root: HTMLElement): void {
-  const rewrite = (node: Node): void => {
-    if (node.nodeType === Node.TEXT_NODE && /MLV weighted mean/i.test(node.textContent ?? '')) {
-      node.textContent = (node.textContent ?? '').replace(/MLV weighted mean/gi, 'Weighted Mean');
-      return;
-    }
-    for (const child of node.childNodes) rewrite(child);
-  };
-
-  rewrite(root);
-  const histogram = root.querySelector<HTMLElement>('.histogram-table-generator-view');
-  if (!histogram) return;
-  new MutationObserver((records) => {
-    for (const record of records) {
-      for (const node of record.addedNodes) rewrite(node);
-      if (record.type === 'characterData') rewrite(record.target);
-    }
-  }).observe(histogram, { childList: true, subtree: true, characterData: true });
-}
-
 function createLoggerLayoutMenu(root: HTMLElement): void {
   const tools = root.querySelector<HTMLElement>('.logger-header-tools');
   const layoutSelect = tools?.querySelector<HTMLSelectElement>('.graph-layout-select');
@@ -235,5 +215,4 @@ export function applyUiRefinements(root: HTMLElement): void {
   createLoggerLayoutMenu(root);
   createCompactHistoryControl(root);
   reorganizeSettings(root);
-  renameWeightedMean(root);
 }

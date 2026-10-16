@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sourceIntegrityMarkersFromDiagnostics } from '../../apps/web/src/app/source-integrity-events';
+import { sourceIntegrityMarkersFromDiagnostics } from '../../apps/web/src/app/source-integrity-markers';
 
 describe('sourceIntegrityMarkersFromDiagnostics', () => {
   it('groups repeated retry artifacts at one timestamp and keeps unrecovered corruption separate', () => {

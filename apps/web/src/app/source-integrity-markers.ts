@@ -3,18 +3,12 @@ import type {
   SourceIntegrityKind,
 } from '../../../../core/log-model/log-types';
 
-export const SOURCE_INTEGRITY_DIAGNOSTICS_EVENT = 'epicscope:source-integrity-diagnostics';
-
 export interface SourceIntegrityMarker {
   readonly timeMs: number;
   readonly kind: SourceIntegrityKind;
   readonly breaksContinuity: boolean;
   readonly count: number;
   readonly message: string;
-}
-
-export interface SourceIntegrityDiagnosticsEventDetail {
-  readonly markers: readonly SourceIntegrityMarker[];
 }
 
 export function sourceIntegrityMarkersFromDiagnostics(
@@ -47,18 +41,4 @@ export function sourceIntegrityMarkersFromDiagnostics(
   }
 
   return [...grouped.values()].sort((left, right) => left.timeMs - right.timeMs);
-}
-
-export function publishSourceIntegrityDiagnostics(
-  diagnostics: readonly ParserDiagnostic[],
-): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent<SourceIntegrityDiagnosticsEventDetail>(
-    SOURCE_INTEGRITY_DIAGNOSTICS_EVENT,
-    {
-      detail: {
-        markers: sourceIntegrityMarkersFromDiagnostics(diagnostics),
-      },
-    },
-  ));
 }

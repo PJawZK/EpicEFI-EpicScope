@@ -773,7 +773,7 @@ button:disabled { opacity: .48; cursor: default; }
 
 .bug-report-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(320px, 62vh) auto;
+  grid-template-rows: auto auto auto auto auto;
   gap: 10px;
   padding: 12px;
 }
@@ -956,3 +956,17 @@ button:disabled { opacity: .48; cursor: default; }
 .utility-action-symbol { min-width:13px; text-align:center; font-size:12px; line-height:1; }
 .status-bar { gap:9px; font-size:10px; }
 .histogram-selector-slot { display:inline-flex; align-items:center; }
+
+/* Diagnostics owns bounded page rendering; lens switches do not recapture evidence. */
+.diagnostics-toolbar, .diagnostics-pager { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.diagnostics-filters { margin:8px 0; }
+.diagnostics-filters label { display:inline-flex; flex-direction:column; margin:4px; max-width:160px; }
+.diagnostics-content { min-height:240px; max-height:42vh; overflow:auto; }
+.diagnostics-content pre, .diagnostics-records { white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.5 ui-monospace, monospace; }
+.diagnostics-records { padding-left:35px; }
+.diagnostics-records li { padding:4px; border-bottom:1px solid #294453; }
+.diagnostics-page-status { margin:8px 0; color:var(--muted); }
+.bug-report-panel > footer { flex-wrap:wrap; }
+
+.diagnostics-view[data-lens="Export report"] .diagnostics-content { min-height:0; max-height:none; }
+.bug-report-panel > .bug-report-text { min-height:220px; max-height:30vh; }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { LoggerRuntimeDiagnosticSnapshot } from '../../apps/web/src/pages/logger-page';
 import type { LoggerWorkspaceState } from '../../apps/web/src/state/workspace-state';
-import { buildBugReportText } from '../../apps/web/src/components/bug-report-formatter';
+import { buildBugReportText } from '../../apps/web/src/observability/reports/runtime-report';
 
 const snapshot: LoggerRuntimeDiagnosticSnapshot = {
   hasChannelDataSource: true,

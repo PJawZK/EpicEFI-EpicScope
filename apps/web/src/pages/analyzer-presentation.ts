@@ -1,4 +1,4 @@
-import { ensureFuelInjectorAnalyzerPresentation } from '../pages/fuel-injector-analyzer-presentation';
+import { ensureFuelInjectorAnalyzerPresentation } from './fuel-injector-analyzer-presentation';
 
 const SPECIALIZED_PRIMARY: Readonly<Record<string, readonly string[]>> = {
   Idle: ['RPM mean', 'Target mean', 'RPM error MAE / RMSE', 'Worst sag', 'Median recovery', 'Sag events'],
@@ -168,17 +168,6 @@ function setColumnDisclosure(table: HTMLTableElement, primaryHeaders: ReadonlySe
   setButtonState(button, table.classList.contains('analyzer-columns-expanded'), 'Fewer columns', 'More columns');
 }
 
-function standardizeInfoIcons(root: HTMLElement): void {
-  for (const icon of root.querySelectorAll<HTMLElement>('.epicscope-inline-help, .histogram-table-help > summary, .channel-details')) {
-    if (!icon.classList.contains('epicscope-info-icon')) icon.classList.add('epicscope-info-icon');
-    if (icon.classList.contains('channel-details')) {
-      if (icon.textContent !== 'i') icon.textContent = 'i';
-      const label = icon.getAttribute('title') ?? 'Channel information';
-      if (icon.getAttribute('aria-label') !== label) icon.setAttribute('aria-label', label);
-    }
-  }
-}
-
 function collapseAdvancedOptionsOnce(root: HTMLElement): void {
   for (const details of root.querySelectorAll<HTMLDetailsElement>('.specialized-analyzer-options')) {
     if (details.dataset.analyzerHierarchyInitialized === 'true') continue;
@@ -187,27 +176,21 @@ function collapseAdvancedOptionsOnce(root: HTMLElement): void {
   }
 }
 
-function apply(root: HTMLElement): void {
-  ensureFuelInjectorAnalyzerPresentation(root);
-  standardizeInfoIcons(root);
-  collapseAdvancedOptionsOnce(root);
-  for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) specializeSummary(view);
-  for (const view of root.querySelectorAll<HTMLElement>('.boost-analyzer-view')) boostSummary(view);
-  for (const spec of TABLE_DISCLOSURES) {
-    for (const table of root.querySelectorAll<HTMLTableElement>(spec.selector)) setColumnDisclosure(table, spec.primaryHeaders);
-  }
+/** Called only when this owner's controls are constructed, preserving user disclosure state. */
+export function decorateAnalyzerControls(view: HTMLElement): void {
+  collapseAdvancedOptionsOnce(view);
 }
 
-export function installAnalyzerInformationHierarchy(root: HTMLElement): void {
-  apply(root);
-  const observe = (observer: MutationObserver): void => observer.observe(root, { childList: true, subtree: true });
-  const observer = new MutationObserver(() => {
-    observer.disconnect();
-    try {
-      apply(root);
-    } finally {
-      observe(observer);
-    }
-  });
-  observe(observer);
+/** Called after this owner's summary cards are replaced. */
+export function decorateAnalyzerSummary(view: HTMLElement): void {
+  if (view.matches('.boost-analyzer-view')) boostSummary(view);
+  else specializeSummary(view);
+}
+
+/** Called after this owner's table headers/body have changed. */
+export function decorateAnalyzerTables(view: HTMLElement): void {
+  ensureFuelInjectorAnalyzerPresentation(view);
+  for (const spec of TABLE_DISCLOSURES) {
+    for (const table of view.querySelectorAll<HTMLTableElement>(spec.selector)) setColumnDisclosure(table, spec.primaryHeaders);
+  }
 }

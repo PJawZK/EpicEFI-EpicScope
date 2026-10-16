@@ -17,29 +17,33 @@ export function annotateMlgSourceIntegrityDiagnostics(
 ): readonly ParserDiagnostic[] {
   if (diagnostics.length === 0 || recordIndex.offsets.length === 0) return diagnostics;
 
-  const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
-  const recordIndexByCrcOffset = new Map<number, number>();
-  for (let index = 0; index < recordIndex.offsets.length; index += 1) {
-    const offset = recordIndex.offsets[index];
-    if (offset === undefined) continue;
-    recordIndexByCrcOffset.set(offset + blockLength - 1, index);
-  }
-
-  return diagnostics.map((diagnostic) => {
+  const crcDisplacement = BLOCK_HEADER_LENGTH + recordLength;
+  let annotated: ParserDiagnostic[] | undefined;
+  for (let diagnosticIndex = 0; diagnosticIndex < diagnostics.length; diagnosticIndex += 1) {
+    const diagnostic = diagnostics[diagnosticIndex]!;
     if (
       diagnostic.offset === undefined
+      || !Number.isFinite(diagnostic.offset)
       || (diagnostic.code !== 'mlg-crc-retry-recovered' && diagnostic.code !== 'mlg-crc-mismatch')
-    ) {
-      return diagnostic;
+    ) continue;
+
+    // Scanner offsets are in source order. Search the existing index rather
+    // than allocating an entry for every record after worker validation.
+    let low = 0;
+    let high = recordIndex.offsets.length;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      if (recordIndex.offsets[middle]! + crcDisplacement < diagnostic.offset) low = middle + 1;
+      else high = middle;
     }
+    const offset = recordIndex.offsets[low];
+    if (offset === undefined || offset + crcDisplacement !== diagnostic.offset) continue;
+    const timeMs = recordIndex.timeMs[low];
+    if (timeMs === undefined || !Number.isFinite(timeMs)) continue;
 
-    const sampleIndex = recordIndexByCrcOffset.get(diagnostic.offset);
-    if (sampleIndex === undefined) return diagnostic;
-    const timeMs = recordIndex.timeMs[sampleIndex];
-    if (timeMs === undefined || !Number.isFinite(timeMs)) return diagnostic;
-
+    annotated ??= diagnostics.slice();
     if (diagnostic.code === 'mlg-crc-retry-recovered') {
-      return {
+      annotated[diagnosticIndex] = {
         ...diagnostic,
         timeMs,
         sourceIntegrity: {
@@ -47,9 +51,10 @@ export function annotateMlgSourceIntegrityDiagnostics(
           breaksContinuity: false,
         },
       };
+      continue;
     }
 
-    return {
+    annotated[diagnosticIndex] = {
       ...diagnostic,
       timeMs,
       sourceIntegrity: {
@@ -57,5 +62,6 @@ export function annotateMlgSourceIntegrityDiagnostics(
         breaksContinuity: true,
       },
     };
-  });
+  }
+  return annotated ?? diagnostics;
 }

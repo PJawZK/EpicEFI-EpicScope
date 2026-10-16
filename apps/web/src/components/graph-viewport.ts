@@ -1,3 +1,4 @@
+import type { SourceIntegrityMarker } from '../app/source-integrity-markers';
 import type {
   ChannelDefinition,
   LogTimeRange,
@@ -144,6 +145,9 @@ export interface GraphPreloadedActivationResult {
 export type GraphViewportDisplayMode = 'overlay' | 'stacked';
 
 export interface GraphViewportController {
+  setSourceIntegrity(source: NumericChannelDataSource, markers: readonly SourceIntegrityMarker[]): void;
+  dismissSourceIntegrityNotice(target: Node): void;
+  disposeSourceIntegrity(): void;
   readonly element: HTMLElement;
   setLog(
     channels: readonly ChannelDefinition[],
@@ -353,6 +357,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const sourceIntegrityOverlay = createSourceIntegrityCanvasOverlay(canvas, showToast);
+  let sourceIntegrityDisposed = false;
 
   const emitCursorValues = (): void => {
     const values = [...activeTraces.entries()].map(([channelId, trace]) => ({
@@ -1421,6 +1426,7 @@ export function createGraphViewport(): GraphViewportController {
     nextChannelData: NumericChannelDataSource,
     nextTimeRange: LogTimeRange | undefined,
   ): void => {
+    sourceIntegrityOverlay.setMarkers([]);
     channelsById.clear();
     for (const channel of nextChannels) {
       if (!channelsById.has(channel.id)) channelsById.set(channel.id, channel);
@@ -1542,7 +1548,7 @@ export function createGraphViewport(): GraphViewportController {
       if (!channel) continue;
       const statisticsStarted = now();
       const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
-      const scale = buildStableValueScale(range);
+      const scale = stableScaleFromStatistics(fullStatistics);
       statisticsScaleMs += now() - statisticsStarted;
       const registrationStarted = now();
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
@@ -1751,6 +1757,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const clear = (): void => {
+    sourceIntegrityOverlay.setMarkers([]);
     cancelPending();
     channelsById.clear();
     channelData = undefined;
@@ -1773,6 +1780,16 @@ export function createGraphViewport(): GraphViewportController {
   clear();
   return {
     element: root,
+    setSourceIntegrity(source, markers) {
+      if (sourceIntegrityDisposed || source !== channelData) return;
+      sourceIntegrityOverlay.setMarkers(markers);
+      draw();
+    },
+    dismissSourceIntegrityNotice: target => sourceIntegrityOverlay.dismissNotice(target),
+    disposeSourceIntegrity: () => {
+      sourceIntegrityDisposed = true;
+      sourceIntegrityOverlay.dispose();
+    },
     setLog,
     toggleChannel,
     deactivateChannel,

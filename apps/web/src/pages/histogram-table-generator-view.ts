@@ -1,3 +1,5 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
 import { createLocalPersistenceFeedback } from './local-persistence-feedback';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { histogramChannelOptionLabel } from './histogram-channel-options';
@@ -6,7 +8,7 @@ import { buildCellCenteredWeightedMean } from '../../../../core/analysis/weighte
 import { buildTableCellEvidenceRows } from '../../../../core/analysis/table-cell-evidence';
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import { subtractNumericRanges } from '../../../../core/analysis/numeric-range-arithmetic';
-import { createHistogramLogicalContext, histogramFormulaChannelId, prepareHistogramFormula } from './histogram-logical-context';
+import { createHistogramLogicalContext, histogramFormulaChannelId } from './histogram-logical-context';
 import {
   qualifyNumericSampleGroups,
   type NumericQualificationCondition,
@@ -23,7 +25,6 @@ import {
   loadHistogramCalculatedFields,
   loadHistogramFilterSets,
   loadHistogramTablePresets,
-  saveHistogramCalculatedFields,
   saveHistogramFilterSets,
   saveHistogramTablePresets,
   type HistogramCalculatedFieldDefinition,
@@ -87,7 +88,7 @@ function formatCellValue(value: number | undefined, method: HistogramTableAggreg
 }
 
 function aggregationLabel(method: HistogramTableAggregation): string {
-  if (method === 'weighted-mean') return 'MLV weighted mean';
+  if (method === 'weighted-mean') return 'Weighted Mean';
   if (method === 'count') return 'Count';
   if (method === 'mean') return 'Mean';
   if (method === 'median') return 'Median';
@@ -135,7 +136,8 @@ function safeFilenamePart(value: string): string {
   return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'histogram';
 }
 
-export function createHistogramTableGeneratorView(): HistogramTableGeneratorController {
+export function createHistogramTableGeneratorView(observability?: ObservabilityRecorder): HistogramTableGeneratorController {
+  const ownerEvidence = createOwnerEvidence(observability, 'histogram-table-generator-view');
   let context: HistogramPageContext = {
     traces: [],
     channels: [],
@@ -171,7 +173,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       <label><span>Y</span><select class="histogram-table-y"></select></label>
       <label class="histogram-table-z-field"><span>Z</span><select class="histogram-table-z"></select></label>
       <label><span>Cell</span><select class="histogram-table-aggregation">
-        <option value="weighted-mean" selected>MLV weighted mean</option>
+        <option value="weighted-mean" selected>Weighted Mean</option>
         <option value="mean">Mean</option>
         <option value="median">Median</option>
         <option value="count">Count</option>
@@ -188,16 +190,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
           <select class="histogram-preset-select" aria-label="Saved table setup"></select>
           <div><button type="button" class="histogram-preset-apply">Apply</button><button type="button" class="histogram-preset-save">Save setup…</button><button type="button" class="histogram-preset-delete">Delete</button></div>
           <small>Saved setups retain scope, X/Y/Z, statistic, filters, axis/grid configuration and weighting options.</small>
-        </div>
-      </details>
-      <details class="histogram-table-formulas">
-        <summary>ƒ <span class="histogram-formula-count">0</span></summary>
-        <div class="histogram-formula-popover">
-          <label><span>Calculated field</span><select class="histogram-formula-select"></select></label>
-          <label><span>Name</span><input class="histogram-formula-name" type="text" placeholder="AFR Error" /></label>
-          <label><span>Formula</span><input class="histogram-formula-expression" type="text" placeholder="[AFR] - [AFR Target]" /></label>
-          <label><span>Unit</span><input class="histogram-formula-unit" type="text" placeholder="optional" /></label>
-          <div class="histogram-formula-actions"><button type="button" class="histogram-formula-save">Save</button><button type="button" class="histogram-formula-delete">Delete</button><span class="histogram-formula-status">Use [Channel Name] references. Functions: abs/min/max/sqrt/pow/clamp/round/floor/ceil/log/exp.</span></div>
         </div>
       </details>
       <details class="histogram-table-filters">
@@ -263,7 +255,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
         </div>
       </details>
       <details class="histogram-table-help">
-        <summary aria-label="Table Generator information" title="How Table Generator works">i</summary>
+        <summary class="epicscope-info-icon" aria-label="Table Generator information" title="How Table Generator works">i</summary>
         <div class="histogram-table-help-popover">
           <strong>Table Generator</strong>
           <p>Choose X and Y to define the table cells, then choose the Cell statistic and Z value to calculate inside each cell.</p>
@@ -311,14 +303,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const presetApplyButton = root.querySelector<HTMLButtonElement>('.histogram-preset-apply');
   const presetSaveButton = root.querySelector<HTMLButtonElement>('.histogram-preset-save');
   const presetDeleteButton = root.querySelector<HTMLButtonElement>('.histogram-preset-delete');
-  const formulaCount = root.querySelector<HTMLElement>('.histogram-formula-count');
-  const formulaSelect = root.querySelector<HTMLSelectElement>('.histogram-formula-select');
-  const formulaNameInput = root.querySelector<HTMLInputElement>('.histogram-formula-name');
-  const formulaExpressionInput = root.querySelector<HTMLInputElement>('.histogram-formula-expression');
-  const formulaUnitInput = root.querySelector<HTMLInputElement>('.histogram-formula-unit');
-  const formulaSaveButton = root.querySelector<HTMLButtonElement>('.histogram-formula-save');
-  const formulaDeleteButton = root.querySelector<HTMLButtonElement>('.histogram-formula-delete');
-  const formulaStatus = root.querySelector<HTMLElement>('.histogram-formula-status');
   const filterCount = root.querySelector<HTMLElement>('.histogram-filter-count');
   const filterSetSelect = root.querySelector<HTMLSelectElement>('.histogram-filter-set-select');
   const filterSetApplyButton = root.querySelector<HTMLButtonElement>('.histogram-filter-set-apply');
@@ -365,8 +349,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   const cellOpenLoggerButton = root.querySelector<HTMLButtonElement>('.histogram-cell-open-logger');
   if (
     !scopeSelect || !xSelect || !ySelect || !zField || !zSelect || !aggregationSelect || !deltaField || !deltaSelect
-    || !presetSelect || !presetApplyButton || !presetSaveButton || !presetDeleteButton || !formulaCount || !formulaSelect || !formulaNameInput
-    || !formulaExpressionInput || !formulaUnitInput || !formulaSaveButton || !formulaDeleteButton || !formulaStatus || !filterCount
+    || !presetSelect || !presetApplyButton || !presetSaveButton || !presetDeleteButton || !filterCount
     || !filterSetSelect || !filterSetApplyButton || !filterSetSaveButton || !filterSetDeleteButton || !filterWithinLogicSelect || !filterBetweenLogicSelect
     || !filterList || !addFilterButton || !axisSourceSelect || !autoAxisFields || !customAxisFields || !xBreakpointsInput || !yBreakpointsInput
     || !msqAxisFields || !msqTableSelect || !msqXAxisSelect || !msqYAxisSelect || !xBinsInput || !yBinsInput || !xMinInput || !xMaxInput
@@ -410,69 +393,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     }
   };
 
-  const populateFormulaManager = (): void => {
-    const previous = formulaSelect.value;
-    formulaSelect.replaceChildren(new Option('(new calculated field)', ''));
-    for (const field of calculatedFields) formulaSelect.add(new Option(field.name, field.id));
-    if (previous && calculatedFields.some((field) => field.id === previous)) formulaSelect.value = previous;
-    formulaCount.textContent = String(calculatedFields.length);
-    formulaDeleteButton.disabled = !formulaSelect.value;
-  };
-
-  const formulaFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.histogram-formula-popover')!, 'calculated-fields',
-    () => saveHistogramCalculatedFields(loadHistogramCalculatedFields()));
   const filterFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.histogram-filter-library')!, 'filter-sets',
-    () => saveHistogramFilterSets(loadHistogramFilterSets()));
+    () => saveHistogramFilterSets(loadHistogramFilterSets()), observability);
   const presetFeedback = createLocalPersistenceFeedback(root.querySelector<HTMLElement>('.histogram-table-preset-popover')!, 'table-presets',
-    () => saveHistogramTablePresets(loadHistogramTablePresets()));
-
-  const loadSelectedFormulaEditor = (): void => {
-    const field = calculatedFields.find((candidate) => candidate.id === formulaSelect.value);
-    formulaNameInput.value = field?.name ?? '';
-    formulaExpressionInput.value = field?.expression ?? '';
-    formulaUnitInput.value = field?.unit ?? '';
-    formulaDeleteButton.disabled = !field;
-    formulaStatus.textContent = field ? 'Editing calculated field.' : 'Use [Channel Name] references. No JavaScript is executed.';
-  };
-
-  const saveFormula = (): void => {
-    const name = formulaNameInput.value.trim();
-    const expression = formulaExpressionInput.value.trim();
-    if (!name || !expression) { formulaStatus.textContent = 'Name and formula are required.'; return; }
-    try {
-      prepareHistogramFormula(expression, context.channels);
-      const existing = calculatedFields.find((field) => field.id === formulaSelect.value);
-      const field: HistogramCalculatedFieldDefinition = {
-        id: existing?.id ?? createHistogramLocalId('formula'),
-        name,
-        expression,
-        ...(formulaUnitInput.value.trim() ? { unit: formulaUnitInput.value.trim() } : {}),
-      };
-      calculatedFields = existing
-        ? calculatedFields.map((candidate) => candidate.id === existing.id ? field : candidate)
-        : [...calculatedFields, field];
-      formulaFeedback.report(saveHistogramCalculatedFields(calculatedFields), 'save');
-      populateFormulaManager();
-      formulaSelect.value = field.id;
-      formulaDeleteButton.disabled = false;
-      refreshLogicalSelectors();
-      formulaStatus.textContent = `${field.name} is available for calculation.`;
-      scheduleRender();
-    } catch (error) {
-      formulaStatus.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
-    }
-  };
-
-  const deleteFormula = (): void => {
-    if (!formulaSelect.value) return;
-    calculatedFields = calculatedFields.filter((field) => field.id !== formulaSelect.value);
-    formulaFeedback.report(saveHistogramCalculatedFields(calculatedFields), 'delete');
-    formulaSelect.value = '';
-    populateFormulaManager();
-    loadSelectedFormulaEditor();
-    refreshLogicalSelectors();
-    scheduleRender();
-  };
+    () => saveHistogramTablePresets(loadHistogramTablePresets()), observability);
 
   const scheduleRender = (delay = 0): void => {
     if (renderTimer !== undefined) window.clearTimeout(renderTimer);
@@ -812,7 +736,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
 
   const populateScopeOptions = (): void => {
     const previous = scopeSelect.value || 'ab';
-    scopeSelect.replaceChildren(new Option('A/B selection', 'ab'), new Option('Whole log', 'full'));
+    scopeSelect.replaceChildren(new Option('Current A/B', 'ab'), new Option('Full Log', 'full'));
     (context.savedRanges ?? []).forEach((saved, index) => {
       const seconds = Math.abs(saved.endMs - saved.startMs) / 1000;
       scopeSelect.add(new Option(`${saved.label || `Range ${index + 1}`} · ${seconds.toFixed(seconds >= 10 ? 1 : 3)} s`, `saved:${index}`));
@@ -1014,6 +938,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
 
   const render = async (): Promise<void> => {
     const generation = ++renderGeneration;
+    ownerEvidence.event('histogram.render.request', { generation, selfHidden: root.hidden });
     updateValueControls();
     tooltip.hidden = true;
     const scope = resolveScope();
@@ -1052,7 +977,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     try {
       byId = await materializeLogicalTraces(requestedIds, scope);
     } catch (error) {
-      if (generation !== renderGeneration) return;
+      if (generation !== renderGeneration) { ownerEvidence.event('histogram.read.stale', { generation, currentGeneration: renderGeneration }); return; }
+      ownerEvidence.event('histogram.completion.current', { generation, domHidden: Boolean(root.closest('[hidden]')), connected: root.isConnected }, { origin: 'async' });
       currentResult = undefined;
       empty.hidden = false;
       empty.querySelector('strong')!.textContent = 'Calculated field could not be evaluated.';
@@ -1062,7 +988,8 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       exportButton.disabled = true;
       return;
     }
-    if (generation !== renderGeneration) return;
+    if (generation !== renderGeneration) { ownerEvidence.event('histogram.read.stale', { generation, currentGeneration: renderGeneration }); return; }
+    ownerEvidence.event('histogram.completion.current', { generation, domHidden: Boolean(root.closest('[hidden]')), connected: root.isConnected }, { origin: 'async' });
     const xTrace = byId.get(xId);
     const yTrace = byId.get(yId);
     const zTrace = zId ? byId.get(zId) : undefined;
@@ -1444,7 +1371,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
         refillChannelSelect(filter.channel, previous);
       }
     }
-    populateFormulaManager();
     populateFilterSets();
     populatePresets();
     populateScopeOptions();
@@ -1454,9 +1380,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     scheduleRender();
   };
 
-  formulaSelect.addEventListener('change', loadSelectedFormulaEditor);
-  formulaSaveButton.addEventListener('click', saveFormula);
-  formulaDeleteButton.addEventListener('click', deleteFormula);
   presetSelect.addEventListener('change', () => { presetApplyButton.disabled = !presetSelect.value; presetDeleteButton.disabled = !presetSelect.value; });
   presetApplyButton.addEventListener('click', applySelectedPreset);
   presetSaveButton.addEventListener('click', saveCurrentPreset);
@@ -1506,8 +1429,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   colorModeSelect.addEventListener('change', renderChart);
   window.addEventListener('epicscope-histogram-calculated-fields-changed', () => {
     calculatedFields = loadHistogramCalculatedFields();
-    populateFormulaManager();
-    loadSelectedFormulaEditor();
     refreshLogicalSelectors();
     scheduleRender();
   });
@@ -1528,8 +1449,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     if (!root.hidden && currentResult && !canvas.hidden) renderChart();
   }).observe(canvas);
 
-  populateFormulaManager();
-  loadSelectedFormulaEditor();
   populateFilterSets();
   populatePresets();
   populateScopeOptions();

@@ -62,7 +62,6 @@ const GRAPH_HELP: InlineHelpEntry = {
   text: 'Each event is aligned so t=0 is sag onset. The colored line is the median value at each relative time. E toggles the 10th–90th percentile envelope, showing event-to-event spread. Click a trace name to hide/show that line. Idle uses Engine response and Controller / actuator panes. Important: each trace is independently autoscaled vertically, so compare timing and shape between different signals, not their vertical height. RPM envelope is enabled by default; other Idle envelopes start off for readability.',
 };
 
-const ROOTS = new WeakSet<HTMLElement>();
 const LAYOUT_STYLE_ID = 'idle-analyzer-inline-help-layout';
 
 function ensureIdleHelpLayoutStyle(): void {
@@ -77,10 +76,7 @@ function ensureIdleHelpLayoutStyle(): void {
   document.head.append(style);
 }
 
-export function ensureIdleAnalyzerHelp(canvas: HTMLCanvasElement): void {
-  const root = canvas.closest<HTMLElement>('.specialized-analyzer-view');
-  if (!root || ROOTS.has(root)) return;
-  ROOTS.add(root);
+export function ensureIdleAnalyzerHelp(root: HTMLElement, part: 'controls' | 'summary'): void {
   ensureIdleHelpLayoutStyle();
 
   const guidance = root.querySelector<HTMLElement>('.specialized-analyzer-guidance');
@@ -90,28 +86,24 @@ export function ensureIdleAnalyzerHelp(canvas: HTMLCanvasElement): void {
 
   const show = createInlineHelpPresenter(guidance, guidanceTitle, guidanceText);
 
-  const decorate = (): void => {
-    const title = root.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent ?? '';
-    if (!/^Idle\b/i.test(title)) return;
+  const title = root.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent ?? '';
+  if (!/^Idle\b/i.test(title)) return;
 
-    for (const span of root.querySelectorAll<HTMLElement>('.specialized-analyzer-controls label > span, .specialized-analyzer-options-grid label > span')) {
-      const help = matchingInlineHelp(span.textContent?.trim() ?? '', CONTROL_HELP);
-      if (help) addInlineHelpButton(span, help, show);
-    }
+  if (part === 'controls') for (const span of root.querySelectorAll<HTMLElement>('.specialized-analyzer-controls label > span, .specialized-analyzer-options-grid label > span')) {
+    const help = matchingInlineHelp(span.textContent?.trim() ?? '', CONTROL_HELP);
+    if (help) addInlineHelpButton(span, help, show);
+  }
 
-    for (const card of root.querySelectorAll<HTMLElement>('.specialized-analyzer-summary > div')) {
-      const label = card.querySelector<HTMLElement>(':scope > span')?.textContent?.trim();
-      if (!label) continue;
-      const help = SUMMARY_HELP[label];
-      if (help) addInlineHelpButton(card, help, show);
-    }
+  if (part === 'summary') for (const card of root.querySelectorAll<HTMLElement>('.specialized-analyzer-summary > div')) {
+    const label = card.querySelector<HTMLElement>(':scope > span')?.textContent?.trim();
+    if (!label) continue;
+    const help = SUMMARY_HELP[label];
+    if (help) addInlineHelpButton(card, help, show);
+  }
 
-    const evidenceHeader = root.querySelector<HTMLElement>('.specialized-analyzer-evidence > header > div');
-    if (evidenceHeader) addInlineHelpButton(evidenceHeader, GRAPH_HELP, show);
-    canvas.title = 'Idle aligned evidence: click a trace name to show/hide it; click E to toggle the 10–90% envelope.';
-  };
-
-  decorate();
-  const observer = new MutationObserver(() => decorate());
-  observer.observe(root, { childList: true, subtree: true });
+  if (part !== 'controls') return;
+  const evidenceHeader = root.querySelector<HTMLElement>('.specialized-analyzer-evidence > header > div');
+  if (evidenceHeader) addInlineHelpButton(evidenceHeader, GRAPH_HELP, show);
+  const canvas = root.querySelector('canvas');
+  if (canvas) canvas.title = 'Idle aligned evidence: click a trace name to show/hide it; click E to toggle the 10–90% envelope.';
 }

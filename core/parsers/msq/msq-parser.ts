@@ -21,14 +21,18 @@ export interface ParsedMsqDocument {
 }
 
 function decodeXml(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
+  // One replacement pass: decoded ampersands must never introduce another entity.
+  const named: Readonly<Record<string, string>> = { quot: '"', apos: "'", lt: '<', gt: '>', amp: '&' };
+  return value.replace(/&(quot|apos|lt|gt|amp|#(?:[0-9]+|x[0-9a-fA-F]+));/g, (_, entity: string) => {
+    if (!entity.startsWith('#')) return named[entity]!;
+    const code = entity.startsWith('#x') ? Number.parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+    const valid = code === 9 || code === 10 || code === 13
+      || (code >= 0x20 && code <= 0xd7ff)
+      || (code >= 0xe000 && code <= 0xfffd)
+      || (code >= 0x10000 && code <= 0x10ffff);
+    if (!valid) throw new Error(`Invalid XML character reference: &${entity};`);
+    return String.fromCodePoint(code);
+  });
 }
 
 function attributes(source: string): Readonly<Record<string, string>> {
@@ -49,10 +53,14 @@ function optionalInteger(value: string | undefined): number | undefined {
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
+export function isQuotedMsqValue(value: string): boolean {
+  return value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")));
+}
+
 function tokenizeValue(rawText: string): readonly string[] {
-  const trimmed = decodeXml(rawText).trim();
+  const trimmed = rawText.trim();
   if (!trimmed) return [];
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+  if (isQuotedMsqValue(trimmed)) {
     return [trimmed.slice(1, -1)];
   }
   return trimmed.split(/\s+/).filter(Boolean);
@@ -101,7 +109,7 @@ export function parseMsq(source: string): ParsedMsqDocument {
         units: attrs.units?.trim() || undefined,
         rawText,
         tokens,
-        numericValues: numericTokens(tokens),
+        numericValues: isQuotedMsqValue(rawText) ? undefined : numericTokens(tokens),
       });
     }
   }

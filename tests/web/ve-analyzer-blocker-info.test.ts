@@ -26,3 +26,9 @@ describe('VE Analyzer Run blocker guidance', () => {
     expect(help.fix).toMatch(/Fix/i);
   });
 });
+
+
+it('uses stable blocker codes when the presentation message changes', () => {
+  expect(describeVeRunBlocker({ code: 'actual', message: 'Localized unrelated display text' })).toEqual(describeVeRunBlocker('Actual mixture'));
+  expect(describeVeRunBlocker({ code: 'delay-activate', message: 'Display text without keywords' }).fix).toMatch(/Use recommendation/);
+});

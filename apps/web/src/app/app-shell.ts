@@ -1,3 +1,13 @@
+import { createDiagnosticsView } from '../components/diagnostics-view';
+import { captureDiagnostics } from '../observability/capture';
+import { buildDiagnosticsBundle } from '../observability/export';
+import { createSessionPersistence } from '../observability/session-persistence';
+import type { Operation } from '../observability/operation';
+import { createObservabilitySession } from '../observability/session';
+import { recordRuntimeError, runtimeErrorCount, runtimeRejectionEntry } from '../observability/producers/runtime-errors';
+import type { Origin } from '../observability/record';
+import { loadIniTableEditorDefinitions, saveIniTableEditorDefinitions } from '../state/ini-table-editor-storage';
+import type { IniTableEditorDefinition } from '../../../../core/parsers/ini/ini-table-editor-parser';
 import type {
   ChannelDefinition,
   ImportedLogSummary,
@@ -25,11 +35,8 @@ import { createLoggerPage } from '../pages/logger-page';
 import { createAnalyzerPage } from '../pages/analyzer-page';
 import { createHistogramPage } from '../pages/histogram-page';
 import { createPerformanceDiagnostics } from '../components/performance-diagnostics';
-import { evaluateBugReportHealth } from '../components/bug-report-health';
-import {
-  buildBugReportText,
-  type BugReportRuntimeErrorEntry,
-} from '../components/bug-report-formatter';
+import { projectCurrentHealth } from '../observability/health-rules';
+import type { BugReportRuntimeErrorEntry } from '../observability/reports/runtime-report';
 import { createApplicationWorkspaceLocalStorageAdapter } from '../adapters/application-workspace-local-storage';
 import { createIniCatalogLocalStorageAdapter } from '../adapters/ini-catalog-local-storage';
 import { createWorkspaceLocalStorageAdapter } from '../adapters/workspace-local-storage';
@@ -54,48 +61,95 @@ function importErrorMessage(error: unknown): string {
   return 'Unknown MLG import error.';
 }
 
+const appObservability = new WeakMap<HTMLElement, { session: ReturnType<typeof createObservabilitySession>; persistence: ReturnType<typeof createSessionPersistence>; dispose: () => void }>();
+
+/** Read-only session lens for Diagnostics/report consumers; no domain mutation API. */
+export function getAppObservabilitySnapshot(root: HTMLElement) {
+  const entry = appObservability.get(root);
+  return entry ? { sessionId: entry.session.sessionId, records: entry.session.recorder.snapshot(), health: entry.session.recorder.status(), persistence: entry.persistence.snapshot() } : undefined;
+}
+
 export function mountAppShell(root: HTMLElement): void {
+  appObservability.get(root)?.dispose();
   root.replaceChildren();
+  const observability = createObservabilitySession({ maxRecordBytes: 8192, detectAnomalies: true });
+  const recorder = observability.recorder;
+  let diagnosticHealthTimer: ReturnType<typeof setInterval> | undefined;
+  const persistence = createSessionPersistence(observability);
+  let activeMode: EpicScopeMode = 'logger';
 
   const app = document.createElement('div');
   app.className = 'epicscope-app';
 
-  const loggerPage = createLoggerPage();
-  const analyzerPage = createAnalyzerPage();
+  const sourceLoadOperations = new WeakMap<object, string>();
+  let activeSourceLoad: Operation | undefined;
+  const finishSourceLoad = (operation: Operation | undefined, outcome: 'success' | 'failure' | 'cancelled' | 'superseded'): void => {
+    if (!operation) return;
+    if (!operation.finish(outcome)) operation.staleCompletion('load-completion-after-terminal');
+    if (activeSourceLoad === operation) activeSourceLoad = undefined;
+  };
+  const loggerPage = createLoggerPage({ recorder, sourceContext: source => ({ sourceIdentity: source.id, ...(sourceLoadOperations.has(source) ? { operationId: sourceLoadOperations.get(source)! } : {}) }) });
+  const analyzerPage = createAnalyzerPage(recorder);
   analyzerPage.setActive(false);
-  const histogramPage = createHistogramPage();
-  const performanceDiagnostics = createPerformanceDiagnostics();
+  const histogramPage = createHistogramPage(recorder);
+  const performanceDiagnostics = createPerformanceDiagnostics(recorder);
   performanceDiagnostics.setRuntimeMemoryProvider(() => ({
     activeTraceRangeBytes: loggerPage.getRuntimeDiagnosticSnapshot().activeTraceRangeBytes,
   }));
 
-  const runtimeErrors: BugReportRuntimeErrorEntry[] = [];
-  const rememberRuntimeError = (entry: BugReportRuntimeErrorEntry): void => {
-    runtimeErrors.push(entry);
-    if (runtimeErrors.length > 50) runtimeErrors.shift();
+  const rememberRuntimeError = (entry: BugReportRuntimeErrorEntry): void => recordRuntimeError(recorder, entry, activeMode);
+
+  const onRuntimeError = (event: ErrorEvent): void => {
+    try {
+      rememberRuntimeError({
+        time: Date.now(),
+        kind: 'error',
+        message: event.message || 'Unknown runtime error',
+        ...(event.filename ? { source: event.filename } : {}),
+        ...(event.lineno ? { line: event.lineno } : {}),
+        ...(event.colno ? { column: event.colno } : {}),
+        ...(event.error instanceof Error && event.error.stack ? { stack: event.error.stack } : {}),
+      });
+    } catch {
+      rememberRuntimeError({ time: Date.now(), kind: 'error', message: 'Runtime error details unavailable' });
+    }
   };
 
-  window.addEventListener('error', (event) => {
-    rememberRuntimeError({
-      time: Date.now(),
-      kind: 'error',
-      message: event.message || 'Unknown runtime error',
-      ...(event.filename ? { source: event.filename } : {}),
-      ...(event.lineno ? { line: event.lineno } : {}),
-      ...(event.colno ? { column: event.colno } : {}),
-      ...(event.error instanceof Error && event.error.stack ? { stack: event.error.stack } : {}),
-    });
-  });
+  const onUnhandledRejection = (event: PromiseRejectionEvent): void => {
+    rememberRuntimeError(runtimeRejectionEntry(event.reason));
+  };
 
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason;
-    rememberRuntimeError({
-      time: Date.now(),
-      kind: 'unhandledrejection',
-      message: reason instanceof Error ? reason.message : String(reason ?? 'Unknown rejection'),
-      ...(reason instanceof Error && reason.stack ? { stack: reason.stack } : {}),
-    });
-  });
+  const onPageHide = (event: PageTransitionEvent): void => {
+    if (event.persisted) observability.checkpoint('page.suspended');
+    else observability.end();
+    if (event.persisted) void persistence.flush();
+    else void persistence.dispose();
+  };
+  const onPageShow = (event: PageTransitionEvent): void => {
+    if (event.persisted) observability.checkpoint('page.resumed');
+  };
+  const onVisibility = (): void => {
+    recorder.record({ recordKind: 'event', subsystem: 'application', component: 'document', name: 'document.visibility.changed', origin: 'system', activeView: activeMode, metadata: { visibility: document.visibilityState } });
+    if (document.visibilityState === 'hidden') void persistence.flush();
+  };
+  window.addEventListener('error', onRuntimeError);
+  window.addEventListener('unhandledrejection', onUnhandledRejection);
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('pageshow', onPageShow);
+  document.addEventListener('visibilitychange', onVisibility);
+  appObservability.set(root, { session: observability, persistence, dispose() {
+    window.removeEventListener('error', onRuntimeError);
+    window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', onPageShow);
+    document.removeEventListener('visibilitychange', onVisibility);
+    document.removeEventListener('pointerdown', onTransientPointerDown, true);
+    loggerPage.disposeSourceIntegrity();
+    diagnosticExport?.abort();
+    if (diagnosticHealthTimer !== undefined) clearInterval(diagnosticHealthTimer);
+    observability.end();
+    void persistence.dispose();
+  } });
 
   const header = document.createElement('header');
   header.className = 'app-header';
@@ -272,7 +326,7 @@ export function mountAppShell(root: HTMLElement): void {
   const bugReportButton = document.createElement('button');
   bugReportButton.type = 'button';
   bugReportButton.className = 'bug-report-button utility-action-button';
-  bugReportButton.innerHTML = '<span class="utility-action-symbol" aria-hidden="true">⚑</span><span>Report</span><span class="bug-report-status" aria-hidden="true">—</span>';
+  bugReportButton.innerHTML = '<span class="utility-action-symbol" aria-hidden="true">⚑</span><span>Diagnostics</span><span class="bug-report-status" aria-hidden="true">—</span>';
   bugReportButton.title = 'Capture EpicScope runtime diagnostics';
   bugReportButton.setAttribute('aria-haspopup', 'dialog');
   bugReportButton.setAttribute('aria-expanded', 'false');
@@ -280,32 +334,42 @@ export function mountAppShell(root: HTMLElement): void {
   const bugReportPopover = document.createElement('div');
   bugReportPopover.className = 'bug-report-popover';
   bugReportPopover.setAttribute('role', 'dialog');
-  bugReportPopover.setAttribute('aria-label', 'EpicScope report');
+  bugReportPopover.setAttribute('aria-label', 'EpicScope Diagnostics');
   bugReportPopover.hidden = true;
   bugReportPopover.innerHTML = `
     <div class="bug-report-panel">
       <header>
         <div>
-          <strong>EpicScope bug report</strong>
-          <small>Runtime state, channel health, errors and performance evidence</small>
+          <strong>EpicScope Diagnostics</strong>
+          <small>One captured session: health, timeline, operations, performance, Parser and recovery</small>
         </div>
         <button type="button" class="bug-report-close" aria-label="Close report">×</button>
       </header>
       <div class="bug-report-health"></div>
-      <textarea class="bug-report-text" readonly spellcheck="false" aria-label="EpicScope bug report text"></textarea>
+      <div class="diagnostics-view-slot"></div>
+      <textarea hidden class="bug-report-text" readonly spellcheck="false" aria-label="EpicScope bug report text"></textarea>
       <footer>
         <button type="button" class="bug-report-copy">Copy report</button>
         <button type="button" class="bug-report-export">Export .txt</button>
+        <button type="button" class="diagnostics-export-bundle">Export diagnostic ZIP</button>
+        <span class="diagnostics-export-status" role="status"></span>
         <button type="button" class="bug-report-footer-close">Close</button>
       </footer>
     </div>
   `;
+  const diagnosticsView = createDiagnosticsView(() => refreshBugReport(), lens => {
+    const area = bugReportPopover.querySelector<HTMLTextAreaElement>('.bug-report-text');
+    if (area) area.hidden = lens !== 'Export report';
+  });
+  bugReportPopover.querySelector('.diagnostics-view-slot')!.append(diagnosticsView.element);
+  let diagnosticExport: AbortController | undefined;
   const bugReportWrap = document.createElement('div');
   bugReportWrap.className = 'bug-report-wrap';
   bugReportWrap.append(bugReportButton, bugReportPopover);
   bugReportSlot.append(bugReportWrap);
 
   const closeTransientSurface = (trigger: HTMLElement): void => {
+    if (trigger === bugReportButton) diagnosticExport?.abort();
     trigger.setAttribute('aria-expanded', 'false');
     const owner = trigger.parentElement;
     if (!owner) return;
@@ -315,9 +379,10 @@ export function mountAppShell(root: HTMLElement): void {
     if (trigger.classList.contains('brand-button')) trigger.classList.remove('brand-button--open');
   };
 
-  document.addEventListener('pointerdown', (event) => {
+  const onTransientPointerDown = (event: PointerEvent): void => {
     const target = event.target;
     if (!(target instanceof Node)) return;
+    loggerPage.dismissSourceIntegrityNotice(target);
     for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]')) {
       const owner = trigger.parentElement;
       if (!owner || owner.contains(target)) continue;
@@ -329,7 +394,8 @@ export function mountAppShell(root: HTMLElement): void {
         || details.querySelector(':scope > [class*="popover"]') !== null;
       if (transient) details.open = false;
     }
-  }, true);
+  };
+  document.addEventListener('pointerdown', onTransientPointerDown, true);
 
   loggerPage.onChannelPerformance((run) => {
     performanceDiagnostics.recordChannel({
@@ -438,6 +504,7 @@ export function mountAppShell(root: HTMLElement): void {
   type SourceLoadState = 'idle' | 'loading' | 'success' | 'restored' | 'issue';
 
   const closeBugReport = (): void => {
+    diagnosticExport?.abort();
     bugReportPopover.hidden = true;
     bugReportButton.setAttribute('aria-expanded', 'false');
   };
@@ -446,18 +513,22 @@ export function mountAppShell(root: HTMLElement): void {
     event.stopPropagation();
     const nextOpen = bugReportPopover.hidden;
     if (nextOpen) refreshBugReport();
+    else diagnosticExport?.abort();
     bugReportPopover.hidden = !nextOpen;
     bugReportButton.setAttribute('aria-expanded', String(nextOpen));
+    if (nextOpen) diagnosticsView.element.querySelector('select')?.focus();
   });
   bugReportPopover.addEventListener('click', (event) => event.stopPropagation());
+  bugReportPopover.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeBugReport(); bugReportButton.focus(); } });
   bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-close')?.addEventListener('click', closeBugReport);
   bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-footer-close')?.addEventListener('click', closeBugReport);
 
   bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-copy')?.addEventListener('click', () => {
-    const report = buildBugReport().text;
-    void navigator.clipboard.writeText(report).then(() => {
+    const report = diagnosticsView.getCapture()?.reportText ?? '';
+    void (navigator.clipboard?.writeText ? navigator.clipboard.writeText(report) : Promise.reject(new Error('Clipboard unavailable'))).then(() => {
       appStatus.textContent = 'Bug report copied';
     }).catch(() => {
+      diagnosticsView.showLens('Export report');
       const textArea = bugReportPopover.querySelector<HTMLTextAreaElement>('.bug-report-text');
       if (textArea) {
         textArea.value = report;
@@ -468,7 +539,7 @@ export function mountAppShell(root: HTMLElement): void {
   });
 
   bugReportPopover.querySelector<HTMLButtonElement>('.bug-report-export')?.addEventListener('click', () => {
-    const report = buildBugReport().text;
+    const report = diagnosticsView.getCapture()?.reportText ?? '';
     const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -476,6 +547,24 @@ export function mountAppShell(root: HTMLElement): void {
     link.download = `EpicScope-bug-report-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
     link.click();
     URL.revokeObjectURL(url);
+  });
+
+  bugReportPopover.querySelector<HTMLButtonElement>('.diagnostics-export-bundle')?.addEventListener('click', async () => {
+    const capture = diagnosticsView.getCapture(); if (!capture || diagnosticExport) return;
+    const operation = new AbortController(); diagnosticExport = operation;
+    const button = bugReportPopover.querySelector<HTMLButtonElement>('.diagnostics-export-bundle')!;
+    const status = bugReportPopover.querySelector<HTMLElement>('.diagnostics-export-status')!;
+    button.disabled = true; status.textContent = 'Preparing local bundle… Close Diagnostics to cancel.';
+    let url: string | undefined;
+    try {
+      const blob = await buildDiagnosticsBundle(capture, operation.signal);
+      if (operation.signal.aborted) return;
+      url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url;
+      link.download = `EpicScope-diagnostics-${capture.capturedAt.replace(/[:.]/g, '-')}.zip`;
+      link.click(); status.textContent = 'Diagnostic ZIP exported. Contains full local snapshot, independent of filters.';
+    } catch (error) { status.textContent = operation.signal.aborted ? 'Export cancelled.' : `Export failed: ${error instanceof Error ? error.message : 'Unable to create bundle'}`; }
+    finally { if (url) URL.revokeObjectURL(url); diagnosticExport = undefined; button.disabled = false; }
   });
 
   const setSourceLoadState = (
@@ -494,11 +583,12 @@ export function mountAppShell(root: HTMLElement): void {
   );
 
   let restoringWorkspaceHistory = false;
-  const workspaceStorage = createWorkspaceLocalStorageAdapter();
-  const applicationWorkspaceStorage = createApplicationWorkspaceLocalStorageAdapter();
-  const iniCatalogStorage = createIniCatalogLocalStorageAdapter();
+  const workspaceStorage = createWorkspaceLocalStorageAdapter(undefined, recorder);
+  const applicationWorkspaceStorage = createApplicationWorkspaceLocalStorageAdapter(undefined, recorder);
+  const iniCatalogStorage = createIniCatalogLocalStorageAdapter(undefined, recorder);
   let activeWorkspaceSource: LogSourceIdentity | undefined;
   let activeIniCatalog: ChannelCatalog | undefined;
+  let activeIniTableDefinitions: readonly IniTableEditorDefinition[] = [];
   let activeIniSourceName: string | undefined;
   let activeIniBinding: BoundChannelCatalog | undefined;
   let msqLoadGeneration = 0;
@@ -516,69 +606,63 @@ export function mountAppShell(root: HTMLElement): void {
   let reusableWorkspacePersistenceSuspended = false;
   let shimCatalogActive = false;
 
-  const buildBugReport = (): { readonly text: string; readonly issueCount: number } => {
+  const captureCurrentDiagnostics = () => {
     const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();
-    const workspaceState = loggerPage.getWorkspaceState();
-    const { issues, warnings } = evaluateBugReportHealth(snapshot, {
-      logLoaded: currentRawLog !== undefined,
-      iniLoaded: activeIniCatalog !== undefined,
-      bindingActive: activeIniBinding !== undefined,
-      runtimeErrorCount: runtimeErrors.length,
-    });
     const source = currentRawLog?.summary.source;
     const bindingMetrics = activeIniBinding?.metrics;
-
-    return buildBugReportText({
-      snapshot,
-      workspaceState,
-      issues,
-      warnings,
-      source: {
-        logLoaded: currentRawLog !== undefined,
-        ...(source ? {
-          logName: source.displayName,
-          logSizeBytes: source.sizeBytes,
-        } : {}),
-        recordCount: currentRawLog?.recordCount ?? 0,
-        logChannelCount: currentRawLog?.summary.channels.length ?? 0,
-        dataSourceSamples: currentRawLog?.channelData.sampleCount ?? 0,
-        iniLoaded: activeIniCatalog !== undefined,
-        ...(activeIniSourceName ? { iniSourceName: activeIniSourceName } : {}),
-        iniCatalogEntries: activeIniCatalog?.entries.length ?? 0,
-        bindingActive: activeIniBinding !== undefined,
-        ...(bindingMetrics ? {
-          bindingMetrics: {
-            boundChannelCount: bindingMetrics.boundChannelCount,
-            knownNoDataCount: bindingMetrics.knownNoDataCount,
-            logOnlyCount: bindingMetrics.logOnlyCount,
-            ambiguousLogChannelCount: bindingMetrics.ambiguousLogChannelCount,
-          },
-        } : {}),
+    return captureDiagnostics({ recorder, sessionId: observability.sessionId,
+      performance: performanceDiagnostics.captureEvidence(),
+      parserReport: loggerPage.getParserDiagnosticsReport(), parserDiagnostics: loggerPage.getParserDiagnosticsEvidence(),
+      persistence: persistence.snapshot(),
+      current: {
+        snapshot, workspaceState: loggerPage.getWorkspaceState(),
+        source: {
+          logLoaded: currentRawLog !== undefined,
+          ...(source ? {
+            logName: source.displayName,
+            logSizeBytes: source.sizeBytes,
+          } : {}),
+          recordCount: currentRawLog?.recordCount ?? 0,
+          logChannelCount: currentRawLog?.summary.channels.length ?? 0,
+          dataSourceSamples: currentRawLog?.channelData.sampleCount ?? 0,
+          iniLoaded: activeIniCatalog !== undefined,
+          ...(activeIniSourceName ? { iniSourceName: activeIniSourceName } : {}),
+          iniCatalogEntries: activeIniCatalog?.entries.length ?? 0,
+          bindingActive: activeIniBinding !== undefined,
+          ...(bindingMetrics ? {
+            bindingMetrics: {
+              boundChannelCount: bindingMetrics.boundChannelCount,
+              knownNoDataCount: bindingMetrics.knownNoDataCount,
+              logOnlyCount: bindingMetrics.logOnlyCount,
+              ambiguousLogChannelCount: bindingMetrics.ambiguousLogChannelCount,
+            },
+          } : {}),
+        },
+        application: {
+          generatedAtIso: new Date().toISOString(),
+          url: location.href,
+          userAgent: navigator.userAgent,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio,
+          documentVisibility: document.visibilityState,
+          online: navigator.onLine,
+          ...(navigator.hardwareConcurrency ? { hardwareConcurrency: navigator.hardwareConcurrency } : {}),
+          appStatus: appStatus.textContent ?? '',
+          parserStatus: parserStatus.textContent ?? '',
+          openLogState: openButton.dataset.loadState ?? '—',
+          openLogTitle: openButton.title,
+          loadIniState: loadIniButton.dataset.loadState ?? '—',
+          loadIniTitle: loadIniButton.title,
+        },
       },
-      runtimeErrors,
-      application: {
-        generatedAtIso: new Date().toISOString(),
-        url: location.href,
-        userAgent: navigator.userAgent,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        devicePixelRatio: window.devicePixelRatio,
-        documentVisibility: document.visibilityState,
-        online: navigator.onLine,
-        ...(navigator.hardwareConcurrency ? { hardwareConcurrency: navigator.hardwareConcurrency } : {}),
-        appStatus: appStatus.textContent ?? '',
-        parserStatus: parserStatus.textContent ?? '',
-        openLogState: openButton.dataset.loadState ?? '—',
-        openLogTitle: openButton.title,
-        loadIniState: loadIniButton.dataset.loadState ?? '—',
-        loadIniTitle: loadIniButton.title,
-      },
-      performanceReport: performanceDiagnostics.reportText(),
     });
   };
 
   const refreshBugReport = (): void => {
-    const report = buildBugReport();
+    diagnosticExport?.abort();
+    const report = captureCurrentDiagnostics();
+    diagnosticsView.setCapture(report.capture);
     const textArea = bugReportPopover.querySelector<HTMLTextAreaElement>('.bug-report-text');
     const health = bugReportPopover.querySelector<HTMLElement>('.bug-report-health');
     if (textArea) textArea.value = report.text;
@@ -592,11 +676,11 @@ export function mountAppShell(root: HTMLElement): void {
 
   const refreshBugReportButtonStatus = (): void => {
     const snapshot = loggerPage.getRuntimeDiagnosticSnapshot();
-    const { issues, warnings } = evaluateBugReportHealth(snapshot, {
+    const { issues, warnings } = projectCurrentHealth(snapshot, {
       logLoaded: currentRawLog !== undefined,
       iniLoaded: activeIniCatalog !== undefined,
       bindingActive: activeIniBinding !== undefined,
-      runtimeErrorCount: runtimeErrors.length,
+      runtimeErrorCount: runtimeErrorCount(recorder),
     });
     const status = bugReportButton.querySelector<HTMLElement>('.bug-report-status');
     const state = issues.length > 0 ? 'issue' : warnings.length > 0 ? 'warning' : 'ok';
@@ -609,7 +693,7 @@ export function mountAppShell(root: HTMLElement): void {
         : 'Report · runtime health OK';
   };
   refreshBugReportButtonStatus();
-  window.setInterval(refreshBugReportButtonStatus, 750);
+  diagnosticHealthTimer = window.setInterval(refreshBugReportButtonStatus, 750);
 
   const setPersistenceStatus = (message: string): void => {
     persistenceStatus.textContent = message;
@@ -844,6 +928,7 @@ export function mountAppShell(root: HTMLElement): void {
   };
 
   const restoreWorkspaceSnapshot = async (state: WebWorkspaceState): Promise<void> => {
+    const operation = observability.beginOperation({ subsystem: 'workspace', component: 'shell-restore', name: 'workspace.restore', origin: 'programmatic', metadata: { workspaces: state.logger.workspaces.length } });
     restoringWorkspaceHistory = true;
     try {
       playbackSpeed.value = String(state.settings.playbackSpeed);
@@ -856,9 +941,13 @@ export function mountAppShell(root: HTMLElement): void {
       loggerPage.setTimelineOverviewTracesVisible(state.settings.timelineOverviewTracesVisible);
       performanceDiagnostics.element.hidden = !state.settings.performanceDiagnosticsVisible;
       await loggerPage.restoreWorkspaceState(state.logger);
+    } catch (error) {
+      operation?.finish('failure', 'workspace-restore-failed');
+      throw error;
     } finally {
       restoringWorkspaceHistory = false;
       refreshUndoRedo();
+      if (operation?.outcome === undefined) operation?.finish('success');
     }
   };
 
@@ -937,10 +1026,41 @@ export function mountAppShell(root: HTMLElement): void {
   };
 
   type EpicScopeMode = 'logger' | 'analyzer' | 'histogram';
-  let activeMode: EpicScopeMode = 'logger';
+  const identities = new WeakMap<object, string>();
+  let nextIdentity = 0;
+  const diagnosticIdentity = (value: object | undefined): string => {
+    if (!value) return 'none';
+    let id = identities.get(value);
+    if (!id) { id = `object:${++nextIdentity}`; identities.set(value, id); }
+    return id;
+  };
+  let previousFingerprint = '';
+  let previousSource = 'none';
+  let previousTune = 'none';
+  const observeAcceptedInputs = (): void => {
+    try {
+      const source = loggerPage.getAnalysisSourceState();
+      const sourceId = diagnosticIdentity(source.identity);
+      const tuneId = diagnosticIdentity(activeTuneModel);
+      const catalogId = diagnosticIdentity(activeIniCatalog);
+      // These are owner-provided revisions and opaque reference tags, not new domain revisions.
+      const fingerprint = `${sourceId}/${source.revision}/${source.sampleCount}/${tuneId}/${catalogId}/${source.aTimeMs ?? '-'}/${source.bTimeMs ?? '-'}`;
+      if (fingerprint === previousFingerprint) return;
+      recorder.record({ recordKind: 'snapshot', subsystem: 'application', component: 'inputs', name: 'analysis.context.changed', origin: 'programmatic', activeView: activeMode,
+        sourceIdentity: sourceId, sourceRevision: source.revision, tuneIdentity: tuneId, semanticFingerprint: fingerprint,
+        metadata: { sampleCount: source.sampleCount, catalogIdentity: catalogId, aTimeMs: source.aTimeMs ?? null, bTimeMs: source.bTimeMs ?? null },
+      });
+      if (sourceId !== previousSource) recorder.record({ recordKind: 'event', subsystem: 'application', component: 'source', name: 'source.accepted.changed', origin: 'programmatic', priority: 'critical', sourceIdentity: sourceId, sourceRevision: source.revision });
+      if (tuneId !== previousTune) recorder.record({ recordKind: 'event', subsystem: 'application', component: 'tune', name: 'tune.accepted.changed', origin: 'programmatic', priority: 'critical', tuneIdentity: tuneId });
+      previousFingerprint = fingerprint; previousSource = sourceId; previousTune = tuneId;
+    } catch {
+      recorder.record({ recordKind: 'event', subsystem: 'observability', component: 'inputs', name: 'observability.producer.failed', origin: 'system', severity: 'warning' });
+    }
+  };
   // Publish accepted inputs only to the visible consumer. Hidden domains receive
   // the latest shell/Logger state on entry through the same path.
   const publishAnalysisInputs = (change: 'context' | 'tune' = 'context'): void => {
+    observeAcceptedInputs();
     if (change === 'tune' && activeMode !== 'analyzer') {
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
     }
@@ -963,6 +1083,7 @@ export function mountAppShell(root: HTMLElement): void {
       }
       histogramPage.setContext({
         ...loggerPage.getAnalysisContext(),
+        tuneTableDefinitions: activeIniTableDefinitions,
         ...(activeTuneModel ? { tuneModel: activeTuneModel } : {}),
         ...(activeTuneSourceName ? { tuneSourceName: activeTuneSourceName } : {}),
         openSamplesInLogger: (request) => {
@@ -974,7 +1095,11 @@ export function mountAppShell(root: HTMLElement): void {
       histogramPage.refresh();
     }
   };
-  const setEpicScopeMode = (mode: EpicScopeMode): void => {
+  const setEpicScopeMode = (mode: EpicScopeMode, origin: Origin = 'programmatic'): void => {
+    if (mode !== activeMode) {
+      recorder.record({ recordKind: 'event', subsystem: 'navigation', component: 'shell', name: 'navigation.mode.changed', origin, activeView: mode, metadata: { previous: activeMode, next: mode } });
+      for (const view of ['logger', 'analyzer', 'histogram']) recorder.record({ recordKind: 'event', subsystem: 'navigation', component: 'shell', name: 'page.visibility.changed', origin, activeView: view, visibility: view === mode ? 'active' : 'hidden' });
+    }
     activeMode = mode;
     const loggerActive = mode === 'logger';
     const analyzerActive = mode === 'analyzer';
@@ -1047,7 +1172,7 @@ export function mountAppShell(root: HTMLElement): void {
     if (!(target instanceof Element)) return;
     const choice = target.closest<HTMLButtonElement>('[data-epicscope-mode]');
     const mode = choice?.dataset.epicscopeMode;
-    if (mode === 'logger' || mode === 'analyzer' || mode === 'histogram') setEpicScopeMode(mode);
+    if (mode === 'logger' || mode === 'analyzer' || mode === 'histogram') setEpicScopeMode(mode, event.isTrusted ? 'user' : 'programmatic');
   });
   document.addEventListener('click', () => {
     closeBrandMenu();
@@ -1103,6 +1228,8 @@ export function mountAppShell(root: HTMLElement): void {
 
     analyzerPage.setActive(false);
     activeIniCatalog = undefined;
+    activeIniTableDefinitions = [];
+    saveIniTableEditorDefinitions(activeIniTableDefinitions, recorder);
     activeIniSourceName = undefined;
     activeIniBinding = undefined;
     if (!shimCatalogActive) loggerPage.clearChannelCatalog();
@@ -1227,6 +1354,8 @@ export function mountAppShell(root: HTMLElement): void {
         publicationPending = true;
         analyzerPage.setActive(false);
         activeIniCatalog = imported.catalog;
+        activeIniTableDefinitions = imported.tableDefinitions;
+        saveIniTableEditorDefinitions(activeIniTableDefinitions, recorder);
         activeIniSourceName = imported.fileName;
         activeIniBinding = undefined;
         try {
@@ -1333,6 +1462,7 @@ export function mountAppShell(root: HTMLElement): void {
       const persistedCatalog = iniCatalogStorage.load();
       if (persistedCatalog) {
         activeIniCatalog = persistedCatalog.catalog;
+        activeIniTableDefinitions = loadIniTableEditorDefinitions();
         activeIniSourceName = persistedCatalog.sourceName;
         reusableWorkspacePersistenceSuspended = false;
         activeIniBinding = undefined;
@@ -1409,6 +1539,7 @@ export function mountAppShell(root: HTMLElement): void {
       window.clearTimeout(workspaceSaveTimer);
       workspaceSaveTimer = undefined;
     }
+    if (activeSourceLoad) finishSourceLoad(activeSourceLoad, 'cancelled');
     activeStagedImport?.cancel();
     activeStagedImport = undefined;
 
@@ -1506,6 +1637,7 @@ export function mountAppShell(root: HTMLElement): void {
       return;
     }
 
+    if (activeSourceLoad) finishSourceLoad(activeSourceLoad, 'cancelled');
     activeStagedImport?.cancel();
     activeStagedImport = undefined;
     currentRawLog = {
@@ -1528,7 +1660,7 @@ export function mountAppShell(root: HTMLElement): void {
         : undefined,
     );
     loadedLog.textContent = source.summary.source.displayName;
-    loggerPage.setDiagnostics(source.summary.diagnostics);
+    loggerPage.setDiagnostics(source.summary.diagnostics, source.summary.source);
     parserStatus.textContent = `TS-SHIM · ${source.recordCount.toLocaleString()} samples · ${source.summary.channels.length.toLocaleString()} channels · retained capture`;
     appStatus.textContent = `Shim capture active · ${source.recordCount.toLocaleString()} samples`;
     setPersistenceStatus('Shim capture uses the reusable workspace structure · capture navigation is session-only.');
@@ -1675,15 +1807,20 @@ export function mountAppShell(root: HTMLElement): void {
     parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only`;
   };
 
-  const importOnMainThread = async (file: File): Promise<void> => {
+  const importOnMainThread = async (file: File, operation?: Operation): Promise<void> => {
     const parsed = await importMlgFile(file);
+    if (operation) sourceLoadOperations.set(parsed.summary.source, operation.id);
     recordFullLoad(file, parsed);
+    finishSourceLoad(operation, 'success');
   };
 
-  fileInput.addEventListener('change', () => {
+  fileInput.addEventListener('change', (event) => {
     const file = fileInput.files?.item(0);
     fileInput.value = '';
     if (!file) return;
+    if (activeSourceLoad) finishSourceLoad(activeSourceLoad, 'superseded');
+    const loadOperation = observability.beginOperation({ subsystem: 'source', component: 'log-import', name: 'source.load', origin: event.isTrusted ? 'user' : 'programmatic', metadata: { fileName: file.name, fileSizeBytes: file.size } });
+    activeSourceLoad = loadOperation;
 
     modeChip.dataset.loggerSource = 'recorded';
     activeStagedImport?.cancel();
@@ -1695,11 +1832,12 @@ export function mountAppShell(root: HTMLElement): void {
     parserStatus.textContent = 'LOG-MLG · reading local file';
 
     if (!supportsStagedMlgWorker()) {
-      void importOnMainThread(file)
+      void importOnMainThread(file, loadOperation)
         .catch((error: unknown) => {
           const message = importErrorMessage(error);
           currentRawLog = undefined;
-          loggerPage.setImportError(message);
+          finishSourceLoad(loadOperation, 'failure');
+          loggerPage.setImportError(message, loadOperation ? { operationId: loadOperation.id } : {});
           publishAnalysisInputs();
           activeWorkspaceSource = undefined;
           workspacePersistenceBlocked = false;
@@ -1721,6 +1859,7 @@ export function mountAppShell(root: HTMLElement): void {
       .then((indexed) => {
         if (activeStagedImport !== staged) return;
 
+        if (loadOperation) sourceLoadOperations.set(indexed.summary.source, loadOperation.id);
         const now = (): number => globalThis.performance?.now() ?? Date.now();
         const pendingDiagnostic = {
           code: 'mlg-crc-validation-pending',
@@ -1857,7 +1996,7 @@ export function mountAppShell(root: HTMLElement): void {
                 },
               };
             }
-            loggerPage.setDiagnostics(validated.diagnostics);
+            loggerPage.setDiagnostics(validated.diagnostics, indexed.summary.source);
             loggerPage.refreshValidity();
             validationApplied = true;
             // Wait for restore before publishing the final source/validity revision.
@@ -1908,6 +2047,7 @@ export function mountAppShell(root: HTMLElement): void {
               ? `Ready · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
               : 'Ready';
             parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · ${crcStatus} · local only`;
+            finishSourceLoad(loadOperation, 'success');
             activeStagedImport = undefined;
           })
           .catch((error: unknown) => {
@@ -1920,7 +2060,8 @@ export function mountAppShell(root: HTMLElement): void {
                 message: error instanceof Error ? error.message : 'CRC validation worker failed.',
                 recoverable: true,
               },
-            ]);
+            ], indexed.summary.source);
+            finishSourceLoad(loadOperation, 'failure');
             setSourceLoadState(openButton, 'issue', 'Log loaded, but CRC validation failed');
             appStatus.textContent = 'Ready · CRC validation failed';
             parserStatus.textContent = 'LOG-MLG · background CRC validation failed';
@@ -1931,13 +2072,15 @@ export function mountAppShell(root: HTMLElement): void {
         if (activeStagedImport !== staged) return;
         activeStagedImport = undefined;
         setSourceLoadState(openButton, 'loading', `${file.name} · worker unavailable, using main thread`);
+        recorder.record({ recordKind: 'event', subsystem: 'source', component: 'log-import', name: 'source.load.worker-fallback', origin: 'system', ...(loadOperation ? { operationId: loadOperation.id } : {}) });
         appStatus.textContent = 'Worker unavailable · using main thread…';
         parserStatus.textContent = 'LOG-MLG · worker fallback';
-        void importOnMainThread(file)
+        void importOnMainThread(file, loadOperation)
           .catch((error: unknown) => {
             const message = importErrorMessage(error ?? workerError);
             currentRawLog = undefined;
-            loggerPage.setImportError(message);
+            finishSourceLoad(loadOperation, 'failure');
+            loggerPage.setImportError(message, loadOperation ? { operationId: loadOperation.id } : {});
             publishAnalysisInputs();
             setSourceLoadState(openButton, 'issue', `Log import failed: ${message}`);
             appStatus.textContent = 'Import failed';
@@ -1949,4 +2092,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput);
   root.append(app);
+  observeAcceptedInputs();
+  for (const view of ['logger', 'analyzer', 'histogram']) recorder.record({ recordKind: 'event', subsystem: 'navigation', component: 'shell', name: 'page.visibility.changed', origin: 'system', activeView: view, visibility: view === activeMode ? 'active' : 'hidden' });
+  observability.checkpoint('application.shell-mounted');
 }

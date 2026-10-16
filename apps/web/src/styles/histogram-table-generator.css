@@ -408,13 +408,11 @@
 }
 
 
-.histogram-table-presets,
-.histogram-table-formulas {
+.histogram-table-presets {
   position: relative;
 }
 
-.histogram-table-presets summary,
-.histogram-table-formulas summary {
+.histogram-table-presets summary {
   display: flex;
   min-width: 54px;
   min-height: 27px;
@@ -431,21 +429,9 @@
   font: 9px system-ui, sans-serif;
 }
 
-.histogram-table-presets summary::-webkit-details-marker,
-.histogram-table-formulas summary::-webkit-details-marker { display: none; }
+.histogram-table-presets summary::-webkit-details-marker { display: none; }
 
-.histogram-formula-count {
-  min-width: 14px;
-  padding: 1px 3px;
-  border-radius: 8px;
-  background: #1b2c38;
-  color: #8fa6b3;
-  font-size:8px;
-  text-align: center;
-}
-
-.histogram-table-preset-popover,
-.histogram-formula-popover {
+.histogram-table-preset-popover {
   position: absolute;
   z-index: 35;
   top: 31px;
@@ -458,30 +444,18 @@
 }
 
 .histogram-table-preset-popover { width: 330px; }
+
 .histogram-table-preset-popover > select { width: 100%; }
-.histogram-table-preset-popover > div,
-.histogram-formula-actions { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+
+.histogram-table-preset-popover > div { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+
 .histogram-table-preset-popover small,
-.histogram-formula-status,
 .histogram-filter-logic-bar small { color: #718a99; font-size:9px; line-height: 1.35; }
 
-.histogram-formula-popover {
-  display: grid;
-  width: min(520px, 72vw);
-  grid-template-columns: minmax(120px,.7fr) minmax(180px,1.3fr);
-  gap: 7px;
-}
-.histogram-formula-popover label { display: grid; gap: 3px; }
-.histogram-formula-popover label:nth-of-type(3) { grid-column: 1 / -1; }
-.histogram-formula-popover input,
-.histogram-formula-popover select,
 .histogram-table-preset-popover select,
-.histogram-table-preset-popover button,
-.histogram-formula-popover button {
+.histogram-table-preset-popover button {
   min-height: 27px; border: 1px solid #2b4554; border-radius: 3px; background: #0f1d27; color: #dce9ef; font: 9px system-ui,sans-serif; padding: 0 6px;
 }
-.histogram-formula-actions { grid-column: 1 / -1; }
-.histogram-formula-status { flex: 1; }
 
 .histogram-filter-set-bar,
 .histogram-filter-logic-bar {
@@ -544,7 +518,6 @@
 .histogram-table-axis-custom,.histogram-table-axis-msq { grid-template-columns:1fr 1fr; gap:8px; }
 .histogram-table-axis-custom:not([hidden]),.histogram-table-axis-msq:not([hidden]) { display:grid; }
 .histogram-table-axis-custom input,.histogram-table-axis-msq select { width:100%; min-width:0; min-height:28px; border:1px solid #2b4554; border-radius:3px; background:#0f1d27; color:#dce9ef; padding:0 6px; font-size:10px; }
-.histogram-table-formulas { display:none!important; }
 .histogram-table-help { position:relative; }
 .histogram-table-help > summary { width:27px; height:27px; display:grid; place-items:center; border:1px solid #3a586a; border-radius:50%; background:#0e202b; color:#9fd0e8; cursor:pointer; list-style:none; font:800 13px/1 Georgia,serif; }
 .histogram-table-help > summary::-webkit-details-marker { display:none; }

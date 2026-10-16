@@ -1,3 +1,7 @@
+import { createOwnerEvidence } from '../observability/producers/owner';
+import type { ObservabilityRecorder } from '../observability/recorder';
+import { veResultViewUsesNeutralFallback } from './ve-analyzer-result-heat';
+import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import { describeVeRunBlocker } from './ve-analyzer-blocker-info';
@@ -11,11 +15,6 @@ import {
   createVeAnalyzerView as createVeAnalyzerViewV6,
   type VeAnalyzerViewController,
 } from './ve-analyzer-view-v6';
-
-interface BlockerEntry {
-  readonly message: string;
-  readonly fixButton?: HTMLButtonElement;
-}
 
 interface DelaySurface {
   readonly rpmBins: readonly number[];
@@ -154,13 +153,13 @@ function interpolateDelay(surface: DelaySurface | undefined, rpm: number | undef
   return y.low === y.high ? top : top + (bottom - top) * y.fraction;
 }
 
-export function createVeAnalyzerView(): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV6();
+export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+  const ownerEvidence = createOwnerEvidence(observability, 've-presentation');
+  const inner = createVeAnalyzerViewV6(observability);
   const root = inner.element;
   const workbench = root.querySelector<HTMLElement>('.ve-workbench')!;
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
-  const blockerPanel = root.querySelector<HTMLElement>('.ve-run-blocker-panel')!;
   const advanced = root.querySelector<HTMLDetailsElement>('.ve-workbench-advanced');
   const advancedControls = advanced?.querySelector<HTMLElement>('[data-ve-analyzer="controls"]');
 
@@ -294,7 +293,9 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         cell.classList.toggle('ve-result-missing', display.numericValue === undefined);
 
         if (view === 'proposal' || display.scaleMode === 'base') {
-          restoreBaseLevel(cell);
+          // Missing alternate metrics are neutral; proposal and delay retain base heat.
+          if (veResultViewUsesNeutralFallback(view, display)) cell.style.setProperty('--ve-cell-level', '0.5');
+          else restoreBaseLevel(cell);
           continue;
         }
         if (display.numericValue !== undefined) {
@@ -306,11 +307,15 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
 
     if (view === 'proposal' || rendered.length === 0) return;
-    const values = rendered.map((entry) => entry.value);
-    const finite = values.filter(Number.isFinite);
-    const min = finite.length ? Math.min(...finite) : 0;
-    const max = finite.length ? Math.max(...finite) : 1;
-    const maxMagnitude = finite.length ? Math.max(...finite.map((value) => Math.abs(value))) : 1;
+    let min = Infinity;
+    let max = -Infinity;
+    let maxMagnitude = 0;
+    for (const { value } of rendered) {
+      if (!Number.isFinite(value)) continue;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+      maxMagnitude = Math.max(maxMagnitude, Math.abs(value));
+    }
 
     for (const entry of rendered) {
       let level = 0.5;
@@ -322,6 +327,20 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       }
       entry.cell.style.setProperty('--ve-cell-level', String(Math.max(0, Math.min(1, level))));
     }
+  };
+
+  // Rebuild notifications and wrapper refreshes can arrive in the same turn.
+  // Keep one pending presentation pass, while explicit selection stays immediate.
+  let resultViewQueued = false;
+  const scheduleResultView = (mutations?: MutationRecord[]): void => {
+    ownerEvidence.event('ve.presentation.schedule', { queued: resultViewQueued, mutations: mutations?.length ?? 0 }, { origin: mutations ? 'observer' : 'programmatic' });
+    if (resultViewQueued) return;
+    resultViewQueued = true;
+    queueMicrotask(() => {
+      if (!resultViewQueued) return;
+      resultViewQueued = false;
+      applyResultView();
+    });
   };
 
   const syncTableHeaderControls = (): void => {
@@ -362,9 +381,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     applyTableLayout();
   });
 
-  resultViewSelect.addEventListener('change', () => {
+  resultViewSelect.addEventListener('change', (event) => {
+    ownerEvidence.event('ve.result-view.changed', { view: resultViewSelect.value }, { origin: event.isTrusted ? 'user' : 'programmatic', stateRevision: inner.sessionRevision });
     const view = resultViewSelect.value as VeResultView;
     storeResultView(view);
+    resultViewQueued = false;
     applyResultView();
   });
 
@@ -378,11 +399,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     applyTableLayout();
   });
 
-  const tableObserver = new MutationObserver(() => queueMicrotask(applyResultView));
+  const tableObserver = new MutationObserver(scheduleResultView);
   if (veHost) tableObserver.observe(veHost, { childList: true });
 
   applyTableLayout();
-  queueMicrotask(applyResultView);
+  scheduleResultView();
 
   actionbar.classList.add('ve-run-info-host');
 
@@ -401,19 +422,9 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   popout.setAttribute('aria-label', 'Run Analysis blockers');
   actionbar.append(popout);
 
-  const blockerEntries = (): BlockerEntry[] => {
-    const entries: BlockerEntry[] = [];
-    for (const item of blockerPanel.querySelectorAll<HTMLElement>('.ve-run-blocker-item')) {
-      const message = item.querySelector('span')?.textContent?.trim() ?? '';
-      if (!message) continue;
-      const fixButton = item.querySelector<HTMLButtonElement>('button') ?? undefined;
-      entries.push(fixButton ? { message, fixButton } : { message });
-    }
-    return entries;
-  };
-
   const renderPopout = (): void => {
-    const entries = blockerEntries();
+    const state = inner.getReadiness();
+    const entries = state.active && !state.pending ? state.blockers : [];
     infoButton.hidden = entries.length === 0;
     if (entries.length === 0) {
       popout.hidden = true;
@@ -445,7 +456,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const list = document.createElement('div');
     list.className = 've-run-info-list';
     entries.forEach((entry, index) => {
-      const help = describeVeRunBlocker(entry.message);
+      const help = describeVeRunBlocker(entry);
       const item = document.createElement('section');
       item.className = 've-run-info-item';
       const heading = document.createElement('strong');
@@ -461,14 +472,14 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       const fix = document.createElement('p');
       fix.textContent = help.fix;
       item.append(heading, whyLabel, why, fixLabel, fix);
-      if (entry.fixButton) {
+      if (entry.targetSelector) {
         const jump = document.createElement('button');
         jump.type = 'button';
         jump.textContent = 'Fix';
         jump.onclick = () => {
           popout.hidden = true;
           infoButton.setAttribute('aria-expanded', 'false');
-          entry.fixButton!.click();
+          focusVeReadinessTarget(root, entry.targetSelector!);
         };
         item.append(jump);
       }
@@ -484,7 +495,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     infoButton.setAttribute('aria-expanded', popout.hidden ? 'false' : 'true');
   };
 
-  const observer = new MutationObserver(() => {
+  inner.onReadinessChange(() => {
     const wasOpen = !popout.hidden;
     renderPopout();
     if (wasOpen && !infoButton.hidden) {
@@ -492,7 +503,6 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       infoButton.setAttribute('aria-expanded', 'true');
     }
   });
-  observer.observe(blockerPanel, { childList: true, subtree: true, characterData: true });
 
   document.addEventListener('pointerdown', (event) => {
     if (popout.hidden) return;
@@ -519,21 +529,26 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       if (!changed) return false;
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); applyResultView(); });
+      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      scheduleResultView();
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); applyResultView(); });
+      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      scheduleResultView();
       return true;
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); applyResultView(); });
+      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      scheduleResultView();
     },
   };
 }

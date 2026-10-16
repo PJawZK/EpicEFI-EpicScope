@@ -259,14 +259,15 @@ export function createInspectorPanel(): InspectorPanelController {
 
     const detailsButton = document.createElement('button');
     detailsButton.type = 'button';
-    detailsButton.className = 'channel-details';
+    detailsButton.className = 'channel-details epicscope-info-icon';
     detailsButton.dataset.channelDetails = channel.id;
-    detailsButton.textContent = 'ⓘ';
+    detailsButton.textContent = 'i';
     detailsButton.disabled = unavailable;
     detailsButton.title = unavailable
       ? 'Known from INI; this log has no data for statistics'
       : active ? 'Channel statistics' : 'Activate channel to view statistics';
 
+    detailsButton.setAttribute('aria-label', detailsButton.title);
     actions.append(favoriteButton, detailsButton);
     row.append(toggle, actions);
     renderedValueNodes.set(channel.id, value);

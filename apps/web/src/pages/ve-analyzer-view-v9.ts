@@ -1,3 +1,4 @@
+import type { ObservabilityRecorder } from '../observability/recorder';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import {
@@ -6,8 +7,8 @@ import {
 } from './ve-analyzer-view-v8';
 import '../styles/ve-analyzer-control-placement.css';
 
-export function createVeAnalyzerView(): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV8();
+export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+  const inner = createVeAnalyzerViewV8(observability);
   const root = inner.element;
   let cancelRegrab: (() => void) | undefined;
 
@@ -53,6 +54,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
+    getReadiness() { return inner.getReadiness(); },
+    onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       return inner.setContext(context);
     },

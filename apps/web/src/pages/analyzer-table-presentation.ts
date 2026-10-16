@@ -259,26 +259,19 @@ function enhanceFuelingMap(view: HTMLElement): void {
   if (loadRateLabel) setOwnText(loadRateLabel, 'Window max load trend / s');
 }
 
-function fuelingFeedback(root: HTMLElement): void {
-  for (const view of root.querySelectorAll<HTMLElement>('.specialized-analyzer-view')) {
-    const title = view.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent?.trim() ?? '';
-    if (!title.startsWith('Fueling')) continue;
-    addFuelingCoverageSummary(view);
-    enhanceFuelingMap(view);
+/** Commit existing feedback/sort presentation at the view's result-render boundary. */
+export function updateAnalyzerTablePresentation(root: HTMLElement): void {
+  const title = root.querySelector<HTMLElement>('[data-specialized="title"]')?.textContent?.trim() ?? '';
+  if (title.startsWith('Fueling')) {
+    addFuelingCoverageSummary(root);
+    enhanceFuelingMap(root);
   }
-}
-
-function apply(root: HTMLElement): void {
-  fuelingFeedback(root);
-  for (const selector of SORTABLE_TABLES) {
-    const table = root.querySelector<HTMLTableElement>(selector);
-    if (table) prepareSortableTable(table);
-  }
+  for (const table of root.querySelectorAll<HTMLTableElement>(SORTABLE_TABLES.join(','))) prepareSortableTable(table);
   openSpoolFeedback(root);
 }
 
 export function installBoostTableEnhancements(root: HTMLElement): void {
-  apply(root);
+  updateAnalyzerTablePresentation(root);
 
   root.addEventListener('click', (event) => {
     const target = event.target;
@@ -297,16 +290,4 @@ export function installBoostTableEnhancements(root: HTMLElement): void {
     sortByHeader(header);
   });
 
-  const observe = (observer: MutationObserver): void => {
-    observer.observe(root, { childList: true, subtree: true, characterData: true });
-  };
-  const observer = new MutationObserver(() => {
-    observer.disconnect();
-    try {
-      apply(root);
-    } finally {
-      observe(observer);
-    }
-  });
-  observe(observer);
 }
