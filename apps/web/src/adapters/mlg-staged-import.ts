@@ -1,4 +1,5 @@
 import { MlgNumericChannelDataSource } from '../../../../core/parsers/mlg/mlg-channel-data';
+import { annotateMlgSourceIntegrityDiagnostics } from '../../../../core/parsers/mlg/mlg-integrity';
 import type { NumericChannelDataSource } from '../../../../core/log-model/log-types';
 import { BlobByteSource } from './blob-byte-source';
 import { MlgColumnSidecarDataSource } from './mlg-column-sidecar';
@@ -110,7 +111,14 @@ export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPri
       }
       sidecarChannelData?.releasePrioritizedChannels();
       validationSettled = true;
-      resolveValidated(message.payload);
+      resolveValidated({
+        ...message.payload,
+        diagnostics: annotateMlgSourceIntegrityDiagnostics(
+          indexedPayload.recordIndex,
+          message.payload.diagnostics,
+          indexedPayload.header.recordLength,
+        ),
+      });
       terminate();
       return;
     }

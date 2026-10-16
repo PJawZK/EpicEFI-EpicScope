@@ -115,6 +115,22 @@ describe('buildViewportEnvelope', () => {
     ]);
   });
 
+  it('preserves raw trace continuity when invalid retry attempts have a valid same-timestamp replacement', () => {
+    const points = buildRawViewportSeries({
+      startSampleIndex: 0,
+      timeMs: new Float64Array([0, 10, 20, 20, 20, 30]),
+      values: new Float64Array([1, 2, 90, 91, 3, 4]),
+      validity: new Uint8Array([1, 1, 0, 0, 1, 1]),
+    }, 0, 30);
+
+    expect(points).toEqual([
+      { timeMs: 0, value: 1, breakBefore: true },
+      { timeMs: 10, value: 2, breakBefore: false },
+      { timeMs: 20, value: 3, breakBefore: false },
+      { timeMs: 30, value: 4, breakBefore: false },
+    ]);
+  });
+
   it('breaks a raw high-zoom trace across an abnormal timestamp gap', () => {
     const points = buildRawViewportSeries({
       startSampleIndex: 0,

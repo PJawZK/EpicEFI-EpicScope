@@ -307,13 +307,35 @@ function median(values: readonly number[]): number {
   return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
+function hasValidSameTimestampReplacement(
+  range: NumericChannelRange,
+  index: number,
+  endIndex: number,
+  timeMs: number,
+): boolean {
+  for (let nextIndex = index + 1; nextIndex < endIndex; nextIndex += 1) {
+    const nextTimeMs = range.timeMs[nextIndex];
+    if (nextTimeMs === undefined || nextTimeMs !== timeMs) return false;
+    const nextValue = range.values[nextIndex];
+    if (
+      range.validity[nextIndex] === 1
+      && nextValue !== undefined
+      && Number.isFinite(nextValue)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Returns the actual valid samples inside a viewport in source order.
  *
- * Lines are broken only when source validity is interrupted or when the
- * timestamp spacing is substantially larger than the normal cadence in the
- * visible range. This is intended for high-zoom rendering where pixel-bucket
- * spacing is not evidence of missing data.
+ * Lines are broken only when source validity is interrupted without a valid
+ * same-timestamp replacement, or when timestamp spacing is substantially
+ * larger than the normal cadence in the visible range. Recovered logger retry
+ * attempts are retained as invalid source evidence but do not fabricate a
+ * presentation gap when the valid replacement is present immediately after.
  */
 export function buildRawViewportSeries(
   range: NumericChannelRange,
@@ -348,14 +370,17 @@ export function buildRawViewportSeries(
   for (let index = startIndex; index < endIndex; index += 1) {
     const timeMs = range.timeMs[index];
     const value = range.values[index];
-    if (
-      timeMs === undefined
-      || value === undefined
-      || range.validity[index] !== 1
-      || !Number.isFinite(timeMs)
-      || !Number.isFinite(value)
-    ) {
-      forceBreak = true;
+    const usable = timeMs !== undefined
+      && value !== undefined
+      && range.validity[index] === 1
+      && Number.isFinite(timeMs)
+      && Number.isFinite(value);
+
+    if (!usable) {
+      const recoveredAtSameTimestamp = timeMs !== undefined
+        && Number.isFinite(timeMs)
+        && hasValidSameTimestampReplacement(range, index, endIndex, timeMs);
+      if (!recoveredAtSameTimestamp) forceBreak = true;
       continue;
     }
 
