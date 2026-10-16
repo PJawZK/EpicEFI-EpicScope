@@ -230,9 +230,9 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
       }
     },
     editDelayCells(positions, edit) {
+      dom.cancelActiveInteraction();
       const changed = inner.editDelayCells(positions, edit);
       if (changed) {
-        dom.cancelActiveInteraction();
         surface.resetHistory();
         queueMicrotask(bind);
       }
@@ -242,6 +242,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      dom.cancelActiveInteraction();
       const changed = inner.setContext(context);
       if (changed) {
         resetInteractionSession();
@@ -250,6 +251,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
       return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      dom.cancelActiveInteraction();
       const changed = inner.setTuneModel(model, sourceName);
       if (changed) {
         resetInteractionSession();
