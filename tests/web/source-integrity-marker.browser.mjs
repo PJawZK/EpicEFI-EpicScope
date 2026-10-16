@@ -96,9 +96,19 @@ export async function runSourceIntegrityMarkerChecks() {
     const markerX = rect.left + (bridge.from.x + bridge.to.x) / 2;
     const markerY = rect.top + rect.height / 2;
     canvas.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: markerX, clientY: markerY }));
+    const notice = graph.element.querySelector('.graph-toast');
     const message = graph.element.querySelector('.graph-toast-message')?.textContent ?? '';
     assert(message.includes('Imported log data issue') && message.includes('dotted bridge'), 'Marker click did not explain source/log corruption and bridge meaning');
-    checks.push('pressing the fixed warning marker explains the source-data bridge');
+    assert(notice && !notice.hidden, 'Source-integrity explanation did not remain visible after marker press');
+    checks.push('pressing the fixed warning marker opens a persistent source-data explanation');
+
+    await new Promise((resolve) => setTimeout(resolve, 3500));
+    assert(!notice.hidden, 'Source-integrity explanation still auto-dismissed on a timer');
+    checks.push('source-integrity explanation does not disappear on a timer');
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    assert(notice.hidden, 'Outside press did not dismiss the source-integrity explanation');
+    checks.push('pressing elsewhere dismisses the source-integrity explanation');
 
     dottedSegments.length = 0;
     graph.setViewport({ fullStartMs: 0, fullEndMs: 180000, visibleStartMs: 0, visibleEndMs: 180000 });
