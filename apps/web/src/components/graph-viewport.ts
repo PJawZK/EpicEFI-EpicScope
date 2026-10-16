@@ -1548,7 +1548,7 @@ export function createGraphViewport(): GraphViewportController {
       if (!channel) continue;
       const statisticsStarted = now();
       const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
-      const scale = buildStableValueScale(range);
+      const scale = stableScaleFromStatistics(fullStatistics);
       statisticsScaleMs += now() - statisticsStarted;
       const registrationStarted = now();
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];

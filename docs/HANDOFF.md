@@ -1,5 +1,17 @@
 # EpicScope Handoff
 
+## Integration target 6 — graph CPU reuse (2026-10-16)
+
+Branch: `integration/source-integrity-target1-20261016`; base `3939c7a`. Changes local/unpublished; main unchanged.
+
+Prepared graph activation again derives scale from its existing fullStatistics rather than scanning samples a second time. Marker drawing binary-searches the sorted Logger projection at viewport start, stops after viewport end and does not allocate a full-list filtered copy. Each trace gets a draw-local ordered bridge lookup: binary jumps skip distant valid spans, backward searches cover disjoint intervals, and a forward cursor reuses progress through long invalid spans. Strict before/after endpoint behavior, duplicate timestamps, marker order/hit targets, trace colors/scales, icons and notice semantics remain. No persistent cache or new invalidation authority: CRC validity, values and range replacement are read afresh each draw. No hooks, observers, workers, source reads or new timers.
+
+Complexity per draw: marker selection O(log M + V); each trace's endpoint work O(V log N + N) worst-case with invalid spans traversed at most a bounded number of times, while sparse valid spans are skipped with binary jumps. Existing O(V * traces) bridge/icon drawing and hit targets remain; no claim that extremely dense visible markers cannot block. Broader rendering/persistence/worker changes remain outside this target.
+
+Evidence: 3 focused unit tests cover strict endpoints with duplicates/nonfinite values, fresh validity/value changes across draws, empty ranges and sparse >320k valid-span jumps. Seeded differential probe matches prior endpoints for 30000 marker positions across 1000 cases. Node cached-array profile (4096 samples / 256 markers): 1048576 value reads before versus 8176 after; 345.831ms versus 6.565ms single-run CPU observations, not browser/hardware latency. Chromium adds >320k-marker viewport read budget, 4096 markers across >320k invalid samples and >320k prepared activation with supplied statistics/no source read or scale rescan. Existing native canvas/popup/ownership checks remain.
+
+Validation: 132 files / 814 automated tests, 3 focused tests, production build/typecheck and 556 Chromium checks (278/configuration) passed. Native ZIP CRC and diff checks passed. All prior 550 browser checks retained. Existing chunk warning and deliberate synthetic runtime/recovery logs remain; no assertions disabled. Target 6 complete locally. Evidence: `/workspace/epicscope-integration-target6/evidence/`. Stop before target 7. Original large MLG/affected hardware and hosted CI remain unrun. Account usage is not exposed.
+
 ## Integration target 5 — explicit source-integrity ownership (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`; base `79b3e07`. Changes local/unpublished; main unchanged.
