@@ -8,7 +8,7 @@ Complete one target at a time and stop between targets. Local integration does n
 | 2 | Preserve timeMs/sourceIntegrity through immutable Diagnostics capture and JSON export | Complete locally; 800 automated / 526 browser checks and build pass |
 | 3 | Replace quadratic same-timestamp retry lookahead with bounded iteration; >320k-sample regression | Complete locally; 808 automated / 532 browser checks and build pass |
 | 4 | Skip irrelevant annotation and avoid full-record JS Map using existing ordered record index; staged/fallback parity | Complete locally; 811 automated / 536 browser checks and build pass |
-| 5 | Explicit Logger/source ownership and graph lifecycle delivery/cleanup for integrity state | Pending |
+| 5 | Explicit Logger/source ownership and graph lifecycle delivery/cleanup for integrity state | Complete locally; 811 automated / 550 browser checks and build pass |
 | 6 | Reuse prepared scale statistics; bound visible-marker and repeated endpoint-search work; profile before caching | Pending |
 | 7 | Combined workflow and dense-integrity acceptance; original MLG/affected hardware when available | Pending |
 

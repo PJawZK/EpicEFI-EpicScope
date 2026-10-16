@@ -143,6 +143,8 @@ export function mountAppShell(root: HTMLElement): void {
     window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('pageshow', onPageShow);
     document.removeEventListener('visibilitychange', onVisibility);
+    document.removeEventListener('pointerdown', onTransientPointerDown, true);
+    loggerPage.disposeSourceIntegrity();
     diagnosticExport?.abort();
     if (diagnosticHealthTimer !== undefined) clearInterval(diagnosticHealthTimer);
     observability.end();
@@ -377,9 +379,10 @@ export function mountAppShell(root: HTMLElement): void {
     if (trigger.classList.contains('brand-button')) trigger.classList.remove('brand-button--open');
   };
 
-  document.addEventListener('pointerdown', (event) => {
+  const onTransientPointerDown = (event: PointerEvent): void => {
     const target = event.target;
     if (!(target instanceof Node)) return;
+    loggerPage.dismissSourceIntegrityNotice(target);
     for (const trigger of app.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]')) {
       const owner = trigger.parentElement;
       if (!owner || owner.contains(target)) continue;
@@ -391,7 +394,8 @@ export function mountAppShell(root: HTMLElement): void {
         || details.querySelector(':scope > [class*="popover"]') !== null;
       if (transient) details.open = false;
     }
-  }, true);
+  };
+  document.addEventListener('pointerdown', onTransientPointerDown, true);
 
   loggerPage.onChannelPerformance((run) => {
     performanceDiagnostics.recordChannel({
@@ -1656,7 +1660,7 @@ export function mountAppShell(root: HTMLElement): void {
         : undefined,
     );
     loadedLog.textContent = source.summary.source.displayName;
-    loggerPage.setDiagnostics(source.summary.diagnostics);
+    loggerPage.setDiagnostics(source.summary.diagnostics, source.summary.source);
     parserStatus.textContent = `TS-SHIM · ${source.recordCount.toLocaleString()} samples · ${source.summary.channels.length.toLocaleString()} channels · retained capture`;
     appStatus.textContent = `Shim capture active · ${source.recordCount.toLocaleString()} samples`;
     setPersistenceStatus('Shim capture uses the reusable workspace structure · capture navigation is session-only.');
@@ -1992,7 +1996,7 @@ export function mountAppShell(root: HTMLElement): void {
                 },
               };
             }
-            loggerPage.setDiagnostics(validated.diagnostics);
+            loggerPage.setDiagnostics(validated.diagnostics, indexed.summary.source);
             loggerPage.refreshValidity();
             validationApplied = true;
             // Wait for restore before publishing the final source/validity revision.
@@ -2056,7 +2060,7 @@ export function mountAppShell(root: HTMLElement): void {
                 message: error instanceof Error ? error.message : 'CRC validation worker failed.',
                 recoverable: true,
               },
-            ]);
+            ], indexed.summary.source);
             finishSourceLoad(loadOperation, 'failure');
             setSourceLoadState(openButton, 'issue', 'Log loaded, but CRC validation failed');
             appStatus.textContent = 'Ready · CRC validation failed';

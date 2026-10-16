@@ -1,3 +1,4 @@
+import { sourceIntegrityMarkersFromDiagnostics, type SourceIntegrityMarker } from '../app/source-integrity-markers';
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import { recordParserEvidence, type ParserEvidenceContext } from '../observability/producers/parser';
@@ -204,7 +205,9 @@ export interface LoggerPageController {
   setImportError(message: string, context?: ParserEvidenceContext): void;
   getParserDiagnosticsReport(): string;
   getParserDiagnosticsEvidence(): readonly ParserDiagnostic[];
-  setDiagnostics(diagnostics: readonly ParserDiagnostic[]): void;
+  setDiagnostics(diagnostics: readonly ParserDiagnostic[], expectedSource?: LogSourceIdentity): void;
+  dismissSourceIntegrityNotice(target: Node): void;
+  disposeSourceIntegrity(): void;
   refreshValidity(): void;
   refreshGrowingLog(
     summary: ImportedLogSummary,
@@ -522,7 +525,19 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   const unavailableChannelIds = new Set<string>();
   let channelDataSource: NumericChannelDataSource | undefined;
   let analysisDataRevision = 0;
-  const publishDiagnostics = (value: readonly ParserDiagnostic[]): void => {
+  let integritySource: LogSourceIdentity | undefined;
+  let integrityDisposed = false;
+  let integrityDiagnostics: readonly ParserDiagnostic[] | undefined;
+  let integrityMarkers: readonly SourceIntegrityMarker[] = [];
+  const publishDiagnostics = (value: readonly ParserDiagnostic[], expectedSource?: LogSourceIdentity): void => {
+    if (integrityDisposed || (expectedSource !== undefined && expectedSource !== integritySource)) return;
+    if (value !== integrityDiagnostics) {
+      integrityDiagnostics = value;
+      integrityMarkers = sourceIntegrityMarkersFromDiagnostics(value);
+    }
+    if (channelDataSource) {
+      for (const runtime of paneRuntimes) runtime.graph.setSourceIntegrity(channelDataSource, integrityMarkers);
+    }
     parserContext = { ...parserContext, sourceRevision: analysisDataRevision };
     diagnostics.setDiagnostics(value);
   };
@@ -2100,6 +2115,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const totalStarted = now();
     const workspaceStarted = now();
+    integritySource = summary.source;
     workspaceGeneration += 1;
     const fullViewport = summary.timeRange
       ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
@@ -2230,6 +2246,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     channelIdAliases.clear();
     unavailableChannelIds.clear();
     channelDataSource = undefined;
+    integritySource = undefined;
     logMarkers = [];
     if (catalogChannelDefinitions.size > 0) {
       channelDefinitions = new Map(catalogChannelDefinitions);
@@ -2521,6 +2538,16 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     clearChannelCatalog,
     setImportError,
     setDiagnostics: publishDiagnostics,
+    dismissSourceIntegrityNotice: target => {
+      for (const runtime of paneRuntimes) runtime.graph.dismissSourceIntegrityNotice(target);
+    },
+    disposeSourceIntegrity: () => {
+      integrityDisposed = true;
+      integritySource = undefined;
+      integrityDiagnostics = undefined;
+      integrityMarkers = [];
+      for (const runtime of paneRuntimes) runtime.graph.disposeSourceIntegrity();
+    },
     getParserDiagnosticsReport: () => diagnostics.reportText(),
     getParserDiagnosticsEvidence: () => diagnostics.getDiagnostics(),
     refreshValidity: () => {

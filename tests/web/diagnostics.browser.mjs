@@ -1,6 +1,6 @@
 import { createDiagnosticsView } from '../../apps/web/src/components/diagnostics-view';
 import { structuredDiagnostics } from '../../apps/web/src/observability/export';
-import { sourceIntegrityMarkersFromDiagnostics } from '../../apps/web/src/app/source-integrity-events';
+import { sourceIntegrityMarkersFromDiagnostics } from '../../apps/web/src/app/source-integrity-markers';
 import { createDiagnosticsCapture } from '../../apps/web/src/observability/diagnostics';
 import { createObservabilitySession } from '../../apps/web/src/observability/session';
 import { readApplicationObservability } from './observability-lifecycle.browser.mjs';

@@ -1,9 +1,5 @@
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
-import {
-  SOURCE_INTEGRITY_DIAGNOSTICS_EVENT,
-  type SourceIntegrityDiagnosticsEventDetail,
-  type SourceIntegrityMarker,
-} from '../app/source-integrity-events';
+import type { SourceIntegrityMarker } from '../app/source-integrity-markers';
 
 const MAX_RENDERED_VIEWPORT_SPAN_MS = 120_000;
 const HIT_RADIUS_PX = 12;
@@ -30,6 +26,9 @@ export interface SourceIntegrityOverlayDrawContext {
 }
 
 export interface SourceIntegrityCanvasOverlay {
+  setMarkers(markers: readonly SourceIntegrityMarker[]): void;
+  dismissNotice(target: Node): void;
+  dispose(): void;
   draw(
     context: CanvasRenderingContext2D,
     layout: SourceIntegrityOverlayDrawContext,
@@ -157,6 +156,7 @@ export function createSourceIntegrityCanvasOverlay(
   showMessage: (message: string) => void,
 ): SourceIntegrityCanvasOverlay {
   let markers: readonly SourceIntegrityMarker[] = [];
+  let disposed = false;
   let hitTargets: readonly MarkerHitTarget[] = [];
 
   const graphRoot = canvas.closest<HTMLElement>('.graph-viewport');
@@ -179,21 +179,8 @@ export function createSourceIntegrityCanvasOverlay(
     notice.classList.remove('graph-toast--leaving');
   };
 
-  document.addEventListener('pointerdown', (event) => {
-    if (!notice || notice.hidden) return;
-    const target = event.target;
-    if (target instanceof Node && notice.contains(target)) return;
-    hideNotice();
-  }, true);
-
-  window.addEventListener(SOURCE_INTEGRITY_DIAGNOSTICS_EVENT, (event) => {
-    const detail = (event as CustomEvent<SourceIntegrityDiagnosticsEventDetail>).detail;
-    markers = detail?.markers ?? [];
-    hitTargets = [];
-    hideNotice();
-  });
-
-  canvas.addEventListener('click', (event) => {
+  const onClick = (event: MouseEvent): void => {
+    if (disposed) return;
     if (hitTargets.length === 0) return;
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -204,14 +191,33 @@ export function createSourceIntegrityCanvasOverlay(
     );
     if (!hit) return;
     showPersistentNotice(markerExplanation(hit.marker));
-  });
+  };
+  canvas.addEventListener('click', onClick);
 
   return {
+    setMarkers(nextMarkers) {
+      if (disposed || markers === nextMarkers) return;
+      markers = nextMarkers;
+      hitTargets = [];
+      hideNotice();
+    },
+    dismissNotice(target) {
+      if (!disposed && notice && !notice.contains(target)) hideNotice();
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      markers = [];
+      hitTargets = [];
+      hideNotice();
+      canvas.removeEventListener('click', onClick);
+    },
     draw: (context, layout) => {
       hitTargets = [];
       const span = layout.visibleEndMs - layout.visibleStartMs;
       if (
-        span <= 0
+        disposed
+        || span <= 0
         || span > MAX_RENDERED_VIEWPORT_SPAN_MS
         || markers.length === 0
         || layout.traces.length === 0

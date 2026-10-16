@@ -11,7 +11,7 @@ CHROME_BIN=chromium npm run test:browser
 
 The command starts its own loopback Vite server and headless Chrome on dynamically allocated ports. It creates a temporary Chrome profile, uses separate incognito contexts for staged and forced Worker-disabled fallback imports, and closes its contexts, Chrome and Vite before removing the profile. It does not connect to an existing browser or application server. Ctrl-C and SIGTERM follow the same cleanup path. Each run has a ten-minute deadline, with bounded DevTools and readiness waits.
 
-The selected suite runs **268 checks per configuration, 536 total**:
+The selected suite runs **275 checks per configuration, 550 total**:
 
 | Coverage | Checks per configuration |
 | --- | ---: |
@@ -87,3 +87,5 @@ Integration target 2 adds one Diagnostics check per configuration: marker-derive
 Integration target 3 adds three direct production raw-series checks/configuration: 320005-sample recovered and unrecovered retry runs, and a continuous valid series. Existing five canvas marker checks remain. These are synthetic browser-scale arrays, not original MLG import/hardware measurements. Unit tests enforce bounded timestamp reads without a wall-clock threshold. Cadence median sorting remains unchanged.
 
 Integration target 4 adds two checks/configuration: bounded sparse lookup over 320005 indexed records (irrelevant diagnostics read no offsets), and actual binary MLG CRC annotation. With Worker enabled, real staged and fallback diagnostics/source times/validity must match; Worker-disabled mode verifies fallback recovered/unrecovered semantics. Synthetic index tests do not measure original-recording latency.
+
+Integration target 5 adds seven checks/configuration for explicit integrity ownership: unrelated Parser isolation, channel restoration, graph source replacement/obsolete delivery, overlay disposal, same-ID Logger source-object replacement/workspace restore, separate owner/unload isolation and late owner delivery after disposal. The standalone graph now receives marker state directly and its outside press is routed explicitly by its test host; production uses the shell's existing pointerdown route. Existing canvas and real-shell workflows remain.

@@ -1,5 +1,19 @@
 # EpicScope Handoff
 
+## Integration target 5 — explicit source-integrity ownership (2026-10-16)
+
+Branch: `integration/source-integrity-target1-20261016`; base `79b3e07`. Changes local/unpublished; main unchanged.
+
+Logger is the existing source/diagnostic/pane owner. It now derives one retained marker projection per diagnostic-array identity and delivers it explicitly to each pane using that pane's accepted data-source identity. Parser indicator is again presentation/evidence only. Pure marker types/projection moved from source-integrity-events.ts to source-integrity-markers.ts; obsolete global event publisher/detail/constants removed.
+
+Graph setLog/clear remove markers/hit targets/notices; channel restoration retains current markers. Graph accepts markers only for its current NumericChannelDataSource. Logger setDiagnostics optionally checks exact accepted LogSourceIdentity object identity, so same textual ID is insufficient after replacement. Existing shell staged success/failure callbacks supply that identity while retaining existing active-import guards. Unload withdraws identity and rejects late source evidence. Unrelated Parser/Logger instances cannot overwrite markers.
+
+Overlay exposes setMarkers/dismissNotice/dispose, retains only its delivered projection, and owns one named canvas click listener. Its document pointerdown/window-event listeners are removed. Outside dismissal routes through the shell's existing capture pointerdown handler to Logger/panes; no new global subscription/observer or lifecycle wrapper. Existing shell remount disposal now removes that existing named pointerdown handler and invokes specifically scoped disposeSourceIntegrity methods. Cleanup empties retained overlay state, removes canvas listener and ignores late deliveries; it is not a promise to dispose every pre-existing Logger/graph resource or listener.
+
+Browser checks retain marker bridge/click/persistent/outside/zoom assertions, now testing explicit host routing for the isolated graph. Added unrelated Parser isolation, workspace-style channel restoration, obsolete data-source rejection, idempotent disposal/no late click/render, same-ID source-object rejection at Logger, actual workspace restore, separate owner isolation and unload/late-owner update rejection. Existing real-shell navigation/VE/Diagnostics/remount checks remain. No generic instrumentation or new sample passes.
+
+Validation: 131 files / 811 automated tests, production build/typecheck and final 550 Chromium checks (275/configuration) passed. Native ZIP CRC and diff checks passed. Final graph-level disposal guard prevents even a redraw from a late direct delivery; final browser replay follows that guard. Target 5 complete locally. Evidence: `/workspace/epicscope-integration-target5/evidence/`. Stop before target 6. Original large MLG/affected hardware and hosted CI remain unrun. Existing unrelated page/global listener and ResizeObserver lifecycle cleanup is outside this source-integrity task. Account usage is not exposed.
+
 ## Integration target 4 — bounded MLG integrity annotation (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`; base `3694e28`. Changes local/unpublished; main unchanged.
