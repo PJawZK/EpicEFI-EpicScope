@@ -104,6 +104,19 @@ async function run() {
     for (const type of ['keyDown', 'keyUp']) await client.call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     const observed = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.finishNativeDelayEdit();})()`, 60000);
     await record(`${mode}-native.json`, { passed: 1, checks: ['native pointer capture and keyboard commit preserve range editing'], observed });
+    const shiftCoords = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.prepareNativeDelayEdit();})()`, 60000);
+    for (const [index, point] of shiftCoords.entries()) {
+      const modifiers = index === 1 ? 8 : 0; // DevTools Shift modifier.
+      await client.call('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1, modifiers });
+      await client.call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1, modifiers });
+    }
+    await client.call('Input.dispatchKeyEvent', { type: 'keyDown', key: '1', text: '1', code: 'Digit1', windowsVirtualKeyCode: 49 });
+    await client.call('Input.dispatchKeyEvent', { type: 'keyUp', key: '1', code: 'Digit1', windowsVirtualKeyCode: 49 });
+    await client.call('Input.insertText', { text: '75' });
+    const preview = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.readNativeDelayPreview();})()`);
+    for (const type of ['keyDown', 'keyUp']) await client.call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    const shiftObserved = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.finishNativeDelayEdit();})()`);
+    await record(`${mode}-native-shift.json`, { passed: 1, checks: ['native Shift-click rectangle and direct numeric live preview commit once without F2'], observed: { preview, ...shiftObserved } });
     await pause(100);
     const lifecycle = await client.evaluate(`(async()=>{const m=await import('${moduleBase}observability-lifecycle.browser.mjs');return m.runObservabilityLifecycleChecks();})()`,60000);
     await record(`${mode}-observability-lifecycle.json`, lifecycle);
