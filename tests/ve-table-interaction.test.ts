@@ -31,7 +31,7 @@ function memorySurface(rows: number, cols: number, initial: readonly number[]) {
         commit() {
           if (!active) return false;
           active = false;
-          const changed = draft.some((value, index) => value !== values[index]);
+          const changed = draft.some((value, index) => !Object.is(value, values[index]));
           if (changed) {
             values = draft;
             commits += 1;
@@ -103,6 +103,40 @@ describe('VE shared table interaction boundary', () => {
     expect(session.interpolate({ axis: 'both', method2d: 'bilinear', strength: 1 })).toBe(true);
     expect(memory.values()[4]).toBe(30);
     expect(memory.commits()).toBe(1);
+  });
+
+  it('rejects irregular 2D selections rather than inferring a hidden bounding rectangle', () => {
+    const memory = memorySurface(3, 3, [0, 10, 20, 30, 40, 50, 60, 70, 80]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setSelection([
+      { row: 0, col: 0 },
+      { row: 0, col: 2 },
+      { row: 2, col: 0 },
+      { row: 2, col: 2 },
+      { row: 1, col: 1 },
+    ]);
+    expect(session.interpolate({ axis: 'both', method2d: 'bilinear', strength: 1 })).toBe(false);
+    expect(memory.values()).toEqual([0, 10, 20, 30, 40, 50, 60, 70, 80]);
+    expect(memory.commits()).toBe(0);
+  });
+
+  it('does not let an undefined/non-finite interpolation anchor contaminate the table', () => {
+    const memory = memorySurface(3, 3, [0, 10, 20, 30, 40, 50, Number.NaN, 70, 80]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 0 }, { row: 2, col: 2 });
+    expect(session.interpolate({ axis: 'both', method2d: 'boundary', strength: 1 })).toBe(false);
+    expect(memory.values()[6]).toBeNaN();
+    expect(memory.commits()).toBe(0);
+    expect(memory.cancels()).toBe(1);
+  });
+
+  it('skips a 1D interpolation line whose required support contains a non-finite value', () => {
+    const memory = memorySurface(1, 5, [0, Number.NaN, 20, 30, 40]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 0 }, { row: 0, col: 4 });
+    expect(session.interpolate({ axis: 'horizontal', method1d: 'shape', strength: 1 })).toBe(false);
+    expect(memory.values()[1]).toBeNaN();
+    expect(memory.commits()).toBe(0);
   });
 
   it('keeps a continuous Brush stroke inside one transaction and accumulates pulses', () => {
