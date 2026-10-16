@@ -30,6 +30,7 @@ export interface TableInteractionDomController {
   bindTable(table: HTMLTableElement | undefined): void;
   refresh(): void;
   setBrushActive(active: boolean): void;
+  cancelActiveInteraction(): void;
   destroy(): void;
 }
 
@@ -98,6 +99,8 @@ export function createTableInteractionDomController(
   let brushDirection: 1 | -1 = 1;
   let brushTimer: number | undefined;
   let inlineInput: HTMLInputElement | undefined;
+  let finishInlineEdit: ((commit: boolean) => void) | undefined;
+  let gestureListenersInstalled = false;
   let destroyed = false;
 
   const toolbar = document.createElement('div');
@@ -186,20 +189,38 @@ export function createTableInteractionDomController(
     brushTimer = undefined;
   };
 
+  const maybeRemoveGestureListeners = (): void => {
+    if (!gestureListenersInstalled || dragPointerId !== undefined || brushPointerId !== undefined) return;
+    document.removeEventListener('pointermove', pointerMove, true);
+    document.removeEventListener('pointerup', pointerUp, true);
+    document.removeEventListener('pointercancel', pointerCancel, true);
+    gestureListenersInstalled = false;
+  };
+
+  const ensureGestureListeners = (): void => {
+    if (gestureListenersInstalled) return;
+    document.addEventListener('pointermove', pointerMove, true);
+    document.addEventListener('pointerup', pointerUp, true);
+    document.addEventListener('pointercancel', pointerCancel, true);
+    gestureListenersInstalled = true;
+  };
+
   const finishBrush = (commit: boolean): void => {
     stopBrushTimer();
     const stroke = brushStroke;
     brushStroke = undefined;
     brushPointerId = undefined;
     brushLast = undefined;
-    if (!stroke) return;
-    if (commit) {
-      if (stroke.commit()) finishEdit();
-      else refresh();
-    } else {
-      stroke.cancel();
-      refresh();
+    if (stroke) {
+      if (commit) {
+        if (stroke.commit()) finishEdit();
+        else refresh();
+      } else {
+        stroke.cancel();
+        refresh();
+      }
     }
+    maybeRemoveGestureListeners();
   };
 
   const pulseBrush = (position: TableCellPosition, immediate = false): void => {
@@ -214,6 +235,7 @@ export function createTableInteractionDomController(
     brushStroke = session.beginBrushStroke(options);
     brushPointerId = event.pointerId;
     brushDirection = event.shiftKey ? -1 : 1;
+    ensureGestureListeners();
     pulseBrush(position, true);
     brushTimer = window.setInterval(() => {
       if (!brushStroke || !brushLast) return;
@@ -247,7 +269,8 @@ export function createTableInteractionDomController(
       if (completed) return;
       completed = true;
       const raw = input.value.trim();
-      inlineInput = undefined;
+      if (inlineInput === input) inlineInput = undefined;
+      if (finishInlineEdit === finish) finishInlineEdit = undefined;
       input.remove();
       delete cell.dataset.tableEditing;
       delete cell.dataset.delayEditing;
@@ -264,6 +287,7 @@ export function createTableInteractionDomController(
       } else refresh();
       queueMicrotask(focusAnchor);
     };
+    finishInlineEdit = finish;
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -289,19 +313,21 @@ export function createTableInteractionDomController(
       return;
     }
     const additive = event.ctrlKey || event.metaKey;
-    if (event.shiftKey && anchor) session.selectCell(position, 'extend');
+    const extending = event.shiftKey && anchor !== undefined;
+    if (extending) session.selectCell(position, 'extend');
     else session.selectCell(position, additive ? 'toggle' : 'replace');
-    if (!additive || !anchor) anchor = position;
-    dragStart = anchor ?? position;
+    if (!extending) anchor = position;
+    dragStart = extending ? anchor : position;
     dragAdditive = additive;
     dragMoved = false;
     dragPointerType = event.pointerType;
     dragPointerId = event.pointerId;
+    ensureGestureListeners();
     cell.setPointerCapture?.(event.pointerId);
     refresh();
   };
 
-  const pointerMove = (event: PointerEvent): void => {
+  function pointerMove(event: PointerEvent): void {
     if (!table || inlineInput) return;
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     const cell = editableCell(hit, table);
@@ -317,24 +343,34 @@ export function createTableInteractionDomController(
     session.setRectangle(dragStart, position, dragAdditive, dragStart);
     anchor = dragStart;
     refresh();
-  };
+  }
 
-  const pointerUp = (event: PointerEvent): void => {
-    if (brushPointerId === event.pointerId) {
-      event.preventDefault();
-      finishBrush(true);
-      return;
-    }
+  const finishDrag = (event: PointerEvent, cancelled: boolean): void => {
     if (dragPointerId !== event.pointerId) return;
-    const touchTap = !dragMoved && dragPointerType === 'touch' && anchor;
+    const touchTap = !cancelled && !dragMoved && dragPointerType === 'touch' && anchor;
     dragPointerId = undefined;
     dragStart = undefined;
     dragAdditive = false;
     dragMoved = false;
     dragPointerType = '';
+    maybeRemoveGestureListeners();
     if (touchTap) startInlineEdit(anchor!);
     else focusAnchor();
   };
+
+  function pointerUp(event: PointerEvent): void {
+    if (brushPointerId === event.pointerId) {
+      event.preventDefault();
+      finishBrush(true);
+      return;
+    }
+    finishDrag(event, false);
+  }
+
+  function pointerCancel(event: PointerEvent): void {
+    if (brushPointerId === event.pointerId) finishBrush(false);
+    finishDrag(event, true);
+  }
 
   const keyDown = (event: KeyboardEvent): void => {
     if (!table || inlineInput) return;
@@ -406,13 +442,23 @@ export function createTableInteractionDomController(
     refresh();
   };
 
+  const cancelActiveInteraction = (): void => {
+    finishInlineEdit?.(false);
+    finishBrush(false);
+    dragPointerId = undefined;
+    dragStart = undefined;
+    dragAdditive = false;
+    dragMoved = false;
+    dragPointerType = '';
+    maybeRemoveGestureListeners();
+  };
+
   const bindTable = (next: HTMLTableElement | undefined): void => {
     if (table === next) {
       refresh();
       return;
     }
-    finishBrush(false);
-    inlineInput?.blur();
+    cancelActiveInteraction();
     if (table) {
       table.removeEventListener('pointerdown', pointerDown);
       table.removeEventListener('keydown', keyDown);
@@ -428,10 +474,6 @@ export function createTableInteractionDomController(
     refresh();
   };
 
-  document.addEventListener('pointermove', pointerMove, { capture: true });
-  document.addEventListener('pointerup', pointerUp, { capture: true });
-  document.addEventListener('pointercancel', pointerUp, { capture: true });
-
   const setBrushActive = (active: boolean): void => {
     if (brushActive === active) return;
     if (!active) finishBrush(false);
@@ -441,14 +483,16 @@ export function createTableInteractionDomController(
 
   const destroy = (): void => {
     if (destroyed) return;
+    cancelActiveInteraction();
+    if (table) {
+      table.removeEventListener('pointerdown', pointerDown);
+      table.removeEventListener('keydown', keyDown);
+      table.removeEventListener('wheel', wheel);
+    }
+    table = undefined;
     destroyed = true;
-    finishBrush(false);
-    document.removeEventListener('pointermove', pointerMove, { capture: true });
-    document.removeEventListener('pointerup', pointerUp, { capture: true });
-    document.removeEventListener('pointercancel', pointerUp, { capture: true });
-    bindTable(undefined);
     toolbar.remove();
   };
 
-  return { toolbar, bindTable, refresh, setBrushActive, destroy };
+  return { toolbar, bindTable, refresh, setBrushActive, cancelActiveInteraction, destroy };
 }
