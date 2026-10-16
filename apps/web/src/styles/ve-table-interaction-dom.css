@@ -1,0 +1,85 @@
+.ve-table-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ve-table-edit-toolbar > button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid #31505f;
+  border-radius: 3px;
+  background: #10212c;
+  color: #c9d9e1;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ve-table-edit-toolbar > button:hover,
+.ve-table-edit-toolbar > button:focus-visible,
+.ve-table-edit-toolbar > button[data-active='true'] {
+  border-color: #4b88a6;
+  background: #153346;
+  color: #eff8fb;
+}
+
+.ve-table-edit-toolbar > button[aria-pressed='true'] {
+  border-color: #54a7cf;
+  background: #16445b;
+  color: #f3fbff;
+}
+
+.ve-workbench-table td[data-table-selected='true'],
+.ve-delay-table td[data-table-selected='true'] {
+  outline: 2px solid rgba(202, 235, 249, .92);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.ve-workbench-table td[data-table-anchor='true'],
+.ve-delay-table td[data-table-anchor='true'] {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .96);
+}
+
+/* Frozen v50 pin contract: symbol only. Do not add a special pinned border. */
+.ve-workbench-table td[data-table-pinned='true']::before,
+.ve-delay-table td[data-table-pinned='true']::before {
+  content: '◆';
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  color: rgba(244, 249, 251, .9);
+  font-size: 6px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.ve-workbench-table td[data-table-editing='true'],
+.ve-delay-table td[data-table-editing='true'] {
+  overflow: visible;
+}
+
+.ve-table-inline-input {
+  position: absolute;
+  z-index: 6;
+  inset: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  padding: 0 2px;
+  border: 1px solid #9ddcf6;
+  border-radius: 2px;
+  outline: 0;
+  background: #07141c;
+  color: #f1f8fb;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ve-workbench-table[data-table-brush='true'],
+.ve-delay-table[data-table-brush='true'] {
+  cursor: crosshair;
+  touch-action: none;
+}
