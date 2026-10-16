@@ -59,7 +59,6 @@ function markCoordinates(table: HTMLTableElement): void {
       const cell = tr.cells[cellIndex] as HTMLTableCellElement;
       cell.dataset.tableRow = String(row);
       cell.dataset.tableCol = String(cellIndex - 1);
-      cell.tabIndex = 0;
     }
   }
 }
@@ -135,9 +134,7 @@ export function createTableInteractionDomController(
     session.togglePinsForSelection();
     refresh();
   });
-  const brush = createToolButton('Brush', 'Continuous brush editing', () => {
-    setBrushActive(!brushActive);
-  });
+  const brush = createToolButton('Brush', 'Continuous brush editing', () => setBrushActive(!brushActive));
   const revert = createToolButton('Revert', 'Revert selected cells', () => {
     const positions = selectedPositions();
     if (positions.length && commands.revertSelection?.(positions)) finishEdit();
@@ -159,19 +156,28 @@ export function createTableInteractionDomController(
   const refresh = (): void => {
     if (!table || destroyed) return;
     markCoordinates(table);
-    const selected = new Set(session.selectedPositions().map(positionKey));
+    const cells = [...table.querySelectorAll<HTMLTableCellElement>('tbody td[data-table-row][data-table-col]')];
+    const selectedPositionsNow = session.selectedPositions();
+    const selected = new Set(selectedPositionsNow.map(positionKey));
     const pinned = new Set(session.pinnedPositions().map(positionKey));
-    for (const cell of table.querySelectorAll<HTMLTableCellElement>('tbody td[data-table-row][data-table-col]')) {
+    const activeCell = document.activeElement instanceof HTMLTableCellElement && table.contains(document.activeElement)
+      ? positionForCell(document.activeElement)
+      : undefined;
+    const focusPosition = anchor ?? selectedPositionsNow[0] ?? activeCell ?? (cells[0] ? positionForCell(cells[0]) : undefined);
+    const focusKey = focusPosition ? positionKey(focusPosition) : undefined;
+
+    for (const cell of cells) {
       const position = positionForCell(cell);
       if (!position) continue;
-      const key = positionKey(position);
-      const isSelected = selected.has(key);
-      const isPinned = pinned.has(key);
-      const isAnchor = Boolean(anchor && positionKey(anchor) === key);
+      const cellKey = positionKey(position);
+      const isSelected = selected.has(cellKey);
+      const isPinned = pinned.has(cellKey);
+      const isAnchor = Boolean(anchor && positionKey(anchor) === cellKey);
       cell.dataset.tableSelected = isSelected ? 'true' : 'false';
       cell.dataset.tableAnchor = isAnchor ? 'true' : 'false';
       cell.dataset.tablePinned = isPinned ? 'true' : 'false';
       cell.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      cell.tabIndex = cellKey === focusKey ? 0 : -1;
       if (cell.dataset.delayRow !== undefined) {
         cell.dataset.delaySelected = isSelected ? 'true' : 'false';
         cell.dataset.delayAnchor = isAnchor ? 'true' : 'false';
@@ -189,11 +195,21 @@ export function createTableInteractionDomController(
     brushTimer = undefined;
   };
 
+  function gestureKeyDown(event: KeyboardEvent): void {
+    if (brushPointerId !== undefined && event.key === 'Shift') brushDirection = -1;
+  }
+
+  function gestureKeyUp(event: KeyboardEvent): void {
+    if (brushPointerId !== undefined && event.key === 'Shift') brushDirection = 1;
+  }
+
   const maybeRemoveGestureListeners = (): void => {
     if (!gestureListenersInstalled || dragPointerId !== undefined || brushPointerId !== undefined) return;
     document.removeEventListener('pointermove', pointerMove, true);
     document.removeEventListener('pointerup', pointerUp, true);
     document.removeEventListener('pointercancel', pointerCancel, true);
+    document.removeEventListener('keydown', gestureKeyDown, true);
+    document.removeEventListener('keyup', gestureKeyUp, true);
     gestureListenersInstalled = false;
   };
 
@@ -202,6 +218,8 @@ export function createTableInteractionDomController(
     document.addEventListener('pointermove', pointerMove, true);
     document.addEventListener('pointerup', pointerUp, true);
     document.addEventListener('pointercancel', pointerCancel, true);
+    document.addEventListener('keydown', gestureKeyDown, true);
+    document.addEventListener('keyup', gestureKeyUp, true);
     gestureListenersInstalled = true;
   };
 
@@ -211,6 +229,7 @@ export function createTableInteractionDomController(
     brushStroke = undefined;
     brushPointerId = undefined;
     brushLast = undefined;
+    brushDirection = 1;
     if (stroke) {
       if (commit) {
         if (stroke.commit()) finishEdit();
@@ -231,8 +250,7 @@ export function createTableInteractionDomController(
 
   const startBrush = (event: PointerEvent, position: TableCellPosition): void => {
     finishBrush(false);
-    const options = preferences.brush();
-    brushStroke = session.beginBrushStroke(options);
+    brushStroke = session.beginBrushStroke(preferences.brush());
     brushPointerId = event.pointerId;
     brushDirection = event.shiftKey ? -1 : 1;
     ensureGestureListeners();
@@ -249,6 +267,7 @@ export function createTableInteractionDomController(
     if (!cell) return;
     if (!session.isSelected(position)) session.selectCell(position);
     anchor = position;
+    refresh();
     const input = document.createElement('input');
     input.className = cell.dataset.delayRow !== undefined ? 've-table-inline-input ve-delay-inline-input' : 've-table-inline-input';
     input.type = 'text';
@@ -308,6 +327,8 @@ export function createTableInteractionDomController(
     if (!cell || !position || inlineInput) return;
     event.preventDefault();
     if (brushActive) {
+      anchor = position;
+      refresh();
       startBrush(event, position);
       cell.setPointerCapture?.(event.pointerId);
       return;
