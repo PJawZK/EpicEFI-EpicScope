@@ -58,6 +58,14 @@ function installDelayFile(input, value) {
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+function cellState(cell) {
+  return {
+    delay: [cell.dataset.delayRow, cell.dataset.delayCol],
+    table: [cell.dataset.tableRow, cell.dataset.tableCol],
+    selected: cell.dataset.tableSelected,
+  };
+}
+
 export async function runVeSharedTableInteractionChecks() {
   const checks = [];
   const view = createVeAnalyzerView();
@@ -155,10 +163,16 @@ export async function runVeSharedTableInteractionChecks() {
     const c3 = cells()[3];
     c1.setPointerCapture = () => {};
     const end = c3.getBoundingClientRect();
+    const endX = end.left + end.width / 2;
+    const endY = end.top + end.height / 2;
+    const hit = document.elementFromPoint(endX, endY)?.closest?.('td[data-delay-row]');
+    console.info('shared-ctrl-drag-before: ' + JSON.stringify({ cells: cells().map(cellState), hit: hit ? cellState(hit) : null }));
     pointer(c1, 'pointerdown', { ctrlKey: true });
-    pointer(document, 'pointermove', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
-    pointer(document, 'pointerup', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
+    pointer(document, 'pointermove', { ctrlKey: true, clientX: endX, clientY: endY });
+    console.info('shared-ctrl-drag-move: ' + JSON.stringify(cells().map(cellState)));
+    pointer(document, 'pointerup', { ctrlKey: true, clientX: endX, clientY: endY });
     const selectedCount = cells().filter((cell) => cell.dataset.tableSelected === 'true').length;
+    console.info('shared-ctrl-drag-after: ' + JSON.stringify(cells().map(cellState)));
     assert(selectedCount === 3, `Ctrl-drag used stale selection anchor; expected 3 selected cells, got ${selectedCount}`);
     checks.push('Ctrl/Cmd drag starts from the newly clicked cell while preserving additive selection');
 
