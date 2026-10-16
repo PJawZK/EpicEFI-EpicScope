@@ -116,22 +116,25 @@ function interpolated1d(
   index: number,
   anchors: readonly number[],
   support: readonly number[],
-  read: (index: number) => number,
+  read: (index: number) => number | undefined,
   method: TableInterpolation1dMethod,
-): { value: number; min: number; max: number } {
+): { value: number; min: number; max: number } | undefined {
   const anchorValues = anchors.map(read);
-  const min = Math.min(...anchorValues);
-  const max = Math.max(...anchorValues);
+  if (anchorValues.some((value) => value === undefined)) return undefined;
+  const finiteAnchors = anchorValues as number[];
+  const min = Math.min(...finiteAnchors);
+  const max = Math.max(...finiteAnchors);
   if (method === 'shape') {
     const supportValues = support.map(read);
-    return { value: monotoneValue(support, supportValues, index), min, max };
+    if (supportValues.some((value) => value === undefined)) return undefined;
+    return { value: monotoneValue(support, supportValues as number[], index), min, max };
   }
   let segment = 0;
   while (segment < anchors.length - 2 && index > anchors[segment + 1]!) segment += 1;
   const x0 = anchors[segment]!;
   const x1 = anchors[segment + 1]!;
-  const y0 = anchorValues[segment]!;
-  const y1 = anchorValues[segment + 1]!;
+  const y0 = finiteAnchors[segment]!;
+  const y1 = finiteAnchors[segment + 1]!;
   const t = (index - x0) / (x1 - x0 || 1);
   return { value: y0 + (y1 - y0) * t, min, max };
 }
@@ -317,17 +320,27 @@ export class TableInteractionSession {
     if (axis === 'both' && r0 === r1) return this.interpolate({ ...options, axis: 'horizontal' });
     if (axis === 'both' && c0 === c1) return this.interpolate({ ...options, axis: 'vertical' });
 
+    if (axis === 'both') {
+      const expected = (r1 - r0 + 1) * (c1 - c0 + 1);
+      if (positions.length !== expected) return false;
+      for (let row = r0; row <= r1; row += 1) {
+        for (let col = c0; col <= c1; col += 1) {
+          if (!this.#selected.has(key(row, col))) return false;
+        }
+      }
+    }
+
     const strength = boundedStrength(options.strength);
+    if (strength <= 0) return false;
     const shouldClamp = options.clamp ?? true;
     const method1d = options.method1d ?? 'linear';
     const method2d = options.method2d ?? 'bilinear';
     const selected = this.#selected;
-    const snapshot = new Map<string, number>();
-    const read = (row: number, col: number): number => {
+    const snapshot = new Map<string, number | undefined>();
+    const read = (row: number, col: number): number | undefined => {
       const cellKey = key(row, col);
-      const cached = snapshot.get(cellKey);
-      if (cached !== undefined) return cached;
-      const value = this.#surface.get(row, col);
+      if (snapshot.has(cellKey)) return snapshot.get(cellKey);
+      const value = finite(this.#surface.get(row, col));
       snapshot.set(cellKey, value);
       return value;
     };
@@ -338,8 +351,10 @@ export class TableInteractionSession {
       const cellKey = key(row, col);
       if (!selected.has(cellKey) || this.#pinned.has(cellKey)) return;
       const original = read(row, col);
+      if (original === undefined || !Number.isFinite(target) || !Number.isFinite(min) || !Number.isFinite(max)) return;
       let value = original + (target - original) * strength;
       if (shouldClamp) value = clamp(value, min, max);
+      if (!Number.isFinite(value)) return;
       transaction.set(row, col, value);
       changed = true;
     };
@@ -368,11 +383,12 @@ export class TableInteractionSession {
           if (anchors[0]! > 0) support.unshift(anchors[0]! - 1);
           if (anchors[anchors.length - 1]! < maxIndex) support.push(anchors[anchors.length - 1]! + 1);
         }
+        const sample = (inner: number): number | undefined => axis === 'horizontal' ? read(outer, inner) : read(inner, outer);
         for (const index of indices) {
           const row = axis === 'horizontal' ? outer : index;
           const col = axis === 'horizontal' ? index : outer;
-          const entry = interpolated1d(index, anchors, support, (sample) => axis === 'horizontal' ? read(outer, sample) : read(sample, outer), method1d);
-          setBlended(row, col, entry.value, entry.min, entry.max);
+          const entry = interpolated1d(index, anchors, support, sample, method1d);
+          if (entry) setBlended(row, col, entry.value, entry.min, entry.max);
         }
       }
     } else {
@@ -380,12 +396,28 @@ export class TableInteractionSession {
       const topRight = read(r0, c1);
       const bottomLeft = read(r1, c0);
       const bottomRight = read(r1, c1);
+      if (topLeft === undefined || topRight === undefined || bottomLeft === undefined || bottomRight === undefined) {
+        transaction.cancel();
+        return false;
+      }
       const boundaryValues: number[] = [];
       for (let col = c0; col <= c1; col += 1) {
-        boundaryValues.push(read(r0, col), read(r1, col));
+        const top = read(r0, col);
+        const bottom = read(r1, col);
+        if (top === undefined || bottom === undefined) {
+          transaction.cancel();
+          return false;
+        }
+        boundaryValues.push(top, bottom);
       }
       for (let row = r0 + 1; row < r1; row += 1) {
-        boundaryValues.push(read(row, c0), read(row, c1));
+        const left = read(row, c0);
+        const right = read(row, c1);
+        if (left === undefined || right === undefined) {
+          transaction.cancel();
+          return false;
+        }
+        boundaryValues.push(left, right);
       }
       const boundaryMin = Math.min(...boundaryValues);
       const boundaryMax = Math.max(...boundaryValues);
@@ -395,25 +427,27 @@ export class TableInteractionSession {
         + bottomLeft * (1 - u) * v
         + bottomRight * u * v
       );
-      const edgeSample = (fixed: number, start: number, end: number, t: number, horizontal: boolean): number => {
+      const edgeSample = (fixed: number, start: number, end: number, t: number, horizontal: boolean): number | undefined => {
         const position = start + (end - start) * t;
         const low = Math.floor(position);
         const high = Math.ceil(position);
         const fraction = position - low;
         const a = horizontal ? read(fixed, low) : read(low, fixed);
         const b = horizontal ? read(fixed, high) : read(high, fixed);
-        return a + (b - a) * fraction;
+        return a === undefined || b === undefined ? undefined : a + (b - a) * fraction;
       };
       for (const position of positions) {
         const u = c1 === c0 ? 0 : (position.col - c0) / (c1 - c0);
         const v = r1 === r0 ? 0 : (position.row - r0) / (r1 - r0);
-        let target = bilinear(u, v);
+        const base = bilinear(u, v);
+        let target = base;
         if (method2d === 'boundary') {
           const top = edgeSample(r0, c0, c1, u, true);
           const bottom = edgeSample(r1, c0, c1, u, true);
           const left = edgeSample(c0, r0, r1, v, false);
           const right = edgeSample(c1, r0, r1, v, false);
-          target = (1 - v) * top + v * bottom + (1 - u) * left + u * right - bilinear(u, v);
+          if (top === undefined || bottom === undefined || left === undefined || right === undefined) continue;
+          target = (1 - v) * top + v * bottom + (1 - u) * left + u * right - base;
         }
         setBlended(position.row, position.col, target, boundaryMin, boundaryMax);
       }
