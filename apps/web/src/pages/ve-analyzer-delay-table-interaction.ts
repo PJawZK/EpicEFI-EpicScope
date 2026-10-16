@@ -189,6 +189,10 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
   };
   const observer = new MutationObserver(bind);
   observer.observe(delayHost, { childList: true });
+
+  for (const selector of ['[data-ve-analyzer="grab-delay"]', '[data-ve-analyzer="use-delay"]', '[data-ve-analyzer="load-delay"]'] as const) {
+    root.querySelector<HTMLButtonElement>(selector)?.addEventListener('click', resetInteractionSession, { capture: true });
+  }
   bind();
 
   return {
@@ -200,7 +204,10 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     },
     editDelayCells(positions, edit) {
       const changed = inner.editDelayCells(positions, edit);
-      if (changed) queueMicrotask(bind);
+      if (changed) {
+        surface.resetHistory();
+        queueMicrotask(bind);
+      }
       return changed;
     },
     get sessionRevision() { return inner.sessionRevision; },
