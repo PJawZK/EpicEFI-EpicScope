@@ -93,6 +93,28 @@ export async function runVeDelayEditingChecks() {
   const checks = [];
   const s = await setup();
   try {
+    const clickCell = (cell, shiftKey = false) => {
+      cell.setPointerCapture = () => {};
+      cell.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 19, pointerType: 'mouse', bubbles: true, cancelable: true, shiftKey }));
+      cell.dispatchEvent(new PointerEvent('pointerup', { pointerId: 19, pointerType: 'mouse', bubbles: true, cancelable: true, shiftKey }));
+    };
+    clickCell(s.cells()[0], true); await settle();
+    assert(s.cells().filter(c => c.dataset.delaySelected === 'true').length === 1, 'Shift-click without an anchor must select one cell');
+    clickCell(s.cells()[3], true); await settle();
+    assert(s.cells().every(c => c.dataset.delaySelected === 'true'), 'Shift-click failed to select the anchored rectangle');
+    clickCell(s.cells()[1], true); await settle();
+    assert(s.cells().filter(c => c.dataset.delaySelected === 'true').length === 2, 'Shift-click moved the original selection anchor');
+    clickCell(s.cells()[3], true); await settle();
+    const shiftRevision = s.view.sessionRevision, shiftReads = s.reads(); s.resetCounts();
+    key(s.cells()[0], '1');
+    const shiftInput = s.root.querySelector('.ve-delay-inline-input');
+    assert(shiftInput?.value === '1', 'Typing did not directly start range replacement');
+    shiftInput.value = '125'; shiftInput.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    assert(s.cells().every(c => (c.querySelector('input')?.value ?? c.textContent) === '125') && all(s, 100) && s.view.sessionRevision === shiftRevision, 'Live range preview changed authority early or skipped cells');
+    key(shiftInput, 'Enter'); await settle();
+    assert(all(s, 125) && s.view.sessionRevision === shiftRevision + 1 && s.counts.delay === 1 && s.counts.ve === 1 && s.counts.target === 1 && s.reads() === shiftReads, 'Shift-selected numeric replacement did not commit once without trace reads');
+    checks.push('Shift-click preserves the anchor, previews numeric replacement across the range and commits once without F2');
+    s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 }); await settle();
     rectangle(s); await settle();
     const before = s.view.sessionRevision, reads = s.reads(); s.resetCounts();
     type(s, '175'); await settle();
@@ -244,4 +266,12 @@ export async function finishNativeDelayEdit() {
     assert(all(native, 175) && native.view.sessionRevision === native.before + 1 && native.counts.delay === 1, 'Native pointer/keyboard range edit failed');
     return { values: values(native), revisionDelta: native.view.sessionRevision - native.before, renders: native.counts };
   } finally { native.dispose(); native = undefined; }
+}
+
+export async function readNativeDelayPreview() {
+  await settle();
+  const cells = native.cells();
+  assert(cells.every(cell => (cell.querySelector('input')?.value ?? cell.textContent) === '175'), 'Native Shift range did not preview all cell values');
+  assert(all(native, 100) && native.view.sessionRevision === native.before, 'Native preview changed delay authority before commit');
+  return { selected: cells.filter(cell => cell.dataset.delaySelected === 'true').length, authorityUnchanged: true };
 }
