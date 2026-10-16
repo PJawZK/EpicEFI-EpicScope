@@ -195,7 +195,7 @@ export async function runVeSharedTableInteractionChecks() {
       'Stationary held Brush did not reverse direction when Shift changed without pointer motion');
     checks.push('held Brush reacts to Shift reversal even while the pointer remains stationary');
 
-    return checks;
+    return { passed: checks.length, checks };
   } finally {
     root.remove();
   }
