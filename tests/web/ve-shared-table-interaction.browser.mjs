@@ -95,6 +95,18 @@ export async function runVeSharedTableInteractionChecks() {
       'Editable delay table did not use one roving tab stop');
     checks.push('table keyboard navigation exposes one roving tab stop instead of one Tab stop per cell');
 
+    const lowerLeft = root.querySelector('[data-ve-analyzer="delay-table"] td[data-delay-row="0"][data-delay-col="0"]');
+    const upperLeft = root.querySelector('[data-ve-analyzer="delay-table"] td[data-delay-row="1"][data-delay-col="0"]');
+    selectCell(lowerLeft);
+    lowerLeft.focus();
+    lowerLeft.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+    assert(document.activeElement === upperLeft && upperLeft.dataset.tableSelected === 'true', 'ArrowUp followed semantic row numbering instead of the visually higher reversed-load row');
+    upperLeft.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    assert(document.activeElement === lowerLeft && lowerLeft.dataset.tableSelected === 'true', 'ArrowDown did not return to the visually lower reversed-load row');
+    lowerLeft.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true, cancelable: true }));
+    assert(document.activeElement === upperLeft && cells().filter((cell) => cell.dataset.tableSelected === 'true').length === 2, 'Shift+ArrowUp did not extend selection in visual table direction');
+    checks.push('Up/Down and Shift+Up follow visual row direction on the reversed load axis');
+
     const minRpm = root.querySelector('input[data-role="min-rpm"]');
     const rangeSummary = root.querySelector('[data-ve-v50-summary="range"]');
     minRpm.value = '1234';

@@ -405,18 +405,26 @@ export function createTableInteractionDomController(
     if (!position) return;
     anchor = anchor ?? position;
 
-    const movement: Readonly<Record<string, readonly [number, number]>> = {
-      ArrowUp: [-1, 0],
-      ArrowDown: [1, 0],
-      ArrowLeft: [0, -1],
-      ArrowRight: [0, 1],
+    const visualNeighbor = (key: string): HTMLTableCellElement | undefined => {
+      const rowElement = cell.parentElement as HTMLTableRowElement | null;
+      const body = rowElement?.parentElement as HTMLTableSectionElement | null;
+      if (!rowElement || !body) return undefined;
+      const rows = [...body.rows];
+      const visualRow = rows.indexOf(rowElement);
+      const rowCells = [...rowElement.querySelectorAll<HTMLTableCellElement>('td[data-table-row][data-table-col]')];
+      const visualCol = rowCells.indexOf(cell);
+      if (visualRow < 0 || visualCol < 0) return undefined;
+      if (key === 'ArrowLeft') return rowCells[visualCol - 1];
+      if (key === 'ArrowRight') return rowCells[visualCol + 1];
+      const targetRow = rows[visualRow + (key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0)];
+      if (!targetRow || (key !== 'ArrowUp' && key !== 'ArrowDown')) return undefined;
+      return [...targetRow.querySelectorAll<HTMLTableCellElement>('td[data-table-row][data-table-col]')][visualCol];
     };
-    const delta = movement[event.key];
-    if (delta) {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
-      const next = { row: Math.max(0, position.row + delta[0]), col: Math.max(0, position.col + delta[1]) };
-      const nextCell = cellFor(next);
-      if (!nextCell) return;
+      const nextCell = visualNeighbor(event.key);
+      const next = nextCell ? positionForCell(nextCell) : undefined;
+      if (!nextCell || !next) return;
       if (event.shiftKey && anchor) session.selectCell(next, 'extend');
       else {
         session.selectCell(next, 'replace');
