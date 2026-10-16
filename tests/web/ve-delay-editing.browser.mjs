@@ -73,11 +73,13 @@ function rectangle(s, pointerType = 'mouse', last = Math.min(3, s.cells().length
   const start = s.cells()[0], end = s.cells()[last];
   start.scrollIntoView({ block: 'center' });
   const a = start.getBoundingClientRect(), b = end.getBoundingClientRect();
-  // Synthetic fixture pointers have no native active-pointer registration.
+  // Synthetic fixture pointers have no native active-pointer registration. The
+  // production controller now owns move/up listeners at document scope while a
+  // gesture is active, so dispatch those synthetic continuation events there.
   start.setPointerCapture = () => {};
   start.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, pointerType, bubbles: true, cancelable: true, clientX: a.x + a.width / 2, clientY: a.y + a.height / 2 }));
-  if (last) s.root.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, pointerType, bubbles: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 }));
-  s.root.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType, bubbles: true, cancelable: true }));
+  if (last) document.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, pointerType, bubbles: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 }));
+  document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType, bubbles: true, cancelable: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 }));
 }
 function type(s, text, finish = 'Enter') {
   key(s.cells()[0], 'F2');
@@ -181,7 +183,6 @@ export async function runVeDelayEditingChecks() {
     assert(s.reads() === presentationReads && s.view.sessionRevision === presentationRevision, 'Result Views recalculated edited session');
     resultView.value = 'proposal'; resultView.dispatchEvent(new Event('change', { bubbles: true })); await settle();
     checks.push('post-edit Result Views preserve source VE, neutral fallback heat and working delays without calculation');
-
 
     const pending = deferred(); s.load(() => pending.promise); await settle();
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 160 });
