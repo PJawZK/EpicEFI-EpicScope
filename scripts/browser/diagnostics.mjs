@@ -22,4 +22,5 @@ export async function runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,do
  await evaluate(`document.querySelector('.bug-report-button').click();document.querySelector('.bug-report-popover').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`);
  if(!await evaluate(`document.querySelector('.bug-report-popover').hidden&&document.activeElement===document.querySelector('.bug-report-button')`))throw Error('Diagnostics Escape/focus ownership failed');
  await record('diagnostics-integrated.json',{passed:3,checks:['real Diagnostics lenses reuse one captured session without republishing context, reading traces or running VE','native ZIP download contains matching complete report and structured current/previous/Parser/resource evidence','closing Diagnostics cancels pending export without a second download; Escape closes locally and restores focus'],observed:{download:file,bytes:bytes.length,sessionId:json.sessionId,records:json.records.length}});
+ return json;
 }

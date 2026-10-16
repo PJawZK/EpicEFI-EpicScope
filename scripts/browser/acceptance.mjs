@@ -61,4 +61,18 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('delay edit checks',{result:delayEdits});await record('delay-edit-result.json',delayEdits);
 
  await record('result-view.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-analyzer-result-view.browser.mjs');return m.runVeAnalyzerResultViewChecks();})()`,60000));
+ // Final integration gate: native shell import -> authoritative Parser state ->
+ // captured JSON/ZIP, then real source replacement withdraws old findings.
+ for (const corrupt of [true, false]) {
+   const name = await evaluate(`(async()=>{const m=await import('${moduleBase}source-integrity-integrated.browser.mjs');return m.loadIntegrityAcceptanceFile(${corrupt});})()`);
+   await wait(`document.querySelector('.loaded-log strong').textContent===${JSON.stringify(name)}&&['success','issue'].includes(document.querySelector('.open-log').dataset.loadState)`);
+   const prefix = corrupt ? 'integrity-source-' : 'integrity-replacement-';
+   const captured = await runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,downloadDir:downloadDir+'-'+prefix,record:(name,result)=>record(prefix+name,result)});
+   const crc = captured.parserDiagnostics.filter(d=>d.code==='mlg-crc-retry-recovered'||d.code==='mlg-crc-mismatch');
+   if (corrupt) {
+     if(crc.length!==2||crc.some(d=>!Number.isFinite(d.timeMs))||crc[0].sourceIntegrity?.kind!=='recovered-retry'||crc[0].sourceIntegrity.breaksContinuity!==false||crc[1].sourceIntegrity?.kind!=='corrupt-record'||crc[1].sourceIntegrity.breaksContinuity!==true)throw Error('Actual shell lost CRC source times/semantics in exported capture');
+   } else if(crc.length!==0)throw Error('Clean replacement exported obsolete source CRC evidence');
+   await record(prefix+'acceptance.json',{passed:1,checks:[corrupt?'actual shell MLG import and native Diagnostics ZIP retain recovered/corrupt source times and semantics':'clean source replacement withdraws prior CRC findings from native Diagnostics ZIP'],observed:{name,crc}});
+ }
+
 }

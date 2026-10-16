@@ -1,5 +1,13 @@
 # EpicScope Handoff
 
+## Integration target 7 — combined acceptance (2026-10-16)
+
+Branch: `integration/source-integrity-target1-20261016`; production candidate `1d943d9`. This target adds only browser acceptance/docs, not production changes. Main remains unchanged and this integration series is unpublished.
+
+Final checks rerun combined automated/build/browser acceptance. Added real-shell binary MLG → canonical Parser → captured JSON/native ZIP validation for recovered/unrecovered CRC findings, followed by clean replacement → second native ZIP proving old findings are withdrawn. Earlier individual >320k/dense traversal and native canvas/VE/source/Diagnostics/persistence/recovery checks remain. New gate uses a small actual binary file, not the original large recording. `docs/SOURCE_INTEGRITY_ACCEPTANCE.md` records coverage limits and the reproducible affected-hardware protocol. Environment metadata and logs are saved outside the repository.
+
+Cloud validation complete: 132 files / 814 automated tests, production build/typecheck and 572 Chromium checks (286/configuration) passed. Six native ZIPs independently validated, including actual recovered/corrupt metadata and clean replacement withdrawal in both modes. Diff checks pass. Initial test-isolation failure (prior fixture read-only files override) is preserved; final gate restores native FileList before loading and all assertions remain. Evidence: `/workspace/epicscope-integration-target7/evidence/`. Original ~1.2 GB MLG and affected computer are unavailable, so original-recording/hardware acceptance remains open. Hosted CI, live ECU/network stress, whole-browser/OS crash durability and real BFCache eligibility remain unrun. No freeze-elimination or target-machine latency/memory claim. Stop after target 7; no publication authorized. Account usage is not exposed.
+
 ## Integration target 6 — graph CPU reuse (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`; base `3939c7a`. Changes local/unpublished; main unchanged.
