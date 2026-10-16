@@ -213,6 +213,8 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
   for (const selector of ['[data-ve-analyzer="grab-delay"]', '[data-ve-analyzer="use-delay"]', '[data-ve-analyzer="load-delay"]'] as const) {
     root.querySelector<HTMLButtonElement>(selector)?.addEventListener('click', resetInteractionSession, { capture: true });
   }
+  root.querySelector<HTMLInputElement>('[data-ve-analyzer="load-delay-file"]')
+    ?.addEventListener('change', resetInteractionSession, { capture: true });
   bind();
 
   return {
