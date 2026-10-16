@@ -5,6 +5,14 @@ import { veDelayEditOwner, type VeDelayCellValueEdit, type VeDelayEditOwner } fr
 import { createTableInteractionDomController } from './ve-table-interaction-dom';
 import { TableInteractionSession, type TableEditSurface, type TableEditTransaction, type TableCellPosition } from './ve-table-interaction';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
+import {
+  brushOptions,
+  interpolationOptions,
+  loadVeTableToolPreferences,
+  resetVeTableToolPreferences,
+  saveVeTableToolPreferences,
+  type VeTableToolPreferences,
+} from '../state/ve-table-tool-preferences';
 import '../styles/ve-table-interaction-dom.css';
 
 const HISTORY_LIMIT = 100;
@@ -179,14 +187,55 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
 
   const surface = new VeDelayTableEditSurface(owner);
   const session = new TableInteractionSession(surface);
-  let brushRadius = 1;
+  let toolPreferences = loadVeTableToolPreferences('delay');
+  const saveToolPreferences = (next: VeTableToolPreferences): void => {
+    toolPreferences = saveVeTableToolPreferences('delay', next);
+  };
+  const resetToolPreference = (kind: 'step' | 'smooth' | 'interpolation' | 'brush'): void => {
+    const defaults = resetVeTableToolPreferences('delay');
+    if (kind === 'step') saveToolPreferences({ ...toolPreferences, adjustmentStep: defaults.adjustmentStep });
+    else if (kind === 'smooth') saveToolPreferences({ ...toolPreferences, smoothStrength: defaults.smoothStrength });
+    else if (kind === 'interpolation') saveToolPreferences({ ...toolPreferences, interpolation: defaults.interpolation });
+    else saveToolPreferences({ ...toolPreferences, brush: defaults.brush });
+  };
   const dom = createTableInteractionDomController(session, {
-    adjustmentStep: () => 10,
-    smoothStrength: () => 0.5,
-    interpolation: () => ({ axis: 'both', method1d: 'linear', method2d: 'boundary', strength: 1, clamp: true }),
-    brush: () => ({ delta: 5, radius: brushRadius, strength: 1, falloff: 'linear' }),
+    adjustmentStep: () => toolPreferences.adjustmentStep,
+    smoothStrength: () => toolPreferences.smoothStrength,
+    interpolation: () => interpolationOptions(toolPreferences, 'both'),
+    brush: () => brushOptions(toolPreferences),
     readValue: (position) => surface.valueAt(position),
-    adjustBrushRadius: (delta) => { brushRadius = Math.max(0, Math.min(4, brushRadius + delta)); },
+    adjustBrushRadius: (delta) => saveToolPreferences({
+      ...toolPreferences,
+      brush: { ...toolPreferences.brush, radius: Math.max(1, Math.min(8, toolPreferences.brush.radius + delta)) },
+    }),
+    configuration: {
+      label: 'Lambda Delay',
+      adjustmentStep: () => toolPreferences.adjustmentStep,
+      setAdjustmentStep: (value) => saveToolPreferences({ ...toolPreferences, adjustmentStep: value }),
+      smoothStrength: () => toolPreferences.smoothStrength,
+      setSmoothStrength: (value) => saveToolPreferences({ ...toolPreferences, smoothStrength: value }),
+      interpolation: () => interpolationOptions(toolPreferences, 'both'),
+      setInterpolation: (value) => saveToolPreferences({
+        ...toolPreferences,
+        interpolation: {
+          method1d: value.method1d ?? toolPreferences.interpolation.method1d,
+          method2d: value.method2d ?? toolPreferences.interpolation.method2d,
+          strength: value.strength ?? toolPreferences.interpolation.strength,
+          clamp: value.clamp ?? toolPreferences.interpolation.clamp,
+        },
+      }),
+      brush: () => brushOptions(toolPreferences),
+      setBrush: (value) => saveToolPreferences({
+        ...toolPreferences,
+        brush: {
+          delta: value.delta,
+          radius: value.radius,
+          strength: value.strength ?? toolPreferences.brush.strength,
+          falloff: value.falloff ?? toolPreferences.brush.falloff,
+        },
+      }),
+      reset: resetToolPreference,
+    },
   }, {
     undo: () => surface.undo(),
     redo: () => surface.redo(),

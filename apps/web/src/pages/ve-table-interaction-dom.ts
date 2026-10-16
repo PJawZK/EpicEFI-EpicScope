@@ -5,6 +5,7 @@ import {
   type TableCellPosition,
   type TableInterpolationOptions,
 } from './ve-table-interaction';
+import { installTableToolConfiguration, type TableToolConfigurationOwner } from './ve-table-tool-options-dom';
 
 export interface TableInteractionDomCommands {
   readonly undo?: () => boolean;
@@ -23,6 +24,7 @@ export interface TableInteractionDomPreferences {
   readonly brush: () => TableBrushOptions;
   readonly readValue?: (position: TableCellPosition) => number | undefined;
   readonly adjustBrushRadius?: (delta: 1 | -1) => void;
+  readonly configuration?: TableToolConfigurationOwner;
 }
 
 export interface TableInteractionDomController {
@@ -131,8 +133,14 @@ export function createTableInteractionDomController(
     const step = preferences.adjustmentStep();
     run(() => session.adjust(Math.abs(Number.isFinite(step) ? step : 0)));
   });
-  const smooth = createToolButton('Smooth', 'Smooth selected cells', () => run(() => session.smooth(preferences.smoothStrength())));
-  const interpolate = createToolButton('Interpolate', 'Interpolate selected cells', () => run(() => session.interpolate(preferences.interpolation())));
+  const smooth = createToolButton('Smooth', 'Smooth selected cells · right-click settings', () => run(() => session.smooth(preferences.smoothStrength())));
+  const interpolateWith = (axis: 'horizontal' | 'vertical' | 'both'): void => {
+    const configured = preferences.interpolation();
+    run(() => session.interpolate({ ...configured, axis }));
+  };
+  const interpolateHorizontal = createToolButton('H', 'Interpolate horizontally · right-click settings', () => interpolateWith('horizontal'));
+  const interpolateVertical = createToolButton('V', 'Interpolate vertically · right-click settings', () => interpolateWith('vertical'));
+  const interpolateBoth = createToolButton('2D', 'Interpolate both directions · right-click settings', () => interpolateWith('both'));
   const pin = createToolButton('Pin', 'Pin or unpin selected cells', () => {
     session.togglePinsForSelection();
     refresh();
@@ -146,7 +154,18 @@ export function createTableInteractionDomController(
     const positions = selectedPositions();
     if (positions.length && commands.clearSelection?.(positions)) finishEdit();
   });
-  toolbar.append(undo, redo, decrement, increment, smooth, interpolate, pin, brush, revert, clear);
+  toolbar.append(undo, redo, decrement, increment, pin, brush, interpolateHorizontal, interpolateVertical, interpolateBoth, smooth, revert, clear);
+  const closeToolConfiguration = preferences.configuration
+    ? installTableToolConfiguration(toolbar, {
+      decrement,
+      increment,
+      smooth,
+      interpolateHorizontal,
+      interpolateVertical,
+      interpolateBoth,
+      brush,
+    }, preferences.configuration, () => refresh())
+    : () => {};
 
   const cellFor = (position: TableCellPosition): HTMLTableCellElement | undefined =>
     table?.querySelector<HTMLTableCellElement>(`td[data-table-row="${position.row}"][data-table-col="${position.col}"]`) ?? undefined;
@@ -189,8 +208,18 @@ export function createTableInteractionDomController(
     table.dataset.tableBrush = brushActive ? 'true' : 'false';
     brush.dataset.active = brushActive ? 'true' : 'false';
     brush.setAttribute('aria-pressed', brushActive ? 'true' : 'false');
-    const radius = preferences.brush().radius;
-    brush.title = `Continuous brush editing · radius ${radius}${preferences.adjustBrushRadius ? ' · mouse wheel adjusts radius' : ''}`;
+    const step = preferences.adjustmentStep();
+    const smoothStrength = preferences.smoothStrength();
+    const interpolation = preferences.interpolation();
+    const brushOptions = preferences.brush();
+    decrement.title = `Decrease selected cells by ${step} · right-click to change step`;
+    increment.title = `Increase selected cells by ${step} · right-click to change step`;
+    smooth.title = `Smooth selected cells · intensity ${smoothStrength.toFixed(2)} · right-click to change`;
+    const interpolationSuffix = `strength ${(interpolation.strength ?? 1).toFixed(2)}${interpolation.clamp === false ? '' : ' · clamped'} · right-click settings`;
+    interpolateHorizontal.title = `Interpolate horizontally · ${interpolation.method1d ?? 'linear'} · ${interpolationSuffix}`;
+    interpolateVertical.title = `Interpolate vertically · ${interpolation.method1d ?? 'linear'} · ${interpolationSuffix}`;
+    interpolateBoth.title = `Interpolate both directions · ${interpolation.method2d ?? 'bilinear'} · ${interpolationSuffix}`;
+    brush.title = `Continuous brush editing · ${brushOptions.delta >= 0 ? '+' : ''}${brushOptions.delta} · radius ${brushOptions.radius} · strength ${(brushOptions.strength ?? 1).toFixed(2)} · ${brushOptions.falloff ?? 'linear'} falloff · Shift reverses${preferences.adjustBrushRadius ? ' · wheel changes radius' : ''} · right-click settings`;
   };
 
   const stopBrushTimer = (): void => {
@@ -547,6 +576,7 @@ export function createTableInteractionDomController(
       table.removeEventListener('wheel', wheel);
     }
     table = undefined;
+    closeToolConfiguration();
     destroyed = true;
     toolbar.remove();
   };

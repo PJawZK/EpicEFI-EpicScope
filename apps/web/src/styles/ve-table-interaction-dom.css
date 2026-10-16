@@ -102,3 +102,86 @@
   cursor: crosshair;
   touch-action: none;
 }
+
+
+.ve-table-edit-toolbar {
+  position: relative;
+}
+
+.ve-table-tool-options {
+  position: absolute;
+  z-index: 120;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(145px, 1fr));
+  gap: 8px;
+  width: min(310px, calc(100vw - 28px));
+  padding: 10px;
+  border: 1px solid #31505f;
+  border-radius: 5px;
+  background: #0b151e;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .42);
+}
+
+.ve-table-tool-options-head,
+.ve-table-tool-options-foot {
+  grid-column: 1 / -1;
+}
+
+.ve-table-tool-options-head {
+  display: grid;
+  gap: 3px;
+}
+
+.ve-table-tool-options-head strong {
+  color: #dce9ef;
+  font-size: 10px;
+}
+
+.ve-table-tool-options-head span,
+.ve-table-tool-options-foot {
+  color: #8299a5;
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.ve-table-tool-options > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #8399a4;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.ve-table-tool-options input,
+.ve-table-tool-options select {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+}
+
+.ve-table-tool-options .ve-table-tool-options-check {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ve-table-tool-options .ve-table-tool-options-check input {
+  width: auto;
+  min-height: 0;
+}
+
+.ve-table-tool-options-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ve-table-tool-options-foot button {
+  min-height: 28px;
+}
