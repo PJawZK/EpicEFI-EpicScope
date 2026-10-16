@@ -50,6 +50,14 @@ function button(root, title) {
   return [...root.querySelectorAll('.ve-delay-shared-toolbar button')].find((candidate) => candidate.title.startsWith(title));
 }
 
+function installDelayFile(input, value) {
+  Object.defineProperty(input, 'files', {
+    configurable: true,
+    value: [{ name: `shared-delay-${value}.json`, text: async () => saved(value) }],
+  });
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 export async function runVeSharedTableInteractionChecks() {
   const checks = [];
   const view = createVeAnalyzerView();
@@ -70,11 +78,7 @@ export async function runVeSharedTableInteractionChecks() {
     }
 
     const fileInput = root.querySelector('[data-ve-analyzer="load-delay-file"]');
-    Object.defineProperty(fileInput, 'files', {
-      configurable: true,
-      value: [{ name: 'shared-delay.json', text: async () => saved(100) }],
-    });
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    installDelayFile(fileInput, 100);
     await settle();
 
     const cells = () => [...root.querySelectorAll('[data-ve-analyzer="delay-table"] td[data-delay-row]')];
@@ -124,6 +128,28 @@ export async function runVeSharedTableInteractionChecks() {
     assert(values()[0] === 100, 'Revert did not restore retained recommendation');
     checks.push('semantic Revert preserves recommendation authority');
 
+    selectCell(cells()[0]);
+    cells()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true }));
+    const staleInput = root.querySelector('.ve-table-inline-input.ve-delay-inline-input');
+    assert(staleInput, 'Lifecycle cancellation fixture did not open an inline edit');
+    staleInput.value = '999';
+    installDelayFile(fileInput, 180);
+    await settle();
+    assert(!root.querySelector('.ve-table-inline-input') && values().every((value) => value === 180), 'Replacing delay authority committed a stale inline edit');
+    checks.push('delay authority replacement cancels active inline editing instead of committing it');
+
+    selectCell(cells()[0]);
+    const c1 = cells()[1];
+    const c3 = cells()[3];
+    c1.setPointerCapture = () => {};
+    const end = c3.getBoundingClientRect();
+    pointer(c1, 'pointerdown', { ctrlKey: true });
+    pointer(document, 'pointermove', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
+    pointer(document, 'pointerup', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
+    const selectedCount = cells().filter((cell) => cell.dataset.tableSelected === 'true').length;
+    assert(selectedCount === 3, `Ctrl-drag used stale selection anchor; expected 3 selected cells, got ${selectedCount}`);
+    checks.push('Ctrl/Cmd drag starts from the newly clicked cell while preserving additive selection');
+
     selectCell(cells()[2]);
     const brushButton = button(root, 'Continuous brush editing');
     brushButton.click();
@@ -133,7 +159,7 @@ export async function runVeSharedTableInteractionChecks() {
     cells()[2].setPointerCapture = () => {};
     pointer(cells()[2], 'pointerdown');
     await new Promise((resolve) => setTimeout(resolve, 210));
-    pointer(cells()[2], 'pointerup');
+    pointer(document, 'pointerup');
     await settle();
     assert(values()[2] > beforeBrush && view.sessionRevision === brushRevision + 1, 'Held Brush did not accumulate and commit once');
     checks.push('held Brush accumulates while one stroke publishes one semantic revision');
