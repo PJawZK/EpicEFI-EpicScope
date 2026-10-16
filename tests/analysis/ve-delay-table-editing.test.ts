@@ -3,6 +3,7 @@ import type { AfrDelayEvent } from '../../core/analysis/afr-delay-analyzer';
 import { buildVeDelayTable } from '../../core/analysis/ve-delay-table';
 import {
   activateVeDelayRecommendation,
+  editVeDelayCells,
   revertVeDelayCellToRecommendation,
   setVeDelayWorkingCell,
 } from '../../core/analysis/ve-delay-table-editing';
@@ -28,6 +29,49 @@ function event(onsetDelayMs: number): AfrDelayEvent {
 }
 
 describe('VE lambda delay direct editing', () => {
+  it('edits a deduplicated selection atomically while retaining untouched cells and raw evidence', () => {
+    const base = buildVeDelayTable([event(100), event(120), event(140)], [1000, 2000], [50, 100], {
+      minimumMeasuredEvents: 3, adaptiveGeometry: false,
+    });
+    const positions = [{ row: 0, col: 0 }, { row: 1, col: 1 }, { row: 0, col: 0 }];
+    const edited = editVeDelayCells(base, positions, { kind: 'set', workingMs: 175 });
+    for (const index of [0, 3]) {
+      expect(edited.cells[index]?.workingMs).toBe(175);
+      expect(edited.cells[index]?.workingProvenance).toBe('user-edited');
+      expect(edited.cells[index]?.sourceEvents).toBe(base.cells[index]?.sourceEvents);
+      expect(edited.cells[index]?.recommendedMs).toBe(base.cells[index]?.recommendedMs);
+    }
+    expect(edited.cells[1]).toBe(base.cells[1]);
+    expect(edited.cells[2]).toBe(base.cells[2]);
+    expect(base.cells[0]?.workingMs).toBe(120);
+    const reverted = editVeDelayCells(edited, positions, { kind: 'revert' });
+    expect(reverted.cells[0]).toEqual(base.cells[0]);
+    expect(reverted.cells[3]).toEqual(base.cells[3]);
+  });
+
+  it('rejects an invalid batch without publishing any partial changes', () => {
+    const base = buildVeDelayTable([event(100)], [1000], [50], { minimumMeasuredEvents: 1 });
+    const original = base.cells[0];
+    for (const bad of [{ row: 1, col: 0 }, { row: 0.5, col: 0 }, { row: NaN, col: 0 }, { row: 0, col: Infinity }]) {
+      expect(() => editVeDelayCells(base, [{ row: 0, col: 0 }, bad], { kind: 'set', workingMs: 175 })).toThrow(RangeError);
+    }
+    for (const workingMs of [-1, Infinity, NaN]) {
+      expect(() => editVeDelayCells(base, [{ row: 0, col: 0 }], { kind: 'set', workingMs })).toThrow(RangeError);
+    }
+    expect(base.cells[0]).toBe(original);
+    expect(base.cells[0]?.workingMs).toBe(100);
+  });
+
+  it('returns the original table for empty or semantically unchanged edits', () => {
+    const base = buildVeDelayTable([event(100.4)], [1000], [50], { minimumMeasuredEvents: 1 });
+    const positions = [{ row: 0, col: 0 }];
+    expect(editVeDelayCells(base, [], { kind: 'set', workingMs: 175 })).toBe(base);
+    expect(editVeDelayCells(base, positions, { kind: 'set', workingMs: 100 })).toBe(base);
+    expect(editVeDelayCells(base, positions, { kind: 'revert' })).toBe(base);
+    const empty = buildVeDelayTable([], [1000], [50]);
+    expect(editVeDelayCells(empty, positions, { kind: 'set', workingMs: undefined })).toBe(empty);
+  });
+
   it('supports repeated edits while retaining raw recommendation evidence', () => {
     const base = buildVeDelayTable([event(100), event(120), event(140)], [1000], [50], {
       minimumMeasuredEvents: 3,

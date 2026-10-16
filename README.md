@@ -175,3 +175,7 @@ Start with:
 - `docs/research/STATUS.md` — living research-to-product disposition;
 - `docs/TS_SHIM_STATUS.md` — live-source validation authority;
 - `docs/LOG_MLG_PLAN.md` — MLG support/compatibility policy.
+
+## Reproducible browser checks
+
+Run `CHROME_BIN=chromium npm run test:browser` after installing dependencies. See [browser acceptance](docs/BROWSER_TESTS.md) for prerequisites, selected coverage, CI, and failure artifacts.

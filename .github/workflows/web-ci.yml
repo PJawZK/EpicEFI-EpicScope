@@ -37,3 +37,33 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Browser acceptance (staged and fallback imports)
+        run: npm run test:browser
+        env:
+          CHROME_BIN: google-chrome
+          CHROME_NO_SANDBOX: '1'
+
+      - name: Upload browser results and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-acceptance
+          path: artifacts/browser/
+          if-no-files-found: error

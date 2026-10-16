@@ -1,6 +1,6 @@
 import { createLocalPersistenceFeedback } from './local-persistence-feedback';
-import { compileCalculatedField, evaluateCalculatedFieldRange, splitCalculatedFieldOffsetReference, type CalculatedFieldRangeBinding } from '../../../../core/analysis/calculated-field';
-import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
+import { prepareHistogramFormula, evaluateHistogramFormula } from './histogram-logical-context';
+import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { HistogramPageContext } from './histogram-page';
 import {
   createHistogramLocalId,
@@ -13,6 +13,7 @@ export interface HistogramMathChannelsController {
   readonly element: HTMLElement;
   setContext(context: HistogramPageContext): void;
   refresh(): void;
+  setActive(active: boolean): void;
 }
 
 interface ChannelSearchText {
@@ -71,14 +72,8 @@ function formatNumber(value: number | undefined): string {
   return value.toFixed(3).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
 
-function validValues(range: NumericChannelRange): number[] {
-  const values: number[] = [];
-  for (let index = 0; index < range.values.length; index += 1) {
-    const value = range.values[index];
-    if (range.validity[index] === 1 && value !== undefined && Number.isFinite(value)) values.push(value);
-  }
-  return values;
-}
+const PREVIEW_DEBOUNCE_MS = 180;
+const MAX_PREVIEW_SAMPLES = 10_000;
 
 export function createHistogramMathChannelsView(): HistogramMathChannelsController {
   let context: HistogramPageContext = {
@@ -91,6 +86,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   let fields = loadHistogramCalculatedFields();
   let editingId = '';
   let previewGeneration = 0;
+  let previewTimer: number | undefined;
 
   const root = document.createElement('section');
   root.className = 'histogram-math-channels-view';
@@ -165,29 +161,6 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     return node;
   };
 
-  const exactReference = (reference: string): ChannelDefinition | undefined => {
-    const normalized = reference.trim().toLocaleLowerCase();
-    const matches = context.channels.filter((channel) =>
-      !channel.id.startsWith('formula:')
-      && (channel.id === reference
-        || channelLabel(channel).toLocaleLowerCase() === normalized
-        || channel.sourceName.toLocaleLowerCase() === normalized),
-    );
-    if (matches.length > 1) throw new RangeError(`Channel reference is ambiguous: [${reference}]`);
-    return matches[0];
-  };
-
-  const resolveReference = (reference: string): { readonly channel: ChannelDefinition; readonly sampleOffset: number } => {
-    const exact = exactReference(reference);
-    if (exact) return { channel: exact, sampleOffset: 0 };
-    const historical = splitCalculatedFieldOffsetReference(reference);
-    if (historical) {
-      const base = exactReference(historical.baseReference);
-      if (base) return { channel: base, sampleOffset: historical.sampleOffset };
-    }
-    throw new RangeError(`Channel not found: [${reference}]`);
-  };
-
   const notifyChanged = (): void => {
     window.dispatchEvent(new CustomEvent('epicscope-histogram-calculated-fields-changed'));
   };
@@ -201,7 +174,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     const end = formulaInput.selectionEnd ?? start;
     formulaInput.setRangeText(text, start, end, 'end');
     formulaInput.focus();
-    void preview();
+    schedulePreview();
   };
 
   const renderList = (): void => {
@@ -242,6 +215,7 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   };
 
   const resetEditor = (): void => {
+    cancelPreview();
     editingId = '';
     title.textContent = 'New Math Channel';
     nameInput.value = '';
@@ -264,11 +238,32 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     formulaInput.value = field.expression;
     deleteButton.hidden = false;
     renderList();
-    void preview();
+    schedulePreview();
   };
 
-  const preview = async (): Promise<void> => {
-    const generation = ++previewGeneration;
+  const cancelPreview = (): number => {
+    if (previewTimer !== undefined) window.clearTimeout(previewTimer);
+    previewTimer = undefined;
+    return ++previewGeneration;
+  };
+
+  const canPreview = (): boolean => root.isConnected && !root.closest('[hidden]');
+
+  const schedulePreview = (): void => {
+    // Invalidate now, not when the debounce expires: a prior read may settle
+    // while the editor already contains a different formula/source/scope.
+    const generation = cancelPreview();
+    resetPreviewStats();
+    validation.className = 'math-channel-validation';
+    validation.textContent = formulaInput.value.trim() ? 'Waiting to preview…' : 'Enter a formula to preview the result.';
+    if (!formulaInput.value.trim() || !canPreview()) return;
+    previewTimer = window.setTimeout(() => {
+      previewTimer = undefined;
+      if (generation === previewGeneration && canPreview()) void preview(generation);
+    }, PREVIEW_DEBOUNCE_MS);
+  };
+
+  const preview = async (generation: number): Promise<void> => {
     const expression = formulaInput.value.trim();
     if (!expression) {
       validation.className = 'math-channel-validation';
@@ -277,46 +272,63 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       return;
     }
     try {
-      const program = compileCalculatedField(expression);
-      const references = new Map<string, { readonly channel: ChannelDefinition; readonly sampleOffset: number }>();
-      for (const reference of program.references) references.set(reference, resolveReference(reference));
+      const plan = prepareHistogramFormula(expression, context.channels, 'Channel');
       validation.className = 'math-channel-validation';
-      validation.textContent = `Valid formula · ${program.references.length} source channel${program.references.length === 1 ? '' : 's'} · loading preview…`;
+      validation.textContent = `Valid formula · ${plan.program.references.length} source channel${plan.program.references.length === 1 ? '' : 's'} · loading preview…`;
       const startMs = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs ? Math.min(context.aTimeMs, context.bTimeMs) : undefined;
       const endMs = startMs !== undefined ? Math.max(context.aTimeMs!, context.bTimeMs!) : undefined;
-      const traces = await context.loadTraces([...new Set([...references.values()].map((resolved) => resolved.channel.id))], startMs, endMs);
-      if (generation !== previewGeneration) return;
+      const traces = await context.loadTraces(plan.physicalIds, startMs, endMs);
+      if (generation !== previewGeneration || !canPreview()) return;
       const byId = new Map(traces.map((trace) => [trace.channel.id, trace]));
-      const ranges = new Map<string, CalculatedFieldRangeBinding>();
-      for (const [reference, resolved] of references) {
-        const trace = byId.get(resolved.channel.id);
-        if (!trace) throw new RangeError(`Preview data unavailable for [${reference}]`);
-        ranges.set(reference, { range: trace.range, sampleOffset: resolved.sampleOffset });
+      // The core evaluator sizes its output from the first referenced range.
+      // Bound that anchor with zero-copy views; other dependencies keep their
+      // available history and all source arrays remain untouched.
+      const anchorId = plan.references.get(plan.program.references[0]!)!.channel.id;
+      const anchor = byId.get(anchorId);
+      const sampled = anchor !== undefined && anchor.range.values.length > MAX_PREVIEW_SAMPLES;
+      if (sampled) {
+        byId.set(anchorId, { ...anchor, range: {
+          startSampleIndex: anchor.range.startSampleIndex,
+          timeMs: anchor.range.timeMs.subarray(0, MAX_PREVIEW_SAMPLES),
+          values: anchor.range.values.subarray(0, MAX_PREVIEW_SAMPLES),
+          validity: anchor.range.validity.subarray(0, MAX_PREVIEW_SAMPLES),
+        } });
       }
-      const evaluated = evaluateCalculatedFieldRange(program, ranges);
-      const values = validValues(evaluated);
-      if (values.length === 0) {
-        validation.className = 'math-channel-validation math-channel-validation--warning';
-        validation.textContent = 'Formula is valid, but it produced no finite samples in the current preview scope.';
-        resetPreviewStats();
-        return;
+      const evaluated = evaluateHistogramFormula(plan, byId, startMs, endMs);
+      if (!evaluated) {
+        const missing = [...plan.references].find(([, resolved]) => !byId.has(resolved.channel.id));
+        throw new RangeError(`Preview data unavailable for [${missing?.[0]}]`);
       }
+      let count = 0;
       let sum = 0;
       let minimum = Number.POSITIVE_INFINITY;
       let maximum = Number.NEGATIVE_INFINITY;
-      for (const value of values) {
+      for (let index = 0; index < evaluated.range.values.length; index += 1) {
+        const value = evaluated.range.values[index];
+        if (evaluated.range.validity[index] !== 1 || value === undefined || !Number.isFinite(value)) continue;
+        count += 1;
         sum += value;
         minimum = Math.min(minimum, value);
         maximum = Math.max(maximum, value);
       }
-      stat('count').textContent = values.length.toLocaleString();
+      const scopeLabel = startMs === undefined ? 'available log data' : 'the current A/B range';
+      const previewLabel = sampled
+        ? `the first ${MAX_PREVIEW_SAMPLES.toLocaleString()} of ${anchor.range.values.length.toLocaleString()} loaded samples in ${scopeLabel}`
+        : scopeLabel;
+      if (count === 0) {
+        validation.className = 'math-channel-validation math-channel-validation--warning';
+        validation.textContent = `Formula is valid, but it produced no finite samples in the preview (${previewLabel}).`;
+        resetPreviewStats();
+        return;
+      }
+      stat('count').textContent = count.toLocaleString();
       stat('min').textContent = formatNumber(minimum);
       stat('max').textContent = formatNumber(maximum);
-      stat('mean').textContent = formatNumber(sum / values.length);
+      stat('mean').textContent = formatNumber(sum / count);
       validation.className = 'math-channel-validation math-channel-validation--good';
-      validation.textContent = `Formula valid · preview uses ${startMs === undefined ? 'available log data' : 'the current A/B range'}.`;
+      validation.textContent = `Formula valid · preview uses ${previewLabel}.`;
     } catch (error) {
-      if (generation !== previewGeneration) return;
+      if (generation !== previewGeneration || !canPreview()) return;
       validation.className = 'math-channel-validation math-channel-validation--error';
       validation.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
       resetPreviewStats();
@@ -327,13 +339,13 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     const name = nameInput.value.trim();
     const expression = formulaInput.value.trim();
     if (!name || !expression) {
+      cancelPreview();
       validation.className = 'math-channel-validation math-channel-validation--error';
       validation.textContent = 'Name and formula are required.';
       return;
     }
     try {
-      const program = compileCalculatedField(expression);
-      for (const reference of program.references) resolveReference(reference);
+      prepareHistogramFormula(expression, context.channels, 'Channel');
       const existing = fields.find((field) => field.id === editingId);
       const field: HistogramCalculatedFieldDefinition = {
         id: existing?.id ?? createHistogramLocalId('formula'),
@@ -352,10 +364,9 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
       if (!persisted) {
         validation.className = 'math-channel-validation math-channel-validation--good';
         validation.textContent = 'Formula is available for calculation.';
-      } else {
-        void preview();
       }
     } catch (error) {
+      cancelPreview();
       validation.className = 'math-channel-validation math-channel-validation--error';
       validation.textContent = error instanceof Error ? error.message : 'Formula is invalid.';
     }
@@ -385,9 +396,8 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
   deleteButton.addEventListener('click', remove);
   search.addEventListener('input', renderList);
   sourceSearch.addEventListener('input', renderSources);
-  nameInput.addEventListener('input', () => { void preview(); });
-  unitInput.addEventListener('input', () => { void preview(); });
-  formulaInput.addEventListener('input', () => { void preview(); });
+  // Name/unit are metadata: their native inputs need no numerical preview work.
+  formulaInput.addEventListener('input', schedulePreview);
   window.addEventListener('epicscope-histogram-calculated-fields-changed', () => {
     fields = loadHistogramCalculatedFields();
     if (editingId && !fields.some((field) => field.id === editingId)) editingId = '';
@@ -398,17 +408,23 @@ export function createHistogramMathChannelsView(): HistogramMathChannelsControll
     fields = loadHistogramCalculatedFields();
     renderList();
     renderSources();
-    if (!root.hidden && formulaInput.value.trim()) void preview();
+    schedulePreview();
   };
 
   const setContext = (nextContext: HistogramPageContext): void => {
     const channelsChanged = !sameChannelCatalog(context.channels, nextContext.channels);
     context = nextContext;
     if (channelsChanged) renderSources();
-    if (!root.hidden && formulaInput.value.trim()) void preview();
+    schedulePreview();
   };
 
   resetEditor();
   renderSources();
-  return { element: root, setContext, refresh };
+  return {
+    element: root, setContext, refresh,
+    setActive: (active) => {
+      root.hidden = !active;
+      if (!active) cancelPreview();
+    },
+  };
 }

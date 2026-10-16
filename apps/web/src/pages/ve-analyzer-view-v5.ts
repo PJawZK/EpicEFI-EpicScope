@@ -1,3 +1,4 @@
+import type { VeDelayEdit } from '../../../../core/analysis/ve-delay-table-editing';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import {
@@ -6,7 +7,6 @@ import {
 } from './ve-analyzer-view-v4';
 
 type CellKey = `${number}:${number}`;
-type EditAction = 'apply' | 'clear' | 'revert';
 
 function keyFor(row: number, col: number): CellKey {
   return `${row}:${col}`;
@@ -29,17 +29,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   root.classList.add('ve-inline-delay-editing');
 
   const delayHost = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-table"]')!;
-  const legacyBulk = root.querySelector<HTMLElement>('.ve-delay-bulk-editor');
-  legacyBulk?.remove();
 
   const legacyEditor = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-editor"]')!;
-  const legacyWorking = root.querySelector<HTMLInputElement>('[data-ve-analyzer="delay-cell-working"]')!;
-  const legacyApply = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="delay-cell-apply"]')!;
-  const legacyRevert = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="delay-cell-revert"]')!;
 
   const hint = document.createElement('div');
   hint.className = 've-delay-inline-hint';
-  hint.textContent = 'Select a cell and type to replace its value. Drag to select a range. Delete clears to no working delay. Enter/F2 edits the current value · Esc cancels.';
+  hint.textContent = 'Select a cell and type to replace its value. Drag to select a range. Delete reverts selected cells to the generated recommendation. Enter/F2 edits the current value · Esc cancels.';
   delayHost.insertAdjacentElement('beforebegin', hint);
 
   const selected = new Set<CellKey>();
@@ -47,6 +42,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   let dragPointerId: number | undefined;
   let dragMoved = false;
   let inlineInput: HTMLInputElement | undefined;
+  let inlineRevision: number | undefined;
   let previewOriginal = new Map<CellKey, string>();
   let committing = false;
 
@@ -103,31 +99,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     cell.focus({ preventScroll: true });
   };
 
-  // v2 still owns the actual delay-table state. Call its installed callbacks
-  // directly instead of synthesizing browser clicks. This keeps visible table
-  // focus/selection under v5 control and avoids click -> rerender -> click races.
-  const invokeUnderlyingEditor = (key: CellKey, action: EditAction, value?: number): void => {
-    const cell = cellFor(key);
-    if (!cell) return;
-    cell.onclick?.call(cell, new PointerEvent('click'));
-    if (action === 'apply') {
-      if (value === undefined) return;
-      legacyWorking.value = String(value);
-      legacyApply.onclick?.call(legacyApply, new PointerEvent('click'));
-    } else if (action === 'clear') {
-      legacyWorking.value = '';
-      legacyApply.onclick?.call(legacyApply, new PointerEvent('click'));
-    } else {
-      legacyRevert.onclick?.call(legacyRevert, new PointerEvent('click'));
-    }
-  };
-
   const restorePreview = (): void => {
     for (const [key, text] of previewOriginal) {
       const cell = cellFor(key);
       if (cell) {
         cell.textContent = text;
         delete cell.dataset.delayPreview;
+        delete cell.dataset.delayEditing;
       }
     }
     previewOriginal.clear();
@@ -144,34 +122,33 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
   };
 
-  const editSelection = (action: EditAction, value?: number): boolean => {
+  const editSelection = (edit: VeDelayEdit): boolean => {
     if (selected.size === 0 || committing) return false;
-    const keys = [...selected];
+    const positions = [...selected].filter((key) => cellFor(key)).map(parseKey);
     committing = true;
     try {
-      for (const key of keys) invokeUnderlyingEditor(key, action, value);
+      return inner.editDelayCells(positions, edit);
     } finally {
       committing = false;
-      refreshSelection();
-      queueMicrotask(focusAnchor);
     }
-    return true;
   };
 
   const applyEditToSelection = (text: string): boolean => {
-    if (text === '') return editSelection('clear');
-    const value = Number(text);
-    if (!Number.isFinite(value) || value < 0) return false;
-    return editSelection('apply', value);
+    const workingMs = text === '' ? undefined : Number(text);
+    if (workingMs !== undefined && (!Number.isFinite(workingMs) || workingMs < 0)) return false;
+    return editSelection({ kind: 'set', workingMs });
   };
 
   const endInlineEdit = (commit: boolean): void => {
     const input = inlineInput;
     if (!input) return;
     const text = input.value.trim();
+    const current = inlineRevision === inner.sessionRevision;
     inlineInput = undefined;
-    restorePreview();
-    if (commit) applyEditToSelection(text);
+    inlineRevision = undefined;
+    if (current) restorePreview();
+    else previewOriginal.clear(); // Never restore old text into a replacement session.
+    if (commit && current) applyEditToSelection(text);
     refreshSelection();
     queueMicrotask(focusAnchor);
   };
@@ -192,6 +169,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     activeCell.replaceChildren(input);
     activeCell.dataset.delayEditing = 'true';
     inlineInput = input;
+    inlineRevision = inner.sessionRevision;
     previewValue(input.value);
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
@@ -212,10 +190,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     });
   };
 
-  const clearSelection = (): void => {
+  const revertSelection = (): void => {
     if (selected.size === 0) return;
     restorePreview();
-    editSelection('clear');
+    editSelection({ kind: 'revert' });
+    refreshSelection();
+    queueMicrotask(focusAnchor);
   };
 
   const closestDelayCell = (target: EventTarget | null): HTMLTableCellElement | null =>
@@ -274,7 +254,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     }
     if (event.key === 'Delete') {
       event.preventDefault();
-      clearSelection();
+      revertSelection();
       return;
     }
     if (event.key === 'Backspace') {
@@ -297,6 +277,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   const observer = new MutationObserver(() => {
+    if (inlineInput && inlineRevision !== inner.sessionRevision) endInlineEdit(false);
     if (!inlineInput && !committing) {
       refreshSelection();
       queueMicrotask(focusAnchor);
@@ -309,23 +290,31 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    setActive(active) {
+      if (!active) endInlineEdit(false);
+      inner.setActive(active);
+    },
+    editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       if (!changed) return false;
+      endInlineEdit(false);
       selected.clear();
       anchor = undefined;
+      dragPointerId = undefined;
       queueMicrotask(refreshSelection);
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
+      endInlineEdit(false);
       selected.clear();
       anchor = undefined;
+      dragPointerId = undefined;
       queueMicrotask(refreshSelection);
       return true;
     },

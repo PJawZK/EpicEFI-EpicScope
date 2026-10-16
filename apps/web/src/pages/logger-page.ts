@@ -164,6 +164,7 @@ export interface LoggerAnalysisContext {
   readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number };
   readonly traces: readonly LoggerAnalysisTraceContext[];
   readonly channels: readonly ChannelDefinition[];
+  /** Bound to this context's source, available catalog and sample extent; no implicit rebinding on replacement. */
   readonly loadTraces: (
     channelIds: readonly string[],
     startMs?: number,
@@ -2340,23 +2341,30 @@ export function createLoggerPage(): LoggerPageController {
   };
 
   const getAnalysisContext = (): LoggerAnalysisContext => {
+    // Contexts can outlive Logger navigation/replacement. Bind their loader to
+    // the same source, available definitions and extent advertised below; never
+    // resolve metadata from mutable Logger state after an asynchronous read.
+    const source = channelDataSource;
+    const sampleExtent = source?.sampleCount ?? 0;
+    const sourceRevision = analysisDataRevision;
+    const channels = analysisChannels();
+    const definitions = new Map(channels.map((channel) => [channel.id, channel]));
     const runtime = activePaneRuntime();
     const traces = runtime
       ? runtime.graph.getOverviewTraces().flatMap((trace) => {
-          const channel = channelDefinitions.get(trace.channelId);
+          const channel = definitions.get(trace.channelId);
           if (!channel) return [];
           return [{
             channel,
             range: trace.range,
-            complete: channelDataSource !== undefined
+            complete: source !== undefined
               && trace.range.startSampleIndex === 0
-              && trace.range.values.length >= channelDataSource.sampleCount,
+              && trace.range.values.length >= sampleExtent,
             color: trace.color,
           }];
         })
       : [];
 
-    const channels = analysisChannels();
     const activeColors = new Map(traces.map((trace) => [trace.channel.id, trace.color]));
     const palette = ['#58aef6', '#ffb15a', '#7ddf8a', '#df7dcb', '#ffd45a', '#67d8d2', '#ff7f7f', '#9ca7ff'];
     const colorFor = (channelId: string): string => {
@@ -2372,14 +2380,13 @@ export function createLoggerPage(): LoggerPageController {
       startMs?: number,
       endMs?: number,
     ): Promise<readonly LoggerAnalysisTraceContext[]> => {
-      const source = channelDataSource;
       if (!source) return [];
       const requestedIds = [...new Set(channelIds)]
-        .filter((channelId) => channelDefinitions.has(channelId) && !unavailableChannelIds.has(channelId));
+        .filter((channelId) => definitions.has(channelId));
       if (requestedIds.length === 0) return [];
 
       let startSampleIndex = 0;
-      let sampleCount = source.sampleCount;
+      let sampleCount = sampleExtent;
       if (
         startMs !== undefined
         && endMs !== undefined
@@ -2388,8 +2395,8 @@ export function createLoggerPage(): LoggerPageController {
         && source.sampleRangeForTime
       ) {
         const scoped = source.sampleRangeForTime(Math.min(startMs, endMs), Math.max(startMs, endMs));
-        startSampleIndex = Math.max(0, Math.min(source.sampleCount, scoped.startSampleIndex));
-        sampleCount = Math.max(0, Math.min(source.sampleCount - startSampleIndex, scoped.sampleCount));
+        startSampleIndex = Math.max(0, Math.min(sampleExtent, scoped.startSampleIndex));
+        sampleCount = Math.max(0, Math.min(sampleExtent - startSampleIndex, scoped.sampleCount));
       }
       if (sampleCount <= 0) return [];
 
@@ -2406,7 +2413,7 @@ export function createLoggerPage(): LoggerPageController {
       }
 
       return requestedIds.flatMap((channelId) => {
-        const channel = channelDefinitions.get(channelId);
+        const channel = definitions.get(channelId);
         const range = ranges.get(channelId);
         if (!channel || !range) return [];
         return [{
@@ -2422,7 +2429,7 @@ export function createLoggerPage(): LoggerPageController {
       traces,
       channels,
       loadTraces,
-      ...(channelDataSource ? { source: { identity: channelDataSource, sampleCount: channelDataSource.sampleCount, revision: analysisDataRevision } } : {}),
+      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
       savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),

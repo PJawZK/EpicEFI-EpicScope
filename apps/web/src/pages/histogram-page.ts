@@ -43,6 +43,7 @@ export interface HistogramPageController {
   readonly element: HTMLElement;
   readonly headerControl: HTMLElement;
   setContext(context: HistogramPageContext): void;
+  setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   refresh(): void;
 }
 
@@ -141,7 +142,7 @@ export function createHistogramPage(): HistogramPageController {
     tableGeneratorView.element.hidden = view !== 'table';
     distributionView.element.hidden = view !== 'distribution';
     scatterView.element.hidden = view !== 'scatter';
-    mathChannelsView.element.hidden = view !== 'math-channels';
+    mathChannelsView.setActive(view === 'math-channels');
     if (view === 'distribution' || view === 'scatter') refreshLogicalAnalysisContext();
     setActiveContext();
     if (view === 'table') applyIniTableAxisAuthority(false);
@@ -188,6 +189,23 @@ export function createHistogramPage(): HistogramPageController {
     element: page,
     headerControl,
     setContext,
+    setTuneModel: (model, sourceName) => {
+      if (context.tuneModel === model && context.tuneSourceName === sourceName) return;
+      const { tuneModel: _previousModel, tuneSourceName: _previousName, ...base } = context;
+      const nextContext = {
+        ...base,
+        ...(model ? { tuneModel: model } : {}),
+        ...(sourceName ? { tuneSourceName: sourceName } : {}),
+      };
+      lastIniMappedTable = '';
+      if (activeView === 'table') setContext(nextContext);
+      else {
+        // Only Table Generator consumes the tune. Retain it for entry without
+        // restarting Distribution, Scatter or an unrelated Math preview.
+        context = nextContext;
+        refreshLogicalAnalysisContext();
+      }
+    },
     refresh: () => {
       if (suppressImmediateRefresh) {
         suppressImmediateRefresh = false;

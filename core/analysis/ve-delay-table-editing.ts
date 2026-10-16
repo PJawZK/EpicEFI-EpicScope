@@ -1,10 +1,45 @@
 import type { VeDelayTable } from './ve-delay-table';
 
 function cellIndex(table: VeDelayTable, row: number, col: number): number {
-  if (row < 0 || row >= table.rows || col < 0 || col >= table.cols) {
+  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= table.rows || col < 0 || col >= table.cols) {
     throw new RangeError('VE delay edit is outside the table geometry.');
   }
   return row * table.cols + col;
+}
+
+export interface VeDelayCellPosition {
+  readonly row: number;
+  readonly col: number;
+}
+
+export type VeDelayEdit =
+  | { readonly kind: 'set'; readonly workingMs: number | undefined }
+  | { readonly kind: 'revert' };
+
+/** Validate the entire selection, then update it in one immutable table pass. */
+export function editVeDelayCells(
+  table: VeDelayTable,
+  positions: readonly VeDelayCellPosition[],
+  edit: VeDelayEdit,
+): VeDelayTable {
+  if (edit.kind === 'set' && edit.workingMs !== undefined && (!Number.isFinite(edit.workingMs) || edit.workingMs < 0)) {
+    throw new RangeError('VE delay user edit must be a finite non-negative delay or undefined.');
+  }
+  const indices = new Set(positions.map(({ row, col }) => cellIndex(table, row, col)));
+  if (indices.size === 0) return table;
+  let changed = false;
+  const cells = table.cells.map((cell, index) => {
+    if (!indices.has(index)) return cell;
+    const value = edit.kind === 'revert' ? cell.recommendedMs : edit.workingMs;
+    const restore = edit.kind === 'revert' || matchesDisplayedRecommendation(value, cell.recommendedMs);
+    const workingMs = restore ? cell.recommendedMs : value;
+    const workingProvenance = restore ? recommendationProvenance(cell)
+      : value === undefined && cell.recommendedMs === undefined ? undefined : 'user-edited';
+    if (cell.workingMs === workingMs && cell.workingProvenance === workingProvenance) return cell;
+    changed = true;
+    return { ...cell, workingMs, workingProvenance };
+  });
+  return changed ? { ...table, cells } : table;
 }
 
 function recommendationProvenance(cell: VeDelayTable['cells'][number]): VeDelayTable['cells'][number]['workingProvenance'] {
@@ -31,46 +66,12 @@ export function setVeDelayWorkingCell(
   col: number,
   workingMs: number | undefined,
 ): VeDelayTable {
-  if (workingMs !== undefined && (!Number.isFinite(workingMs) || workingMs < 0)) {
-    throw new RangeError('VE delay user edit must be a finite non-negative delay or undefined.');
-  }
-  const index = cellIndex(table, row, col);
-  return {
-    ...table,
-    cells: table.cells.map((cell, cellIndexValue) => {
-      if (cellIndexValue !== index) return cell;
-      if (matchesDisplayedRecommendation(workingMs, cell.recommendedMs)) {
-        return {
-          ...cell,
-          workingMs: cell.recommendedMs,
-          workingProvenance: recommendationProvenance(cell),
-        };
-      }
-      return {
-        ...cell,
-        workingMs,
-        // Clearing an originally empty/insufficient cell restores its untouched
-        // state. Clearing a cell that has a recommendation remains an explicit
-        // user override because it suppresses known delay authority.
-        workingProvenance: workingMs === undefined && cell.recommendedMs === undefined
-          ? undefined
-          : 'user-edited',
-      };
-    }),
-  };
+  return editVeDelayCells(table, [{ row, col }], { kind: 'set', workingMs });
 }
 
 /** Restore the editable value to the immutable evidence recommendation. */
 export function revertVeDelayCellToRecommendation(table: VeDelayTable, row: number, col: number): VeDelayTable {
-  const index = cellIndex(table, row, col);
-  return {
-    ...table,
-    cells: table.cells.map((cell, cellIndexValue) => cellIndexValue === index ? {
-      ...cell,
-      workingMs: cell.recommendedMs,
-      workingProvenance: recommendationProvenance(cell),
-    } : cell),
-  };
+  return editVeDelayCells(table, [{ row, col }], { kind: 'revert' });
 }
 
 /**

@@ -5,8 +5,9 @@ import { buildVeProposal, type VeProposalResult } from '../../../../core/analysi
 import { buildVeDelayTable, type VeDelayTable } from '../../../../core/analysis/ve-delay-table';
 import {
   activateVeDelayRecommendation,
-  revertVeDelayCellToRecommendation,
-  setVeDelayWorkingCell,
+  editVeDelayCells,
+  type VeDelayCellPosition,
+  type VeDelayEdit,
 } from '../../../../core/analysis/ve-delay-table-editing';
 import { parseVeDelayTableFile, serializeVeDelayTable } from '../../../../core/analysis/ve-delay-table-storage';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
@@ -51,6 +52,8 @@ export interface VeAnalyzerViewController {
   /** Return true only when semantic session inputs changed. */
   setContext(context: LoggerAnalysisContext): boolean;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): boolean;
+  /** One semantic edit, regardless of selection size; false for inactive/no-op requests. */
+  editDelayCells(positions: readonly VeDelayCellPosition[], edit: VeDelayEdit): boolean;
   refresh(): void;
 }
 
@@ -442,11 +445,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     renderSelectedDelayCell();
   };
 
-  const renderTables = (): void => {
+  const renderTuneTables = (): void => {
     const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
     renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal);
     renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
-    renderDelayTable();
+    // Delay rendering belongs to renderDelayDiscovery/readiness.
   };
 
   const mixtureAssessment = () => {
@@ -490,9 +493,21 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     sessionRevision += 1;
     delayGeneration += 1;
     delayLoadGeneration += 1;
-    runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren(); renderTables();
+    runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren(); renderTuneTables();
     stageText.textContent = 'Setup changed. Run Analysis to rebuild the delay-table-aligned evidence and guarded VE proposal; no tune state is modified.';
     renderReadiness();
+  };
+
+  const editDelayCells = (positions: readonly VeDelayCellPosition[], edit: VeDelayEdit): boolean => {
+    if (!viewActive || pendingContext || pendingTune) return false;
+    const table = workingDelayTable ?? delayRecommendation;
+    if (!table) return false;
+    const next = editVeDelayCells(table, positions, edit);
+    if (next === table) return false;
+    if (workingDelayTable) workingDelayTable = next;
+    else delayRecommendation = next;
+    invalidate();
+    return true;
   };
 
   const clearDelayRecommendation = (): void => {
@@ -588,7 +603,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     const ids = [...new Set(ROLES.map((role) => roleSelect(role.key)?.value).filter((id): id is string => Boolean(id)))]; const bounds = analyzerScopeBounds(scope);
     const delayTable = workingDelayTable;
     analysisPending = true;
-    renderReadiness(); renderTables(); summary.replaceChildren();
+    renderReadiness(); renderTuneTables(); summary.replaceChildren();
     stageText.textContent = 'Loading analysis channels…';
     let resolvedRanges: ReadonlyMap<string, NumericChannelRange> | undefined;
     const reportedPhases = new Set<string>();
@@ -626,7 +641,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
         evidence: result, proposal, veTable: ve, rpmBins: veRpm, loadBins: veLoad,
         actualRange: actual, qualificationLabel: selectedText(select('preset')), stateExcludedCount: filtered.excluded,
       });
-      const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTables();
+      const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTuneTables();
       const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
       const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length; const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length; const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length; const delayCounts = delayTableCounts(workingDelayTable);
       renderSummary([
@@ -682,7 +697,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     for (const role of ['delay-command-threshold', 'delay-search-window', 'delay-event-spacing', 'delay-min-events'] as const) { const field = input(role); if (field) field.onchange = () => { clearDelayRecommendation(); renderReadiness(); }; }
     const responseField = input('delay-response-threshold'); if (responseField) responseField.onchange = () => { responseField.dataset.auto = 'false'; clearDelayRecommendation(); renderReadiness(); };
     grabDelayButton.onclick = () => { void runDelayDiscovery(); };
-    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); selectedDelayCell = undefined; invalidate(); renderDelayDiscovery(); };
+    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); selectedDelayCell = undefined; invalidate(); };
     saveDelayButton.onclick = () => { if (!workingDelayTable) return; downloadText('EpicScope-lambda-delay-table.json', serializeVeDelayTable(workingDelayTable, workingDelayTable.originLabel)); };
     loadDelayButton.onclick = () => { loadDelayFile.value = ''; loadDelayFile.click(); };
     loadDelayFile.onchange = () => {
@@ -692,7 +707,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       void file.text().then((text) => {
         if (generation !== delayLoadGeneration) return;
         try {
-          workingDelayTable = parseVeDelayTableFile(text, file.name); selectedDelayCell = undefined; invalidate(); renderDelayDiscovery();
+          workingDelayTable = parseVeDelayTableFile(text, file.name); selectedDelayCell = undefined; invalidate();
           delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Current-log discovery remains separate until Use recommendation is pressed.`;
         } catch (error) {
           delayResultTitle.textContent = 'Could not load delay table'; delayResultText.textContent = error instanceof Error ? error.message : String(error);
@@ -705,22 +720,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     };
     delayCellApply.onclick = () => {
       if (!selectedDelayCell) return;
-      const activeTable = workingDelayTable ?? delayRecommendation;
-      if (!activeTable) return;
       const raw = delayCellWorking.value.trim();
-      const value = raw === '' ? undefined : Number(raw);
-      if (value !== undefined && (!Number.isFinite(value) || value < 0)) return;
-      const edited = setVeDelayWorkingCell(activeTable, selectedDelayCell.row, selectedDelayCell.col, value);
-      if (workingDelayTable) workingDelayTable = edited; else delayRecommendation = edited;
-      invalidate(); renderDelayDiscovery();
+      const workingMs = raw === '' ? undefined : Number(raw);
+      if (workingMs !== undefined && (!Number.isFinite(workingMs) || workingMs < 0)) return;
+      editDelayCells([selectedDelayCell], { kind: 'set', workingMs });
     };
     delayCellRevert.onclick = () => {
-      if (!selectedDelayCell) return;
-      const activeTable = workingDelayTable ?? delayRecommendation;
-      if (!activeTable) return;
-      const reverted = revertVeDelayCellToRecommendation(activeTable, selectedDelayCell.row, selectedDelayCell.col);
-      if (workingDelayTable) workingDelayTable = reverted; else delayRecommendation = reverted;
-      invalidate(); renderDelayDiscovery();
+      if (selectedDelayCell) editDelayCells([selectedDelayCell], { kind: 'revert' });
     };
     cancelButton.onclick = () => {
       if (!analysisPending) return;
@@ -728,7 +734,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       stageText.textContent = 'Analysis cancelled. Run Analysis to rebuild current evidence.';
       renderReadiness();
     };
-    runButton.onclick = () => { void runAnalysis(); }; renderTables(); renderReadiness(); content.hidden = false; empty.hidden = false;
+    runButton.onclick = () => { void runAnalysis(); }; renderTuneTables(); renderReadiness(); content.hidden = false; empty.hidden = false;
   };
 
   const controller: VeAnalyzerViewController = {
@@ -747,12 +753,13 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       if (nextContext) controller.setContext(nextContext);
       if (cancelledAnalysis) {
         cancelledAnalysis = false;
-        summary.replaceChildren(); renderTables();
+        summary.replaceChildren(); renderTuneTables();
         stageText.textContent = 'Analysis cancelled after leaving VE. Run Analysis to rebuild current evidence.';
         renderReadiness();
       }
       renderDelayDiscovery();
     },
+    editDelayCells,
     get sessionRevision() { return sessionRevision; },
     getPrimaryAnalysis() { return primaryAnalysis; },
     onPrimaryAnalysisChange(listener) {
@@ -783,7 +790,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
       tuneModel = model; tuneSourceName = sourceName; rebuild();
       return true;
     },
-    refresh() { if (viewActive) { renderTables(); renderReadiness(); } },
+    refresh() { if (viewActive) { renderTuneTables(); renderReadiness(); } },
   };
   return controller;
 }

@@ -264,6 +264,7 @@ export function installVeAnalyzerCellEvidence(
       if (tune) controller.setTuneModel(tune[0], tune[1]);
       if (nextContext) controller.setContext(nextContext);
     },
+    editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },

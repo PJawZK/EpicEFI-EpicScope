@@ -1,4 +1,32 @@
-# Consolidated correctness and performance work list
+# Current improvement sequence — 2026-10-16
+
+This is the new post-integration list, separate from the original completed points 1–11 below. Production baseline: main at `09f8e3942afde19f5bf64c9570884886d56da9bc`.
+
+Publication checkpoint: completed targets **1, 2, 3, 15, 4 and 5** are packaged on `checkpoint/improvements-targets-1-5-15-20261016`. No main merge is included. Implementation status descriptions below predate publication; see the newest HANDOFF.md checkpoint for continuation authority. Target 6 remains unstarted.
+
+Approved execution order: **1 → 2 → 3 → 15 → 4 → 5 → 6 → 7 → 9 → 10 → 11 → 12 → 8/13 profiling → 14 → 16 → 17 → 18 only if reproduced**. Stop after each target for review; no automatic publication or next-target implementation.
+
+| Target | Scope | Current status |
+| --- | --- | --- |
+| 1 | Consistent accepted-input publication to active views; hidden views defer | Complete locally on `fix/input-publication-target-1`; uncommitted/unpushed. Shell publication and Histogram tune-only boundary; browser regressions and evidence in HANDOFF.md. Preserved by target 2. |
+| 2 | Bind analysis context loaders to their advertised source/definitions | Complete locally on the same branch; source/catalog/extent captured at context creation, with no sample copying. 12 new Logger browser checks plus existing regressions; see HANDOFF.md. Preserved by target 3. |
+| 3 | Transactional/batched VE delay edits | Complete locally; one owner command and immutable batch pass, one invalidation/render, preserved inline/keyboard/provenance behavior. 15 new browser checks plus native drag/keyboard acceptance; see HANDOFF.md. Preserved by target 15. |
+| 15 | Reproducible browser acceptance command and selected CI checks | Complete locally. Reproducible `npm run test:browser`, synthetic fixtures, isolated staged/fallback sessions, failure artifacts/cleanup and selected CI job. Corrected legacy heat assertion without changing production behavior. 224 browser checks, 610 automated tests and build pass; see HANDOFF.md. Preserved by target 4. |
+| 4 | Shared Histogram formula resolution/execution | Complete locally. Shared preparation/binding/evaluation in existing logical-context module; Table Generator reuses logical materialization, Math retains its preview/error owner. Historical-reference Table failure reproduced and fixed. 240 browser checks and 616 automated tests pass; see HANDOFF.md. Preserved by target 5. |
+| 5 | Metadata-only Math edits; bounded/debounced preview work | Complete locally. No numerical preview work for name/unit edits or metadata save; one 180-ms timer, immediate generation invalidation, reset/navigation guards, 10000-anchor-sample preview limit and single-pass stats. 256 browser checks, 616 automated tests and build pass. Stop before target 6; see HANDOFF.md. |
+| 6 | Recoverable localStorage acquisition at startup | Pending |
+| 7 | Authoritative accepted INI table definitions in memory | Pending |
+| 9 | One structured VE readiness result | Pending |
+| 10 | One Result View presentation owner | Pending; preserve accepted source/heat behavior |
+| 11 | Component-owned presentation decoration | Pending |
+| 12 | MSQ entity decoding and numeric/text acceptance policy | Pending |
+| 8 / 13 | Profile growing live-graph CPU/allocation and recording memory | Profiling first; implementation depends on evidence and retention requirements |
+| 14 | AFR sort reuse; larger algorithm changes only if profiles justify them | Pending |
+| 16 | Approved observability migration | Pending |
+| 17 | Remove superseded UI and unreachable legacy code after parity checks | Pending |
+| 18 | Deferred telemetry conversion/socket identity | Reproduction-gated; this is the original list's deferred point 12 |
+
+# Historical correctness and performance work list
 
 Checkpoint: points 1–4 and the Analyzer-entry loop fix were published on the temporary branch at `b3d1709`. Points 5–11 are complete and included in the publication checkpoint on the same temporary branch; stop before point 12. Stop after each pass. No main-branch merge or GitHub publication is implied by implementation authorization. Browser acceptance is required; CI alone is insufficient.
 

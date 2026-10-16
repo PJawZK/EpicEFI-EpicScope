@@ -185,7 +185,7 @@ export async function runVeAnalyzerResultViewChecks() {
         assert(text(weak) === '8', 'Weak-cell Samples metric was not retained');
         assert(text(evidenceOnly) === '5', 'Evidence-only Samples metric was not retained');
         assert(text(noEvidence) === '90', 'No-evidence Samples fallback lost original VE');
-        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === bases.get(noEvidence), 'No-evidence Samples fallback lost base heat level');
+        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === '0.5', 'No-evidence Samples fallback lost neutral heat level');
       }
       if (value === 'confidence') {
         assert(text(weak) === 'Limited', 'Weak-cell Confidence metric was not retained');
@@ -208,7 +208,8 @@ export async function runVeAnalyzerResultViewChecks() {
           || (cell === evidenceOnly && (value === 'change' || value === 'change-percent'))
           || (cell === weak && value === 'proposal');
         if (isBase) {
-          assert(cell.style.getPropertyValue('--ve-cell-level') === bases.get(cell), `${value} did not restore exact base heat level`);
+          const expected = value === 'proposal' ? bases.get(cell) : '0.5';
+          assert(cell.style.getPropertyValue('--ve-cell-level') === expected, `${value} did not restore ${value === 'proposal' ? 'base' : 'neutral fallback'} heat level`);
         }
       }
     }
@@ -217,6 +218,6 @@ export async function runVeAnalyzerResultViewChecks() {
   shell.remove();
   return {
     passed: 1,
-    checks: ['full-stack Result View keeps source-authoritative VE values, base heat and real delay metrics through repeated cycles'],
+    checks: ['full-stack Result View keeps source-authoritative VE values, proposal/neutral fallback heat and real delay metrics through repeated cycles'],
   };
 }

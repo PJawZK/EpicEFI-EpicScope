@@ -6,55 +6,13 @@ import {
 } from './ve-analyzer-view-v8';
 import '../styles/ve-analyzer-control-placement.css';
 
-interface DelayCellPosition {
-  readonly row: string;
-  readonly col: string;
-}
-
 export function createVeAnalyzerView(): VeAnalyzerViewController {
   const inner = createVeAnalyzerViewV8();
   const root = inner.element;
   let cancelRegrab: (() => void) | undefined;
 
   // Table layout/header ownership lives entirely in v7. This layer is limited
-  // to the lambda-delay interaction fixes introduced in the known-good baseline.
-  const delayHost = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-table"]');
-  const delayHint = root.querySelector<HTMLElement>('.ve-delay-inline-hint');
-  const legacyWorking = root.querySelector<HTMLInputElement>('[data-ve-analyzer="delay-cell-working"]');
-  const legacyRevert = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="delay-cell-revert"]');
-  if (delayHint) {
-    delayHint.textContent = 'Select a cell and type to replace its value. Drag to select a range. Delete reverts selected cells to the generated recommendation. Enter/F2 edits the current value · Esc cancels.';
-  }
-
-  const selectedDelayPositions = (): DelayCellPosition[] => {
-    if (!delayHost) return [];
-    return [...delayHost.querySelectorAll<HTMLTableCellElement>('td[data-delay-selected="true"][data-delay-row][data-delay-col]')]
-      .map((cell) => ({ row: cell.dataset.delayRow!, col: cell.dataset.delayCol! }));
-  };
-
-  const revertSelectedDelayCells = (positions: readonly DelayCellPosition[]): void => {
-    if (!delayHost || !legacyWorking || !legacyRevert) return;
-    for (const position of positions) {
-      const cell = delayHost.querySelector<HTMLTableCellElement>(`td[data-delay-row="${position.row}"][data-delay-col="${position.col}"]`);
-      if (!cell) continue;
-      cell.onclick?.call(cell, new PointerEvent('click'));
-      legacyRevert.onclick?.call(legacyRevert, new PointerEvent('click'));
-    }
-  };
-
-  const windowTarget = root.ownerDocument.defaultView;
-  windowTarget?.addEventListener('keydown', (event) => {
-    if (event.key !== 'Delete') return;
-    const target = event.target;
-    if (!(target instanceof Node) || !root.contains(target)) return;
-    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
-    const positions = selectedDelayPositions();
-    if (positions.length === 0) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    revertSelectedDelayCells(positions);
-  }, { capture: true });
-
+  // to refreshing an already-active lambda-delay recommendation.
   const grabDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]');
   const useDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]');
   const saveDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="save-delay"]');
@@ -91,6 +49,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   return {
     element: root,
     setActive(active) { if (!active) cancelRegrab?.(); inner.setActive(active); },
+    editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },

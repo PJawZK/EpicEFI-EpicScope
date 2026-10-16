@@ -6,7 +6,7 @@ import { buildCellCenteredWeightedMean } from '../../../../core/analysis/weighte
 import { buildTableCellEvidenceRows } from '../../../../core/analysis/table-cell-evidence';
 import type { NumericAggregationMethod } from '../../../../core/analysis/numeric-aggregation';
 import { subtractNumericRanges } from '../../../../core/analysis/numeric-range-arithmetic';
-import { compileCalculatedField, evaluateCalculatedFieldRange } from '../../../../core/analysis/calculated-field';
+import { createHistogramLogicalContext, histogramFormulaChannelId, prepareHistogramFormula } from './histogram-logical-context';
 import {
   qualifyNumericSampleGroups,
   type NumericQualificationCondition,
@@ -386,19 +386,10 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
   };
   const selectedAggregation = (): HistogramTableAggregation => aggregationSelect.value as HistogramTableAggregation;
 
-  const formulaChannelId = (id: string): string => `formula:${id}`;
+  const formulaChannelId = histogramFormulaChannelId;
   const formulaForChannelId = (id: string): HistogramCalculatedFieldDefinition | undefined =>
     id.startsWith('formula:') ? calculatedFields.find((field) => field.id === id.slice(8)) : undefined;
   const logicalChannelExists = (id: string): boolean => context.channels.some((channel) => channel.id === id) || formulaForChannelId(id) !== undefined;
-  const virtualDefinition = (field: HistogramCalculatedFieldDefinition): ChannelDefinition => ({
-    id: formulaChannelId(field.id),
-    sourceName: field.name,
-    displayName: `ƒ ${field.name}`,
-    valueType: 'number',
-    category: 'Calculated',
-    ...(field.unit ? { unit: field.unit } : {}),
-  });
-
   const refillChannelSelect = (select: HTMLSelectElement, previous: string, includeNone = false): void => {
     select.replaceChildren();
     if (includeNone) select.add(new Option('(none)', ''));
@@ -417,16 +408,6 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
       const previous = filter.channel.value;
       refillChannelSelect(filter.channel, previous);
     }
-  };
-
-  const resolvePhysicalReference = (reference: string): ChannelDefinition => {
-    const normalized = reference.trim().toLocaleLowerCase();
-    const matches = context.channels.filter((channel) =>
-      channel.id === reference || channel.displayName.toLocaleLowerCase() === normalized || channel.sourceName.toLocaleLowerCase() === normalized,
-    );
-    if (matches.length === 0) throw new RangeError(`Formula channel not found: [${reference}]`);
-    if (matches.length > 1) throw new RangeError(`Formula channel reference is ambiguous: [${reference}]`);
-    return matches[0]!;
   };
 
   const populateFormulaManager = (): void => {
@@ -459,8 +440,7 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     const expression = formulaExpressionInput.value.trim();
     if (!name || !expression) { formulaStatus.textContent = 'Name and formula are required.'; return; }
     try {
-      const program = compileCalculatedField(expression);
-      for (const reference of program.references) resolvePhysicalReference(reference);
+      prepareHistogramFormula(expression, context.channels);
       const existing = calculatedFields.find((field) => field.id === formulaSelect.value);
       const field: HistogramCalculatedFieldDefinition = {
         id: existing?.id ?? createHistogramLocalId('formula'),
@@ -873,52 +853,11 @@ export function createHistogramTableGeneratorView(): HistogramTableGeneratorCont
     logicalIds: readonly string[],
     scope: ResolvedScope,
   ): Promise<ReadonlyMap<string, HistogramTraceContext>> => {
-    const uniqueLogicalIds = [...new Set(logicalIds.filter(Boolean))];
-    const formulaPrograms = new Map<string, ReturnType<typeof compileCalculatedField>>();
-    const formulaReferenceChannels = new Map<string, ReadonlyMap<string, ChannelDefinition>>();
-    const physicalIds = new Set<string>();
-    for (const logicalId of uniqueLogicalIds) {
-      const field = formulaForChannelId(logicalId);
-      if (!field) { physicalIds.add(logicalId); continue; }
-      const program = compileCalculatedField(field.expression);
-      const references = new Map<string, ChannelDefinition>();
-      for (const reference of program.references) {
-        const channel = resolvePhysicalReference(reference);
-        references.set(reference, channel);
-        physicalIds.add(channel.id);
-      }
-      formulaPrograms.set(logicalId, program);
-      formulaReferenceChannels.set(logicalId, references);
-    }
-    const loaded = await context.loadTraces([...physicalIds], scope.startMs, scope.endMs);
-    const physical = new Map(loaded.map((trace) => [trace.channel.id, trace]));
-    const result = new Map<string, HistogramTraceContext>();
-    for (const logicalId of uniqueLogicalIds) {
-      const direct = physical.get(logicalId);
-      if (direct) { result.set(logicalId, direct); continue; }
-      const field = formulaForChannelId(logicalId);
-      const program = formulaPrograms.get(logicalId);
-      const references = formulaReferenceChannels.get(logicalId);
-      if (!field || !program || !references) continue;
-      const ranges = new Map<string, HistogramTraceContext['range']>();
-      let complete = true;
-      let firstTrace: HistogramTraceContext | undefined;
-      for (const [reference, channel] of references) {
-        const trace = physical.get(channel.id);
-        if (!trace) { complete = false; continue; }
-        firstTrace ??= trace;
-        ranges.set(reference, trace.range);
-        complete &&= traceCoversScope(trace, scope);
-      }
-      if (ranges.size !== references.size) continue;
-      result.set(logicalId, {
-        channel: virtualDefinition(field),
-        range: evaluateCalculatedFieldRange(program, ranges),
-        complete,
-        color: firstTrace?.color ?? '#58aef6',
-      });
-    }
-    return result;
+    // Use the same physical-only formula semantics as Distribution/Scatter.
+    // Capture this request's context/definitions before the asynchronous load.
+    const logicalContext = createHistogramLogicalContext(context, calculatedFields);
+    const traces = await logicalContext.loadTraces(logicalIds, scope.startMs, scope.endMs);
+    return new Map(traces.map((trace) => [trace.channel.id, trace]));
   };
 
   const traceCoversScope = (trace: HistogramTraceContext, scope: ResolvedScope): boolean => {

@@ -515,6 +515,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   return {
     element: root,
     setActive(active) { inner.setActive(active); },
+    editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },

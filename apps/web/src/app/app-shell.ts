@@ -938,6 +938,42 @@ export function mountAppShell(root: HTMLElement): void {
 
   type EpicScopeMode = 'logger' | 'analyzer' | 'histogram';
   let activeMode: EpicScopeMode = 'logger';
+  // Publish accepted inputs only to the visible consumer. Hidden domains receive
+  // the latest shell/Logger state on entry through the same path.
+  const publishAnalysisInputs = (change: 'context' | 'tune' = 'context'): void => {
+    if (change === 'tune' && activeMode !== 'analyzer') {
+      analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
+    }
+    if (activeMode === 'analyzer') {
+      if (change !== 'tune') analyzerPage.setContext({
+        ...loggerPage.getAnalysisContext(),
+        openSamplesInLogger: (request) => {
+          loggerPage.focusAnalysisTimes(request.timeMs);
+          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
+          setEpicScopeMode('logger');
+        },
+      });
+      analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
+      if (change !== 'tune') analyzerPage.setActive(true);
+      analyzerPage.refresh();
+    } else if (activeMode === 'histogram') {
+      if (change === 'tune') {
+        histogramPage.setTuneModel(activeTuneModel, activeTuneSourceName);
+        return;
+      }
+      histogramPage.setContext({
+        ...loggerPage.getAnalysisContext(),
+        ...(activeTuneModel ? { tuneModel: activeTuneModel } : {}),
+        ...(activeTuneSourceName ? { tuneSourceName: activeTuneSourceName } : {}),
+        openSamplesInLogger: (request) => {
+          loggerPage.focusAnalysisTimes(request.timeMs);
+          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} hits`;
+          setEpicScopeMode('logger');
+        },
+      });
+      histogramPage.refresh();
+    }
+  };
   const setEpicScopeMode = (mode: EpicScopeMode): void => {
     activeMode = mode;
     const loggerActive = mode === 'logger';
@@ -971,31 +1007,7 @@ export function mountAppShell(root: HTMLElement): void {
       if (state) state.textContent = selected ? 'Active' : 'Available';
     }
 
-    if (analyzerActive) {
-      analyzerPage.setContext({
-        ...loggerPage.getAnalysisContext(),
-        openSamplesInLogger: (request) => {
-          loggerPage.focusAnalysisTimes(request.timeMs);
-          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
-          setEpicScopeMode('logger');
-        },
-      });
-      analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
-      analyzerPage.setActive(true);
-      analyzerPage.refresh();
-    } else if (histogramActive) {
-      histogramPage.setContext({
-        ...loggerPage.getAnalysisContext(),
-        ...(activeTuneModel ? { tuneModel: activeTuneModel } : {}),
-        ...(activeTuneSourceName ? { tuneSourceName: activeTuneSourceName } : {}),
-        openSamplesInLogger: (request) => {
-          loggerPage.focusAnalysisTimes(request.timeMs);
-          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} hits`;
-          setEpicScopeMode('logger');
-        },
-      });
-      histogramPage.refresh();
-    }
+    publishAnalysisInputs();
     closeBrandMenu();
   };
 
@@ -1089,6 +1101,7 @@ export function mountAppShell(root: HTMLElement): void {
       );
     }
 
+    analyzerPage.setActive(false);
     activeIniCatalog = undefined;
     activeIniSourceName = undefined;
     activeIniBinding = undefined;
@@ -1102,25 +1115,31 @@ export function mountAppShell(root: HTMLElement): void {
     unloadIniButton.disabled = true;
     iniStatus.textContent = 'No INI catalog loaded.';
 
+    let workspaceRestore: Promise<void>;
     if (currentRawLog) {
       loggerPage.setLog(
         currentRawLog.summary,
         currentRawLog.recordCount,
         currentRawLog.channelData,
       );
-      void restoreWorkspaceSnapshot(rawWorkspaceForOpenLog).then(() => {
-        resetWorkspaceHistory();
-      });
+      workspaceRestore = restoreWorkspaceSnapshot(rawWorkspaceForOpenLog);
       parserStatus.textContent =
         `LOG-MLG · ${currentRawLog.summary.channels.length.toLocaleString()} raw log channels · INI unloaded`;
       appStatus.textContent = `${unloadedSourceName} unloaded · raw log channels active`;
     } else {
-      void restoreWorkspaceSnapshot(stableWorkspaceBeforeUnload).then(() => {
-        resetWorkspaceHistory();
-      });
+      workspaceRestore = restoreWorkspaceSnapshot(stableWorkspaceBeforeUnload);
       if (!shimCatalogActive) parserStatus.textContent = 'TUNE-INI · no catalog loaded';
       appStatus.textContent = `${unloadedSourceName} unloaded`;
     }
+    void workspaceRestore.then(() => {
+      publishAnalysisInputs();
+      resetWorkspaceHistory();
+    }, (error: unknown) => {
+      // The catalog is already unloaded even if navigation restoration fails.
+      publishAnalysisInputs();
+      resetWorkspaceHistory();
+      setPersistenceStatus(error instanceof Error ? `INI unloaded, but workspace restore failed: ${error.message}` : 'INI unloaded, but workspace restore failed.');
+    });
   });
 
   msqInput.addEventListener('change', () => {
@@ -1157,13 +1176,12 @@ export function mountAppShell(root: HTMLElement): void {
       appStatus.textContent = `${file.name} loaded · ${model.entries.length.toLocaleString()} tune entries`;
       parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only`;
       try {
-        analyzerPage.setTuneModel(model, file.name);
-        if (activeMode === 'analyzer') analyzerPage.refresh();
+        publishAnalysisInputs('tune');
       } catch (error) {
         // Presentation failure after acceptance is not a rejected replacement or a rollback.
-        const detail = error instanceof Error ? error.message : 'Analyzer update failed.';
-        setSourceLoadState(loadMsqButton, 'issue', `${file.name} was accepted, but the Analyzer could not update: ${detail}`);
-        appStatus.textContent = `${file.name} loaded · reopen Analyzer to retry its display`;
+        const detail = error instanceof Error ? error.message : 'Analysis view update failed.';
+        setSourceLoadState(loadMsqButton, 'issue', `${file.name} was accepted, but the active analysis view could not update: ${detail}`);
+        appStatus.textContent = `${file.name} loaded · reopen the analysis view to retry its display`;
       }
     })();
   });
@@ -1177,9 +1195,10 @@ export function mountAppShell(root: HTMLElement): void {
     setSourceLoadState(loadIniButton, 'loading', `Loading ${file.name}`);
     appStatus.textContent = 'Loading INI…';
     parserStatus.textContent = 'TUNE-INI · reading local file';
+    let publicationPending = false;
 
     void importIniFile(file)
-      .then((imported) => {
+      .then(async (imported) => {
         const grouped = new Map<string, {
           code: string;
           severity: 'info' | 'warning' | 'error';
@@ -1205,6 +1224,8 @@ export function mountAppShell(root: HTMLElement): void {
         });
 
         const definitions = catalogDefinitions(imported.catalog);
+        publicationPending = true;
+        analyzerPage.setActive(false);
         activeIniCatalog = imported.catalog;
         activeIniSourceName = imported.fileName;
         activeIniBinding = undefined;
@@ -1242,24 +1263,25 @@ export function mountAppShell(root: HTMLElement): void {
                 }
               : undefined,
           );
-          void restoreWorkspaceSnapshot(workspaceBeforeBinding).then(() => {
-            reusableWorkspacePersistenceSuspended = false;
-            resetWorkspaceHistory();
-            scheduleWorkspaceSave();
-          });
+          await restoreWorkspaceSnapshot(workspaceBeforeBinding);
+          reusableWorkspacePersistenceSuspended = false;
+          resetWorkspaceHistory();
+          scheduleWorkspaceSave();
         } else if (reusableWorkspacePersistenceSuspended) {
           const persistedReusable = applicationWorkspaceStorage.load();
           if (persistedReusable) {
-            void restoreWorkspaceSnapshot(persistedReusable.workspace).then(() => {
-              reusableWorkspacePersistenceSuspended = false;
-              resetWorkspaceHistory();
-              scheduleWorkspaceSave();
-            });
+            await restoreWorkspaceSnapshot(persistedReusable.workspace);
+            reusableWorkspacePersistenceSuspended = false;
+            resetWorkspaceHistory();
+            scheduleWorkspaceSave();
           } else {
             reusableWorkspacePersistenceSuspended = false;
             scheduleWorkspaceSave();
           }
         }
+
+        publicationPending = false;
+        publishAnalysisInputs();
 
         const warnings = imported.diagnostics.filter(
           (diagnostic) => diagnostic.severity === 'warning',
@@ -1290,6 +1312,7 @@ export function mountAppShell(root: HTMLElement): void {
         scheduleWorkspaceSave();
       })
       .catch((error: unknown) => {
+        if (publicationPending) publishAnalysisInputs();
         setSourceLoadState(
           loadIniButton,
           'issue',
@@ -1366,6 +1389,7 @@ export function mountAppShell(root: HTMLElement): void {
       );
     }
 
+    publishAnalysisInputs();
     resetWorkspaceHistory();
   };
 
@@ -1429,6 +1453,7 @@ export function mountAppShell(root: HTMLElement): void {
       : activeIniCatalog
         ? `INI · ${activeIniCatalog.entries.length.toLocaleString()} catalog channels · no recorded log`
         : 'LOG-MLG · no recorded log loaded';
+    publishAnalysisInputs();
     setPersistenceStatus('Recorded log released · INI, MSQ, reusable workspace and runtime diagnostics retained.');
     resetWorkspaceHistory();
   };
@@ -1442,6 +1467,7 @@ export function mountAppShell(root: HTMLElement): void {
     if (detail.mode === 'available') {
       shimCatalogActive = true;
       loggerPage.setChannelCatalog(detail.channels, detail.sourceName);
+      publishAnalysisInputs();
       if (!currentRawLog) {
         modeChip.dataset.loggerSource = 'shim-live';
         if (activeMode === 'logger') modeChip.textContent = 'LIVE · SHIM';
@@ -1460,6 +1486,7 @@ export function mountAppShell(root: HTMLElement): void {
     } else {
       loggerPage.clearChannelCatalog();
     }
+    publishAnalysisInputs();
     if (!currentRawLog) {
       modeChip.dataset.loggerSource = 'recorded';
       if (activeMode === 'logger') modeChip.textContent = 'RECORDED';
@@ -1628,8 +1655,14 @@ export function mountAppShell(root: HTMLElement): void {
 
     void loadPersistedWorkspace(parsed.summary.source).then(async (restored) => {
       if (!restored) await loggerPage.restoreActiveWorkspace();
+      if (currentRawLog?.channelData !== parsed.channelData) return;
+      publishAnalysisInputs();
       resetWorkspaceHistory();
       scheduleWorkspaceSave();
+    }).catch((error: unknown) => {
+      if (currentRawLog?.channelData !== parsed.channelData) return;
+      publishAnalysisInputs();
+      setPersistenceStatus(error instanceof Error ? `Log loaded, but workspace restore failed: ${error.message}` : 'Log loaded, but workspace restore failed.');
     });
 
     loadedLog.textContent = parsed.summary.source.displayName;
@@ -1667,6 +1700,7 @@ export function mountAppShell(root: HTMLElement): void {
           const message = importErrorMessage(error);
           currentRawLog = undefined;
           loggerPage.setImportError(message);
+          publishAnalysisInputs();
           activeWorkspaceSource = undefined;
           workspacePersistenceBlocked = false;
           forgetWorkspaceButton.disabled = true;
@@ -1780,12 +1814,22 @@ export function mountAppShell(root: HTMLElement): void {
         ])];
         staged.startValidation(prioritizedSourceChannelIds);
 
+        let validationApplied = false;
+        let publishedValidatedContext = false;
         const workspaceRestore = loadPersistedWorkspace(indexed.summary.source).then(async (restored) => {
           if (!restored) await loggerPage.restoreActiveWorkspace();
+          if (currentRawLog?.channelData !== indexed.channelData) return;
+          publishAnalysisInputs();
+          publishedValidatedContext = validationApplied;
           resetWorkspaceHistory();
           scheduleWorkspaceSave();
         });
-        void workspaceRestore.catch(() => undefined);
+        void workspaceRestore.catch((error: unknown) => {
+          if (currentRawLog?.channelData !== indexed.channelData) return;
+          publishAnalysisInputs();
+          publishedValidatedContext = validationApplied;
+          setPersistenceStatus(error instanceof Error ? `Log loaded, but workspace restore failed: ${error.message}` : 'Log loaded, but workspace restore failed.');
+        });
 
         loadedLog.textContent = indexed.summary.source.displayName;
         setSourceLoadState(
@@ -1815,9 +1859,12 @@ export function mountAppShell(root: HTMLElement): void {
             }
             loggerPage.setDiagnostics(validated.diagnostics);
             loggerPage.refreshValidity();
+            validationApplied = true;
+            // Wait for restore before publishing the final source/validity revision.
 
             await workspaceRestore.catch(() => undefined);
             if (activeStagedImport !== staged) return;
+            if (!publishedValidatedContext) publishAnalysisInputs();
             const postValidationRuntime = loggerPage.getRuntimeDiagnosticSnapshot();
             if (
               postValidationRuntime.activeTraceCount
@@ -1891,6 +1938,7 @@ export function mountAppShell(root: HTMLElement): void {
             const message = importErrorMessage(error ?? workerError);
             currentRawLog = undefined;
             loggerPage.setImportError(message);
+            publishAnalysisInputs();
             setSourceLoadState(openButton, 'issue', `Log import failed: ${message}`);
             appStatus.textContent = 'Import failed';
             parserStatus.textContent = 'LOG-MLG · parser error';
