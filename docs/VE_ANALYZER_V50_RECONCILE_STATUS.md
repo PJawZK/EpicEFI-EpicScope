@@ -46,6 +46,10 @@ The first Logger-scope browser run exposed a sequencing gap in the new focused f
 
 Web CI run `38981117512` passed with the explicit post-scope settle. A subsequent full run after the subtree-observer hardening (`38981472740`) also passed TypeScript, Vitest, production build, staged Chromium and fallback Chromium acceptance.
 
+### Current-main interaction parity baseline
+
+After current `main` was merged forward, PR #465's added Shift-click/live-preview acceptance exposed the shared-owner preview gap described below. The shared v50 owner was updated to preserve that accepted behavior, and Web CI run `38982070694` passed TypeScript, the full unit suite, production build, staged Chromium and fallback Chromium acceptance.
+
 ## Semantic Lambda surface
 
 ### Dedicated delay-surface authority
@@ -88,9 +92,19 @@ The shared DOM controller now mirrors the typed preview text into the other sele
 
 ## Visual keyboard navigation
 
-Lambda Delay renders load rows in descending DOM order while preserving ascending semantic row indices. The shared table DOM controller now derives Arrow-key neighbours from the rendered table geometry rather than assuming semantic row `-1` is visually up. This keeps Up/Down correct for reversed load presentation while preserving semantic cell coordinates for edits and range selection.
+Lambda Delay renders load rows in descending DOM order while preserving ascending semantic row indices. The shared table DOM controller derives Arrow-key neighbours from the rendered table geometry rather than assuming semantic row `-1` is visually up. This keeps Up/Down correct for reversed load presentation while preserving semantic cell coordinates for edits and range selection.
 
 Focused browser acceptance checks ArrowUp from semantic row 0 reaches the visually higher semantic row 1, ArrowDown returns, and Shift+ArrowUp extends the selection in the same visual direction.
+
+## Spacing-aware interpolation
+
+Shared interpolation now has an optional physical-axis contract at the `TableEditSurface` boundary. Generic surfaces continue to fall back to index coordinates, while the Lambda Delay adapter supplies its semantic RPM and load bins.
+
+- linear H/V interpolation uses actual axis spacing rather than equal cell-index distance;
+- shape-preserving H/V interpolation uses nonuniform PCHIP/Fritsch-Carlson-style weighted derivatives with endpoint limiting instead of the former equal-spacing harmonic approximation;
+- 2D bilinear and boundary/Coons interpolation use physical row/column fractions as well;
+- pinned interior anchors and the existing clamp/strength/transaction semantics remain unchanged;
+- unit regressions cover uneven 1D linear spacing, uneven monotone shape interpolation and uneven 2D geometry.
 
 ## Current-main synchronization
 
@@ -98,10 +112,10 @@ The reconciliation branch was merged forward to current `main` after PR #465 lan
 
 ## Current validation gate
 
-A full Web CI run is required after the shared live-preview reconciliation and visual-keyboard changes. It must pass:
+A full Web CI run is required after the spacing-aware interpolation change. It must pass:
 
 1. TypeScript type-check.
-2. Full Vitest suite.
+2. Full Vitest suite, including uneven-axis interpolation tests.
 3. Production build.
 4. Staged Chromium acceptance.
 5. Worker-disabled fallback Chromium acceptance.
@@ -114,7 +128,6 @@ A full Web CI run is required after the shared live-preview reconciliation and v
 
 - production preference ownership for table editing tools;
 - final lifecycle/teardown cleanup if current ownership requires it;
-- spacing-aware monotone/PCHIP interpolation;
 - responsive/visual acceptance;
 - user hands-on UI test;
 - final Codex branch audit, fixes/revalidation and explicit merge approval.
