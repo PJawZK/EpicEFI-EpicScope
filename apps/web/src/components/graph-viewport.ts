@@ -495,6 +495,14 @@ export function createGraphViewport(): GraphViewportController {
     }
 
     const traceEntries = [...activeTraces.entries()];
+    const integrityTraces: Array<{
+      readonly range: NumericChannelRange;
+      readonly color: string;
+      readonly valueMin: number;
+      readonly valueMax: number;
+      readonly top: number;
+      readonly height: number;
+    }> = [];
     if (stacked) {
       const rowHeight = plotHeight / Math.max(1, stackedChannels.length);
       context.strokeStyle = 'rgba(89, 129, 151, 0.20)';
@@ -610,15 +618,20 @@ export function createGraphViewport(): GraphViewportController {
         const normalized = (value - trace.scale.min) / axisSpan;
         return traceTop + traceHeight - normalized * traceHeight;
       };
+      integrityTraces.push({
+        range: trace.range,
+        color: trace.color,
+        valueMin: trace.scale.min,
+        valueMax: trace.scale.max,
+        top: traceTop,
+        height: traceHeight,
+      });
 
       context.strokeStyle = trace.color;
       context.lineWidth = 1.1;
       context.lineJoin = 'miter';
       context.lineCap = 'butt';
 
-      // At high zoom there may be only a few real samples spread across hundreds
-      // of pixels. Pixel-bucket gaps are not missing data, so switch to direct
-      // source-order rendering once the visible sample count is modest.
       const useRawSeries = envelope.validSampleCount <= pixelWidth * 2;
       if (useRawSeries) {
         const points = buildRawViewportSeries(trace.range, visibleStartMs, visibleEndMs);
@@ -633,7 +646,6 @@ export function createGraphViewport(): GraphViewportController {
         }
         if (hasTrace) context.stroke();
 
-        // Make individual recorded samples visible only at very high zoom.
         if (highZoomSamplePointsVisible && points.length > 0 && points.length <= 128) {
           context.fillStyle = trace.color;
           for (const point of points) {
@@ -645,8 +657,6 @@ export function createGraphViewport(): GraphViewportController {
           }
         }
       } else {
-        // Zoomed-out rendering keeps first/min/max/last raw values per horizontal
-        // bucket. The envelope preserves extrema without plotting every record.
         context.beginPath();
         let previousBucketX: number | undefined;
         let hasTrace = false;
@@ -757,13 +767,13 @@ export function createGraphViewport(): GraphViewportController {
       inset,
       visibleStartMs,
       visibleEndMs,
+      traces: integrityTraces,
       xForTime,
     });
 
     if (measureEnvelopeBuild) {
       measuredDrawOverlayMs += (globalThis.performance?.now() ?? Date.now()) - overlayPhaseStarted;
     }
-
   };
 
   const resizeObserver = new ResizeObserver(draw);
@@ -776,9 +786,6 @@ export function createGraphViewport(): GraphViewportController {
     nextViewportRefreshDelayMs = repeated
       ? VIEWPORT_INTERACTION_SETTLE_DELAY_MS
       : VIEWPORT_REFRESH_DEFAULT_DELAY_MS;
-
-    // Stop progressive work from chasing a viewport the user has already left.
-    // An in-flight Blob read cannot be aborted, but its result is discarded.
     viewportRefreshGeneration += 1;
     if (viewportRefreshTimer !== undefined) {
       window.clearTimeout(viewportRefreshTimer);
@@ -868,7 +875,6 @@ export function createGraphViewport(): GraphViewportController {
 
   const flushPending = async (): Promise<void> => {
     if (decodeInFlight || !channelData || pendingTraces.size === 0) return;
-
     decodeInFlight = true;
     const generation = decodeGeneration;
     const batch = [...pendingTraces.entries()];
@@ -890,22 +896,13 @@ export function createGraphViewport(): GraphViewportController {
 
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const readStart = now();
-
     try {
       const result = channelData.readChannelsRange
-        ? await channelData.readChannelsRange(
-            channelIds,
-            requestRange.startSampleIndex,
-            requestRange.sampleCount,
-          )
+        ? await channelData.readChannelsRange(channelIds, requestRange.startSampleIndex, requestRange.sampleCount)
         : {
             ranges: new Map(await Promise.all(channelIds.map(async (channelId) => [
               channelId,
-              await channelData!.readChannelRange(
-                channelId,
-                requestRange.startSampleIndex,
-                requestRange.sampleCount,
-              ),
+              await channelData!.readChannelRange(channelId, requestRange.startSampleIndex, requestRange.sampleCount),
             ] as const))),
             performance: {
               channelCount: channelIds.length,
@@ -916,7 +913,6 @@ export function createGraphViewport(): GraphViewportController {
             },
           };
       const readDecodeMs = now() - readStart;
-
       if (generation !== decodeGeneration) {
         for (const [, pending] of batch) pending.resolve(false);
         return;
@@ -927,7 +923,6 @@ export function createGraphViewport(): GraphViewportController {
       let statisticsMs = 0;
       let applyMs = 0;
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
-
       for (const [channelId, pending] of batch) {
         const range = result.ranges.get(channelId);
         if (suppressedTraceIds.has(channelId) || !range) continue;
@@ -1014,7 +1009,6 @@ export function createGraphViewport(): GraphViewportController {
         const activated = activeTraces.get(channelId);
         if (activated && !activated.statisticsComplete) scheduleMaterialization(channelId);
       }
-
     } catch (error) {
       if (generation === decodeGeneration) {
         overlay.hidden = false;
@@ -1027,7 +1021,6 @@ export function createGraphViewport(): GraphViewportController {
       for (const channelId of channelIds) loadingTraceIds.delete(channelId);
       if (generation === decodeGeneration) {
         decodeInFlight = false;
-        // Everything selected while this pass was running is now one batch.
         if (pendingTraces.size > 0) void flushPending();
       }
     }
@@ -1038,9 +1031,7 @@ export function createGraphViewport(): GraphViewportController {
     if (existingTimer !== undefined) window.clearTimeout(existingTimer);
     dueMaterializationIds.delete(channelId);
     const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
-    const delayMs = logicalThreads <= 3
-      ? MATERIALIZATION_LOW_SPEC_IDLE_DELAY_MS
-      : MATERIALIZATION_DESKTOP_DELAY_MS;
+    const delayMs = logicalThreads <= 3 ? MATERIALIZATION_LOW_SPEC_IDLE_DELAY_MS : MATERIALIZATION_DESKTOP_DELAY_MS;
     const timer = window.setTimeout(() => {
       materializationTimers.delete(channelId);
       dueMaterializationIds.add(channelId);
@@ -1063,7 +1054,6 @@ export function createGraphViewport(): GraphViewportController {
       return trace !== undefined && !trace.statisticsComplete && !materializingTraceIds.has(channelId);
     });
     if (candidates.length === 0) return;
-
     for (const channelId of candidates) materializingTraceIds.add(channelId);
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const readStart = now();
@@ -1085,7 +1075,6 @@ export function createGraphViewport(): GraphViewportController {
           };
       const readDecodeMs = now() - readStart;
       if (channelData !== dataSource) return;
-
       const completedChannelIds: string[] = [];
       let statisticsMs = 0;
       let applyMs = 0;
@@ -1108,7 +1097,6 @@ export function createGraphViewport(): GraphViewportController {
         completedChannelIds.push(channelId);
         applyMs += now() - applyStart;
       }
-
       if (completedChannelIds.length === 0) return;
       const readoutStart = now();
       renderReadout();
@@ -1167,7 +1155,6 @@ export function createGraphViewport(): GraphViewportController {
         });
       }
     } catch {
-      // Keep the viewport-first traces usable if complete materialization fails.
     } finally {
       for (const channelId of candidates) materializingTraceIds.delete(channelId);
       if (candidates.some((channelId) => {
@@ -1206,7 +1193,6 @@ export function createGraphViewport(): GraphViewportController {
     const values = new Float64Array(sampleCount);
     const validity = new Uint8Array(sampleCount);
     const quality = first.quality && second.quality ? new Uint8Array(sampleCount) : undefined;
-
     const copy = (range: NumericChannelRange): void => {
       const offset = range.startSampleIndex - startSampleIndex;
       timeMs.set(range.timeMs, offset);
@@ -1235,7 +1221,6 @@ export function createGraphViewport(): GraphViewportController {
         && !rangeCovers(trace.range, desiredStart, requestRange.sampleCount))
       .map(([channelId]) => channelId);
     if (channelIds.length === 0) return;
-
     const now = (): number => globalThis.performance?.now() ?? Date.now();
 
     for (const channelId of channelIds) {
@@ -1244,12 +1229,10 @@ export function createGraphViewport(): GraphViewportController {
       while (generation === viewportRefreshGeneration) {
         const existing = activeTraces.get(channelId);
         if (!existing || rangeCovers(existing.range, desiredStart, requestRange.sampleCount)) break;
-
         const existingStart = existing.range.startSampleIndex;
         const existingEnd = existingStart + existing.range.values.length;
         const disjointLeft = desiredEnd < existingStart;
         const disjointRight = desiredStart > existingEnd;
-
         let chunkStart: number;
         let chunkCount: number;
         let replaceExisting = false;
@@ -1261,12 +1244,8 @@ export function createGraphViewport(): GraphViewportController {
         } else {
           const missingLeft = Math.max(0, existingStart - desiredStart);
           const missingRight = Math.max(0, desiredEnd - existingEnd);
-          const fillStepSamples = progressiveFillStepSamples(
-            missingLeft + missingRight,
-            completedSteps,
-          );
+          const fillStepSamples = progressiveFillStepSamples(missingLeft + missingRight, completedSteps);
           if (missingLeft <= 0 && missingRight <= 0) break;
-
           if (missingLeft > 0 && (missingRight <= 0 || preferLeft)) {
             chunkCount = Math.min(fillStepSamples, missingLeft);
             chunkStart = existingStart - chunkCount;
@@ -1284,11 +1263,7 @@ export function createGraphViewport(): GraphViewportController {
           const result = dataSource.readChannelsRange
             ? await dataSource.readChannelsRange([channelId], chunkStart, chunkCount)
             : {
-                ranges: new Map([[channelId, await dataSource.readChannelRange(
-                  channelId,
-                  chunkStart,
-                  chunkCount,
-                )]]),
+                ranges: new Map([[channelId, await dataSource.readChannelRange(channelId, chunkStart, chunkCount)]]),
                 performance: {
                   channelCount: 1,
                   cacheHitChannelIds: [] as readonly string[],
@@ -1299,14 +1274,10 @@ export function createGraphViewport(): GraphViewportController {
               };
           const readDecodeMs = now() - readStart;
           if (generation !== viewportRefreshGeneration) return;
-
           const nextRange = result.ranges.get(channelId);
           const latest = activeTraces.get(channelId);
           if (!nextRange || !latest) break;
-          const merged = replaceExisting
-            ? nextRange
-            : mergeContiguousRanges(latest.range, nextRange);
-
+          const merged = replaceExisting ? nextRange : mergeContiguousRanges(latest.range, nextRange);
           const scaleStart = now();
           const fullStatistics = summarizeNumericRange(merged);
           const scale = stableScaleFromStatistics(fullStatistics);
@@ -1316,11 +1287,9 @@ export function createGraphViewport(): GraphViewportController {
             range: merged,
             scale,
             fullStatistics,
-            statisticsComplete: merged.startSampleIndex === 0
-              && merged.values.length === dataSource.sampleCount,
+            statisticsComplete: merged.startSampleIndex === 0 && merged.values.length === dataSource.sampleCount,
           });
           envelopeCache.delete(channelId);
-
           renderReadout();
           emitCursorValues();
           const renderStart = now();
@@ -1342,19 +1311,18 @@ export function createGraphViewport(): GraphViewportController {
             physicalReadCount: result.performance.physicalReadCount,
             physicalBytesRead: result.performance.physicalBytesRead,
             physicalReadMs: result.performance.physicalReadMs,
-          persistentLookupMs: result.performance.persistentLookupMs,
-          persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
-          delegatedSourceMs: result.performance.delegatedSourceMs,
-          sidecarManifestMs: result.performance.sidecarManifestMs,
-          sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
-          sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
-          sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
-          sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
-          sidecarReadPath: result.performance.sidecarReadPath,
+            persistentLookupMs: result.performance.persistentLookupMs,
+            persistentRangeBuildMs: result.performance.persistentRangeBuildMs,
+            delegatedSourceMs: result.performance.delegatedSourceMs,
+            sidecarManifestMs: result.performance.sidecarManifestMs,
+            sidecarFileOpenAggregateMs: result.performance.sidecarFileOpenAggregateMs,
+            sidecarBlobReadAggregateMs: result.performance.sidecarBlobReadAggregateMs,
+            sidecarDecodeAggregateMs: result.performance.sidecarDecodeAggregateMs,
+            sidecarRangeBuildMs: result.performance.sidecarRangeBuildMs,
+            sidecarReadPath: result.performance.sidecarReadPath,
           });
           completedSteps += 1;
         } catch {
-          // Keep already decoded coverage visible if a progressive refill fails.
           break;
         }
       }
@@ -1385,11 +1353,7 @@ export function createGraphViewport(): GraphViewportController {
       const result = channelData.readChannelsRange
         ? await channelData.readChannelsRange([channelId], 0, channelData.sampleCount)
         : {
-            ranges: new Map([[channelId, await channelData.readChannelRange(
-              channelId,
-              0,
-              channelData.sampleCount,
-            )]]),
+            ranges: new Map([[channelId, await channelData.readChannelRange(channelId, 0, channelData.sampleCount)]]),
             performance: {
               channelCount: 1,
               cacheHitChannelIds: [] as readonly string[],
@@ -1401,7 +1365,6 @@ export function createGraphViewport(): GraphViewportController {
       const readDecodeMs = now() - readStart;
       const range = result.ranges.get(channelId);
       if (generation !== decodeGeneration || suppressedTraceIds.has(channelId) || !range) return false;
-
       const scaleStart = now();
       const fullStatistics = summarizeNumericRange(range);
       const scale = stableScaleFromStatistics(fullStatistics);
@@ -1423,7 +1386,6 @@ export function createGraphViewport(): GraphViewportController {
       draw();
       const renderMs = now() - renderStart;
       const completedMs = now();
-
       channelPerformanceListener?.({
         channelId,
         phase: 'cache',
@@ -1513,7 +1475,6 @@ export function createGraphViewport(): GraphViewportController {
       draw();
       return;
     }
-
     const targetSampleCount = dataSource.sampleCount;
     await Promise.all([...activeTraces.entries()].map(async ([channelId, trace]) => {
       const existingEnd = trace.range.startSampleIndex + trace.range.values.length;
@@ -1539,7 +1500,6 @@ export function createGraphViewport(): GraphViewportController {
       });
       envelopeCache.delete(channelId);
     }));
-
     renderReadout();
     emitCursorValues();
     draw();
@@ -1568,26 +1528,22 @@ export function createGraphViewport(): GraphViewportController {
         },
       };
     }
-
     cancelPending();
     const activated: string[] = [];
     const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
     let channelLookupMs = 0;
     let statisticsScaleMs = 0;
     let traceRegistrationMs = 0;
-
     for (const [channelId, range] of ranges) {
       if (activeTraces.has(channelId) || activeTraces.size >= MAX_ACTIVE_TRACES) continue;
       const lookupStarted = now();
       const channel = channelsById.get(channelId);
       channelLookupMs += now() - lookupStarted;
       if (!channel) continue;
-
       const statisticsStarted = now();
       const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
-      const scale = stableScaleFromStatistics(fullStatistics);
+      const scale = buildStableValueScale(range);
       statisticsScaleMs += now() - statisticsStarted;
-
       const registrationStarted = now();
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       usedColors.add(color);
@@ -1596,14 +1552,12 @@ export function createGraphViewport(): GraphViewportController {
         range,
         scale,
         fullStatistics,
-        statisticsComplete: range.startSampleIndex === 0
-          && range.values.length === channelData?.sampleCount,
+        statisticsComplete: range.startSampleIndex === 0 && range.values.length === channelData?.sampleCount,
         color,
       });
       activated.push(channelId);
       traceRegistrationMs += now() - registrationStarted;
     }
-
     overlay.hidden = activeTraces.size > 0;
     const readoutStarted = now();
     renderReadout();
@@ -1624,7 +1578,6 @@ export function createGraphViewport(): GraphViewportController {
     }
     const drawMs = now() - drawStarted;
     const envelopeMs = measuredEnvelopeBuildMs;
-
     return {
       activatedChannelIds: activated,
       performance: {
@@ -1651,9 +1604,7 @@ export function createGraphViewport(): GraphViewportController {
       emitPendingChannels();
       return false;
     }
-
     if (loadingTraceIds.has(channelId)) return false;
-
     const existing = activeTraces.get(channelId);
     if (existing) {
       activeTraces.delete(channelId);
@@ -1669,40 +1620,22 @@ export function createGraphViewport(): GraphViewportController {
       draw();
       return false;
     }
-
     if (!channelData) return false;
     suppressedTraceIds.delete(channelId);
-    if (
-      activeTraces.size
-      + pendingTraces.size
-      + loadingTraceIds.size
-      >= MAX_ACTIVE_TRACES
-    ) {
+    if (activeTraces.size + pendingTraces.size + loadingTraceIds.size >= MAX_ACTIVE_TRACES) {
       overlay.hidden = activeTraces.size > 0;
       showToast(`Trace limit reached — EpicScope currently allows up to ${MAX_ACTIVE_TRACES} simultaneous Web traces.`);
       return false;
     }
-
     const channel = channelsById.get(channelId);
     if (!channel) return false;
-
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     let resolveSelection!: (active: boolean) => void;
     const result = new Promise<boolean>((resolve) => {
       resolveSelection = resolve;
     });
-    const pending: PendingTrace = {
-      channel,
-      startedMs: now(),
-      resolve: resolveSelection,
-    };
-
-    const cacheReady = channelData.hasCachedChannelRange?.(
-      channelId,
-      0,
-      channelData.sampleCount,
-    ) ?? false;
-
+    const pending: PendingTrace = { channel, startedMs: now(), resolve: resolveSelection };
+    const cacheReady = channelData.hasCachedChannelRange?.(channelId, 0, channelData.sampleCount) ?? false;
     if (cacheReady) {
       const generation = decodeGeneration;
       loadingTraceIds.add(channelId);
@@ -1714,24 +1647,18 @@ export function createGraphViewport(): GraphViewportController {
         .finally(() => { loadingTraceIds.delete(channelId); });
       return result;
     }
-
     pendingTraces.set(channelId, pending);
     emitPendingChannels();
     overlay.hidden = false;
-
     if (channelData.requiresExplicitBatchSelection) {
       overlayTitle.textContent = `${pendingTraces.size} channel${pendingTraces.size === 1 ? '' : 's'} selected`;
       overlayDetail.textContent = 'Choose the remaining channels, then move back to the graph to load them together.';
       return result;
     }
-
-    overlayTitle.textContent = decodeInFlight
-      ? 'Queued for next channel pass…'
-      : `Loading ${channel.sourceName}…`;
+    overlayTitle.textContent = decodeInFlight ? 'Queued for next channel pass…' : `Loading ${channel.sourceName}…`;
     overlayDetail.textContent = decodeInFlight
       ? `${pendingTraces.size} channel${pendingTraces.size === 1 ? '' : 's'} waiting; they will share the next sequential pass.`
       : 'Starting one sequential log pass. Additional selections made while it runs will be grouped.';
-
     if (!decodeInFlight) void flushPending();
     return result;
   };
@@ -1791,9 +1718,7 @@ export function createGraphViewport(): GraphViewportController {
     const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
     if (logicalThreads <= 3) {
       for (const [channelId, trace] of activeTraces) {
-        if (!trace.statisticsComplete && !materializingTraceIds.has(channelId)) {
-          scheduleMaterialization(channelId);
-        }
+        if (!trace.statisticsComplete && !materializingTraceIds.has(channelId)) scheduleMaterialization(channelId);
       }
     }
     scheduleViewportRefresh();
@@ -1801,10 +1726,6 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const refreshValidity = (): void => {
-    // Priority statistics/envelope blocks are computed before CRC validation.
-    // Full ranges share the mutable CRC-validity array, so refresh their stored
-    // statistics/scale once validation becomes authoritative. Partial ranges keep
-    // copied validity and are materialized again rather than being treated as exact.
     precomputedEnvelopeBlocksEnabled = false;
     envelopeCache.clear();
     const dataSource = channelData;
@@ -1875,12 +1796,8 @@ export function createGraphViewport(): GraphViewportController {
     getChannelStatistics: (channelId) => {
       const trace = activeTraces.get(channelId);
       if (!trace) return undefined;
-      const full = trace.statisticsComplete
-        ? trace.fullStatistics
-        : summarizeNumericRange(trace.range);
-      const visible = viewport
-        ? summarizeNumericRange(trace.range, viewport.visibleStartMs, viewport.visibleEndMs)
-        : full;
+      const full = trace.statisticsComplete ? trace.fullStatistics : summarizeNumericRange(trace.range);
+      const visible = viewport ? summarizeNumericRange(trace.range, viewport.visibleStartMs, viewport.visibleEndMs) : full;
       const selectedStartMs = aTimeMs !== undefined && bTimeMs !== undefined && aTimeMs !== bTimeMs
         ? Math.min(aTimeMs, bTimeMs)
         : undefined;
@@ -1904,8 +1821,7 @@ export function createGraphViewport(): GraphViewportController {
           ? {
               startMs: selectedStartMs,
               endMs: selectedEndMs,
-              complete: trace.statisticsComplete
-                || numericRangeCoversTime(trace.range, selectedStartMs, selectedEndMs),
+              complete: trace.statisticsComplete || numericRangeCoversTime(trace.range, selectedStartMs, selectedEndMs),
               ...selectedStatistics,
             }
           : undefined,
