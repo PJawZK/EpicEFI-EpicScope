@@ -29,12 +29,12 @@ export interface VeTableToolPreferences {
 }
 
 const STORAGE_KEY = 'epicscope.veAnalyzer.tableTools.v1';
-const DELAY_DEFAULTS: VeTableToolPreferences = Object.freeze({
+const DELAY_DEFAULTS: VeTableToolPreferences = {
   adjustmentStep: 5,
   smoothStrength: 0.5,
   interpolation: { method1d: 'linear', method2d: 'bilinear', strength: 1, clamp: true },
   brush: { delta: 5, radius: 1, strength: 0.7, falloff: 'soft' },
-});
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
