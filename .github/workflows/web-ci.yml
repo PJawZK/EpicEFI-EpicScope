@@ -8,6 +8,7 @@ on:
     branches:
       - main
       - phase1/**
+      - ui/ve-analyzer-v50-port
   workflow_dispatch:
 
 permissions:
