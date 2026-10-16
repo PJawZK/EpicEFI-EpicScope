@@ -20,7 +20,9 @@ This branch is deliberately isolated from `main`. It is the post-Codex reconcili
 - focused interaction/unit/browser regression modules restored;
 - current expanded browser runner retains all Codex/source-integrity/observability checks and adds shared-v50 interaction acceptance.
 
-## First reconciled green baseline
+## Reconciled green baselines
+
+### Replay baseline
 
 Web CI run `38979825194` passed after the current-main replay and before the semantic delay-surface cleanup:
 
@@ -33,15 +35,15 @@ Web CI run `38979825194` passed after the current-main replay and before the sem
 - shared v50 Lambda interaction acceptance: pass;
 - current-main observability/source-integrity/Diagnostics/readiness acceptance retained.
 
-This established that the v50 presentation/interaction replay itself was compatible with the post-Codex baseline before deeper ownership cleanup.
+### Semantic Lambda baseline
 
-## Semantic Lambda surface checkpoint
+Web CI run `38980417790` passed after introducing dedicated Lambda surface authority and switching v7 Result View away from DOM reconstruction. The same full validation/browser gate remained green.
 
-The deferred Lambda ownership work has now begun from that green baseline.
+## Semantic Lambda surface
 
 ### Dedicated delay-surface authority
 
-The semantic delay snapshot now carries:
+The semantic delay snapshot carries:
 
 - broad Analyzer `revision` for compatibility/evidence;
 - dedicated `authorityGeneration` for the editable Lambda-delay surface;
@@ -53,13 +55,27 @@ The semantic delay snapshot now carries:
 
 ### Result View no longer reconstructs Lambda authority from DOM
 
-v7 remains the sole Result View presentation owner, but its Lambda surface now comes from the semantic delay owner snapshot. It no longer reconstructs RPM/load axes or working delay values from rendered headers, `dataset.delayValue`, or cell text.
+v7 remains the sole Result View presentation owner, but its Lambda surface comes from the semantic delay owner snapshot. It no longer reconstructs RPM/load axes or working delay values from rendered headers, `dataset.delayValue`, or cell text.
 
 The existing v7 interpolation/display/heat policy remains in place; only the source of Lambda authority changed.
 
+## Logger scope/range reconciliation
+
+The v50 scope navigator now has a production contract instead of inferring Full Log bounds from whichever traces happen to be loaded:
+
+- Logger retains the authoritative imported whole-source time range with the accepted data source;
+- `LoggerAnalysisContext` captures that source extent with the same source lifetime as its sample/catalog loader;
+- Logger exposes a range-focus operation owned by Logger navigation;
+- the application shell provides the Analyzer-to-Logger range handoff and mode switch;
+- the v50 navigator renders the actual selected Analyzer scope (`Full Log`, `Current A/B`, or saved range) against the authoritative source extent;
+- `Open in Logger` hands that semantic range back through the explicit contract;
+- loaded trace bounds are no longer treated as Full Log authority.
+
+Focused browser regressions cover retained source extent and the v50 selected-range handoff.
+
 ## Current validation gate
 
-The semantic delay-surface changes must pass the same full gate before work proceeds into Logger/range ownership:
+The Logger scope/range reconciliation must now pass the same full gate:
 
 1. TypeScript type-check.
 2. Full Vitest suite.
@@ -69,12 +85,13 @@ The semantic delay-surface changes must pass the same full gate before work proc
 6. Historical Lambda editing/native pointer-keyboard acceptance.
 7. Shared v50 Lambda interaction acceptance.
 8. Existing Result View acceptance, including Lambda Delay and neutral fallback semantics.
+9. Logger retained-context/source-extent acceptance.
+10. v50 selected-scope `Open in Logger` acceptance.
 
 Any failure is reconciliation evidence and must be corrected on this branch.
 
 ## Remaining reconciliation work after this gate
 
-- authoritative Logger whole-source extent and explicit range handoff for the v50 scope navigator;
 - production preference ownership for table editing tools;
 - final lifecycle/teardown cleanup if current ownership requires it;
 - spacing-aware monotone/PCHIP interpolation;
