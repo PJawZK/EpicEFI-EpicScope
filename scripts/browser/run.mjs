@@ -94,6 +94,8 @@ async function run() {
     await client.call('Input.dispatchKeyEvent', { type: 'keyUp', key: '1', code: 'Digit1', windowsVirtualKeyCode: 49 });
     await client.call('Input.insertText', { text: '75' });
     for (const type of ['keyDown', 'keyUp']) await client.call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    const nativeState = await client.evaluate(`(()=>{const tables=[...document.querySelectorAll('.ve-delay-table')];const table=tables[tables.length-1];const cells=[...(table?.querySelectorAll('td[data-delay-row]')??[])];return {tableCount:tables.length,values:cells.map(c=>c.dataset.delayValue??''),selected:cells.map(c=>c.dataset.tableSelected),delaySelected:cells.map(c=>c.dataset.delaySelected),coords:cells.map(c=>[c.dataset.delayRow,c.dataset.delayCol,c.dataset.tableRow,c.dataset.tableCol]),active:document.activeElement?.className??document.activeElement?.tagName};})()`);
+    log('native delay pre-finish', { state: nativeState });
     const observed = await client.evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.finishNativeDelayEdit();})()`, 60000);
     await record(`${mode}-native.json`, { passed: 1, checks: ['native pointer capture and keyboard commit preserve range editing'], observed });
     await pause(100);
