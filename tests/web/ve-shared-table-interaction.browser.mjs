@@ -106,6 +106,7 @@ export async function runVeSharedTableInteractionChecks() {
     const scopeSelect = root.querySelector('select[data-role="scope"]');
     scopeSelect.value = 'ab';
     scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
     const scopeNavigator = root.querySelector('.ve-analysis-scope-navigator');
     const scopeOpen = root.querySelector('[data-ve-scope-open]');
     assert(scopeNavigator?.dataset.state === 'range' && root.querySelector('[data-ve-scope-start]')?.textContent === '00:00' && root.querySelector('[data-ve-scope-end]')?.textContent === '00:06',
