@@ -10,181 +10,19 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Stage Logger scope handoff reconciliation'
+    if: github.event.head_commit.message == 'Fix Logger scope reconciliation workflow'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ui/ve-analyzer-v50-reconcile
-      - name: Add authoritative source extent and range focus contract to Logger
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('apps/web/src/pages/logger-page.ts')
-          text = path.read_text()
-
-          text = text.replace('  LogMarker,\n  ParserDiagnostic,\n', '  LogMarker,\n  LogTimeRange,\n  ParserDiagnostic,\n', 1)
-
-          context_anchor = """  readonly openSamplesInLogger?: (request: {\n    readonly sampleIndices: readonly number[];\n    readonly timeMs: readonly number[];\n    readonly label: string;\n  }) => void;\n"""
-          context_replacement = context_anchor + """  /** Authoritative whole-source extent captured with this source-bound context. */\n  readonly sourceTimeRange?: { readonly startMs: number; readonly endMs: number };\n  readonly openRangeInLogger?: (request: {\n    readonly startMs: number;\n    readonly endMs: number;\n    readonly label: string;\n  }) => void;\n"""
-          if context_anchor not in text:
-              raise SystemExit('analysis context anchor missing')
-          text = text.replace(context_anchor, context_replacement, 1)
-
-          controller_anchor = """  focusAnalysisTimes(timeMs: readonly number[]): void;\n"""
-          if controller_anchor not in text:
-              raise SystemExit('controller focus anchor missing')
-          text = text.replace(controller_anchor, controller_anchor + "  focusAnalysisRange(startMs: number, endMs: number): void;\n", 1)
-
-          source_anchor = """  let channelDataSource: NumericChannelDataSource | undefined;\n  let analysisDataRevision = 0;\n"""
-          if source_anchor not in text:
-              raise SystemExit('source state anchor missing')
-          text = text.replace(source_anchor, """  let channelDataSource: NumericChannelDataSource | undefined;\n  let analysisSourceTimeRange: LogTimeRange | undefined;\n  let analysisDataRevision = 0;\n""", 1)
-
-          setlog_anchor = """    integritySource = summary.source;\n    workspaceGeneration += 1;\n"""
-          if setlog_anchor not in text:
-              raise SystemExit('setLog anchor missing')
-          text = text.replace(setlog_anchor, """    integritySource = summary.source;\n    analysisSourceTimeRange = summary.timeRange ? { ...summary.timeRange } : undefined;\n    workspaceGeneration += 1;\n""", 1)
-
-          grow_anchor = """    if (!channelDataSource) return;\n    logMarkers = summary.markers;\n"""
-          if grow_anchor not in text:
-              raise SystemExit('growing log anchor missing')
-          text = text.replace(grow_anchor, """    if (!channelDataSource) return;\n    analysisSourceTimeRange = summary.timeRange ? { ...summary.timeRange } : analysisSourceTimeRange;\n    logMarkers = summary.markers;\n""", 1)
-
-          error_anchor = """    channelDataSource = undefined;\n    integritySource = undefined;\n"""
-          if error_anchor not in text:
-              raise SystemExit('import error anchor missing')
-          text = text.replace(error_anchor, """    channelDataSource = undefined;\n    analysisSourceTimeRange = undefined;\n    integritySource = undefined;\n""", 1)
-
-          getcontext_anchor = """    const sourceRevision = analysisDataRevision;\n    const channels = analysisChannels();\n"""
-          if getcontext_anchor not in text:
-              raise SystemExit('get context capture anchor missing')
-          text = text.replace(getcontext_anchor, """    const sourceRevision = analysisDataRevision;\n    const sourceTimeRange = analysisSourceTimeRange ? { startMs: analysisSourceTimeRange.startMs, endMs: analysisSourceTimeRange.endMs } : undefined;\n    const channels = analysisChannels();\n""", 1)
-
-          return_anchor = """      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),\n      aTimeMs: analysisStartMs,\n"""
-          if return_anchor not in text:
-              raise SystemExit('context return anchor missing')
-          text = text.replace(return_anchor, """      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),\n      ...(sourceTimeRange ? { sourceTimeRange } : {}),\n      aTimeMs: analysisStartMs,\n""", 1)
-
-          focus_insert_anchor = """  const getRuntimeDiagnosticSnapshot = (): LoggerRuntimeDiagnosticSnapshot => {\n"""
-          if focus_insert_anchor not in text:
-              raise SystemExit('diagnostic snapshot anchor missing')
-          focus_impl = """  const focusAnalysisRange = (startMs: number, endMs: number): void => {\n    const sourceRange = analysisSourceTimeRange;\n    if (!sourceRange || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return;\n    let low = Math.max(sourceRange.startMs, Math.min(startMs, endMs));\n    let high = Math.min(sourceRange.endMs, Math.max(startMs, endMs));\n    if (high < low) return;\n    if (high === low) {\n      const padding = Math.max(1, (sourceRange.endMs - sourceRange.startMs) * 0.005);\n      low = Math.max(sourceRange.startMs, low - padding);\n      high = Math.min(sourceRange.endMs, high + padding);\n    }\n    if (!(high > low)) return;\n    const target = createFullViewport(low, high);\n    syncViewport(target, 'record');\n    centerCursorInViewport(target);\n  };\n\n"""
-          text = text.replace(focus_insert_anchor, focus_impl + focus_insert_anchor, 1)
-
-          controller_return = """    focusAnalysisTimes,\n    restoreWorkspaceState,\n"""
-          if controller_return not in text:
-              raise SystemExit('controller return anchor missing')
-          text = text.replace(controller_return, """    focusAnalysisTimes,\n    focusAnalysisRange,\n    restoreWorkspaceState,\n""", 1)
-          path.write_text(text)
-          PY
-      - name: Wire Analyzer range handoff in application shell
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('apps/web/src/app/app-shell.ts')
-          text = path.read_text()
-          anchor = """        openSamplesInLogger: (request) => {\n          loggerPage.focusAnalysisTimes(request.timeMs);\n          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;\n          setEpicScopeMode('logger');\n        },\n"""
-          addition = anchor + """        openRangeInLogger: (request) => {\n          loggerPage.focusAnalysisRange(request.startMs, request.endMs);\n          appStatus.textContent = `Logger · ${request.label}`;\n          setEpicScopeMode('logger');\n        },\n"""
-          if anchor not in text:
-              raise SystemExit('Analyzer Logger handoff anchor missing')
-          path.write_text(text.replace(anchor, addition, 1))
-          PY
-      - name: Make v50 scope navigator use authoritative source extent and selected Analyzer scope
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('apps/web/src/pages/ve-analyzer-v50-presentation.ts')
-          text = path.read_text()
-          text = text.replace("import type { LoggerAnalysisContext } from './logger-page';\n", "import type { LoggerAnalysisContext } from './logger-page';\nimport { analyzerScopeBounds, selectedAnalyzerScope } from './analyzer-scope';\n", 1)
-          start = text.index('function finiteTimes(context: LoggerAnalysisContext): number[] {')
-          end = text.index('\nfunction formatScopeTime', start)
-          text = text[:start] + text[end+1:]
-
-          old_markup = """    <div class=\"ve-analysis-scope-main\">\n      <div class=\"ve-analysis-scope-meta\">\n        <span><strong data-ve-scope-label>Full Log</strong><span data-ve-scope-detail> · source extent</span></span>\n        <span><span data-ve-scope-start>--:--</span> — <span data-ve-scope-end>--:--</span></span>\n      </div>\n      <div class=\"ve-analysis-scope-strip\" data-ve-scope-strip>\n        <div class=\"ve-analysis-scope-range\" data-ve-scope-range></div>\n        <div class=\"ve-analysis-scope-marker ve-analysis-scope-marker-a\" data-ve-scope-a hidden></div>\n        <div class=\"ve-analysis-scope-marker ve-analysis-scope-marker-b\" data-ve-scope-b hidden></div>\n      </div>\n    </div>`;\n"""
-          new_markup = """    <div class=\"ve-analysis-scope-main\">\n      <div class=\"ve-analysis-scope-meta\">\n        <span><strong data-ve-scope-label>Full Log</strong><span data-ve-scope-detail> · source extent</span></span>\n        <span><span data-ve-scope-start>--:--</span> — <span data-ve-scope-end>--:--</span></span>\n      </div>\n      <div class=\"ve-analysis-scope-strip\" data-ve-scope-strip>\n        <div class=\"ve-analysis-scope-range\" data-ve-scope-range></div>\n        <div class=\"ve-analysis-scope-marker ve-analysis-scope-marker-a\" data-ve-scope-a hidden></div>\n        <div class=\"ve-analysis-scope-marker ve-analysis-scope-marker-b\" data-ve-scope-b hidden></div>\n      </div>\n    </div>\n    <button type=\"button\" class=\"ve-analysis-scope-open\" data-ve-scope-open disabled>Open in Logger</button>`;\n"""
-          if old_markup not in text:
-              raise SystemExit('scope markup anchor missing')
-          text = text.replace(old_markup, new_markup, 1)
-
-          query_anchor = """  const markerB = scope.querySelector<HTMLElement>('[data-ve-scope-b]')!;\n\n  const renderScope = (context: LoggerAnalysisContext): void => {\n"""
-          query_replacement = """  const markerB = scope.querySelector<HTMLElement>('[data-ve-scope-b]')!;\n  const openScope = scope.querySelector<HTMLButtonElement>('[data-ve-scope-open]')!;\n  let currentContext: LoggerAnalysisContext | undefined;\n  let currentScopeBounds: { startMs: number; endMs: number; label: string } | undefined;\n\n  const renderScope = (context: LoggerAnalysisContext): void => {\n"""
-          if query_anchor not in text:
-              raise SystemExit('scope query anchor missing')
-          text = text.replace(query_anchor, query_replacement, 1)
-
-          start = text.index('  const renderScope = (context: LoggerAnalysisContext): void => {')
-          end = text.index('\n  const setupGroups', start)
-          new_render = """  const renderScope = (context: LoggerAnalysisContext): void => {\n    currentContext = context;\n    const extent = context.sourceTimeRange;\n    if (!extent || !Number.isFinite(extent.startMs) || !Number.isFinite(extent.endMs) || extent.endMs < extent.startMs) {\n      currentScopeBounds = undefined;\n      scope.dataset.state = 'empty';\n      scopeLabel.textContent = 'Full Log';\n      scopeDetail.textContent = ' · source extent unavailable';\n      scopeStart.textContent = '--:--';\n      scopeEnd.textContent = '--:--';\n      scopeRange.style.left = '0%';\n      scopeRange.style.width = '100%';\n      markerA.hidden = true;\n      markerB.hidden = true;\n      openScope.disabled = true;\n      return;\n    }\n\n    const start = Math.min(extent.startMs, extent.endMs);\n    const end = Math.max(extent.startMs, extent.endMs);\n    const span = Math.max(1, end - start);\n    const scopeSelect = root.querySelector<HTMLSelectElement>('select[data-role=\"scope\"]');\n    const selected = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;\n    const bounds = selected ? analyzerScopeBounds(selected) : {};\n    const selectedStart = bounds.startMs ?? start;\n    const selectedEnd = bounds.endMs ?? end;\n    const left = Math.max(0, Math.min(100, ((selectedStart - start) / span) * 100));\n    const right = Math.max(left, Math.min(100, ((selectedEnd - start) / span) * 100));\n    const isFull = !selected || selected.kind === 'full';\n\n    currentScopeBounds = { startMs: selectedStart, endMs: selectedEnd, label: selected?.label ?? 'Full Log' };\n    scope.dataset.state = isFull ? 'full' : 'range';\n    scopeLabel.textContent = selected?.label ?? 'Full Log';\n    scopeDetail.textContent = isFull ? ' · entire available source' : ` · ${formatScopeTime(selectedStart)}–${formatScopeTime(selectedEnd)}`;\n    scopeStart.textContent = formatScopeTime(start);\n    scopeEnd.textContent = formatScopeTime(end);\n    scopeRange.style.left = `${left}%`;\n    scopeRange.style.width = `${Math.max(0.2, right - left)}%`;\n\n    const placeMarker = (node: HTMLElement, value: number | undefined): void => {\n      node.hidden = value === undefined || !Number.isFinite(value);\n      if (!node.hidden) node.style.left = `${Math.max(0, Math.min(100, ((value! - start) / span) * 100))}%`;\n    };\n    placeMarker(markerA, context.aTimeMs);\n    placeMarker(markerB, context.bTimeMs);\n    openScope.disabled = !context.openRangeInLogger;\n  };\n\n  openScope.addEventListener('click', () => {\n    const context = currentContext;\n    const range = currentScopeBounds;\n    if (!context?.openRangeInLogger || !range) return;\n    context.openRangeInLogger(range);\n  });\n"""
-          text = text[:start] + new_render + text[end:]
-
-          listeners_anchor = """    root.addEventListener('change', syncSetupSummaries);\n    root.addEventListener('input', syncSetupSummaries);\n"""
-          listeners_replacement = """    root.addEventListener('change', (event) => {\n      syncSetupSummaries();\n      if (currentContext && event.target instanceof HTMLSelectElement && event.target.matches('select[data-role=\"scope\"]')) renderScope(currentContext);\n    });\n    root.addEventListener('input', syncSetupSummaries);\n"""
-          if listeners_anchor not in text:
-              raise SystemExit('setup listener anchor missing')
-          text = text.replace(listeners_anchor, listeners_replacement, 1)
-          path.write_text(text)
-          PY
-      - name: Style scope handoff as a subordinate action
-        run: |
-          cat >> apps/web/src/styles/ve-analyzer-v50-port.css <<'CSS'
-
-.ve-v50-port .ve-analysis-scope-navigator {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.ve-v50-port .ve-analysis-scope-open {
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid #31505f;
-  border-radius: 3px;
-  background: #0b1b24;
-  color: #b9cbd4;
-  font-size: 9px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.ve-v50-port .ve-analysis-scope-open:hover:not(:disabled) {
-  border-color: #3479ae;
-  background: #102437;
-}
-
-.ve-v50-port .ve-analysis-scope-open:disabled {
-  opacity: .45;
-  cursor: default;
-}
-CSS
-      - name: Extend browser ownership regressions
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('tests/web/logger-analysis-context.browser.mjs')
-          text = path.read_text()
-          anchor = """    assert(old.source.identity === a.source && loaded[0]?.range.values[0] === 100 && loaded[0].channel === a.channels[0] && b.calls.length === before, 'Retained context used replacement source or metadata');\n    checks.push('retained context invoked after replacement reads only its advertised source/metadata');\n"""
-          addition = anchor + """    assert(old.sourceTimeRange?.startMs === 0 && old.sourceTimeRange?.endMs === 500, 'Retained context lost its authoritative source time extent');\n    checks.push('analysis context captures authoritative whole-source time extent with its source lifetime');\n"""
-          if anchor not in text:
-              raise SystemExit('logger context test anchor missing')
-          path.write_text(text.replace(anchor, addition, 1))
-
-          path = Path('tests/web/ve-shared-table-interaction.browser.mjs')
-          text = path.read_text()
-          context_anchor = """  try {\n    view.setContext({\n      source: { identity: {}, sampleCount: 60, revision: 0 }, channels, traces: [], aTimeMs: 0, bTimeMs: 3000, savedRanges: [],\n      loadTraces: async (ids) => traces.filter((trace) => ids.includes(trace.channel.id)),\n    });\n"""
-          context_replacement = """  try {\n    let openedRange;\n    view.setContext({\n      source: { identity: {}, sampleCount: 60, revision: 0 }, sourceTimeRange: { startMs: 0, endMs: 5900 },\n      channels, traces: [], aTimeMs: 0, bTimeMs: 3000, savedRanges: [],\n      loadTraces: async (ids) => traces.filter((trace) => ids.includes(trace.channel.id)),\n      openRangeInLogger: (request) => { openedRange = request; },\n    });\n"""
-          if context_anchor not in text:
-              raise SystemExit('shared context fixture anchor missing')
-          text = text.replace(context_anchor, context_replacement, 1)
-          check_anchor = """    checks.push('compact setup summaries resync after controller-driven/programmatic changes');\n\n"""
-          check_add = check_anchor + """    const scopeSelect = root.querySelector('select[data-role=\"scope\"]');\n    scopeSelect.value = 'ab';\n    scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));\n    const scopeNavigator = root.querySelector('.ve-analysis-scope-navigator');\n    const scopeOpen = root.querySelector('[data-ve-scope-open]');\n    assert(scopeNavigator?.dataset.state === 'range' && root.querySelector('[data-ve-scope-start]')?.textContent === '00:00' && root.querySelector('[data-ve-scope-end]')?.textContent === '00:06',\n      'Scope navigator did not use authoritative source extent with the selected Analyzer range');\n    scopeOpen.click();\n    assert(openedRange?.startMs === 0 && openedRange?.endMs === 3000 && openedRange?.label === 'Current A/B', 'Scope handoff did not send the selected semantic range to Logger');\n    checks.push('scope navigator uses authoritative source extent and explicit selected-range Logger handoff');\n\n"""
-          if check_anchor not in text:
-              raise SystemExit('shared scope test anchor missing')
-          path.write_text(text.replace(check_anchor, check_add, 1))
-          PY
-      - name: Commit and remove one-off workflow
+      - name: Apply reconciliation patch
+        run: python scripts/ve-v50-reconcile-logger-range.py
+      - name: Commit patch and remove temporary files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/ve-v50-reconcile-logger-range.yml
+          git rm .github/workflows/ve-v50-reconcile-logger-range.yml scripts/ve-v50-reconcile-logger-range.py
           git add apps/web/src/pages/logger-page.ts apps/web/src/app/app-shell.ts apps/web/src/pages/ve-analyzer-v50-presentation.ts apps/web/src/styles/ve-analyzer-v50-port.css tests/web/logger-analysis-context.browser.mjs tests/web/ve-shared-table-interaction.browser.mjs
           git commit -m "Add authoritative VE scope handoff to Logger [skip ci]"
           git push origin HEAD:ui/ve-analyzer-v50-reconcile
