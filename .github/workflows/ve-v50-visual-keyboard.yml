@@ -1,0 +1,50 @@
+name: VE v50 visual table keyboard navigation
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage visual table keyboard navigation reconciliation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Make arrows follow visual table geometry
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/ve-table-interaction-dom.ts')
+          text = path.read_text()
+          old = """    const movement: Readonly<Record<string, readonly [number, number]>> = {\n      ArrowUp: [-1, 0],\n      ArrowDown: [1, 0],\n      ArrowLeft: [0, -1],\n      ArrowRight: [0, 1],\n    };\n    const delta = movement[event.key];\n    if (delta) {\n      event.preventDefault();\n      const next = { row: Math.max(0, position.row + delta[0]), col: Math.max(0, position.col + delta[1]) };\n      const nextCell = cellFor(next);\n      if (!nextCell) return;\n      if (event.shiftKey && anchor) session.selectCell(next, 'extend');\n      else {\n        session.selectCell(next, 'replace');\n        anchor = next;\n      }\n      refresh();\n      nextCell.focus({ preventScroll: true });\n      return;\n    }\n"""
+          new = """    const visualNeighbor = (key: string): HTMLTableCellElement | undefined => {\n      const rowElement = cell.parentElement as HTMLTableRowElement | null;\n      const body = rowElement?.parentElement as HTMLTableSectionElement | null;\n      if (!rowElement || !body) return undefined;\n      const rows = [...body.rows];\n      const visualRow = rows.indexOf(rowElement);\n      const rowCells = [...rowElement.querySelectorAll<HTMLTableCellElement>('td[data-table-row][data-table-col]')];\n      const visualCol = rowCells.indexOf(cell);\n      if (visualRow < 0 || visualCol < 0) return undefined;\n      if (key === 'ArrowLeft') return rowCells[visualCol - 1];\n      if (key === 'ArrowRight') return rowCells[visualCol + 1];\n      const targetRow = rows[visualRow + (key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0)];\n      if (!targetRow || (key !== 'ArrowUp' && key !== 'ArrowDown')) return undefined;\n      return [...targetRow.querySelectorAll<HTMLTableCellElement>('td[data-table-row][data-table-col]')][visualCol];\n    };\n    if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {\n      event.preventDefault();\n      const nextCell = visualNeighbor(event.key);\n      const next = nextCell ? positionForCell(nextCell) : undefined;\n      if (!nextCell || !next) return;\n      if (event.shiftKey && anchor) session.selectCell(next, 'extend');\n      else {\n        session.selectCell(next, 'replace');\n        anchor = next;\n      }\n      refresh();\n      nextCell.focus({ preventScroll: true });\n      return;\n    }\n"""
+          if old not in text:
+              raise SystemExit('keyboard movement block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Add reversed-row browser regression
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/web/ve-shared-table-interaction.browser.mjs')
+          text = path.read_text()
+          anchor = """    checks.push('table keyboard navigation exposes one roving tab stop instead of one Tab stop per cell');\n\n"""
+          addition = anchor + """    const lowerLeft = root.querySelector('[data-ve-analyzer=\"delay-table\"] td[data-delay-row=\"0\"][data-delay-col=\"0\"]');\n    const upperLeft = root.querySelector('[data-ve-analyzer=\"delay-table\"] td[data-delay-row=\"1\"][data-delay-col=\"0\"]');\n    selectCell(lowerLeft);\n    lowerLeft.focus();\n    lowerLeft.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));\n    assert(document.activeElement === upperLeft && upperLeft.dataset.tableSelected === 'true', 'ArrowUp followed semantic row numbering instead of the visually higher reversed-load row');\n    upperLeft.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));\n    assert(document.activeElement === lowerLeft && lowerLeft.dataset.tableSelected === 'true', 'ArrowDown did not return to the visually lower reversed-load row');\n    lowerLeft.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true, cancelable: true }));\n    assert(document.activeElement === upperLeft && cells().filter((cell) => cell.dataset.tableSelected === 'true').length === 2, 'Shift+ArrowUp did not extend selection in visual table direction');\n    checks.push('Up/Down and Shift+Up follow visual row direction on the reversed load axis');\n\n"""
+          if anchor not in text:
+              raise SystemExit('roving-focus test anchor not found')
+          path.write_text(text.replace(anchor, addition, 1))
+          PY
+      - name: Commit and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-visual-keyboard.yml
+          git add apps/web/src/pages/ve-table-interaction-dom.ts tests/web/ve-shared-table-interaction.browser.mjs
+          git commit -m "Make shared table arrows follow visual geometry [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
