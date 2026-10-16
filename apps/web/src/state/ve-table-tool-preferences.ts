@@ -6,7 +6,10 @@ import type {
   TableInterpolationOptions,
 } from '../pages/ve-table-interaction';
 
-export type VeTableToolSurface = 've' | 'target' | 'delay';
+// Only Lambda Delay has a production shared-edit adapter today. VE/Target should
+// supply their own precision-derived defaults when real mutable tune/review owners
+// exist rather than inheriting guessed values from this transitional integration.
+export type VeTableToolSurface = 'delay';
 
 export interface VeTableToolPreferences {
   readonly adjustmentStep: number;
@@ -26,26 +29,11 @@ export interface VeTableToolPreferences {
 }
 
 const STORAGE_KEY = 'epicscope.veAnalyzer.tableTools.v1';
-
-const DEFAULTS: Readonly<Record<VeTableToolSurface, VeTableToolPreferences>> = Object.freeze({
-  ve: {
-    adjustmentStep: 1,
-    smoothStrength: 0.5,
-    interpolation: { method1d: 'linear', method2d: 'bilinear', strength: 1, clamp: true },
-    brush: { delta: 1, radius: 2, strength: 0.7, falloff: 'soft' },
-  },
-  target: {
-    adjustmentStep: 0.1,
-    smoothStrength: 0.5,
-    interpolation: { method1d: 'linear', method2d: 'bilinear', strength: 1, clamp: true },
-    brush: { delta: 0.1, radius: 2, strength: 0.7, falloff: 'soft' },
-  },
-  delay: {
-    adjustmentStep: 5,
-    smoothStrength: 0.5,
-    interpolation: { method1d: 'linear', method2d: 'bilinear', strength: 1, clamp: true },
-    brush: { delta: 5, radius: 1, strength: 0.7, falloff: 'soft' },
-  },
+const DELAY_DEFAULTS: VeTableToolPreferences = Object.freeze({
+  adjustmentStep: 5,
+  smoothStrength: 0.5,
+  interpolation: { method1d: 'linear', method2d: 'bilinear', strength: 1, clamp: true },
+  brush: { delta: 5, radius: 1, strength: 0.7, falloff: 'soft' },
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -53,27 +41,26 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
-function sanitize(surface: VeTableToolSurface, value: unknown): VeTableToolPreferences {
-  const fallback = DEFAULTS[surface];
+function sanitize(value: unknown): VeTableToolPreferences {
   const record = isRecord(value) ? value : {};
   const interpolation = isRecord(record.interpolation) ? record.interpolation : {};
   const brush = isRecord(record.brush) ? record.brush : {};
   const adjustmentStep = finite(record.adjustmentStep) && record.adjustmentStep > 0
-    ? record.adjustmentStep : fallback.adjustmentStep;
+    ? record.adjustmentStep : DELAY_DEFAULTS.adjustmentStep;
   const smoothStrength = finite(record.smoothStrength)
-    ? clamp01(record.smoothStrength) : fallback.smoothStrength;
+    ? clamp01(record.smoothStrength) : DELAY_DEFAULTS.smoothStrength;
   const method1d: TableInterpolation1dMethod = interpolation.method1d === 'shape' ? 'shape' : 'linear';
   const method2d: TableInterpolation2dMethod = interpolation.method2d === 'boundary' ? 'boundary' : 'bilinear';
   const interpolationStrength = finite(interpolation.strength)
-    ? clamp01(interpolation.strength) : fallback.interpolation.strength;
+    ? clamp01(interpolation.strength) : DELAY_DEFAULTS.interpolation.strength;
   const interpolationClamp = typeof interpolation.clamp === 'boolean'
-    ? interpolation.clamp : fallback.interpolation.clamp;
-  const delta = finite(brush.delta) ? brush.delta : fallback.brush.delta;
+    ? interpolation.clamp : DELAY_DEFAULTS.interpolation.clamp;
+  const delta = finite(brush.delta) ? brush.delta : DELAY_DEFAULTS.brush.delta;
   const radius = finite(brush.radius)
-    ? Math.max(1, Math.min(8, Math.round(brush.radius))) : fallback.brush.radius;
-  const brushStrength = finite(brush.strength) ? clamp01(brush.strength) : fallback.brush.strength;
+    ? Math.max(1, Math.min(8, Math.round(brush.radius))) : DELAY_DEFAULTS.brush.radius;
+  const brushStrength = finite(brush.strength) ? clamp01(brush.strength) : DELAY_DEFAULTS.brush.strength;
   const falloff: TableBrushFalloff = brush.falloff === 'flat' || brush.falloff === 'linear' || brush.falloff === 'soft'
-    ? brush.falloff : fallback.brush.falloff;
+    ? brush.falloff : DELAY_DEFAULTS.brush.falloff;
   return {
     adjustmentStep,
     smoothStrength,
@@ -82,57 +69,50 @@ function sanitize(surface: VeTableToolSurface, value: unknown): VeTableToolPrefe
   };
 }
 
-function readAll(): Record<VeTableToolSurface, VeTableToolPreferences> {
-  let parsed: unknown;
+function readDelay(): VeTableToolPreferences {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    parsed = raw ? JSON.parse(raw) : undefined;
+    if (!raw) return sanitize(undefined);
+    const parsed: unknown = JSON.parse(raw);
+    return sanitize(isRecord(parsed) ? parsed.delay : undefined);
   } catch {
-    parsed = undefined;
+    return sanitize(undefined);
   }
-  const record = isRecord(parsed) ? parsed : {};
-  return {
-    ve: sanitize('ve', record.ve),
-    target: sanitize('target', record.target),
-    delay: sanitize('delay', record.delay),
-  };
 }
 
-let cache = readAll();
+let delayCache = readDelay();
 
 function persist(): boolean {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ delay: delayCache }));
     return true;
   } catch {
     return false;
   }
 }
 
-export function loadVeTableToolPreferences(surface: VeTableToolSurface): VeTableToolPreferences {
-  const value = cache[surface];
+export function loadVeTableToolPreferences(_surface: VeTableToolSurface): VeTableToolPreferences {
   return {
-    adjustmentStep: value.adjustmentStep,
-    smoothStrength: value.smoothStrength,
-    interpolation: { ...value.interpolation },
-    brush: { ...value.brush },
+    adjustmentStep: delayCache.adjustmentStep,
+    smoothStrength: delayCache.smoothStrength,
+    interpolation: { ...delayCache.interpolation },
+    brush: { ...delayCache.brush },
   };
 }
 
 export function saveVeTableToolPreferences(
-  surface: VeTableToolSurface,
+  _surface: VeTableToolSurface,
   value: VeTableToolPreferences,
 ): VeTableToolPreferences {
-  const next = sanitize(surface, value);
-  cache = { ...cache, [surface]: next };
+  delayCache = sanitize(value);
   persist();
-  return loadVeTableToolPreferences(surface);
+  return loadVeTableToolPreferences('delay');
 }
 
-export function resetVeTableToolPreferences(surface: VeTableToolSurface): VeTableToolPreferences {
-  cache = { ...cache, [surface]: sanitize(surface, DEFAULTS[surface]) };
+export function resetVeTableToolPreferences(_surface: VeTableToolSurface): VeTableToolPreferences {
+  delayCache = sanitize(DELAY_DEFAULTS);
   persist();
-  return loadVeTableToolPreferences(surface);
+  return loadVeTableToolPreferences('delay');
 }
 
 export function interpolationOptions(
