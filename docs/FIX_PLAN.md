@@ -1,3 +1,19 @@
+# Source-integrity integration follow-up (2026-10-16)
+
+Complete one target at a time and stop between targets. Local integration does not authorize GitHub publication or changes to main.
+
+| Target | Scope | Status |
+| --- | --- | --- |
+| 1 | Integrate main 8890498 with published checkpoint b597f6d; preserve both Parser contracts and marker publication; reconcile handoff; combined validation | Complete locally on integration/source-integrity-target1-20261016; 798 automated / 524 browser checks and build pass |
+| 2 | Preserve timeMs/sourceIntegrity through immutable Diagnostics capture and JSON export | Pending |
+| 3 | Replace quadratic same-timestamp retry lookahead with bounded iteration; >320k-sample regression | Pending |
+| 4 | Skip irrelevant annotation and avoid full-record JS Map using existing ordered record index; staged/fallback parity | Pending |
+| 5 | Explicit Logger/source ownership and graph lifecycle delivery/cleanup for integrity state | Pending |
+| 6 | Reuse prepared scale statistics; bound visible-marker and repeated endpoint-search work; profile before caching | Pending |
+| 7 | Combined workflow and dense-integrity acceptance; original MLG/affected hardware when available | Pending |
+
+Earlier target numbering and checkpoint statuses below are historical records of the completed improvement series. Optional observability stage 10 remains skipped.
+
 # Current improvement sequence — 2026-10-16
 
 This is the new post-integration list, separate from the original completed points 1–11 below. Production baseline: main at `09f8e3942afde19f5bf64c9570884886d56da9bc`.

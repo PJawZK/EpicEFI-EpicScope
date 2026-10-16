@@ -2,6 +2,7 @@ import type {
   ParserDiagnostic,
   ParserDiagnosticSeverity,
 } from '../../../../core/log-model/log-types';
+import { publishSourceIntegrityDiagnostics } from '../app/source-integrity-events';
 
 export interface ParserDiagnosticsIndicatorController {
   readonly element: HTMLElement;
@@ -67,6 +68,7 @@ export function createParserDiagnosticsIndicator(onDiagnostics?: (model: ParserD
   document.addEventListener('click', close);
 
   const setDiagnostics = (diagnostics: readonly ParserDiagnostic[]): void => {
+    publishSourceIntegrityDiagnostics(diagnostics);
     const model = prepareParserDiagnostics(diagnostics);
     currentModel = model;
     const { grouped, worst, unresolved, sourceIntegrity } = model;

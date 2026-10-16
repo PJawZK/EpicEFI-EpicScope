@@ -8,6 +8,7 @@ import type { RandomAccessByteSource } from '../byte-source';
 import { MlgNumericChannelDataSource } from './mlg-channel-data';
 import type { MlgFieldDescriptor, MlgHeader } from './mlg-format';
 import { parseMlgHeader } from './mlg-header';
+import { annotateMlgSourceIntegrityDiagnostics } from './mlg-integrity';
 import { scanMlgRecords, type MlgRecordIndex } from './mlg-records';
 
 export interface MlgParsePerformance {
@@ -74,13 +75,18 @@ export async function parseMlg(
     headerResult.fields,
     scanResult.records,
   );
+  const diagnostics = annotateMlgSourceIntegrityDiagnostics(
+    scanResult.records,
+    scanResult.diagnostics,
+    headerResult.header.recordLength,
+  );
   const finalizeMs = now() - finalizeStart;
 
   return {
     summary: {
       source: sourceIdentity,
       channels: headerResult.channels,
-      diagnostics: scanResult.diagnostics,
+      diagnostics,
       markers: scanResult.markers,
       ...(timeRange ? { timeRange } : {}),
     },

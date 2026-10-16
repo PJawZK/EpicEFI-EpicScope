@@ -11,7 +11,7 @@ CHROME_BIN=chromium npm run test:browser
 
 The command starts its own loopback Vite server and headless Chrome on dynamically allocated ports. It creates a temporary Chrome profile, uses separate incognito contexts for staged and forced Worker-disabled fallback imports, and closes its contexts, Chrome and Vite before removing the profile. It does not connect to an existing browser or application server. Ctrl-C and SIGTERM follow the same cleanup path. Each run has a ten-minute deadline, with bounded DevTools and readiness waits.
 
-The selected suite runs **257 checks per configuration, 514 total**:
+The selected suite runs **262 checks per configuration, 524 total**:
 
 | Coverage | Checks per configuration |
 | --- | ---: |
@@ -79,3 +79,5 @@ The Result View check follows the accepted policy: source-authoritative VE fallb
 Results go to ignored `artifacts/browser/` (override with `BROWSER_RESULTS_DIR`). The runner replaces its own prior result files there. `summary.json` records success/failure and completed checks; per-suite JSON preserves named assertions and measurements. On browser failure it also attempts a screenshot and visible page snapshot. `chrome.log` captures startup/Chrome diagnostics. A missing executable, failed assertion, empty/malformed result, unhandled browser exception, timeout or interruption produces a nonzero exit; partial successes remain marked as a failed run. CI runs this command in the separate Web CI browser job and uploads the results even on failure.
 
 Run CPU-heavy Vitest large-sample regressions separately from local browser/build work to avoid resource-contention timeouts. Passing this suite does not replace manual acceptance on representative logs and hardware.
+
+Source-integrity integration target 1 retains all prior 514 checks and adds main's five marker checks per configuration: dotted bridge endpoints, click explanation, persistent notice, outside dismissal and zoom cutoff. These use synthetic graph data; original large-log and affected-hardware acceptance remain pending. Known metadata/algorithm/lifecycle follow-ups are listed separately in FIX_PLAN.md.
