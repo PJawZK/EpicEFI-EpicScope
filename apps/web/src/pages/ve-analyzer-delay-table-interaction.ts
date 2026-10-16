@@ -43,7 +43,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
     return snapshotValue(this.#owner, position.row, position.col);
   }
 
-  beginTransaction(_label: string): TableEditTransaction {
+  beginTransaction(label: string): TableEditTransaction {
     const snapshot = this.#owner.snapshot();
     const revision = snapshot?.revision;
     const rows = snapshot?.rows ?? 0;
@@ -66,6 +66,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
       },
       set: (row, col, value): void => {
         if (!active || !inside(row, col) || !Number.isFinite(value)) return;
+        if (label === 'direct-edit' && value < 0) return;
         changed.set(indexFor(row, col), Math.max(0, value));
       },
       commit: (): boolean => {
@@ -158,6 +159,13 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
 
   delayHost.dataset.tableInteractionOwner = 'shared';
   root.querySelector<HTMLElement>('.ve-delay-inline-hint')?.setAttribute('hidden', '');
+  const legacyEditor = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-editor"]');
+  if (legacyEditor) legacyEditor.hidden = true;
+  delayHost.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest('td[data-delay-row][data-delay-col]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { capture: true });
 
   const surface = new VeDelayTableEditSurface(owner);
   const session = new TableInteractionSession(surface);
@@ -174,6 +182,8 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     redo: () => surface.redo(),
     revertSelection: (positions) => surface.revert(positions),
     clearSelection: (positions) => surface.replaceWithUndefined(positions),
+    blankSelection: (positions) => surface.replaceWithUndefined(positions),
+    deleteSelection: (positions) => surface.revert(positions),
     afterEdit: () => queueMicrotask(() => dom.bindTable(currentDelayTable(delayHost))),
   });
 
