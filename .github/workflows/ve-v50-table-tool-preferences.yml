@@ -1,0 +1,28 @@
+name: VE v50 table tool preferences
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage VE table tool preference integration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Apply table tool preference integration
+        run: python scripts/ve-v50-table-tool-preferences-patch.py
+      - name: Commit patch and remove temporary files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-table-tool-preferences.yml scripts/ve-v50-table-tool-preferences-patch.py
+          git add apps/web/src/pages/ve-table-interaction-dom.ts apps/web/src/pages/ve-analyzer-delay-table-interaction.ts apps/web/src/styles/ve-table-interaction-dom.css
+          git commit -m "Persist shared table tool configuration [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
