@@ -19,6 +19,8 @@ export interface TableInteractionDomPreferences {
   readonly smoothStrength: () => number;
   readonly interpolation: () => TableInterpolationOptions;
   readonly brush: () => TableBrushOptions;
+  readonly readValue?: (position: TableCellPosition) => number | undefined;
+  readonly adjustBrushRadius?: (delta: 1 | -1) => void;
 }
 
 export interface TableInteractionDomController {
@@ -84,10 +86,12 @@ export function createTableInteractionDomController(
   let anchor: TableCellPosition | undefined;
   let dragPointerId: number | undefined;
   let dragStart: TableCellPosition | undefined;
+  let dragAdditive = false;
   let brushActive = false;
   let brushStroke: TableBrushStroke | undefined;
   let brushPointerId: number | undefined;
   let brushLast: TableCellPosition | undefined;
+  let brushDirection: 1 | -1 = 1;
   let brushTimer: number | undefined;
   let inlineInput: HTMLInputElement | undefined;
   let destroyed = false;
@@ -163,6 +167,8 @@ export function createTableInteractionDomController(
     }
     brush.dataset.active = brushActive ? 'true' : 'false';
     brush.setAttribute('aria-pressed', brushActive ? 'true' : 'false');
+    const radius = preferences.brush().radius;
+    brush.title = `Continuous brush editing · radius ${radius}${preferences.adjustBrushRadius ? ' · mouse wheel adjusts radius' : ''}`;
   };
 
   const stopBrushTimer = (): void => {
@@ -186,10 +192,10 @@ export function createTableInteractionDomController(
     }
   };
 
-  const pulseBrush = (position: TableCellPosition, direction: 1 | -1, immediate = false): void => {
+  const pulseBrush = (position: TableCellPosition, immediate = false): void => {
     if (!brushStroke) return;
     brushLast = position;
-    if (immediate) brushStroke.pulse(position, direction);
+    if (immediate) brushStroke.pulse(position, brushDirection);
   };
 
   const startBrush = (event: PointerEvent, position: TableCellPosition): void => {
@@ -197,11 +203,11 @@ export function createTableInteractionDomController(
     const options = preferences.brush();
     brushStroke = session.beginBrushStroke(options);
     brushPointerId = event.pointerId;
-    const direction: 1 | -1 = event.shiftKey ? -1 : 1;
-    pulseBrush(position, direction, true);
+    brushDirection = event.shiftKey ? -1 : 1;
+    pulseBrush(position, true);
     brushTimer = window.setInterval(() => {
       if (!brushStroke || !brushLast) return;
-      brushStroke.pulse(brushLast, direction);
+      brushStroke.pulse(brushLast, brushDirection);
     }, 90);
   };
 
@@ -217,7 +223,8 @@ export function createTableInteractionDomController(
     input.inputMode = 'decimal';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = initial ?? '';
+    const current = preferences.readValue?.(position);
+    input.value = initial ?? (current !== undefined && Number.isFinite(current) ? String(current) : '');
     cell.dataset.tableEditing = 'true';
     cell.append(input);
     inlineInput = input;
@@ -268,6 +275,7 @@ export function createTableInteractionDomController(
     else session.selectCell(position, additive ? 'toggle' : 'replace');
     if (!additive || !anchor) anchor = position;
     dragStart = anchor ?? position;
+    dragAdditive = additive;
     dragPointerId = event.pointerId;
     cell.setPointerCapture?.(event.pointerId);
     refresh();
@@ -280,12 +288,12 @@ export function createTableInteractionDomController(
     const position = cell ? positionForCell(cell) : undefined;
     if (!position) return;
     if (brushActive && brushPointerId === event.pointerId && brushStroke) {
-      const direction: 1 | -1 = event.shiftKey ? -1 : 1;
-      if (!brushLast || positionKey(brushLast) !== positionKey(position)) pulseBrush(position, direction, true);
+      brushDirection = event.shiftKey ? -1 : 1;
+      if (!brushLast || positionKey(brushLast) !== positionKey(position)) pulseBrush(position, true);
       return;
     }
     if (dragPointerId !== event.pointerId || !dragStart) return;
-    session.setRectangle(dragStart, position);
+    session.setRectangle(dragStart, position, dragAdditive, dragStart);
     anchor = dragStart;
     refresh();
   };
@@ -299,6 +307,7 @@ export function createTableInteractionDomController(
     if (dragPointerId !== event.pointerId) return;
     dragPointerId = undefined;
     dragStart = undefined;
+    dragAdditive = false;
     focusAnchor();
   };
 
@@ -342,6 +351,13 @@ export function createTableInteractionDomController(
       startInlineEdit(position, event.key);
       return;
     }
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      const current = preferences.readValue?.(position);
+      const text = current !== undefined && Number.isFinite(current) ? String(current) : '';
+      startInlineEdit(position, text.slice(0, -1));
+      return;
+    }
     if (event.key === 'Delete') {
       event.preventDefault();
       const positions = selectedPositions();
@@ -350,6 +366,7 @@ export function createTableInteractionDomController(
     }
     if (event.key === 'Escape') {
       event.preventDefault();
+      if (brushActive) setBrushActive(false);
       session.clearSelection();
       anchor = undefined;
       refresh();
@@ -357,10 +374,10 @@ export function createTableInteractionDomController(
   };
 
   const wheel = (event: WheelEvent): void => {
-    if (!brushActive || !table || !editableCell(event.target, table)) return;
-    // Radius persistence belongs to the caller/preferences owner. The DOM controller
-    // intentionally does not invent another preference store; right-click/tool UI can
-    // expose the persisted radius while this handler remains presentation-only.
+    if (!brushActive || !table || !editableCell(event.target, table) || !preferences.adjustBrushRadius) return;
+    event.preventDefault();
+    preferences.adjustBrushRadius(event.deltaY < 0 ? 1 : -1);
+    refresh();
   };
 
   const bindTable = (next: HTMLTableElement | undefined): void => {
@@ -379,8 +396,6 @@ export function createTableInteractionDomController(
       table.removeEventListener('wheel', wheel);
     }
     table = next;
-    session.clearSelection();
-    anchor = undefined;
     if (table) {
       markCoordinates(table);
       table.addEventListener('pointerdown', pointerDown);
@@ -388,7 +403,7 @@ export function createTableInteractionDomController(
       table.addEventListener('pointerup', pointerUp);
       table.addEventListener('pointercancel', pointerUp);
       table.addEventListener('keydown', keyDown);
-      table.addEventListener('wheel', wheel, { passive: true });
+      table.addEventListener('wheel', wheel, { passive: false });
     }
     refresh();
   };
