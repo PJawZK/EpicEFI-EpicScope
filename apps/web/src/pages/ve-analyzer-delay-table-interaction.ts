@@ -35,6 +35,8 @@ class VeDelayTableEditSurface implements TableEditSurface {
 
   get rows(): number { return this.#owner.snapshot()?.rows ?? 0; }
   get cols(): number { return this.#owner.snapshot()?.cols ?? 0; }
+  rowCoordinate(row: number): number { return this.#owner.snapshot()?.loadBins[row] ?? row; }
+  colCoordinate(col: number): number { return this.#owner.snapshot()?.rpmBins[col] ?? col; }
 
   get(row: number, col: number): number {
     const value = snapshotValue(this.#owner, row, col);

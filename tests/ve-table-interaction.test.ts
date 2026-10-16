@@ -5,7 +5,7 @@ import {
   type TableEditTransaction,
 } from '../apps/web/src/pages/ve-table-interaction';
 
-function memorySurface(rows: number, cols: number, initial: readonly number[]) {
+function memorySurface(rows: number, cols: number, initial: readonly number[], rowCoordinates?: readonly number[], colCoordinates?: readonly number[]) {
   let values = [...initial];
   const labels: string[] = [];
   let commits = 0;
@@ -16,6 +16,8 @@ function memorySurface(rows: number, cols: number, initial: readonly number[]) {
     get(row, col) {
       return values[row * cols + col]!;
     },
+    ...(rowCoordinates ? { rowCoordinate: (row: number) => rowCoordinates[row] ?? row } : {}),
+    ...(colCoordinates ? { colCoordinate: (col: number) => colCoordinates[col] ?? col } : {}),
     beginTransaction(label): TableEditTransaction {
       labels.push(label);
       const draft = [...values];
@@ -94,6 +96,37 @@ describe('VE shared table interaction boundary', () => {
     session.setRectangle({ row: 0, col: 0 }, { row: 0, col: 4 });
     expect(session.interpolate({ axis: 'horizontal', method1d: 'linear', strength: 1, clamp: true })).toBe(true);
     expect(memory.values()).toEqual([0, 10, 20, 30, 40]);
+  });
+
+  it('uses physical axis spacing for linear interpolation', () => {
+    const memory = memorySurface(1, 3, [0, 99, 40], undefined, [1000, 1500, 3000]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 0 }, { row: 0, col: 2 });
+    expect(session.interpolate({ axis: 'horizontal', method1d: 'linear', strength: 1 })).toBe(true);
+    expect(memory.values()[1]).toBeCloseTo(10, 8);
+  });
+
+  it('keeps shape interpolation monotone on highly uneven physical bins', () => {
+    const memory = memorySurface(1, 5, [0, 10, 999, 30, 40], undefined, [0, 1, 8, 9, 30]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 1 }, { row: 0, col: 3 });
+    expect(session.interpolate({ axis: 'horizontal', method1d: 'shape', strength: 1, clamp: true })).toBe(true);
+    expect(memory.values()[2]).toBeGreaterThanOrEqual(10);
+    expect(memory.values()[2]).toBeLessThanOrEqual(30);
+    expect(memory.commits()).toBe(1);
+  });
+
+  it('uses physical row/column fractions for 2D interpolation', () => {
+    const memory = memorySurface(
+      3, 3,
+      [0, 90, 20, 90, 90, 90, 40, 90, 60],
+      [0, 1, 4],
+      [0, 1, 4],
+    );
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 0 }, { row: 2, col: 2 });
+    expect(session.interpolate({ axis: 'both', method2d: 'bilinear', strength: 1 })).toBe(true);
+    expect(memory.values()[4]).toBeCloseTo(15, 8);
   });
 
   it('applies a 2D bilinear surface as one transaction', () => {

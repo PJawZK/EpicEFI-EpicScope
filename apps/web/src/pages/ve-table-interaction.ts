@@ -14,6 +14,9 @@ export interface TableEditSurface {
   readonly rows: number;
   readonly cols: number;
   get(row: number, col: number): number;
+  /** Optional physical axis coordinates. Index coordinates remain the generic fallback. */
+  rowCoordinate?(row: number): number;
+  colCoordinate?(col: number): number;
   beginTransaction(label: string): TableEditTransaction;
 }
 
@@ -76,35 +79,61 @@ function rectangle(a: TableCellPosition, b: TableCellPosition): TableCellPositio
   return positions;
 }
 
-function monotoneSlopes(xs: readonly number[], ys: readonly number[]): number[] {
-  if (xs.length <= 1) return [0];
-  const secants: number[] = [];
-  for (let index = 0; index < xs.length - 1; index += 1) {
+function pchipSlopes(xs: readonly number[], ys: readonly number[]): number[] | undefined {
+  const count = xs.length;
+  if (count !== ys.length || count === 0) return undefined;
+  if (count === 1) return [0];
+  const h: number[] = [];
+  const delta: number[] = [];
+  for (let index = 0; index < count - 1; index += 1) {
     const span = xs[index + 1]! - xs[index]!;
-    secants.push(span === 0 ? 0 : (ys[index + 1]! - ys[index]!) / span);
+    if (!Number.isFinite(span) || span <= 0) return undefined;
+    const slope = (ys[index + 1]! - ys[index]!) / span;
+    if (!Number.isFinite(slope)) return undefined;
+    h.push(span);
+    delta.push(slope);
   }
-  const slopes = new Array<number>(xs.length).fill(0);
-  slopes[0] = secants[0] ?? 0;
-  slopes[slopes.length - 1] = secants[secants.length - 1] ?? 0;
-  for (let index = 1; index < slopes.length - 1; index += 1) {
-    const left = secants[index - 1] ?? 0;
-    const right = secants[index] ?? 0;
-    slopes[index] = left * right <= 0 ? 0 : (2 * left * right) / (left + right);
+  if (count === 2) return [delta[0]!, delta[0]!];
+
+  const slopes = new Array<number>(count).fill(0);
+  for (let index = 1; index < count - 1; index += 1) {
+    const left = delta[index - 1]!;
+    const right = delta[index]!;
+    if (left === 0 || right === 0 || Math.sign(left) !== Math.sign(right)) {
+      slopes[index] = 0;
+      continue;
+    }
+    const leftSpan = h[index - 1]!;
+    const rightSpan = h[index]!;
+    const w1 = 2 * rightSpan + leftSpan;
+    const w2 = rightSpan + 2 * leftSpan;
+    slopes[index] = (w1 + w2) / (w1 / left + w2 / right);
   }
+
+  const endpoint = (h0: number, h1: number, d0: number, d1: number): number => {
+    let value = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1);
+    if (Math.sign(value) !== Math.sign(d0)) value = 0;
+    else if (Math.sign(d0) !== Math.sign(d1) && Math.abs(value) > Math.abs(3 * d0)) value = 3 * d0;
+    return value;
+  };
+  slopes[0] = endpoint(h[0]!, h[1]!, delta[0]!, delta[1]!);
+  slopes[count - 1] = endpoint(h[count - 2]!, h[count - 3]!, delta[count - 2]!, delta[count - 3]!);
   return slopes;
 }
 
-function monotoneValue(xs: readonly number[], ys: readonly number[], x: number): number {
-  if (xs.length === 0) return 0;
+function monotoneValue(xs: readonly number[], ys: readonly number[], x: number): number | undefined {
+  if (xs.length === 0 || xs.length !== ys.length || !Number.isFinite(x)) return undefined;
   if (xs.length === 1 || x <= xs[0]!) return ys[0]!;
   if (x >= xs[xs.length - 1]!) return ys[ys.length - 1]!;
+  const slopes = pchipSlopes(xs, ys);
+  if (!slopes) return undefined;
   let index = 0;
   while (index < xs.length - 2 && x > xs[index + 1]!) index += 1;
   const x0 = xs[index]!;
   const x1 = xs[index + 1]!;
-  const span = x1 - x0 || 1;
+  const span = x1 - x0;
+  if (!(span > 0)) return undefined;
   const t = (x - x0) / span;
-  const slopes = monotoneSlopes(xs, ys);
   const h00 = 2 * t ** 3 - 3 * t ** 2 + 1;
   const h10 = t ** 3 - 2 * t ** 2 + t;
   const h01 = -2 * t ** 3 + 3 * t ** 2;
@@ -112,11 +141,24 @@ function monotoneValue(xs: readonly number[], ys: readonly number[], x: number):
   return h00 * ys[index]! + h10 * span * slopes[index]! + h01 * ys[index + 1]! + h11 * span * slopes[index + 1]!;
 }
 
+function increasingCoordinates(indices: readonly number[], coordinate: (index: number) => number): number[] | undefined {
+  const values = indices.map(coordinate);
+  if (values.some((value) => !Number.isFinite(value))) return undefined;
+  if (values.length <= 1) return values;
+  const direction = Math.sign(values[1]! - values[0]!);
+  if (direction === 0) return undefined;
+  for (let index = 1; index < values.length; index += 1) {
+    if (Math.sign(values[index]! - values[index - 1]!) !== direction) return undefined;
+  }
+  return direction > 0 ? values : values.map((value) => -value);
+}
+
 function interpolated1d(
   index: number,
   anchors: readonly number[],
   support: readonly number[],
   read: (index: number) => number | undefined,
+  coordinate: (index: number) => number,
   method: TableInterpolation1dMethod,
 ): { value: number; min: number; max: number } | undefined {
   const anchorValues = anchors.map(read);
@@ -124,18 +166,27 @@ function interpolated1d(
   const finiteAnchors = anchorValues as number[];
   const min = Math.min(...finiteAnchors);
   const max = Math.max(...finiteAnchors);
+  const anchorXs = increasingCoordinates(anchors, coordinate);
+  if (!anchorXs) return undefined;
+  const direction = Math.sign(coordinate(anchors[anchors.length - 1]!) - coordinate(anchors[0]!));
+  const x = coordinate(index) * (direction < 0 ? -1 : 1);
+  if (!Number.isFinite(x)) return undefined;
   if (method === 'shape') {
     const supportValues = support.map(read);
     if (supportValues.some((value) => value === undefined)) return undefined;
-    return { value: monotoneValue(support, supportValues as number[], index), min, max };
+    const supportXs = increasingCoordinates(support, coordinate);
+    if (!supportXs) return undefined;
+    const value = monotoneValue(supportXs, supportValues as number[], x);
+    return value === undefined ? undefined : { value, min, max };
   }
   let segment = 0;
-  while (segment < anchors.length - 2 && index > anchors[segment + 1]!) segment += 1;
-  const x0 = anchors[segment]!;
-  const x1 = anchors[segment + 1]!;
+  while (segment < anchors.length - 2 && x > anchorXs[segment + 1]!) segment += 1;
+  const x0 = anchorXs[segment]!;
+  const x1 = anchorXs[segment + 1]!;
   const y0 = finiteAnchors[segment]!;
   const y1 = finiteAnchors[segment + 1]!;
-  const t = (index - x0) / (x1 - x0 || 1);
+  if (!(x1 > x0)) return undefined;
+  const t = (x - x0) / (x1 - x0);
   return { value: y0 + (y1 - y0) * t, min, max };
 }
 
@@ -384,10 +435,13 @@ export class TableInteractionSession {
           if (anchors[anchors.length - 1]! < maxIndex) support.push(anchors[anchors.length - 1]! + 1);
         }
         const sample = (inner: number): number | undefined => axis === 'horizontal' ? read(outer, inner) : read(inner, outer);
+        const coordinate = (inner: number): number => axis === 'horizontal'
+          ? (this.#surface.colCoordinate?.(inner) ?? inner)
+          : (this.#surface.rowCoordinate?.(inner) ?? inner);
         for (const index of indices) {
           const row = axis === 'horizontal' ? outer : index;
           const col = axis === 'horizontal' ? index : outer;
-          const entry = interpolated1d(index, anchors, support, sample, method1d);
+          const entry = interpolated1d(index, anchors, support, sample, coordinate, method1d);
           if (entry) setBlended(row, col, entry.value, entry.min, entry.max);
         }
       }
@@ -427,25 +481,27 @@ export class TableInteractionSession {
         + bottomLeft * (1 - u) * v
         + bottomRight * u * v
       );
-      const edgeSample = (fixed: number, start: number, end: number, t: number, horizontal: boolean): number | undefined => {
-        const position = start + (end - start) * t;
-        const low = Math.floor(position);
-        const high = Math.ceil(position);
-        const fraction = position - low;
-        const a = horizontal ? read(fixed, low) : read(low, fixed);
-        const b = horizontal ? read(fixed, high) : read(high, fixed);
-        return a === undefined || b === undefined ? undefined : a + (b - a) * fraction;
-      };
+      const rowCoordinate = (row: number): number => this.#surface.rowCoordinate?.(row) ?? row;
+      const colCoordinate = (col: number): number => this.#surface.colCoordinate?.(col) ?? col;
+      const rowStart = rowCoordinate(r0);
+      const rowEnd = rowCoordinate(r1);
+      const colStart = colCoordinate(c0);
+      const colEnd = colCoordinate(c1);
+      if (![rowStart, rowEnd, colStart, colEnd].every(Number.isFinite) || rowStart === rowEnd || colStart === colEnd) {
+        transaction.cancel();
+        return false;
+      }
       for (const position of positions) {
-        const u = c1 === c0 ? 0 : (position.col - c0) / (c1 - c0);
-        const v = r1 === r0 ? 0 : (position.row - r0) / (r1 - r0);
+        const u = (colCoordinate(position.col) - colStart) / (colEnd - colStart);
+        const v = (rowCoordinate(position.row) - rowStart) / (rowEnd - rowStart);
+        if (!Number.isFinite(u) || !Number.isFinite(v)) continue;
         const base = bilinear(u, v);
         let target = base;
         if (method2d === 'boundary') {
-          const top = edgeSample(r0, c0, c1, u, true);
-          const bottom = edgeSample(r1, c0, c1, u, true);
-          const left = edgeSample(c0, r0, r1, v, false);
-          const right = edgeSample(c1, r0, r1, v, false);
+          const top = read(r0, position.col);
+          const bottom = read(r1, position.col);
+          const left = read(position.row, c0);
+          const right = read(position.row, c1);
           if (top === undefined || bottom === undefined || left === undefined || right === undefined) continue;
           target = (1 - v) * top + v * bottom + (1 - u) * left + u * right - base;
         }
