@@ -175,11 +175,14 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     placeMarker(markerB, b);
   };
 
+  const setupGroups = new Map<string, SetupGroup>();
+  let syncSetupSummaries = (): void => {};
+  const scheduleSetupSummaries = (): void => queueMicrotask(syncSetupSummaries);
+
   // Slice 2: collapse the existing production controls into the v50 compact setup
   // vocabulary. Controls are moved, not cloned, so all current listeners/state owners
   // remain authoritative. Native <details> provides disclosure without a parallel
   // popup/window framework.
-  const setupGroups = new Map<string, SetupGroup>();
   if (quickControls) {
     const qualification = createSetupGroup('qualification', 'Qualification');
     const scopeGroup = createSetupGroup('scope', 'Scope');
@@ -250,7 +253,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       quickControls.append(advancedButton);
     }
 
-    const syncSetupSummaries = (): void => {
+    syncSetupSummaries = (): void => {
       const summary = (id: string, text: string): void => {
         const node = setupGroups.get(id)?.summaryValue;
         if (node) node.textContent = text;
@@ -283,22 +286,37 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
 
     root.addEventListener('change', syncSetupSummaries);
     root.addEventListener('input', syncSetupSummaries);
-    queueMicrotask(syncSetupSummaries);
+    scheduleSetupSummaries();
   }
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
-    editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
+    setActive(active) {
+      inner.setActive(active);
+      if (active) scheduleSetupSummaries();
+    },
+    editDelayCells(positions, edit) {
+      const changed = inner.editDelayCells(positions, edit);
+      scheduleSetupSummaries();
+      return changed;
+    },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
       renderScope(context);
+      scheduleSetupSummaries();
       return changed;
     },
-    setTuneModel(model, sourceName) { return inner.setTuneModel(model, sourceName); },
-    refresh() { inner.refresh(); },
+    setTuneModel(model, sourceName) {
+      const changed = inner.setTuneModel(model, sourceName);
+      scheduleSetupSummaries();
+      return changed;
+    },
+    refresh() {
+      inner.refresh();
+      scheduleSetupSummaries();
+    },
   };
 }
