@@ -35,17 +35,68 @@ Superseded by #462 and closed as historical evidence only:
 
 PR #460 — `docs/observability-architecture-plan` — contained unique diagnostics/observability architecture rather than disposable stale code. Its authority/research documents were ported onto the current accepted `main` tree in `aa92d48f2671a1cd2f75f3b4fbcfb66e4dc35f19`, after which the stale divergent PR was closed.
 
-### Remote branch classification
+## Preservation audit — exhaustive remaining-ref pass
+
+A second, stricter pass was performed before authorizing branch deletion. Git commit uniqueness was **not** treated as proof of useful uniqueness. Each remaining non-deployment branch was checked against current `main` and classified using these categories:
+
+1. **Identical on `main`** — same content/blob or branch is already an ancestor.
+2. **Superseded by newer implementation on `main`** — same purpose is implemented by the accepted, stronger/current owner model.
+3. **Rejected/experimental historical implementation** — useful provenance but intentionally not current behavior.
+4. **Historical documentation already preserved elsewhere** — rationale/evidence retained in current docs or Git/PR history.
+5. **Genuinely useful and missing from `main`** — must be ported before branch deletion.
+
+### Result
+
+**Category-5 count: 0.**
+
+No remaining development branch contains a production behavior, regression contract, architecture decision or research artifact that still needs to be rescued onto `main` before the ref is deleted.
+
+### Branch-by-branch disposition
+
+| Branch | Classification | Preservation evidence / reason |
+| --- | --- | --- |
+| `main` | KEEP | Sole product/continuation authority. |
+| `browser-previews` | KEEP | Generated/deployment preview state; not product authority but still operational infrastructure. |
+| `integrate/points-2-11-clean` | 1 | Direct ancestor of current `main`: comparison is 0 commits ahead and 17 behind. Contains no unique content. |
+| `infra/pr-browser-previews` | 1 + 2 | `docs/PR_BROWSER_PREVIEWS.md` and `vite.config.ts` are byte-identical to `main`; `main` has the newer/improved preview workflow with guarded cancellation, exact preview-path verification and safer commenting. |
+| `docs/observability-architecture-plan` | 1 + 2 + 4 | The three irreplaceable artifacts are exact blobs on `main`: `OBSERVABILITY.md` = `65867440…`, performance research = `03b07745…`, D-058 decision = `f8a0bfd4…`. Current surrounding status/authority docs are newer on `main`. |
+| `fix/large-segment-spread-overflow` | 1 + 2 | The 320k Fueling and Ignition regression tests are exact blobs on `main`; the VE evidence-map 320k test is exact; the cell-evidence large-visit regression is present in a stronger form on `main` (including an interior negative timestamp/extrema check). Runtime fixes are represented by accepted point-1/main code. |
+| `diagnostic/ve-session-guard-only` | 2 | Early analyzer-page guard for unchanged VE context. Current source/session ownership is stronger and explicitly tested on `main`; it distinguishes source identity/revision/sample/catalog semantics from navigation-only updates. |
+| `fix/ve-owner-state-retention` | 2 | Earlier owner-level Logger→Analyzer retention plus Result View presentation caching. Superseded by accepted point-2/3 ownership and final model-derived Result View source authority. |
+| `perf/general-ui-tracing` | 2 | Misleading branch name: it is **identical** to `fix/ve-owner-state-retention` at commit `457847785b67d9c073a0a89bf06cc1f5d26f7ebe`. There is no separate tracing feature hidden here. |
+| `fix/ve-result-retention` | 3 | Contains the rejected `ve-analyzer-view-v10` / session-retention wrapper approach. The later investigation established that wrapper-stack direction as unsafe; current owner-level session behavior replaces it. Its tests encode the obsolete wrapper identity model rather than a missing current contract. |
+| `fix/ve-session-authority` | 2 | Earlier standalone session-identity helper/test. Current `sameVeSourceContext` plus lifecycle browser regression is stronger: source identity, sample count, validity revision, catalog semantics, selected scope and tune changes are covered while unrelated navigation refreshes do not destroy Full Log authority. |
+| `test/codex-point2-browser` | 2 + 4 | First browser-validation stage for current point-2 lineage. Superseded by later point-3/result-view stages and the accepted main lifecycle regression. |
+| `test/codex-point3-browser` | 2 + 4 | Direct one-commit successor to point-2 browser branch; retained-primary evidence behavior is in #462/current main with broader tests. |
+| `fix/ve-result-view-untouched-values` | 1 + 2 | Direct successor to point-3 line. Its Result View unit test is byte-identical to current `main`; final main additionally has full-stack Result View browser coverage and accepted heat/source-authority repairs. |
+| `temp/epicscope-fixes-points-1-2-20261015` | 2 + 4 | Temporary parent/staging line for the old points integration. No independent feature family; current accepted clean integration was reconstructed on production `main`. |
+| `integrate/points-2-11-20261015` | 2 + 4 | Old divergent integration line containing point-2/3 + points-5–11 staging and documentation. Its useful scope was rebuilt cleanly in #462; its only extra step over the temp line was the integration note, which is preserved in repository history/current docs. |
+
+### Specific regression-contract checks
+
+The audit deliberately checked the places most likely to hide useful orphan tests:
+
+- **Large-input safety:** the >320k Fueling, Ignition and VE evidence-map tests from `fix/large-segment-spread-overflow` are already on `main`; the cell-evidence test on `main` is stronger than the branch version.
+- **Session identity/retention:** the old `fix/ve-session-authority` tests covered sample-count, A/B/saved-range and channel identity. Current browser lifecycle coverage explicitly verifies Full Log ignores unrelated A/B movement while selected A/B/saved-range changes invalidate; source identity, catalog, sample count, validity revision and tune changes invalidate and stale pending work cannot commit.
+- **Result View fallback:** the final unit test from `fix/ve-result-view-untouched-values` is exactly present on `main`, and `main` adds full-stack browser coverage plus accepted source-authority/heat-map behavior.
+- **Observability research:** the architecture, performance research and D-058 decision blobs are exactly preserved on `main` before the old PR/branch is discarded.
+- **Preview infrastructure:** documentation/base-path support is identical and the workflow on `main` is newer.
+
+### What branch uniqueness means here
+
+Several old branches remain one or more commits “ahead” of `main` according to Git graph topology. That does **not** mean they hold missing product work. The accepted #462 integration was deliberately reconstructed/rebased onto the production line, so equivalent or stronger changes often have different commit identities. The preservation decision is therefore based on file/test/behavior authority and accepted runtime evidence, not `ahead_by` alone.
+
+## Remote branch classification after preservation audit
 
 Product authority:
 
 - `main`
 
-Infrastructure/deployment ref that should remain:
+Infrastructure/deployment ref to retain:
 
-- `browser-previews` — generated/deployment preview state, not product authority.
+- `browser-previews`
 
-Superseded/historical refs safe to remove after a final head check:
+Audited development refs with **zero category-5 material**, therefore safe to delete after confirming their heads have not moved since this audit:
 
 - `diagnostic/ve-session-guard-only`
 - `docs/observability-architecture-plan`
@@ -62,19 +113,11 @@ Superseded/historical refs safe to remove after a final head check:
 - `test/codex-point2-browser`
 - `test/codex-point3-browser`
 
-Audit notes:
-
-- `fix/large-segment-spread-overflow` contains point-1 large-log safety work already represented in accepted `main` history/tests.
-- `fix/ve-result-retention` contains the rejected v10/session-wrapper direction and is superseded by current owner-level state retention.
-- `fix/ve-session-authority`, `diagnostic/ve-session-guard-only`, the point integration/temp branches and browser-test branches are all historical staging/validation lines now represented by #462.
-- `perf/general-ui-tracing` is misleadingly named; its lineage is older VE ownership/result work, not an independent performance feature that needs preservation.
-- `infra/pr-browser-previews` is older than the preview workflow already present on `main`. Current `main` has the improved `/preview` workflow, including guarded cancellation, exact preview base-path verification and non-fatal preview-link commenting, so the source branch is redundant.
-
 ## Branch deletion tooling limitation
 
 The GitHub connector available during the 2026-10-16 cleanup exposes PR close/update and branch-ref inspection/update, but it does **not** expose remote branch deletion.
 
-Therefore the cleanup closes obsolete PRs and classifies obsolete refs but must not falsely claim the remote refs were physically deleted. The superseded refs above can be deleted safely with ordinary Git/GitHub branch controls after verifying no new commits were added after this audit.
+Therefore the cleanup closes obsolete PRs and fully audits/classifies obsolete refs but must not falsely claim the remote refs were physically deleted. The audited development refs above can be deleted safely with ordinary Git/GitHub branch controls **provided their head SHAs have not changed after this audit**.
 
 Do not delete `main` or the active `browser-previews` deployment ref.
 
