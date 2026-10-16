@@ -1,0 +1,28 @@
+name: VE v50 table tool preference coverage
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage table tool preference browser coverage'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Apply browser preference coverage
+        run: python scripts/ve-v50-table-tool-preference-tests.py
+      - name: Commit patch and remove temporary files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-table-tool-preference-tests.yml scripts/ve-v50-table-tool-preference-tests.py
+          git add tests/web/ve-shared-table-interaction.browser.mjs
+          git commit -m "Cover persisted shared table tool settings [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
