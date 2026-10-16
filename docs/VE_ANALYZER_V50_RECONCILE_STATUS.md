@@ -54,6 +54,10 @@ After current `main` was merged forward, PR #465's added Shift-click/live-previe
 
 Web CI run `38982461290` passed after physical-axis linear/2D interpolation and nonuniform shape-preserving PCHIP were introduced. TypeScript, the full unit suite (including uneven-axis cases), production build, staged Chromium and fallback Chromium all passed.
 
+### Persisted tools/lifecycle baseline
+
+Web CI run `38983200326` passed after the table-tool preference owner, explicit H/V/2D controls, contextual right-click tool configuration, browser persistence coverage and Analyzer shell-disposal cleanup were present. TypeScript, full Vitest, production build, staged Chromium and Worker-disabled fallback Chromium all passed.
+
 ## Semantic Lambda surface
 
 ### Dedicated delay-surface authority
@@ -117,7 +121,7 @@ The frozen v50 contract calls for configurable `+ / −`, Smooth, H/V/2D interpo
 - a validated/restricted-storage-safe state owner stores only the currently implemented Lambda Delay tool settings under `epicscope.veAnalyzer.tableTools.v1`;
 - no guessed VE/Target defaults are persisted before real mutable VE/Target adapters exist;
 - Lambda defaults match the frozen reference: 5 ms adjustment step, Smooth 0.5, linear 1D, bilinear 2D, interpolation strength 1 with clamp enabled, Brush +5 / radius 1 / strength 0.7 / smooth falloff;
-- the toolbar now exposes explicit H, V and 2D interpolation commands rather than hiding direction inside one fixed command;
+- the toolbar exposes explicit H, V and 2D interpolation commands;
 - right-click `+ / −`, Smooth, H/V/2D interpolation or Brush opens a compact contextual configuration popover;
 - Brush wheel radius changes update the same persisted preference owner;
 - pins, selection/anchor and active Brush are still session-only interaction state and never persisted;
@@ -127,7 +131,13 @@ The contextual configuration is deliberately a lightweight shared-table presenta
 
 ## Lifecycle cleanup
 
-The shared table controller already scopes document pointer/keyboard listeners to active gestures, disconnects its delay-host observer while inactive and cancels active edits on authority/lifecycle replacement. One remaining remount case was closed at the application boundary: shell disposal now deactivates Analyzer before replacing its DOM, allowing an active VE domain to disconnect its observer and gesture state even when the whole app shell is remounted without an intervening navigation event.
+The shared table controller scopes document pointer/keyboard listeners to active gestures, disconnects its delay-host observer while inactive and cancels active edits on authority/lifecycle replacement. Shell disposal also deactivates Analyzer before replacing its DOM, so an active VE domain disconnects its observer/gesture state even when the whole app shell is remounted without an intervening navigation event.
+
+## Responsive/visual acceptance gate
+
+The normal browser acceptance runner now includes v50 geometry checks at 1024, 1366 and 1920 px desktop widths. For each width it verifies that the VE root and primary work surfaces remain bounded, the table remains an internally scrollable dominant surface, every compact setup disclosure stays inside the viewport, and the Logger range handoff remains visible. The runner also captures a VE screenshot for each width in both staged and Worker-disabled fallback runs.
+
+This gate is intentionally running before user hands-on acceptance so any deterministic overflow/layout defect is fixed first. Screenshots are evidence for visual review, not a substitute for the user's final UI test.
 
 ## Current-main synchronization
 
@@ -135,7 +145,7 @@ The reconciliation branch was merged forward to current `main` after PR #465 lan
 
 ## Current validation gate
 
-A full Web CI run is required on the current branch head after persisted tool configuration and lifecycle cleanup. It must pass:
+A full Web CI run is required on the current branch head with responsive acceptance enabled. It must pass:
 
 1. TypeScript type-check.
 2. Full Vitest suite, including uneven-axis interpolation tests.
@@ -146,11 +156,12 @@ A full Web CI run is required on the current branch head after persisted tool co
 7. Shared v50 selection/editing/Brush/undo/pin/scope acceptance.
 8. Persisted right-click tool configuration and explicit H/V/2D controls.
 9. Visual reversed-row Arrow navigation acceptance.
-10. Existing Result View, Logger context, source-integrity, observability and Diagnostics regressions.
+10. Responsive geometry at 1024/1366/1920 plus screenshot capture.
+11. Existing Result View, Logger context, source-integrity, observability and Diagnostics regressions.
 
 ## Remaining work after this gate
 
-- responsive/visual browser acceptance at representative desktop widths and table layouts;
+- inspect responsive screenshots and fix any visual issue supported by browser evidence;
 - user hands-on UI test from this branch;
 - fixes from that manual acceptance, if any, followed by the full gate again;
 - final Codex branch audit against current `main`, narrowly fixing justified defects/cleanup and deferring speculative redesign;
