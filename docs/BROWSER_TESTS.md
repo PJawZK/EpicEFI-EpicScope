@@ -11,7 +11,7 @@ CHROME_BIN=chromium npm run test:browser
 
 The command starts its own loopback Vite server and headless Chrome on dynamically allocated ports. It creates a temporary Chrome profile, uses separate incognito contexts for staged and forced Worker-disabled fallback imports, and closes its contexts, Chrome and Vite before removing the profile. It does not connect to an existing browser or application server. Ctrl-C and SIGTERM follow the same cleanup path. Each run has a ten-minute deadline, with bounded DevTools and readiness waits.
 
-The selected suite runs **286 checks per configuration, 572 total**:
+The selected suite runs **288 checks per configuration, 576 total**:
 
 | Coverage | Checks per configuration |
 | --- | ---: |
@@ -93,3 +93,5 @@ Integration target 5 adds seven checks/configuration for explicit integrity owne
 Integration target 6 adds three CPU checks/configuration with deterministic indexed-read budgets: >320k sorted marker viewport selection, 4096 visible markers sharing a >320k-record invalid span, and prepared >320k-record activation reusing supplied statistics without rescanning scale/source reads. Native bridge/popup/lifecycle checks remain. Draw-local bridge cursors rebuild for each draw; mutable validity is not cached across draws. No wall-clock thresholds or original-recording speedup claim.
 
 Integration target 7 adds eight checks/configuration: two complete native Diagnostics download/cancel/Escape workflows after actual shell corrupt/recovered and clean replacement MLG imports (six checks), plus explicit exported integrity metadata and obsolete-finding removal checks (two). Earlier 556 checks remain. See SOURCE_INTEGRITY_ACCEPTANCE.md for coverage and original-recording/hardware gates.
+
+Lambda Delay selection fix adds two checks/configuration: component Shift-click range/retained anchor/direct numeric preview/single semantic commit, and native mouse Shift-click plus digit/insertText preview/Enter without F2. Anchorless Shift-click is a single selection. Existing drag/native/F2, cancel/blur and obsolete-work checks remain. Live preview does not mutate working delay authority until Enter or blur.

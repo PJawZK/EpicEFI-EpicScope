@@ -1,5 +1,17 @@
 # EpicScope Handoff
 
+## Lambda Delay Shift-click selection fix (2026-10-17)
+
+Branch: `fix/lambda-delay-shift-selection-20261017`; base `a54bd21` (same production tree as main merge `dd83819`). Local/unpublished. The separate VE v50 UI branch is untouched.
+
+User reproduction clarified: separate Lambda Delay Table, Shift-click a second cell to select a range, then type a number for live preview. F2 single-cell editing remained functional. Full-shell native mouse/keyboard probe confirmed current pointerdown always called selectSingle, replacing the anchor/selection even with Shift. A single cell could still preview/commit values; range formation was missing. This establishes the current defect, not the historical commit that introduced it.
+
+Minimal v5 input-owner fix: when Shift is held and a valid anchor exists, selectRectangle from the retained anchor to the clicked cell and focus it; otherwise preserve existing single-cell behavior. Existing drag/inline preview/Enter/blur/Escape and semantic batch authority are reused. No new observers/listeners, full-log passes or new state authority.
+
+Regression adds anchorless Shift-click, anchored expansion/contraction, direct numeric preview across all selected cells while semantic values/revision remain unchanged, and one commit/invalidation/render with no trace loads. Native browser adds real Shift-click plus digit/insertText (no F2), checks preview before Enter and then one batch commit. Existing drag/F2/native and stale-source/analysis tests remain. Full-shell 16x16 probe before/after shows selection 1→2, both cells preview 175 with authority 100, then both commit 175.
+
+Validation: 132 files / 814 automated tests, production build/typecheck and 576 Chromium checks (288/configuration) passed. Native downloaded ZIP CRC and diff checks passed. Original tests retained, no assertion disabled. Evidence: `/workspace/epicscope-lambda-delay-shift-fix/evidence/`. No GitHub publication authorized/performed for this fix. Stop after this bug fix. Account usage is not exposed.
+
 ## Integration target 7 — combined acceptance (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`; production candidate `1d943d9`. This target adds only browser acceptance/docs, not production changes. Main remains unchanged and this integration series is unpublished.

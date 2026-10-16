@@ -218,7 +218,11 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (!cell || !delayHost.contains(cell)) return;
     event.preventDefault();
     event.stopPropagation();
-    selectSingle(cell);
+    const position = cellCoordinates(cell);
+    if (event.shiftKey && anchor && position) {
+      selectRectangle(anchor, keyFor(position.row, position.col));
+      cell.focus({ preventScroll: true });
+    } else selectSingle(cell);
     dragPointerId = event.pointerId;
     dragMoved = false;
     cell.setPointerCapture?.(event.pointerId);
