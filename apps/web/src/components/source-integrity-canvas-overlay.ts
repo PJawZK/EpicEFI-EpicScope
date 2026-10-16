@@ -159,10 +159,38 @@ export function createSourceIntegrityCanvasOverlay(
   let markers: readonly SourceIntegrityMarker[] = [];
   let hitTargets: readonly MarkerHitTarget[] = [];
 
+  const graphRoot = canvas.closest<HTMLElement>('.graph-viewport');
+  const notice = graphRoot?.querySelector<HTMLElement>('.graph-toast');
+  const noticeMessage = graphRoot?.querySelector<HTMLElement>('.graph-toast-message');
+
+  const hideNotice = (): void => {
+    if (!notice) return;
+    notice.hidden = true;
+    notice.classList.remove('graph-toast--leaving');
+  };
+
+  const showPersistentNotice = (message: string): void => {
+    if (!notice || !noticeMessage) {
+      showMessage(message);
+      return;
+    }
+    noticeMessage.textContent = message;
+    notice.hidden = false;
+    notice.classList.remove('graph-toast--leaving');
+  };
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!notice || notice.hidden) return;
+    const target = event.target;
+    if (target instanceof Node && notice.contains(target)) return;
+    hideNotice();
+  }, true);
+
   window.addEventListener(SOURCE_INTEGRITY_DIAGNOSTICS_EVENT, (event) => {
     const detail = (event as CustomEvent<SourceIntegrityDiagnosticsEventDetail>).detail;
     markers = detail?.markers ?? [];
     hitTargets = [];
+    hideNotice();
   });
 
   canvas.addEventListener('click', (event) => {
@@ -175,7 +203,7 @@ export function createSourceIntegrityCanvasOverlay(
       event.clientY - rect.top,
     );
     if (!hit) return;
-    showMessage(markerExplanation(hit.marker));
+    showPersistentNotice(markerExplanation(hit.marker));
   });
 
   return {
