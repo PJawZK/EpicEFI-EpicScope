@@ -38,7 +38,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await select('.ve-analyzer-view select[data-role=load]','ini:map');
  await file('input[data-ve-analyzer="load-delay-file"]',fixture('delay.json'));
  await wait('!document.querySelector(".ve-workbench-run").disabled');
- await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.onclick.call(cell,new PointerEvent('click'));document.querySelector('[data-ve-analyzer="delay-cell-working"]').value='125';document.querySelector('[data-ve-analyzer="delay-cell-apply"]').click();})()`));
+ await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.focus();cell.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));const input=document.querySelector('.ve-table-inline-input');if(!input)throw Error('Shared delay editor did not open');input.value='125';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`));
  await step('Run Analysis',async()=>{await evaluate('document.querySelector(".ve-workbench-run").click()',60000);await wait('document.querySelector("[data-ve-analyzer=stage]").textContent.startsWith("Guarded")');});
  await runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,downloadDir,record});
  await record('anomaly-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runIntegratedAnomalyChecks();})()`,60000));
@@ -59,6 +59,8 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('activity checks',{result:activity});await record('activity-result.json',activity);
  const delayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.runVeDelayEditingChecks();})()`,60000);
  log('delay edit checks',{result:delayEdits});await record('delay-edit-result.json',delayEdits);
+ const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);
+ log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);
 
  await record('result-view.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-analyzer-result-view.browser.mjs');return m.runVeAnalyzerResultViewChecks();})()`,60000));
  // Final integration gate: native shell import -> authoritative Parser state ->
