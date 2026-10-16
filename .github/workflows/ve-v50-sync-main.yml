@@ -1,0 +1,28 @@
+name: VE v50 sync current main
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.event.head_commit.message == 'Stage v50 reconciliation sync with current main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+          fetch-depth: 0
+      - name: Merge current main into reconciliation branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git rm .github/workflows/ve-v50-sync-main.yml
+          git commit -m "Sync v50 reconciliation with current main [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
