@@ -202,6 +202,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let delayGeneration = 0;
   let delayLoadGeneration = 0;
   let sessionRevision = 0;
+  let delaySurfaceGeneration = 0;
   let primaryAnalysis: VeAnalyzerPrimaryAnalysis | undefined;
   const primaryAnalysisListeners = new Set<() => void>();
   const publishPrimaryAnalysis = (next: VeAnalyzerPrimaryAnalysis | undefined): void => {
@@ -541,6 +542,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (next === table) return false;
     if (workingDelayTable) workingDelayTable = next;
     else delayRecommendation = next;
+    delaySurfaceGeneration += 1;
     invalidate();
     return true;
   };
@@ -558,6 +560,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (next === table) return false;
     if (workingDelayTable) workingDelayTable = next;
     else delayRecommendation = next;
+    delaySurfaceGeneration += 1;
     invalidate();
     return true;
   };
@@ -567,8 +570,11 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       const table = workingDelayTable ?? delayRecommendation;
       return table ? {
         revision: sessionRevision,
+        authorityGeneration: delaySurfaceGeneration,
         rows: table.rows,
         cols: table.cols,
+        rpmBins: table.rpmBins,
+        loadBins: table.loadBins,
         values: table.cells.map((cell) => cell.workingMs),
       } : undefined;
     },
@@ -577,8 +583,11 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   });
 
   const clearDelayRecommendation = (): void => {
+    const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;
     sessionRevision += 1;
-    delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery();
+    delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined;
+    if (removesEditableSurface) delaySurfaceGeneration += 1;
+    renderDelayDiscovery();
   };
 
   const publishReadiness = (next: VeReadinessState): void => {
@@ -693,12 +702,18 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       return;
     }
     if (generation !== delayGeneration) { ownerEvidence.event('ve.delay-discovery.stale', { generation, currentGeneration: delayGeneration }); return; }
-    const ranges = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); const actual = ranges.get(actualId); const fuel = ranges.get(fuelId); if (!actual || !fuel) { delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery(); return; }
+    const ranges = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); const actual = ranges.get(actualId); const fuel = ranges.get(fuelId); if (!actual || !fuel) {
+      const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;
+      delayDiscovery = undefined; delayRecommendation = undefined;
+      if (removesEditableSurface) delaySurfaceGeneration += 1;
+      renderDelayDiscovery(); return;
+    }
     delayDiscovery = analyzeAfrDelay({ actualAfr: actual, fuelCommand: fuel, ...(rpmId && ranges.get(rpmId) ? { rpm: ranges.get(rpmId)! } : {}), ...(loadId && ranges.get(loadId) ? { load: ranges.get(loadId)! } : {}) }, {
       commandDeltaThreshold: positiveSetting('delay-command-threshold')!, afrResponseThreshold: positiveSetting('delay-response-threshold')!, searchWindowMs: positiveSetting('delay-search-window')!, minimumEventSpacingMs: nonNegativeSetting('delay-event-spacing')!, responsePolarity: 'inverse',
     });
     if (generation !== delayGeneration) { ownerEvidence.event('ve.delay-discovery.stale', { generation, currentGeneration: delayGeneration }); return; }
     delayRecommendation = buildVeDelayTable(delayDiscovery.events, veRpm, veLoad, { minimumMeasuredEvents: Math.max(1, Math.floor(positiveSetting('delay-min-events')!)), originLabel: 'current log' });
+    if (!workingDelayTable) delaySurfaceGeneration += 1;
     selectedDelayCell = undefined;
     ownerEvidence.event('ve.delay-discovery.published', { generation });
     renderDelayDiscovery(); renderReadiness();
@@ -796,7 +811,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     ownerEvidence.event('ve.rebuild', { generation: runGeneration }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
     summary.replaceChildren();
     stageText.textContent = 'Session inputs changed. Verify setup and Run Analysis; no tune state is modified.';
+    const hadEditableDelaySurface = Boolean(workingDelayTable ?? delayRecommendation);
     controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined; selectedDelayCell = undefined;
+    if (hadEditableDelaySurface) delaySurfaceGeneration += 1;
     const veSelect = select('ve-table')!; const targetSelect = select('target-table')!; const scaleSelect = select('mixture-scale')!; const scopeSelect = select('scope')!; const presetSelect = select('preset')!; const correctionModeSelect = select('fuel-correction-mode')!;
     veSelect.replaceChildren(new Option('(select VE table)', ''), ...veTableCandidates(tuneModel).map((entry) => new Option(entry.name, entry.name))); veSelect.value = remembered.get('ve-table') && [...veSelect.options].some((option) => option.value === remembered.get('ve-table')) ? remembered.get('ve-table')! : preferredVeTableName(tuneModel) ?? '';
     targetSelect.replaceChildren(new Option('(select target mixture table)', ''), ...targetMixtureTableCandidates(tuneModel).map((entry) => new Option(`${entry.name}${entry.units ? ` [${entry.units}]` : ''}`, entry.name))); targetSelect.value = remembered.get('target-table') && [...targetSelect.options].some((option) => option.value === remembered.get('target-table')) ? remembered.get('target-table')! : preferredTargetMixtureTableName(tuneModel, veSelect.value) ?? '';
@@ -831,7 +848,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     for (const role of ['delay-command-threshold', 'delay-search-window', 'delay-event-spacing', 'delay-min-events'] as const) { const field = input(role); if (field) field.onchange = () => { clearDelayRecommendation(); renderReadiness(); }; }
     const responseField = input('delay-response-threshold'); if (responseField) responseField.onchange = () => { responseField.dataset.auto = 'false'; clearDelayRecommendation(); renderReadiness(); };
     grabDelayButton.onclick = () => { void runDelayDiscovery(); };
-    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); selectedDelayCell = undefined; invalidate(); };
+    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); delaySurfaceGeneration += 1; selectedDelayCell = undefined; invalidate(); };
     saveDelayButton.onclick = () => { if (!workingDelayTable) return; downloadText('EpicScope-lambda-delay-table.json', serializeVeDelayTable(workingDelayTable, workingDelayTable.originLabel)); };
     loadDelayButton.onclick = () => { loadDelayFile.value = ''; loadDelayFile.click(); };
     loadDelayFile.onchange = () => {
@@ -842,7 +859,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       void file.text().then((text) => {
         if (generation !== delayLoadGeneration) { ownerEvidence.event('ve.delay-file.stale', { generation, currentGeneration: delayLoadGeneration }); return; }
         try {
-          workingDelayTable = parseVeDelayTableFile(text, file.name); selectedDelayCell = undefined; invalidate();
+          workingDelayTable = parseVeDelayTableFile(text, file.name); delaySurfaceGeneration += 1; selectedDelayCell = undefined; invalidate();
           ownerEvidence.event('ve.delay-file.published', { generation });
           delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Current-log discovery remains separate until Use recommendation is pressed.`;
         } catch (error) {

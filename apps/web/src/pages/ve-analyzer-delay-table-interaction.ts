@@ -47,7 +47,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
 
   beginTransaction(label: string): TableEditTransaction {
     const snapshot = this.#owner.snapshot();
-    const revision = snapshot?.revision;
+    const authorityGeneration = snapshot?.authorityGeneration;
     const rows = snapshot?.rows ?? 0;
     const cols = snapshot?.cols ?? 0;
     const values = snapshot ? [...snapshot.values] : [];
@@ -75,7 +75,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
         if (!active) return false;
         active = false;
         const current = this.#owner.snapshot();
-        if (!snapshot || revision === undefined || !current || current.revision !== revision || changed.size === 0) return false;
+        if (!snapshot || authorityGeneration === undefined || !current || current.authorityGeneration !== authorityGeneration || changed.size === 0) return false;
         const before: VeDelayCellValueEdit[] = [];
         const after: VeDelayCellValueEdit[] = [];
         for (const [index, value] of changed) {
