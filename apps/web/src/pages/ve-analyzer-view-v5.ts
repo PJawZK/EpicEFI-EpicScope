@@ -46,6 +46,8 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   let previewOriginal = new Map<CellKey, string>();
   let committing = false;
 
+  const sharedInteractionOwnsInput = (): boolean => delayHost.dataset.tableInteractionOwner === 'shared';
+
   const cells = (): HTMLTableCellElement[] => [...delayHost.querySelectorAll<HTMLTableCellElement>('td[data-delay-row][data-delay-col]')];
 
   const cellFor = (key: CellKey): HTMLTableCellElement | undefined => {
@@ -202,7 +204,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     target instanceof Element ? target.closest<HTMLTableCellElement>('td[data-delay-row][data-delay-col]') : null;
 
   root.addEventListener('pointerdown', (event) => {
-    if (committing || inlineInput) return;
+    if (sharedInteractionOwnsInput() || committing || inlineInput) return;
     const cell = closestDelayCell(event.target);
     if (!cell || !delayHost.contains(cell)) return;
     event.preventDefault();
@@ -214,7 +216,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('pointermove', (event) => {
-    if (committing || dragPointerId !== event.pointerId || !anchor || inlineInput) return;
+    if (sharedInteractionOwnsInput() || committing || dragPointerId !== event.pointerId || !anchor || inlineInput) return;
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     const cell = closestDelayCell(hit);
     if (!cell || !delayHost.contains(cell)) return;
@@ -226,7 +228,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('pointerup', (event) => {
-    if (committing || dragPointerId !== event.pointerId) return;
+    if (sharedInteractionOwnsInput() || committing || dragPointerId !== event.pointerId) return;
     const pointerType = event.pointerType;
     dragPointerId = undefined;
     event.preventDefault();
@@ -236,7 +238,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('click', (event) => {
-    if (committing) return;
+    if (sharedInteractionOwnsInput() || committing) return;
     const cell = closestDelayCell(event.target);
     if (!cell || !delayHost.contains(cell)) return;
     event.preventDefault();
@@ -244,7 +246,7 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   root.addEventListener('keydown', (event) => {
-    if (committing || inlineInput || selected.size === 0) return;
+    if (sharedInteractionOwnsInput() || committing || inlineInput || selected.size === 0) return;
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
     if (/^[0-9.]$/.test(event.key)) {
@@ -277,6 +279,12 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
   }, { capture: true });
 
   const observer = new MutationObserver(() => {
+    if (sharedInteractionOwnsInput()) {
+      selected.clear();
+      anchor = undefined;
+      dragPointerId = undefined;
+      return;
+    }
     if (inlineInput && inlineRevision !== inner.sessionRevision) endInlineEdit(false);
     if (!inlineInput && !committing) {
       refreshSelection();
