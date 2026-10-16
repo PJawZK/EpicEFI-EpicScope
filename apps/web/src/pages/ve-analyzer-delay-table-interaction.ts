@@ -7,6 +7,8 @@ import { TableInteractionSession, type TableEditSurface, type TableEditTransacti
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import '../styles/ve-table-interaction-dom.css';
 
+const HISTORY_LIMIT = 100;
+
 interface HistoryEntry {
   readonly before: readonly VeDelayCellValueEdit[];
   readonly after: readonly VeDelayCellValueEdit[];
@@ -85,7 +87,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
           after.push({ row, col, workingMs: value });
         }
         if (after.length === 0 || !this.#owner.applyValues(after)) return false;
-        this.#undo.push({ before, after });
+        this.#pushUndo({ before, after });
         this.#redo.length = 0;
         return true;
       },
@@ -109,6 +111,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
       return false;
     }
     this.#redo.push(entry);
+    if (this.#redo.length > HISTORY_LIMIT) this.#redo.shift();
     return true;
   }
 
@@ -119,7 +122,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
       this.#redo.push(entry);
       return false;
     }
-    this.#undo.push(entry);
+    this.#pushUndo(entry);
     return true;
   }
 
@@ -128,12 +131,17 @@ class VeDelayTableEditSurface implements TableEditSurface {
     this.#redo.length = 0;
   }
 
+  #pushUndo(entry: HistoryEntry): void {
+    this.#undo.push(entry);
+    if (this.#undo.length > HISTORY_LIMIT) this.#undo.shift();
+  }
+
   #recordExplicit(positions: readonly TableCellPosition[], action: (before: readonly VeDelayCellValueEdit[]) => boolean): boolean {
     const before = positions.map(({ row, col }) => ({ row, col, workingMs: snapshotValue(this.#owner, row, col) }));
     if (!action(before)) return false;
     const after = positions.map(({ row, col }) => ({ row, col, workingMs: snapshotValue(this.#owner, row, col) }));
     if (before.every((entry, index) => sameValue(entry.workingMs, after[index]?.workingMs))) return false;
-    this.#undo.push({ before, after });
+    this.#pushUndo({ before, after });
     this.#redo.length = 0;
     return true;
   }
@@ -192,13 +200,15 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
 
   const bind = (): void => dom.bindTable(currentDelayTable(delayHost));
   const resetInteractionSession = (): void => {
+    dom.cancelActiveInteraction();
     dom.setBrushActive(false);
     session.clearSelection();
     session.clearPins();
     surface.resetHistory();
   };
   const observer = new MutationObserver(bind);
-  observer.observe(delayHost, { childList: true });
+  const observe = (): void => observer.observe(delayHost, { childList: true });
+  observe();
 
   for (const selector of ['[data-ve-analyzer="grab-delay"]', '[data-ve-analyzer="use-delay"]', '[data-ve-analyzer="load-delay"]'] as const) {
     root.querySelector<HTMLButtonElement>(selector)?.addEventListener('click', resetInteractionSession, { capture: true });
@@ -208,13 +218,21 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
   return {
     element: root,
     setActive(active) {
-      if (!active) dom.setBrushActive(false);
+      if (!active) {
+        dom.cancelActiveInteraction();
+        dom.setBrushActive(false);
+        observer.disconnect();
+      }
       inner.setActive(active);
-      queueMicrotask(bind);
+      if (active) {
+        observe();
+        queueMicrotask(bind);
+      }
     },
     editDelayCells(positions, edit) {
       const changed = inner.editDelayCells(positions, edit);
       if (changed) {
+        dom.cancelActiveInteraction();
         surface.resetHistory();
         queueMicrotask(bind);
       }
