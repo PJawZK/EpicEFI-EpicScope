@@ -1,0 +1,100 @@
+name: VE v50 reconcile semantic delay surface
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage semantic Lambda delay surface'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Add semantic surface generation and geometry to v2
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/ve-analyzer-view-v2.ts')
+          text = path.read_text()
+
+          text = text.replace('  let sessionRevision = 0;\n', '  let sessionRevision = 0;\n  let delaySurfaceGeneration = 0;\n', 1)
+
+          for block in [
+            """    if (workingDelayTable) workingDelayTable = next;\n    else delayRecommendation = next;\n    invalidate();\n""",
+          ]:
+              count = text.count(block)
+              if count != 2:
+                  raise SystemExit(f'expected two delay edit publish blocks, got {count}')
+          text = text.replace(
+            """    if (workingDelayTable) workingDelayTable = next;\n    else delayRecommendation = next;\n    invalidate();\n""",
+            """    if (workingDelayTable) workingDelayTable = next;\n    else delayRecommendation = next;\n    delaySurfaceGeneration += 1;\n    invalidate();\n""",
+          )
+
+          snapshot_old = """      return table ? {\n        revision: sessionRevision,\n        rows: table.rows,\n        cols: table.cols,\n        values: table.cells.map((cell) => cell.workingMs),\n      } : undefined;\n"""
+          snapshot_new = """      return table ? {\n        revision: sessionRevision,\n        authorityGeneration: delaySurfaceGeneration,\n        rows: table.rows,\n        cols: table.cols,\n        rpmBins: table.rpmBins,\n        loadBins: table.loadBins,\n        values: table.cells.map((cell) => cell.workingMs),\n      } : undefined;\n"""
+          if snapshot_old not in text:
+              raise SystemExit('snapshot block not found')
+          text = text.replace(snapshot_old, snapshot_new, 1)
+
+          clear_old = """  const clearDelayRecommendation = (): void => {\n    sessionRevision += 1;\n    delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery();\n  };\n"""
+          clear_new = """  const clearDelayRecommendation = (): void => {\n    const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;\n    sessionRevision += 1;\n    delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined;\n    if (removesEditableSurface) delaySurfaceGeneration += 1;\n    renderDelayDiscovery();\n  };\n"""
+          if clear_old not in text:
+              raise SystemExit('clear recommendation block not found')
+          text = text.replace(clear_old, clear_new, 1)
+
+          missing_old = """    const ranges = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); const actual = ranges.get(actualId); const fuel = ranges.get(fuelId); if (!actual || !fuel) { delayDiscovery = undefined; delayRecommendation = undefined; renderDelayDiscovery(); return; }\n"""
+          missing_new = """    const ranges = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); const actual = ranges.get(actualId); const fuel = ranges.get(fuelId); if (!actual || !fuel) {\n      const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;\n      delayDiscovery = undefined; delayRecommendation = undefined;\n      if (removesEditableSurface) delaySurfaceGeneration += 1;\n      renderDelayDiscovery(); return;\n    }\n"""
+          if missing_old not in text:
+              raise SystemExit('missing discovery result block not found')
+          text = text.replace(missing_old, missing_new, 1)
+
+          recommendation_old = """    delayRecommendation = buildVeDelayTable(delayDiscovery.events, veRpm, veLoad, { minimumMeasuredEvents: Math.max(1, Math.floor(positiveSetting('delay-min-events')!)), originLabel: 'current log' });\n    selectedDelayCell = undefined;\n"""
+          recommendation_new = """    delayRecommendation = buildVeDelayTable(delayDiscovery.events, veRpm, veLoad, { minimumMeasuredEvents: Math.max(1, Math.floor(positiveSetting('delay-min-events')!)), originLabel: 'current log' });\n    if (!workingDelayTable) delaySurfaceGeneration += 1;\n    selectedDelayCell = undefined;\n"""
+          if recommendation_old not in text:
+              raise SystemExit('recommendation publication block not found')
+          text = text.replace(recommendation_old, recommendation_new, 1)
+
+          rebuild_old = """    controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined; selectedDelayCell = undefined;\n"""
+          rebuild_new = """    const hadEditableDelaySurface = Boolean(workingDelayTable ?? delayRecommendation);\n    controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined; selectedDelayCell = undefined;\n    if (hadEditableDelaySurface) delaySurfaceGeneration += 1;\n"""
+          if rebuild_old not in text:
+              raise SystemExit('rebuild clear block not found')
+          text = text.replace(rebuild_old, rebuild_new, 1)
+
+          use_old = """    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); selectedDelayCell = undefined; invalidate(); };\n"""
+          use_new = """    useDelayButton.onclick = () => { if (!delayRecommendation) return; workingDelayTable = activateVeDelayRecommendation(delayRecommendation); delaySurfaceGeneration += 1; selectedDelayCell = undefined; invalidate(); };\n"""
+          if use_old not in text:
+              raise SystemExit('use recommendation block not found')
+          text = text.replace(use_old, use_new, 1)
+
+          load_old = """          workingDelayTable = parseVeDelayTableFile(text, file.name); selectedDelayCell = undefined; invalidate();\n"""
+          load_new = """          workingDelayTable = parseVeDelayTableFile(text, file.name); delaySurfaceGeneration += 1; selectedDelayCell = undefined; invalidate();\n"""
+          if load_old not in text:
+              raise SystemExit('load delay block not found')
+          text = text.replace(load_old, load_new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Make shared transactions depend on surface authority, not broad session revision
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/ve-analyzer-delay-table-interaction.ts')
+          text = path.read_text()
+          text = text.replace('    const revision = snapshot?.revision;\n', '    const authorityGeneration = snapshot?.authorityGeneration;\n', 1)
+          text = text.replace('        if (!snapshot || revision === undefined || !current || current.revision !== revision || changed.size === 0) return false;\n', '        if (!snapshot || authorityGeneration === undefined || !current || current.authorityGeneration !== authorityGeneration || changed.size === 0) return false;\n', 1)
+          path.write_text(text)
+          PY
+      - name: Commit and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-reconcile-delay-surface.yml
+          git add apps/web/src/pages/ve-analyzer-view-v2.ts apps/web/src/pages/ve-analyzer-delay-table-interaction.ts
+          git commit -m "Expose authoritative semantic Lambda delay surface [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
