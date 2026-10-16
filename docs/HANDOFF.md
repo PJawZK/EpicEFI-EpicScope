@@ -1,5 +1,17 @@
 # EpicScope Handoff
 
+## Integration target 4 — bounded MLG integrity annotation (2026-10-16)
+
+Branch: `integration/source-integrity-target1-20261016`; base `3694e28`. Changes local/unpublished; main unchanged.
+
+`annotateMlgSourceIntegrityDiagnostics` now searches scanner-owned ascending source offsets directly, resolving only supported CRC diagnostics with finite offsets. No full-record Map is built. A diagnostic list copy is created only after the first successful annotation; untouched diagnostics retain identity/order and unrelated or unmatched lists are returned unchanged. Timestamp zero/recovered versus corrupt semantics and source validity remain unchanged. Both staged main-thread validation handler and fallback parser use this same existing helper; their lifecycle/I/O/decode behavior is unchanged.
+
+Cost: O(D + K log N), where D is diagnostic count, K is eligible CRC diagnostics and N is record count, plus optional O(D) output copy. No O(N) indexing allocation. Dense diagnostic lists remain synchronous; no total latency bound or worker migration is claimed. Scanner offsets are strictly source-ordered, including noncontiguous source blocks.
+
+Tests: fixed offset-read budget over 320005 records, first/middle/last events in diagnostic order independent of source order, no record reads for irrelevant diagnostics, unmatched offsets/nonfinite times, unchanged input/identity and source time zero. Existing CRC mapping test retained. A test-fixture offset was corrected from a real last-record CRC address to an unmatched address before final validation; initial red log retained. Browser checks use >320k synthetic offsets and an actual binary MLG with recovered and unrecovered CRC records through fallback and, when Worker exists, real staged validation. A 1000-case seeded differential probe matches prior metadata for irregular ordered offsets and random diagnostic order; timings in evidence are Node cached-array CPU observations, not browser/original-log acceptance.
+
+Validation: 131 files / 811 automated tests, 4 focused tests, production build/typecheck and 536 Chromium checks (268/configuration) passed. Native ZIP CRC and diff checks passed. Target 4 complete locally. Evidence: `/workspace/epicscope-integration-target4/evidence/`. Stop before target 5. Original large MLG/target hardware and hosted CI remain unrun. Account usage is not exposed.
+
 ## Integration target 3 — bounded retry traversal (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`; base `0529406`. Target 3 is local/unpublished; main unchanged.

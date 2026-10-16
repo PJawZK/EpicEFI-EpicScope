@@ -23,6 +23,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('histogram-math-preview.json', await evaluate(`(async()=>{const m=await import('${moduleBase}histogram-math-preview.browser.mjs');return m.runHistogramMathPreviewChecks();})()`,60000));
  await record('local-persistence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}local-persistence.browser.mjs');return m.runLocalPersistenceChecks();})()`,60000));
  await record('histogram-formula.json', await evaluate(`(async()=>{const m=await import('${moduleBase}histogram-formula-pipeline.browser.mjs');return m.runHistogramFormulaPipelineChecks();})()`,60000));
+ await record('mlg-integrity.json', await evaluate(`(async()=>{const m=await import('${moduleBase}mlg-integrity.browser.mjs');return m.runMlgIntegrityChecks();})()`,60000));
  await record('source-integrity-marker.json', await evaluate(`(async()=>{const m=await import('${moduleBase}source-integrity-marker.browser.mjs');return m.runSourceIntegrityMarkerChecks();})()`,60000));
  await step('INI',async()=>{await file('input[accept=".ini,text/plain"]',fixture('navigation.ini'));await wait('document.querySelector(".load-ini").dataset.loadState==="success"');});
  await step('MSQ',async()=>{await file('input[accept^=".msq"]',fixture('audit.msq'));await wait('document.querySelector(".load-msq").dataset.loadState==="success"');});
