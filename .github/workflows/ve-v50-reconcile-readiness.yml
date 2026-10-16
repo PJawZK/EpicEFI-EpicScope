@@ -1,0 +1,39 @@
+name: VE v50 reconcile readiness forwarding
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage v50 readiness forwarding'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Forward current readiness contract through v50 wrappers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in ['ve-analyzer-v50-presentation.ts', 've-analyzer-delay-table-interaction.ts']:
+              path = Path('apps/web/src/pages') / name
+              text = path.read_text()
+              anchor = """    getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },\n    onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },\n"""
+              replacement = anchor + """    getReadiness() { return inner.getReadiness(); },\n    onReadinessChange(listener) { return inner.onReadinessChange(listener); },\n"""
+              if anchor not in text:
+                  raise SystemExit(f'readiness forwarding anchor missing in {name}')
+              path.write_text(text.replace(anchor, replacement, 1))
+          PY
+      - name: Commit and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-reconcile-readiness.yml
+          git add apps/web/src/pages/ve-analyzer-v50-presentation.ts apps/web/src/pages/ve-analyzer-delay-table-interaction.ts
+          git commit -m "Forward VE readiness through v50 wrappers [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
