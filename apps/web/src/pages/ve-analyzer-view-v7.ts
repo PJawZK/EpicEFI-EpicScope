@@ -1,6 +1,7 @@
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import { veResultViewUsesNeutralFallback } from './ve-analyzer-result-heat';
+import { veDelayEditOwner } from './ve-analyzer-delay-edit-owner';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
@@ -93,29 +94,18 @@ function primaryCellCurrent(
 }
 
 function readDelaySurface(root: HTMLElement): DelaySurface | undefined {
-  const table = root.querySelector<HTMLTableElement>('.ve-delay-table');
-  const header = table?.tHead?.rows[0];
-  const body = table?.tBodies[0];
-  if (!table || !header || !body) return undefined;
+  const snapshot = veDelayEditOwner(root)?.snapshot();
+  if (!snapshot || snapshot.rows <= 0 || snapshot.cols <= 0) return undefined;
+  if (snapshot.rpmBins.length !== snapshot.cols || snapshot.loadBins.length !== snapshot.rows) return undefined;
+  if (snapshot.values.length !== snapshot.rows * snapshot.cols) return undefined;
+  if (!snapshot.rpmBins.every(Number.isFinite) || !snapshot.loadBins.every(Number.isFinite)) return undefined;
 
-  const rpmBins = [...header.cells].slice(1).map((cell) => finiteNumber(cell.textContent?.trim())).filter((value): value is number => value !== undefined);
-  if (rpmBins.length === 0) return undefined;
-
-  const rows = [...body.rows].map((row) => {
-    const load = finiteNumber(row.cells[0]?.textContent?.trim());
-    const values = [...row.cells].slice(1).map((cell) => {
-      const td = cell as HTMLTableCellElement;
-      return finiteNumber(td.dataset.delayValue) ?? finiteNumber(td.textContent?.trim());
-    });
-    return load === undefined ? undefined : { load, values };
-  }).filter((row): row is { load: number; values: (number | undefined)[] } => row !== undefined)
-    .sort((a, b) => a.load - b.load);
-
-  if (rows.length === 0) return undefined;
+  const rows = Array.from({ length: snapshot.rows }, (_, row) =>
+    snapshot.values.slice(row * snapshot.cols, (row + 1) * snapshot.cols));
   return {
-    rpmBins,
-    loadBins: rows.map((row) => row.load),
-    rows: rows.map((row) => row.values),
+    rpmBins: snapshot.rpmBins,
+    loadBins: snapshot.loadBins,
+    rows,
   };
 }
 
