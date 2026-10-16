@@ -6,6 +6,7 @@ import { buildVeDelayTable, type VeDelayTable } from '../../../../core/analysis/
 import {
   activateVeDelayRecommendation,
   editVeDelayCells,
+  editVeDelayCellValues,
   type VeDelayCellPosition,
   type VeDelayEdit,
 } from '../../../../core/analysis/ve-delay-table-editing';
@@ -515,14 +516,11 @@ export function createVeAnalyzerView(): VeAnalyzerViewController {
     if (!viewActive || pendingContext || pendingTune || edits.length === 0) return false;
     const table = workingDelayTable ?? delayRecommendation;
     if (!table) return false;
-    const unique = new Map<string, VeDelayCellValueEdit>();
-    for (const edit of edits) {
-      if (edit.workingMs !== undefined && (!Number.isFinite(edit.workingMs) || edit.workingMs < 0)) return false;
-      unique.set(`${edit.row}:${edit.col}`, edit);
-    }
-    let next = table;
-    for (const edit of unique.values()) {
-      next = editVeDelayCells(next, [{ row: edit.row, col: edit.col }], { kind: 'set', workingMs: edit.workingMs });
+    let next;
+    try {
+      next = editVeDelayCellValues(table, edits);
+    } catch {
+      return false;
     }
     if (next === table) return false;
     if (workingDelayTable) workingDelayTable = next;
