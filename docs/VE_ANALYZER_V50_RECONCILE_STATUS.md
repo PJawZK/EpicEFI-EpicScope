@@ -19,7 +19,7 @@ This branch is deliberately isolated from `main`. It is the post-Codex reconcili
 - current readiness contract is forwarded through both v50 wrappers;
 - focused interaction/unit/browser regression modules restored;
 - current expanded browser runner retains all Codex/source-integrity/observability checks and adds shared-v50 interaction acceptance;
-- PR #465's production Lambda Delay Shift-click selection fix and expanded native/browser acceptance are now present in this branch as part of the current-main merge.
+- PR #465's production Lambda Delay Shift-click selection fix and expanded native/browser acceptance are present in this branch as part of the current-main merge.
 
 ## Reconciled green baselines
 
@@ -80,17 +80,37 @@ The v50 scope navigator now has a production contract instead of inferring Full 
 
 Focused browser regressions cover retained source extent and the v50 selected-range handoff.
 
+## Current-main range-edit reconciliation
+
+After syncing PR #465, its new browser acceptance exposed a semantic parity gap: the shared v50 input owner correctly formed the Shift-selected range and deferred mutation until commit, but unlike the accepted production v5 path it only showed the direct-typing preview in the active cell. PR #465 requires live preview across the whole selected range while semantic delay authority and revision remain unchanged until Enter/blur.
+
+The shared DOM controller now mirrors the typed preview text into the other selected rendered cells only. Preview state is presentation-only and retained by actual cell element, so cancellation or table replacement cannot restore old text into a newer semantic surface. Enter/blur still performs one shared semantic transaction; Escape/cancellation restores the rendered values without mutation.
+
 ## Visual keyboard navigation
 
 Lambda Delay renders load rows in descending DOM order while preserving ascending semantic row indices. The shared table DOM controller now derives Arrow-key neighbours from the rendered table geometry rather than assuming semantic row `-1` is visually up. This keeps Up/Down correct for reversed load presentation while preserving semantic cell coordinates for edits and range selection.
 
-Focused browser acceptance now checks ArrowUp from semantic row 0 reaches the visually higher semantic row 1, ArrowDown returns, and Shift+ArrowUp extends the selection in the same visual direction.
+Focused browser acceptance checks ArrowUp from semantic row 0 reaches the visually higher semantic row 1, ArrowDown returns, and Shift+ArrowUp extends the selection in the same visual direction.
 
 ## Current-main synchronization
 
-The reconciliation branch was merged forward to current `main` after PR #465 landed. The merge base is now `8fb99c0099408b74330d6468868424f1b94b05f5`; the branch is ahead of main and no longer behind it. This keeps the v50 work isolated while ensuring final testing includes the production Shift-click fix and its new regression coverage.
+The reconciliation branch was merged forward to current `main` after PR #465 landed. The merge base is `8fb99c0099408b74330d6468868424f1b94b05f5`; the branch is ahead of main and no longer behind it. This keeps the v50 work isolated while ensuring final testing includes the production Shift-click fix and its new regression coverage.
 
-## Remaining reconciliation work
+## Current validation gate
+
+A full Web CI run is required after the shared live-preview reconciliation and visual-keyboard changes. It must pass:
+
+1. TypeScript type-check.
+2. Full Vitest suite.
+3. Production build.
+4. Staged Chromium acceptance.
+5. Worker-disabled fallback Chromium acceptance.
+6. Current-main Shift-click/direct-typing live preview and native acceptance.
+7. Shared v50 selection/editing/Brush/undo/pin/scope acceptance.
+8. Visual reversed-row Arrow navigation acceptance.
+9. Existing Result View, Logger context, source-integrity, observability and Diagnostics regressions.
+
+## Remaining reconciliation work after this gate
 
 - production preference ownership for table editing tools;
 - final lifecycle/teardown cleanup if current ownership requires it;
@@ -99,4 +119,4 @@ The reconciliation branch was merged forward to current `main` after PR #465 lan
 - user hands-on UI test;
 - final Codex branch audit, fixes/revalidation and explicit merge approval.
 
-The full Web CI gate must remain green on the current synchronized branch head before user UI acceptance. `main` remains untouched by the v50 changes.
+`main` remains untouched by the v50 changes.
