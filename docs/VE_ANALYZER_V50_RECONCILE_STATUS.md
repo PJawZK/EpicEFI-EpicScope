@@ -80,6 +80,12 @@ The v50 scope navigator now has a production contract instead of inferring Full 
 
 Focused browser regressions cover retained source extent and the v50 selected-range handoff.
 
+## Visual keyboard navigation
+
+Lambda Delay renders load rows in descending DOM order while preserving ascending semantic row indices. The shared table DOM controller now derives Arrow-key neighbours from the rendered table geometry rather than assuming semantic row `-1` is visually up. This keeps Up/Down correct for reversed load presentation while preserving semantic cell coordinates for edits and range selection.
+
+Focused browser acceptance now checks ArrowUp from semantic row 0 reaches the visually higher semantic row 1, ArrowDown returns, and Shift+ArrowUp extends the selection in the same visual direction.
+
 ## Current-main synchronization
 
 The reconciliation branch was merged forward to current `main` after PR #465 landed. The merge base is now `8fb99c0099408b74330d6468868424f1b94b05f5`; the branch is ahead of main and no longer behind it. This keeps the v50 work isolated while ensuring final testing includes the production Shift-click fix and its new regression coverage.
@@ -89,9 +95,8 @@ The reconciliation branch was merged forward to current `main` after PR #465 lan
 - production preference ownership for table editing tools;
 - final lifecycle/teardown cleanup if current ownership requires it;
 - spacing-aware monotone/PCHIP interpolation;
-- explicit visual Up/Down keyboard acceptance with reversed load-row presentation;
 - responsive/visual acceptance;
 - user hands-on UI test;
 - final Codex branch audit, fixes/revalidation and explicit merge approval.
 
-Before user UI acceptance, rerun the full Web CI gate on the current synchronized branch head. `main` remains untouched by the v50 changes.
+The full Web CI gate must remain green on the current synchronized branch head before user UI acceptance. `main` remains untouched by the v50 changes.
