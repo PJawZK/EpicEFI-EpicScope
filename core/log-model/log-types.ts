@@ -20,12 +20,27 @@ export function numericSampleQualityToValidity(code: number): 0 | 1 {
 
 export type ParserDiagnosticSeverity = 'info' | 'warning' | 'error';
 
+export type SourceIntegrityKind =
+  | 'recovered-retry'
+  | 'corrupt-record'
+  | 'timestamp-gap'
+  | 'delivery-loss';
+
+export interface SourceIntegrityDiagnosticMetadata {
+  readonly kind: SourceIntegrityKind;
+  readonly breaksContinuity: boolean;
+}
+
 export interface ParserDiagnostic {
   readonly code: string;
   readonly severity: ParserDiagnosticSeverity;
   readonly message: string;
   readonly recoverable: boolean;
   readonly offset?: number;
+  /** Source-relative timestamp when a parser diagnostic maps to one concrete source event. */
+  readonly timeMs?: number;
+  /** Optional source-integrity semantics used by presentation without re-parsing diagnostic text. */
+  readonly sourceIntegrity?: SourceIntegrityDiagnosticMetadata;
 }
 
 export interface LogSourceIdentity {
