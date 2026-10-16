@@ -1,0 +1,43 @@
+name: VE v50 reconcile browser acceptance
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage v50 browser reconciliation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Merge shared v50 checks into current browser runner
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/browser/acceptance.mjs')
+          text = path.read_text()
+          old_edit = """ await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row=\"0\"][data-delay-col=\"0\"]');cell.onclick.call(cell,new PointerEvent('click'));document.querySelector('[data-ve-analyzer=\"delay-cell-working\"]').value='125';document.querySelector('[data-ve-analyzer=\"delay-cell-apply\"]').click();})()`));\n"""
+          new_edit = """ await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row=\"0\"][data-delay-col=\"0\"]');cell.focus();cell.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));const input=document.querySelector('.ve-table-inline-input');if(!input)throw Error('Shared delay editor did not open');input.value='125';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`));\n"""
+          if old_edit not in text:
+              raise SystemExit('initial delay edit anchor not found')
+          text = text.replace(old_edit, new_edit, 1)
+          anchor = """ const delayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.runVeDelayEditingChecks();})()`,60000);\n log('delay edit checks',{result:delayEdits});await record('delay-edit-result.json',delayEdits);\n"""
+          addition = anchor + """ const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);\n log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);\n"""
+          if anchor not in text:
+              raise SystemExit('delay acceptance anchor not found')
+          path.write_text(text.replace(anchor, addition, 1))
+          PY
+      - name: Commit and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-reconcile-browser.yml
+          git add scripts/browser/acceptance.mjs
+          git commit -m "Reconcile v50 shared browser acceptance [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
