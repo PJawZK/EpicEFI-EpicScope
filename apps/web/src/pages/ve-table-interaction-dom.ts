@@ -57,8 +57,10 @@ function markCoordinates(table: HTMLTableElement): void {
     const tr = body.rows[row]!;
     for (let cellIndex = 1; cellIndex < tr.cells.length; cellIndex += 1) {
       const cell = tr.cells[cellIndex] as HTMLTableCellElement;
-      cell.dataset.tableRow = String(row);
-      cell.dataset.tableCol = String(cellIndex - 1);
+      const semanticRow = Number(cell.dataset.delayRow);
+      const semanticCol = Number(cell.dataset.delayCol);
+      cell.dataset.tableRow = Number.isInteger(semanticRow) ? String(semanticRow) : String(row);
+      cell.dataset.tableCol = Number.isInteger(semanticCol) ? String(semanticCol) : String(cellIndex - 1);
     }
   }
 }
