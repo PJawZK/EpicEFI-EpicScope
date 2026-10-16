@@ -39,6 +39,10 @@ class VeDelayTableEditSurface implements TableEditSurface {
     return value === undefined ? Number.NaN : value;
   }
 
+  valueAt(position: TableCellPosition): number | undefined {
+    return snapshotValue(this.#owner, position.row, position.col);
+  }
+
   beginTransaction(_label: string): TableEditTransaction {
     const snapshot = this.#owner.snapshot();
     const revision = snapshot?.revision;
@@ -118,6 +122,11 @@ class VeDelayTableEditSurface implements TableEditSurface {
     return true;
   }
 
+  resetHistory(): void {
+    this.#undo.length = 0;
+    this.#redo.length = 0;
+  }
+
   #recordExplicit(positions: readonly TableCellPosition[], action: (before: readonly VeDelayCellValueEdit[]) => boolean): boolean {
     const before = positions.map(({ row, col }) => ({ row, col, workingMs: snapshotValue(this.#owner, row, col) }));
     if (!action(before)) return false;
@@ -152,11 +161,14 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
 
   const surface = new VeDelayTableEditSurface(owner);
   const session = new TableInteractionSession(surface);
+  let brushRadius = 1;
   const dom = createTableInteractionDomController(session, {
     adjustmentStep: () => 10,
     smoothStrength: () => 0.5,
     interpolation: () => ({ axis: 'both', method1d: 'linear', method2d: 'boundary', strength: 1, clamp: true }),
-    brush: () => ({ delta: 5, radius: 1, strength: 1, falloff: 'linear' }),
+    brush: () => ({ delta: 5, radius: brushRadius, strength: 1, falloff: 'linear' }),
+    readValue: (position) => surface.valueAt(position),
+    adjustBrushRadius: (delta) => { brushRadius = Math.max(0, Math.min(4, brushRadius + delta)); },
   }, {
     undo: () => surface.undo(),
     redo: () => surface.redo(),
@@ -169,6 +181,12 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
   delayHost.insertAdjacentElement('beforebegin', dom.toolbar);
 
   const bind = (): void => dom.bindTable(currentDelayTable(delayHost));
+  const resetInteractionSession = (): void => {
+    dom.setBrushActive(false);
+    session.clearSelection();
+    session.clearPins();
+    surface.resetHistory();
+  };
   const observer = new MutationObserver(bind);
   observer.observe(delayHost, { childList: true });
   bind();
@@ -190,12 +208,18 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     onPrimaryAnalysisChange(listener) { return inner.onPrimaryAnalysisChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
-      if (changed) queueMicrotask(bind);
+      if (changed) {
+        resetInteractionSession();
+        queueMicrotask(bind);
+      }
       return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
       const changed = inner.setTuneModel(model, sourceName);
-      if (changed) queueMicrotask(bind);
+      if (changed) {
+        resetInteractionSession();
+        queueMicrotask(bind);
+      }
       return changed;
     },
     refresh() {
