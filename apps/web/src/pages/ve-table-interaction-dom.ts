@@ -283,7 +283,8 @@ export function createTableInteractionDomController(
     cell.append(input);
     inlineInput = input;
     input.focus({ preventScroll: true });
-    input.select();
+    if (initial === undefined) input.select();
+    else input.setSelectionRange(input.value.length, input.value.length);
 
     let completed = false;
     const finish = (commit: boolean): void => {
