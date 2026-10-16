@@ -12,6 +12,7 @@ export interface TableInteractionDomCommands {
   readonly revertSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly clearSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly blankSelection?: (positions: readonly TableCellPosition[]) => boolean;
+  readonly deleteSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly afterEdit?: () => void;
 }
 
@@ -168,8 +169,6 @@ export function createTableInteractionDomController(
       cell.dataset.tableAnchor = isAnchor ? 'true' : 'false';
       cell.dataset.tablePinned = isPinned ? 'true' : 'false';
       cell.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-      // Preserve the accepted Lambda Delay browser contract while the old v5
-      // input owner is retired behind this shared controller.
       if (cell.dataset.delayRow !== undefined) {
         cell.dataset.delaySelected = isSelected ? 'true' : 'false';
         cell.dataset.delayAnchor = isAnchor ? 'true' : 'false';
@@ -387,7 +386,8 @@ export function createTableInteractionDomController(
     if (event.key === 'Delete') {
       event.preventDefault();
       const positions = selectedPositions();
-      if (positions.length && commands.clearSelection?.(positions)) finishEdit();
+      const action = commands.deleteSelection ?? commands.clearSelection;
+      if (positions.length && action?.(positions)) finishEdit();
       return;
     }
     if (event.key === 'Escape') {
