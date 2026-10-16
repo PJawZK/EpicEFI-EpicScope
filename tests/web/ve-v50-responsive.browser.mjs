@@ -9,14 +9,16 @@ function inside(inner, outer, tolerance = 2) {
 
 export async function runVeV50ResponsiveChecks(expectedWidth) {
   const checks = [];
-  const root = document.querySelector('.ve-analyzer-view.ve-v50-port:not([hidden])');
-  assert(root, 'Visible v50 VE Analyzer root missing');
+  const analyzer = document.querySelector('.analyzer-page:not([hidden])');
+  const root = analyzer?.querySelector('.ve-analyzer-view.ve-v50-port:not([hidden])');
+  assert(root, 'Visible application v50 VE Analyzer root missing');
   await settle();
 
   assert(Math.abs(window.innerWidth - expectedWidth) <= 2, `Viewport width mismatch: expected ${expectedWidth}, got ${window.innerWidth}`);
   const viewport = { left: 0, right: window.innerWidth };
   const rootRect = root.getBoundingClientRect();
-  assert(rootRect.width > 0 && rootRect.left >= -2 && rootRect.right <= window.innerWidth + 2, 'VE root escapes the viewport');
+  assert(rootRect.width > 0 && rootRect.left >= -2 && rootRect.right <= window.innerWidth + 2,
+    `VE root escapes the viewport at ${expectedWidth}px: ${Math.round(rootRect.left)}..${Math.round(rootRect.right)}`);
   checks.push(`VE root fits ${expectedWidth}px viewport`);
 
   for (const [label, selector] of [
@@ -47,7 +49,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     const body = detail.querySelector('.ve-v50-setup-body');
     if (body) {
       const rect = body.getBoundingClientRect();
-      assert(inside(rect, viewport, 8), `Setup disclosure ${detail.dataset.veV50Setup || '?'} escapes viewport at ${expectedWidth}px: ${rect.left}..${rect.right}`);
+      assert(inside(rect, viewport, 8), `Setup disclosure ${detail.dataset.veV50Setup || '?'} escapes viewport at ${expectedWidth}px: ${Math.round(rect.left)}..${Math.round(rect.right)}`);
     }
     detail.open = false;
   }
