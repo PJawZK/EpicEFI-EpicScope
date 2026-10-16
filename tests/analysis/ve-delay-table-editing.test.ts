@@ -4,6 +4,7 @@ import { buildVeDelayTable } from '../../core/analysis/ve-delay-table';
 import {
   activateVeDelayRecommendation,
   editVeDelayCells,
+  editVeDelayCellValues,
   revertVeDelayCellToRecommendation,
   setVeDelayWorkingCell,
 } from '../../core/analysis/ve-delay-table-editing';
@@ -47,6 +48,37 @@ describe('VE lambda delay direct editing', () => {
     const reverted = editVeDelayCells(edited, positions, { kind: 'revert' });
     expect(reverted.cells[0]).toEqual(base.cells[0]);
     expect(reverted.cells[3]).toEqual(base.cells[3]);
+  });
+
+  it('applies heterogeneous values in one immutable table pass with last-edit-wins deduplication', () => {
+    const base = buildVeDelayTable([event(100), event(120), event(140)], [1000, 2000], [50, 100], {
+      minimumMeasuredEvents: 3, adaptiveGeometry: false,
+    });
+    const edited = editVeDelayCellValues(base, [
+      { row: 0, col: 0, workingMs: 150 },
+      { row: 1, col: 1, workingMs: 190 },
+      { row: 0, col: 0, workingMs: 160 },
+    ]);
+    expect(edited.cells[0]?.workingMs).toBe(160);
+    expect(edited.cells[3]?.workingMs).toBe(190);
+    expect(edited.cells[1]).toBe(base.cells[1]);
+    expect(edited.cells[2]).toBe(base.cells[2]);
+    expect(base.cells[0]?.workingMs).toBe(120);
+  });
+
+  it('rejects an invalid heterogeneous batch before publishing any changes', () => {
+    const base = buildVeDelayTable([event(100)], [1000], [50], { minimumMeasuredEvents: 1 });
+    const original = base.cells[0];
+    expect(() => editVeDelayCellValues(base, [
+      { row: 0, col: 0, workingMs: 175 },
+      { row: 1, col: 0, workingMs: 190 },
+    ])).toThrow(RangeError);
+    expect(() => editVeDelayCellValues(base, [
+      { row: 0, col: 0, workingMs: 175 },
+      { row: 0, col: 0, workingMs: -1 },
+    ])).toThrow(RangeError);
+    expect(base.cells[0]).toBe(original);
+    expect(base.cells[0]?.workingMs).toBe(100);
   });
 
   it('rejects an invalid batch without publishing any partial changes', () => {
