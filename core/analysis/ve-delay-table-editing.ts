@@ -12,34 +12,18 @@ export interface VeDelayCellPosition {
   readonly col: number;
 }
 
+export interface VeDelayCellWorkingEdit extends VeDelayCellPosition {
+  readonly workingMs: number | undefined;
+}
+
 export type VeDelayEdit =
   | { readonly kind: 'set'; readonly workingMs: number | undefined }
   | { readonly kind: 'revert' };
 
-/** Validate the entire selection, then update it in one immutable table pass. */
-export function editVeDelayCells(
-  table: VeDelayTable,
-  positions: readonly VeDelayCellPosition[],
-  edit: VeDelayEdit,
-): VeDelayTable {
-  if (edit.kind === 'set' && edit.workingMs !== undefined && (!Number.isFinite(edit.workingMs) || edit.workingMs < 0)) {
+function validateWorkingMs(value: number | undefined): void {
+  if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
     throw new RangeError('VE delay user edit must be a finite non-negative delay or undefined.');
   }
-  const indices = new Set(positions.map(({ row, col }) => cellIndex(table, row, col)));
-  if (indices.size === 0) return table;
-  let changed = false;
-  const cells = table.cells.map((cell, index) => {
-    if (!indices.has(index)) return cell;
-    const value = edit.kind === 'revert' ? cell.recommendedMs : edit.workingMs;
-    const restore = edit.kind === 'revert' || matchesDisplayedRecommendation(value, cell.recommendedMs);
-    const workingMs = restore ? cell.recommendedMs : value;
-    const workingProvenance = restore ? recommendationProvenance(cell)
-      : value === undefined && cell.recommendedMs === undefined ? undefined : 'user-edited';
-    if (cell.workingMs === workingMs && cell.workingProvenance === workingProvenance) return cell;
-    changed = true;
-    return { ...cell, workingMs, workingProvenance };
-  });
-  return changed ? { ...table, cells } : table;
 }
 
 function recommendationProvenance(cell: VeDelayTable['cells'][number]): VeDelayTable['cells'][number]['workingProvenance'] {
@@ -53,6 +37,64 @@ function matchesDisplayedRecommendation(workingMs: number | undefined, recommend
   // to the same displayed millisecond as the generated recommendation as a revert,
   // rather than retaining a visually indistinguishable user-edit marker.
   return Math.round(workingMs) === Math.round(recommendedMs);
+}
+
+function applyWorkingValue(
+  cell: VeDelayTable['cells'][number],
+  value: number | undefined,
+  forceRecommendation = false,
+): VeDelayTable['cells'][number] {
+  const restore = forceRecommendation || matchesDisplayedRecommendation(value, cell.recommendedMs);
+  const workingMs = restore ? cell.recommendedMs : value;
+  const workingProvenance = restore ? recommendationProvenance(cell)
+    : value === undefined && cell.recommendedMs === undefined ? undefined : 'user-edited';
+  if (cell.workingMs === workingMs && cell.workingProvenance === workingProvenance) return cell;
+  return { ...cell, workingMs, workingProvenance };
+}
+
+/** Validate all heterogeneous edits first, then update the table in one immutable pass. */
+export function editVeDelayCellValues(
+  table: VeDelayTable,
+  edits: readonly VeDelayCellWorkingEdit[],
+): VeDelayTable {
+  const byIndex = new Map<number, number | undefined>();
+  for (const edit of edits) {
+    validateWorkingMs(edit.workingMs);
+    byIndex.set(cellIndex(table, edit.row, edit.col), edit.workingMs);
+  }
+  if (byIndex.size === 0) return table;
+
+  let changed = false;
+  const cells = table.cells.map((cell, index) => {
+    if (!byIndex.has(index)) return cell;
+    const next = applyWorkingValue(cell, byIndex.get(index));
+    if (next !== cell) changed = true;
+    return next;
+  });
+  return changed ? { ...table, cells } : table;
+}
+
+/** Validate the entire selection, then update it in one immutable table pass. */
+export function editVeDelayCells(
+  table: VeDelayTable,
+  positions: readonly VeDelayCellPosition[],
+  edit: VeDelayEdit,
+): VeDelayTable {
+  if (edit.kind === 'set') {
+    validateWorkingMs(edit.workingMs);
+    return editVeDelayCellValues(table, positions.map(({ row, col }) => ({ row, col, workingMs: edit.workingMs })));
+  }
+
+  const indices = new Set(positions.map(({ row, col }) => cellIndex(table, row, col)));
+  if (indices.size === 0) return table;
+  let changed = false;
+  const cells = table.cells.map((cell, index) => {
+    if (!indices.has(index)) return cell;
+    const next = applyWorkingValue(cell, cell.recommendedMs, true);
+    if (next !== cell) changed = true;
+    return next;
+  });
+  return changed ? { ...table, cells } : table;
 }
 
 /**
