@@ -86,6 +86,27 @@ The audit deliberately checked the places most likely to hide useful orphan test
 
 Several old branches remain one or more commits “ahead” of `main` according to Git graph topology. That does **not** mean they hold missing product work. The accepted #462 integration was deliberately reconstructed/rebased onto the production line, so equivalent or stronger changes often have different commit identities. The preservation decision is therefore based on file/test/behavior authority and accepted runtime evidence, not `ahead_by` alone.
 
+## Final live head verification
+
+After the preservation audit and after writing its first result to `main`, the GitHub branch collection was read again. The candidate refs had not moved during the audit. Audited heads were:
+
+- `diagnostic/ve-session-guard-only` — `129f898ffb5d2ded9403cb87ca638564871085fa`
+- `docs/observability-architecture-plan` — `c125bce13ffa259f1ef88932e23e78a62dc43712`
+- `fix/large-segment-spread-overflow` — `6b73ee1d553e5e774e8c62e489932e508362d219`
+- `fix/ve-owner-state-retention` — `457847785b67d9c073a0a89bf06cc1f5d26f7ebe`
+- `fix/ve-result-retention` — `94c81d865521cd41398b1a5b94a2b95fa084c619`
+- `fix/ve-result-view-untouched-values` — `31f6a2954072bb0e60ec32f4b0f6ad7d89b6279e`
+- `fix/ve-session-authority` — `a817e17a607fb60f5c769ff8bff213778e850c77`
+- `infra/pr-browser-previews` — `f2067b6a2451faa3071d6aadeb5b4594b7674643`
+- `integrate/points-2-11-20261015` — `9268e295f9f6367443b253e991580e510042c651`
+- `integrate/points-2-11-clean` — `7d0be605ecd11a35f46ea8552893842fbb1fedb4`
+- `perf/general-ui-tracing` — `457847785b67d9c073a0a89bf06cc1f5d26f7ebe`
+- `temp/epicscope-fixes-points-1-2-20261015` — `ef2f33103e253f5687c19c13831c8a74adf29463`
+- `test/codex-point2-browser` — `dbecb07b1dbee53d24fd023b8d10a417b9d812df`
+- `test/codex-point3-browser` — `b3d1709cc7311fc5256c582eaf2c7c4c0d5ea2f4`
+
+`browser-previews` remains intentionally retained at `6dedb06191f05d3452bff02b407967cff14a1563`.
+
 ## Remote branch classification after preservation audit
 
 Product authority:
@@ -96,7 +117,7 @@ Infrastructure/deployment ref to retain:
 
 - `browser-previews`
 
-Audited development refs with **zero category-5 material**, therefore safe to delete after confirming their heads have not moved since this audit:
+Audited development refs with **zero category-5 material**, therefore safe to delete at the verified heads above:
 
 - `diagnostic/ve-session-guard-only`
 - `docs/observability-architecture-plan`
@@ -117,7 +138,7 @@ Audited development refs with **zero category-5 material**, therefore safe to de
 
 The GitHub connector available during the 2026-10-16 cleanup exposes PR close/update and branch-ref inspection/update, but it does **not** expose remote branch deletion.
 
-Therefore the cleanup closes obsolete PRs and fully audits/classifies obsolete refs but must not falsely claim the remote refs were physically deleted. The audited development refs above can be deleted safely with ordinary Git/GitHub branch controls **provided their head SHAs have not changed after this audit**.
+Therefore the cleanup closes obsolete PRs and fully audits/classifies obsolete refs but must not falsely claim the remote refs were physically deleted. The audited development refs above can be deleted safely with ordinary Git/GitHub branch controls at the verified head SHAs.
 
 Do not delete `main` or the active `browser-previews` deployment ref.
 
