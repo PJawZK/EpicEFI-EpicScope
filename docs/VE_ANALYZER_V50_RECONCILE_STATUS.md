@@ -2,11 +2,11 @@
 
 Branch: `ui/ve-analyzer-v50-reconcile`
 
-Base/product authority: `main` at `dd8381988cd61fb3b5ea4befc48cfcf36d2a815c`.
+Base/product authority: current `main` through `8fb99c0099408b74330d6468868424f1b94b05f5` (PR #465, Lambda Delay Shift-click range editing).
 
 This branch is deliberately isolated from `main`. It is the post-Codex reconciliation branch for the frozen v50 VE Analyzer presentation and shared table interaction work. No merge to `main` is authorized before automated validation, user UI acceptance and a final Codex branch audit.
 
-## Replayed against current main
+## Replayed and reconciled against current main
 
 - v50 presentation layer and focused styles;
 - shared table interaction engine and DOM controller;
@@ -18,7 +18,8 @@ This branch is deliberately isolated from `main`. It is the post-Codex reconcili
 - current-main v7 Result View ownership retained; the obsolete outer Result Heat wrapper is not restored;
 - current readiness contract is forwarded through both v50 wrappers;
 - focused interaction/unit/browser regression modules restored;
-- current expanded browser runner retains all Codex/source-integrity/observability checks and adds shared-v50 interaction acceptance.
+- current expanded browser runner retains all Codex/source-integrity/observability checks and adds shared-v50 interaction acceptance;
+- PR #465's production Lambda Delay Shift-click selection fix and expanded native/browser acceptance are now present in this branch as part of the current-main merge.
 
 ## Reconciled green baselines
 
@@ -38,6 +39,12 @@ Web CI run `38979825194` passed after the current-main replay and before the sem
 ### Semantic Lambda baseline
 
 Web CI run `38980417790` passed after introducing dedicated Lambda surface authority and switching v7 Result View away from DOM reconstruction. The same full validation/browser gate remained green.
+
+### Logger scope and shared-table rebind baseline
+
+The first Logger-scope browser run exposed a sequencing gap in the new focused fixture: scope changes synchronously rebuild the rendered delay table and the shared DOM owner rebinds through MutationObserver delivery. The fixture now waits for that production rebind before exercising the new table. The shared adapter also observes the delay-host subtree so nested table rebuilds cannot leave the interaction controller attached to obsolete DOM.
+
+Web CI run `38981117512` passed with the explicit post-scope settle. A subsequent full run after the subtree-observer hardening (`38981472740`) also passed TypeScript, Vitest, production build, staged Chromium and fallback Chromium acceptance.
 
 ## Semantic Lambda surface
 
@@ -73,24 +80,11 @@ The v50 scope navigator now has a production contract instead of inferring Full 
 
 Focused browser regressions cover retained source extent and the v50 selected-range handoff.
 
-## Current validation gate
+## Current-main synchronization
 
-The Logger scope/range reconciliation must now pass the same full gate:
+The reconciliation branch was merged forward to current `main` after PR #465 landed. The merge base is now `8fb99c0099408b74330d6468868424f1b94b05f5`; the branch is ahead of main and no longer behind it. This keeps the v50 work isolated while ensuring final testing includes the production Shift-click fix and its new regression coverage.
 
-1. TypeScript type-check.
-2. Full Vitest suite.
-3. Production build.
-4. Full staged Chromium acceptance.
-5. Full Worker-disabled fallback acceptance.
-6. Historical Lambda editing/native pointer-keyboard acceptance.
-7. Shared v50 Lambda interaction acceptance.
-8. Existing Result View acceptance, including Lambda Delay and neutral fallback semantics.
-9. Logger retained-context/source-extent acceptance.
-10. v50 selected-scope `Open in Logger` acceptance.
-
-Any failure is reconciliation evidence and must be corrected on this branch.
-
-## Remaining reconciliation work after this gate
+## Remaining reconciliation work
 
 - production preference ownership for table editing tools;
 - final lifecycle/teardown cleanup if current ownership requires it;
@@ -100,4 +94,4 @@ Any failure is reconciliation evidence and must be corrected on this branch.
 - user hands-on UI test;
 - final Codex branch audit, fixes/revalidation and explicit merge approval.
 
-`main` remains untouched by these v50 changes.
+Before user UI acceptance, rerun the full Web CI gate on the current synchronized branch head. `main` remains untouched by the v50 changes.
