@@ -88,6 +88,18 @@ export async function runVeSharedTableInteractionChecks() {
     assert(root.querySelector('[data-ve-analyzer="delay-table"]').dataset.tableInteractionOwner === 'shared', 'Shared owner marker missing');
     checks.push('shared owner and toolbar are active');
 
+    assert(cells().filter((cell) => cell.tabIndex === 0).length === 1 && cells().filter((cell) => cell.tabIndex === -1).length === cells().length - 1,
+      'Editable delay table did not use one roving tab stop');
+    checks.push('table keyboard navigation exposes one roving tab stop instead of one Tab stop per cell');
+
+    const minRpm = root.querySelector('input[data-role="min-rpm"]');
+    const rangeSummary = root.querySelector('[data-ve-v50-summary="range"]');
+    minRpm.value = '1234';
+    view.refresh();
+    await settle();
+    assert(rangeSummary?.textContent?.includes('1234'), 'Compact setup summary did not resync after programmatic controller refresh');
+    checks.push('compact setup summaries resync after controller-driven/programmatic changes');
+
     const initial = view.sessionRevision;
     selectCell(cells()[0]);
     selectCell(cells()[1], true);
@@ -163,6 +175,24 @@ export async function runVeSharedTableInteractionChecks() {
     await settle();
     assert(values()[2] > beforeBrush && view.sessionRevision === brushRevision + 1, 'Held Brush did not accumulate and commit once');
     checks.push('held Brush accumulates while one stroke publishes one semantic revision');
+
+    installDelayFile(fileInput, 180);
+    await settle();
+    selectCell(cells()[2]);
+    if (brushButton.getAttribute('aria-pressed') !== 'true') brushButton.click();
+    const reverseStart = values()[2];
+    const reverseRevision = view.sessionRevision;
+    cells()[2].setPointerCapture = () => {};
+    pointer(cells()[2], 'pointerdown');
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 320));
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
+    pointer(document, 'pointerup');
+    await settle();
+    assert(values()[2] < reverseStart && view.sessionRevision === reverseRevision + 1,
+      'Stationary held Brush did not reverse direction when Shift changed without pointer motion');
+    checks.push('held Brush reacts to Shift reversal even while the pointer remains stationary');
 
     return checks;
   } finally {
