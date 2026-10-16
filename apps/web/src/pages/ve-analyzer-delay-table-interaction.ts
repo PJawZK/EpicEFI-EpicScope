@@ -207,7 +207,11 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     surface.resetHistory();
   };
   const observer = new MutationObserver(bind);
-  const observe = (): void => observer.observe(delayHost, { childList: true });
+  // v2 may rebuild the rendered table below a stable delay host when semantic
+  // setup changes (for example switching Analyzer scope). Observe the subtree so
+  // the shared controller always follows the currently rendered table, not only
+  // direct host-child replacements.
+  const observe = (): void => observer.observe(delayHost, { childList: true, subtree: true });
   observe();
 
   for (const selector of ['[data-ve-analyzer="grab-delay"]', '[data-ve-analyzer="use-delay"]', '[data-ve-analyzer="load-delay"]'] as const) {
