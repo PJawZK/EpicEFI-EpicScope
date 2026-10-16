@@ -8,13 +8,33 @@ import type { ObservabilityRecord } from '../../apps/web/src/observability/recor
 function record(sequence: number, other: Partial<ObservabilityRecord> = {}): ObservabilityRecord { return { schemaVersion: 1, sessionId: 's', sequence, wallTime: 1000, monotonicTime: sequence, recordKind: 'event', subsystem: 'owners', component: 've', name: 'work.started', origin: 'async', priority: 'normal', metadata: {}, ...other }; }
 export function diagnosticFixture(): DiagnosticsCapture {
  const session = createObservabilitySession({ sessionId: 's' }); const retention = session.recorder.status();
- return createDiagnosticsCapture({ capturedAt: '2026-10-16T18:00:00.000Z', sessionId: 's', reportText: 'Complete report 界\nfull text', health: { issues: [], warnings: [] }, records: [record(1)], retention, anomalyTracking: undefined, persistence: { state: 'ready', lastError: '', writes: 1, lastSavedSequence: 1, previous: [] }, performanceReport: 'exact performance', parserReport: 'exact parser', parserDiagnostics: [{ code: 'CRC', severity: 'error', message: '界'.repeat(1000), offset: 12345, recoverable: false }], resources: { incomplete: 0, truncated: 0, retention } });
+ return createDiagnosticsCapture({ capturedAt: '2026-10-16T18:00:00.000Z', sessionId: 's', reportText: 'Complete report 界\nfull text', health: { issues: [], warnings: [] }, records: [record(1)], retention, anomalyTracking: undefined, persistence: { state: 'ready', lastError: '', writes: 1, lastSavedSequence: 1, previous: [] }, performanceReport: 'exact performance', parserReport: 'exact parser', parserDiagnostics: [{ code: 'CRC', severity: 'error', message: '界'.repeat(1000), offset: 12345, recoverable: false, timeMs: 250, sourceIntegrity: { kind: 'corrupt-record', breaksContinuity: true } }], resources: { incomplete: 0, truncated: 0, retention } });
 }
 describe('unified Diagnostics projections', () => {
  it('captures only explicit diagnostic fields and complete canonical parser evidence', () => {
   const input = { ...diagnosticFixture(), rawLog: [1, 2, 3] }; const c = createDiagnosticsCapture(input);
   expect(c).not.toHaveProperty('rawLog'); expect(c.parserDiagnostics[0]?.message).toHaveLength(1000);
   const original = input.parserDiagnostics[0]!; expect(c.parserDiagnostics[0]).not.toBe(original); expect(Object.isFrozen(c.parserDiagnostics[0])).toBe(true);
+ });
+ it('captures source time and integrity as an immutable explicit-field snapshot', () => {
+  const sourceIntegrity = { kind: 'recovered-retry' as const, breaksContinuity: false, rawPayload: [1, 2] };
+  const diagnostic = { code: 'retry', severity: 'info' as const, message: 'Recovered', recoverable: true, timeMs: 0, sourceIntegrity };
+  const c = createDiagnosticsCapture({ ...diagnosticFixture(), parserDiagnostics: [diagnostic] });
+  const expected = { ...diagnostic, sourceIntegrity: { kind: 'recovered-retry', breaksContinuity: false } };
+  expect(c.parserDiagnostics[0]).toEqual(expected);
+  expect(c.parserDiagnostics[0]?.sourceIntegrity).not.toBe(sourceIntegrity);
+  expect(Object.isFrozen(c.parserDiagnostics[0]?.sourceIntegrity)).toBe(true);
+  diagnostic.timeMs = 999; sourceIntegrity.breaksContinuity = true;
+  expect(c.parserDiagnostics[0]).toEqual(expected);
+  expect(JSON.parse(JSON.stringify(structuredDiagnostics(c))).parserDiagnostics).toEqual([expected]);
+ });
+ it('keeps absent optional integrity fields absent and preserves corruption semantics', () => {
+  const plain = { code: 'legacy', severity: 'info' as const, message: 'Legacy', recoverable: true };
+  const corrupt = { ...plain, timeMs: 250, sourceIntegrity: { kind: 'corrupt-record' as const, breaksContinuity: true } };
+  const c = createDiagnosticsCapture({ ...diagnosticFixture(), parserDiagnostics: [plain, corrupt] });
+  expect(c.parserDiagnostics[0]).not.toHaveProperty('timeMs');
+  expect(c.parserDiagnostics[0]).not.toHaveProperty('sourceIntegrity');
+  expect(c.parserDiagnostics[1]).toEqual(corrupt);
  });
  it('filters all exact envelope dimensions, anomaly code and case-insensitive text without changing chronological order', () => {
   const selected = record(2, { operationId: 'op1', severity: 'warning', visibility: 'hidden', outcome: 'stale', sourceRevision: 2, tuneRevision: 3, metadata: { ruleCode: 'async.stale' } });
@@ -57,6 +77,7 @@ describe('unified Diagnostics projections', () => {
   }
   expect(view.getUint32(offset, true)).toBe(0x02014b50); expect(view.getUint32(bytes.length - 22, true)).toBe(0x06054b50);
   expect([...files.keys()]).toEqual(['report.txt', 'observability.json']); expect(files.get('report.txt')).toBe(c.reportText);
+  expect(JSON.parse(files.get('observability.json')!).parserDiagnostics).toEqual(c.parserDiagnostics);
   expect(JSON.parse(files.get('observability.json')!).records).toEqual(c.records); expect(JSON.parse(files.get('observability.json')!).capturedAt).toBe(c.capturedAt);
  });
  it('cancels before or during bounded export work', async () => {

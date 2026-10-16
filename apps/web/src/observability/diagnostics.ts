@@ -25,7 +25,17 @@ export function createDiagnosticsCapture(input: Omit<DiagnosticsCapture, 'schema
     records: input.records, retention: input.retention, anomalyTracking: input.anomalyTracking,
     persistence: Object.freeze({ ...input.persistence, previous: [...input.persistence.previous] }),
     performanceReport: input.performanceReport, parserReport: input.parserReport, resources: Object.freeze({ blob: input.resources.blob, decode: input.resources.decode, memory: input.resources.memory, incomplete: input.resources.incomplete, truncated: input.resources.truncated, retention: input.resources.retention }),
-    parserDiagnostics: Object.freeze(input.parserDiagnostics.map(d => Object.freeze({ code: d.code, severity: d.severity, message: d.message, recoverable: d.recoverable, ...(d.offset === undefined ? {} : { offset: d.offset }) }))),
+    parserDiagnostics: Object.freeze(input.parserDiagnostics.map(d => Object.freeze({
+      code: d.code, severity: d.severity, message: d.message, recoverable: d.recoverable,
+      ...(d.offset === undefined ? {} : { offset: d.offset }),
+      ...(d.timeMs === undefined ? {} : { timeMs: d.timeMs }),
+      ...(d.sourceIntegrity === undefined ? {} : {
+        sourceIntegrity: Object.freeze({
+          kind: d.sourceIntegrity.kind,
+          breaksContinuity: d.sourceIntegrity.breaksContinuity,
+        }),
+      }),
+    }))),
   });
 }
 export const RECORD_FILTERS = ['subsystem', 'component', 'operationId', 'origin', 'severity', 'visibility', 'recordKind', 'outcome', 'sourceRevision', 'tuneRevision', 'anomalyCode', 'search'] as const;

@@ -11,7 +11,7 @@ CHROME_BIN=chromium npm run test:browser
 
 The command starts its own loopback Vite server and headless Chrome on dynamically allocated ports. It creates a temporary Chrome profile, uses separate incognito contexts for staged and forced Worker-disabled fallback imports, and closes its contexts, Chrome and Vite before removing the profile. It does not connect to an existing browser or application server. Ctrl-C and SIGTERM follow the same cleanup path. Each run has a ten-minute deadline, with bounded DevTools and readiness waits.
 
-The selected suite runs **262 checks per configuration, 524 total**:
+The selected suite runs **263 checks per configuration, 526 total**:
 
 | Coverage | Checks per configuration |
 | --- | ---: |
@@ -81,3 +81,5 @@ Results go to ignored `artifacts/browser/` (override with `BROWSER_RESULTS_DIR`)
 Run CPU-heavy Vitest large-sample regressions separately from local browser/build work to avoid resource-contention timeouts. Passing this suite does not replace manual acceptance on representative logs and hardware.
 
 Source-integrity integration target 1 retains all prior 514 checks and adds main's five marker checks per configuration: dotted bridge endpoints, click explanation, persistent notice, outside dismissal and zoom cutoff. These use synthetic graph data; original large-log and affected-hardware acceptance remain pending. Known metadata/algorithm/lifecycle follow-ups are listed separately in FIX_PLAN.md.
+
+Integration target 2 adds one Diagnostics check per configuration: marker-derived source time/integrity match structured export after the original diagnostic is mutated, and nested captured metadata is frozen and independent. Unit ZIP validation also checks exact parser metadata. Legacy diagnostic fields remain optional; canonical Parser text remains unchanged.

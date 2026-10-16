@@ -5,7 +5,7 @@ Complete one target at a time and stop between targets. Local integration does n
 | Target | Scope | Status |
 | --- | --- | --- |
 | 1 | Integrate main 8890498 with published checkpoint b597f6d; preserve both Parser contracts and marker publication; reconcile handoff; combined validation | Complete locally on integration/source-integrity-target1-20261016; 798 automated / 524 browser checks and build pass |
-| 2 | Preserve timeMs/sourceIntegrity through immutable Diagnostics capture and JSON export | Pending |
+| 2 | Preserve timeMs/sourceIntegrity through immutable Diagnostics capture and JSON export | Complete locally; 800 automated / 526 browser checks and build pass |
 | 3 | Replace quadratic same-timestamp retry lookahead with bounded iteration; >320k-sample regression | Pending |
 | 4 | Skip irrelevant annotation and avoid full-record JS Map using existing ordered record index; staged/fallback parity | Pending |
 | 5 | Explicit Logger/source ownership and graph lifecycle delivery/cleanup for integrity state | Pending |

@@ -1,5 +1,15 @@
 # EpicScope Handoff
 
+## Integration target 2 — source-integrity evidence preservation (2026-10-16)
+
+Branch: `integration/source-integrity-target1-20261016`, based on local integration commit `663e7d5`. Target 2 changes are local and unpublished; main is unchanged.
+
+`createDiagnosticsCapture` now copies optional source-relative `timeMs` and an explicit frozen `{ kind, breaksContinuity }` metadata object. Timestamp zero, recovered-retry false, corruption true, legacy absence and existing diagnostic fields are preserved. No mutable nested alias or extra payload is retained. The existing structured export/ZIP consumes this snapshot without another authority, pass or schema-version change; fields are additive and optional. Canonical Parser text/UI and graph behavior are unchanged.
+
+Regression evidence: before the fix, two new capture tests failed (10 passed). Afterward all 12 focused tests pass, including exact ZIP JSON metadata parity. Chromium fixture compares export with a marker derived from the same source diagnostic, then mutates source time/integrity to verify retained evidence remains independent. No global listeners/observers/instrumentation added.
+
+Validation: 131 automated files / 800 tests, 12 focused tests, production build/typecheck, 526 Chromium checks (263/configuration), native downloaded ZIP CRC and diff checks passed. Target 2 is complete locally. Evidence will be saved to `/workspace/epicscope-integration-target2/evidence/`. Stop after target 2; targets 3–7 and optional observability stage 10 have not started. Original large MLG/affected hardware and hosted CI remain unrun. Account usage is not exposed.
+
 ## Integration target 1 — combined baseline (2026-10-16)
 
 Branch: `integration/source-integrity-target1-20261016`. Integrates published checkpoint `b597f6d298921950c4b6862e719e9dee3f816c72` with main `8890498d96787582d59ac7ee2716bfbf8b38b2bd`. Main itself is unchanged. This integration is local and unpublished.
