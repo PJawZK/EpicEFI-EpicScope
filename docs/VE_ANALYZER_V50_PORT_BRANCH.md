@@ -58,18 +58,49 @@ The existing Advanced details owner remains authoritative. The v50 row adds only
 
 Moving setup controls out of the action row leaves the current Run/cancel/Lambda-readiness/blocker owners intact, allowing the action row to converge toward the compact v50 readiness/action surface without duplicating readiness state.
 
+## Slice 3 — shared table interaction boundary
+
+A production-shaped, domain-neutral interaction layer now exists in `apps/web/src/pages/ve-table-interaction.ts`, with focused tests in `tests/ve-table-interaction.test.ts`.
+
+The boundary deliberately does not own tune values. A production table surface must supply dimensions, value reads, and a real transaction lifecycle (`beginTransaction` -> `get/set` -> one `commit` or `cancel`). This allows the same interaction vocabulary to sit over different authoritative owners without copying prototype arrays or creating a new mutation store.
+
+The interaction session now covers the frozen v50 semantics needed by VE / Target / Lambda where applicable:
+
+- replace / toggle / rectangle / additive / extend selection primitives;
+- session-only pins;
+- direct typed replacement that may deliberately override pins;
+- bulk `+ / -` style adjustment that skips pins;
+- snapshot-based local 3x3 Smooth with configurable strength;
+- horizontal/vertical interpolation with linear or monotone shape-preserving behavior;
+- pinned cells as interior 1D interpolation anchors;
+- 2D bilinear and boundary-surface interpolation;
+- configurable interpolation strength and clamping;
+- continuous weighted Brush strokes with radius/strength/falloff and Shift-style direction supplied by the caller;
+- one Brush press/drag/release stroke represented by one open transaction and one commit;
+- pin protection during Brush.
+
+The module intentionally contains no DOM event wiring, no timers, no localStorage, no TuneModel ownership and no ECU/MSQ write path. Pointer cadence, keyboard handling and toolbar presentation belong to the eventual DOM/controller adapter; tune mutation belongs to the authoritative surface adapter.
+
+### Production ownership issue exposed by Slice 3
+
+The current controller contract exposes transactional Lambda Delay editing through `editDelayCells(...)`, but it does **not** expose an authoritative mutable VE-table or Target-table surface. The currently rendered VE/Target values originate from the loaded `TuneModel` / `TuneEntry` path, which is analysis input rather than a writable table owner.
+
+Therefore the branch intentionally does **not** wire the new interaction layer to VE or Target yet. Doing so now would require either mutating immutable analysis input or introducing a second branch-local tune authority, both of which violate the port contract.
+
+This is a useful integration finding rather than a missing UI detail. After the Codex reconciliation/writable-tune ownership work, VE and Target need a real table adapter that can provide one transactional edit boundary and later map reviewed edits to MSQ/ECU application. Lambda Delay can be adapted earlier because it already has a semantic transactional owner, but its current lifecycle/working-vs-recommendation rules must remain unchanged.
+
 ## Validation limitation on this branch
 
-This chat currently has GitHub repository access but no executable local checkout, so these branch slices have not yet been run through TypeScript/build/browser acceptance in this session. Treat the branch as integration work-in-progress until an executable checkout or CI/PR validation path is available. Do not merge it based on source review alone.
+This chat currently has GitHub repository access but no executable local checkout, so these branch slices have not yet been run through TypeScript/build/browser acceptance in this session. The new interaction module includes source-level Vitest coverage, but those tests have not been executed here. Treat the branch as integration work-in-progress until an executable checkout or CI/PR validation path is available. Do not merge it based on source review alone.
 
 ## Next slices
 
-1. Typecheck/build/browser baseline for Slices 1–2 and visual correction against v50.
+1. Typecheck/build/browser baseline for Slices 1–3 and visual correction against v50.
 2. Complete the scope navigator once a real Logger range-handoff/full-source-extent contract is available.
-3. Establish the shared production table-interaction boundary.
-4. Connect VE direct editing/selection/transactions first.
-5. Connect Target editing.
-6. Connect Lambda Delay editing without changing current recommendation/working/re-grab semantics.
+3. Add the DOM/controller adapter for table selection, keyboard navigation, toolbar state and Brush pointer cadence without inventing a tune owner.
+4. Adapt Lambda Delay to the shared interaction boundary first where its existing transaction owner permits it.
+5. Connect VE direct editing/transactions only after a real authoritative mutable VE/review surface exists.
+6. Connect Target editing under the same tune/review authority.
 7. Port Advanced and Exclusions presentation over existing role/formula owners.
 8. Port proposal/result/review, Cell Evidence and Analysis Summary presentation over retained authoritative analysis.
 9. Remove superseded presentation rules/layers only after behavioral parity.
@@ -82,3 +113,4 @@ This chat currently has GitHub repository access but no executable local checkou
 - D-058 observability may change Diagnostics/status presentation.
 - Current v7 still reconstructs Lambda Delay result-view data from DOM; do not extend that pattern.
 - The branch must not become a second tune/analysis authority while waiting for reconciliation.
+- VE/Target editing cannot be honestly completed until a mutable tune/review owner is defined; do not solve that with a UI-local array.
