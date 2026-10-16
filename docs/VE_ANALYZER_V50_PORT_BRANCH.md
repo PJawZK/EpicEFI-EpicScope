@@ -79,9 +79,33 @@ The interaction session now covers the frozen v50 semantics needed by VE / Targe
 - one Brush press/drag/release stroke represented by one open transaction and one commit;
 - pin protection during Brush.
 
-The module intentionally contains no DOM event wiring, no timers, no localStorage, no TuneModel ownership and no ECU/MSQ write path. Pointer cadence, keyboard handling and toolbar presentation belong to the eventual DOM/controller adapter; tune mutation belongs to the authoritative surface adapter.
+The module intentionally contains no DOM event wiring, no timers, no localStorage, no TuneModel ownership and no ECU/MSQ write path. Pointer cadence, keyboard handling and toolbar presentation belong to the DOM/controller adapter; tune mutation belongs to the authoritative surface adapter.
 
-### Production ownership issue exposed by Slice 3
+## Slice 4 — shared table DOM/controller shell
+
+`apps/web/src/pages/ve-table-interaction-dom.ts` now provides the presentation/input side of the shared interaction layer, with focused styling in `apps/web/src/styles/ve-table-interaction-dom.css`.
+
+This shell is intentionally **not yet attached to VE/Target/Lambda production surfaces**. It is staged separately so selection/event behavior can be reviewed without inventing a mutable tune owner.
+
+It provides:
+
+- DOM hit testing and row/column decoration only; rendered text is never read as tune/domain authority;
+- replace/toggle/Shift-extend and drag-rectangle selection wiring;
+- keyboard arrow navigation and Shift extension;
+- direct numeric typing plus Enter/F2 inline-edit presentation;
+- toolbar command hooks for undo/redo, +/- adjustment, Smooth, interpolation, Pin, Brush, Revert and Clear;
+- session-only selected/anchor/pinned visual state;
+- pin symbol without the rejected pinned-cell border highlight;
+- continuous Brush pointer lifecycle with an immediate movement pulse plus held 90 ms spray cadence;
+- one pointer-down Brush stroke mapped to one `TableBrushStroke` transaction;
+- cancellation on controller/table teardown;
+- explicit callbacks for owner-provided undo/redo/revert/clear and post-edit refresh.
+
+The DOM shell does not create a value store, undo stack, persistence store or tune writer. Those stay behind the `TableEditSurface`/production-owner boundary.
+
+A remaining refinement before binding the shell is to provide owner-backed current-value text for F2/Enter editing and owner-backed Brush-radius preference mutation. Those must not be sourced from rendered cell text or hidden UI state.
+
+### Production ownership issue exposed by Slices 3–4
 
 The current controller contract exposes transactional Lambda Delay editing through `editDelayCells(...)`, but it does **not** expose an authoritative mutable VE-table or Target-table surface. The currently rendered VE/Target values originate from the loaded `TuneModel` / `TuneEntry` path, which is analysis input rather than a writable table owner.
 
@@ -91,14 +115,14 @@ This is a useful integration finding rather than a missing UI detail. After the 
 
 ## Validation limitation on this branch
 
-This chat currently has GitHub repository access but no executable local checkout, so these branch slices have not yet been run through TypeScript/build/browser acceptance in this session. The new interaction module includes source-level Vitest coverage, but those tests have not been executed here. Treat the branch as integration work-in-progress until an executable checkout or CI/PR validation path is available. Do not merge it based on source review alone.
+This chat currently has GitHub repository access but no executable local checkout, so these branch slices have not yet been run through TypeScript/build/browser acceptance in this session. The interaction engine includes source-level Vitest coverage, but those tests have not been executed here. Treat the branch as integration work-in-progress until an executable checkout or CI/PR validation path is available. Do not merge it based on source review alone.
 
 ## Next slices
 
-1. Typecheck/build/browser baseline for Slices 1–3 and visual correction against v50.
+1. Typecheck/build/browser baseline for Slices 1–4 and visual correction against v50.
 2. Complete the scope navigator once a real Logger range-handoff/full-source-extent contract is available.
-3. Add the DOM/controller adapter for table selection, keyboard navigation, toolbar state and Brush pointer cadence without inventing a tune owner.
-4. Adapt Lambda Delay to the shared interaction boundary first where its existing transaction owner permits it.
+3. Refine owner-backed direct-edit value and Brush-radius preference hooks in the DOM shell.
+4. Adapt Lambda Delay to the shared interaction boundary first, exposing only the minimum semantic snapshot/transaction surface needed from its existing owner.
 5. Connect VE direct editing/transactions only after a real authoritative mutable VE/review surface exists.
 6. Connect Target editing under the same tune/review authority.
 7. Port Advanced and Exclusions presentation over existing role/formula owners.
