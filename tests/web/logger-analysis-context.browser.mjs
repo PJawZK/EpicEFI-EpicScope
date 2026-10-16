@@ -61,6 +61,8 @@ export async function runLoggerAnalysisContextChecks() {
     const loaded = await old.loadTraces(['rpm']);
     assert(old.source.identity === a.source && loaded[0]?.range.values[0] === 100 && loaded[0].channel === a.channels[0] && b.calls.length === before, 'Retained context used replacement source or metadata');
     checks.push('retained context invoked after replacement reads only its advertised source/metadata');
+    assert(old.sourceTimeRange?.startMs === 0 && old.sourceTimeRange?.endMs === 500, 'Retained context lost its authoritative source time extent');
+    checks.push('analysis context captures authoritative whole-source time extent with its source lifetime');
 
     set(a);
     const pendingContext = logger.getAnalysisContext();

@@ -8,6 +8,7 @@ import type {
   NumericChannelDataSource,
   NumericChannelRange,
   LogMarker,
+  LogTimeRange,
   ParserDiagnostic,
   LogSourceIdentity,
 } from '../../../../core/log-model/log-types';
@@ -180,6 +181,13 @@ export interface LoggerAnalysisContext {
     readonly timeMs: readonly number[];
     readonly label: string;
   }) => void;
+  /** Authoritative whole-source extent captured with this source-bound context. */
+  readonly sourceTimeRange?: { readonly startMs: number; readonly endMs: number };
+  readonly openRangeInLogger?: (request: {
+    readonly startMs: number;
+    readonly endMs: number;
+    readonly label: string;
+  }) => void;
   readonly aTimeMs: number | undefined;
   readonly bTimeMs: number | undefined;
   readonly savedRanges: readonly import('../state/workspace-state').SavedTimelineRangeState[];
@@ -228,6 +236,7 @@ export interface LoggerPageController {
   getAnalysisContext(): LoggerAnalysisContext;
   getAnalysisSourceState(): { readonly identity: object | undefined; readonly revision: number; readonly sampleCount: number; readonly aTimeMs: number | undefined; readonly bTimeMs: number | undefined };
   focusAnalysisTimes(timeMs: readonly number[]): void;
+  focusAnalysisRange(startMs: number, endMs: number): void;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
   reconcileAssignedChannels(): void;
@@ -524,6 +533,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   let channelIdAliases = new Map<string, string>();
   const unavailableChannelIds = new Set<string>();
   let channelDataSource: NumericChannelDataSource | undefined;
+  let analysisSourceTimeRange: LogTimeRange | undefined;
   let analysisDataRevision = 0;
   let integritySource: LogSourceIdentity | undefined;
   let integrityDisposed = false;
@@ -2116,6 +2126,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const totalStarted = now();
     const workspaceStarted = now();
     integritySource = summary.source;
+    analysisSourceTimeRange = summary.timeRange ? { ...summary.timeRange } : undefined;
     workspaceGeneration += 1;
     const fullViewport = summary.timeRange
       ? createFullViewport(summary.timeRange.startMs, summary.timeRange.endMs)
@@ -2209,6 +2220,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     options: { readonly followLatest?: boolean; readonly followWindowMs?: number } = {},
   ): Promise<void> => {
     if (!channelDataSource) return;
+    analysisSourceTimeRange = summary.timeRange ? { ...summary.timeRange } : analysisSourceTimeRange;
     logMarkers = summary.markers;
     parserContext = parserEvidence?.sourceContext(summary.source) ?? { sourceIdentity: summary.source.id };
     publishDiagnostics(summary.diagnostics);
@@ -2246,6 +2258,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     channelIdAliases.clear();
     unavailableChannelIds.clear();
     channelDataSource = undefined;
+    analysisSourceTimeRange = undefined;
     integritySource = undefined;
     logMarkers = [];
     if (catalogChannelDefinitions.size > 0) {
@@ -2382,6 +2395,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const source = channelDataSource;
     const sampleExtent = source?.sampleCount ?? 0;
     const sourceRevision = analysisDataRevision;
+    const sourceTimeRange = analysisSourceTimeRange ? { startMs: analysisSourceTimeRange.startMs, endMs: analysisSourceTimeRange.endMs } : undefined;
     const channels = analysisChannels();
     const definitions = new Map(channels.map((channel) => [channel.id, channel]));
     const runtime = activePaneRuntime();
@@ -2474,10 +2488,28 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       channels,
       loadTraces,
       ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),
+      ...(sourceTimeRange ? { sourceTimeRange } : {}),
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
       savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),
     };
+  };
+
+  const focusAnalysisRange = (startMs: number, endMs: number): void => {
+    const sourceRange = analysisSourceTimeRange;
+    if (!sourceRange || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
+    let low = Math.max(sourceRange.startMs, Math.min(startMs, endMs));
+    let high = Math.min(sourceRange.endMs, Math.max(startMs, endMs));
+    if (high < low) return;
+    if (high === low) {
+      const padding = Math.max(1, (sourceRange.endMs - sourceRange.startMs) * 0.005);
+      low = Math.max(sourceRange.startMs, low - padding);
+      high = Math.min(sourceRange.endMs, high + padding);
+    }
+    if (!(high > low)) return;
+    const target = createFullViewport(low, high);
+    syncViewport(target, 'record');
+    centerCursorInViewport(target);
   };
 
   const getRuntimeDiagnosticSnapshot = (): LoggerRuntimeDiagnosticSnapshot => {
@@ -2571,6 +2603,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     getAnalysisContext,
     getAnalysisSourceState: () => ({ identity: channelDataSource, revision: analysisDataRevision, sampleCount: channelDataSource?.sampleCount ?? 0, aTimeMs: analysisStartMs, bTimeMs: analysisEndMs }),
     focusAnalysisTimes,
+    focusAnalysisRange,
     restoreWorkspaceState,
     restoreActiveWorkspace: async () => {
       const workspaceId = activeWorkspaceId;

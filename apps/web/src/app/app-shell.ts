@@ -1072,6 +1072,11 @@ export function mountAppShell(root: HTMLElement): void {
           appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
           setEpicScopeMode('logger');
         },
+        openRangeInLogger: (request) => {
+          loggerPage.focusAnalysisRange(request.startMs, request.endMs);
+          appStatus.textContent = `Logger · ${request.label}`;
+          setEpicScopeMode('logger');
+        },
       });
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
       if (change !== 'tune') analyzerPage.setActive(true);

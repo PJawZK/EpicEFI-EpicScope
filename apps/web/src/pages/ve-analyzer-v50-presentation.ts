@@ -1,21 +1,9 @@
 import type { LoggerAnalysisContext } from './logger-page';
+import { analyzerScopeBounds, selectedAnalyzerScope } from './analyzer-scope';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import '../styles/ve-analyzer-v50-port.css';
 
 const TABLE_LAYOUT_STORAGE_KEY = 'epicscope.veAnalyzer.tableLayout';
-
-function finiteTimes(context: LoggerAnalysisContext): number[] {
-  const times: number[] = [];
-  for (const trace of context.traces) {
-    const range = trace.range;
-    if (range.timeMs.length === 0) continue;
-    const first = range.timeMs[0];
-    const last = range.timeMs[range.timeMs.length - 1];
-    if (first !== undefined && Number.isFinite(first)) times.push(first);
-    if (last !== undefined && Number.isFinite(last)) times.push(last);
-  }
-  return times;
-}
 
 function formatScopeTime(timeMs: number | undefined): string {
   if (timeMs === undefined || !Number.isFinite(timeMs)) return '--:--';
@@ -121,7 +109,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
         <div class="ve-analysis-scope-marker ve-analysis-scope-marker-a" data-ve-scope-a hidden></div>
         <div class="ve-analysis-scope-marker ve-analysis-scope-marker-b" data-ve-scope-b hidden></div>
       </div>
-    </div>`;
+    </div>
+    <button type="button" class="ve-analysis-scope-open" data-ve-scope-open disabled>Open in Logger</button>`;
 
   if (workbench?.parentElement) workbench.insertAdjacentElement('afterend', scope);
 
@@ -132,10 +121,15 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
   const scopeRange = scope.querySelector<HTMLElement>('[data-ve-scope-range]')!;
   const markerA = scope.querySelector<HTMLElement>('[data-ve-scope-a]')!;
   const markerB = scope.querySelector<HTMLElement>('[data-ve-scope-b]')!;
+  const openScope = scope.querySelector<HTMLButtonElement>('[data-ve-scope-open]')!;
+  let currentContext: LoggerAnalysisContext | undefined;
+  let currentScopeBounds: { startMs: number; endMs: number; label: string } | undefined;
 
   const renderScope = (context: LoggerAnalysisContext): void => {
-    const times = finiteTimes(context);
-    if (times.length === 0) {
+    currentContext = context;
+    const extent = context.sourceTimeRange;
+    if (!extent || !Number.isFinite(extent.startMs) || !Number.isFinite(extent.endMs) || extent.endMs < extent.startMs) {
+      currentScopeBounds = undefined;
       scope.dataset.state = 'empty';
       scopeLabel.textContent = 'Full Log';
       scopeDetail.textContent = ' · source extent unavailable';
@@ -145,23 +139,26 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       scopeRange.style.width = '100%';
       markerA.hidden = true;
       markerB.hidden = true;
+      openScope.disabled = true;
       return;
     }
 
-    const start = Math.min(...times);
-    const end = Math.max(...times);
+    const start = Math.min(extent.startMs, extent.endMs);
+    const end = Math.max(extent.startMs, extent.endMs);
     const span = Math.max(1, end - start);
-    const a = context.aTimeMs;
-    const b = context.bTimeMs;
-    const hasAB = a !== undefined && b !== undefined && Number.isFinite(a) && Number.isFinite(b);
-    const selectedStart = hasAB ? Math.min(a, b) : start;
-    const selectedEnd = hasAB ? Math.max(a, b) : end;
+    const scopeSelect = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+    const selected = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;
+    const bounds = selected ? analyzerScopeBounds(selected) : {};
+    const selectedStart = bounds.startMs ?? start;
+    const selectedEnd = bounds.endMs ?? end;
     const left = Math.max(0, Math.min(100, ((selectedStart - start) / span) * 100));
     const right = Math.max(left, Math.min(100, ((selectedEnd - start) / span) * 100));
+    const isFull = !selected || selected.kind === 'full';
 
-    scope.dataset.state = hasAB ? 'ab' : 'full';
-    scopeLabel.textContent = hasAB ? 'Current A/B' : 'Full Log';
-    scopeDetail.textContent = hasAB ? ` · ${formatScopeTime(selectedStart)}–${formatScopeTime(selectedEnd)}` : ' · entire available source';
+    currentScopeBounds = { startMs: selectedStart, endMs: selectedEnd, label: selected?.label ?? 'Full Log' };
+    scope.dataset.state = isFull ? 'full' : 'range';
+    scopeLabel.textContent = selected?.label ?? 'Full Log';
+    scopeDetail.textContent = isFull ? ' · entire available source' : ` · ${formatScopeTime(selectedStart)}–${formatScopeTime(selectedEnd)}`;
     scopeStart.textContent = formatScopeTime(start);
     scopeEnd.textContent = formatScopeTime(end);
     scopeRange.style.left = `${left}%`;
@@ -171,9 +168,17 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       node.hidden = value === undefined || !Number.isFinite(value);
       if (!node.hidden) node.style.left = `${Math.max(0, Math.min(100, ((value! - start) / span) * 100))}%`;
     };
-    placeMarker(markerA, a);
-    placeMarker(markerB, b);
+    placeMarker(markerA, context.aTimeMs);
+    placeMarker(markerB, context.bTimeMs);
+    openScope.disabled = !context.openRangeInLogger;
   };
+
+  openScope.addEventListener('click', () => {
+    const context = currentContext;
+    const range = currentScopeBounds;
+    if (!context?.openRangeInLogger || !range) return;
+    context.openRangeInLogger(range);
+  });
 
   const setupGroups = new Map<string, SetupGroup>();
   let syncSetupSummaries = (): void => {};
@@ -284,7 +289,10 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       summary('mixture', `${scale} · ${actual} · ${fuel}`);
     };
 
-    root.addEventListener('change', syncSetupSummaries);
+    root.addEventListener('change', (event) => {
+      syncSetupSummaries();
+      if (currentContext && event.target instanceof HTMLSelectElement && event.target.matches('select[data-role="scope"]')) renderScope(currentContext);
+    });
     root.addEventListener('input', syncSetupSummaries);
     scheduleSetupSummaries();
   }

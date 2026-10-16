@@ -66,9 +66,12 @@ export async function runVeSharedTableInteractionChecks() {
   document.body.append(root);
 
   try {
+    let openedRange;
     view.setContext({
-      source: { identity: {}, sampleCount: 60, revision: 0 }, channels, traces: [], aTimeMs: 0, bTimeMs: 3000, savedRanges: [],
+      source: { identity: {}, sampleCount: 60, revision: 0 }, sourceTimeRange: { startMs: 0, endMs: 5900 },
+      channels, traces: [], aTimeMs: 0, bTimeMs: 3000, savedRanges: [],
       loadTraces: async (ids) => traces.filter((trace) => ids.includes(trace.channel.id)),
+      openRangeInLogger: (request) => { openedRange = request; },
     });
     view.setTuneModel(model(), 'shared-table.msq');
     for (const [role, id] of [['rpm', 'rpm'], ['load', 'map'], ['actual', 'afr'], ['fuelCommand', 'pw']]) {
@@ -99,6 +102,17 @@ export async function runVeSharedTableInteractionChecks() {
     await settle();
     assert(rangeSummary?.textContent?.includes('1234'), 'Compact setup summary did not resync after programmatic controller refresh');
     checks.push('compact setup summaries resync after controller-driven/programmatic changes');
+
+    const scopeSelect = root.querySelector('select[data-role="scope"]');
+    scopeSelect.value = 'ab';
+    scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const scopeNavigator = root.querySelector('.ve-analysis-scope-navigator');
+    const scopeOpen = root.querySelector('[data-ve-scope-open]');
+    assert(scopeNavigator?.dataset.state === 'range' && root.querySelector('[data-ve-scope-start]')?.textContent === '00:00' && root.querySelector('[data-ve-scope-end]')?.textContent === '00:06',
+      'Scope navigator did not use authoritative source extent with the selected Analyzer range');
+    scopeOpen.click();
+    assert(openedRange?.startMs === 0 && openedRange?.endMs === 3000 && openedRange?.label === 'Current A/B', 'Scope handoff did not send the selected semantic range to Logger');
+    checks.push('scope navigator uses authoritative source extent and explicit selected-range Logger handoff');
 
     const initial = view.sessionRevision;
     selectCell(cells()[0]);
