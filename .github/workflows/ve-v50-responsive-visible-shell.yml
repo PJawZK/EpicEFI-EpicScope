@@ -1,0 +1,28 @@
+name: VE v50 visible-shell responsive acceptance
+
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Stage visible-shell responsive acceptance fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+      - name: Make responsive gate focus the application VE shell
+        run: python scripts/ve-v50-responsive-visible-shell-patch.py
+      - name: Commit patch and remove temporary files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ve-v50-responsive-visible-shell.yml scripts/ve-v50-responsive-visible-shell-patch.py
+          git add scripts/browser/acceptance.mjs
+          git commit -m "Focus application VE before responsive acceptance [skip ci]"
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
