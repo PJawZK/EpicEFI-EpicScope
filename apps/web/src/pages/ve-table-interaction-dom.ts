@@ -11,6 +11,7 @@ export interface TableInteractionDomCommands {
   readonly redo?: () => boolean;
   readonly revertSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly clearSelection?: (positions: readonly TableCellPosition[]) => boolean;
+  readonly blankSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly afterEdit?: () => void;
 }
 
@@ -87,6 +88,8 @@ export function createTableInteractionDomController(
   let dragPointerId: number | undefined;
   let dragStart: TableCellPosition | undefined;
   let dragAdditive = false;
+  let dragMoved = false;
+  let dragPointerType = '';
   let brushActive = false;
   let brushStroke: TableBrushStroke | undefined;
   let brushPointerId: number | undefined;
@@ -160,11 +163,19 @@ export function createTableInteractionDomController(
       const key = positionKey(position);
       const isSelected = selected.has(key);
       const isPinned = pinned.has(key);
+      const isAnchor = Boolean(anchor && positionKey(anchor) === key);
       cell.dataset.tableSelected = isSelected ? 'true' : 'false';
-      cell.dataset.tableAnchor = anchor && positionKey(anchor) === key ? 'true' : 'false';
+      cell.dataset.tableAnchor = isAnchor ? 'true' : 'false';
       cell.dataset.tablePinned = isPinned ? 'true' : 'false';
       cell.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      // Preserve the accepted Lambda Delay browser contract while the old v5
+      // input owner is retired behind this shared controller.
+      if (cell.dataset.delayRow !== undefined) {
+        cell.dataset.delaySelected = isSelected ? 'true' : 'false';
+        cell.dataset.delayAnchor = isAnchor ? 'true' : 'false';
+      }
     }
+    table.dataset.tableBrush = brushActive ? 'true' : 'false';
     brush.dataset.active = brushActive ? 'true' : 'false';
     brush.setAttribute('aria-pressed', brushActive ? 'true' : 'false');
     const radius = preferences.brush().radius;
@@ -218,7 +229,7 @@ export function createTableInteractionDomController(
     if (!session.isSelected(position)) session.selectCell(position);
     anchor = position;
     const input = document.createElement('input');
-    input.className = 've-table-inline-input';
+    input.className = cell.dataset.delayRow !== undefined ? 've-table-inline-input ve-delay-inline-input' : 've-table-inline-input';
     input.type = 'text';
     input.inputMode = 'decimal';
     input.autocomplete = 'off';
@@ -226,6 +237,7 @@ export function createTableInteractionDomController(
     const current = preferences.readValue?.(position);
     input.value = initial ?? (current !== undefined && Number.isFinite(current) ? String(current) : '');
     cell.dataset.tableEditing = 'true';
+    if (cell.dataset.delayRow !== undefined) cell.dataset.delayEditing = 'true';
     cell.append(input);
     inlineInput = input;
     input.focus({ preventScroll: true });
@@ -239,10 +251,17 @@ export function createTableInteractionDomController(
       inlineInput = undefined;
       input.remove();
       delete cell.dataset.tableEditing;
+      delete cell.dataset.delayEditing;
       if (commit) {
-        const value = Number(raw);
-        if (raw !== '' && Number.isFinite(value) && session.replaceSelection(value)) finishEdit();
-        else refresh();
+        if (raw === '') {
+          const positions = selectedPositions();
+          if (positions.length && commands.blankSelection?.(positions)) finishEdit();
+          else refresh();
+        } else {
+          const value = Number(raw);
+          if (Number.isFinite(value) && session.replaceSelection(value)) finishEdit();
+          else refresh();
+        }
       } else refresh();
       queueMicrotask(focusAnchor);
     };
@@ -276,6 +295,8 @@ export function createTableInteractionDomController(
     if (!additive || !anchor) anchor = position;
     dragStart = anchor ?? position;
     dragAdditive = additive;
+    dragMoved = false;
+    dragPointerType = event.pointerType;
     dragPointerId = event.pointerId;
     cell.setPointerCapture?.(event.pointerId);
     refresh();
@@ -293,6 +314,7 @@ export function createTableInteractionDomController(
       return;
     }
     if (dragPointerId !== event.pointerId || !dragStart) return;
+    if (positionKey(position) !== positionKey(dragStart)) dragMoved = true;
     session.setRectangle(dragStart, position, dragAdditive, dragStart);
     anchor = dragStart;
     refresh();
@@ -305,10 +327,14 @@ export function createTableInteractionDomController(
       return;
     }
     if (dragPointerId !== event.pointerId) return;
+    const touchTap = !dragMoved && dragPointerType === 'touch' && anchor;
     dragPointerId = undefined;
     dragStart = undefined;
     dragAdditive = false;
-    focusAnchor();
+    dragMoved = false;
+    dragPointerType = '';
+    if (touchTap) startInlineEdit(anchor!);
+    else focusAnchor();
   };
 
   const keyDown = (event: KeyboardEvent): void => {
@@ -389,9 +415,6 @@ export function createTableInteractionDomController(
     inlineInput?.blur();
     if (table) {
       table.removeEventListener('pointerdown', pointerDown);
-      table.removeEventListener('pointermove', pointerMove);
-      table.removeEventListener('pointerup', pointerUp);
-      table.removeEventListener('pointercancel', pointerUp);
       table.removeEventListener('keydown', keyDown);
       table.removeEventListener('wheel', wheel);
     }
@@ -399,14 +422,15 @@ export function createTableInteractionDomController(
     if (table) {
       markCoordinates(table);
       table.addEventListener('pointerdown', pointerDown);
-      table.addEventListener('pointermove', pointerMove);
-      table.addEventListener('pointerup', pointerUp);
-      table.addEventListener('pointercancel', pointerUp);
       table.addEventListener('keydown', keyDown);
       table.addEventListener('wheel', wheel, { passive: false });
     }
     refresh();
   };
+
+  document.addEventListener('pointermove', pointerMove, { capture: true });
+  document.addEventListener('pointerup', pointerUp, { capture: true });
+  document.addEventListener('pointercancel', pointerUp, { capture: true });
 
   const setBrushActive = (active: boolean): void => {
     if (brushActive === active) return;
@@ -419,6 +443,9 @@ export function createTableInteractionDomController(
     if (destroyed) return;
     destroyed = true;
     finishBrush(false);
+    document.removeEventListener('pointermove', pointerMove, { capture: true });
+    document.removeEventListener('pointerup', pointerUp, { capture: true });
+    document.removeEventListener('pointercancel', pointerUp, { capture: true });
     bindTable(undefined);
     toolbar.remove();
   };
