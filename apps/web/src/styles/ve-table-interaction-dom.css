@@ -31,6 +31,25 @@
   color: #f3fbff;
 }
 
+/* Lambda Delay is the first production surface on the shared v50 table tools.
+ * Keep its toolbar visually attached to the table rather than introducing a new
+ * panel/window around it.
+ */
+.ve-delay-shared-toolbar {
+  min-height: 35px;
+  margin: 6px 0 0;
+  padding: 4px 6px;
+  border: 1px solid #263b4c;
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: #0a1820;
+}
+
+.ve-delay-shared-toolbar + .ve-delay-table-shell {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .ve-workbench-table td[data-table-selected='true'],
 .ve-delay-table td[data-table-selected='true'] {
   outline: 2px solid rgba(202, 235, 249, .92);
