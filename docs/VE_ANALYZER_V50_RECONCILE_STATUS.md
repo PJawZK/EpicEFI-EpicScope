@@ -50,6 +50,10 @@ Web CI run `38981117512` passed with the explicit post-scope settle. A subsequen
 
 After current `main` was merged forward, PR #465's added Shift-click/live-preview acceptance exposed the shared-owner preview gap described below. The shared v50 owner was updated to preserve that accepted behavior, and Web CI run `38982070694` passed TypeScript, the full unit suite, production build, staged Chromium and fallback Chromium acceptance.
 
+### Spacing-aware interpolation baseline
+
+Web CI run `38982461290` passed after physical-axis linear/2D interpolation and nonuniform shape-preserving PCHIP were introduced. TypeScript, the full unit suite (including uneven-axis cases), production build, staged Chromium and fallback Chromium all passed.
+
 ## Semantic Lambda surface
 
 ### Dedicated delay-surface authority
@@ -98,7 +102,7 @@ Focused browser acceptance checks ArrowUp from semantic row 0 reaches the visual
 
 ## Spacing-aware interpolation
 
-Shared interpolation now has an optional physical-axis contract at the `TableEditSurface` boundary. Generic surfaces continue to fall back to index coordinates, while the Lambda Delay adapter supplies its semantic RPM and load bins.
+Shared interpolation has an optional physical-axis contract at the `TableEditSurface` boundary. Generic surfaces continue to fall back to index coordinates, while the Lambda Delay adapter supplies its semantic RPM and load bins.
 
 - linear H/V interpolation uses actual axis spacing rather than equal cell-index distance;
 - shape-preserving H/V interpolation uses nonuniform PCHIP/Fritsch-Carlson-style weighted derivatives with endpoint limiting instead of the former equal-spacing harmonic approximation;
@@ -106,13 +110,32 @@ Shared interpolation now has an optional physical-axis contract at the `TableEdi
 - pinned interior anchors and the existing clamp/strength/transaction semantics remain unchanged;
 - unit regressions cover uneven 1D linear spacing, uneven monotone shape interpolation and uneven 2D geometry.
 
+## Persisted table-tool preferences
+
+The frozen v50 contract calls for configurable `+ / −`, Smooth, H/V/2D interpolation and Brush settings, with those settings persisted while selection, pins and active Brush remain session-only. The production port now follows that split.
+
+- a validated/restricted-storage-safe state owner stores only the currently implemented Lambda Delay tool settings under `epicscope.veAnalyzer.tableTools.v1`;
+- no guessed VE/Target defaults are persisted before real mutable VE/Target adapters exist;
+- Lambda defaults match the frozen reference: 5 ms adjustment step, Smooth 0.5, linear 1D, bilinear 2D, interpolation strength 1 with clamp enabled, Brush +5 / radius 1 / strength 0.7 / smooth falloff;
+- the toolbar now exposes explicit H, V and 2D interpolation commands rather than hiding direction inside one fixed command;
+- right-click `+ / −`, Smooth, H/V/2D interpolation or Brush opens a compact contextual configuration popover;
+- Brush wheel radius changes update the same persisted preference owner;
+- pins, selection/anchor and active Brush are still session-only interaction state and never persisted;
+- browser acceptance verifies right-click step configuration is persisted and used by subsequent edits.
+
+The contextual configuration is deliberately a lightweight shared-table presentation surface, not the prototype floating-window framework.
+
+## Lifecycle cleanup
+
+The shared table controller already scopes document pointer/keyboard listeners to active gestures, disconnects its delay-host observer while inactive and cancels active edits on authority/lifecycle replacement. One remaining remount case was closed at the application boundary: shell disposal now deactivates Analyzer before replacing its DOM, allowing an active VE domain to disconnect its observer and gesture state even when the whole app shell is remounted without an intervening navigation event.
+
 ## Current-main synchronization
 
 The reconciliation branch was merged forward to current `main` after PR #465 landed. The merge base is `8fb99c0099408b74330d6468868424f1b94b05f5`; the branch is ahead of main and no longer behind it. This keeps the v50 work isolated while ensuring final testing includes the production Shift-click fix and its new regression coverage.
 
 ## Current validation gate
 
-A full Web CI run is required after the spacing-aware interpolation change. It must pass:
+A full Web CI run is required on the current branch head after persisted tool configuration and lifecycle cleanup. It must pass:
 
 1. TypeScript type-check.
 2. Full Vitest suite, including uneven-axis interpolation tests.
@@ -121,15 +144,16 @@ A full Web CI run is required after the spacing-aware interpolation change. It m
 5. Worker-disabled fallback Chromium acceptance.
 6. Current-main Shift-click/direct-typing live preview and native acceptance.
 7. Shared v50 selection/editing/Brush/undo/pin/scope acceptance.
-8. Visual reversed-row Arrow navigation acceptance.
-9. Existing Result View, Logger context, source-integrity, observability and Diagnostics regressions.
+8. Persisted right-click tool configuration and explicit H/V/2D controls.
+9. Visual reversed-row Arrow navigation acceptance.
+10. Existing Result View, Logger context, source-integrity, observability and Diagnostics regressions.
 
-## Remaining reconciliation work after this gate
+## Remaining work after this gate
 
-- production preference ownership for table editing tools;
-- final lifecycle/teardown cleanup if current ownership requires it;
-- responsive/visual acceptance;
-- user hands-on UI test;
-- final Codex branch audit, fixes/revalidation and explicit merge approval.
+- responsive/visual browser acceptance at representative desktop widths and table layouts;
+- user hands-on UI test from this branch;
+- fixes from that manual acceptance, if any, followed by the full gate again;
+- final Codex branch audit against current `main`, narrowly fixing justified defects/cleanup and deferring speculative redesign;
+- final revalidation, PR inspection and explicit merge approval.
 
 `main` remains untouched by the v50 changes.
