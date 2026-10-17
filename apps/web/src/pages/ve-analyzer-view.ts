@@ -9,7 +9,6 @@ import { installVeAnalyzerV50SetupDisclosurePolicy } from './ve-analyzer-v50-set
 import { installVeAnalyzerV50TableHeader } from './ve-analyzer-v50-table-header';
 import { installVeAnalyzerV50ToolSurfaces } from './ve-analyzer-v50-tool-surfaces';
 import { installVeAnalyzerProposalTableInteraction } from './ve-analyzer-proposal-table-interaction';
-import { installVeAnalyzerTargetTableInteraction } from './ve-analyzer-target-table-interaction';
 import { installVeTableBrushOverlay } from './ve-table-brush-overlay';
 import { installVeTableToolbarSelectionAvailability } from './ve-table-toolbar-availability';
 import {
@@ -23,8 +22,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   installVeAnalyzerV50SetupDisclosurePolicy(presented.element);
   const proposalEditing = installVeAnalyzerProposalTableInteraction(presented);
   const tableHeader = installVeAnalyzerV50TableHeader(proposalEditing);
-  const targetEditing = installVeAnalyzerTargetTableInteraction(tableHeader);
-  const delayEditing = installVeAnalyzerDelayTableInteraction(targetEditing);
+  const delayEditing = installVeAnalyzerDelayTableInteraction(tableHeader);
   installVeAnalyzerV50ToolSurfaces(delayEditing.element);
   const runStrip = installVeAnalyzerV50RunStrip(delayEditing);
   installVeAnalyzerV50EvidenceInspector(runStrip.element);
