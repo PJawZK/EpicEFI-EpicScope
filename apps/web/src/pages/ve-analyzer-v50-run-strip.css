@@ -1,0 +1,60 @@
+.ve-v50-port .ve-v50-legacy-run-status {
+  display: none !important;
+}
+
+.ve-v50-run-chips {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.ve-v50-status-chip {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #31505f;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #c7d5dc;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ve-v50-status-chip[data-state='good'] {
+  border-color: #235f48;
+  color: #bdf7d5;
+}
+
+.ve-v50-status-chip[data-state='warn'] {
+  border-color: #705d28;
+  color: #f6dc83;
+}
+
+.ve-v50-status-chip[data-state='bad'] {
+  border-color: #7a3138;
+  color: #ffc0c5;
+}
+
+.ve-v50-status-chip:hover:not(:disabled) {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+.ve-v50-status-chip:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.ve-v50-grab-delay {
+  font-weight: 600;
+  color: #cbd9df;
+}
+
+@media (max-width: 900px) {
+  .ve-v50-run-chips {
+    width: 100%;
+  }
+}
