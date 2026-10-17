@@ -12,14 +12,19 @@
   min-width: 122px;
 }
 
-/* Run blockers belong directly to the run/readiness band. Review/navigation is
- * subordinate and follows the blocker surface instead of splitting the pair. */
+/* Run blockers belong directly to the run/readiness band. */
 .ve-v50-port .ve-run-blocker-panel {
   margin-top: 0;
 }
 
-.ve-v50-port .ve-v50-secondary-tools {
-  margin-top: 0;
+/* The original v2 page skeleton used a permanent Proposal-stage guidance row
+ * plus a large empty-state panel. In the v50 workbench those conditions are
+ * already represented by the compact readiness/run band and blocker surface.
+ * Keep the semantic nodes for lifecycle/state ownership, but remove them from
+ * the normal visible layout so the table remains the dominant work surface. */
+.ve-v50-port .ve-workbench-guidance,
+.ve-v50-port > .specialized-analyzer-empty {
+  display: none !important;
 }
 
 @media (max-width: 900px) {
