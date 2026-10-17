@@ -146,6 +146,8 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     if (body) {
       const rect = body.getBoundingClientRect();
       assert(inside(rect, viewport, 8), `Setup disclosure ${detail.dataset.veV50Setup || '?'} escapes viewport at ${expectedWidth}px: ${Math.round(rect.left)}..${Math.round(rect.right)}`);
+      assert(rect.top >= 0 && rect.bottom <= window.innerHeight + 8,
+        `Setup disclosure ${detail.dataset.veV50Setup || '?'} escapes vertical viewport at ${expectedWidth}px: ${Math.round(rect.top)}..${Math.round(rect.bottom)}`);
     }
     detail.open = false;
   }
