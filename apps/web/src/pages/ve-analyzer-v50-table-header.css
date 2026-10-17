@@ -125,3 +125,32 @@
     justify-content: flex-start;
   }
 }
+
+/* Compact target selector must override the older workbench-wide select width
+ * constraints and reserve physical room for the native dropdown indicator. */
+.ve-v50-port .ve-workbench-panel .ve-v50-target-host {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(290px, 27vw);
+  overflow: hidden;
+}
+.ve-v50-port .ve-workbench-panel .ve-v50-target-host select {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 138px;
+  max-width: min(230px, 22vw);
+  height: 28px;
+  padding: 0 23px 0 7px;
+  margin: 0;
+  border: 0;
+  flex: 1 1 auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ve-v50-port .ve-workbench-panel .ve-v50-result-view-host select {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 175px;
+  padding-right: 23px;
+}
