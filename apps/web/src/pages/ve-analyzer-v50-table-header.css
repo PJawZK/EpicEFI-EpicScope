@@ -14,13 +14,34 @@
   flex-wrap: wrap;
 }
 
-.ve-v50-table-head > div:not(.ve-table-header-controls):not(.ve-v50-table-actions) > span {
+.ve-v50-table-head .ve-v50-legacy-table-description {
+  display: none !important;
+}
+
+.ve-v50-table-head .ve-v50-table-identity {
+  display: inline;
+  margin: 0;
   color: #748c99;
   font-size: 8px;
 }
 
 .ve-v50-table-head > .ve-table-header-controls {
   display: contents;
+}
+
+/* v7 continues to own these semantic selectors and may re-parent them during
+ * layout synchronization. v50 provides the visible presentation elsewhere. */
+.ve-v50-table-head > .ve-table-header-controls > select[data-role='ve-table'],
+.ve-v50-table-head > .ve-table-header-controls > select[data-role='target-table'] {
+  display: none !important;
+}
+
+/* The old workbench legend was useful during the transitional overlay design,
+ * but the frozen v50 header is intentionally compact. Evidence remains visible
+ * in cell markers and the explicit Cell Evidence inspector. */
+.ve-v50-port .ve-workbench-panel:first-child > header > div::after {
+  content: none !important;
+  display: none !important;
 }
 
 .ve-v50-table-actions {
