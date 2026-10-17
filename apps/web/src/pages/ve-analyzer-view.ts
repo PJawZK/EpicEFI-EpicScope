@@ -4,6 +4,7 @@ import { installVeAnalyzerDelayTableInteraction } from './ve-analyzer-delay-tabl
 import { installVeAnalyzerV50EvidenceInspector } from './ve-analyzer-v50-evidence-inspector';
 import { installVeAnalyzerV50FinalLayout } from './ve-analyzer-v50-final-layout';
 import { installVeAnalyzerV50Presentation } from './ve-analyzer-v50-presentation';
+import { installVeAnalyzerV50RunStrip } from './ve-analyzer-v50-run-strip';
 import { installVeAnalyzerV50SetupDisclosurePolicy } from './ve-analyzer-v50-setup-disclosure';
 import { installVeAnalyzerV50TableHeader } from './ve-analyzer-v50-table-header';
 import { installVeAnalyzerV50ToolSurfaces } from './ve-analyzer-v50-tool-surfaces';
@@ -23,11 +24,12 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const tableHeader = installVeAnalyzerV50TableHeader(proposalEditing);
   const delayEditing = installVeAnalyzerDelayTableInteraction(tableHeader);
   installVeAnalyzerV50ToolSurfaces(delayEditing.element);
-  installVeAnalyzerV50EvidenceInspector(delayEditing.element);
-  installVeAnalyzerV50FinalLayout(delayEditing.element);
-  installVeTableBrushOverlay(delayEditing.element);
-  installVeTableToolbarSelectionAvailability(delayEditing.element);
-  return delayEditing;
+  const runStrip = installVeAnalyzerV50RunStrip(delayEditing);
+  installVeAnalyzerV50EvidenceInspector(runStrip.element);
+  installVeAnalyzerV50FinalLayout(runStrip.element);
+  installVeTableBrushOverlay(runStrip.element);
+  installVeTableToolbarSelectionAvailability(runStrip.element);
+  return runStrip;
 }
 
 export type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
