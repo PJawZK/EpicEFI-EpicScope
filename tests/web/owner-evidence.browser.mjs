@@ -24,6 +24,8 @@ export async function runOwnerEvidenceChecks(){
   checks.push('unchanged context/tune records no-op evidence without revision, analysis or data-load changes');
   const cell=[...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find(c=>c.title.startsWith('Measured proposal'));
   assert(cell,'Missing measured evidence cell');openEvidence(root,cell);await pause(0);openEvidence(root,cell);await pause(0);
+  const veTab = root.querySelector('[data-table-tab="ve"]');
+  veTab?.click(); await pause(0);
   const headerEvidence = root.querySelector('.ve-v50-table-actions button[aria-label="Cell Evidence"]');
   assert(headerEvidence && !headerEvidence.hidden && headerEvidence.getBoundingClientRect().width > 0,
     'Visible v50 Cell Evidence action missing');
