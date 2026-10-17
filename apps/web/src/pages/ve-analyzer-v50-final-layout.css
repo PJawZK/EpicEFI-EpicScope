@@ -85,11 +85,18 @@
   height: auto;
 }
 
-.ve-v50-port .ve-workbench-table th,
-.ve-v50-port .ve-workbench-table td {
-  /* Allow 32-row tables to shrink to fit, without making numbers illegible. */
-  height: 16px;
+.ve-v50-port .ve-workbench-table tbody tr {
+  height: var(--ve-v50-row-height, 16px);
+}
+.ve-v50-port .ve-workbench-table tbody th,
+.ve-v50-port .ve-workbench-table tbody td {
+  height: var(--ve-v50-row-height, 16px);
   min-height: 16px;
+  padding: 0 2px;
+}
+.ve-v50-port .ve-workbench-table thead th {
+  height: 20px;
+  min-height: 20px;
   padding: 0 2px;
 }
 
@@ -139,10 +146,3 @@
   height: 0;
 }
 
-@media (max-height: 650px) {
-  .ve-v50-port .ve-workbench-table th,
-  .ve-v50-port .ve-workbench-table td {
-    height: 15px;
-    min-height: 15px;
-  }
-}
