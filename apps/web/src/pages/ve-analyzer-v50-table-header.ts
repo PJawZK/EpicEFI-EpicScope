@@ -2,12 +2,24 @@ import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import './ve-analyzer-v50-table-header.css';
 
-function headerIdentity(header: HTMLElement | null | undefined): { title: HTMLElement | undefined; identity: HTMLElement | undefined } {
+interface CompactHeading {
+  readonly title: HTMLElement | undefined;
+  readonly identity: HTMLElement | undefined;
+}
+
+function prepareCompactHeading(header: HTMLElement | null | undefined): CompactHeading {
   const block = header?.querySelector<HTMLElement>(':scope > div:not(.ve-table-header-controls):not(.ve-v50-table-actions)');
-  return {
-    title: block?.querySelector<HTMLElement>('strong') ?? undefined,
-    identity: block?.querySelector<HTMLElement>('span') ?? undefined,
-  };
+  const title = block?.querySelector<HTMLElement>('strong') ?? undefined;
+  const legacyDescription = block?.querySelector<HTMLElement>(':scope > span');
+  if (legacyDescription) legacyDescription.classList.add('ve-v50-legacy-table-description');
+
+  let identity = block?.querySelector<HTMLElement>('.ve-v50-table-identity');
+  if (!identity && block) {
+    identity = document.createElement('span');
+    identity.className = 've-v50-table-identity';
+    block.append(identity);
+  }
+  return { title, identity };
 }
 
 /**
@@ -29,8 +41,8 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
 
   veHeader.classList.add('ve-v50-table-head');
   targetHeader?.classList.add('ve-v50-table-head');
-  const veHeading = headerIdentity(veHeader);
-  const targetHeading = headerIdentity(targetHeader);
+  const veHeading = prepareCompactHeading(veHeader);
+  const targetHeading = prepareCompactHeading(targetHeader);
 
   const controls = veHeader.querySelector<HTMLElement>('.ve-table-header-controls');
   if (!controls) return inner;
@@ -111,7 +123,6 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     if (targetSelect && targetSelect.parentElement !== targetHost) targetHost.append(targetSelect);
 
     if (layout) layout.closest<HTMLElement>('label')?.classList.add('ve-v50-semantic-control');
-    if (veSelect) veSelect.closest<HTMLElement>('label')?.classList.add('ve-v50-semantic-control');
     if (tabs) tabs.classList.add('ve-v50-semantic-control');
 
     const split = layout?.value === 'side-by-side';
