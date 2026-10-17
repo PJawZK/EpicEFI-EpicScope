@@ -99,7 +99,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   flipButton.type = 'button';
   flipButton.className = 've-v50-table-flip';
   flipButton.addEventListener('click', () => {
-    const targetActive = targetTab?.getAttribute('aria-selected') === 'true';
+    const targetActive = Boolean(targetPanel && !targetPanel.hidden);
     (targetActive ? veTab : targetTab)?.click();
   });
 
@@ -138,7 +138,9 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     if (tabs) tabs.classList.add('ve-v50-semantic-control');
 
     const split = layout?.value === 'side-by-side';
-    const targetActive = !split && targetTab?.getAttribute('aria-selected') === 'true';
+    // The visible production panel is authoritative. v7 can change its panel
+    // visibility before ARIA tab state settles, especially on programmatic tabs.
+    const targetActive = !split && Boolean(targetPanel && !targetPanel.hidden);
     const activeHeader = targetActive ? targetHeader : veHeader;
     if (activeHeader && actions.parentElement !== activeHeader) activeHeader.append(actions);
 
