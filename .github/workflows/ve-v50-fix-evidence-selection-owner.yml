@@ -1,0 +1,29 @@
+name: VE v50 Evidence selection owner fix
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+    paths:
+      - .github/workflows/ve-v50-fix-evidence-selection-owner.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+          fetch-depth: 0
+      - run: python scripts/ve-v50-fix-evidence-selection-owner.py
+      - run: |
+          rm scripts/ve-v50-fix-evidence-selection-owner.py
+          rm .github/workflows/ve-v50-fix-evidence-selection-owner.yml
+          npm ci
+          npm run typecheck
+          npm test
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Separate VE Evidence selection from proposal editability'
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
