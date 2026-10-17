@@ -76,6 +76,14 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     const rect = node.getBoundingClientRect();
     assert(inside(rect, rootRect), `${label} escapes VE root at ${expectedWidth}px`);
   }
+  const compactActions = root.querySelector('.ve-v50-table-actions');
+  assert(compactActions?.querySelector('button[aria-label="Cell Evidence"]')
+    && compactActions.querySelector('button[aria-label="Toggle VE and Target split view"]')
+    && compactActions.querySelector('.ve-v50-target-host select[data-role="target-table"]'),
+    'v50 header actions were not attached or lost semantic controls');
+  assert(root.querySelectorAll('.ve-v50-table-actions').length === 1,
+    'v50 header action host duplicated');
+  checks.push('compact table header retains Target, Split and Cell Evidence actions');
   assert(!root.querySelector('.ve-v50-secondary-tools'), 'Temporary Review & tools strip is still present');
   checks.push(`primary workbench, scope, setup and action surfaces stay inside the VE root at ${expectedWidth}px`);
 
