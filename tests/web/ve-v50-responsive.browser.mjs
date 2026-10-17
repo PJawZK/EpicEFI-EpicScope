@@ -64,46 +64,44 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     ['scope navigator', '.ve-analysis-scope-navigator'],
     ['setup row', '.ve-workbench-quick-controls'],
     ['action bar', '.ve-workbench-actionbar'],
-    ['secondary tools', '.ve-v50-secondary-tools'],
   ]) {
     const node = root.querySelector(selector);
     assert(node, `${label} missing`);
     const rect = node.getBoundingClientRect();
     assert(inside(rect, rootRect), `${label} escapes VE root at ${expectedWidth}px`);
   }
-  checks.push(`primary workbench, scope, setup, action and secondary-tool surfaces stay inside the VE root at ${expectedWidth}px`);
+  assert(!root.querySelector('.ve-v50-secondary-tools'), 'Temporary Review & tools strip is still present');
+  checks.push(`primary workbench, scope, setup and action surfaces stay inside the VE root at ${expectedWidth}px`);
 
-  const secondary = root.querySelector('.ve-v50-secondary-tools');
-  const secondaryIds = [...secondary.querySelectorAll('[data-ve-v50-secondary]')].map((button) => button.dataset.veV50Secondary);
-  for (const id of ['summary', 'lambda-delay', 'mappings', 'exclusions', 'readiness', 'cell-evidence']) {
-    assert(secondaryIds.includes(id), `VE secondary tool ${id} is missing`);
-  }
-  assert(!secondaryIds.includes('help') && !secondaryIds.includes('settings'), 'VE secondary strip duplicated global Help or Settings controls');
-  checks.push('VE review tools are present without duplicating global Help or Settings');
-
-  const lambdaTool = secondary.querySelector('[data-ve-v50-secondary="lambda-delay"]');
-  const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
-  const lambdaWasOpen = Boolean(lambdaDetails?.open);
-  if (lambdaTool && lambdaDetails && !lambdaTool.disabled) {
-    lambdaDetails.open = false;
-    lambdaTool.click();
-    await settle();
-    assert(lambdaDetails.open, 'Lambda Delay secondary tool did not reveal the existing Lambda owner');
-  }
-  const mappingTool = secondary.querySelector('[data-ve-v50-secondary="mappings"]');
+  const advancedButton = root.querySelector('.ve-v50-advanced-button:not(.ve-v50-exclusions-button)');
+  const exclusionsButton = root.querySelector('.ve-v50-exclusions-button');
+  const toolHost = root.querySelector('.ve-v50-tool-host');
   const advanced = root.querySelector('.ve-workbench-advanced');
-  const advancedWasOpen = Boolean(advanced?.open);
-  if (mappingTool && advanced && !mappingTool.disabled) {
-    advanced.open = false;
-    mappingTool.click();
-    await settle();
-    assert(advanced.open, 'Mappings secondary tool did not reveal the existing Advanced owner');
-  }
-  if (lambdaDetails) lambdaDetails.open = lambdaWasOpen;
-  if (advanced) advanced.open = advancedWasOpen;
-  resetCaptureScroll(analyzer);
+  const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
+  assert(advancedButton && exclusionsButton && toolHost && advanced && lambdaDetails,
+    'Compact v50 Advanced/Exclusions/Lambda tool surfaces are incomplete');
+  assert(toolHost.contains(advanced) && toolHost.contains(lambdaDetails),
+    'Advanced or Lambda owner is still mounted in the permanent page flow');
+
+  advancedButton.click();
   await settle();
-  checks.push('secondary navigation delegates to existing Lambda and Advanced owners');
+  const advancedPanel = advanced.closest('.ve-v50-tool-surface');
+  assert(advanced.open && advancedPanel && !advancedPanel.hidden,
+    'Advanced button did not open the existing Advanced owner as a tool surface');
+  advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
+  await settle();
+  assert(!advanced.open && advancedPanel.hidden, 'Advanced tool surface did not close cleanly');
+
+  const lambdaTrigger = root.querySelector('.ve-v50-lambda-tool-trigger');
+  assert(lambdaTrigger, 'Lambda Delay workflow trigger missing');
+  lambdaTrigger.click();
+  await settle();
+  const lambdaPanel = lambdaDetails.closest('.ve-v50-tool-surface');
+  assert(lambdaDetails.open && lambdaPanel && !lambdaPanel.hidden,
+    'Lambda Delay trigger did not open the existing Lambda owner as a tool surface');
+  lambdaPanel.querySelector('.ve-v50-tool-surface-close')?.click();
+  await settle();
+  checks.push('Advanced and Lambda owners open as secondary tool surfaces instead of inline page sections');
 
   const surface = visibleTableSurface(root);
   assert(surface, 'No visible VE workbench table surface found');
@@ -164,7 +162,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
       tableScrollWidth: wrapper.scrollWidth,
       tableWidth: Math.round(table.getBoundingClientRect().width),
       setupGroups: details.length,
-      secondaryTools: secondaryIds.length,
+      toolSurfaces: toolHost.querySelectorAll('.ve-v50-tool-surface').length,
     },
   };
 }
