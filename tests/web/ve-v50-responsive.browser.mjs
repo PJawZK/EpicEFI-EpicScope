@@ -51,7 +51,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
 
   const secondary = root.querySelector('.ve-v50-secondary-tools');
   const secondaryIds = [...secondary.querySelectorAll('[data-ve-v50-secondary]')].map((button) => button.dataset.veV50Secondary);
-  for (const id of ['summary', 'lambda-delay', 'mappings', 'exclusions', 'readiness', 'cell-evidence']) {
+  for (const id of ['summary', 'lambda-delay', 'mappings', 'exclusions', 'readiness', 'cell-evidence', 'help', 'settings']) {
     assert(secondaryIds.includes(id), `Frozen v50 secondary tool ${id} is missing`);
   }
   checks.push('frozen v50 production-owned secondary tools are present');
@@ -72,9 +72,27 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     await settle();
     assert(advanced.open, 'Mappings secondary tool did not reveal the existing Advanced owner');
   }
+  const helpTool = secondary.querySelector('[data-ve-v50-secondary="help"]');
+  if (helpTool && !helpTool.disabled) {
+    helpTool.click();
+    await settle();
+    const helpPopover = document.querySelector('#epicscope-inline-help-popover');
+    assert(helpPopover && !helpPopover.hidden, 'Help secondary tool did not open the existing VE Help owner');
+    document.querySelector('.ve-analyzer-header-help .epicscope-inline-help')?.click();
+    await settle();
+  }
+  const settingsTool = secondary.querySelector('[data-ve-v50-secondary="settings"]');
+  if (settingsTool && !settingsTool.disabled) {
+    settingsTool.click();
+    await settle();
+    const settingsPopover = document.querySelector('.settings-popover');
+    assert(settingsPopover && !settingsPopover.hidden, 'Settings secondary tool did not open the existing EpicScope Settings owner');
+    document.querySelector('.settings-button[aria-label="Settings"]')?.click();
+    await settle();
+  }
   window.scrollTo(0, 0);
   await settle();
-  checks.push('secondary navigation delegates to existing Lambda and Advanced owners without changing responsive capture position');
+  checks.push('secondary navigation delegates to existing Lambda, Advanced, VE Help and EpicScope Settings owners');
 
   const surface = visibleTableSurface(root);
   assert(surface, 'No visible VE workbench table surface found');
