@@ -12,7 +12,7 @@ These findings come from the first hands-on production-port test against the fro
 
 ## Current implementation checkpoint
 
-The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. This checkpoint must still pass the complete staged and fallback Chromium acceptance suite before it is considered ready for another manual UI pass.
+The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. Owner-observability browser coverage has also been migrated to exercise that explicit Evidence tool. The complete staged and fallback Chromium acceptance suite remains the gate before another manual UI pass.
 
 ## Table interaction requirements
 
