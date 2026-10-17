@@ -14,7 +14,9 @@ These findings come from the first hands-on production-port test against the fro
 
 The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. Owner-observability browser coverage has also been migrated to exercise that explicit Evidence tool.
 
-The pre-Proposal-specific full Web CI gate is green, including the 1024/1366/1920 responsive disclosure checks after viewport-based placement correction. A dedicated real-browser VE Proposal interaction module is now part of the staged/fallback acceptance sequence. It covers direct typing without F2, commit-on-new-cell, Delete/Revert separation, lower/higher baseline memory, +/- adjustment, Shift-rectangle selection, Brush footprint behavior, sparse both-directions interpolation, explicit Cell Evidence on read-only Result Views, and preservation of immutable source TuneModel authority. That expanded full browser gate must be green before another manual UI pass.
+The expanded full Web CI gate is green, including 1024/1366/1920 responsive disclosure checks and the dedicated real-browser VE Proposal interaction module in both staged/fallback acceptance. Proposal acceptance covers direct typing without F2, commit-on-new-cell, Delete/Revert separation, lower/higher baseline memory, +/- adjustment, Shift-rectangle selection, Brush footprint behavior, sparse both-directions interpolation, explicit Cell Evidence on read-only Result Views, and preservation of immutable source TuneModel authority.
+
+With that parity evidence in place, the production controller chain no longer installs the transitional v5 Lambda Delay gesture/editor owner. v6 now builds directly on v4; Lambda Delay production input is owned by the shared table-interaction adapter. The v5 source file is retained only as superseded/reference code until final cleanup, not as a live production owner.
 
 ## Table interaction requirements
 
@@ -42,9 +44,9 @@ Normal VE-table cell selection/editing must not be intercepted by Cell Evidence.
 
 The VE/proposal table must be wired to the same shared edit core rather than retaining evidence-popup-only cell interaction. Its edits are review/working proposal state; they do not silently mutate the source MSQ or write/burn an ECU.
 
-## Lambda Delay duplication
+## Lambda Delay ownership
 
-Lambda Delay currently exposes overlapping legacy/shared editing behavior. Production should have one editing owner only. The shared table-edit controller is the input owner; the legacy v5 inline editor/selection listeners must be retired from the active path once parity is covered.
+Lambda Delay now has one production editing owner: the shared table-edit controller plus the semantic Lambda adapter. The superseded v5 inline-selection/editor implementation is no longer installed by the production v6 chain. Keep the old source only until final cleanup/audit confirms no external compatibility reason to retain it.
 
 ## Scope setup
 
