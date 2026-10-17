@@ -10,6 +10,10 @@ These findings come from the first hands-on production-port test against the fro
 - Loaded sources reach Analyzer.
 - VE Analyzer renders.
 
+## Current implementation checkpoint
+
+The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. This checkpoint must still pass the complete staged and fallback Chromium acceptance suite before it is considered ready for another manual UI pass.
+
 ## Table interaction requirements
 
 The production port must use one shared table-editing interaction core wherever VE Analyzer exposes editable tables. Domain values remain owned by semantic adapters; selection, pins, Brush gesture state and tool configuration do not become tune-domain truth.
