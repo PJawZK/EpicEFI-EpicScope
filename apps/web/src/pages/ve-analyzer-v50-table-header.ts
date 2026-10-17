@@ -93,7 +93,16 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
   veHeader.append(actions);
 
+  let active = true;
+  const scheduleSync = (): void => {
+    if (!active) return;
+    queueMicrotask(() => {
+      if (active) sync();
+    });
+  };
+
   const sync = (): void => {
+    if (!active) return;
     const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
     if (sharedToolbar && sharedToolbar.parentElement !== toolbarHost) toolbarHost.append(sharedToolbar);
 
@@ -135,16 +144,17 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     splitButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   };
 
-  root.addEventListener('change', () => queueMicrotask(sync));
-  root.addEventListener('ve-proposal-table-rendered', () => queueMicrotask(sync));
-  inner.onPrimaryAnalysisChange(() => queueMicrotask(sync));
-  queueMicrotask(sync);
+  root.addEventListener('change', scheduleSync);
+  root.addEventListener('ve-proposal-table-rendered', scheduleSync);
+  inner.onPrimaryAnalysisChange(scheduleSync);
+  scheduleSync();
 
   return {
     element: root,
-    setActive(active) {
-      inner.setActive(active);
-      if (active) queueMicrotask(sync);
+    setActive(nextActive) {
+      active = nextActive;
+      inner.setActive(nextActive);
+      if (nextActive) scheduleSync();
     },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
@@ -154,17 +164,17 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       const changed = inner.setContext(context);
-      queueMicrotask(sync);
+      if (active) scheduleSync();
       return changed;
     },
     setTuneModel(model, sourceName) {
       const changed = inner.setTuneModel(model, sourceName);
-      queueMicrotask(sync);
+      if (active) scheduleSync();
       return changed;
     },
     refresh() {
       inner.refresh();
-      queueMicrotask(sync);
+      if (active) scheduleSync();
     },
   };
 }
