@@ -217,12 +217,6 @@
 .ve-workbench-table td[data-table-value-state='higher'],
 .ve-delay-table td[data-table-value-state='higher'] { color: #ff7d83 !important; }
 
-/* Keep the moving Brush footprint inside each cell's paint box. Using an
- * inset-only marker avoids outline/z-index stacking invalidation across the
- * collapsed table while preserving the same cyan affected-cell cue. */
-.ve-workbench-table td[data-table-brush-preview='true'],
-.ve-delay-table td[data-table-brush-preview='true'] {
-  box-shadow:
-    inset 0 0 0 2px rgba(126, 214, 244, .92),
-    inset 0 0 0 3px rgba(126, 214, 244, .3);
-}
+/* The moving Brush footprint is rendered by ve-table-brush-overlay.ts.
+ * data-table-brush-preview remains interaction bookkeeping only; do not attach
+ * visual cell rules here or pointer motion will invalidate table-cell paint. */
