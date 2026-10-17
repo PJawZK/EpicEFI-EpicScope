@@ -1,0 +1,97 @@
+.ve-v50-tool-host {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+
+.ve-v50-tool-surface {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr);
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 100px);
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid #355363;
+  border-radius: 6px;
+  background: #0d1b24;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, .48);
+  pointer-events: auto;
+}
+
+.ve-v50-tool-surface[hidden] {
+  display: none;
+}
+
+.ve-v50-tool-surface-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 7px;
+  border-bottom: 1px solid #263d49;
+}
+
+.ve-v50-tool-surface-head strong {
+  color: #dce9ef;
+  font-size: 10px;
+}
+
+.ve-v50-tool-surface-close {
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #d0dce2;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ve-v50-tool-surface-close:hover {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+.ve-v50-tool-surface-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.ve-v50-tool-details {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ve-v50-tool-details > summary[hidden] {
+  display: none;
+}
+
+.ve-v50-tool-details:not([open]) > :not(summary) {
+  display: none;
+}
+
+.ve-v50-lambda-tool-trigger {
+  cursor: pointer;
+}
+
+.ve-v50-lambda-tool-trigger:hover,
+.ve-v50-lambda-tool-trigger:focus-visible {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+@media (max-width: 900px) {
+  .ve-v50-tool-surface {
+    top: 56px;
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 72px);
+  }
+}
