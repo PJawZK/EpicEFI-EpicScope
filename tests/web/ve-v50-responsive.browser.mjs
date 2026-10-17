@@ -104,6 +104,15 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   checks.push(`visible table remains a bounded dominant work surface with internal overflow available at ${expectedWidth}px`);
 
   const details = [...root.querySelectorAll('.ve-v50-setup-group')];
+  if (details.length >= 2) {
+    details[0].open = true;
+    await settle();
+    details[1].open = true;
+    await settle();
+    assert(!details[0].open && details[1].open, 'Opening a v50 setup group did not close the previous setup disclosure');
+    details[1].open = false;
+    checks.push('compact setup row keeps one active disclosure at a time');
+  }
   for (const detail of details) {
     detail.open = true;
     await settle();
