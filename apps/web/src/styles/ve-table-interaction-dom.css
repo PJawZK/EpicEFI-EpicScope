@@ -31,6 +31,21 @@
   color: #f3fbff;
 }
 
+.ve-table-edit-toolbar > button[aria-disabled='true'] {
+  border-color: #253944;
+  background: #0b1720;
+  color: #627884;
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+.ve-table-edit-toolbar > button[aria-disabled='true']:hover,
+.ve-table-edit-toolbar > button[aria-disabled='true']:focus-visible {
+  border-color: #2a404c;
+  background: #0c1821;
+  color: #6d828c;
+}
+
 /* Lambda Delay is the first production surface on the shared v50 table tools.
  * Keep its toolbar visually attached to the table rather than introducing a new
  * panel/window around it.
