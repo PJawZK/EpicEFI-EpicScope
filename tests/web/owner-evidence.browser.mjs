@@ -27,7 +27,12 @@ export async function runOwnerEvidenceChecks(){
   assert(count('ve.popup.build')&&count('ve.popup.cache-hit')&&fixture.reads()===reads,'Popup evidence did not distinguish retained build/cache hit');
   checks.push('popup reports detail build/cache reuse without recomputing or loading analysis data');
   const select=root.querySelector('select[aria-label="VE Analyzer result view"]');
-  assert(select,'Missing Result View control');const initialResultView=select.value;select.value=[...select.options].find(o=>o.value!==select.value).value;select.dispatchEvent(new Event('change',{bubbles:true}));await pause(0);
+  assert(select,'Missing Result View control: '+JSON.stringify({
+    compactActions: root.querySelector('.ve-v50-table-actions')?.outerHTML.slice(0,1200),
+    headers: [...root.querySelectorAll('.ve-v50-table-head')].map(h=>h.outerHTML.slice(0,600)),
+    selectCount: root.querySelectorAll('select').length,
+    resultViewAnywhere: document.querySelectorAll('select[aria-label="VE Analyzer result view"]').length
+  }));const initialResultView=select.value;select.value=[...select.options].find(o=>o.value!==select.value).value;select.dispatchEvent(new Event('change',{bubbles:true}));await pause(0);
   assert(count('ve.result-view.changed')&&view.getPrimaryAnalysis()===primary&&view.sessionRevision===revision&&count('ve.analysis.started')===starts,'Presentation evidence changed semantic authority');
   openEvidence(root,cell);await pause(0);assert(fixture.reads()===reads,'Result View reopened popup with extra reads');
   checks.push('Result View evidence remains presentation-only and preserves primary/cached evidence');
