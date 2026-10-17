@@ -113,10 +113,24 @@ export function installTableToolConfiguration(
     hint.textContent = description;
     header.append(strong, hint);
     element.append(header);
+    element.style.visibility = 'hidden';
     host.append(element);
-    const rect = host.getBoundingClientRect();
-    element.style.left = `${Math.max(0, Math.min(event.clientX - rect.left, rect.width - 300))}px`;
-    element.style.top = `${host.offsetHeight + 4}px`;
+    const hostRect = host.getBoundingClientRect();
+    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : hostRect;
+    const popupWidth = element.offsetWidth;
+    const popupHeight = element.offsetHeight;
+    const gap = 4;
+    const pad = 8;
+    const roomBelow = window.innerHeight - anchor.bottom;
+    const roomAbove = anchor.top;
+    const direction = roomBelow < popupHeight + gap && roomAbove > roomBelow ? 'up' : 'down';
+    const viewportLeft = Math.max(pad, Math.min(event.clientX, window.innerWidth - popupWidth - pad));
+    element.style.left = `${viewportLeft - hostRect.left}px`;
+    element.style.top = direction === 'up'
+      ? `${anchor.top - hostRect.top - popupHeight - gap}px`
+      : `${anchor.bottom - hostRect.top + gap}px`;
+    element.dataset.direction = direction;
+    element.style.visibility = '';
     popover = element;
     queueMicrotask(() => {
       document.addEventListener('pointerdown', outsidePointer, true);
@@ -172,7 +186,7 @@ export function installTableToolConfiguration(
     const both = axis === 'both';
     const element = open(
       event,
-      `${both ? '2D interpolation' : 'Interpolation'} · ${owner.label}`,
+      `${both ? 'Both-directions interpolation' : 'Interpolation'} · ${owner.label}`,
       'Normal click applies the current method. Pins remain untouched; H/V pins also act as interior anchors.',
     );
     const method = selectField('Method', both

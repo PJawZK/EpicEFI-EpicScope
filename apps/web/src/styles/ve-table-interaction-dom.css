@@ -185,3 +185,37 @@
 .ve-table-tool-options-foot button {
   min-height: 28px;
 }
+
+
+/* Frozen v50 table tool visual vocabulary. */
+.ve-table-edit-toolbar > button {
+  width: 29px;
+  height: 29px;
+  min-height: 29px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+.ve-table-edit-toolbar > button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.ve-workbench-table td[data-table-value-state='lower'],
+.ve-delay-table td[data-table-value-state='lower'] { color: #73bfff !important; }
+.ve-workbench-table td[data-table-value-state='higher'],
+.ve-delay-table td[data-table-value-state='higher'] { color: #ff7d83 !important; }
+
+.ve-workbench-table td[data-table-brush-preview='true'],
+.ve-delay-table td[data-table-brush-preview='true'] {
+  outline: 2px solid rgba(126, 214, 244, .92);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px rgba(126, 214, 244, .3);
+  z-index: 2;
+}

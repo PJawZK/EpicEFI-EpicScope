@@ -36,6 +36,9 @@ class VeDelayTableEditSurface implements TableEditSurface {
   readonly #owner: VeDelayEditOwner;
   readonly #undo: HistoryEntry[] = [];
   readonly #redo: HistoryEntry[] = [];
+  #baseline: readonly (number | undefined)[] | undefined;
+  #baselineRows = 0;
+  #baselineCols = 0;
 
   constructor(owner: VeDelayEditOwner) {
     this.#owner = owner;
@@ -53,6 +56,23 @@ class VeDelayTableEditSurface implements TableEditSurface {
 
   valueAt(position: TableCellPosition): number | undefined {
     return snapshotValue(this.#owner, position.row, position.col);
+  }
+
+  baselineValueAt(position: TableCellPosition): number | undefined {
+    const snapshot = this.#owner.snapshot();
+    if (!snapshot) return undefined;
+    if (!this.#baseline || this.#baselineRows !== snapshot.rows || this.#baselineCols !== snapshot.cols) {
+      this.#baseline = [...snapshot.values];
+      this.#baselineRows = snapshot.rows;
+      this.#baselineCols = snapshot.cols;
+    }
+    return this.#baseline[position.row * snapshot.cols + position.col];
+  }
+
+  resetBaseline(): void {
+    this.#baseline = undefined;
+    this.#baselineRows = 0;
+    this.#baselineCols = 0;
   }
 
   beginTransaction(label: string): TableEditTransaction {
@@ -204,6 +224,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     interpolation: () => interpolationOptions(toolPreferences, 'both'),
     brush: () => brushOptions(toolPreferences),
     readValue: (position) => surface.valueAt(position),
+    baselineValue: (position) => surface.baselineValueAt(position),
     adjustBrushRadius: (delta) => saveToolPreferences({
       ...toolPreferences,
       brush: { ...toolPreferences.brush, radius: Math.max(1, Math.min(8, toolPreferences.brush.radius + delta)) },
@@ -242,7 +263,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     revertSelection: (positions) => surface.revert(positions),
     clearSelection: (positions) => surface.replaceWithUndefined(positions),
     blankSelection: (positions) => surface.replaceWithUndefined(positions),
-    deleteSelection: (positions) => surface.revert(positions),
+    deleteSelection: (positions) => surface.replaceWithUndefined(positions),
     afterEdit: () => queueMicrotask(() => dom.bindTable(currentDelayTable(delayHost))),
   });
 
@@ -256,6 +277,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     session.clearSelection();
     session.clearPins();
     surface.resetHistory();
+    surface.resetBaseline();
   };
   const observer = new MutationObserver(bind);
   // v2 may rebuild the rendered table below a stable delay host when semantic
@@ -265,9 +287,10 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
   const observe = (): void => observer.observe(delayHost, { childList: true, subtree: true });
   observe();
 
-  for (const selector of ['[data-ve-analyzer="grab-delay"]', '[data-ve-analyzer="use-delay"]', '[data-ve-analyzer="load-delay"]'] as const) {
-    root.querySelector<HTMLButtonElement>(selector)?.addEventListener('click', resetInteractionSession, { capture: true });
-  }
+  root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]')
+    ?.addEventListener('click', () => dom.cancelActiveInteraction(), { capture: true });
+  root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]')
+    ?.addEventListener('click', resetInteractionSession, { capture: true });
   root.querySelector<HTMLInputElement>('[data-ve-analyzer="load-delay-file"]')
     ?.addEventListener('change', resetInteractionSession, { capture: true });
   bind();

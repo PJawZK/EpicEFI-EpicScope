@@ -6,6 +6,7 @@ import {
   type TableInterpolationOptions,
 } from './ve-table-interaction';
 import { installTableToolConfiguration, type TableToolConfigurationOwner } from './ve-table-tool-options-dom';
+import { VE_TABLE_TOOL_ICONS } from './ve-table-icons';
 
 export interface TableInteractionDomCommands {
   readonly undo?: () => boolean;
@@ -23,6 +24,7 @@ export interface TableInteractionDomPreferences {
   readonly interpolation: () => TableInterpolationOptions;
   readonly brush: () => TableBrushOptions;
   readonly readValue?: (position: TableCellPosition) => number | undefined;
+  readonly baselineValue?: (position: TableCellPosition) => number | undefined;
   readonly adjustBrushRadius?: (delta: 1 | -1) => void;
   readonly configuration?: TableToolConfigurationOwner;
 }
@@ -67,11 +69,12 @@ function markCoordinates(table: HTMLTableElement): void {
   }
 }
 
-function createToolButton(label: string, title: string, action: () => void): HTMLButtonElement {
+function createToolButton(content: string, title: string, action: () => void): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = label;
+  button.innerHTML = content;
   button.title = title;
+  button.setAttribute('aria-label', title);
   button.addEventListener('click', action);
   return button;
 }
@@ -99,6 +102,7 @@ export function createTableInteractionDomController(
   let brushStroke: TableBrushStroke | undefined;
   let brushPointerId: number | undefined;
   let brushLast: TableCellPosition | undefined;
+  let brushHover: TableCellPosition | undefined;
   let brushDirection: 1 | -1 = 1;
   let brushTimer: number | undefined;
   let inlineInput: HTMLInputElement | undefined;
@@ -123,34 +127,34 @@ export function createTableInteractionDomController(
     if (action()) finishEdit();
   };
 
-  const undo = createToolButton('↶', 'Undo', () => run(() => commands.undo?.() ?? false));
-  const redo = createToolButton('↷', 'Redo', () => run(() => commands.redo?.() ?? false));
-  const decrement = createToolButton('−', 'Decrease selected cells', () => {
+  const undo = createToolButton(VE_TABLE_TOOL_ICONS.undo, 'Undo', () => run(() => commands.undo?.() ?? false));
+  const redo = createToolButton(VE_TABLE_TOOL_ICONS.redo, 'Redo', () => run(() => commands.redo?.() ?? false));
+  const decrement = createToolButton(VE_TABLE_TOOL_ICONS.minus, 'Decrease selected cells', () => {
     const step = preferences.adjustmentStep();
     run(() => session.adjust(-Math.abs(Number.isFinite(step) ? step : 0)));
   });
-  const increment = createToolButton('+', 'Increase selected cells', () => {
+  const increment = createToolButton(VE_TABLE_TOOL_ICONS.plus, 'Increase selected cells', () => {
     const step = preferences.adjustmentStep();
     run(() => session.adjust(Math.abs(Number.isFinite(step) ? step : 0)));
   });
-  const smooth = createToolButton('Smooth', 'Smooth selected cells · right-click settings', () => run(() => session.smooth(preferences.smoothStrength())));
+  const smooth = createToolButton(VE_TABLE_TOOL_ICONS.smooth, 'Smooth selected cells · right-click settings', () => run(() => session.smooth(preferences.smoothStrength())));
   const interpolateWith = (axis: 'horizontal' | 'vertical' | 'both'): void => {
     const configured = preferences.interpolation();
     run(() => session.interpolate({ ...configured, axis }));
   };
-  const interpolateHorizontal = createToolButton('H', 'Interpolate horizontally · right-click settings', () => interpolateWith('horizontal'));
-  const interpolateVertical = createToolButton('V', 'Interpolate vertically · right-click settings', () => interpolateWith('vertical'));
-  const interpolateBoth = createToolButton('2D', 'Interpolate both directions · right-click settings', () => interpolateWith('both'));
-  const pin = createToolButton('Pin', 'Pin or unpin selected cells', () => {
+  const interpolateHorizontal = createToolButton(VE_TABLE_TOOL_ICONS.interpolateHorizontal, 'Interpolate horizontally · right-click settings', () => interpolateWith('horizontal'));
+  const interpolateVertical = createToolButton(VE_TABLE_TOOL_ICONS.interpolateVertical, 'Interpolate vertically · right-click settings', () => interpolateWith('vertical'));
+  const interpolateBoth = createToolButton(VE_TABLE_TOOL_ICONS.interpolateBoth, 'Interpolate both directions · right-click settings', () => interpolateWith('both'));
+  const pin = createToolButton(VE_TABLE_TOOL_ICONS.pin, 'Pin or unpin selected cells', () => {
     session.togglePinsForSelection();
     refresh();
   });
-  const brush = createToolButton('Brush', 'Continuous brush editing', () => setBrushActive(!brushActive));
-  const revert = createToolButton('Revert', 'Revert selected cells', () => {
+  const brush = createToolButton(VE_TABLE_TOOL_ICONS.brush, 'Continuous brush editing', () => setBrushActive(!brushActive));
+  const revert = createToolButton(VE_TABLE_TOOL_ICONS.revert, 'Revert selected cells', () => {
     const positions = selectedPositions();
     if (positions.length && commands.revertSelection?.(positions)) finishEdit();
   });
-  const clear = createToolButton('Clear', 'Clear selected cells', () => {
+  const clear = createToolButton(VE_TABLE_TOOL_ICONS.clear, 'Clear selected cells', () => {
     const positions = selectedPositions();
     if (positions.length && commands.clearSelection?.(positions)) finishEdit();
   });
@@ -182,6 +186,9 @@ export function createTableInteractionDomController(
     const selectedPositionsNow = session.selectedPositions();
     const selected = new Set(selectedPositionsNow.map(positionKey));
     const pinned = new Set(session.pinnedPositions().map(positionKey));
+    const brushPreview = new Set(
+      brushActive && brushHover ? session.brushFootprint(brushHover, preferences.brush()).map(positionKey) : [],
+    );
     const activeCell = document.activeElement instanceof HTMLTableCellElement && table.contains(document.activeElement)
       ? positionForCell(document.activeElement)
       : undefined;
@@ -198,6 +205,13 @@ export function createTableInteractionDomController(
       cell.dataset.tableSelected = isSelected ? 'true' : 'false';
       cell.dataset.tableAnchor = isAnchor ? 'true' : 'false';
       cell.dataset.tablePinned = isPinned ? 'true' : 'false';
+      cell.dataset.tableBrushPreview = brushPreview.has(cellKey) ? 'true' : 'false';
+      const currentValue = preferences.readValue?.(position);
+      const baselineValue = preferences.baselineValue?.(position);
+      if (currentValue !== undefined && baselineValue !== undefined && Number.isFinite(currentValue) && Number.isFinite(baselineValue)) {
+        const epsilon = 1e-9 * Math.max(1, Math.abs(currentValue), Math.abs(baselineValue));
+        cell.dataset.tableValueState = currentValue < baselineValue - epsilon ? 'lower' : currentValue > baselineValue + epsilon ? 'higher' : 'same';
+      } else delete cell.dataset.tableValueState;
       cell.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       cell.tabIndex = cellKey === focusKey ? 0 : -1;
       if (cell.dataset.delayRow !== undefined) {
@@ -381,10 +395,22 @@ export function createTableInteractionDomController(
   const pointerDown = (event: PointerEvent): void => {
     const cell = editableCell(event.target, table);
     const position = cell ? positionForCell(cell) : undefined;
-    if (!cell || !position || inlineInput) return;
+    if (!cell || !position) return;
     event.preventDefault();
+    if (inlineInput) {
+      finishInlineEdit?.(true);
+      queueMicrotask(() => {
+        session.selectCell(position, 'replace');
+        anchor = position;
+        refresh();
+        cellFor(position)?.focus({ preventScroll: true });
+      });
+      return;
+    }
     if (brushActive) {
-      anchor = position;
+      session.clearSelection();
+      anchor = undefined;
+      brushHover = position;
       refresh();
       startBrush(event, position);
       cell.setPointerCapture?.(event.pointerId);
@@ -413,7 +439,9 @@ export function createTableInteractionDomController(
     if (!position) return;
     if (brushActive && brushPointerId === event.pointerId && brushStroke) {
       brushDirection = event.shiftKey ? -1 : 1;
+      brushHover = position;
       if (!brushLast || positionKey(brushLast) !== positionKey(position)) pulseBrush(position, true);
+      refresh();
       return;
     }
     if (dragPointerId !== event.pointerId || !dragStart) return;
@@ -521,6 +549,21 @@ export function createTableInteractionDomController(
     }
   };
 
+  const brushHoverMove = (event: PointerEvent): void => {
+    if (!brushActive || brushPointerId !== undefined) return;
+    const cell = editableCell(event.target, table);
+    const position = cell ? positionForCell(cell) : undefined;
+    if (!position || (brushHover && positionKey(brushHover) === positionKey(position))) return;
+    brushHover = position;
+    refresh();
+  };
+
+  const brushHoverLeave = (): void => {
+    if (!brushActive || brushPointerId !== undefined || !brushHover) return;
+    brushHover = undefined;
+    refresh();
+  };
+
   const wheel = (event: WheelEvent): void => {
     if (!brushActive || !table || !editableCell(event.target, table) || !preferences.adjustBrushRadius) return;
     event.preventDefault();
@@ -547,6 +590,8 @@ export function createTableInteractionDomController(
     cancelActiveInteraction();
     if (table) {
       table.removeEventListener('pointerdown', pointerDown);
+      table.removeEventListener('pointermove', brushHoverMove);
+      table.removeEventListener('pointerleave', brushHoverLeave);
       table.removeEventListener('keydown', keyDown);
       table.removeEventListener('wheel', wheel);
     }
@@ -554,6 +599,8 @@ export function createTableInteractionDomController(
     if (table) {
       markCoordinates(table);
       table.addEventListener('pointerdown', pointerDown);
+      table.addEventListener('pointermove', brushHoverMove);
+      table.addEventListener('pointerleave', brushHoverLeave);
       table.addEventListener('keydown', keyDown);
       table.addEventListener('wheel', wheel, { passive: false });
     }
@@ -564,6 +611,12 @@ export function createTableInteractionDomController(
     if (brushActive === active) return;
     if (!active) finishBrush(false);
     brushActive = active;
+    brushHover = undefined;
+    if (active) {
+      finishInlineEdit?.(true);
+      session.clearSelection();
+      anchor = undefined;
+    }
     refresh();
   };
 
@@ -572,6 +625,8 @@ export function createTableInteractionDomController(
     cancelActiveInteraction();
     if (table) {
       table.removeEventListener('pointerdown', pointerDown);
+      table.removeEventListener('pointermove', brushHoverMove);
+      table.removeEventListener('pointerleave', brushHoverLeave);
       table.removeEventListener('keydown', keyDown);
       table.removeEventListener('wheel', wheel);
     }
