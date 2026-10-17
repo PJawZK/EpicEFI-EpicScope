@@ -202,7 +202,7 @@ export async function runVeSharedTableInteractionChecks() {
     const c1 = cells()[1];
     const c3 = cells()[3];
     c1.setPointerCapture = () => {};
-    c3.scrollIntoView({ block: 'center' });
+    if (!c3.closest('.ve-v50-tool-surface')) c3.scrollIntoView({ block: 'center' });
     const end = c3.getBoundingClientRect();
     pointer(c1, 'pointerdown', { ctrlKey: true });
     pointer(document, 'pointermove', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
