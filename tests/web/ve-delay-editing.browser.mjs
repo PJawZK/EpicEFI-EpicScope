@@ -52,7 +52,12 @@ async function setup() {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   };
   load(async () => saved(100)); await settle();
+  const lambdaTrigger = root.querySelector('.ve-v50-lambda-tool-trigger');
+  lambdaTrigger?.click(); await settle();
   const delayHost = root.querySelector('[data-ve-analyzer="delay-table"]');
+  const lambdaDetails = delayHost?.closest('details');
+  const lambdaPanel = lambdaDetails?.closest('.ve-v50-tool-surface');
+  assert(lambdaTrigger && lambdaDetails?.open && lambdaPanel && !lambdaPanel.hidden, 'Lambda Delay tool did not open for editing fixture');
   const counts = { delay: 0, ve: 0, target: 0 };
   const undo = [];
   // Local fixture-host spies count actual DOM commits, never global DOM methods.
@@ -219,7 +224,6 @@ export async function runVeDelayEditingChecks() {
     assert(s.reads() === presentationReads && s.view.sessionRevision === presentationRevision, 'Result Views recalculated edited session');
     resultView.value = 'proposal'; resultView.dispatchEvent(new Event('change', { bubbles: true })); await settle();
     checks.push('post-edit Result Views preserve source VE, source fallback heat and working delays without calculation');
-
 
     const pending = deferred(); s.load(() => pending.promise); await settle();
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 160 });
