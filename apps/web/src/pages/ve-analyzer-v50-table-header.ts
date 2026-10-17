@@ -2,7 +2,7 @@ import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import './ve-analyzer-v50-table-header.css';
 
-function headerIdentity(header: HTMLElement | undefined): { title?: HTMLElement; identity?: HTMLElement } {
+function headerIdentity(header: HTMLElement | null | undefined): { title: HTMLElement | undefined; identity: HTMLElement | undefined } {
   const block = header?.querySelector<HTMLElement>(':scope > div:not(.ve-table-header-controls):not(.ve-v50-table-actions)');
   return {
     title: block?.querySelector<HTMLElement>('strong') ?? undefined,
