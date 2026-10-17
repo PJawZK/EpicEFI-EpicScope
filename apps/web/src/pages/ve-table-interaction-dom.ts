@@ -114,6 +114,8 @@ export function createTableInteractionDomController(
   let inlinePreviewOriginal = new Map<HTMLTableCellElement, string>();
   let gestureListenersInstalled = false;
   let destroyed = false;
+  let cachedCells: HTMLTableCellElement[] = [];
+  let cachedCellByKey = new Map<string, HTMLTableCellElement>();
 
   const toolbar = document.createElement('div');
   toolbar.className = 've-table-edit-toolbar';
@@ -151,7 +153,7 @@ export function createTableInteractionDomController(
   const interpolateBoth = createToolButton(VE_TABLE_TOOL_ICONS.interpolateBoth, 'Interpolate both directions · right-click settings', () => interpolateWith('both'));
   const pin = createToolButton(VE_TABLE_TOOL_ICONS.pin, 'Pin or unpin selected cells', () => {
     session.togglePinsForSelection();
-    refresh();
+    refreshInteraction();
   });
   const brush = createToolButton(VE_TABLE_TOOL_ICONS.brush, 'Continuous brush editing', () => setBrushActive(!brushActive));
   const revert = createToolButton(VE_TABLE_TOOL_ICONS.revert, 'Revert selected cells', () => {
@@ -172,21 +174,35 @@ export function createTableInteractionDomController(
       interpolateVertical,
       interpolateBoth,
       brush,
-    }, preferences.configuration, () => refresh())
+    }, preferences.configuration, () => { refreshInteraction(); refreshToolbarTitles(); })
     : () => {};
 
+  const rebuildCellCache = (): void => {
+    cachedCells = [];
+    cachedCellByKey = new Map();
+    if (!table) return;
+    markCoordinates(table);
+    cachedCells = [...table.querySelectorAll<HTMLTableCellElement>('tbody td[data-table-row][data-table-col]')];
+    for (const cell of cachedCells) {
+      const position = positionForCell(cell);
+      if (position) cachedCellByKey.set(positionKey(position), cell);
+    }
+  };
+
   const cellFor = (position: TableCellPosition): HTMLTableCellElement | undefined =>
-    table?.querySelector<HTMLTableCellElement>(`td[data-table-row="${position.row}"][data-table-col="${position.col}"]`) ?? undefined;
+    cachedCellByKey.get(positionKey(position));
 
   const focusAnchor = (): void => {
     if (inlineInput || !anchor) return;
     cellFor(anchor)?.focus({ preventScroll: true });
   };
 
-  const refresh = (): void => {
+  const setDataset = (cell: HTMLTableCellElement, name: string, value: string): void => {
+    if (cell.dataset[name] !== value) cell.dataset[name] = value;
+  };
+
+  const refreshInteraction = (): void => {
     if (!table || destroyed) return;
-    markCoordinates(table);
-    const cells = [...table.querySelectorAll<HTMLTableCellElement>('tbody td[data-table-row][data-table-col]')];
     const selectedPositionsNow = session.selectedPositions();
     const selected = new Set(selectedPositionsNow.map(positionKey));
     const pinned = new Set(session.pinnedPositions().map(positionKey));
@@ -196,36 +212,50 @@ export function createTableInteractionDomController(
     const activeCell = document.activeElement instanceof HTMLTableCellElement && table.contains(document.activeElement)
       ? positionForCell(document.activeElement)
       : undefined;
-    const focusPosition = anchor ?? selectedPositionsNow[0] ?? activeCell ?? (cells[0] ? positionForCell(cells[0]) : undefined);
+    const focusPosition = anchor ?? selectedPositionsNow[0] ?? activeCell ?? (cachedCells[0] ? positionForCell(cachedCells[0]) : undefined);
     const focusKey = focusPosition ? positionKey(focusPosition) : undefined;
+    const anchorKey = anchor ? positionKey(anchor) : undefined;
 
-    for (const cell of cells) {
+    for (const cell of cachedCells) {
       const position = positionForCell(cell);
       if (!position) continue;
       const cellKey = positionKey(position);
-      const isSelected = selected.has(cellKey);
-      const isPinned = pinned.has(cellKey);
-      const isAnchor = Boolean(anchor && positionKey(anchor) === cellKey);
-      cell.dataset.tableSelected = isSelected ? 'true' : 'false';
-      cell.dataset.tableAnchor = isAnchor ? 'true' : 'false';
-      cell.dataset.tablePinned = isPinned ? 'true' : 'false';
-      cell.dataset.tableBrushPreview = brushPreview.has(cellKey) ? 'true' : 'false';
+      const selectedValue = selected.has(cellKey) ? 'true' : 'false';
+      const anchorValue = anchorKey === cellKey ? 'true' : 'false';
+      setDataset(cell, 'tableSelected', selectedValue);
+      setDataset(cell, 'tableAnchor', anchorValue);
+      setDataset(cell, 'tablePinned', pinned.has(cellKey) ? 'true' : 'false');
+      setDataset(cell, 'tableBrushPreview', brushPreview.has(cellKey) ? 'true' : 'false');
+      if (cell.getAttribute('aria-selected') !== selectedValue) cell.setAttribute('aria-selected', selectedValue);
+      const tabIndex = cellKey === focusKey ? 0 : -1;
+      if (cell.tabIndex !== tabIndex) cell.tabIndex = tabIndex;
+      if (cell.dataset.delayRow !== undefined) {
+        setDataset(cell, 'delaySelected', selectedValue);
+        setDataset(cell, 'delayAnchor', anchorValue);
+      }
+    }
+    const brushState = brushActive ? 'true' : 'false';
+    if (table.dataset.tableBrush !== brushState) table.dataset.tableBrush = brushState;
+    if (brush.dataset.active !== brushState) brush.dataset.active = brushState;
+    if (brush.getAttribute('aria-pressed') !== brushState) brush.setAttribute('aria-pressed', brushState);
+  };
+
+  const refreshValueStates = (): void => {
+    if (!table || destroyed) return;
+    for (const cell of cachedCells) {
+      const position = positionForCell(cell);
+      if (!position) continue;
       const currentValue = preferences.readValue?.(position);
       const baselineValue = preferences.baselineValue?.(position);
       if (currentValue !== undefined && baselineValue !== undefined && Number.isFinite(currentValue) && Number.isFinite(baselineValue)) {
         const epsilon = 1e-9 * Math.max(1, Math.abs(currentValue), Math.abs(baselineValue));
-        cell.dataset.tableValueState = currentValue < baselineValue - epsilon ? 'lower' : currentValue > baselineValue + epsilon ? 'higher' : 'same';
-      } else delete cell.dataset.tableValueState;
-      cell.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-      cell.tabIndex = cellKey === focusKey ? 0 : -1;
-      if (cell.dataset.delayRow !== undefined) {
-        cell.dataset.delaySelected = isSelected ? 'true' : 'false';
-        cell.dataset.delayAnchor = isAnchor ? 'true' : 'false';
-      }
+        const state = currentValue < baselineValue - epsilon ? 'lower' : currentValue > baselineValue + epsilon ? 'higher' : 'same';
+        setDataset(cell, 'tableValueState', state);
+      } else if (cell.dataset.tableValueState !== undefined) delete cell.dataset.tableValueState;
     }
-    table.dataset.tableBrush = brushActive ? 'true' : 'false';
-    brush.dataset.active = brushActive ? 'true' : 'false';
-    brush.setAttribute('aria-pressed', brushActive ? 'true' : 'false');
+  };
+
+  const refreshToolbarTitles = (): void => {
     const step = preferences.adjustmentStep();
     const smoothStrength = preferences.smoothStrength();
     const interpolation = preferences.interpolation();
@@ -238,6 +268,13 @@ export function createTableInteractionDomController(
     interpolateVertical.title = `Interpolate vertically · ${interpolation.method1d ?? 'linear'} · ${interpolationSuffix}`;
     interpolateBoth.title = `Interpolate both directions · ${interpolation.method2d ?? 'bilinear'} · ${interpolationSuffix}`;
     brush.title = `Continuous brush editing · ${brushOptions.delta >= 0 ? '+' : ''}${brushOptions.delta} · radius ${brushOptions.radius} · strength ${(brushOptions.strength ?? 1).toFixed(2)} · ${brushOptions.falloff ?? 'linear'} falloff · Shift reverses${preferences.adjustBrushRadius ? ' · wheel changes radius' : ''} · right-click settings`;
+  };
+
+  const refresh = (): void => {
+    if (!table || destroyed) return;
+    refreshInteraction();
+    refreshValueStates();
+    refreshToolbarTitles();
   };
 
   const stopBrushTimer = (): void => {
@@ -337,7 +374,7 @@ export function createTableInteractionDomController(
     if (!cell) return;
     if (!session.isSelected(position)) session.selectCell(position);
     anchor = position;
-    refresh();
+    refreshInteraction();
     const input = document.createElement('input');
     input.className = cell.dataset.delayRow !== undefined ? 've-table-inline-input ve-delay-inline-input' : 've-table-inline-input';
     input.type = 'text';
@@ -415,7 +452,7 @@ export function createTableInteractionDomController(
       session.clearSelection();
       anchor = undefined;
       brushHover = position;
-      refresh();
+      refreshInteraction();
       startBrush(event, position);
       cell.setPointerCapture?.(event.pointerId);
       return;
@@ -432,7 +469,7 @@ export function createTableInteractionDomController(
     dragPointerId = event.pointerId;
     ensureGestureListeners();
     cell.setPointerCapture?.(event.pointerId);
-    refresh();
+    refreshInteraction();
   };
 
   function pointerMove(event: PointerEvent): void {
@@ -445,14 +482,14 @@ export function createTableInteractionDomController(
       brushDirection = event.shiftKey ? -1 : 1;
       brushHover = position;
       if (!brushLast || positionKey(brushLast) !== positionKey(position)) pulseBrush(position, true);
-      refresh();
+      refreshInteraction();
       return;
     }
     if (dragPointerId !== event.pointerId || !dragStart) return;
     if (positionKey(position) !== positionKey(dragStart)) dragMoved = true;
     session.setRectangle(dragStart, position, dragAdditive, dragStart);
     anchor = dragStart;
-    refresh();
+    refreshInteraction();
   }
 
   const finishDrag = (event: PointerEvent, cancelled: boolean): void => {
@@ -516,7 +553,7 @@ export function createTableInteractionDomController(
         session.selectCell(next, 'replace');
         anchor = next;
       }
-      refresh();
+      refreshInteraction();
       nextCell.focus({ preventScroll: true });
       return;
     }
@@ -549,7 +586,7 @@ export function createTableInteractionDomController(
       if (brushActive) setBrushActive(false);
       session.clearSelection();
       anchor = undefined;
-      refresh();
+      refreshInteraction();
     }
   };
 
@@ -559,20 +596,21 @@ export function createTableInteractionDomController(
     const position = cell ? positionForCell(cell) : undefined;
     if (!position || (brushHover && positionKey(brushHover) === positionKey(position))) return;
     brushHover = position;
-    refresh();
+    refreshInteraction();
   };
 
   const brushHoverLeave = (): void => {
     if (!brushActive || brushPointerId !== undefined || !brushHover) return;
     brushHover = undefined;
-    refresh();
+    refreshInteraction();
   };
 
   const wheel = (event: WheelEvent): void => {
     if (!brushActive || !table || !editableCell(event.target, table) || !preferences.adjustBrushRadius) return;
     event.preventDefault();
     preferences.adjustBrushRadius(event.deltaY < 0 ? 1 : -1);
-    refresh();
+    refreshInteraction();
+    refreshToolbarTitles();
   };
 
   const cancelActiveInteraction = (): void => {
@@ -600,8 +638,8 @@ export function createTableInteractionDomController(
       table.removeEventListener('wheel', wheel);
     }
     table = next;
+    rebuildCellCache();
     if (table) {
-      markCoordinates(table);
       table.addEventListener('pointerdown', pointerDown);
       table.addEventListener('pointermove', brushHoverMove);
       table.addEventListener('pointerleave', brushHoverLeave);
@@ -621,7 +659,7 @@ export function createTableInteractionDomController(
       session.clearSelection();
       anchor = undefined;
     }
-    refresh();
+    refreshInteraction();
   };
 
   const destroy = (): void => {

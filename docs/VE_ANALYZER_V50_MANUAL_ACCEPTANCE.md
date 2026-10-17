@@ -18,6 +18,12 @@ The expanded full Web CI gate is green, including 1024/1366/1920 responsive disc
 
 With that parity evidence in place, the production controller chain no longer installs the transitional v5 Lambda Delay gesture/editor owner. v6 now builds directly on v4; Lambda Delay production input is owned by the shared table-interaction adapter. The v5 source file is retained only as superseded/reference code until final cleanup, not as a live production owner.
 
+## Interaction performance checkpoint
+
+After the functional interaction pass, the shared table controller was found to be doing semantic value/baseline work and whole-table DOM decoration on pointer/selection hot paths. The performance pass now caches rendered cell coordinates, separates lightweight selection/Brush decoration from full semantic value refresh, avoids rewriting unchanged DOM attributes, and caches the Lambda Delay semantic value vector for one table authority generation. This is intended to preserve the accepted behavior while removing avoidable per-pointer O(table) semantic work and repeated whole-table snapshot allocation.
+
+The next manual pass should judge click/drag/Brush responsiveness before any further visual redesign.
+
 ## Table interaction requirements
 
 The production port must use one shared table-editing interaction core wherever VE Analyzer exposes editable tables. Domain values remain owned by semantic adapters; selection, pins, Brush gesture state and tool configuration do not become tune-domain truth.

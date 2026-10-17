@@ -666,18 +666,40 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     return true;
   };
 
+  let delayEditSnapshotCache: {
+    table: VeDelayTable;
+    revision: number;
+    authorityGeneration: number;
+    values: readonly (number | undefined)[];
+  } | undefined;
+
   registerVeDelayEditOwner(root, {
     snapshot: () => {
       const table = workingDelayTable ?? delayRecommendation;
-      return table ? {
+      if (!table) {
+        delayEditSnapshotCache = undefined;
+        return undefined;
+      }
+      if (!delayEditSnapshotCache
+        || delayEditSnapshotCache.table !== table
+        || delayEditSnapshotCache.revision !== sessionRevision
+        || delayEditSnapshotCache.authorityGeneration !== delaySurfaceGeneration) {
+        delayEditSnapshotCache = {
+          table,
+          revision: sessionRevision,
+          authorityGeneration: delaySurfaceGeneration,
+          values: table.cells.map((cell) => cell.workingMs),
+        };
+      }
+      return {
         revision: sessionRevision,
         authorityGeneration: delaySurfaceGeneration,
         rows: table.rows,
         cols: table.cols,
         rpmBins: table.rpmBins,
         loadBins: table.loadBins,
-        values: table.cells.map((cell) => cell.workingMs),
-      } : undefined;
+        values: delayEditSnapshotCache.values,
+      };
     },
     applyValues: applyDelayCellValues,
     revert: (positions) => editDelayCells(positions, { kind: 'revert' }),
