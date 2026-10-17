@@ -79,6 +79,36 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
   const advancedTool = advanced ? createToolSurface(host, advanced, 'Advanced VE Analyzer Inputs', 've-v50-tool-advanced') : undefined;
   const lambdaTool = lambda ? createToolSurface(host, lambda, 'Lambda Delay Table', 've-v50-tool-lambda') : undefined;
 
+  // Reuse the original role-select labels; events and state stay with the VE
+  // controller, while their presentation is scoped to the correct tool.
+  const createOwnedDetails = (title: string): HTMLDetailsElement => {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    details.append(summary);
+    return details;
+  };
+  const exclusionsDetails = createOwnedDetails('State exclusions');
+  const exclusionsBody = document.createElement('section');
+  exclusionsBody.className = 've-v50-tool-fields';
+  for (const role of ['dfco', 'fuelCutReason', 'aeActive', 'decelActive']) {
+    const select = advanced?.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`);
+    const label = select?.closest<HTMLLabelElement>('label');
+    if (label) exclusionsBody.append(label);
+  }
+  exclusionsDetails.append(exclusionsBody);
+  const exclusionsTool = exclusionsBody.children.length
+    ? createToolSurface(host, exclusionsDetails, 'State Exclusions', 've-v50-tool-exclusions')
+    : undefined;
+
+  const inputsDetails = createOwnedDetails('Input readiness');
+  const inputsContent = advanced?.querySelector<HTMLElement>('.specialized-analyzer-events');
+  if (inputsContent) inputsDetails.append(inputsContent);
+  const inputsTool = inputsContent
+    ? createToolSurface(host, inputsDetails, 'Input Readiness', 've-v50-tool-inputs')
+    : undefined;
+
+
   const advancedButton = root.querySelector<HTMLButtonElement>('.ve-v50-advanced-button');
   if (advancedButton && advancedTool) {
     const replacement = advancedButton.cloneNode(true) as HTMLButtonElement;
@@ -92,16 +122,20 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
     exclusions.type = 'button';
     exclusions.className = 've-v50-advanced-button ve-v50-exclusions-button';
     exclusions.textContent = 'Exclusions';
-    exclusions.addEventListener('click', () => {
-      advancedTool.open();
-      queueMicrotask(() => {
-        const target = advancedTool.details.querySelector<HTMLElement>('select[data-role="dfco"], select[data-role="fuelCutReason"], select[data-role="aeActive"], select[data-role="decelActive"]');
-        target?.focus({ preventScroll: true });
-        target?.scrollIntoView({ block: 'nearest' });
-      });
-    });
+    exclusions.addEventListener('click', () => exclusionsTool?.open());
     quickControls.append(exclusions);
   }
+
+  // Inputs Ready points at the detailed readiness report, not Advanced mappings.
+  // The Run strip can be installed after this layer, so use a delegated listener.
+  root.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (!event.target.closest('.ve-v50-run-chips > .ve-v50-status-chip:first-child')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (inputsTool) inputsTool.open();
+    else advancedTool?.open();
+  }, { capture: true });
 
   if (lambdaTool) {
     const workflow = root.querySelector<HTMLElement>('.ve-delay-workflow-state');
