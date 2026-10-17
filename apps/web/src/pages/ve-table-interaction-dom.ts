@@ -115,9 +115,12 @@ export function createTableInteractionDomController(
   let inlineInput: HTMLInputElement | undefined;
   let finishInlineEdit: ((commit: boolean) => void) | undefined;
   let inlinePreviewOriginal = new Map<HTMLTableCellElement, string>();
-  let brushValuePreviewOriginal = new Map<HTMLTableCellElement, string>();
+  let brushValuePreviewOriginal = new Map<HTMLTableCellElement, { readonly text: string; readonly heatLevel: string }>();
   let pendingBrushValuePreview = new Map<string, TablePreviewValue>();
   let brushPreviewFrame: number | undefined;
+  let brushPreviewKeys = new Set<string>();
+  let previewHeatMin: number | undefined;
+  let previewHeatMax: number | undefined;
   let gestureListenersInstalled = false;
   let destroyed = false;
   let cachedCells: HTMLTableCellElement[] = [];
@@ -186,6 +189,7 @@ export function createTableInteractionDomController(
   const rebuildCellCache = (): void => {
     cachedCells = [];
     cachedCellByKey = new Map();
+    brushPreviewKeys = new Set();
     if (!table) return;
     markCoordinates(table);
     cachedCells = [...table.querySelectorAll<HTMLTableCellElement>('tbody td[data-table-row][data-table-col]')];
@@ -207,14 +211,28 @@ export function createTableInteractionDomController(
     if (cell.dataset[name] !== value) cell.dataset[name] = value;
   };
 
+  const syncBrushPreview = (): void => {
+    const next = new Set(
+      brushActive && brushHover ? session.brushFootprint(brushHover, preferences.brush()).map(positionKey) : [],
+    );
+    for (const key of brushPreviewKeys) {
+      if (next.has(key)) continue;
+      const cell = cachedCellByKey.get(key);
+      if (cell) setDataset(cell, 'tableBrushPreview', 'false');
+    }
+    for (const key of next) {
+      if (brushPreviewKeys.has(key)) continue;
+      const cell = cachedCellByKey.get(key);
+      if (cell) setDataset(cell, 'tableBrushPreview', 'true');
+    }
+    brushPreviewKeys = next;
+  };
+
   const refreshInteraction = (): void => {
     if (!table || destroyed) return;
     const selectedPositionsNow = session.selectedPositions();
     const selected = new Set(selectedPositionsNow.map(positionKey));
     const pinned = new Set(session.pinnedPositions().map(positionKey));
-    const brushPreview = new Set(
-      brushActive && brushHover ? session.brushFootprint(brushHover, preferences.brush()).map(positionKey) : [],
-    );
     const activeCell = document.activeElement instanceof HTMLTableCellElement && table.contains(document.activeElement)
       ? positionForCell(document.activeElement)
       : undefined;
@@ -231,7 +249,6 @@ export function createTableInteractionDomController(
       setDataset(cell, 'tableSelected', selectedValue);
       setDataset(cell, 'tableAnchor', anchorValue);
       setDataset(cell, 'tablePinned', pinned.has(cellKey) ? 'true' : 'false');
-      setDataset(cell, 'tableBrushPreview', brushPreview.has(cellKey) ? 'true' : 'false');
       if (cell.getAttribute('aria-selected') !== selectedValue) cell.setAttribute('aria-selected', selectedValue);
       const tabIndex = cellKey === focusKey ? 0 : -1;
       if (cell.tabIndex !== tabIndex) cell.tabIndex = tabIndex;
@@ -240,6 +257,7 @@ export function createTableInteractionDomController(
         setDataset(cell, 'delayAnchor', anchorValue);
       }
     }
+    syncBrushPreview();
     const brushState = brushActive ? 'true' : 'false';
     if (table.dataset.tableBrush !== brushState) table.dataset.tableBrush = brushState;
     if (brush.dataset.active !== brushState) brush.dataset.active = brushState;
@@ -248,17 +266,25 @@ export function createTableInteractionDomController(
 
   const refreshValueStates = (): void => {
     if (!table || destroyed) return;
+    let heatMin: number | undefined;
+    let heatMax: number | undefined;
     for (const cell of cachedCells) {
       const position = positionForCell(cell);
       if (!position) continue;
       const currentValue = preferences.readValue?.(position);
       const baselineValue = preferences.baselineValue?.(position);
+      if (currentValue !== undefined && Number.isFinite(currentValue)) {
+        heatMin = heatMin === undefined ? currentValue : Math.min(heatMin, currentValue);
+        heatMax = heatMax === undefined ? currentValue : Math.max(heatMax, currentValue);
+      }
       if (currentValue !== undefined && baselineValue !== undefined && Number.isFinite(currentValue) && Number.isFinite(baselineValue)) {
         const epsilon = 1e-9 * Math.max(1, Math.abs(currentValue), Math.abs(baselineValue));
         const state = currentValue < baselineValue - epsilon ? 'lower' : currentValue > baselineValue + epsilon ? 'higher' : 'same';
         setDataset(cell, 'tableValueState', state);
       } else if (cell.dataset.tableValueState !== undefined) delete cell.dataset.tableValueState;
     }
+    previewHeatMin = heatMin;
+    previewHeatMax = heatMax;
   };
 
   const refreshToolbarTitles = (): void => {
@@ -298,6 +324,14 @@ export function createTableInteractionDomController(
     setDataset(cell, 'tableValueState', value < baseline - epsilon ? 'lower' : value > baseline + epsilon ? 'higher' : 'same');
   };
 
+  const setPreviewHeat = (cell: HTMLTableCellElement, value: number): void => {
+    if (cell.dataset.veRow === undefined || previewHeatMin === undefined || previewHeatMax === undefined) return;
+    const level = previewHeatMin === previewHeatMax
+      ? 0.5
+      : Math.max(0, Math.min(1, (value - previewHeatMin) / (previewHeatMax - previewHeatMin)));
+    cell.style.setProperty('--ve-cell-level', String(level));
+  };
+
   const flushBrushValuePreview = (): void => {
     if (brushPreviewFrame !== undefined) {
       window.cancelAnimationFrame(brushPreviewFrame);
@@ -310,11 +344,17 @@ export function createTableInteractionDomController(
       const cell = cellFor(entry.position);
       if (!cell) continue;
       const valueNode = valueNodeForCell(cell);
-      if (!brushValuePreviewOriginal.has(cell)) brushValuePreviewOriginal.set(cell, valueNode.textContent ?? '');
+      if (!brushValuePreviewOriginal.has(cell)) {
+        brushValuePreviewOriginal.set(cell, {
+          text: valueNode.textContent ?? '',
+          heatLevel: cell.style.getPropertyValue('--ve-cell-level'),
+        });
+      }
       valueNode.textContent = preferences.formatPreviewValue?.(entry.position, entry.value) ?? String(Math.round(entry.value * 1000) / 1000);
       setDataset(cell, 'tableLivePreview', 'true');
       if (cell.dataset.delayRow !== undefined) setDataset(cell, 'delayPreview', 'true');
       setPreviewValueState(cell, entry.position, entry.value);
+      setPreviewHeat(cell, entry.value);
     }
   };
 
@@ -332,8 +372,12 @@ export function createTableInteractionDomController(
     if (brushPreviewFrame !== undefined) window.cancelAnimationFrame(brushPreviewFrame);
     brushPreviewFrame = undefined;
     pendingBrushValuePreview.clear();
-    for (const [cell, originalText] of brushValuePreviewOriginal) {
-      if (restoreText && cell.isConnected) valueNodeForCell(cell).textContent = originalText;
+    for (const [cell, original] of brushValuePreviewOriginal) {
+      if (restoreText && cell.isConnected) {
+        valueNodeForCell(cell).textContent = original.text;
+        if (original.heatLevel) cell.style.setProperty('--ve-cell-level', original.heatLevel);
+        else cell.style.removeProperty('--ve-cell-level');
+      }
       delete cell.dataset.tableLivePreview;
       delete cell.dataset.delayPreview;
     }
@@ -551,7 +595,7 @@ export function createTableInteractionDomController(
       brushDirection = event.shiftKey ? -1 : 1;
       brushHover = position;
       if (!brushLast || positionKey(brushLast) !== positionKey(position)) pulseBrush(position, true);
-      refreshInteraction();
+      syncBrushPreview();
       return;
     }
     if (dragPointerId !== event.pointerId || !dragStart) return;
@@ -665,20 +709,20 @@ export function createTableInteractionDomController(
     const position = cell ? positionForCell(cell) : undefined;
     if (!position || (brushHover && positionKey(brushHover) === positionKey(position))) return;
     brushHover = position;
-    refreshInteraction();
+    syncBrushPreview();
   };
 
   const brushHoverLeave = (): void => {
     if (!brushActive || brushPointerId !== undefined || !brushHover) return;
     brushHover = undefined;
-    refreshInteraction();
+    syncBrushPreview();
   };
 
   const wheel = (event: WheelEvent): void => {
     if (!brushActive || !table || !editableCell(event.target, table) || !preferences.adjustBrushRadius) return;
     event.preventDefault();
     preferences.adjustBrushRadius(event.deltaY < 0 ? 1 : -1);
-    refreshInteraction();
+    syncBrushPreview();
     refreshToolbarTitles();
   };
 
