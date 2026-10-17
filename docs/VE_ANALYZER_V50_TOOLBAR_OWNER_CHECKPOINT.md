@@ -8,6 +8,6 @@ The v2 semantic owner now publishes a synchronous VE-table render boundary. The 
 
 Cell Evidence now has its own semantic cell-selection memory. It follows VE node clicks independently of whether the current Result View is proposal-editable, so alternate read-only result metrics can still be inspected without re-enabling editing on those views.
 
-Setup disclosure placement now caps the body to the viewport as a border-box and performs a final measured horizontal correction after choosing its up/down direction. This addresses narrow-width flex/absolute-position origin differences instead of relaxing the responsive acceptance gate.
+Setup disclosure placement now caps the body to the viewport as a border-box and performs a final measured horizontal correction after choosing its up/down direction. At narrow widths the disclosure is fixed to escape the horizontally scrollable setup strip; its left/top coordinates are now calculated directly from viewport and summary geometry instead of mixing fixed positioning with details-local offsets.
 
 This checkpoint is validation-only on `ui/ve-analyzer-v50-reconcile`; it does not authorize merging to `main`.
