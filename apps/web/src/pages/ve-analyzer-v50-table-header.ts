@@ -173,6 +173,12 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   });
   actionObserver.observe(actions, { childList: true });
   root.addEventListener('change', scheduleSync);
+  root.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('.ve-v50-table-flip, .ve-workbench-table-tabs [data-table-tab], .ve-v50-table-icon-button')) {
+      scheduleSync();
+      requestAnimationFrame(() => { if (active) sync(); });
+    }
+  });
   root.addEventListener('ve-proposal-table-rendered', scheduleSync);
   inner.onPrimaryAnalysisChange(scheduleSync);
   scheduleSync();
