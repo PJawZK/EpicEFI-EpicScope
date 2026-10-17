@@ -194,9 +194,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const summary = details.querySelector<HTMLElement>(':scope > summary');
     if (!body || !summary) return;
 
-    // Reset prior inline placement before measuring. At narrow widths the body is
-    // fixed so it can escape the horizontally scrollable setup strip; at wider
-    // widths it is absolute to its details owner.
+    // Setup groups are always viewport-fixed in v50. Measure each group and
+    // prefer opening inward above the bottom setup strip, toward the table.
     body.style.left = '';
     body.style.right = '';
     body.style.top = '';
@@ -209,7 +208,9 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const gap = 5;
     const roomBelow = window.innerHeight - summaryRect.bottom;
     const roomAbove = summaryRect.top;
-    const direction = roomBelow < bodyRect.height + gap && roomAbove > roomBelow ? 'up' : 'down';
+    const direction = roomAbove >= bodyRect.height + gap + pad ? 'up'
+      : roomBelow >= bodyRect.height + gap + pad ? 'down'
+      : roomAbove >= roomBelow ? 'up' : 'down';
     details.dataset.openDirection = direction;
 
     const fixed = getComputedStyle(body).position === 'fixed';
