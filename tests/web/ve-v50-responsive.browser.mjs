@@ -137,14 +137,13 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
 
   const proposalToolbar = root.querySelector('.ve-proposal-shared-toolbar');
   if (proposalToolbar && !proposalToolbar.hidden) {
-    const hasSelection = Boolean(table.querySelector('td[data-table-selected="true"]'));
-    const expectedAvailability = hasSelection ? 'false' : 'true';
+    // v50 tools are accessible for configuration before selecting any cell.
     const commandButtons = selectionCommandButtons(proposalToolbar);
     assert(commandButtons.length >= 6, 'Selection-dependent VE table commands missing from toolbar');
-    assert(commandButtons.every((button) => button.getAttribute('aria-disabled') === expectedAvailability),
-      'VE table command availability does not match the shared selection state');
+    assert(commandButtons.every((button) => button.getAttribute('aria-disabled') === 'false'),
+      'VE table commands should remain available for tool configuration');
   }
-  checks.push('selection-dependent table command availability follows shared selection state');
+  checks.push('table tools remain accessible for configuration before selection');
 
   const details = [...root.querySelectorAll('.ve-v50-setup-group')];
   if (details.length >= 2) {
