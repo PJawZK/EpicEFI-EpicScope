@@ -1,5 +1,6 @@
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
+import { VE_TABLE_TOOL_ICONS } from './ve-table-icons';
 import './ve-analyzer-v50-table-header.css';
 
 interface CompactHeading {
@@ -77,7 +78,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   splitButton.className = 've-v50-table-icon-button';
   splitButton.setAttribute('aria-label', 'Toggle VE and Target split view');
   splitButton.title = 'Toggle VE + Target split view';
-  splitButton.innerHTML = '<span aria-hidden="true">▥</span>';
+  splitButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M12 4v16"/></svg>';
   splitButton.addEventListener('click', () => {
     if (!layout) return;
     layout.value = layout.value === 'single' ? 'side-by-side' : 'single';
@@ -89,7 +90,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   evidenceButton.className = 've-v50-table-icon-button';
   evidenceButton.setAttribute('aria-label', 'Cell Evidence');
   evidenceButton.title = 'Cell Evidence';
-  evidenceButton.textContent = 'ⓘ';
+  evidenceButton.innerHTML = VE_TABLE_TOOL_ICONS.cell;
   evidenceButton.addEventListener('click', () => {
     root.querySelector<HTMLButtonElement>('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]')?.click();
   });
