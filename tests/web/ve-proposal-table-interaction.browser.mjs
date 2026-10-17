@@ -1,6 +1,4 @@
-from pathlib import Path
-
-module = r'''import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
+import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
 import { veProposalEditOwner } from '../../apps/web/src/pages/ve-analyzer-proposal-edit-owner';
 import { parseMsq } from '../../core/parsers/msq/msq-parser';
 import { normalizeMsqTune } from '../../core/tune/tune-model';
@@ -236,22 +234,3 @@ export async function runVeProposalTableInteractionChecks() {
     host.remove();
   }
 }
-'''
-
-Path('tests/web/ve-proposal-table-interaction.browser.mjs').write_text(module)
-
-p = Path('scripts/browser/acceptance.mjs')
-s = p.read_text()
-old = ''' const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);
- log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);
-
- // Focus the real application shell before geometry assertions.'''
-new = ''' const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);
- log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);
- const proposalEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-proposal-table-interaction.browser.mjs');return m.runVeProposalTableInteractionChecks();})()`,60000);
- log('VE Proposal interaction checks',{result:proposalEdits});await record('ve-proposal-interaction-result.json',proposalEdits);
-
- // Focus the real application shell before geometry assertions.'''
-if old not in s:
-    raise SystemExit('acceptance insertion point not found')
-p.write_text(s.replace(old, new, 1))

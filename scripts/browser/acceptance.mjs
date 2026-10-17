@@ -61,6 +61,8 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('delay edit checks',{result:delayEdits});await record('delay-edit-result.json',delayEdits);
  const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);
  log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);
+ const proposalEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-proposal-table-interaction.browser.mjs');return m.runVeProposalTableInteractionChecks();})()`,60000);
+ log('VE Proposal interaction checks',{result:proposalEdits});await record('ve-proposal-interaction-result.json',proposalEdits);
 
  // Focus the real application shell before geometry assertions. Focused component
  // fixtures above intentionally create/remove their own Analyzer roots and may leave
