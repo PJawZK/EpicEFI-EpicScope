@@ -784,7 +784,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   const fillAxis = (role: 'rpm-axis' | 'load-axis' | 'target-rpm-axis' | 'target-load-axis', tableRole: 've-table' | 'target-table', kind: 'rpm' | 'load') => {
-    const control = select(role)!; const tableName = select(tableRole)?.value ?? ''; const candidates = veAxisCandidates(tuneModel, tableName, kind); const old = remembered.get(role);
+    const control = select(role); if (!control) throw new Error(`VE axis control missing during rebuild: ${role}`); const tableName = select(tableRole)?.value ?? ''; const candidates = veAxisCandidates(tuneModel, tableName, kind); const old = remembered.get(role);
     control.replaceChildren(new Option(`(select ${kind} axis)`, ''), ...candidates.map((entry) => new Option(entry.name, entry.name)));
     control.value = old && candidates.some((entry) => entry.name === old) ? old : preferredVeAxisName(tuneModel, tableName, kind) ?? '';
     control.onchange = () => { remembered.set(role, control.value); if (tableRole === 've-table') clearDelayRecommendation(); invalidate(); };
