@@ -55,6 +55,8 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   }
   checks.push('frozen v50 production-owned secondary tools are present');
 
+  const originalScrollX = window.scrollX;
+  const originalScrollY = window.scrollY;
   const lambdaTool = secondary.querySelector('[data-ve-v50-secondary="lambda-delay"]');
   const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
   if (lambdaTool && lambdaDetails && !lambdaTool.disabled) {
@@ -71,7 +73,9 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     await settle();
     assert(advanced.open, 'Mappings secondary tool did not reveal the existing Advanced owner');
   }
-  checks.push('secondary navigation delegates to existing Lambda and Advanced owners');
+  window.scrollTo(originalScrollX, originalScrollY);
+  await settle();
+  checks.push('secondary navigation delegates to existing Lambda and Advanced owners without changing responsive capture position');
 
   const surface = visibleTableSurface(root);
   assert(surface, 'No visible VE workbench table surface found');
