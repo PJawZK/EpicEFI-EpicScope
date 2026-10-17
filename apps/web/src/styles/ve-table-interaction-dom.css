@@ -207,15 +207,22 @@
   pointer-events: none;
 }
 
+.ve-workbench-table td[data-table-row][data-table-col],
+.ve-delay-table td[data-table-row][data-table-col] {
+  contain: paint;
+}
+
 .ve-workbench-table td[data-table-value-state='lower'],
 .ve-delay-table td[data-table-value-state='lower'] { color: #73bfff !important; }
 .ve-workbench-table td[data-table-value-state='higher'],
 .ve-delay-table td[data-table-value-state='higher'] { color: #ff7d83 !important; }
 
+/* Keep the moving Brush footprint inside each cell's paint box. Using an
+ * inset-only marker avoids outline/z-index stacking invalidation across the
+ * collapsed table while preserving the same cyan affected-cell cue. */
 .ve-workbench-table td[data-table-brush-preview='true'],
 .ve-delay-table td[data-table-brush-preview='true'] {
-  outline: 2px solid rgba(126, 214, 244, .92);
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 1px rgba(126, 214, 244, .3);
-  z-index: 2;
+  box-shadow:
+    inset 0 0 0 2px rgba(126, 214, 244, .92),
+    inset 0 0 0 3px rgba(126, 214, 244, .3);
 }
