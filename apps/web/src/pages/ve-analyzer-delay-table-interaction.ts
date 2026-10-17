@@ -32,10 +32,6 @@ function snapshotValue(owner: VeDelayEditOwner, row: number, col: number): numbe
   return snapshot.values[row * snapshot.cols + col];
 }
 
-function quantizeDelayMs(value: number): number {
-  return Math.max(0, Math.round(value));
-}
-
 class VeDelayTableEditSurface implements TableEditSurface {
   readonly #owner: VeDelayEditOwner;
   readonly #undo: HistoryEntry[] = [];
@@ -105,7 +101,7 @@ class VeDelayTableEditSurface implements TableEditSurface {
       set: (row, col, value): void => {
         if (!active || !inside(row, col) || !Number.isFinite(value)) return;
         if (label === 'direct-edit' && value < 0) return;
-        changed.set(indexFor(row, col), quantizeDelayMs(value));
+        changed.set(indexFor(row, col), Math.max(0, value));
       },
       commit: (): boolean => {
         if (!active) return false;
@@ -202,9 +198,9 @@ function setHistoryAvailability(toolbar: HTMLElement, surface: VeDelayTableEditS
  * Values come only from the semantic owner registered by the base VE controller.
  * The rendered table is used solely for hit-testing/focus/decoration. One shared
  * interaction transaction becomes one owner applyValues() call and one VE session
- * invalidation, including Brush strokes and interpolation. Lambda Delay is a
- * whole-millisecond surface: every pending write is quantized here, while the
- * generic interaction engine and VE Proposal surface remain floating-point capable.
+ * invalidation, including Brush strokes and interpolation. Fractional working
+ * values remain semantic authority; presentation may round them without changing
+ * the retained working value.
  */
 export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
