@@ -285,6 +285,13 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   panelHeader?.append(dom.toolbar);
 
   const bind = (): void => {
+    // v7 rebuilds replace the table-header control children. If the shared
+    // toolbar was inside a replaced subtree, reattach the original toolbar
+    // element (and its listeners) to the current production panel header.
+    if (!root.contains(dom.toolbar)) {
+      const currentHeader = veHost.closest<HTMLElement>('.ve-workbench-panel')?.querySelector<HTMLElement>(':scope > header');
+      currentHeader?.append(dom.toolbar);
+    }
     previewDigits = owner.snapshot()?.digits;
     const renderedTable = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table') ?? undefined;
     const table = currentProposalTable(veHost);
