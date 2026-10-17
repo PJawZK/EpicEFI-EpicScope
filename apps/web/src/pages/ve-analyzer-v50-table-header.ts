@@ -13,7 +13,7 @@ function prepareCompactHeading(header: HTMLElement | null | undefined): CompactH
   const legacyDescription = block?.querySelector<HTMLElement>(':scope > span');
   if (legacyDescription) legacyDescription.classList.add('ve-v50-legacy-table-description');
 
-  let identity = block?.querySelector<HTMLElement>('.ve-v50-table-identity');
+  let identity = block?.querySelector<HTMLElement>('.ve-v50-table-identity') ?? undefined;
   if (!identity && block) {
     identity = document.createElement('span');
     identity.className = 've-v50-table-identity';
