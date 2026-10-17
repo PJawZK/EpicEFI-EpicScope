@@ -31,7 +31,8 @@ function revealDetails(details: HTMLDetailsElement | null | undefined, target?: 
  * Presentation-only transfer of the frozen v50 secondary-tool strip.
  *
  * Every action delegates to an already-existing production owner. This layer does
- * not create summary/evidence/readiness/mapping/exclusion/Lambda state of its own.
+ * not create summary/evidence/readiness/mapping/exclusion/Lambda/help/settings
+ * state of its own.
  */
 export function installVeAnalyzerV50SecondaryTools(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
@@ -61,6 +62,8 @@ export function installVeAnalyzerV50SecondaryTools(inner: VeAnalyzerViewControll
     ?? root.querySelector<HTMLElement>('[data-ve-analyzer="controls"] select[data-role="aeActive"]')
     ?? root.querySelector<HTMLElement>('[data-ve-analyzer="controls"] select[data-role="decelActive"]');
   const evidenceAction = () => root.querySelector<HTMLButtonElement>('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
+  const helpAction = () => document.querySelector<HTMLButtonElement>('.ve-analyzer-header-help .epicscope-inline-help');
+  const settingsAction = () => document.querySelector<HTMLButtonElement>('.settings-button[aria-label="Settings"]');
 
   const tools: readonly SecondaryTool[] = [
     {
@@ -110,6 +113,23 @@ export function installVeAnalyzerV50SecondaryTools(inner: VeAnalyzerViewControll
         return Boolean(action && !action.hidden && !hiddenByOwner(action));
       },
       run: () => evidenceAction()?.click(),
+    },
+    {
+      id: 'help',
+      label: 'Help',
+      title: 'Open the existing VE Analyzer help',
+      available: () => {
+        const action = helpAction();
+        return Boolean(action && !hiddenByOwner(action));
+      },
+      run: () => helpAction()?.click(),
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      title: 'Open EpicScope settings',
+      available: () => Boolean(settingsAction()),
+      run: () => settingsAction()?.click(),
     },
   ];
 
