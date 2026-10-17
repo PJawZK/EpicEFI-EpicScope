@@ -402,8 +402,11 @@ export class TableInteractionSession {
       const cellKey = key(row, col);
       if (!selected.has(cellKey) || this.#pinned.has(cellKey)) return;
       const original = read(row, col);
-      if (original === undefined || !Number.isFinite(target) || !Number.isFinite(min) || !Number.isFinite(max)) return;
-      let value = original + (target - original) * strength;
+      if (!Number.isFinite(target) || !Number.isFinite(min) || !Number.isFinite(max)) return;
+      // Undefined interior cells are valid interpolation targets. Existing
+      // finite cells blend by strength; an empty cell receives the interpolated
+      // value directly because there is no numeric source value to blend from.
+      let value = original === undefined ? target : original + (target - original) * strength;
       if (shouldClamp) value = clamp(value, min, max);
       if (!Number.isFinite(value)) return;
       transaction.set(row, col, value);
@@ -423,18 +426,20 @@ export class TableInteractionSession {
           if (selected.has(key(row, col))) indices.push(inner);
         }
         if (indices.length < 2) continue;
+        const sample = (inner: number): number | undefined => axis === 'horizontal' ? read(outer, inner) : read(inner, outer);
         const anchors = piecewiseAnchors(indices, (index) => {
           const row = axis === 'horizontal' ? outer : index;
           const col = axis === 'horizontal' ? index : outer;
-          return this.#pinned.has(key(row, col));
+          return this.#pinned.has(key(row, col)) && sample(index) !== undefined;
         });
         const support = [...anchors];
         const maxIndex = axis === 'horizontal' ? this.#surface.cols - 1 : this.#surface.rows - 1;
         if (method1d === 'shape') {
-          if (anchors[0]! > 0) support.unshift(anchors[0]! - 1);
-          if (anchors[anchors.length - 1]! < maxIndex) support.push(anchors[anchors.length - 1]! + 1);
+          const before = anchors[0]! - 1;
+          const after = anchors[anchors.length - 1]! + 1;
+          if (before >= 0 && sample(before) !== undefined) support.unshift(before);
+          if (after <= maxIndex && sample(after) !== undefined) support.push(after);
         }
-        const sample = (inner: number): number | undefined => axis === 'horizontal' ? read(outer, inner) : read(inner, outer);
         const coordinate = (inner: number): number => axis === 'horizontal'
           ? (this.#surface.colCoordinate?.(inner) ?? inner)
           : (this.#surface.rowCoordinate?.(inner) ?? inner);
@@ -454,24 +459,21 @@ export class TableInteractionSession {
         transaction.cancel();
         return false;
       }
-      const boundaryValues: number[] = [];
+      // Bilinear needs only the four finite corners. Boundary Surface can
+      // also operate with sparse edges: missing edge samples are synthesized
+      // from the corresponding corner endpoints when evaluated below.
+      const boundaryValues: number[] = [topLeft, topRight, bottomLeft, bottomRight];
       for (let col = c0; col <= c1; col += 1) {
         const top = read(r0, col);
         const bottom = read(r1, col);
-        if (top === undefined || bottom === undefined) {
-          transaction.cancel();
-          return false;
-        }
-        boundaryValues.push(top, bottom);
+        if (top !== undefined) boundaryValues.push(top);
+        if (bottom !== undefined) boundaryValues.push(bottom);
       }
       for (let row = r0 + 1; row < r1; row += 1) {
         const left = read(row, c0);
         const right = read(row, c1);
-        if (left === undefined || right === undefined) {
-          transaction.cancel();
-          return false;
-        }
-        boundaryValues.push(left, right);
+        if (left !== undefined) boundaryValues.push(left);
+        if (right !== undefined) boundaryValues.push(right);
       }
       const boundaryMin = Math.min(...boundaryValues);
       const boundaryMax = Math.max(...boundaryValues);
@@ -498,11 +500,10 @@ export class TableInteractionSession {
         const base = bilinear(u, v);
         let target = base;
         if (method2d === 'boundary') {
-          const top = read(r0, position.col);
-          const bottom = read(r1, position.col);
-          const left = read(position.row, c0);
-          const right = read(position.row, c1);
-          if (top === undefined || bottom === undefined || left === undefined || right === undefined) continue;
+          const top = read(r0, position.col) ?? (topLeft + (topRight - topLeft) * u);
+          const bottom = read(r1, position.col) ?? (bottomLeft + (bottomRight - bottomLeft) * u);
+          const left = read(position.row, c0) ?? (topLeft + (bottomLeft - topLeft) * v);
+          const right = read(position.row, c1) ?? (topRight + (bottomRight - topRight) * v);
           target = (1 - v) * top + v * bottom + (1 - u) * left + u * right - base;
         }
         setBlended(position.row, position.col, target, boundaryMin, boundaryMax);
@@ -514,6 +515,21 @@ export class TableInteractionSession {
       return false;
     }
     return transaction.commit();
+  }
+
+  brushFootprint(center: TableCellPosition, options: TableBrushOptions): readonly TableCellPosition[] {
+    if (!this.#inside(center)) return [];
+    const radius = Math.max(0, Math.floor(options.radius));
+    const falloff = options.falloff ?? 'linear';
+    const positions: TableCellPosition[] = [];
+    for (let row = Math.max(0, center.row - radius); row <= Math.min(this.#surface.rows - 1, center.row + radius); row += 1) {
+      for (let col = Math.max(0, center.col - radius); col <= Math.min(this.#surface.cols - 1, center.col + radius); col += 1) {
+        if (this.#pinned.has(key(row, col))) continue;
+        if (brushWeight(Math.hypot(row - center.row, col - center.col), radius, falloff) <= 0) continue;
+        positions.push({ row, col });
+      }
+    }
+    return positions;
   }
 
   beginBrushStroke(options: TableBrushOptions): TableBrushStroke {

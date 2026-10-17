@@ -163,13 +163,44 @@ describe('VE shared table interaction boundary', () => {
     expect(memory.cancels()).toBe(1);
   });
 
-  it('skips a 1D interpolation line whose required support contains a non-finite value', () => {
+  it('fills an empty interior cell during shape interpolation instead of treating it as required support', () => {
     const memory = memorySurface(1, 5, [0, Number.NaN, 20, 30, 40]);
     const session = new TableInteractionSession(memory.surface);
     session.setRectangle({ row: 0, col: 0 }, { row: 0, col: 4 });
-    expect(session.interpolate({ axis: 'horizontal', method1d: 'shape', strength: 1 })).toBe(false);
-    expect(memory.values()[1]).toBeNaN();
-    expect(memory.commits()).toBe(0);
+    expect(session.interpolate({ axis: 'horizontal', method1d: 'shape', strength: 1 })).toBe(true);
+    expect(memory.values()[1]).toBeGreaterThanOrEqual(0);
+    expect(memory.values()[1]).toBeLessThanOrEqual(40);
+    expect(memory.commits()).toBe(1);
+  });
+
+  it('fills empty interior and edge cells from four finite 2D bilinear corners', () => {
+    const memory = memorySurface(3, 3, [0, Number.NaN, 20, Number.NaN, Number.NaN, Number.NaN, 40, Number.NaN, 60]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 0 }, { row: 2, col: 2 });
+    expect(session.interpolate({ axis: 'both', method2d: 'bilinear', strength: 1 })).toBe(true);
+    expect(memory.values()[1]).toBe(10);
+    expect(memory.values()[3]).toBe(20);
+    expect(memory.values()[4]).toBe(30);
+    expect(memory.commits()).toBe(1);
+  });
+
+  it('synthesizes missing edge samples for Boundary Surface interpolation', () => {
+    const memory = memorySurface(3, 3, [0, Number.NaN, 20, Number.NaN, Number.NaN, Number.NaN, 40, Number.NaN, 60]);
+    const session = new TableInteractionSession(memory.surface);
+    session.setRectangle({ row: 0, col: 0 }, { row: 2, col: 2 });
+    expect(session.interpolate({ axis: 'both', method2d: 'boundary', strength: 1 })).toBe(true);
+    expect(memory.values()[4]).toBe(30);
+    expect(memory.commits()).toBe(1);
+  });
+
+  it('reports a Brush footprint without pinned cells', () => {
+    const memory = memorySurface(3, 3, new Array(9).fill(0));
+    const session = new TableInteractionSession(memory.surface);
+    session.selectCell({ row: 1, col: 1 });
+    session.togglePinsForSelection();
+    const footprint = session.brushFootprint({ row: 1, col: 1 }, { delta: 1, radius: 1, strength: 1, falloff: 'flat' });
+    expect(footprint).not.toContainEqual({ row: 1, col: 1 });
+    expect(footprint.length).toBe(4);
   });
 
   it('keeps a continuous Brush stroke inside one transaction and accumulates pulses', () => {
