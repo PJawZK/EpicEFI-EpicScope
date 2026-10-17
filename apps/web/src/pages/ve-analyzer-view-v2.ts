@@ -338,7 +338,12 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const delayCellRevert = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="delay-cell-revert"]')!;
   const delaySourceEvents = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-source-events"]')!;
 
-  const select = (role: string) => root.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`) ?? undefined;
+  // v7/v50 may re-parent table selectors while synchronizing compact headers.
+  // Their semantic identities must survive temporary DOM detachment.
+  const originalVeTableSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]') ?? undefined;
+  const originalTargetTableSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]') ?? undefined;
+  const select = (role: string) => root.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`)
+    ?? (role === 've-table' ? originalVeTableSelect : role === 'target-table' ? originalTargetTableSelect : undefined);
   const input = (role: string) => root.querySelector<HTMLInputElement>(`input[data-role="${role}"]`) ?? undefined;
   const roleSelect = (key: RoleKey) => select(key) ?? controls.querySelector<HTMLSelectElement>(`select[data-role="${key}"]`) ?? undefined;
   const selectedScale = (): Exclude<VeMixtureScale, 'unknown'> => select('mixture-scale')?.value === 'lambda' ? 'lambda' : 'afr';
