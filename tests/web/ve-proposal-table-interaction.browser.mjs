@@ -186,10 +186,9 @@ export async function runVeProposalTableInteractionChecks() {
     pointer(cell(root, 1, 1), 'pointermove', { clientX: 10, clientY: 10 });
     const centerPreview = [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td[data-table-brush-preview="true"]')];
     assert(centerPreview.length > 0, 'VE Proposal Brush did not show a prospective affected-cell footprint');
-    const centerPreviewKeys = new Set(centerPreview.map((candidate) => `${candidate.dataset.veRow}:${candidate.dataset.veCol}`));
     pointer(cell(root, 0, 0), 'pointermove', { clientX: 10, clientY: 10 });
     const cornerPreview = [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td[data-table-brush-preview="true"]')];
-    assert(cornerPreview.length > 0 && cornerPreview.some((candidate) => !centerPreviewKeys.has(`${candidate.dataset.veRow}:${candidate.dataset.veCol}`)),
+    assert(cornerPreview.length > 0 && cornerPreview.length < centerPreview.length && cell(root, 2, 2).dataset.tableBrushPreview !== 'true',
       'VE Proposal Brush hover footprint did not follow the pointer synchronously');
     pointer(cell(root, 1, 1), 'pointermove', { clientX: 10, clientY: 10 });
     const brushCenter = cell(root, 1, 1);
