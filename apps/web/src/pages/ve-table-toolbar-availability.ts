@@ -34,19 +34,15 @@ function hasSelection(table: HTMLTableElement | null): boolean {
   return Boolean(table?.querySelector('td[data-table-selected="true"]'));
 }
 
-function setSelectionAvailability(toolbar: HTMLElement | null, table: HTMLTableElement | null): void {
+function setSelectionAvailability(toolbar: HTMLElement | null): void {
   if (!toolbar) return;
-  const available = hasSelection(table);
+  // v50 commands stay accessible so users can open right-click configuration
+  // before choosing cells. Applying an edit still requires semantic selection,
+  // enforced by TableInteractionSession. Undo/Redo retain history gating.
   for (const button of selectionButtons(toolbar)) {
-    button.setAttribute('aria-disabled', available ? 'false' : 'true');
-    button.dataset.commandAvailable = available ? 'true' : 'false';
+    button.setAttribute('aria-disabled', 'false');
+    button.dataset.commandAvailable = 'true';
   }
-}
-
-function tableForSelectionButton(root: HTMLElement, button: HTMLButtonElement): HTMLTableElement | null {
-  if (button.closest('.ve-proposal-shared-toolbar')) return proposalTable(root);
-  if (button.closest('.ve-delay-shared-toolbar')) return delayTable(root);
-  return null;
 }
 
 /**
@@ -68,8 +64,8 @@ export function installVeTableToolbarSelectionAvailability(root: HTMLElement): v
   installedRoots.add(root);
 
   const sync = (): void => {
-    setSelectionAvailability(root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar'), proposalTable(root));
-    setSelectionAvailability(root.querySelector<HTMLElement>('.ve-delay-shared-toolbar'), delayTable(root));
+    setSelectionAvailability(root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar'));
+    setSelectionAvailability(root.querySelector<HTMLElement>('.ve-delay-shared-toolbar'));
   };
 
   root.addEventListener('click', (event) => {
@@ -78,14 +74,8 @@ export function installVeTableToolbarSelectionAvailability(root: HTMLElement): v
       : null;
     if (!button || !root.contains(button)) return;
 
-    if (isSelectionCommand(button)) {
-      const available = hasSelection(tableForSelectionButton(root, button));
-      button.setAttribute('aria-disabled', available ? 'false' : 'true');
-      button.dataset.commandAvailable = available ? 'true' : 'false';
-      if (available) return;
-    } else if (button.getAttribute('aria-disabled') !== 'true') {
-      return;
-    }
+    if (isSelectionCommand(button)) return;
+    if (button.getAttribute('aria-disabled') !== 'true') return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
