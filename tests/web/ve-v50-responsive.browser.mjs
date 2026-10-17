@@ -25,6 +25,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   const analyzer = document.querySelector('.analyzer-page:not([hidden])');
   const root = analyzer?.querySelector('.ve-analyzer-view.ve-v50-port:not([hidden])');
   assert(root, 'Visible application v50 VE Analyzer root missing');
+  window.scrollTo(0, 0);
   await settle();
 
   assert(Math.abs(window.innerWidth - expectedWidth) <= 2, `Viewport width mismatch: expected ${expectedWidth}, got ${window.innerWidth}`);
@@ -55,8 +56,6 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   }
   checks.push('frozen v50 production-owned secondary tools are present');
 
-  const originalScrollX = window.scrollX;
-  const originalScrollY = window.scrollY;
   const lambdaTool = secondary.querySelector('[data-ve-v50-secondary="lambda-delay"]');
   const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
   if (lambdaTool && lambdaDetails && !lambdaTool.disabled) {
@@ -73,7 +72,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     await settle();
     assert(advanced.open, 'Mappings secondary tool did not reveal the existing Advanced owner');
   }
-  window.scrollTo(originalScrollX, originalScrollY);
+  window.scrollTo(0, 0);
   await settle();
   checks.push('secondary navigation delegates to existing Lambda and Advanced owners without changing responsive capture position');
 
@@ -102,6 +101,9 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   const scopeOpen = root.querySelector('[data-ve-scope-open]');
   assert(scopeOpen && scopeOpen.getBoundingClientRect().right <= window.innerWidth + 2, 'Open in Logger action escapes viewport');
   checks.push(`scope handoff remains visible at ${expectedWidth}px`);
+
+  window.scrollTo(0, 0);
+  await settle();
 
   return {
     passed: checks.length,
