@@ -187,6 +187,11 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     if (body) {
       const rect = body.getBoundingClientRect();
       assert(inside(rect, viewport, 8), `Setup disclosure ${detail.dataset.veV50Setup || '?'} escapes viewport at ${expectedWidth}px: ${Math.round(rect.left)}..${Math.round(rect.right)}`);
+      const setupAnchor = detail.querySelector(':scope > summary')?.getBoundingClientRect();
+      if (setupAnchor && setupAnchor.top >= rect.height + 14) {
+        assert(detail.dataset.openDirection === 'up' && rect.bottom <= setupAnchor.top,
+          `Bottom setup popup failed to open inward above its strip at ${expectedWidth}px`);
+      }
       assert(rect.top >= 0 && rect.bottom <= window.innerHeight + 8,
         `Setup disclosure ${detail.dataset.veV50Setup || '?'} escapes vertical viewport at ${expectedWidth}px: ${Math.round(rect.top)}..${Math.round(rect.bottom)}`);
     }
