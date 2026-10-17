@@ -2,6 +2,14 @@ import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import './ve-analyzer-v50-table-header.css';
 
+function headerIdentity(header: HTMLElement | undefined): { title?: HTMLElement; identity?: HTMLElement } {
+  const block = header?.querySelector<HTMLElement>(':scope > div:not(.ve-table-header-controls):not(.ve-v50-table-actions)');
+  return {
+    title: block?.querySelector<HTMLElement>('strong') ?? undefined,
+    identity: block?.querySelector<HTMLElement>('span') ?? undefined,
+  };
+}
+
 /**
  * Compact v50 presentation over the existing v7 table-layout/result controls.
  * Existing selects, tab buttons and shared toolbar remain the semantic owners;
@@ -9,20 +17,22 @@ import './ve-analyzer-v50-table-header.css';
  */
 export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
-  if (root.querySelector('.ve-v50-table-head')) return inner;
+  if (root.querySelector('.ve-v50-table-actions')) return inner;
 
   const veHost = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]');
+  const targetTableHost = root.querySelector<HTMLElement>('[data-ve-analyzer="target-table-view"]');
   const vePanel = veHost?.closest<HTMLElement>('.ve-workbench-panel');
-  const header = vePanel?.querySelector<HTMLElement>(':scope > header');
-  if (!header) return inner;
+  const targetPanel = targetTableHost?.closest<HTMLElement>('.ve-workbench-panel');
+  const veHeader = vePanel?.querySelector<HTMLElement>(':scope > header');
+  const targetHeader = targetPanel?.querySelector<HTMLElement>(':scope > header');
+  if (!veHeader) return inner;
 
-  header.classList.add('ve-v50-table-head');
-  const titleBlock = header.querySelector<HTMLElement>(':scope > div:not(.ve-table-header-controls)');
-  const title = titleBlock?.querySelector<HTMLElement>('strong');
-  const identity = titleBlock?.querySelector<HTMLElement>('span');
-  if (title) title.textContent = 'VE Table';
+  veHeader.classList.add('ve-v50-table-head');
+  targetHeader?.classList.add('ve-v50-table-head');
+  const veHeading = headerIdentity(veHeader);
+  const targetHeading = headerIdentity(targetHeader);
 
-  const controls = header.querySelector<HTMLElement>('.ve-table-header-controls');
+  const controls = veHeader.querySelector<HTMLElement>('.ve-table-header-controls');
   if (!controls) return inner;
 
   const layout = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer table view"]');
@@ -47,7 +57,8 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   targetHost.className = 've-v50-target-host';
   const targetCaption = document.createElement('span');
   targetCaption.textContent = 'Target:';
-  if (targetSelect) targetHost.append(targetCaption, targetSelect);
+  targetHost.append(targetCaption);
+  if (targetSelect) targetHost.append(targetSelect);
 
   const splitButton = document.createElement('button');
   splitButton.type = 'button';
@@ -80,31 +91,48 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   });
 
   actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
-  header.append(actions);
+  veHeader.append(actions);
 
   const sync = (): void => {
     const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
     if (sharedToolbar && sharedToolbar.parentElement !== toolbarHost) toolbarHost.append(sharedToolbar);
 
+    // v7 may re-parent these controls while synchronizing its semantic layout.
+    // Put the visible target selector back in the compact v50 host every pass.
+    if (targetSelect && targetSelect.parentElement !== targetHost) targetHost.append(targetSelect);
+
     if (layout) layout.closest<HTMLElement>('label')?.classList.add('ve-v50-semantic-control');
     if (veSelect) veSelect.closest<HTMLElement>('label')?.classList.add('ve-v50-semantic-control');
     if (tabs) tabs.classList.add('ve-v50-semantic-control');
 
-    const veEntry = veSelect?.selectedOptions[0]?.textContent?.trim() || veSelect?.value || 'VE';
-    const table = veHost?.querySelector<HTMLTableElement>('.ve-workbench-table');
-    const rows = table?.tBodies[0]?.rows.length;
-    const cols = table?.tHead?.rows[0]?.cells.length ? table.tHead.rows[0].cells.length - 1 : undefined;
-    const units = table?.tHead?.rows[0]?.cells[0]?.textContent?.trim() || '%';
-    if (identity) identity.textContent = `${veEntry} · ${units || '%'}${rows && cols ? ` · ${rows}×${cols}` : ''}`;
+    const split = layout?.value === 'side-by-side';
+    const targetActive = !split && targetTab?.getAttribute('aria-selected') === 'true';
+    const activeHeader = targetActive ? targetHeader : veHeader;
+    if (activeHeader && actions.parentElement !== activeHeader) activeHeader.append(actions);
 
-    resultHost.hidden = !inner.getPrimaryAnalysis() || !resultView;
-    targetHost.hidden = !targetSelect;
-    evidenceButton.hidden = !root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
+    const veEntry = veSelect?.selectedOptions[0]?.textContent?.trim() || veSelect?.value || 'VE';
+    const veTable = veHost?.querySelector<HTMLTableElement>('.ve-workbench-table');
+    const veRows = veTable?.tBodies[0]?.rows.length;
+    const veCols = veTable?.tHead?.rows[0]?.cells.length ? veTable.tHead.rows[0].cells.length - 1 : undefined;
+    const veUnits = veTable?.tHead?.rows[0]?.cells[0]?.textContent?.trim() || '%';
+    if (veHeading.title) veHeading.title.textContent = 'VE Table';
+    if (veHeading.identity) veHeading.identity.textContent = `${veEntry} · ${veUnits || '%'}${veRows && veCols ? ` · ${veRows}×${veCols}` : ''}`;
 
     const targetName = targetSelect?.selectedOptions[0]?.textContent?.trim() || targetSelect?.value || 'Target';
-    const targetActive = targetTab?.getAttribute('aria-selected') === 'true';
+    const targetTable = targetTableHost?.querySelector<HTMLTableElement>('.ve-workbench-table');
+    const targetRows = targetTable?.tBodies[0]?.rows.length;
+    const targetCols = targetTable?.tHead?.rows[0]?.cells.length ? targetTable.tHead.rows[0].cells.length - 1 : undefined;
+    const targetUnits = targetTable?.tHead?.rows[0]?.cells[0]?.textContent?.trim() || '';
+    if (targetHeading.title) targetHeading.title.textContent = `Target ${targetName}`;
+    if (targetHeading.identity) targetHeading.identity.textContent = `${targetName}${targetUnits ? ` · ${targetUnits}` : ''}${targetRows && targetCols ? ` · ${targetRows}×${targetCols}` : ''}`;
+
+    resultHost.hidden = targetActive || !inner.getPrimaryAnalysis() || !resultView;
+    targetHost.hidden = !targetSelect;
+    toolbarHost.hidden = targetActive || !sharedToolbar;
+    evidenceButton.hidden = targetActive || !root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
+    flipButton.hidden = Boolean(split);
     flipButton.textContent = targetActive ? '← VE Table' : `${targetName} →`;
-    splitButton.setAttribute('aria-pressed', layout?.value === 'side-by-side' ? 'true' : 'false');
+    splitButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   };
 
   root.addEventListener('change', () => queueMicrotask(sync));
