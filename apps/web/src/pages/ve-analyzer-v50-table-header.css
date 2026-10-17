@@ -188,3 +188,11 @@
   stroke-linejoin: round;
   pointer-events: none;
 }
+
+/* Target tools have their own semantic working surface. They remain in the
+ * Target header; only the common navigation/action cluster changes parent. */
+.ve-v50-port .ve-v50-table-head > .ve-target-shared-toolbar {
+  order: 1;
+  flex: 0 1 auto;
+  margin: 0 0 0 auto;
+}
