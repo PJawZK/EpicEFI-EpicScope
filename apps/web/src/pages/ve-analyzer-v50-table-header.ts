@@ -148,7 +148,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
 
     resultHost.hidden = targetActive || !inner.getPrimaryAnalysis() || !resultView;
     targetHost.hidden = !targetSelect;
-    toolbarHost.hidden = !sharedToolbar;
+    // Target does not yet own a mutable table surface. Do not bind VE edits to Target.\n    toolbarHost.hidden = targetActive || !sharedToolbar;
     evidenceButton.hidden = true;
     flipButton.hidden = Boolean(split);
     flipButton.textContent = targetActive ? '← VE Table' : `${targetName} →`;
