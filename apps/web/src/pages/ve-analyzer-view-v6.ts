@@ -4,9 +4,9 @@ import type { LoggerAnalysisContext } from './logger-page';
 import { VE_CELL_CHANGE_PRIOR_WEIGHT, type VeCellChangeAuthority } from './ve-analyzer-qualification';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import {
-  createVeAnalyzerView as createVeAnalyzerViewV5,
+  createVeAnalyzerView as createVeAnalyzerViewV4,
   type VeAnalyzerViewController,
-} from './ve-analyzer-view-v5';
+} from './ve-analyzer-view-v4';
 
 const OPTIONAL_BOUND_ROLES = [
   'min-rpm',
@@ -16,7 +16,10 @@ const OPTIONAL_BOUND_ROLES = [
 ] as const;
 
 export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV5(observability);
+  // v5 was the transitional Lambda Delay gesture/editor owner. The shared
+  // table-interaction adapter now has browser parity and is the sole production
+  // input owner, so do not install the superseded v5 listeners/observer here.
+  const inner = createVeAnalyzerViewV4(observability);
   const root = inner.element;
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
 
@@ -135,4 +138,4 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 }
 
-export type { VeAnalyzerViewController } from './ve-analyzer-view-v5';
+export type { VeAnalyzerViewController } from './ve-analyzer-view-v4';
