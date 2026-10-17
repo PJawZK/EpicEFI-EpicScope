@@ -244,6 +244,11 @@ export function installVeAnalyzerTargetTableInteraction(inner: VeAnalyzerViewCon
   });
 
   dom.toolbar.classList.add('ve-target-shared-toolbar');
+  const clearTarget = dom.toolbar.querySelector<HTMLButtonElement>('button[aria-label="Clear selected cells"]');
+  if (clearTarget) {
+    clearTarget.setAttribute('aria-label', 'Reset selected Target cells to baseline');
+    clearTarget.title = 'Reset selected Target cells to their original tune values';
+  }
   const panelHeader = targetHost.closest<HTMLElement>('.ve-workbench-panel')?.querySelector<HTMLElement>(':scope > header');
   panelHeader?.append(dom.toolbar);
 
