@@ -155,3 +155,16 @@
 .ve-v50-port > .specialized-analyzer-content:not(:has(.specialized-analyzer-summary > *)) {
   display: none !important;
 }
+
+/* Opaque, borderless grid prevents subpixel seams between fractional-height
+ * colored cells (the prior translucent cells exposed the near-black table
+ * background as horizontal/vertical bars). Keep selection styling intact. */
+.ve-v50-port .ve-workbench-table { border-spacing: 0; }
+.ve-v50-port .ve-workbench-table tbody td,
+.ve-v50-port .ve-workbench-table tbody th {
+  border-right: 0;
+  border-bottom: 0;
+}
+.ve-v50-port .ve-workbench-table tbody td {
+  background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39%);
+}
