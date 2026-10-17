@@ -146,3 +146,12 @@
   height: 0;
 }
 
+
+/* v2's summary shell remains after Lambda/Advanced are moved to tool surfaces.
+ * An empty summary must not draw the stray rule above the app status bar. */
+.ve-v50-port .specialized-analyzer-summary:empty {
+  display: none !important;
+}
+.ve-v50-port > .specialized-analyzer-content:not(:has(.specialized-analyzer-summary > *)) {
+  display: none !important;
+}
