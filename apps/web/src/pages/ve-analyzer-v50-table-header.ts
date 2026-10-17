@@ -103,7 +103,8 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     (targetActive ? veTab : targetTab)?.click();
   });
 
-  // The shared toolbar already owns Cell Evidence; do not create a duplicate.\n  actions.append(toolbarHost, resultHost, targetHost, splitButton, flipButton);
+  // Present one visible Cell Evidence action; the toolbar's semantic button stays hidden visually.
+  actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
   veHeader.append(actions);
 
   let active = true;
@@ -159,7 +160,8 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
 
     resultHost.hidden = targetActive || !inner.getPrimaryAnalysis() || !resultView;
     targetHost.hidden = !targetSelect;
-    // Target does not yet own a mutable table surface. Do not bind VE edits to Target.\n    toolbarHost.hidden = targetActive || !sharedToolbar;
+    // Target does not yet own a mutable table surface. Do not bind VE edits to Target.
+    toolbarHost.hidden = targetActive || !sharedToolbar;
     evidenceButton.hidden = targetActive || !root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
     flipButton.hidden = Boolean(split);
     flipButton.textContent = targetActive ? '← VE Table' : `${targetName} →`;
