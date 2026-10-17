@@ -16,15 +16,6 @@ function ensureStyle(document: Document): void {
       position: relative;
     }
 
-    /* Brush footprint presentation is owned by the overlay canvas. Keep the
-       interaction engine's data attributes semantic/presentation-neutral so
-       pointer motion does not repaint table cells. */
-    .ve-workbench-table td[data-table-brush-preview='true'],
-    .ve-delay-table td[data-table-brush-preview='true'] {
-      outline: none !important;
-      box-shadow: none !important;
-    }
-
     .ve-table-brush-overlay {
       position: absolute;
       inset: 0 auto auto 0;
