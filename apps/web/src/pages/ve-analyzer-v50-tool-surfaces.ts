@@ -79,40 +79,24 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
   const advancedTool = advanced ? createToolSurface(host, advanced, 'Advanced VE Analyzer Inputs', 've-v50-tool-advanced') : undefined;
   const lambdaTool = lambda ? createToolSurface(host, lambda, 'Lambda Delay Table', 've-v50-tool-lambda') : undefined;
 
-  // Reuse the original role-select labels; events and state stay with the VE
-  // controller, while their presentation is scoped to the correct tool.
-  const createOwnedDetails = (title: string): HTMLDetailsElement => {
-    const details = document.createElement('details');
-    const summary = document.createElement('summary');
-    summary.textContent = title;
-    details.append(summary);
-    return details;
+  // Keep all Advanced descendants in their original production-owned subtree.
+  // v2 caches the readiness tbody and queries role selects inside this details;
+  // moving those nodes breaks its rebuild lifecycle.
+  const openAdvancedMode = (mode: 'advanced' | 'exclusions' | 'inputs'): void => {
+    if (!advancedTool) return;
+    advancedTool.panel.dataset.veToolMode = mode;
+    const title = mode === 'exclusions' ? 'State Exclusions'
+      : mode === 'inputs' ? 'Input Readiness' : 'Advanced VE Analyzer Inputs';
+    advancedTool.panel.setAttribute('aria-label', title);
+    const heading = advancedTool.panel.querySelector('.ve-v50-tool-surface-head strong');
+    if (heading) heading.textContent = title;
+    advancedTool.open();
   };
-  const exclusionsDetails = createOwnedDetails('State exclusions');
-  const exclusionsBody = document.createElement('section');
-  exclusionsBody.className = 've-v50-tool-fields';
-  for (const role of ['dfco', 'fuelCutReason', 'aeActive', 'decelActive']) {
-    const select = advanced?.querySelector<HTMLSelectElement>(`select[data-role="${role}"]`);
-    const label = select?.closest<HTMLLabelElement>('label');
-    if (label) exclusionsBody.append(label);
-  }
-  exclusionsDetails.append(exclusionsBody);
-  const exclusionsTool = exclusionsBody.children.length
-    ? createToolSurface(host, exclusionsDetails, 'State Exclusions', 've-v50-tool-exclusions')
-    : undefined;
-
-  const inputsDetails = createOwnedDetails('Input readiness');
-  const inputsContent = advanced?.querySelector<HTMLElement>('.specialized-analyzer-events');
-  if (inputsContent) inputsDetails.append(inputsContent);
-  const inputsTool = inputsContent
-    ? createToolSurface(host, inputsDetails, 'Input Readiness', 've-v50-tool-inputs')
-    : undefined;
-
 
   const advancedButton = root.querySelector<HTMLButtonElement>('.ve-v50-advanced-button');
   if (advancedButton && advancedTool) {
     const replacement = advancedButton.cloneNode(true) as HTMLButtonElement;
-    replacement.addEventListener('click', advancedTool.open);
+    replacement.addEventListener('click', () => openAdvancedMode('advanced'));
     advancedButton.replaceWith(replacement);
   }
 
@@ -122,7 +106,7 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
     exclusions.type = 'button';
     exclusions.className = 've-v50-advanced-button ve-v50-exclusions-button';
     exclusions.textContent = 'Exclusions';
-    exclusions.addEventListener('click', () => exclusionsTool?.open());
+    exclusions.addEventListener('click', () => openAdvancedMode('exclusions'));
     quickControls.append(exclusions);
   }
 
@@ -133,8 +117,7 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
     if (!event.target.closest('.ve-v50-run-chips > .ve-v50-status-chip:first-child')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (inputsTool) inputsTool.open();
-    else advancedTool?.open();
+    openAdvancedMode('inputs');
   }, { capture: true });
 
   if (lambdaTool) {
