@@ -131,8 +131,12 @@ export async function runVeDelayEditingChecks() {
     checks.push('unchanged inline edit retains session and table DOM');
 
     key(s.cells()[0], 'Delete'); await settle();
-    assert(all(s, 100) && s.view.sessionRevision === stable + 1 && s.cells().every((cell) => cell.dataset.delayProvenance === 'measured-recommendation'), 'Delete did not revert the selected recommendation in one operation');
-    checks.push('Delete reverts the whole selection to evidence recommendation/provenance');
+    assert(all(s, '') && s.view.sessionRevision === stable + 1 && s.cells().every((cell) => cell.dataset.delayRecommended === '100' && cell.dataset.delayProvenance === 'user-edited'), 'Delete did not clear the selected working values in one operation');
+    const revertAfterDelete = [...s.root.querySelectorAll('.ve-delay-shared-toolbar button')].find((candidate) => candidate.title.startsWith('Revert selected cells'));
+    assert(revertAfterDelete, 'Revert tool missing after Delete');
+    revertAfterDelete.click(); await settle();
+    assert(all(s, 100) && s.cells().every((cell) => cell.dataset.delayProvenance === 'measured-recommendation'), 'Explicit Revert did not restore retained recommendations');
+    checks.push('Delete clears working values; explicit Revert restores retained recommendation/provenance');
 
     const cancelRevision = s.view.sessionRevision;
     type(s, '999', 'Escape'); await settle();
@@ -142,9 +146,14 @@ export async function runVeDelayEditingChecks() {
 
     type(s, ''); await settle();
     assert(all(s, '') && s.cells().every((cell) => cell.dataset.delayRecommended === '100' && cell.dataset.delayProvenance === 'user-edited'), 'Blank edit erased recommendation evidence');
+    const blankRevision = s.view.sessionRevision;
     key(s.cells()[0], 'Delete'); await settle();
-    assert(all(s, 100), 'Delete did not restore explicitly cleared values');
-    checks.push('blank commit clears working values only; Delete restores retained evidence');
+    assert(all(s, '') && s.view.sessionRevision === blankRevision, 'Delete changed an already empty working selection');
+    const revertBlank = [...s.root.querySelectorAll('.ve-delay-shared-toolbar button')].find((candidate) => candidate.title.startsWith('Revert selected cells'));
+    assert(revertBlank, 'Revert tool missing for explicitly cleared values');
+    revertBlank.click(); await settle();
+    assert(all(s, 100), 'Explicit Revert did not restore retained evidence after a blank edit');
+    checks.push('blank commit and Delete preserve none; explicit Revert restores retained evidence');
 
     const invalidRevision = s.view.sessionRevision;
     for (const invalid of ['-2', 'bad', 'Infinity']) type(s, invalid);
@@ -181,8 +190,15 @@ export async function runVeDelayEditingChecks() {
     let withdrawals = 0; const unsubscribe = s.view.onPrimaryAnalysisChange(() => { withdrawals += 1; });
     assert(!s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 }) && s.view.getPrimaryAnalysis() === primary, 'No-op withdrew primary authority');
     const measured = [...s.root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find((cell) => cell.title.startsWith('Measured proposal'));
-    assert(measured, 'Expected measured evidence cell'); measured.click(); await settle();
-    assert(!s.host.querySelector('.ve-cell-detail-popover').hidden, 'Evidence did not open');
+    assert(measured, 'Expected measured evidence cell');
+    measured.setPointerCapture = () => {};
+    measured.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 31, pointerType: 'mouse', bubbles: true, cancelable: true }));
+    measured.dispatchEvent(new PointerEvent('pointerup', { pointerId: 31, pointerType: 'mouse', bubbles: true, cancelable: true }));
+    assert(s.host.querySelector('.ve-cell-detail-popover').hidden, 'Normal VE selection unexpectedly opened Cell Evidence');
+    const evidenceButton = [...s.root.querySelectorAll('.ve-proposal-shared-toolbar button')].find((candidate) => candidate.title === 'Cell Evidence');
+    assert(evidenceButton, 'Cell Evidence tool missing from VE Proposal toolbar');
+    evidenceButton.click(); await settle();
+    assert(!s.host.querySelector('.ve-cell-detail-popover').hidden, 'Explicit Cell Evidence tool did not open retained evidence');
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 145 }); await settle();
     assert(withdrawals === 1 && !s.view.getPrimaryAnalysis() && s.host.querySelector('.ve-cell-detail-popover').hidden, 'Batch did not withdraw evidence/proposal once');
     unsubscribe(); checks.push('no-op retains primary evidence; real batch withdraws primary and popup once');

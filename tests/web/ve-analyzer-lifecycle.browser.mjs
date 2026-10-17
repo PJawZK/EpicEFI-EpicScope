@@ -69,6 +69,15 @@ async function setup(factory = createVeAnalyzerView, fixture = {}) {
 }
 function summary(root) { return root.querySelector('[data-ve-analyzer="summary"]').textContent; }
 function measured(root) { return [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find((cell) => cell.title.startsWith('Measured proposal')); }
+function openEvidence(s, cell) {
+  assert(cell, 'Missing VE cell for Cell Evidence');
+  cell.setPointerCapture = () => {};
+  cell.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 41, pointerType: 'mouse', bubbles: true, cancelable: true }));
+  cell.dispatchEvent(new PointerEvent('pointerup', { pointerId: 41, pointerType: 'mouse', bubbles: true, cancelable: true }));
+  const button = [...s.root.querySelectorAll('.ve-proposal-shared-toolbar button')].find((candidate) => candidate.title === 'Cell Evidence');
+  assert(button, 'Cell Evidence tool missing');
+  button.click();
+}
 
 async function completed(s) {
   const deadline = performance.now() + 10000;
@@ -190,7 +199,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     s.view.setContext({ ...s.context, openSamplesInLogger: (next) => { request = next; } });
     const measuredCells = [...s.root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].filter((c) => c.title.startsWith('Measured proposal'));
     for (const cell of [measuredCells[0], measuredCells.at(-1), measuredCells[0]]) {
-      cell.click(); await settle();
+      openEvidence(s, cell); await settle();
       assert(!s.host.querySelector('.ve-cell-detail-popover').hidden, 'Popup failed to open');
       assert(s.host.querySelector('.ve-evidence-detail-grid'), 'Retained evidence not rendered');
       assert(s.view.getPrimaryAnalysis() === primary && s.reads() === reads, 'Popup reloaded/replaced primary analysis');
@@ -204,7 +213,7 @@ export async function runVeAnalyzerLifecycleChecks() {
   });
   await check('popup before a primary run does not load or analyze the log', async () => {
     const s = await setup(), reads = s.reads();
-    s.root.querySelector('[data-ve-analyzer="ve-table-view"] td').click(); await settle();
+    openEvidence(s, s.root.querySelector('[data-ve-analyzer="ve-table-view"] td')); await settle();
     assert(s.host.querySelector('.ve-evidence-detail-loading')?.textContent.includes('valid VE analysis'), 'Missing run guidance');
     assert(s.reads() === reads && !s.view.getPrimaryAnalysis(), 'Popup started implicit analysis');
     s.host.remove();
@@ -219,7 +228,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     const reads = s.reads(); pending.resolve(traces); await completed(s);
     const current = s.view.getPrimaryAnalysis();
     assert(current && current !== old && current.evidence !== old.evidence && current.proposal !== old.proposal, 'New run did not replace primary result');
-    measured(s.root).click(); await settle();
+    openEvidence(s, measured(s.root)); await settle();
     assert(s.host.querySelector('.ve-evidence-detail-grid') && s.reads() === reads, 'New result not reused');
     s.host.remove();
   });
@@ -236,7 +245,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     const primary = s.view.getPrimaryAnalysis(), reads = s.reads();
     assert(primary && primary.actualRange.validity[0] === 0 && primary.actualRange.validity[25] === 1 && primary.actualRange.validity[59] === 0, 'Primary qualification fixture failed');
     assert(traces[2].range.validity[0] === 1, 'Source validity mutated');
-    measured(s.root).click(); await settle();
+    openEvidence(s, measured(s.root)); await settle();
     const metrics = Object.fromEntries([...s.host.querySelectorAll('.ve-evidence-detail-metric')].map((el) => [el.querySelector('span').textContent, el.querySelector('strong').textContent]));
     assert(metrics.Samples === primary.evidence.cells[0].sampleCount.toLocaleString(), 'Popup sample count differs from qualified primary evidence');
     assert(metrics['Proposal state'] === primary.proposal.cells[0].state, 'Popup proposal differs from primary');
@@ -244,7 +253,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     s.host.remove();
   });
   await check('all Result Views, layouts and refresh preserve open cached detail and primary identity', async () => {
-    const s = await setup(); s.run(); await completed(s); measured(s.root).click(); await settle();
+    const s = await setup(); s.run(); await completed(s); openEvidence(s, measured(s.root)); await settle();
     const primary = s.view.getPrimaryAnalysis(), reads = s.reads();
     const panel = s.host.querySelector('.ve-cell-detail-popover');
     const grid = panel.querySelector('.ve-evidence-detail-grid'), visit = panel.querySelector('.ve-evidence-detail-visit');
@@ -261,7 +270,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     discovery.value = String(Number(discovery.value) + 0.1); discovery.dispatchEvent(new Event('change', { bubbles: true }));
     s.view.refresh(); await settle();
     assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') === grid && s.view.getPrimaryAnalysis() === primary && notifications === 0, 'Refresh/layout/recommendation-only settings invalidated detail');
-    panel.querySelector('header button').click(); measured(s.root).click(); await settle();
+    panel.querySelector('header button').click(); openEvidence(s, measured(s.root)); await settle();
     assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') === grid && panel.querySelector('.ve-evidence-detail-visit') === visit, 'Reopening cell rebuilt cached detail');
     let request;
     s.view.setContext({ ...s.context, openSamplesInLogger: (next) => { request = next; } });
@@ -274,7 +283,7 @@ export async function runVeAnalyzerLifecycleChecks() {
   });
   for (const kind of ['qualification', 'delay-edit', 'delay-file', 'scope', 'tune', 'source']) {
     await check(`${kind} invalidates open detail and its per-cell cache at the owner`, async () => {
-      const s = await setup(); s.run(); await completed(s); measured(s.root).click(); await settle();
+      const s = await setup(); s.run(); await completed(s); openEvidence(s, measured(s.root)); await settle();
       const panel = s.host.querySelector('.ve-cell-detail-popover');
       let notifications = 0; const unsubscribe = s.view.onPrimaryAnalysisChange(() => { notifications += 1; });
       if (kind === 'qualification') {
@@ -292,11 +301,11 @@ export async function runVeAnalyzerLifecycleChecks() {
     });
   }
   await check('rerun start closes existing detail and completed rerun generates new cell detail', async () => {
-    const s = await setup(); s.run(); await completed(s); measured(s.root).click(); await settle();
+    const s = await setup(); s.run(); await completed(s); openEvidence(s, measured(s.root)); await settle();
     const panel = s.host.querySelector('.ve-cell-detail-popover'), oldGrid = panel.querySelector('.ve-evidence-detail-grid');
     const pending = s.hold(); s.run();
     assert(panel.hidden && !panel.querySelector('.ve-evidence-detail-grid'), 'Rerun left old detail active');
-    pending.resolve(traces); await completed(s); measured(s.root).click(); await settle();
+    pending.resolve(traces); await completed(s); openEvidence(s, measured(s.root)); await settle();
     assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') !== oldGrid, 'Rerun reused invalidated cell detail');
     s.host.remove();
   });
