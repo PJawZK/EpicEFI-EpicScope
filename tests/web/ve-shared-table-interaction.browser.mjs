@@ -83,6 +83,13 @@ export async function runVeSharedTableInteractionChecks() {
     const fileInput = root.querySelector('[data-ve-analyzer="load-delay-file"]');
     installDelayFile(fileInput, 100);
     await settle();
+    const lambdaTrigger = root.querySelector('.ve-v50-lambda-tool-trigger');
+    lambdaTrigger?.click();
+    await settle();
+    const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
+    const lambdaPanel = lambdaDetails?.closest('.ve-v50-tool-surface');
+    assert(lambdaTrigger && lambdaDetails?.open && lambdaPanel && !lambdaPanel.hidden,
+      'Lambda Delay tool did not open for shared interaction fixture');
 
     const cells = () => [...root.querySelectorAll('[data-ve-analyzer="delay-table"] td[data-delay-row]')];
     const values = () => cells().map((cell) => Number(cell.dataset.delayValue));
