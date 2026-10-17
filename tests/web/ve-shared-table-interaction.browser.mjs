@@ -80,6 +80,22 @@ export async function runVeSharedTableInteractionChecks() {
       control.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    const targetFlip = root.querySelector('.ve-v50-table-flip');
+    assert(targetFlip, 'Target navigation button missing');
+    targetFlip.click(); await settle();
+    const targetPanel = root.querySelector('[data-ve-analyzer="target-table-view"]')?.closest('.ve-workbench-panel');
+    const targetActions = targetPanel?.querySelector('.ve-v50-table-actions');
+    assert(targetActions && !targetPanel.hidden && targetActions.querySelector('.ve-v50-target-host select[data-role="target-table"]')
+      && targetActions.querySelector('button[aria-label="Toggle VE and Target split view"]')
+      && targetActions.querySelector('.ve-v50-table-flip'),
+      'Target view lost its non-edit header actions');
+    assert(!targetPanel.querySelector('.ve-target-shared-toolbar'),
+      'Target unexpectedly received the VE-style edit toolbar');
+    targetActions.querySelector('.ve-v50-table-flip').click(); await settle();
+    assert(!root.querySelector('[data-ve-analyzer="ve-table-view"]').closest('.ve-workbench-panel').hidden,
+      'Returning to VE did not restore VE table');
+    checks.push('Target preserves dropdown, split and return actions without a duplicate edit toolbar');
+
     const fileInput = root.querySelector('[data-ve-analyzer="load-delay-file"]');
     installDelayFile(fileInput, 100);
     await settle();
