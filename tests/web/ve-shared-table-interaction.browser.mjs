@@ -80,6 +80,11 @@ export async function runVeSharedTableInteractionChecks() {
       control.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    const layoutSelect = root.querySelector('select[aria-label="VE Analyzer table view"]');
+    assert(layoutSelect, 'VE table layout select missing');
+    layoutSelect.value = 'single';
+    layoutSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
     const targetFlip = root.querySelector('.ve-v50-table-flip');
     assert(targetFlip, 'Target navigation button missing');
     targetFlip.click(); await settle();
