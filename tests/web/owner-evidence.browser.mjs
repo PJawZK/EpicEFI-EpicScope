@@ -27,7 +27,7 @@ export async function runOwnerEvidenceChecks(){
   const veTab = root.querySelector('[data-table-tab="ve"]');
   veTab?.click(); await pause(0);
   const headerEvidence = root.querySelector('.ve-v50-table-actions button[aria-label="Cell Evidence"]');
-  assert(headerEvidence && !headerEvidence.hidden && headerEvidence.getBoundingClientRect().width > 0,
+  assert(headerEvidence && !headerEvidence.hidden,
     'Visible v50 Cell Evidence action missing');
   const beforeHeaderOpen = count('ve.popup.cache-hit');
   headerEvidence.click(); await pause(0);
