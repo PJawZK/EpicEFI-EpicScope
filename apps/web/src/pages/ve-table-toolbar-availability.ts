@@ -21,19 +21,6 @@ function selectionButtons(toolbar: HTMLElement): HTMLButtonElement[] {
   return [...toolbar.querySelectorAll<HTMLButtonElement>('button')].filter(isSelectionCommand);
 }
 
-function proposalTable(root: HTMLElement): HTMLTableElement | null {
-  const table = root.querySelector<HTMLTableElement>('[data-ve-analyzer="ve-table-view"] table.ve-workbench-table');
-  return table && (!table.dataset.veResultView || table.dataset.veResultView === 'proposal') ? table : null;
-}
-
-function delayTable(root: HTMLElement): HTMLTableElement | null {
-  return root.querySelector<HTMLTableElement>('[data-ve-analyzer="delay-table"] table.ve-delay-table');
-}
-
-function hasSelection(table: HTMLTableElement | null): boolean {
-  return Boolean(table?.querySelector('td[data-table-selected="true"]'));
-}
-
 function setSelectionAvailability(toolbar: HTMLElement | null): void {
   if (!toolbar) return;
   // v50 commands stay accessible so users can open right-click configuration
@@ -45,19 +32,9 @@ function setSelectionAvailability(toolbar: HTMLElement | null): void {
   }
 }
 
-/**
- * Presentation/input guard for v50 selection-dependent table commands.
- *
- * Selection remains owned by TableInteractionSession; this installer consumes the
- * session's existing DOM projection only to keep command affordance in sync. It
- * intentionally does not infer tune/domain state, and it leaves Undo/Redo to the
- * semantic history owner instead of inventing history availability here.
- *
- * aria-disabled is used instead of the native disabled property so right-click
- * tool configuration remains reachable on configurable commands. A command click
- * re-checks the current selection synchronously because programmatic/native input
- * can select and invoke a command in the same task, before MutationObserver paint
- * synchronization has run.
+/** Table-command availability is presentation-only: semantic edits still require a
+ * selection, but command configuration must stay accessible before selection.
+ * Undo/Redo remain driven by the table surface's history stacks.
  */
 export function installVeTableToolbarSelectionAvailability(root: HTMLElement): void {
   if (installedRoots.has(root)) return;
