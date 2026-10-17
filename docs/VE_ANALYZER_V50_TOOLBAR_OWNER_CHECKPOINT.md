@@ -6,4 +6,6 @@ Browser acceptance now treats Cell Evidence as an explicit tool action, includin
 
 The v2 semantic owner now publishes a synchronous VE-table render boundary. The shared proposal interaction adapter rebinds at that boundary, with its MutationObserver retained only as fallback, so a freshly rendered proposal table is editable before same-turn pointer input can race the observer.
 
+Cell Evidence now has its own semantic cell-selection memory. It follows VE node clicks independently of whether the current Result View is proposal-editable, so alternate read-only result metrics can still be inspected without re-enabling editing on those views.
+
 This checkpoint is validation-only on `ui/ve-analyzer-v50-reconcile`; it does not authorize merging to `main`.
