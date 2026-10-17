@@ -96,3 +96,22 @@
     max-height: calc(100vh - 72px);
   }
 }
+
+/* Distinct tool views over one controller-owned Advanced subtree. Never move
+ * role selects or readiness tbody out of the Advanced details. */
+.ve-v50-tool-advanced[data-ve-tool-mode='inputs'] .specialized-analyzer-controls,
+.ve-v50-tool-advanced[data-ve-tool-mode='exclusions'] .specialized-analyzer-events {
+  display: none !important;
+}
+.ve-v50-tool-advanced[data-ve-tool-mode='advanced'] .specialized-analyzer-events {
+  display: none !important;
+}
+.ve-v50-tool-advanced[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls {
+  display: grid;
+}
+.ve-v50-tool-advanced[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > :not(label) {
+  display: none !important;
+}
+.ve-v50-tool-advanced[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label:not(:has(select[data-role='dfco'], select[data-role='fuelCutReason'], select[data-role='aeActive'], select[data-role='decelActive'])) {
+  display: none !important;
+}
