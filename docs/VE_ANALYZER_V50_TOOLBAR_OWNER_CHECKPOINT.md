@@ -4,4 +4,6 @@ The VE Proposal shared edit toolbar is owned independently from v7's replaceable
 
 Browser acceptance now treats Cell Evidence as an explicit tool action, including while a newer VE analysis is pending; normal VE cell selection no longer doubles as an Evidence-open command.
 
+The v2 semantic owner now publishes a synchronous VE-table render boundary. The shared proposal interaction adapter rebinds at that boundary, with its MutationObserver retained only as fallback, so a freshly rendered proposal table is editable before same-turn pointer input can race the observer.
+
 This checkpoint is validation-only on `ui/ve-analyzer-v50-reconcile`; it does not authorize merging to `main`.
