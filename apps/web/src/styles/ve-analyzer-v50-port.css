@@ -390,3 +390,40 @@
   opacity: .45;
   cursor: default;
 }
+
+
+/* Scope disclosure is the menu; do not nest a second select/dropdown inside it. */
+.ve-v50-port .ve-v50-setup-group[data-ve-v50-setup='scope'] .ve-v50-setup-body {
+  grid-template-columns: minmax(220px, 1fr);
+  min-width: 250px;
+}
+.ve-v50-port .ve-v50-scope-choice-list {
+  display: grid;
+  gap: 4px;
+}
+.ve-v50-port .ve-v50-scope-choice {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #294350;
+  border-radius: 3px;
+  background: #0d1c26;
+  color: #cbd9df;
+  text-align: left;
+  cursor: pointer;
+}
+.ve-v50-port .ve-v50-scope-choice:hover { border-color: #3479ae; background: #102437; }
+.ve-v50-port .ve-v50-scope-choice[data-selected='true'] {
+  border-color: #3c8cc0;
+  background: #12304a;
+  color: #eef8fc;
+}
+
+/* One adaptive placement policy for compact setup disclosures. */
+.ve-v50-port .ve-v50-setup-group[data-open-direction='up'] > .ve-v50-setup-body {
+  top: auto;
+  bottom: calc(100% + 5px);
+}
+.ve-v50-port .ve-v50-setup-group[data-open-direction='down'] > .ve-v50-setup-body {
+  top: calc(100% + 5px);
+  bottom: auto;
+}

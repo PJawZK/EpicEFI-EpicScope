@@ -182,7 +182,31 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
 
   const setupGroups = new Map<string, SetupGroup>();
   let syncSetupSummaries = (): void => {};
-  const scheduleSetupSummaries = (): void => queueMicrotask(syncSetupSummaries);
+  let syncScopeChoices = (): void => {};
+  const scheduleSetupSummaries = (): void => queueMicrotask(() => {
+    syncScopeChoices();
+    syncSetupSummaries();
+  });
+
+  const positionSetupDisclosure = (details: HTMLDetailsElement): void => {
+    if (!details.open) return;
+    const body = details.querySelector<HTMLElement>('.ve-v50-setup-body');
+    const summary = details.querySelector<HTMLElement>(':scope > summary');
+    if (!body || !summary) return;
+    body.style.left = '0px';
+    details.dataset.openDirection = 'down';
+    const summaryRect = summary.getBoundingClientRect();
+    const groupRect = details.getBoundingClientRect();
+    const bodyRect = body.getBoundingClientRect();
+    const pad = 8;
+    const gap = 5;
+    const roomBelow = window.innerHeight - summaryRect.bottom;
+    const roomAbove = summaryRect.top;
+    const direction = roomBelow < bodyRect.height + gap && roomAbove > roomBelow ? 'up' : 'down';
+    details.dataset.openDirection = direction;
+    const desiredViewportLeft = Math.max(pad, Math.min(groupRect.left, window.innerWidth - bodyRect.width - pad));
+    body.style.left = `${desiredViewportLeft - groupRect.left}px`;
+  };
 
   // Slice 2: collapse the existing production controls into the v50 compact setup
   // vocabulary. Controls are moved, not cloned, so all current listeners/state owners
@@ -209,7 +233,37 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     if (qualificationNote) qualification.body.append(qualificationNote);
     root.querySelector<HTMLElement>('.ve-quick-qualification')?.remove();
 
-    moveLabel(scopeGroup.body, labelFor(root, 'select[data-role="scope"]'));
+    const semanticScopeSelect = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+    const semanticScopeLabel = semanticScopeSelect?.closest<HTMLLabelElement>('label');
+    if (semanticScopeLabel) {
+      semanticScopeLabel.hidden = true;
+      scopeGroup.body.append(semanticScopeLabel);
+    }
+    const scopeChoices = document.createElement('div');
+    scopeChoices.className = 've-v50-scope-choice-list';
+    scopeGroup.body.append(scopeChoices);
+    syncScopeChoices = (): void => {
+      if (!semanticScopeSelect) return;
+      const options = [...semanticScopeSelect.options];
+      scopeChoices.replaceChildren(...options.map((option) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 've-v50-scope-choice';
+        button.textContent = option.textContent?.trim() || option.value;
+        button.dataset.scopeValue = option.value;
+        button.dataset.selected = option.value === semanticScopeSelect.value ? 'true' : 'false';
+        button.setAttribute('aria-pressed', option.value === semanticScopeSelect.value ? 'true' : 'false');
+        button.addEventListener('click', () => {
+          if (semanticScopeSelect.value !== option.value) {
+            semanticScopeSelect.value = option.value;
+            semanticScopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          syncScopeChoices();
+          scopeGroup.details.open = false;
+        });
+        return button;
+      }));
+    };
 
     for (const role of ['min-rpm', 'max-rpm', 'min-load', 'max-load'] as const) {
       moveLabel(range.body, labelFor(root, `input[data-role="${role}"]`));
@@ -245,6 +299,15 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       ...(extra ? [extra.details] : []),
     );
 
+    for (const group of setupGroups.values()) {
+      group.details.addEventListener('toggle', () => {
+        if (group.details.open) requestAnimationFrame(() => positionSetupDisclosure(group.details));
+      });
+    }
+    window.addEventListener('resize', () => {
+      for (const group of setupGroups.values()) if (group.details.open) positionSetupDisclosure(group.details);
+    });
+
     const advanced = root.querySelector<HTMLDetailsElement>('.ve-workbench-advanced');
     if (advanced) {
       const advancedButton = document.createElement('button');
@@ -266,6 +329,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
 
       summary('qualification', selectedText(root.querySelector<HTMLSelectElement>('select[data-role="preset"]'), 'Recommended'));
       summary('scope', selectedText(root.querySelector<HTMLSelectElement>('select[data-role="scope"]'), 'Full Log'));
+      syncScopeChoices();
 
       const minRpm = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-rpm"]'));
       const maxRpm = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-rpm"]'));
@@ -290,6 +354,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     };
 
     root.addEventListener('change', (event) => {
+      syncScopeChoices();
       syncSetupSummaries();
       if (currentContext && event.target instanceof HTMLSelectElement && event.target.matches('select[data-role="scope"]')) renderScope(currentContext);
     });
