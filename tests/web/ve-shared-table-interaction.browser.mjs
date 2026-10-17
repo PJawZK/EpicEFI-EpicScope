@@ -88,7 +88,7 @@ export async function runVeSharedTableInteractionChecks() {
     assert(targetActions && !targetPanel.hidden && targetActions.querySelector('.ve-v50-target-host select[data-role="target-table"]')
       && targetActions.querySelector('button[aria-label="Toggle VE and Target split view"]')
       && targetActions.querySelector('.ve-v50-table-flip'),
-      'Target view lost its non-edit header actions');
+      `Target view lost its non-edit header actions: ${JSON.stringify({ targetHidden: targetPanel?.hidden, actionsParent: root.querySelector('.ve-v50-table-actions')?.parentElement?.outerHTML.slice(0,350), targetHeader: targetPanel?.querySelector(':scope > header')?.outerHTML.slice(0,450), switchText: root.querySelector('.ve-v50-table-flip')?.textContent })}`);
     assert(!targetPanel.querySelector('.ve-target-shared-toolbar'),
       'Target unexpectedly received the VE-style edit toolbar');
     targetActions.querySelector('.ve-v50-table-flip').click(); await settle();
