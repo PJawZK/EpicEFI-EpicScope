@@ -39,13 +39,39 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     ['scope navigator', '.ve-analysis-scope-navigator'],
     ['setup row', '.ve-workbench-quick-controls'],
     ['action bar', '.ve-workbench-actionbar'],
+    ['secondary tools', '.ve-v50-secondary-tools'],
   ]) {
     const node = root.querySelector(selector);
     assert(node, `${label} missing`);
     const rect = node.getBoundingClientRect();
     assert(inside(rect, rootRect), `${label} escapes VE root at ${expectedWidth}px`);
   }
-  checks.push(`primary workbench, scope, setup and action surfaces stay inside the VE root at ${expectedWidth}px`);
+  checks.push(`primary workbench, scope, setup, action and secondary-tool surfaces stay inside the VE root at ${expectedWidth}px`);
+
+  const secondary = root.querySelector('.ve-v50-secondary-tools');
+  const secondaryIds = [...secondary.querySelectorAll('[data-ve-v50-secondary]')].map((button) => button.dataset.veV50Secondary);
+  for (const id of ['summary', 'lambda-delay', 'mappings', 'exclusions', 'readiness', 'cell-evidence']) {
+    assert(secondaryIds.includes(id), `Frozen v50 secondary tool ${id} is missing`);
+  }
+  checks.push('frozen v50 production-owned secondary tools are present');
+
+  const lambdaTool = secondary.querySelector('[data-ve-v50-secondary="lambda-delay"]');
+  const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
+  if (lambdaTool && lambdaDetails && !lambdaTool.disabled) {
+    lambdaDetails.open = false;
+    lambdaTool.click();
+    await settle();
+    assert(lambdaDetails.open, 'Lambda Delay secondary tool did not reveal the existing Lambda owner');
+  }
+  const mappingTool = secondary.querySelector('[data-ve-v50-secondary="mappings"]');
+  const advanced = root.querySelector('.ve-workbench-advanced');
+  if (mappingTool && advanced && !mappingTool.disabled) {
+    advanced.open = false;
+    mappingTool.click();
+    await settle();
+    assert(advanced.open, 'Mappings secondary tool did not reveal the existing Advanced owner');
+  }
+  checks.push('secondary navigation delegates to existing Lambda and Advanced owners');
 
   const surface = visibleTableSurface(root);
   assert(surface, 'No visible VE workbench table surface found');
@@ -83,6 +109,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
       tableScrollWidth: wrapper.scrollWidth,
       tableWidth: Math.round(table.getBoundingClientRect().width),
       setupGroups: details.length,
+      secondaryTools: secondaryIds.length,
     },
   };
 }
