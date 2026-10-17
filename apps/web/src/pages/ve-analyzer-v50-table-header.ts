@@ -115,6 +115,13 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
 
   const sync = (): void => {
     if (!active) return;
+    // v7 may detach children of its adapted header while reconciling layout.
+    // Restore these original instances, not replacements: they retain the
+    // same listeners and semantic select authority.
+    if (resultView && resultView.parentElement !== resultHost) resultHost.append(resultView);
+    if (!actions.contains(splitButton) || !actions.contains(evidenceButton) || !actions.contains(flipButton)) {
+      actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
+    }
     const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
     // Keep the shared edit toolbar attached to its VE panel's stable header;
     // moving it with the active VE/Target header can detach it on evidence
@@ -158,6 +165,10 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     splitButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   };
 
+  const actionObserver = new MutationObserver(() => {
+    if (active && (!actions.contains(splitButton) || !actions.contains(resultHost))) scheduleSync();
+  });
+  actionObserver.observe(actions, { childList: true });
   root.addEventListener('change', scheduleSync);
   root.addEventListener('ve-proposal-table-rendered', scheduleSync);
   inner.onPrimaryAnalysisChange(scheduleSync);
