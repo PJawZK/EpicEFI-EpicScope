@@ -5,10 +5,10 @@ import {
 } from '../../apps/web/src/pages/ve-analyzer-result-view';
 
 describe('VE Analyzer result views', () => {
-  it('extracts measured proposal and evidence metrics from the canonical cell detail', () => {
+  it('extracts measured proposal and evidence metrics while keeping caller-supplied current VE authoritative', () => {
     const metrics = parseVeRenderedCellMetrics(
-      'Measured proposal. Current 60, proposed 63, change +5.0%. Robust median +10.0%; P10 +6.0%; P90 +14.0%; spread 8.0%; confidence strong; weight 20.500; samples 42.',
-      '63',
+      'Measured proposal. Current 999, proposed 63, change +5.0%. Robust median +10.0%; P10 +6.0%; P90 +14.0%; spread 8.0%; confidence strong; weight 20.500; samples 42.',
+      '60',
     );
 
     expect(metrics.state).toBe('measured');
