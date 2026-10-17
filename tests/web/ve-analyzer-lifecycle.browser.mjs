@@ -223,7 +223,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     const old = s.view.getPrimaryAnalysis(), pending = s.hold();
     s.run(); await settle();
     assert(!s.view.getPrimaryAnalysis(), 'Old snapshot exposed during a pending rerun');
-    s.root.querySelector('[data-ve-analyzer="ve-table-view"] td').click(); await settle();
+    openEvidence(s, s.root.querySelector('[data-ve-analyzer="ve-table-view"] td')); await settle();
     assert(s.host.querySelector('.ve-evidence-detail-loading')?.textContent.includes('valid VE analysis'), 'Old popup evidence used during rerun');
     const reads = s.reads(); pending.resolve(traces); await completed(s);
     const current = s.view.getPrimaryAnalysis();
