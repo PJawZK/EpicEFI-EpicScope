@@ -202,11 +202,21 @@ export async function runVeSharedTableInteractionChecks() {
     const c1 = cells()[1];
     const c3 = cells()[3];
     c1.setPointerCapture = () => {};
-    if (!c3.closest('.ve-v50-tool-surface')) c3.scrollIntoView({ block: 'center' });
+    c3.scrollIntoView({ block: 'nearest' });
+    await settle();
     const end = c3.getBoundingClientRect();
-    pointer(c1, 'pointerdown', { ctrlKey: true });
-    pointer(document, 'pointermove', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
-    pointer(document, 'pointerup', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
+    const originalElementFromPoint = document.elementFromPoint.bind(document);
+    document.elementFromPoint = (x, y) => {
+      if (x >= end.left && x <= end.right && y >= end.top && y <= end.bottom) return c3;
+      return originalElementFromPoint(x, y);
+    };
+    try {
+      pointer(c1, 'pointerdown', { ctrlKey: true });
+      pointer(document, 'pointermove', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
+      pointer(document, 'pointerup', { ctrlKey: true, clientX: end.left + end.width / 2, clientY: end.top + end.height / 2 });
+    } finally {
+      document.elementFromPoint = originalElementFromPoint;
+    }
     const selectedCount = cells().filter((cell) => cell.dataset.tableSelected === 'true').length;
     assert(selectedCount === 3, `Ctrl-drag used stale selection anchor; expected 3 selected cells, got ${selectedCount}`);
     checks.push('Ctrl/Cmd drag starts from the newly clicked cell while preserving additive selection');
