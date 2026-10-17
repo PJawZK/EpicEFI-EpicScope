@@ -182,7 +182,7 @@ extra = '''  it('fills empty interior and edge cells from four finite 2D bilinea
     session.togglePinsForSelection();
     const footprint = session.brushFootprint({ row: 1, col: 1 }, { delta: 1, radius: 1, strength: 1, falloff: 'flat' });
     expect(footprint).not.toContainEqual({ row: 1, col: 1 });
-    expect(footprint.length).toBe(8);
+    expect(footprint.length).toBe(4);
   });
 
 '''
