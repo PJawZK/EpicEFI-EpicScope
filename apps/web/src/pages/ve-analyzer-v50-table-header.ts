@@ -53,8 +53,6 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   const veSelect = root.querySelector<HTMLSelectElement>('select[data-role="ve-table"]');
   const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
   const tabs = root.querySelector<HTMLElement>('.ve-workbench-table-tabs');
-  const veTab = tabs?.querySelector<HTMLButtonElement>('[data-table-tab="ve"]');
-  const targetTab = tabs?.querySelector<HTMLButtonElement>('[data-table-tab="target"]');
 
   const actions = document.createElement('div');
   actions.className = 've-v50-table-actions';
@@ -100,7 +98,12 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   flipButton.className = 've-v50-table-flip';
   flipButton.addEventListener('click', () => {
     const targetActive = Boolean(targetPanel && !targetPanel.hidden);
-    (targetActive ? veTab : targetTab)?.click();
+    // v7 deliberately detaches the tab nav in side-by-side mode and restores
+    // it in single-table mode. Resolve the current nodes *now*, not at install.
+    const currentTab = root.querySelector<HTMLButtonElement>(
+      targetActive ? '[data-table-tab="ve"]' : '[data-table-tab="target"]',
+    );
+    currentTab?.click();
   });
 
   // Present one visible Cell Evidence action; the toolbar's semantic button stays hidden visually.
