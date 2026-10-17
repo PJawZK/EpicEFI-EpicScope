@@ -184,18 +184,27 @@ export async function runVeProposalTableInteractionChecks() {
     await settle();
     assert(selected(root).length === 0, 'Activating VE Proposal Brush retained stale normal selection');
     pointer(cell(root, 1, 1), 'pointermove', { clientX: 10, clientY: 10 });
-    await settle();
-    const preview = [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td[data-table-brush-preview="true"]')];
-    assert(preview.length > 0, 'VE Proposal Brush did not show a prospective affected-cell footprint');
+    const centerPreview = [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td[data-table-brush-preview="true"]')];
+    assert(centerPreview.length > 0, 'VE Proposal Brush did not show a prospective affected-cell footprint');
+    const centerPreviewKeys = new Set(centerPreview.map((candidate) => `${candidate.dataset.veRow}:${candidate.dataset.veCol}`));
+    pointer(cell(root, 0, 0), 'pointermove', { clientX: 10, clientY: 10 });
+    const cornerPreview = [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td[data-table-brush-preview="true"]')];
+    assert(cornerPreview.length > 0 && cornerPreview.some((candidate) => !centerPreviewKeys.has(`${candidate.dataset.veRow}:${candidate.dataset.veCol}`)),
+      'VE Proposal Brush hover footprint did not follow the pointer synchronously');
+    pointer(cell(root, 1, 1), 'pointermove', { clientX: 10, clientY: 10 });
     const brushCenter = cell(root, 1, 1);
     const semanticBeforeBrush = valueAt(root, 1, 1);
     const textBeforeBrush = brushCenter.querySelector(':scope > span')?.textContent ?? brushCenter.textContent;
+    const heatBeforeBrush = brushCenter.style.getPropertyValue('--ve-cell-level');
     brushCenter.setPointerCapture = () => {};
     pointer(brushCenter, 'pointerdown', { clientX: 10, clientY: 10 });
     await new Promise((resolve) => setTimeout(resolve, 125));
     const liveText = brushCenter.querySelector(':scope > span')?.textContent ?? brushCenter.textContent;
+    const liveHeat = brushCenter.style.getPropertyValue('--ve-cell-level');
     assert(brushCenter.dataset.tableLivePreview === 'true' && liveText !== textBeforeBrush,
       'VE Proposal Brush did not render pending numeric values during the active stroke');
+    assert(liveHeat !== heatBeforeBrush,
+      'VE Proposal Brush did not update the cell heat/color with the pending numeric value');
     assert(valueAt(root, 1, 1) === semanticBeforeBrush,
       'VE Proposal Brush live preview committed semantic authority before pointer-up');
     pointer(document, 'pointerup', { clientX: 10, clientY: 10 });
@@ -203,7 +212,7 @@ export async function runVeProposalTableInteractionChecks() {
     assert(valueAt(root, 1, 1) !== semanticBeforeBrush,
       'VE Proposal Brush did not commit the previewed value on pointer-up');
     brushButton.click();
-    checks.push('VE Proposal Brush shows live numeric change while keeping one semantic commit per stroke');
+    checks.push('VE Proposal Brush hover follows the pointer and live numeric/heat preview keeps one semantic commit per stroke');
 
     // Return to the baseline, create a sparse 3x3 surface, then exercise the
     // actual both-directions UI tool. This proves undefined interiors are valid
