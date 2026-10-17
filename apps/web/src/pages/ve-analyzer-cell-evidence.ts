@@ -239,24 +239,12 @@ export function installVeAnalyzerCellEvidence(
     body.replaceChildren(...content);
   };
 
-  root.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const cell = target.closest<HTMLTableCellElement>('[data-ve-analyzer="ve-table-view"] tbody td');
-    if (!cell) return;
-    // Capture the richer native VE evidence review instead of the legacy title-only popover.
-    event.stopPropagation();
+  root.addEventListener('ve-cell-evidence-open', (event) => {
+    const detail = (event as CustomEvent<{ readonly cell?: HTMLTableCellElement }>).detail;
+    const cell = detail?.cell;
+    if (!cell || !cell.closest('[data-ve-analyzer="ve-table-view"]')) return;
     showDetail(cell);
-  }, { capture: true });
-
-  root.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    const target = event.target;
-    if (!(target instanceof HTMLTableCellElement) || !target.closest('[data-ve-analyzer="ve-table-view"]')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    showDetail(target);
-  }, { capture: true });
+  });
 
   const controller: VeAnalyzerViewController = {
     element: root,

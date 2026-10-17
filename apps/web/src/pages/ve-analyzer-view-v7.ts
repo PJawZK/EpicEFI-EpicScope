@@ -2,6 +2,7 @@ import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import { veResultViewUsesNeutralFallback } from './ve-analyzer-result-heat';
 import { veDelayEditOwner } from './ve-analyzer-delay-edit-owner';
+import { veProposalEditOwner } from './ve-analyzer-proposal-edit-owner';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
@@ -258,6 +259,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
     const rpmBins = [...(table.tHead?.rows[0]?.cells ?? [])].slice(1).map((cell) => finiteNumber(cell.textContent?.trim()));
     const delaySurface = view === 'delay' ? readDelaySurface(root) : undefined;
+    const proposalSnapshot = view === 'proposal' ? veProposalEditOwner(root)?.snapshot() : undefined;
     const rendered: Array<{ cell: HTMLTableCellElement; value: number; mode: 'magnitude' | 'quality' | 'range' }> = [];
 
     for (const row of [...(table.tBodies[0]?.rows ?? [])]) {
@@ -274,6 +276,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           current = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '').current;
         }
         if (current !== undefined) cell.dataset.veCurrentValue = String(current);
+
+        if (proposalSnapshot) {
+          const semanticRow = Number(cell.dataset.veRow);
+          const semanticCol = Number(cell.dataset.veCol);
+          if (Number.isInteger(semanticRow) && Number.isInteger(semanticCol)
+            && semanticRow >= 0 && semanticRow < proposalSnapshot.rows && semanticCol >= 0 && semanticCol < proposalSnapshot.cols) {
+            const working = proposalSnapshot.values[semanticRow * proposalSnapshot.cols + semanticCol];
+            main.textContent = working === undefined ? '—' : proposalSnapshot.digits === undefined
+              ? String(working) : working.toFixed(proposalSnapshot.digits);
+            cell.dataset.veResultValue = working === undefined ? '' : String(working);
+            cell.classList.toggle('ve-result-missing', working === undefined);
+            restoreBaseLevel(cell);
+            continue;
+          }
+        }
 
         const metrics = parseVeRenderedCellMetrics(cell.title, current === undefined ? '' : String(current));
         const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpm, load) : undefined;

@@ -25,6 +25,7 @@ import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope
 import { analyzerChannelOptionLabel, suggestAnalyzerChannel, preferredVeActualMixtureChannel, updateVeActualMixtureOptions } from './analyzer-channel-roles';
 import { assessVeFuelCorrection, type VeFuelCorrectionMode } from './ve-fuel-correction';
 import { registerVeDelayEditOwner, type VeDelayCellValueEdit } from './ve-analyzer-delay-edit-owner';
+import { registerVeProposalEditOwner, type VeProposalCellValueEdit } from './ve-analyzer-proposal-edit-owner';
 import {
   assessTargetMixtureTable,
   inferTuneMixtureScale,
@@ -217,6 +218,20 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let delayRecommendation: VeDelayTable | undefined;
   let workingDelayTable: VeDelayTable | undefined;
   let selectedDelayCell: { row: number; col: number } | undefined;
+  let veReviewAuthorityGeneration = 0;
+  let veReviewState: {
+    readonly key: string;
+    readonly model: TuneModel | undefined;
+    readonly proposal: VeProposalResult | undefined;
+    readonly rows: number;
+    readonly cols: number;
+    readonly rpmBins: readonly number[];
+    readonly loadBins: readonly number[];
+    readonly baselineValues: readonly (number | undefined)[];
+    readonly values: readonly (number | undefined)[];
+    readonly digits: number | undefined;
+    readonly authorityGeneration: number;
+  } | undefined;
   const remembered = new Map<string, string>();
 
   const root = document.createElement('section');
@@ -371,7 +386,40 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     return `Robust median ${formatPercent(cell.correctionPercent)}; P10 ${p10}; P90 ${p90}; spread ${spread}; confidence ${cell.confidence}; weight ${cell.totalWeight.toFixed(3)}; samples ${cell.sampleCount}.`;
   };
 
-  const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult, proposed?: VeProposalResult): void => {
+  const ensureVeReviewState = () => {
+    const entry = tableEntry(tuneModel, select('ve-table')?.value ?? '');
+    const rpmBins = axisValues(tuneModel, select('rpm-axis')?.value ?? '');
+    const loadBins = axisValues(tuneModel, select('load-axis')?.value ?? '');
+    if (!entry?.numericValues || !rpmBins || !loadBins || rpmBins.length !== entry.cols || loadBins.length !== entry.rows) {
+      veReviewState = undefined;
+      return undefined;
+    }
+    const key = `${entry.name}|${select('rpm-axis')?.value ?? ''}|${select('load-axis')?.value ?? ''}`;
+    if (!veReviewState || veReviewState.key !== key || veReviewState.model !== tuneModel || veReviewState.proposal !== proposal
+      || veReviewState.rows !== entry.rows || veReviewState.cols !== entry.cols) {
+      const baselineValues = entry.numericValues.map((current, index) => {
+        const proposalCell = proposal?.cells[index];
+        return proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined && Number.isFinite(proposalCell.proposedValue)
+          ? proposalCell.proposedValue : current;
+      });
+      veReviewState = {
+        key,
+        model: tuneModel,
+        proposal,
+        rows: entry.rows,
+        cols: entry.cols,
+        rpmBins: [...rpmBins],
+        loadBins: [...loadBins],
+        baselineValues,
+        values: [...baselineValues],
+        digits: entry.digits,
+        authorityGeneration: ++veReviewAuthorityGeneration,
+      };
+    }
+    return veReviewState;
+  };
+
+  const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult, proposed?: VeProposalResult, workingValues?: readonly (number | undefined)[]): void => {
     if (!entry?.numericValues) { host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>'; return; }
     const scale = tableScale(entry);
     const table = document.createElement('table'); table.className = 've-workbench-table';
@@ -383,9 +431,13 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       const tr = document.createElement('tr'); const rowHead = document.createElement('th'); rowHead.textContent = y?.[row] !== undefined ? formatValue(y[row]!, 0) : String(row + 1); tr.append(rowHead);
       for (let col = 0; col < entry.cols; col += 1) {
         const td = document.createElement('td'); const index = row * entry.cols + col; const current = entry.numericValues[index];
+        td.dataset.veRow = String(row); td.dataset.veCol = String(col);
+        td.dataset.tableRow = String(row); td.dataset.tableCol = String(col);
         if (current !== undefined && Number.isFinite(current)) {
           const proposalCell = proposed?.cells[index]; const main = document.createElement('span');
-          main.textContent = proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined ? formatValue(proposalCell.proposedValue, entry.digits) : formatValue(current, entry.digits);
+          const shown = workingValues ? workingValues[index]
+            : proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined ? proposalCell.proposedValue : current;
+          main.textContent = shown === undefined ? '—' : formatValue(shown, entry.digits);
           td.append(main); td.style.setProperty('--ve-cell-level', scale.min === scale.max ? '0.5' : String(Math.max(0, Math.min(1, (current - scale.min) / (scale.max - scale.min)))));
           const evidenceCell = evidence?.cells[index];
           if (proposalCell && proposalCell.state !== 'no-evidence') {
@@ -398,8 +450,6 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           } else if (evidenceCell && evidenceCell.totalWeight > 0) td.title = evidenceDetail(evidenceCell);
         } else td.textContent = '—';
         if (td.title) {
-          td.tabIndex = 0;
-          td.setAttribute('role', 'button');
           td.setAttribute('aria-label', td.title);
           td.dataset.veHasDetail = 'true';
         }
@@ -482,10 +532,57 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const renderTuneTables = (): void => {
     ownerEvidence.event('ve.tables.render', { generation: runGeneration, proposed: Boolean(proposal) }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
     const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
-    renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal);
+    const review = ensureVeReviewState();
+    renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal, review?.values);
     renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
     // Delay rendering belongs to renderDelayDiscovery/readiness.
   };
+
+  const applyVeReviewValues = (edits: readonly VeProposalCellValueEdit[]): boolean => {
+    if (!viewActive || pendingContext || pendingTune || edits.length === 0) return false;
+    const state = ensureVeReviewState();
+    if (!state) return false;
+    const next = [...state.values];
+    let changed = false;
+    const lastByIndex = new Map<number, number | undefined>();
+    for (const edit of edits) {
+      if (!Number.isInteger(edit.row) || !Number.isInteger(edit.col) || edit.row < 0 || edit.row >= state.rows || edit.col < 0 || edit.col >= state.cols) return false;
+      if (edit.value !== undefined && (!Number.isFinite(edit.value) || edit.value < 0)) return false;
+      lastByIndex.set(edit.row * state.cols + edit.col, edit.value);
+    }
+    for (const [index, value] of lastByIndex) {
+      if (next[index] === value) continue;
+      next[index] = value;
+      changed = true;
+    }
+    if (!changed) return false;
+    veReviewState = { ...state, values: next, authorityGeneration: ++veReviewAuthorityGeneration };
+    renderTuneTables();
+    return true;
+  };
+
+  registerVeProposalEditOwner(root, {
+    snapshot: () => {
+      const state = ensureVeReviewState();
+      return state ? {
+        revision: sessionRevision,
+        authorityGeneration: state.authorityGeneration,
+        rows: state.rows,
+        cols: state.cols,
+        rpmBins: state.rpmBins,
+        loadBins: state.loadBins,
+        baselineValues: state.baselineValues,
+        values: state.values,
+        digits: state.digits,
+      } : undefined;
+    },
+    applyValues: applyVeReviewValues,
+    revert: (positions) => {
+      const state = ensureVeReviewState();
+      if (!state) return false;
+      return applyVeReviewValues(positions.map(({ row, col }) => ({ row, col, value: state.baselineValues[row * state.cols + col] })));
+    },
+  });
 
   const mixtureAssessment = () => {
     const target = tableEntry(tuneModel, select('target-table')?.value ?? ''); const assessment = assessTargetMixtureTable(target, selectedScale(), select('ve-table')?.value);
