@@ -1,4 +1,5 @@
 export const VE_TABLE_TOOL_ICONS = Object.freeze({
+  cell: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 10v6"/><path d="M12 7h.01"/></svg>',
   undo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H4v-5"/><path d="M4 7c4-5 13-4 15 3 2 6-3 10-8 10"/></svg>',
   redo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h5v-5"/><path d="M20 7C16 2 7 3 5 10c-2 6 3 10 8 10"/></svg>',
   minus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>',
