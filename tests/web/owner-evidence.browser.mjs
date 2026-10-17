@@ -24,6 +24,13 @@ export async function runOwnerEvidenceChecks(){
   checks.push('unchanged context/tune records no-op evidence without revision, analysis or data-load changes');
   const cell=[...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find(c=>c.title.startsWith('Measured proposal'));
   assert(cell,'Missing measured evidence cell');openEvidence(root,cell);await pause(0);openEvidence(root,cell);await pause(0);
+  const headerEvidence = root.querySelector('.ve-v50-table-actions button[aria-label="Cell Evidence"]');
+  assert(headerEvidence && !headerEvidence.hidden && headerEvidence.getBoundingClientRect().width > 0,
+    'Visible v50 Cell Evidence action missing');
+  const beforeHeaderOpen = count('ve.popup.cache-hit');
+  headerEvidence.click(); await pause(0);
+  assert(count('ve.popup.cache-hit') > beforeHeaderOpen,
+    'Visible v50 Evidence action did not delegate to the working inspector');
   assert(count('ve.popup.build')&&count('ve.popup.cache-hit')&&fixture.reads()===reads,'Popup evidence did not distinguish retained build/cache hit');
   checks.push('popup reports detail build/cache reuse without recomputing or loading analysis data');
   const select=root.querySelector('select[aria-label="VE Analyzer result view"]');
