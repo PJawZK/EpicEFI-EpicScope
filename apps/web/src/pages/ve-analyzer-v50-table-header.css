@@ -1,0 +1,106 @@
+.ve-v50-table-head {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ve-v50-table-head > div:not(.ve-table-header-controls):not(.ve-v50-table-actions) {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ve-v50-table-head > div:not(.ve-table-header-controls):not(.ve-v50-table-actions) > span {
+  color: #748c99;
+  font-size: 8px;
+}
+
+.ve-v50-table-head > .ve-table-header-controls {
+  display: contents;
+}
+
+.ve-v50-table-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ve-v50-table-toolbar-host {
+  display: flex;
+  align-items: center;
+}
+
+.ve-v50-table-toolbar-host .ve-proposal-shared-toolbar {
+  margin: 0;
+}
+
+.ve-v50-result-view-host,
+.ve-v50-target-host {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #93a8b3;
+  font-size: 8px;
+  text-transform: none;
+}
+
+.ve-v50-result-view-host select,
+.ve-v50-target-host select {
+  min-width: 0;
+  height: 28px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: #d8e5eb;
+  font-size: 9px;
+}
+
+.ve-v50-table-icon-button,
+.ve-v50-table-flip {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #d0dce2;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.ve-v50-table-icon-button {
+  width: 34px;
+  padding: 0;
+}
+
+.ve-v50-table-icon-button:hover,
+.ve-v50-table-flip:hover {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+.ve-v50-semantic-control {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  .ve-v50-table-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .ve-v50-table-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
