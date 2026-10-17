@@ -12,11 +12,13 @@ const SELECTION_COMMAND_PREFIXES = [
   'Clear selected cells',
 ] as const;
 
+function isSelectionCommand(button: HTMLButtonElement): boolean {
+  const label = button.getAttribute('aria-label') ?? '';
+  return SELECTION_COMMAND_PREFIXES.some((prefix) => label.startsWith(prefix));
+}
+
 function selectionButtons(toolbar: HTMLElement): HTMLButtonElement[] {
-  return [...toolbar.querySelectorAll<HTMLButtonElement>('button')].filter((button) => {
-    const label = button.getAttribute('aria-label') ?? '';
-    return SELECTION_COMMAND_PREFIXES.some((prefix) => label.startsWith(prefix));
-  });
+  return [...toolbar.querySelectorAll<HTMLButtonElement>('button')].filter(isSelectionCommand);
 }
 
 function proposalTable(root: HTMLElement): HTMLTableElement | null {
@@ -28,13 +30,23 @@ function delayTable(root: HTMLElement): HTMLTableElement | null {
   return root.querySelector<HTMLTableElement>('[data-ve-analyzer="delay-table"] table.ve-delay-table');
 }
 
+function hasSelection(table: HTMLTableElement | null): boolean {
+  return Boolean(table?.querySelector('td[data-table-selected="true"]'));
+}
+
 function setSelectionAvailability(toolbar: HTMLElement | null, table: HTMLTableElement | null): void {
   if (!toolbar) return;
-  const available = Boolean(table?.querySelector('td[data-table-selected="true"]'));
+  const available = hasSelection(table);
   for (const button of selectionButtons(toolbar)) {
     button.setAttribute('aria-disabled', available ? 'false' : 'true');
     button.dataset.commandAvailable = available ? 'true' : 'false';
   }
+}
+
+function tableForSelectionButton(root: HTMLElement, button: HTMLButtonElement): HTMLTableElement | null {
+  if (button.closest('.ve-proposal-shared-toolbar')) return proposalTable(root);
+  if (button.closest('.ve-delay-shared-toolbar')) return delayTable(root);
+  return null;
 }
 
 /**
@@ -46,7 +58,10 @@ function setSelectionAvailability(toolbar: HTMLElement | null, table: HTMLTableE
  * semantic history owner instead of inventing history availability here.
  *
  * aria-disabled is used instead of the native disabled property so right-click
- * tool configuration remains reachable on configurable commands.
+ * tool configuration remains reachable on configurable commands. A command click
+ * re-checks the current selection synchronously because programmatic/native input
+ * can select and invoke a command in the same task, before MutationObserver paint
+ * synchronization has run.
  */
 export function installVeTableToolbarSelectionAvailability(root: HTMLElement): void {
   if (installedRoots.has(root)) return;
@@ -59,9 +74,19 @@ export function installVeTableToolbarSelectionAvailability(root: HTMLElement): v
 
   root.addEventListener('click', (event) => {
     const button = event.target instanceof Element
-      ? event.target.closest<HTMLButtonElement>('.ve-table-edit-toolbar > button[aria-disabled="true"]')
+      ? event.target.closest<HTMLButtonElement>('.ve-table-edit-toolbar > button')
       : null;
     if (!button || !root.contains(button)) return;
+
+    if (isSelectionCommand(button)) {
+      const available = hasSelection(tableForSelectionButton(root, button));
+      button.setAttribute('aria-disabled', available ? 'false' : 'true');
+      button.dataset.commandAvailable = available ? 'true' : 'false';
+      if (available) return;
+    } else if (button.getAttribute('aria-disabled') !== 'true') {
+      return;
+    }
+
     event.preventDefault();
     event.stopImmediatePropagation();
   }, { capture: true });
