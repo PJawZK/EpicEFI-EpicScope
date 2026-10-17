@@ -32,3 +32,116 @@
     margin-left: 0;
   }
 }
+
+
+/* Full-height v50 VE mode: consume the space between the app header and its
+ * status bar. Other Analyzer modes retain their ordinary document layout. */
+.analyzer-page:has(> .ve-analyzer-view.ve-v50-port:not([hidden])) {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: 5px 7px;
+  overflow: hidden;
+}
+
+.analyzer-page > .ve-analyzer-view.ve-v50-port:not([hidden]) {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.ve-v50-port > .ve-workbench {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.ve-v50-port .ve-workbench-panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ve-v50-port .ve-workbench-panel > header {
+  flex: 0 0 auto;
+}
+
+.ve-v50-port .ve-workbench-table-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.ve-v50-port .ve-workbench-table {
+  height: 100%;
+}
+
+.ve-v50-port .ve-workbench-table th,
+.ve-v50-port .ve-workbench-table td {
+  /* Allow 32-row tables to shrink to fit, without making numbers illegible. */
+  height: 16px;
+  min-height: 16px;
+  padding: 0 2px;
+}
+
+.ve-v50-port > .ve-analysis-scope-navigator,
+.ve-v50-port > .ve-workbench-quick-controls,
+.ve-v50-port > .ve-workbench-actionbar {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.ve-v50-port > .ve-analysis-scope-navigator {
+  padding: 3px 5px;
+  gap: 3px;
+}
+
+.ve-v50-port .ve-analysis-scope-strip {
+  height: 17px;
+}
+
+.ve-v50-port > .ve-workbench-quick-controls {
+  min-height: 45px;
+  padding: 4px 5px;
+  gap: 5px;
+}
+
+.ve-v50-port .ve-v50-setup-group > summary,
+.ve-v50-port .ve-v50-advanced-button {
+  min-height: 32px;
+}
+
+.ve-v50-port > .ve-workbench-actionbar {
+  min-height: 43px;
+  padding: 3px 5px;
+  gap: 5px;
+}
+
+.ve-v50-port .ve-workbench-run {
+  min-height: 34px;
+}
+
+/* Native detail popovers/tool windows are overlays; their boxes must not
+ * contribute to the four permanent workbench rows. */
+.ve-v50-port > .ve-v50-tool-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+@media (max-height: 650px) {
+  .ve-v50-port .ve-workbench-table th,
+  .ve-v50-port .ve-workbench-table td {
+    height: 15px;
+    min-height: 15px;
+  }
+}
