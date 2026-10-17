@@ -1,0 +1,29 @@
+/* Final v50 proportion pass: preserve the frozen 40px status band rather than
+ * giving it the same deeper padding as the 38px compound setup row. */
+.ve-v50-port .ve-workbench-actionbar {
+  min-height: 40px;
+  padding: 4px 7px;
+  align-items: center;
+}
+
+.ve-v50-port .ve-workbench-run {
+  order: 99;
+  margin-left: auto;
+  min-width: 122px;
+}
+
+/* Run blockers belong directly to the run/readiness band. Review/navigation is
+ * subordinate and follows the blocker surface instead of splitting the pair. */
+.ve-v50-port .ve-run-blocker-panel {
+  margin-top: 0;
+}
+
+.ve-v50-port .ve-v50-secondary-tools {
+  margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .ve-v50-port .ve-workbench-run {
+    margin-left: 0;
+  }
+}
