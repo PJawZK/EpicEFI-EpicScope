@@ -191,6 +191,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   const surface = new VeProposalTableEditSurface(owner);
   const session = new TableInteractionSession(surface);
   let step: number | undefined;
+  let previewDigits = owner.snapshot()?.digits;
   let smoothStrength = 0.5;
   let interpolation: TableInterpolationOptions = { axis: 'both', method1d: 'linear', method2d: 'bilinear', strength: 1, clamp: true };
   let brush: TableBrushOptions = { delta: precisionStep(owner), radius: 2, strength: 0.7, falloff: 'soft' };
@@ -209,6 +210,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     brush: () => brush,
     readValue: (position) => surface.valueAt(position),
     baselineValue: (position) => surface.baselineValueAt(position),
+    formatPreviewValue: (_position, value) => previewDigits === undefined ? String(Math.round(value * 1000) / 1000) : value.toFixed(previewDigits),
     adjustBrushRadius: (delta) => { brush = { ...brush, radius: Math.max(1, Math.min(8, brush.radius + delta)) }; },
     configuration: {
       label: 'VE Proposal',
@@ -272,6 +274,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   panelHeader?.append(dom.toolbar);
 
   const bind = (): void => {
+    previewDigits = owner.snapshot()?.digits;
     const renderedTable = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table') ?? undefined;
     const table = currentProposalTable(veHost);
     dom.bindTable(table);

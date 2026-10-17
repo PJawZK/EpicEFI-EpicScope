@@ -211,12 +211,19 @@ export async function runVeSharedTableInteractionChecks() {
     const beforeBrush = values()[2];
     const brushRevision = view.sessionRevision;
     cells()[2].setPointerCapture = () => {};
-    pointer(cells()[2], 'pointerdown');
-    await new Promise((resolve) => setTimeout(resolve, 210));
+    const brushCell = cells()[2];
+    const brushTextBefore = brushCell.textContent;
+    pointer(brushCell, 'pointerdown');
+    await new Promise((resolve) => setTimeout(resolve, 125));
+    assert(brushCell.dataset.tableLivePreview === 'true' && brushCell.textContent !== brushTextBefore,
+      'Held Lambda Brush did not show its pending numeric value before pointer-up');
+    assert(values()[2] === beforeBrush && view.sessionRevision === brushRevision,
+      'Lambda Brush live preview committed semantic authority before pointer-up');
+    await new Promise((resolve) => setTimeout(resolve, 100));
     pointer(document, 'pointerup');
     await settle();
     assert(values()[2] > beforeBrush && view.sessionRevision === brushRevision + 1, 'Held Brush did not accumulate and commit once');
-    checks.push('held Brush accumulates while one stroke publishes one semantic revision');
+    checks.push('held Brush previews live numeric values while one stroke publishes one semantic revision');
 
     installDelayFile(fileInput, 180);
     await settle();

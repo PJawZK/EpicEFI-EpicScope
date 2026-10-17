@@ -40,8 +40,14 @@ export interface TableBrushOptions {
   readonly falloff?: TableBrushFalloff;
 }
 
+export interface TablePreviewValue {
+  readonly position: TableCellPosition;
+  readonly value: number;
+}
+
 export interface TableBrushStroke {
-  pulse(center: TableCellPosition, direction?: 1 | -1): void;
+  /** Apply one pending Brush pulse and report only cells whose pending value changed. */
+  pulse(center: TableCellPosition, direction?: 1 | -1): readonly TablePreviewValue[];
   commit(): boolean;
   cancel(): void;
 }
@@ -541,12 +547,13 @@ export class TableInteractionSession {
     let touched = false;
 
     return {
-      pulse: (center, direction = 1): void => {
-        if (!active || !this.#inside(center) || !Number.isFinite(options.delta) || options.delta === 0 || strength <= 0) return;
+      pulse: (center, direction = 1): readonly TablePreviewValue[] => {
+        if (!active || !this.#inside(center) || !Number.isFinite(options.delta) || options.delta === 0 || strength <= 0) return [];
         const r0 = Math.max(0, center.row - radius);
         const r1 = Math.min(this.#surface.rows - 1, center.row + radius);
         const c0 = Math.max(0, center.col - radius);
         const c1 = Math.min(this.#surface.cols - 1, center.col + radius);
+        const preview: TablePreviewValue[] = [];
         for (let row = r0; row <= r1; row += 1) {
           for (let col = c0; col <= c1; col += 1) {
             if (this.#pinned.has(key(row, col))) continue;
@@ -556,9 +563,13 @@ export class TableInteractionSession {
             const current = finite(transaction.get(row, col));
             if (current === undefined) continue;
             transaction.set(row, col, current + options.delta * direction * strength * weight);
+            const pending = finite(transaction.get(row, col));
+            if (pending === undefined || pending === current) continue;
+            preview.push({ position: { row, col }, value: pending });
             touched = true;
           }
         }
+        return preview;
       },
       commit: (): boolean => {
         if (!active) return false;

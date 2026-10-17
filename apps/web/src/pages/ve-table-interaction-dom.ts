@@ -3,6 +3,7 @@ import {
   type TableBrushOptions,
   type TableBrushStroke,
   type TableCellPosition,
+  type TablePreviewValue,
   type TableInterpolationOptions,
 } from './ve-table-interaction';
 import { installTableToolConfiguration, type TableToolConfigurationOwner } from './ve-table-tool-options-dom';
@@ -25,6 +26,8 @@ export interface TableInteractionDomPreferences {
   readonly brush: () => TableBrushOptions;
   readonly readValue?: (position: TableCellPosition) => number | undefined;
   readonly baselineValue?: (position: TableCellPosition) => number | undefined;
+  /** Presentation-only formatter for transient Brush values. */
+  readonly formatPreviewValue?: (position: TableCellPosition, value: number) => string;
   readonly adjustBrushRadius?: (delta: 1 | -1) => void;
   readonly configuration?: TableToolConfigurationOwner;
 }
@@ -112,6 +115,9 @@ export function createTableInteractionDomController(
   let inlineInput: HTMLInputElement | undefined;
   let finishInlineEdit: ((commit: boolean) => void) | undefined;
   let inlinePreviewOriginal = new Map<HTMLTableCellElement, string>();
+  let brushValuePreviewOriginal = new Map<HTMLTableCellElement, string>();
+  let pendingBrushValuePreview = new Map<string, TablePreviewValue>();
+  let brushPreviewFrame: number | undefined;
   let gestureListenersInstalled = false;
   let destroyed = false;
   let cachedCells: HTMLTableCellElement[] = [];
@@ -282,6 +288,59 @@ export function createTableInteractionDomController(
     brushTimer = undefined;
   };
 
+  const valueNodeForCell = (cell: HTMLTableCellElement): HTMLElement =>
+    cell.querySelector<HTMLElement>(':scope > span') ?? cell;
+
+  const setPreviewValueState = (cell: HTMLTableCellElement, position: TableCellPosition, value: number): void => {
+    const baseline = preferences.baselineValue?.(position);
+    if (baseline === undefined || !Number.isFinite(baseline)) return;
+    const epsilon = 1e-9 * Math.max(1, Math.abs(value), Math.abs(baseline));
+    setDataset(cell, 'tableValueState', value < baseline - epsilon ? 'lower' : value > baseline + epsilon ? 'higher' : 'same');
+  };
+
+  const flushBrushValuePreview = (): void => {
+    if (brushPreviewFrame !== undefined) {
+      window.cancelAnimationFrame(brushPreviewFrame);
+      brushPreviewFrame = undefined;
+    }
+    if (!table || pendingBrushValuePreview.size === 0) return;
+    const pending = pendingBrushValuePreview;
+    pendingBrushValuePreview = new Map();
+    for (const entry of pending.values()) {
+      const cell = cellFor(entry.position);
+      if (!cell) continue;
+      const valueNode = valueNodeForCell(cell);
+      if (!brushValuePreviewOriginal.has(cell)) brushValuePreviewOriginal.set(cell, valueNode.textContent ?? '');
+      valueNode.textContent = preferences.formatPreviewValue?.(entry.position, entry.value) ?? String(Math.round(entry.value * 1000) / 1000);
+      setDataset(cell, 'tableLivePreview', 'true');
+      if (cell.dataset.delayRow !== undefined) setDataset(cell, 'delayPreview', 'true');
+      setPreviewValueState(cell, entry.position, entry.value);
+    }
+  };
+
+  const queueBrushValuePreview = (updates: readonly TablePreviewValue[]): void => {
+    if (updates.length === 0) return;
+    for (const update of updates) pendingBrushValuePreview.set(positionKey(update.position), update);
+    if (brushPreviewFrame !== undefined) return;
+    brushPreviewFrame = window.requestAnimationFrame(() => {
+      brushPreviewFrame = undefined;
+      flushBrushValuePreview();
+    });
+  };
+
+  const clearBrushValuePreview = (restoreText: boolean): void => {
+    if (brushPreviewFrame !== undefined) window.cancelAnimationFrame(brushPreviewFrame);
+    brushPreviewFrame = undefined;
+    pendingBrushValuePreview.clear();
+    for (const [cell, originalText] of brushValuePreviewOriginal) {
+      if (restoreText && cell.isConnected) valueNodeForCell(cell).textContent = originalText;
+      delete cell.dataset.tableLivePreview;
+      delete cell.dataset.delayPreview;
+    }
+    brushValuePreviewOriginal.clear();
+    if (restoreText) refreshValueStates();
+  };
+
   function gestureKeyDown(event: KeyboardEvent): void {
     if (brushPointerId !== undefined && event.key === 'Shift') brushDirection = -1;
   }
@@ -319,20 +378,29 @@ export function createTableInteractionDomController(
     brushDirection = 1;
     if (stroke) {
       if (commit) {
-        if (stroke.commit()) finishEdit();
-        else refresh();
+        // Flush the final pending pulse before commit so pointer-up never hides the
+        // last visual state. Semantic authority still changes exactly once below.
+        flushBrushValuePreview();
+        if (stroke.commit()) {
+          clearBrushValuePreview(false);
+          finishEdit();
+        } else {
+          clearBrushValuePreview(true);
+          refresh();
+        }
       } else {
         stroke.cancel();
+        clearBrushValuePreview(true);
         refresh();
       }
-    }
+    } else clearBrushValuePreview(true);
     maybeRemoveGestureListeners();
   };
 
   const pulseBrush = (position: TableCellPosition, immediate = false): void => {
     if (!brushStroke) return;
     brushLast = position;
-    if (immediate) brushStroke.pulse(position, brushDirection);
+    if (immediate) queueBrushValuePreview(brushStroke.pulse(position, brushDirection));
   };
 
   const startBrush = (event: PointerEvent, position: TableCellPosition): void => {
@@ -344,13 +412,13 @@ export function createTableInteractionDomController(
     pulseBrush(position, true);
     brushTimer = window.setInterval(() => {
       if (!brushStroke || !brushLast) return;
-      brushStroke.pulse(brushLast, brushDirection);
+      queueBrushValuePreview(brushStroke.pulse(brushLast, brushDirection));
     }, 90);
   };
 
   const restoreInlinePreview = (): void => {
     for (const [previewCell, text] of inlinePreviewOriginal) {
-      previewCell.textContent = text;
+      valueNodeForCell(previewCell).textContent = text;
       delete previewCell.dataset.tablePreview;
       delete previewCell.dataset.delayPreview;
     }
@@ -361,8 +429,9 @@ export function createTableInteractionDomController(
     for (const position of selectedPositions()) {
       const previewCell = cellFor(position);
       if (!previewCell || previewCell === activeCell) continue;
-      if (!inlinePreviewOriginal.has(previewCell)) inlinePreviewOriginal.set(previewCell, previewCell.textContent ?? '');
-      previewCell.textContent = text || '—';
+      const valueNode = valueNodeForCell(previewCell);
+      if (!inlinePreviewOriginal.has(previewCell)) inlinePreviewOriginal.set(previewCell, valueNode.textContent ?? '');
+      valueNode.textContent = text || '—';
       previewCell.dataset.tablePreview = 'true';
       if (previewCell.dataset.delayRow !== undefined) previewCell.dataset.delayPreview = 'true';
     }

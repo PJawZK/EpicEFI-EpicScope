@@ -24,6 +24,10 @@ After the functional interaction pass, the shared table controller was found to 
 
 The next manual pass should judge click/drag/Brush responsiveness before any further visual redesign.
 
+## Live Brush value preview checkpoint
+
+The performance pass must not make Brush opaque. During an active stroke, only the cells touched by pending Brush pulses are updated in the DOM, with their pending numeric values and lower/higher baseline-memory color visible before pointer-up. Those updates are presentation-only: semantic table authority and undo history still commit exactly once when the stroke ends. Pointer movement is batched through `requestAnimationFrame` and does not restore the old whole-table semantic refresh cost. Cancel restores the pre-stroke text/state.
+
 ## Table interaction requirements
 
 The production port must use one shared table-editing interaction core wherever VE Analyzer exposes editable tables. Domain values remain owned by semantic adapters; selection, pins, Brush gesture state and tool configuration do not become tune-domain truth.

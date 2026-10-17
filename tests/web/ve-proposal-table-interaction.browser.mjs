@@ -187,8 +187,23 @@ export async function runVeProposalTableInteractionChecks() {
     await settle();
     const preview = [...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td[data-table-brush-preview="true"]')];
     assert(preview.length > 0, 'VE Proposal Brush did not show a prospective affected-cell footprint');
+    const brushCenter = cell(root, 1, 1);
+    const semanticBeforeBrush = valueAt(root, 1, 1);
+    const textBeforeBrush = brushCenter.querySelector(':scope > span')?.textContent ?? brushCenter.textContent;
+    brushCenter.setPointerCapture = () => {};
+    pointer(brushCenter, 'pointerdown', { clientX: 10, clientY: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 125));
+    const liveText = brushCenter.querySelector(':scope > span')?.textContent ?? brushCenter.textContent;
+    assert(brushCenter.dataset.tableLivePreview === 'true' && liveText !== textBeforeBrush,
+      'VE Proposal Brush did not render pending numeric values during the active stroke');
+    assert(valueAt(root, 1, 1) === semanticBeforeBrush,
+      'VE Proposal Brush live preview committed semantic authority before pointer-up');
+    pointer(document, 'pointerup', { clientX: 10, clientY: 10 });
+    await settle();
+    assert(valueAt(root, 1, 1) !== semanticBeforeBrush,
+      'VE Proposal Brush did not commit the previewed value on pointer-up');
     brushButton.click();
-    checks.push('VE Proposal Brush clears stale selection and exposes its prospective footprint');
+    checks.push('VE Proposal Brush shows live numeric change while keeping one semantic commit per stroke');
 
     // Return to the baseline, create a sparse 3x3 surface, then exercise the
     // actual both-directions UI tool. This proves undefined interiors are valid

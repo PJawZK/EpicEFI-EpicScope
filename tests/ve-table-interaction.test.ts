@@ -207,9 +207,11 @@ describe('VE shared table interaction boundary', () => {
     const memory = memorySurface(3, 3, new Array(9).fill(0));
     const session = new TableInteractionSession(memory.surface);
     const brush = session.beginBrushStroke({ delta: 2, radius: 0, strength: 1, falloff: 'flat' });
-    brush.pulse({ row: 1, col: 1 });
-    brush.pulse({ row: 1, col: 1 });
-    brush.pulse({ row: 1, col: 1 });
+    expect(brush.pulse({ row: 1, col: 1 })).toEqual([{ position: { row: 1, col: 1 }, value: 2 }]);
+    expect(brush.pulse({ row: 1, col: 1 })).toEqual([{ position: { row: 1, col: 1 }, value: 4 }]);
+    expect(brush.pulse({ row: 1, col: 1 })).toEqual([{ position: { row: 1, col: 1 }, value: 6 }]);
+    expect(memory.values()[4]).toBe(0);
+    expect(memory.commits()).toBe(0);
     expect(brush.commit()).toBe(true);
     expect(memory.values()[4]).toBe(6);
     expect(memory.labels()).toEqual(['brush']);

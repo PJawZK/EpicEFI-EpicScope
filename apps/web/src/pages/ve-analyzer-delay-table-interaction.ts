@@ -225,6 +225,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     brush: () => brushOptions(toolPreferences),
     readValue: (position) => surface.valueAt(position),
     baselineValue: (position) => surface.baselineValueAt(position),
+    formatPreviewValue: (_position, value) => String(Math.round(value)),
     adjustBrushRadius: (delta) => saveToolPreferences({
       ...toolPreferences,
       brush: { ...toolPreferences.brush, radius: Math.max(1, Math.min(8, toolPreferences.brush.radius + delta)) },
