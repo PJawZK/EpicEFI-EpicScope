@@ -116,7 +116,10 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   const sync = (): void => {
     if (!active) return;
     const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
-    if (sharedToolbar && sharedToolbar.parentElement !== toolbarHost) toolbarHost.append(sharedToolbar);
+    // Keep the shared edit toolbar attached to its VE panel's stable header;
+    // moving it with the active VE/Target header can detach it on evidence
+    // refresh and break consecutive inspector opens.
+    if (sharedToolbar && veHeader && sharedToolbar.parentElement !== veHeader) veHeader.append(sharedToolbar);
 
     // v7 may re-parent these controls while synchronizing its semantic layout.
     // Put the visible target selector back in the compact v50 host every pass.
