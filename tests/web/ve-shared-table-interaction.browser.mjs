@@ -80,6 +80,39 @@ export async function runVeSharedTableInteractionChecks() {
       control.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    // Target has its own working authority and edit history; never use the
+    // VE Proposal toolbar to modify Target values.
+    const veOriginal = root.querySelector('[data-ve-analyzer="ve-table-view"] td[data-table-row="0"][data-table-col="0"]')?.textContent.trim();
+    const flipToTarget = root.querySelector('.ve-v50-table-flip');
+    assert(flipToTarget, 'Target table switch missing');
+    flipToTarget.click();
+    await settle();
+    const targetHost = root.querySelector('[data-ve-analyzer="target-table-view"]');
+    const targetCell = () => targetHost.querySelector('td[data-table-row="0"][data-table-col="0"]');
+    const originalTarget = Number(targetCell()?.textContent.trim());
+    const targetToolbar = root.querySelector('.ve-target-shared-toolbar');
+    assert(targetToolbar && targetCell() && Number.isFinite(originalTarget),
+      'Separate Target working-table toolbar or cells missing');
+    selectCell(targetCell());
+    const targetIncrease = [...targetToolbar.querySelectorAll('button')].find(b =>
+      b.getAttribute('aria-label')?.startsWith('Increase selected cells'));
+    assert(targetIncrease, 'Target increment tool missing');
+    targetIncrease.click();
+    await settle();
+    const editedTarget = Number(targetCell()?.textContent.trim());
+    assert(Number.isFinite(editedTarget) && editedTarget > originalTarget,
+      'Target increment did not change Target working value');
+    targetToolbar.querySelector('button[aria-label="Undo"]')?.click();
+    await settle();
+    assert(Number(targetCell()?.textContent.trim()) === originalTarget,
+      'Target Undo did not restore working value');
+    const flipBack = root.querySelector('.ve-v50-table-flip');
+    flipBack.click();
+    await settle();
+    const veAfter = root.querySelector('[data-ve-analyzer="ve-table-view"] td[data-table-row="0"][data-table-col="0"]')?.textContent.trim();
+    assert(veAfter === veOriginal, 'Target edit mutated the VE source/proposal view');
+    checks.push('Target uses independent working edits, Undo and VE isolation');
+
     const fileInput = root.querySelector('[data-ve-analyzer="load-delay-file"]');
     installDelayFile(fileInput, 100);
     await settle();
