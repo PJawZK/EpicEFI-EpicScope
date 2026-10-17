@@ -7,6 +7,19 @@ function inside(inner, outer, tolerance = 2) {
   return inner.left >= outer.left - tolerance && inner.right <= outer.right + tolerance;
 }
 
+function visibleTableSurface(root) {
+  for (const wrapper of root.querySelectorAll('.ve-workbench-table-wrap')) {
+    const table = wrapper.querySelector('.ve-workbench-table');
+    if (!table) continue;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    if (wrapperRect.width > 0 && wrapperRect.height > 0 && tableRect.width > 0 && tableRect.height > 0) {
+      return { wrapper, table };
+    }
+  }
+  return undefined;
+}
+
 export async function runVeV50ResponsiveChecks(expectedWidth) {
   const checks = [];
   const analyzer = document.querySelector('.analyzer-page:not([hidden])');
@@ -34,13 +47,14 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   }
   checks.push(`primary workbench, scope, setup and action surfaces stay inside the VE root at ${expectedWidth}px`);
 
-  const wrapper = root.querySelector('.ve-workbench-table-wrap');
-  const table = root.querySelector('.ve-workbench-table');
-  assert(wrapper && table, 'VE workbench table surface missing');
+  const surface = visibleTableSurface(root);
+  assert(surface, 'No visible VE workbench table surface found');
+  const { wrapper, table } = surface;
   const wrapperRect = wrapper.getBoundingClientRect();
   assert(inside(wrapperRect, rootRect) && wrapper.clientWidth > 0, 'Table wrapper does not stay inside the work surface');
-  assert(wrapper.scrollWidth >= wrapper.clientWidth && table.scrollWidth > 0, 'Table scroll geometry is invalid');
-  checks.push(`table remains a bounded dominant work surface with internal overflow available at ${expectedWidth}px`);
+  assert(wrapper.scrollWidth >= wrapper.clientWidth && table.scrollWidth > 0 && table.getBoundingClientRect().width > 0,
+    'Visible table scroll geometry is invalid');
+  checks.push(`visible table remains a bounded dominant work surface with internal overflow available at ${expectedWidth}px`);
 
   const details = [...root.querySelectorAll('.ve-v50-setup-group')];
   for (const detail of details) {
@@ -67,6 +81,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
       rootWidth: Math.round(rootRect.width),
       tableClientWidth: wrapper.clientWidth,
       tableScrollWidth: wrapper.scrollWidth,
+      tableWidth: Math.round(table.getBoundingClientRect().width),
       setupGroups: details.length,
     },
   };
