@@ -106,6 +106,26 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   await settle();
   assert(!advanced.open && advancedPanel.hidden, 'Advanced tool surface did not close cleanly');
 
+  exclusionsButton.click();
+  await settle();
+  assert(!advancedPanel.hidden && advancedPanel.dataset.veToolMode === 'exclusions'
+    && advancedPanel.getAttribute('aria-label') === 'State Exclusions',
+    'Exclusions did not open its dedicated presentation');
+  assert(getComputedStyle(advancedPanel.querySelector('.specialized-analyzer-events')).display === 'none',
+    'Exclusions still exposes the readiness report');
+  advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
+
+  const inputsChip = root.querySelector('.ve-v50-run-chips > .ve-v50-status-chip:first-child');
+  assert(inputsChip, 'Input Readiness chip missing');
+  inputsChip.click();
+  await settle();
+  assert(!advancedPanel.hidden && advancedPanel.dataset.veToolMode === 'inputs',
+    'Input Readiness still opens the Advanced mapping presentation');
+  assert(getComputedStyle(advancedPanel.querySelector('.specialized-analyzer-controls')).display === 'none',
+    'Input Readiness still exposes the Advanced mapping form');
+  advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
+  checks.push('Advanced, Exclusions and Input Readiness expose distinct tool presentations');
+
   const lambdaTrigger = root.querySelector('.ve-v50-lambda-tool-trigger');
   assert(lambdaTrigger, 'Lambda Delay workflow trigger missing');
   lambdaTrigger.click();
