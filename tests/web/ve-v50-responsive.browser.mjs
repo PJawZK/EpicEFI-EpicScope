@@ -113,6 +113,11 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     'Exclusions did not open its dedicated presentation');
   assert(getComputedStyle(advancedPanel.querySelector('.specialized-analyzer-events')).display === 'none',
     'Exclusions still exposes the readiness report');
+  assert(getComputedStyle(advancedPanel.querySelector('.ve-axis-mapping-advanced')).display === 'none',
+    'Exclusions still shows Advanced-only axis mappings');
+  const exclusionsHeight = advancedPanel.getBoundingClientRect().height;
+  assert(exclusionsHeight < Math.min(window.innerHeight * 0.8, 480),
+    `Exclusions popup retained old fixed height: ${Math.round(exclusionsHeight)}px`);
   advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
 
   const inputsChip = root.querySelector('.ve-v50-run-chips > .ve-v50-status-chip:first-child');
