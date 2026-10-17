@@ -81,7 +81,8 @@
 }
 
 .ve-v50-port .ve-workbench-table {
-  height: 100%;
+  /* Keep semantic row geometry: forced 100% table height can create dark gaps. */
+  height: auto;
 }
 
 .ve-v50-port .ve-workbench-table th,
