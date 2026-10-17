@@ -6,15 +6,15 @@
 .ve-v50-tool-surface {
   position: fixed;
   z-index: 90;
-  top: 70px;
+  top: 50%;
   left: 50%;
   display: grid;
-  grid-template-rows: 36px minmax(0, 1fr);
+  grid-template-rows: 36px minmax(0, auto);
   width: min(900px, calc(100vw - 32px));
-  height: min(760px, calc(100vh - 100px));
+  height: max-content;
   max-height: calc(100vh - 100px);
   overflow: hidden;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   border: 1px solid #355363;
   border-radius: 6px;
   background: #0d1b24;
@@ -60,6 +60,7 @@
 
 .ve-v50-tool-surface-body {
   min-height: 0;
+  max-height: calc(100vh - 140px);
   overflow: auto;
 }
 
@@ -90,9 +91,9 @@
 
 @media (max-width: 900px) {
   .ve-v50-tool-surface {
-    top: 56px;
+    top: 50%;
     width: calc(100vw - 16px);
-    height: calc(100vh - 72px);
+    height: max-content;
     max-height: calc(100vh - 72px);
   }
 }
@@ -115,3 +116,10 @@
 .ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label:not(:has(select[data-role='dfco'], select[data-role='fuelCutReason'], select[data-role='aeActive'], select[data-role='decelActive'])) {
   display: none !important;
 }
+
+/* Compact scoped tools do not inherit the giant old Advanced dimensions. */
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .ve-axis-mapping-advanced,
+.ve-v50-tool-surface[data-ve-tool-mode='inputs'] .ve-axis-mapping-advanced { display: none !important; }
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label { min-width: 0; }
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label select { width: 100%; }
