@@ -129,7 +129,10 @@ export function installVeAnalyzerV50SecondaryTools(inner: VeAnalyzerViewControll
       label: 'Settings',
       title: 'Open EpicScope settings',
       available: () => Boolean(settingsAction()),
-      run: () => settingsAction()?.click(),
+      // The shell closes transient surfaces on the document-level completion of
+      // the originating click. Delegate after that click has completed so the
+      // existing Settings owner remains open instead of being closed immediately.
+      run: () => queueMicrotask(() => settingsAction()?.click()),
     },
   ];
 
