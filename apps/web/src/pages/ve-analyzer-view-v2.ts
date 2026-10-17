@@ -534,6 +534,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
     const review = ensureVeReviewState();
     renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal, review?.values);
+    // Shared table interaction is a separate presentation/input owner. Publish a
+    // synchronous render boundary so it can bind the newly replaced VE table
+    // before any same-turn pointer interaction; MutationObserver remains fallback.
+    root.dispatchEvent(new CustomEvent('ve-proposal-table-rendered'));
     renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
     // Delay rendering belongs to renderDelayDiscovery/readiness.
   };

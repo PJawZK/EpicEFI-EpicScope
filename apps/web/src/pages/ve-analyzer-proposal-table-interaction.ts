@@ -262,6 +262,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   };
   const observer = new MutationObserver(bind);
   const observe = (): void => observer.observe(veHost, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ve-result-view'] });
+  root.addEventListener('ve-proposal-table-rendered', bind);
   observe();
   bind();
 
