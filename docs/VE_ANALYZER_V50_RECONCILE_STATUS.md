@@ -2,171 +2,96 @@
 
 Branch: `ui/ve-analyzer-v50-reconcile`
 
-Base/product authority: current `main` through `8fb99c0099408b74330d6468868424f1b94b05f5` (PR #465, Lambda Delay Shift-click range editing).
+Current detailed continuation handoff: `docs/VE_ANALYZER_V50_CHAT_HANDOFF_2026-10-17.md`.
 
-This branch is deliberately isolated from `main`. It is the post-Codex reconciliation branch for the frozen v50 VE Analyzer presentation and shared table interaction work. No merge to `main` is authorized before automated validation, user UI acceptance and a final Codex branch audit.
+Validated production-code checkpoint: `d9cf33b51a7d0adf3d922867916bcc0ae0f81f0c` (`Validate live Brush preview through full Web CI`).
 
-## Replayed and reconciled against current main
+This branch is deliberately isolated from `main`. It is the post-Codex reconciliation branch for the frozen v50 VE Analyzer presentation and shared table interaction work. No merge to `main` is authorized before user UI acceptance, final Codex branch audit, full revalidation, final diff/PR inspection and explicit approval.
 
-- v50 presentation layer and focused styles;
-- shared table interaction engine and DOM controller;
-- semantic Lambda Delay edit owner and shared Lambda adapter;
-- heterogeneous Lambda Delay batch editing in one immutable pass;
-- current-main v2 readiness/observability ownership retained;
-- current-main v5 observability retained while legacy input yields when the shared owner is active;
-- current-main optional `ObservabilityRecorder` path retained through the stable VE entry;
-- current-main v7 Result View ownership retained; the obsolete outer Result Heat wrapper is not restored;
-- current readiness contract is forwarded through both v50 wrappers;
-- focused interaction/unit/browser regression modules restored;
-- current expanded browser runner retains all Codex/source-integrity/observability checks and adds shared-v50 interaction acceptance;
-- PR #465's production Lambda Delay Shift-click selection fix and expanded native/browser acceptance are present in this branch as part of the current-main merge.
+## Current state
 
-## Reconciled green baselines
+The frozen v50 prototype remains the visual/interaction contract; production adapts it behind existing EpicScope TypeScript/controller ownership instead of porting standalone prototype infrastructure literally.
 
-### Replay baseline
+Implemented/reconciled on this branch:
 
-Web CI run `38979825194` passed after the current-main replay and before the semantic delay-surface cleanup:
+- v50 workbench/presentation and focused styles;
+- one shared table-edit interaction core with semantic adapters for Lambda Delay and VE Proposal/review state;
+- direct typing without requiring F2, rectangular/multi selection, Undo/Redo, configurable `+/-`, Smooth, H/V/Both interpolation, Pin, Brush, Clear/Revert where supported;
+- Delete = clear/none where the domain permits it; Revert is separate;
+- MLV-style baseline memory presentation: unchanged normal, lower blue, higher red;
+- Brush clears stale normal selection and shows a prospective weighted footprint;
+- sparse interpolation accepts undefined interior cells when valid anchors exist;
+- frozen v50 table-tool SVG iconography, including the both-directions icon rather than literal `2D`;
+- direct-list Scope setup instead of a nested select/dropdown;
+- one viewport-aware popup placement policy;
+- dedicated Lambda-delay surface authority generation for stale-transaction rejection;
+- Lambda Result View consumes semantic Lambda authority rather than reconstructing the delay surface from DOM;
+- authoritative whole-source Logger extent plus explicit Analyzer -> Logger range handoff;
+- physical-axis spacing-aware interpolation, including nonuniform monotone/PCHIP-style shape interpolation;
+- reversed visual load-row Arrow navigation acceptance;
+- persisted tool preferences while selection, pins and active Brush remain session-only;
+- production controller chain no longer installs the transitional v5 Lambda editor; the shared adapter is the active edit owner;
+- responsive browser acceptance at 1024/1366/1920 px.
 
-- TypeScript type-check: pass;
-- full Vitest suite: pass;
-- production build: pass;
-- staged Chromium acceptance: pass;
-- Worker-disabled fallback acceptance: pass;
-- historical Lambda editing/native pointer-keyboard acceptance: pass;
-- shared v50 Lambda interaction acceptance: pass;
-- current-main observability/source-integrity/Diagnostics/readiness acceptance retained.
+Source MSQ/TuneModel values remain immutable during VE Proposal/review edits.
 
-### Semantic Lambda baseline
+## Manual acceptance progression
 
-Web CI run `38980417790` passed after introducing dedicated Lambda surface authority and switching v7 Result View away from DOM reconstruction. The same full validation/browser gate remained green.
+The first hands-on pass confirmed file loading, Analyzer publication and VE Analyzer rendering, but exposed duplicate/competing table interaction behavior. Those findings established the current shared-table contract and were fixed before the performance pass.
 
-### Logger scope and shared-table rebind baseline
+The next hands-on pass found the interactions functionally correct but very slow. The hot path was reduced by caching rendered coordinates, separating lightweight selection/Brush decoration from full semantic value decoration, avoiding unchanged DOM writes and caching Lambda working-value snapshots per authority generation.
 
-The first Logger-scope browser run exposed a sequencing gap in the new focused fixture: scope changes synchronously rebuild the rendered delay table and the shared DOM owner rebinds through MutationObserver delivery. The fixture now waits for that production rebind before exercising the new table. The shared adapter also observes the delay-host subtree so nested table rebuilds cannot leave the interaction controller attached to obsolete DOM.
+The user then confirmed that performance was **much better**.
 
-Web CI run `38981117512` passed with the explicit post-scope settle. A subsequent full run after the subtree-observer hardening (`38981472740`) also passed TypeScript, Vitest, production build, staged Chromium and fallback Chromium acceptance.
+The remaining Brush usability issue was lack of live numeric feedback during an active stroke. At `d9cf33b...` this was fixed without returning to whole-table refreshes:
 
-### Current-main interaction parity baseline
+- affected numeric values update continuously during the stroke;
+- stationary pulses visibly accumulate;
+- Brush footprint remains visible;
+- lower/higher baseline-memory color updates during preview;
+- Shift reverse visibly changes the pending values in the opposite direction;
+- pointer-up commits one semantic edit / one Undo transaction;
+- cancel restores the pre-stroke presentation/state;
+- only changed pending cells are reported and DOM-updated;
+- rapid updates are coalesced with `requestAnimationFrame`;
+- semantic authority remains unchanged during the stroke and changes only on commit;
+- direct multi-cell typing preview updates the existing value node rather than replacing VE cell internal DOM.
 
-After current `main` was merged forward, PR #465's added Shift-click/live-preview acceptance exposed the shared-owner preview gap described below. The shared v50 owner was updated to preserve that accepted behavior, and Web CI run `38982070694` passed TypeScript, the full unit suite, production build, staged Chromium and fallback Chromium acceptance.
+Dedicated automated acceptance verifies visible-preview-versus-semantic-authority separation for both VE Proposal and Lambda Delay.
 
-### Spacing-aware interpolation baseline
+## Validation at the production-code checkpoint
 
-Web CI run `38982461290` passed after physical-axis linear/2D interpolation and nonuniform shape-preserving PCHIP were introduced. TypeScript, the full unit suite (including uneven-axis cases), production build, staged Chromium and fallback Chromium all passed.
+At `d9cf33b...` the complete gate was green:
 
-### Persisted tools/lifecycle baseline
+- TypeScript type-check;
+- full unit suite;
+- production build;
+- staged Chromium acceptance;
+- Worker-disabled fallback Chromium acceptance.
 
-Web CI run `38983200326` passed after the table-tool preference owner, explicit H/V/2D controls, contextual right-click tool configuration, browser persistence coverage and Analyzer shell-disposal cleanup were present. TypeScript, full Vitest, production build, staged Chromium and Worker-disabled fallback Chromium all passed.
+Documentation commits after `d9cf33b...` do not change that validated production-code tree.
 
-## Semantic Lambda surface
+## Known remaining correctness target
 
-### Dedicated delay-surface authority
+A deeper audit identified a Result View ownership problem that must be verified/fixed if still present before final merge: mutable rendered VE text has historically been reparsed as source data while Result View and app-level UI refinements both rewrite that text.
 
-The semantic delay snapshot carries:
+The preferred fix is model/owner-derived stable cell metadata or equivalent semantic state, never mutable `textContent`. Do not use DOM row ordinal because load rows are visually reversed. Base/fallback VE must recover its original heat level rather than neutral 0.5, while a legitimate Lambda Delay metric remains valid even when VE evidence is absent.
 
-- broad Analyzer `revision` for compatibility/evidence;
-- dedicated `authorityGeneration` for the editable Lambda-delay surface;
-- rows/cols;
-- RPM/load axes;
-- working values.
+Add a full-app Chromium regression with UI refinements active that repeatedly cycles Proposal, Change, Change %, Mixture error, Samples, Weight, Confidence, Spread, Delay and back to Proposal, checking semantic/original values for measured, weak/withheld, evidence-only and no-evidence cells.
 
-`authorityGeneration` advances when the editable Lambda surface itself changes or is replaced/withdrawn, rather than on every unrelated Analyzer invalidation. Shared table transactions use this generation for stale-commit rejection.
+See `docs/VE_ANALYZER_V50_CHAT_HANDOFF_2026-10-17.md` for the detailed audit route and merge plan.
 
-### Result View no longer reconstructs Lambda authority from DOM
+## Remaining gates
 
-v7 remains the sole Result View presentation owner, but its Lambda surface comes from the semantic delay owner snapshot. It no longer reconstructs RPM/load axes or working delay values from rendered headers, `dataset.delayValue`, or cell text.
-
-The existing v7 interpolation/display/heat policy remains in place; only the source of Lambda authority changed.
-
-## Logger scope/range reconciliation
-
-The v50 scope navigator now has a production contract instead of inferring Full Log bounds from whichever traces happen to be loaded:
-
-- Logger retains the authoritative imported whole-source time range with the accepted data source;
-- `LoggerAnalysisContext` captures that source extent with the same source lifetime as its sample/catalog loader;
-- Logger exposes a range-focus operation owned by Logger navigation;
-- the application shell provides the Analyzer-to-Logger range handoff and mode switch;
-- the v50 navigator renders the actual selected Analyzer scope (`Full Log`, `Current A/B`, or saved range) against the authoritative source extent;
-- `Open in Logger` hands that semantic range back through the explicit contract;
-- loaded trace bounds are no longer treated as Full Log authority.
-
-Focused browser regressions cover retained source extent and the v50 selected-range handoff.
-
-## Current-main range-edit reconciliation
-
-After syncing PR #465, its new browser acceptance exposed a semantic parity gap: the shared v50 input owner correctly formed the Shift-selected range and deferred mutation until commit, but unlike the accepted production v5 path it only showed the direct-typing preview in the active cell. PR #465 requires live preview across the whole selected range while semantic delay authority and revision remain unchanged until Enter/blur.
-
-The shared DOM controller now mirrors the typed preview text into the other selected rendered cells only. Preview state is presentation-only and retained by actual cell element, so cancellation or table replacement cannot restore old text into a newer semantic surface. Enter/blur still performs one shared semantic transaction; Escape/cancellation restores the rendered values without mutation.
-
-## Visual keyboard navigation
-
-Lambda Delay renders load rows in descending DOM order while preserving ascending semantic row indices. The shared table DOM controller derives Arrow-key neighbours from the rendered table geometry rather than assuming semantic row `-1` is visually up. This keeps Up/Down correct for reversed load presentation while preserving semantic cell coordinates for edits and range selection.
-
-Focused browser acceptance checks ArrowUp from semantic row 0 reaches the visually higher semantic row 1, ArrowDown returns, and Shift+ArrowUp extends the selection in the same visual direction.
-
-## Spacing-aware interpolation
-
-Shared interpolation has an optional physical-axis contract at the `TableEditSurface` boundary. Generic surfaces continue to fall back to index coordinates, while the Lambda Delay adapter supplies its semantic RPM and load bins.
-
-- linear H/V interpolation uses actual axis spacing rather than equal cell-index distance;
-- shape-preserving H/V interpolation uses nonuniform PCHIP/Fritsch-Carlson-style weighted derivatives with endpoint limiting instead of the former equal-spacing harmonic approximation;
-- 2D bilinear and boundary/Coons interpolation use physical row/column fractions as well;
-- pinned interior anchors and the existing clamp/strength/transaction semantics remain unchanged;
-- unit regressions cover uneven 1D linear spacing, uneven monotone shape interpolation and uneven 2D geometry.
-
-## Persisted table-tool preferences
-
-The frozen v50 contract calls for configurable `+ / −`, Smooth, H/V/2D interpolation and Brush settings, with those settings persisted while selection, pins and active Brush remain session-only. The production port now follows that split.
-
-- a validated/restricted-storage-safe state owner stores only the currently implemented Lambda Delay tool settings under `epicscope.veAnalyzer.tableTools.v1`;
-- no guessed VE/Target defaults are persisted before real mutable VE/Target adapters exist;
-- Lambda defaults match the frozen reference: 5 ms adjustment step, Smooth 0.5, linear 1D, bilinear 2D, interpolation strength 1 with clamp enabled, Brush +5 / radius 1 / strength 0.7 / smooth falloff;
-- the toolbar exposes explicit H, V and 2D interpolation commands;
-- right-click `+ / −`, Smooth, H/V/2D interpolation or Brush opens a compact contextual configuration popover;
-- Brush wheel radius changes update the same persisted preference owner;
-- pins, selection/anchor and active Brush are still session-only interaction state and never persisted;
-- browser acceptance verifies right-click step configuration is persisted and used by subsequent edits.
-
-The contextual configuration is deliberately a lightweight shared-table presentation surface, not the prototype floating-window framework.
-
-## Lifecycle cleanup
-
-The shared table controller scopes document pointer/keyboard listeners to active gestures, disconnects its delay-host observer while inactive and cancels active edits on authority/lifecycle replacement. Shell disposal also deactivates Analyzer before replacing its DOM, so an active VE domain disconnects its observer/gesture state even when the whole app shell is remounted without an intervening navigation event.
-
-## Responsive/visual acceptance gate
-
-The normal browser acceptance runner includes v50 geometry checks at 1024, 1366 and 1920 px desktop widths. For each width it verifies that the VE root and primary work surfaces remain bounded, the table remains an internally scrollable dominant surface, every compact setup disclosure stays inside the viewport, and the Logger range handoff remains visible. The runner also captures a VE screenshot for each width in both staged and Worker-disabled fallback runs.
-
-The first responsive attempt (`38983564863`) failed before measuring v50 geometry because focused component tests had left the real application shell on Table Generator; the test selected another non-hidden VE fixture root that was not the active application view. The gate now explicitly activates the real shell's Analyzer/VE domain and resolves the v50 root only inside `.analyzer-page:not([hidden])` before any geometry assertion. That was a test-targeting defect, not evidence of a v50 layout defect.
-
-This gate runs before user hands-on acceptance so any deterministic overflow/layout defect is fixed first. Screenshots are evidence for visual review, not a substitute for the user's final UI test.
-
-## Current-main synchronization
-
-The reconciliation branch was merged forward to current `main` after PR #465 landed. The merge base is `8fb99c0099408b74330d6468868424f1b94b05f5`; the branch is ahead of main and no longer behind it. This keeps the v50 work isolated while ensuring final testing includes the production Shift-click fix and its new regression coverage.
-
-## Current validation gate
-
-The responsive gate is being rerun on the visible application VE surface. It must pass:
-
-1. TypeScript type-check.
-2. Full Vitest suite, including uneven-axis interpolation tests.
-3. Production build.
-4. Staged Chromium acceptance.
-5. Worker-disabled fallback Chromium acceptance.
-6. Current-main Shift-click/direct-typing live preview and native acceptance.
-7. Shared v50 selection/editing/Brush/undo/pin/scope acceptance.
-8. Persisted right-click tool configuration and explicit H/V/2D controls.
-9. Visual reversed-row Arrow navigation acceptance.
-10. Responsive geometry at 1024/1366/1920 plus screenshot capture.
-11. Existing Result View, Logger context, source-integrity, observability and Diagnostics regressions.
-
-## Remaining work after this gate
-
-- inspect responsive screenshots and fix any visual issue supported by browser evidence;
-- user hands-on UI test from this branch;
-- fixes from that manual acceptance, if any, followed by the full gate again;
-- final Codex branch audit against current `main`, narrowly fixing justified defects/cleanup and deferring speculative redesign;
-- final revalidation, PR inspection and explicit merge approval.
+1. user hands-on verification of the latest Brush/performance checkpoint;
+2. fix any evidence-backed interaction defects;
+3. verify/fix the Result View source-authority issue and add the missing full-stack regression if applicable;
+4. rerun the complete automated/browser gate;
+5. finish visual proportions/hierarchy against frozen v50 without changing accepted interaction semantics;
+6. user final UI acceptance;
+7. final Codex branch audit against current `main`;
+8. apply only justified fixes/cleanup and revalidate;
+9. final diff/PR inspection;
+10. merge only after explicit approval.
 
 `main` remains untouched by the v50 changes.
