@@ -8,6 +8,7 @@ import { setupVeLifecycleFixture } from './ve-analyzer-lifecycle.browser.mjs';
 const assert=(ok,message)=>{if(!ok)throw Error(message);};
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(check,message){const end=performance.now()+10000;while(!check()){if(performance.now()>end)throw Error(message);await pause(10);}}
+function openEvidence(root,cell){assert(cell,'Missing measured VE cell');cell.setPointerCapture=()=>{};cell.dispatchEvent(new PointerEvent('pointerdown',{pointerId:61,pointerType:'mouse',bubbles:true,cancelable:true}));cell.dispatchEvent(new PointerEvent('pointerup',{pointerId:61,pointerType:'mouse',bubbles:true,cancelable:true}));const tool=[...root.querySelectorAll('.ve-proposal-shared-toolbar button')].find(candidate=>candidate.title==='Cell Evidence');assert(tool,'Cell Evidence tool missing');tool.click();}
 export async function runOwnerEvidenceChecks(){
  const session=createObservabilitySession({maxRecordBytes:8192}),r=session.recorder,checks=[];
  const records=()=>r.snapshot(),count=name=>records().filter(x=>x.name===name).length;
@@ -22,13 +23,13 @@ export async function runOwnerEvidenceChecks(){
   assert(count('ve.context.noop')&&count('ve.tune.noop')&&view.getPrimaryAnalysis()===primary&&view.sessionRevision===revision&&fixture.reads()===reads,'No-op evidence changed owner state or reloaded data');
   checks.push('unchanged context/tune records no-op evidence without revision, analysis or data-load changes');
   const cell=[...root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find(c=>c.title.startsWith('Measured proposal'));
-  assert(cell,'Missing measured evidence cell');cell.click();await pause(0);cell.click();await pause(0);
+  assert(cell,'Missing measured evidence cell');openEvidence(root,cell);await pause(0);openEvidence(root,cell);await pause(0);
   assert(count('ve.popup.build')&&count('ve.popup.cache-hit')&&fixture.reads()===reads,'Popup evidence did not distinguish retained build/cache hit');
   checks.push('popup reports detail build/cache reuse without recomputing or loading analysis data');
   const select=root.querySelector('select[aria-label="VE Analyzer result view"]');
   assert(select,'Missing Result View control');const initialResultView=select.value;select.value=[...select.options].find(o=>o.value!==select.value).value;select.dispatchEvent(new Event('change',{bubbles:true}));await pause(0);
   assert(count('ve.result-view.changed')&&view.getPrimaryAnalysis()===primary&&view.sessionRevision===revision&&count('ve.analysis.started')===starts,'Presentation evidence changed semantic authority');
-  cell.click();await pause(0);assert(fixture.reads()===reads,'Result View reopened popup with extra reads');
+  openEvidence(root,cell);await pause(0);assert(fixture.reads()===reads,'Result View reopened popup with extra reads');
   checks.push('Result View evidence remains presentation-only and preserves primary/cached evidence');
   select.value=initialResultView;select.dispatchEvent(new Event('change',{bubbles:true}));await pause(0);
   let pending=fixture.hold();fixture.run();await pause(0);const first=records().filter(x=>x.name==='ve.analysis.started').at(-1);
