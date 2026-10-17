@@ -91,6 +91,9 @@ export async function runVeSharedTableInteractionChecks() {
     const targetCell = () => targetHost.querySelector('td[data-table-row="0"][data-table-col="0"]');
     const originalTarget = Number(targetCell()?.textContent.trim());
     const targetToolbar = root.querySelector('.ve-target-shared-toolbar');
+    assert(targetToolbar && targetToolbar.getBoundingClientRect().width > 0
+      && getComputedStyle(targetToolbar).display !== 'none',
+      'Target edit tools are mounted but invisible after table switch');
     assert(targetToolbar && targetCell() && Number.isFinite(originalTarget),
       'Separate Target working-table toolbar or cells missing');
     selectCell(targetCell());
