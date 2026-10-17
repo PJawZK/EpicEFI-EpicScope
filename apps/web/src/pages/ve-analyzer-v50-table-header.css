@@ -157,6 +157,23 @@
 
 /* One visible inspector action: the semantic toolbar button stays mounted for
  * its existing event/evidence owner, but the v50 header presents the action. */
-.ve-v50-port .ve-v50-table-toolbar-host .ve-proposal-shared-toolbar > button[aria-label='Cell Evidence'] {
+.ve-v50-port .ve-proposal-shared-toolbar > button[aria-label='Cell Evidence'] {
   display: none;
+}
+
+/* The shared toolbar stays anchored to VE's stable header across v7 rebuilds.
+ * The v50 action cluster follows it visually without moving semantic nodes. */
+.ve-v50-port .ve-v50-table-head > .ve-proposal-shared-toolbar {
+  order: 1;
+  flex: 0 1 auto;
+  margin: 0 0 0 auto;
+}
+.ve-v50-port .ve-v50-table-head > .ve-v50-table-actions {
+  order: 2;
+  flex: 0 1 auto;
+  margin-left: 0;
+}
+.ve-v50-port .ve-v50-table-head > div:not(.ve-table-header-controls):not(.ve-v50-table-actions):not(.ve-proposal-shared-toolbar) {
+  order: 0;
+  margin-right: auto;
 }
