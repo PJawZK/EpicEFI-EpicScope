@@ -6,6 +6,7 @@ import { installVeAnalyzerV50SecondaryTools } from './ve-analyzer-v50-secondary-
 import { installVeAnalyzerV50SetupDisclosurePolicy } from './ve-analyzer-v50-setup-disclosure';
 import { installVeAnalyzerProposalTableInteraction } from './ve-analyzer-proposal-table-interaction';
 import { installVeTableBrushOverlay } from './ve-table-brush-overlay';
+import { installVeTableToolbarSelectionAvailability } from './ve-table-toolbar-availability';
 import {
   createVeAnalyzerView as createVeAnalyzerViewV9,
   type VeAnalyzerViewController,
@@ -19,6 +20,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const delayEditing = installVeAnalyzerDelayTableInteraction(proposalEditing);
   const withSecondaryTools = installVeAnalyzerV50SecondaryTools(delayEditing);
   installVeTableBrushOverlay(withSecondaryTools.element);
+  installVeTableToolbarSelectionAvailability(withSecondaryTools.element);
   return withSecondaryTools;
 }
 
