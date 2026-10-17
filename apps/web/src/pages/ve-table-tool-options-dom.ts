@@ -113,29 +113,35 @@ export function installTableToolConfiguration(
     hint.textContent = description;
     header.append(strong, hint);
     element.append(header);
+    element.style.position = 'fixed';
     element.style.visibility = 'hidden';
-    host.append(element);
-    const hostRect = host.getBoundingClientRect();
-    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : hostRect;
-    const popupWidth = element.offsetWidth;
-    const popupHeight = element.offsetHeight;
-    const gap = 4;
-    const pad = 8;
-    const roomBelow = window.innerHeight - anchor.bottom;
-    const roomAbove = anchor.top;
-    const direction = roomBelow < popupHeight + gap && roomAbove > roomBelow ? 'up' : 'down';
-    const viewportLeft = Math.max(pad, Math.min(event.clientX, window.innerWidth - popupWidth - pad));
-    element.style.left = `${viewportLeft - hostRect.left}px`;
-    element.style.top = direction === 'up'
-      ? `${anchor.top - hostRect.top - popupHeight - gap}px`
-      : `${anchor.bottom - hostRect.top + gap}px`;
-    element.dataset.direction = direction;
-    element.style.visibility = '';
-    popover = element;
+    document.body.append(element);
+    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget : host;
+    // Configuration fields are populated by the caller after open() returns.
+    // Measure only after that content exists; position in viewport coordinates
+    // so neither the table header nor a tool-window scroll area can clip it.
     queueMicrotask(() => {
+      if (!element.isConnected) return;
+      const rect = anchor.getBoundingClientRect();
+      const popupWidth = element.offsetWidth;
+      const popupHeight = element.offsetHeight;
+      const pad = 8;
+      const gap = 5;
+      const below = window.innerHeight - rect.bottom;
+      const above = rect.top;
+      const down = below >= popupHeight + gap || below >= above;
+      const left = Math.max(pad, Math.min(rect.left, window.innerWidth - popupWidth - pad));
+      const top = down
+        ? Math.max(pad, Math.min(rect.bottom + gap, window.innerHeight - popupHeight - pad))
+        : Math.max(pad, Math.min(rect.top - popupHeight - gap, window.innerHeight - popupHeight - pad));
+      element.style.left = `${left}px`;
+      element.style.top = `${top}px`;
+      element.dataset.direction = down ? 'down' : 'up';
+      element.style.visibility = '';
       document.addEventListener('pointerdown', outsidePointer, true);
       document.addEventListener('keydown', escapeKey, true);
     });
+    popover = element;
     return element;
   };
 
