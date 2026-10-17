@@ -152,7 +152,9 @@
 }
 
 .ve-v50-port .ve-v50-setup-body {
-  position: absolute;
+  /* Same viewport positioning at every width, avoiding clipping by the
+   * no-scroll analyzer root when the control strip sits near the bottom. */
+  position: fixed;
   z-index: 80;
   top: calc(100% + 5px);
   left: 0;
