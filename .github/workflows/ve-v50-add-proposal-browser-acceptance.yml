@@ -1,0 +1,29 @@
+name: VE v50 proposal browser acceptance patch
+on:
+  push:
+    branches:
+      - ui/ve-analyzer-v50-reconcile
+    paths:
+      - .github/workflows/ve-v50-add-proposal-browser-acceptance.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/ve-analyzer-v50-reconcile
+          fetch-depth: 0
+      - run: python scripts/ve-v50-add-proposal-browser-acceptance.py
+      - run: |
+          rm scripts/ve-v50-add-proposal-browser-acceptance.py
+          rm .github/workflows/ve-v50-add-proposal-browser-acceptance.yml
+          npm ci
+          npm run typecheck
+          npm test
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add VE Proposal shared browser acceptance'
+          git push origin HEAD:ui/ve-analyzer-v50-reconcile
