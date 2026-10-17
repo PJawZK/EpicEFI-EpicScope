@@ -26,6 +26,24 @@ function resetCaptureScroll(analyzer) {
   analyzer.scrollLeft = 0;
 }
 
+function selectionCommandButtons(toolbar) {
+  const prefixes = [
+    'Decrease selected cells',
+    'Increase selected cells',
+    'Pin or unpin selected cells',
+    'Interpolate horizontally',
+    'Interpolate vertically',
+    'Interpolate both directions',
+    'Smooth selected cells',
+    'Revert selected cells',
+    'Clear selected cells',
+  ];
+  return [...toolbar.querySelectorAll('button')].filter((button) => {
+    const label = button.getAttribute('aria-label') || '';
+    return prefixes.some((prefix) => label.startsWith(prefix));
+  });
+}
+
 export async function runVeV50ResponsiveChecks(expectedWidth) {
   const checks = [];
   const analyzer = document.querySelector('.analyzer-page:not([hidden])');
@@ -95,6 +113,17 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   assert(wrapper.scrollWidth >= wrapper.clientWidth && table.scrollWidth > 0 && table.getBoundingClientRect().width > 0,
     'Visible table scroll geometry is invalid');
   checks.push(`visible table remains a bounded dominant work surface with internal overflow available at ${expectedWidth}px`);
+
+  const proposalToolbar = root.querySelector('.ve-proposal-shared-toolbar');
+  if (proposalToolbar && !proposalToolbar.hidden) {
+    const hasSelection = Boolean(table.querySelector('td[data-table-selected="true"]'));
+    const expectedAvailability = hasSelection ? 'false' : 'true';
+    const commandButtons = selectionCommandButtons(proposalToolbar);
+    assert(commandButtons.length >= 6, 'Selection-dependent VE table commands missing from toolbar');
+    assert(commandButtons.every((button) => button.getAttribute('aria-disabled') === expectedAvailability),
+      'VE table command availability does not match the shared selection state');
+  }
+  checks.push('selection-dependent table command availability follows shared selection state');
 
   const details = [...root.querySelectorAll('.ve-v50-setup-group')];
   if (details.length >= 2) {
