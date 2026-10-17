@@ -48,6 +48,8 @@ class VeProposalTableEditSurface implements TableEditSurface {
   get cols(): number { return this.#owner.snapshot()?.cols ?? 0; }
   rowCoordinate(row: number): number { return this.#owner.snapshot()?.loadBins[row] ?? row; }
   colCoordinate(col: number): number { return this.#owner.snapshot()?.rpmBins[col] ?? col; }
+  canUndo(): boolean { return this.#undo.length > 0; }
+  canRedo(): boolean { return this.#redo.length > 0; }
 
   get(row: number, col: number): number {
     const value = snapshotValue(this.#owner, row, col);
@@ -175,6 +177,15 @@ function precisionStep(owner: VeProposalEditOwner): number {
   return digits !== undefined && Number.isInteger(digits) && digits >= 0 && digits <= 8 ? 1 / 10 ** digits : 0.1;
 }
 
+function setHistoryAvailability(toolbar: HTMLElement, surface: VeProposalTableEditSurface): void {
+  const undo = toolbar.querySelector<HTMLButtonElement>('button[aria-label="Undo"]');
+  const redo = toolbar.querySelector<HTMLButtonElement>('button[aria-label="Redo"]');
+  undo?.setAttribute('aria-disabled', surface.canUndo() ? 'false' : 'true');
+  redo?.setAttribute('aria-disabled', surface.canRedo() ? 'false' : 'true');
+  if (undo) undo.dataset.commandAvailable = surface.canUndo() ? 'true' : 'false';
+  if (redo) redo.dataset.commandAvailable = surface.canRedo() ? 'true' : 'false';
+}
+
 /**
  * Shared v50 edit adapter for the VE Proposal review surface.
  *
@@ -278,6 +289,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     const renderedTable = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table') ?? undefined;
     const table = currentProposalTable(veHost);
     dom.bindTable(table);
+    setHistoryAvailability(dom.toolbar, surface);
     // Keep the explicit Evidence action available for alternate read-only result
     // views while hiding edit commands that would mutate proposal review values.
     for (const button of [...dom.toolbar.querySelectorAll<HTMLButtonElement>('button')]) {
@@ -299,6 +311,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     session.clearPins();
     surface.resetHistory();
     evidencePosition = undefined;
+    setHistoryAvailability(dom.toolbar, surface);
   };
 
   return {
