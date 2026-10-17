@@ -138,11 +138,12 @@
   top: calc(100% + 5px);
   left: 0;
   display: grid;
+  box-sizing: border-box;
   grid-template-columns: repeat(2, minmax(150px, 1fr));
   gap: 8px;
   width: max-content;
-  min-width: 330px;
-  max-width: min(720px, calc(100vw - 32px));
+  min-width: min(330px, calc(100vw - 16px));
+  max-width: min(720px, calc(100vw - 16px));
   padding: 10px;
   border: 1px solid #2f4b59;
   border-radius: 5px;

@@ -204,8 +204,25 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const roomAbove = summaryRect.top;
     const direction = roomBelow < bodyRect.height + gap && roomAbove > roomBelow ? 'up' : 'down';
     details.dataset.openDirection = direction;
-    const desiredViewportLeft = Math.max(pad, Math.min(groupRect.left, window.innerWidth - bodyRect.width - pad));
+
+    // Place from viewport geometry rather than assuming the details border box is
+    // the exact absolute-position containing block. Flex/grid ancestry can shift
+    // that origin by a few pixels at narrow widths. Measure the real result and
+    // perform one final correction so every disclosure stays inside the viewport.
+    const maximumLeft = Math.max(pad, window.innerWidth - bodyRect.width - pad);
+    const desiredViewportLeft = Math.max(pad, Math.min(groupRect.left, maximumLeft));
     body.style.left = `${desiredViewportLeft - groupRect.left}px`;
+
+    const placed = body.getBoundingClientRect();
+    let correction = 0;
+    if (placed.left < pad) correction += pad - placed.left;
+    if (placed.right + correction > window.innerWidth - pad) {
+      correction -= placed.right + correction - (window.innerWidth - pad);
+    }
+    if (Math.abs(correction) > 0.01) {
+      const currentLeft = Number.parseFloat(body.style.left) || 0;
+      body.style.left = `${currentLeft + correction}px`;
+    }
   };
 
   // Slice 2: collapse the existing production controls into the v50 compact setup
