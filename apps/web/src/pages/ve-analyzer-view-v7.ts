@@ -1,6 +1,5 @@
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
-import { veResultViewUsesNeutralFallback } from './ve-analyzer-result-heat';
 import { veDelayEditOwner } from './ve-analyzer-delay-edit-owner';
 import { veProposalEditOwner } from './ve-analyzer-proposal-edit-owner';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
@@ -63,37 +62,6 @@ function storeResultView(view: VeResultView): void {
   }
 }
 
-function finiteNumber(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function matchingAxisIndex(value: number | undefined, bins: readonly number[]): number | undefined {
-  if (value === undefined || !Number.isFinite(value)) return undefined;
-  for (let index = 0; index < bins.length; index += 1) {
-    const bin = bins[index]!;
-    const tolerance = Math.max(1e-9, Math.abs(bin) * 1e-9);
-    if (Math.abs(bin - value) <= tolerance) return index;
-  }
-  return undefined;
-}
-
-function primaryCellCurrent(
-  owner: VeAnalyzerViewController,
-  rpm: number | undefined,
-  load: number | undefined,
-): number | undefined {
-  const primary = owner.getPrimaryAnalysis();
-  const values = primary?.veTable.numericValues;
-  if (!primary || !values) return undefined;
-  const col = matchingAxisIndex(rpm, primary.rpmBins);
-  const row = matchingAxisIndex(load, primary.loadBins);
-  if (row === undefined || col === undefined) return undefined;
-  const value = values[row * primary.veTable.cols + col];
-  return value !== undefined && Number.isFinite(value) ? value : undefined;
-}
-
 function readDelaySurface(root: HTMLElement): DelaySurface | undefined {
   const snapshot = veDelayEditOwner(root)?.snapshot();
   if (!snapshot || snapshot.rows <= 0 || snapshot.cols <= 0) return undefined;
@@ -142,6 +110,20 @@ function interpolateDelay(surface: DelaySurface | undefined, rpm: number | undef
   const top = x.low === x.high ? v00 : v00 + (v10 - v00) * x.fraction;
   const bottom = x.low === x.high ? v01 : v01 + (v11 - v01) * x.fraction;
   return y.low === y.high ? top : top + (bottom - top) * y.fraction;
+}
+
+function finiteValues(values: readonly (number | undefined)[] | undefined): readonly number[] {
+  return values?.filter((value): value is number => value !== undefined && Number.isFinite(value)) ?? [];
+}
+
+function baseHeatLevel(value: number | undefined, values: readonly (number | undefined)[] | undefined): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  const finite = finiteValues(values);
+  if (finite.length === 0) return undefined;
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  if (min === max) return '0.5';
+  return String(Math.max(0, Math.min(1, (value - min) / (max - min))));
 }
 
 export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
@@ -257,39 +239,48 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     table.dataset.veResultView = view;
     if (veHeaderDescription) veHeaderDescription.textContent = resultDescription(view);
 
-    const rpmBins = [...(table.tHead?.rows[0]?.cells ?? [])].slice(1).map((cell) => finiteNumber(cell.textContent?.trim()));
     const delaySurface = view === 'delay' ? readDelaySurface(root) : undefined;
-    const proposalSnapshot = view === 'proposal' ? veProposalEditOwner(root)?.snapshot() : undefined;
+    const proposalSnapshot = veProposalEditOwner(root)?.snapshot();
+    const primary = inner.getPrimaryAnalysis();
+    const semanticSourceValues = primary?.veTable.numericValues ?? proposalSnapshot?.baselineValues;
     const rendered: Array<{ cell: HTMLTableCellElement; value: number; mode: 'magnitude' | 'quality' | 'range' }> = [];
 
     for (const row of [...(table.tBodies[0]?.rows ?? [])]) {
-      const load = finiteNumber(row.cells[0]?.textContent?.trim());
       for (let col = 1; col < row.cells.length; col += 1) {
         const cell = row.cells[col] as HTMLTableCellElement;
         const main = cell.querySelector<HTMLElement>(':scope > span');
         if (!main) continue;
-        if (cell.dataset.veBaseLevel === undefined) cell.dataset.veBaseLevel = cell.style.getPropertyValue('--ve-cell-level');
 
-        const rpm = rpmBins[col - 1];
-        let current = primaryCellCurrent(inner, rpm, load) ?? finiteNumber(cell.dataset.veCurrentValue);
-        if (current === undefined) {
-          current = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '').current;
-        }
+        const semanticRow = Number(cell.dataset.veRow);
+        const semanticCol = Number(cell.dataset.veCol);
+        const hasSemanticPosition = Number.isInteger(semanticRow) && Number.isInteger(semanticCol)
+          && semanticRow >= 0 && semanticCol >= 0;
+        const sourceCols = primary?.veTable.cols ?? proposalSnapshot?.cols;
+        const sourceRows = primary?.veTable.rows ?? proposalSnapshot?.rows;
+        const insideSource = hasSemanticPosition && sourceCols !== undefined && sourceRows !== undefined
+          && semanticRow < sourceRows && semanticCol < sourceCols;
+        const sourceIndex = insideSource ? semanticRow * sourceCols + semanticCol : undefined;
+        const sourceCurrent = sourceIndex === undefined ? undefined : primary?.veTable.numericValues?.[sourceIndex]
+          ?? proposalSnapshot?.baselineValues[sourceIndex];
+        const current = sourceCurrent !== undefined && Number.isFinite(sourceCurrent) ? sourceCurrent : undefined;
+        const baseLevel = baseHeatLevel(current, semanticSourceValues);
         if (current !== undefined) cell.dataset.veCurrentValue = String(current);
+        else delete cell.dataset.veCurrentValue;
+        if (baseLevel !== undefined) cell.dataset.veBaseLevel = baseLevel;
+        else delete cell.dataset.veBaseLevel;
 
-        if (proposalSnapshot) {
-          const semanticRow = Number(cell.dataset.veRow);
-          const semanticCol = Number(cell.dataset.veCol);
-          if (Number.isInteger(semanticRow) && Number.isInteger(semanticCol)
-            && semanticRow >= 0 && semanticRow < proposalSnapshot.rows && semanticCol >= 0 && semanticCol < proposalSnapshot.cols) {
-            const working = proposalSnapshot.values[semanticRow * proposalSnapshot.cols + semanticCol];
-            main.textContent = working === undefined ? '—' : proposalSnapshot.digits === undefined
-              ? String(working) : working.toFixed(proposalSnapshot.digits);
-            cell.dataset.veResultValue = working === undefined ? '' : String(working);
-            cell.classList.toggle('ve-result-missing', working === undefined);
-            restoreBaseLevel(cell);
-            continue;
-          }
+        const rpm = insideSource ? (primary?.rpmBins[semanticCol] ?? proposalSnapshot?.rpmBins[semanticCol]) : undefined;
+        const load = insideSource ? (primary?.loadBins[semanticRow] ?? proposalSnapshot?.loadBins[semanticRow]) : undefined;
+
+        if (view === 'proposal' && proposalSnapshot && insideSource
+          && semanticRow < proposalSnapshot.rows && semanticCol < proposalSnapshot.cols) {
+          const working = proposalSnapshot.values[semanticRow * proposalSnapshot.cols + semanticCol];
+          main.textContent = working === undefined ? '—' : proposalSnapshot.digits === undefined
+            ? String(working) : working.toFixed(proposalSnapshot.digits);
+          cell.dataset.veResultValue = working === undefined ? '' : String(working);
+          cell.classList.toggle('ve-result-missing', working === undefined);
+          restoreBaseLevel(cell);
+          continue;
         }
 
         const metrics = parseVeRenderedCellMetrics(cell.title, current === undefined ? '' : String(current));
@@ -300,9 +291,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         cell.classList.toggle('ve-result-missing', display.numericValue === undefined);
 
         if (view === 'proposal' || display.scaleMode === 'base') {
-          // Missing alternate metrics are neutral; proposal and delay retain base heat.
-          if (veResultViewUsesNeutralFallback(view, display)) cell.style.setProperty('--ve-cell-level', '0.5');
-          else restoreBaseLevel(cell);
+          // Falling back to original VE restores original VE heat. A valid Delay
+          // metric keeps its own range scaling instead of being treated as base.
+          restoreBaseLevel(cell);
           continue;
         }
         if (display.numericValue !== undefined) {
