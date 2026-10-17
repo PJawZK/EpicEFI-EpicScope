@@ -117,6 +117,15 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   assert(wrapper.scrollWidth >= wrapper.clientWidth && table.scrollWidth > 0 && table.getBoundingClientRect().width > 0,
     'Visible table scroll geometry is invalid');
   checks.push(`visible table remains a bounded dominant work surface with internal overflow available at ${expectedWidth}px`);
+  const dataRows = table.tBodies[0]?.rows.length ?? 0;
+  const fittedMinimum = dataRows * 16 + 20;
+  if (dataRows > 0 && wrapper.clientHeight >= fittedMinimum + 2) {
+    const tableBottom = table.getBoundingClientRect().bottom;
+    const unusedSpace = wrapper.getBoundingClientRect().bottom - tableBottom;
+    assert(unusedSpace <= 14,
+      `VE table left unused workbench height at ${expectedWidth}px: ${Math.round(unusedSpace)}px below ${dataRows} rows`);
+    checks.push(`VE table rows fill available workbench height at ${expectedWidth}px`);
+  }
 
   const proposalToolbar = root.querySelector('.ve-proposal-shared-toolbar');
   if (proposalToolbar && !proposalToolbar.hidden) {
