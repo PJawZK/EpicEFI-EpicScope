@@ -212,13 +212,13 @@ export async function runVeDelayEditingChecks() {
         if (option.value === 'delay') assert(text === '145', 'Delay Result View missed batch values');
         else {
           assert(Number(text) === Number(cell.dataset.veCurrentValue), 'Fallback Result View lost source VE after edit');
-          assert(cell.style.getPropertyValue('--ve-cell-level') === (option.value === 'proposal' ? cell.dataset.veBaseLevel : '0.5'), 'Fallback heat differs from the accepted contract');
+          assert(cell.style.getPropertyValue('--ve-cell-level') === cell.dataset.veBaseLevel, 'Fallback heat differs from original VE heat');
         }
       }
     }
     assert(s.reads() === presentationReads && s.view.sessionRevision === presentationRevision, 'Result Views recalculated edited session');
     resultView.value = 'proposal'; resultView.dispatchEvent(new Event('change', { bubbles: true })); await settle();
-    checks.push('post-edit Result Views preserve source VE, neutral fallback heat and working delays without calculation');
+    checks.push('post-edit Result Views preserve source VE, source fallback heat and working delays without calculation');
 
 
     const pending = deferred(); s.load(() => pending.promise); await settle();
