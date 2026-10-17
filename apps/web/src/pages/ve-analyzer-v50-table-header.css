@@ -154,3 +154,9 @@
   max-width: 175px;
   padding-right: 23px;
 }
+
+/* One visible inspector action: the semantic toolbar button stays mounted for
+ * its existing event/evidence owner, but the v50 header presents the action. */
+.ve-v50-port .ve-v50-table-toolbar-host .ve-proposal-shared-toolbar > button[aria-label='Cell Evidence'] {
+  display: none;
+}
