@@ -63,7 +63,12 @@ function confidenceFromTitle(title: string): VeRenderedConfidence | undefined {
   return match === 'none' || match === 'limited' || match === 'moderate' || match === 'strong' ? match : undefined;
 }
 
-export function parseVeRenderedCellMetrics(title: string, renderedText: string): VeRenderedCellMetrics {
+/**
+ * Parse evidence/proposal detail from the canonical detail string while taking
+ * original/current VE from the caller's semantic source projection. The second
+ * argument is never recovered from the mutable result-cell title.
+ */
+export function parseVeRenderedCellMetrics(title: string, currentText: string): VeRenderedCellMetrics {
   const state: VeRenderedProposalState = title.startsWith('Measured proposal')
     ? 'measured'
     : title.startsWith('Weak evidence')
@@ -72,8 +77,7 @@ export function parseVeRenderedCellMetrics(title: string, renderedText: string):
         ? 'withheld-limit'
         : 'no-evidence';
 
-  const currentFromTitle = matchNumber(title, /\bCurrent ([+-]?\d+(?:\.\d+)?)/i);
-  const current = currentFromTitle ?? firstRenderedNumber(renderedText);
+  const current = firstRenderedNumber(currentText);
   const proposed = matchNumber(title, /\bproposed ([+-]?\d+(?:\.\d+)?)/i);
   const evidenceCandidate = matchNumber(title, /\bRaw candidate ([+-]?\d+(?:\.\d+)?)/i);
   const rawPercent = state === 'measured'
