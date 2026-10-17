@@ -26,6 +26,7 @@ import { analyzerChannelOptionLabel, suggestAnalyzerChannel, preferredVeActualMi
 import { assessVeFuelCorrection, type VeFuelCorrectionMode } from './ve-fuel-correction';
 import { registerVeDelayEditOwner, type VeDelayCellValueEdit } from './ve-analyzer-delay-edit-owner';
 import { registerVeProposalEditOwner, type VeProposalCellValueEdit } from './ve-analyzer-proposal-edit-owner';
+import { registerVeTargetEditOwner } from './ve-analyzer-target-edit-owner';
 import {
   assessTargetMixtureTable,
   inferTuneMixtureScale,
@@ -424,6 +425,49 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     return veReviewState;
   };
 
+  // Target has its own session working copy, separate from VE proposals and
+  // immutable source TuneModel values. All analysis/assessment reads use this
+  // working copy once established.
+  let targetWorkingGeneration = 0;
+  let targetWorkingState: {
+    key: string;
+    model: TuneModel | undefined;
+    rows: number;
+    cols: number;
+    rpmBins: readonly number[];
+    loadBins: readonly number[];
+    baselineValues: readonly (number | undefined)[];
+    values: readonly (number | undefined)[];
+    digits: number | undefined;
+    authorityGeneration: number;
+  } | undefined;
+  const ensureTargetWorkingState = () => {
+    const entry = tableEntry(tuneModel, select('target-table')?.value ?? '');
+    const rpmBins = axisValues(tuneModel, select('target-rpm-axis')?.value ?? '');
+    const loadBins = axisValues(tuneModel, select('target-load-axis')?.value ?? '');
+    if (!entry?.numericValues || !rpmBins || !loadBins || rpmBins.length !== entry.cols || loadBins.length !== entry.rows) {
+      targetWorkingState = undefined;
+      return undefined;
+    }
+    const key = `${entry.name}|${select('target-rpm-axis')?.value ?? ''}|${select('target-load-axis')?.value ?? ''}`;
+    if (!targetWorkingState || targetWorkingState.model !== tuneModel || targetWorkingState.key !== key
+      || targetWorkingState.rows !== entry.rows || targetWorkingState.cols !== entry.cols) {
+      const baselineValues = [...entry.numericValues];
+      targetWorkingState = {
+        key, model: tuneModel, rows: entry.rows, cols: entry.cols,
+        rpmBins: [...rpmBins], loadBins: [...loadBins],
+        baselineValues, values: [...baselineValues], digits: entry.digits,
+        authorityGeneration: ++targetWorkingGeneration,
+      };
+    }
+    return targetWorkingState;
+  };
+  const workingTargetEntry = (): TuneEntry | undefined => {
+    const original = tableEntry(tuneModel, select('target-table')?.value ?? '');
+    const state = ensureTargetWorkingState();
+    return original && state ? { ...original, numericValues: [...state.values] as number[] } : original;
+  };
+
   const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult, proposed?: VeProposalResult, workingValues?: readonly (number | undefined)[]): void => {
     if (!entry?.numericValues) { host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>'; return; }
     const scale = tableScale(entry);
@@ -536,7 +580,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   const renderTuneTables = (): void => {
     ownerEvidence.event('ve.tables.render', { generation: runGeneration, proposed: Boolean(proposal) }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
-    const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
+    const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = workingTargetEntry();
     const review = ensureVeReviewState();
     renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal, review?.values);
     // Shared table interaction is a separate presentation/input owner. Publish a
@@ -544,6 +588,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     // before any same-turn pointer interaction; MutationObserver remains fallback.
     root.dispatchEvent(new CustomEvent('ve-proposal-table-rendered'));
     renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
+    root.dispatchEvent(new CustomEvent('ve-target-table-rendered'));
     // Delay rendering belongs to renderDelayDiscovery/readiness.
   };
 
@@ -593,8 +638,43 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     },
   });
 
+  const applyTargetWorkingValues = (edits: readonly VeProposalCellValueEdit[]): boolean => {
+    const state = ensureTargetWorkingState();
+    if (!state || edits.length === 0) return false;
+    const values = [...state.values];
+    let changed = false;
+    for (const edit of edits) {
+      if (!Number.isInteger(edit.row) || !Number.isInteger(edit.col) || edit.row < 0 || edit.row >= state.rows
+        || edit.col < 0 || edit.col >= state.cols || edit.value === undefined || !Number.isFinite(edit.value)
+        || edit.value < 0) return false;
+      const index = edit.row * state.cols + edit.col;
+      if (values[index] !== edit.value) { values[index] = edit.value; changed = true; }
+    }
+    if (!changed) return false;
+    targetWorkingState = { ...state, values, authorityGeneration: ++targetWorkingGeneration };
+    invalidate();
+    return true;
+  };
+  registerVeTargetEditOwner(root, {
+    snapshot: () => {
+      const state = ensureTargetWorkingState();
+      return state ? {
+        revision: sessionRevision, authorityGeneration: state.authorityGeneration,
+        rows: state.rows, cols: state.cols, rpmBins: state.rpmBins, loadBins: state.loadBins,
+        baselineValues: state.baselineValues, values: state.values, digits: state.digits,
+      } : undefined;
+    },
+    applyValues: applyTargetWorkingValues,
+    revert: positions => {
+      const state = ensureTargetWorkingState();
+      return state ? applyTargetWorkingValues(positions.map(({ row, col }) => ({
+        row, col, value: state.baselineValues[row * state.cols + col],
+      }))) : false;
+    },
+  });
+
   const mixtureAssessment = () => {
-    const target = tableEntry(tuneModel, select('target-table')?.value ?? ''); const assessment = assessTargetMixtureTable(target, selectedScale(), select('ve-table')?.value);
+    const target = workingTargetEntry(); const assessment = assessTargetMixtureTable(target, selectedScale(), select('ve-table')?.value);
     const actualChannel = selectedChannel('actual'); const actualScale = channelMixtureScale(actualChannel); const messages = [...assessment.messages];
     if (actualScale !== 'unknown' && actualScale !== selectedScale()) messages.push(`Actual mixture source is ${displayScale(actualScale)}, but VE Analyzer is set to ${displayScale(selectedScale())}.`);
     warning.hidden = messages.length === 0; warningText.textContent = messages.join(' ');
@@ -851,7 +931,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (!viewActive || analysisPending) return;
     if (!renderReadiness() || !workingDelayTable) return; const run = ++runGeneration; result = undefined; proposal = undefined;
     publishPrimaryAnalysis(undefined);
-    const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined; const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
+    const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined; const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = workingTargetEntry();
     const veRpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const veLoad = axisValues(tuneModel, select('load-axis')?.value ?? ''); const targetRpm = axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''); const targetLoad = axisValues(tuneModel, select('target-load-axis')?.value ?? '');
     if (!scope || !ve?.numericValues || !target?.numericValues || !veRpm || !veLoad || !targetRpm || !targetLoad) return;
     const ids = [...new Set(ROLES.map((role) => roleSelect(role.key)?.value).filter((id): id is string => Boolean(id)))]; const bounds = analyzerScopeBounds(scope);
