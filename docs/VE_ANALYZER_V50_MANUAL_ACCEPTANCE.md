@@ -12,7 +12,9 @@ These findings come from the first hands-on production-port test against the fro
 
 ## Current implementation checkpoint
 
-The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. Owner-observability browser coverage has also been migrated to exercise that explicit Evidence tool. The complete staged and fallback Chromium acceptance suite remains the gate before another manual UI pass.
+The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. Owner-observability browser coverage has also been migrated to exercise that explicit Evidence tool.
+
+The pre-Proposal-specific full Web CI gate is green, including the 1024/1366/1920 responsive disclosure checks after viewport-based placement correction. A dedicated real-browser VE Proposal interaction module is now part of the staged/fallback acceptance sequence. It covers direct typing without F2, commit-on-new-cell, Delete/Revert separation, lower/higher baseline memory, +/- adjustment, Shift-rectangle selection, Brush footprint behavior, sparse both-directions interpolation, explicit Cell Evidence on read-only Result Views, and preservation of immutable source TuneModel authority. That expanded full browser gate must be green before another manual UI pass.
 
 ## Table interaction requirements
 
