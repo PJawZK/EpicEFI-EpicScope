@@ -102,7 +102,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     (targetActive ? veTab : targetTab)?.click();
   });
 
-  actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
+  // The shared toolbar already owns Cell Evidence; do not create a duplicate.\n  actions.append(toolbarHost, resultHost, targetHost, splitButton, flipButton);
   veHeader.append(actions);
 
   let active = true;
@@ -148,8 +148,8 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
 
     resultHost.hidden = targetActive || !inner.getPrimaryAnalysis() || !resultView;
     targetHost.hidden = !targetSelect;
-    toolbarHost.hidden = targetActive || !sharedToolbar;
-    evidenceButton.hidden = targetActive || !root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
+    toolbarHost.hidden = !sharedToolbar;
+    evidenceButton.hidden = true;
     flipButton.hidden = Boolean(split);
     flipButton.textContent = targetActive ? '← VE Table' : `${targetName} →`;
     splitButton.setAttribute('aria-pressed', split ? 'true' : 'false');
