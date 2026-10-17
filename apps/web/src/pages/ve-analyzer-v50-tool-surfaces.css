@@ -11,6 +11,7 @@
   display: grid;
   grid-template-rows: 36px minmax(0, 1fr);
   width: min(900px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 100px));
   max-height: calc(100vh - 100px);
   overflow: hidden;
   transform: translateX(-50%);
@@ -91,6 +92,7 @@
   .ve-v50-tool-surface {
     top: 56px;
     width: calc(100vw - 16px);
+    height: calc(100vh - 72px);
     max-height: calc(100vh - 72px);
   }
 }
