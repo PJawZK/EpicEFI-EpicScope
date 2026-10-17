@@ -151,7 +151,12 @@ export async function runVeSharedTableInteractionChecks() {
 
     const decrementButton = button(root, 'Decrease selected cells');
     decrementButton.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
-    const stepDialog = root.querySelector('.ve-table-tool-options');
+    await settle();
+    const stepDialog = document.querySelector('.ve-table-tool-options');
+    const popupBounds = stepDialog?.getBoundingClientRect();
+    assert(popupBounds && popupBounds.left >= 0 && popupBounds.right <= window.innerWidth + 2
+      && popupBounds.top >= 0 && popupBounds.bottom <= window.innerHeight + 2,
+      'Tool option popup escaped the viewport');
     const stepInput = stepDialog?.querySelector('input[type="number"]');
     assert(stepDialog && stepInput && stepDialog.getAttribute('aria-label') === 'Increment step', 'Right-click did not open increment-step configuration');
     stepInput.value = '7';
