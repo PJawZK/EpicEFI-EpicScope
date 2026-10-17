@@ -1,6 +1,7 @@
 import type { ObservabilityRecorder } from '../observability/recorder';
 import { installVeAnalyzerCellEvidence } from './ve-analyzer-cell-evidence';
 import { installVeAnalyzerDelayTableInteraction } from './ve-analyzer-delay-table-interaction';
+import { installVeAnalyzerV50EvidenceInspector } from './ve-analyzer-v50-evidence-inspector';
 import { installVeAnalyzerV50Presentation } from './ve-analyzer-v50-presentation';
 import { installVeAnalyzerV50SecondaryTools } from './ve-analyzer-v50-secondary-tools';
 import { installVeAnalyzerV50SetupDisclosurePolicy } from './ve-analyzer-v50-setup-disclosure';
@@ -19,6 +20,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const proposalEditing = installVeAnalyzerProposalTableInteraction(presented);
   const delayEditing = installVeAnalyzerDelayTableInteraction(proposalEditing);
   const withSecondaryTools = installVeAnalyzerV50SecondaryTools(delayEditing);
+  installVeAnalyzerV50EvidenceInspector(withSecondaryTools.element);
   installVeTableBrushOverlay(withSecondaryTools.element);
   installVeTableToolbarSelectionAvailability(withSecondaryTools.element);
   return withSecondaryTools;
