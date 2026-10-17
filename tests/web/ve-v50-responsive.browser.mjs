@@ -58,6 +58,12 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   assert(rootRect.width > 0 && rootRect.left >= -2 && rootRect.right <= window.innerWidth + 2,
     `VE root escapes the viewport at ${expectedWidth}px: ${Math.round(rootRect.left)}..${Math.round(rootRect.right)}`);
   checks.push(`VE root fits ${expectedWidth}px viewport`);
+  const analyzerBounds = analyzer.getBoundingClientRect();
+  assert(rootRect.bottom <= analyzerBounds.bottom + 3,
+    `VE workbench extends below Analyzer viewport at ${expectedWidth}px: ${Math.round(rootRect.bottom)} > ${Math.round(analyzerBounds.bottom)}`);
+  assert(analyzer.scrollHeight <= analyzer.clientHeight + 3,
+    `VE mode still requires Analyzer page scrolling at ${expectedWidth}px: ${analyzer.scrollHeight} > ${analyzer.clientHeight}`);
+  checks.push(`VE mode fits its available Analyzer viewport without page scrolling at ${expectedWidth}px`);
 
   for (const [label, selector] of [
     ['workbench', '.ve-workbench'],
