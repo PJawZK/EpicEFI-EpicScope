@@ -233,15 +233,31 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   });
 
   dom.toolbar.classList.add('ve-proposal-shared-toolbar');
+  let evidencePosition: TableCellPosition | undefined;
+  const rememberEvidencePosition = (event: PointerEvent): void => {
+    const cell = event.target instanceof Element
+      ? event.target.closest<HTMLTableCellElement>('td[data-ve-row][data-ve-col]')
+      : null;
+    if (!cell || !veHost.contains(cell)) return;
+    const row = Number(cell.dataset.veRow);
+    const col = Number(cell.dataset.veCol);
+    if (Number.isInteger(row) && Number.isInteger(col)) evidencePosition = { row, col };
+  };
+  // Evidence selection is semantic and independent from editability. Alternate
+  // Result Views remain read-only, but clicking a VE node still selects the node
+  // that the explicit Cell Evidence action will inspect.
+  veHost.addEventListener('pointerdown', rememberEvidencePosition, { capture: true });
+
   const evidence = document.createElement('button');
   evidence.type = 'button';
   evidence.innerHTML = VE_TABLE_TOOL_ICONS.cell;
   evidence.title = 'Cell Evidence';
   evidence.setAttribute('aria-label', 'Cell Evidence');
   evidence.addEventListener('click', () => {
-    const position = session.selectedPositions()[0];
+    const position = evidencePosition ?? session.selectedPositions()[0];
     if (!position) return;
-    const cell = veHost.querySelector<HTMLTableCellElement>(`td[data-table-row="${position.row}"][data-table-col="${position.col}"]`);
+    const cell = veHost.querySelector<HTMLTableCellElement>(`td[data-ve-row="${position.row}"][data-ve-col="${position.col}"]`)
+      ?? veHost.querySelector<HTMLTableCellElement>(`td[data-table-row="${position.row}"][data-table-col="${position.col}"]`);
     if (!cell) return;
     root.dispatchEvent(new CustomEvent('ve-cell-evidence-open', { bubbles: false, detail: { cell } }));
   });
@@ -256,9 +272,16 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   panelHeader?.append(dom.toolbar);
 
   const bind = (): void => {
+    const renderedTable = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table') ?? undefined;
     const table = currentProposalTable(veHost);
-    dom.toolbar.hidden = !table;
     dom.bindTable(table);
+    // Keep the explicit Evidence action available for alternate read-only result
+    // views while hiding edit commands that would mutate proposal review values.
+    for (const button of [...dom.toolbar.querySelectorAll<HTMLButtonElement>('button')]) {
+      if (button !== evidence) button.hidden = !table;
+    }
+    evidence.hidden = !renderedTable;
+    dom.toolbar.hidden = !renderedTable;
   };
   const observer = new MutationObserver(bind);
   const observe = (): void => observer.observe(veHost, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ve-result-view'] });
@@ -272,6 +295,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     session.clearSelection();
     session.clearPins();
     surface.resetHistory();
+    evidencePosition = undefined;
   };
 
   return {
