@@ -1,0 +1,14 @@
+.ve-cell-detail-popover > header {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.ve-cell-detail-popover[data-dragging='true'] > header {
+  cursor: grabbing;
+}
+
+.ve-cell-detail-popover > header button {
+  cursor: pointer;
+  touch-action: auto;
+}
