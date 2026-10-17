@@ -193,7 +193,14 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const body = details.querySelector<HTMLElement>('.ve-v50-setup-body');
     const summary = details.querySelector<HTMLElement>(':scope > summary');
     if (!body || !summary) return;
-    body.style.left = '0px';
+
+    // Reset prior inline placement before measuring. At narrow widths the body is
+    // fixed so it can escape the horizontally scrollable setup strip; at wider
+    // widths it is absolute to its details owner.
+    body.style.left = '';
+    body.style.right = '';
+    body.style.top = '';
+    body.style.bottom = '';
     details.dataset.openDirection = 'down';
     const summaryRect = summary.getBoundingClientRect();
     const groupRect = details.getBoundingClientRect();
@@ -205,14 +212,24 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const direction = roomBelow < bodyRect.height + gap && roomAbove > roomBelow ? 'up' : 'down';
     details.dataset.openDirection = direction;
 
-    // Place from viewport geometry rather than assuming the details border box is
-    // the exact absolute-position containing block. Flex/grid ancestry can shift
-    // that origin by a few pixels at narrow widths. Measure the real result and
-    // perform one final correction so every disclosure stays inside the viewport.
+    const fixed = getComputedStyle(body).position === 'fixed';
     const maximumLeft = Math.max(pad, window.innerWidth - bodyRect.width - pad);
-    const desiredViewportLeft = Math.max(pad, Math.min(groupRect.left, maximumLeft));
-    body.style.left = `${desiredViewportLeft - groupRect.left}px`;
+    const desiredViewportLeft = Math.max(pad, Math.min(summaryRect.left, maximumLeft));
 
+    if (fixed) {
+      body.style.left = `${desiredViewportLeft}px`;
+      body.style.right = 'auto';
+      body.style.top = `${direction === 'up'
+        ? Math.max(pad, summaryRect.top - bodyRect.height - gap)
+        : Math.min(window.innerHeight - bodyRect.height - pad, summaryRect.bottom + gap)}px`;
+      body.style.bottom = 'auto';
+      return;
+    }
+
+    // Wide-screen absolute positioning: translate the desired viewport location
+    // into the local details coordinate system, then correct against the measured
+    // result so flex/grid border-box differences cannot leak a few pixels outside.
+    body.style.left = `${desiredViewportLeft - groupRect.left}px`;
     const placed = body.getBoundingClientRect();
     let correction = 0;
     if (placed.left < pad) correction += pad - placed.left;

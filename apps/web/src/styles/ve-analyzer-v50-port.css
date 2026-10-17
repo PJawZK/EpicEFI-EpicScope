@@ -347,11 +347,12 @@
 
   .ve-v50-port .ve-v50-setup-body {
     position: fixed;
-    top: 112px;
-    left: 16px;
-    right: 16px;
-    width: auto;
-    max-width: none;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: max-content;
+    max-width: calc(100vw - 16px);
   }
 }
 
