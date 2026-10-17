@@ -20,12 +20,18 @@ function visibleTableSurface(root) {
   return undefined;
 }
 
+function resetCaptureScroll(analyzer) {
+  window.scrollTo(0, 0);
+  analyzer.scrollTop = 0;
+  analyzer.scrollLeft = 0;
+}
+
 export async function runVeV50ResponsiveChecks(expectedWidth) {
   const checks = [];
   const analyzer = document.querySelector('.analyzer-page:not([hidden])');
   const root = analyzer?.querySelector('.ve-analyzer-view.ve-v50-port:not([hidden])');
   assert(root, 'Visible application v50 VE Analyzer root missing');
-  window.scrollTo(0, 0);
+  resetCaptureScroll(analyzer);
   await settle();
 
   assert(Math.abs(window.innerWidth - expectedWidth) <= 2, `Viewport width mismatch: expected ${expectedWidth}, got ${window.innerWidth}`);
@@ -58,6 +64,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
 
   const lambdaTool = secondary.querySelector('[data-ve-v50-secondary="lambda-delay"]');
   const lambdaDetails = root.querySelector('[data-ve-analyzer="delay-table"]')?.closest('details');
+  const lambdaWasOpen = Boolean(lambdaDetails?.open);
   if (lambdaTool && lambdaDetails && !lambdaTool.disabled) {
     lambdaDetails.open = false;
     lambdaTool.click();
@@ -66,6 +73,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   }
   const mappingTool = secondary.querySelector('[data-ve-v50-secondary="mappings"]');
   const advanced = root.querySelector('.ve-workbench-advanced');
+  const advancedWasOpen = Boolean(advanced?.open);
   if (mappingTool && advanced && !mappingTool.disabled) {
     advanced.open = false;
     mappingTool.click();
@@ -90,7 +98,9 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     document.querySelector('.settings-button[aria-label="Settings"]')?.click();
     await settle();
   }
-  window.scrollTo(0, 0);
+  if (lambdaDetails) lambdaDetails.open = lambdaWasOpen;
+  if (advanced) advanced.open = advancedWasOpen;
+  resetCaptureScroll(analyzer);
   await settle();
   checks.push('secondary navigation delegates to existing Lambda, Advanced, VE Help and EpicScope Settings owners');
 
@@ -129,7 +139,7 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   assert(scopeOpen && scopeOpen.getBoundingClientRect().right <= window.innerWidth + 2, 'Open in Logger action escapes viewport');
   checks.push(`scope handoff remains visible at ${expectedWidth}px`);
 
-  window.scrollTo(0, 0);
+  resetCaptureScroll(analyzer);
   await settle();
 
   return {
