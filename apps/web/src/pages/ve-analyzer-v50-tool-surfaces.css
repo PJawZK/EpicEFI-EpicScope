@@ -123,3 +123,18 @@
 .ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label { min-width: 0; }
 .ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label select { width: 100%; }
+
+@media (min-width: 901px) {
+  .ve-v50-tool-surface[data-ve-tool-mode='exclusions'] {
+    width: min(560px, calc(100vw - 32px));
+  }
+  .ve-v50-tool-surface[data-ve-tool-mode='inputs'] {
+    width: min(840px, calc(100vw - 32px));
+  }
+  .ve-v50-tool-surface[data-ve-tool-mode='advanced'] {
+    width: min(760px, calc(100vw - 32px));
+  }
+  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+    width: min(840px, calc(100vw - 32px));
+  }
+}
