@@ -258,8 +258,14 @@ export async function runVeDelayEditingChecks() {
     const rawRecommendations = s.cells().map((cell) => cell.dataset.delayRecommended);
     s.view.editDelayCells(recommendationCells, { kind: 'set', workingMs: 333 });
     assert(s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled, 'Review edit silently promoted recommendation');
-    s.root.querySelector('[data-ve-analyzer="use-delay"]').click(); await settle();
+    const useOutside = s.root.querySelector('.ve-v50-run-chips .ve-v50-use-delay');
+    const grabOutside = s.root.querySelector('.ve-v50-run-chips .ve-v50-grab-delay');
+    assert(useOutside && grabOutside && !useOutside.hidden && !useOutside.disabled,
+      'Recommended Lambda delay cannot be activated from main bar');
+    assert(useOutside.previousElementSibling === grabOutside, 'Use recommendation is not after Grab lambda delays');
+    useOutside.click(); await settle();
     assert(all(s, 333) && s.cells().every((cell, index) => cell.dataset.delayRecommended === rawRecommendations[index]), 'Use recommendation lost reviewed edits/raw evidence');
+    assert(useOutside.hidden, 'Use recommendation stayed visible after activating a working delay table');
     checks.push('recommendation-only edits stay separate and survive explicit activation with raw evidence');
 
     s.load(async () => saved(100, 16)); await settle();
