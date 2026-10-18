@@ -141,6 +141,11 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
   checks.push('Advanced, Exclusions and Input Readiness expose distinct tool presentations');
 
+  const targetSelect = root.querySelector('.ve-v50-target-host select[data-role="target-table"]');
+  assert(targetSelect && getComputedStyle(targetSelect).colorScheme.includes('dark'),
+    'Target dropdown did not inherit a dark native menu palette');
+  checks.push('Target dropdown requests native dark option colors');
+
   const lambdaTrigger = root.querySelector('.ve-v50-lambda-tool-trigger');
   assert(lambdaTrigger, 'Lambda Delay workflow trigger missing');
   lambdaTrigger.click();
