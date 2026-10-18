@@ -74,8 +74,8 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   fix.className = 've-v50-run-fix';
   fix.textContent = 'Fix';
   fix.addEventListener('click', () => {
-    if (quickFix && !quickFix.hidden) quickFix.click();
-    else if (inner.getReadiness().delayState === 'recommendation') use.click();
+    if (inner.getReadiness().delayState === 'recommendation' && !use.disabled) use.click();
+    else if (quickFix && !quickFix.hidden) quickFix.click();
     else inputs.click();
   });
   chips.append(inputs, delay, grab, use, info, blocker, fix);
