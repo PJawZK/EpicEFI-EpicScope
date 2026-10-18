@@ -168,3 +168,15 @@
 .ve-v50-port .ve-workbench-table tbody td {
   background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39%);
 }
+
+/* Lambda Delay has explicit missing/insufficient cells. They must never
+ * inherit the generic VE colored-cell heatmap merely because a TD exists. */
+.ve-v50-port .ve-delay-table td:not([data-delay-value]),
+.ve-v50-port .ve-delay-table td[data-delay-state='insufficient']:not([data-delay-value]) {
+  background: #0b171f !important;
+  background-image: none !important;
+  color: #718793;
+}
+.ve-v50-port .ve-delay-table td[data-delay-value] {
+  background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39%);
+}
