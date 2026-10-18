@@ -169,13 +169,13 @@
   line-height: 1.4;
 }
 
-/* One Lambda sizing owner: the intrinsic content determines the dialog size,
- * subject only to the viewport. No inherited fixed-height table viewport. */
+/* Lambda popup: compact intrinsic table, bounded by viewport.
+ * Do not distribute five columns across the whole VE workbench width. */
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
   display: flex;
   flex-direction: column;
   width: max-content;
-  min-width: min(620px, calc(100vw - 24px));
+  min-width: 0;
   max-width: calc(100vw - 24px);
   height: auto;
   max-height: calc(100dvh - 48px);
@@ -186,37 +186,37 @@
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) > .ve-v50-tool-surface-body {
   flex: 0 1 auto;
-  width: 100%;
-  min-width: 0;
   min-height: 0;
-  max-height: none;
-  overflow-x: auto;
-  overflow-y: auto;
+  width: auto;
+  max-height: calc(100dvh - 86px);
+  overflow: auto;
+  padding-bottom: 10px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-v50-tool-details {
+  width: max-content;
+  max-width: 100%;
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table-shell {
   max-height: none;
   overflow: visible;
+  margin-bottom: 4px;
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table {
-  width: 100%;
+  width: max-content;
   min-width: 0;
   table-layout: fixed;
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table th,
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table td {
-  width: auto;
-  min-width: 64px;
-  max-width: none;
+  box-sizing: border-box;
+  width: 86px;
+  min-width: 86px;
+  max-width: 86px;
   height: 28px;
   min-height: 28px;
 }
-.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid {
-  align-items: end;
-}
 @media (max-width: 700px) {
   .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
-    min-width: 0;
-    width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
   }
 }
