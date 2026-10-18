@@ -134,9 +134,6 @@
   .ve-v50-tool-surface[data-ve-tool-mode='advanced'] {
     width: min(760px, calc(100vw - 32px));
   }
-  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
-    width: min(840px, calc(100vw - 32px));
-  }
 }
 
 /* Typography consistency inside the secondary tools. The old v2 forms used
@@ -172,29 +169,14 @@
   line-height: 1.4;
 }
 
-/* Lambda tool needs enough width for all working-delay columns and enough
- * vertical room for the table; scroll within its body only on short screens. */
-.ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
-  width: min(1080px, calc(100vw - 24px));
-  max-height: calc(100vh - 44px);
-}
-.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-v50-tool-surface-body {
-  max-height: calc(100vh - 84px);
-  overflow: auto;
-}
-@media (min-width: 901px) {
-  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
-    width: min(1080px, calc(100vw - 24px));
-  }
-}
-
-/* Lambda's small 5-row grid must determine the natural popup height.
- * The earlier max-content grid row could shrink while the scrollable body
- * clipped its last rows; increasing popup width alone did not fix that. */
+/* One Lambda sizing owner: the intrinsic content determines the dialog size,
+ * subject only to the viewport. No inherited fixed-height table viewport. */
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
   display: flex;
   flex-direction: column;
-  width: min(860px, calc(100vw - 24px));
+  width: max-content;
+  min-width: min(620px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   height: auto;
   max-height: calc(100dvh - 48px);
 }
@@ -204,10 +186,11 @@
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) > .ve-v50-tool-surface-body {
   flex: 0 1 auto;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
-  height: auto;
-  max-height: calc(100dvh - 84px);
-  overflow-x: hidden;
+  max-height: none;
+  overflow-x: auto;
   overflow-y: auto;
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table-shell {
@@ -217,10 +200,23 @@
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table {
   width: 100%;
   min-width: 0;
+  table-layout: fixed;
 }
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table th,
 .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table td {
   width: auto;
-  min-width: 0;
+  min-width: 64px;
   max-width: none;
+  height: 28px;
+  min-height: 28px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid {
+  align-items: end;
+}
+@media (max-width: 700px) {
+  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+    min-width: 0;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+  }
 }
