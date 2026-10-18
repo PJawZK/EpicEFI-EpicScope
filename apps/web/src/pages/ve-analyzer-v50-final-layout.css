@@ -170,7 +170,7 @@
   border-bottom: 0;
 }
 .ve-v50-port .ve-workbench-table tbody td {
-  background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39%);
+  background: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
 }
 
 /* Lambda Delay has explicit missing/insufficient cells. They must never
@@ -182,5 +182,5 @@
   color: #718793;
 }
 .ve-v50-port .ve-delay-table td[data-delay-value] {
-  background: hsl(calc(112 - (var(--ve-cell-level, .5) * 112)) 55% 39%);
+  background: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
 }
