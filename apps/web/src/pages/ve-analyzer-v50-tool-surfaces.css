@@ -171,3 +171,19 @@
   font-size: 11px;
   line-height: 1.4;
 }
+
+/* Lambda tool needs enough width for all working-delay columns and enough
+ * vertical room for the table; scroll within its body only on short screens. */
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+  width: min(1080px, calc(100vw - 24px));
+  max-height: calc(100vh - 44px);
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-v50-tool-surface-body {
+  max-height: calc(100vh - 84px);
+  overflow: auto;
+}
+@media (min-width: 901px) {
+  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+    width: min(1080px, calc(100vw - 24px));
+  }
+}
