@@ -120,6 +120,16 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     `Exclusions popup retained old fixed height: ${Math.round(exclusionsHeight)}px`);
   advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
 
+  const externalUse = root.querySelector('.ve-v50-run-chips > .ve-v50-use-delay');
+  const externalFix = root.querySelector('.ve-v50-run-chips > .ve-v50-run-fix');
+  const externalInfo = root.querySelector('.ve-v50-run-chips > .ve-v50-run-info');
+  const semanticUse = root.querySelector('[data-ve-analyzer="use-delay"]');
+  assert(externalUse && externalFix && externalInfo && semanticUse,
+    'v50 readiness row lost Use recommendation, Fix, or information action');
+  assert(externalUse.closest('.ve-workbench-actionbar') && !externalUse.closest('.ve-v50-tool-surface'),
+    'Use recommendation was left inside the Lambda Delay popup instead of the main readiness bar');
+  checks.push('Lambda recommendation activation and blocker actions live in the main readiness bar');
+
   const inputsChip = root.querySelector('.ve-v50-run-chips > .ve-v50-status-chip:first-child');
   assert(inputsChip, 'Input Readiness chip missing');
   inputsChip.click();
