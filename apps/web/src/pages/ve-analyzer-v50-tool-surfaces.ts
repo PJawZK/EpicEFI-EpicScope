@@ -5,6 +5,7 @@ interface ToolSurface {
   readonly panel: HTMLElement;
   readonly open: () => void;
   readonly close: () => void;
+  readonly toggle: () => void;
 }
 
 function createToolSurface(
@@ -57,7 +58,8 @@ function createToolSurface(
     if (event.target === panel) close();
   });
 
-  return { details, panel, open, close };
+  const toggle = (): void => panel.hidden ? open() : close();
+  return { details, panel, open, close, toggle };
 }
 
 /**
@@ -90,7 +92,8 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
     advancedTool.panel.setAttribute('aria-label', title);
     const heading = advancedTool.panel.querySelector('.ve-v50-tool-surface-head strong');
     if (heading) heading.textContent = title;
-    advancedTool.open();
+    if (!advancedTool.panel.hidden && advancedTool.panel.dataset.veToolMode === mode) advancedTool.close();
+    else advancedTool.open();
   };
 
   const advancedButton = root.querySelector<HTMLButtonElement>('.ve-v50-advanced-button');
@@ -127,11 +130,11 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
       workflow.tabIndex = 0;
       workflow.setAttribute('role', 'button');
       workflow.setAttribute('aria-label', 'Open Lambda Delay Table');
-      workflow.addEventListener('click', lambdaTool.open);
+      workflow.addEventListener('click', lambdaTool.toggle);
       workflow.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
-        lambdaTool.open();
+        lambdaTool.toggle();
       });
     }
   }
