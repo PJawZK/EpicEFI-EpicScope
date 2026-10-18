@@ -93,6 +93,15 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     root.querySelector<HTMLButtonElement>('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]')?.click();
   });
 
+  const evidenceHint = document.createElement('span');
+  evidenceHint.className = 've-v50-evidence-hint';
+  evidenceHint.hidden = true;
+  evidenceHint.textContent = 'Select a VE cell first';
+  root.addEventListener('ve-cell-evidence-unavailable', () => {
+    evidenceHint.hidden = false;
+  });
+  veHost?.addEventListener('pointerdown', () => { evidenceHint.hidden = true; }, { capture: true });
+
   const flipButton = document.createElement('button');
   flipButton.type = 'button';
   flipButton.className = 've-v50-table-flip';
@@ -107,7 +116,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   });
 
   // Present one visible Cell Evidence action; the toolbar's semantic button stays hidden visually.
-  actions.append(toolbarHost, targetHost, splitButton, evidenceButton, flipButton);
+  actions.append(toolbarHost, targetHost, splitButton, evidenceButton, evidenceHint, flipButton);
   veHeader.append(resultHost);
   (targetHeader ?? veHeader).append(actions);
 
@@ -127,7 +136,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     if (resultView && resultView.parentElement !== resultHost) resultHost.append(resultView);
     if (resultHost.parentElement !== veHeader) veHeader.append(resultHost);
     if (!actions.contains(splitButton) || !actions.contains(evidenceButton) || !actions.contains(flipButton)) {
-      actions.append(toolbarHost, targetHost, splitButton, evidenceButton, flipButton);
+      actions.append(toolbarHost, targetHost, splitButton, evidenceButton, evidenceHint, flipButton);
     }
     const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
     // Keep the shared edit toolbar attached to its VE panel's stable header;
