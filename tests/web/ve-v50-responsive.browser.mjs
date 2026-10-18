@@ -117,9 +117,8 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   const advancedPanel = advanced.closest('.ve-v50-tool-surface');
   assert(advanced.open && advancedPanel && !advancedPanel.hidden,
     'Advanced button did not open the existing Advanced owner as a tool surface');
-  advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
-  await settle();
-  assert(!advanced.open && advancedPanel.hidden, 'Advanced tool surface did not close cleanly');
+  advancedButton.click(); await settle();
+  assert(!advanced.open && advancedPanel.hidden, 'Second Advanced click did not toggle window closed');
 
   exclusionsButton.click();
   await settle();
@@ -133,7 +132,8 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   const exclusionsHeight = advancedPanel.getBoundingClientRect().height;
   assert(exclusionsHeight < Math.min(window.innerHeight * 0.8, 480),
     `Exclusions popup retained old fixed height: ${Math.round(exclusionsHeight)}px`);
-  advancedPanel.querySelector('.ve-v50-tool-surface-close')?.click();
+  exclusionsButton.click(); await settle();
+  assert(advancedPanel.hidden, 'Second Exclusions click did not toggle window closed');
 
   const externalUse = root.querySelector('.ve-v50-run-chips > .ve-v50-use-delay');
   const externalFix = root.querySelector('.ve-v50-run-chips > .ve-v50-run-fix');
@@ -168,8 +168,9 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
   const lambdaPanel = lambdaDetails.closest('.ve-v50-tool-surface');
   assert(lambdaDetails.open && lambdaPanel && !lambdaPanel.hidden,
     'Lambda Delay trigger did not open the existing Lambda owner as a tool surface');
-  lambdaPanel.querySelector('.ve-v50-tool-surface-close')?.click();
-  await settle();
+  lambdaTrigger.click(); await settle();
+  assert(lambdaPanel.hidden && !lambdaDetails.open,
+    'Second Lambda Delay click did not toggle window closed');
   checks.push('Advanced and Lambda owners open as secondary tool surfaces instead of inline page sections');
 
   const surface = visibleTableSurface(root);
