@@ -76,6 +76,21 @@ export async function runVeV50ResponsiveChecks(expectedWidth) {
     const rect = node.getBoundingClientRect();
     assert(inside(rect, rootRect), `${label} escapes VE root at ${expectedWidth}px`);
   }
+  // Reproduce v2's post-Run behavior: it fills the legacy summary and removes
+  // the content's hidden flag. The v50 workbench must never reveal that second
+  // old-style page beneath the table.
+  const legacy = root.querySelector(':scope > .specialized-analyzer-content');
+  assert(legacy, 'Original Analyzer semantic content owner missing');
+  const summary = legacy.querySelector('.specialized-analyzer-summary');
+  const wasHidden = legacy.hidden;
+  const priorSummary = [...summary.childNodes];
+  summary.replaceChildren(document.createElement('div'));
+  legacy.hidden = false;
+  assert(getComputedStyle(legacy).display === 'none',
+    'Run Analysis revived legacy summary beneath v50 workbench');
+  summary.replaceChildren(...priorSummary);
+  legacy.hidden = wasHidden;
+  checks.push('post-analysis legacy result document remains out of v50 page flow');
   const compactActions = root.querySelector('.ve-v50-table-actions');
   assert(compactActions?.querySelector('button[aria-label="Cell Evidence"]')
     && compactActions.querySelector('button[aria-label="Toggle VE and Target split view"]')
