@@ -86,13 +86,14 @@ export function installVeAnalyzerV50ToolSurfaces(root: HTMLElement): void {
   // moving those nodes breaks its rebuild lifecycle.
   const openAdvancedMode = (mode: 'advanced' | 'exclusions' | 'inputs'): void => {
     if (!advancedTool) return;
+    const sameVisibleMode = !advancedTool.panel.hidden && advancedTool.panel.dataset.veToolMode === mode;
     advancedTool.panel.dataset.veToolMode = mode;
     const title = mode === 'exclusions' ? 'State Exclusions'
       : mode === 'inputs' ? 'Input Readiness' : 'Advanced VE Analyzer Inputs';
     advancedTool.panel.setAttribute('aria-label', title);
     const heading = advancedTool.panel.querySelector('.ve-v50-tool-surface-head strong');
     if (heading) heading.textContent = title;
-    if (!advancedTool.panel.hidden && advancedTool.panel.dataset.veToolMode === mode) advancedTool.close();
+    if (sameVisibleMode) advancedTool.close();
     else advancedTool.open();
   };
 
