@@ -362,30 +362,30 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
         if (node) node.textContent = text;
       };
 
-      summary('qualification', `Analysis Mode · ${selectedText(root.querySelector<HTMLSelectElement>('select[data-role="preset"]'), 'Recommended')}`);
-      summary('scope', `Log Scope · ${selectedText(root.querySelector<HTMLSelectElement>('select[data-role="scope"]'), 'Full Log')}`);
+      summary('qualification', 'Analysis Mode');
+      summary('scope', 'Log Scope');
       syncScopeChoices();
 
       const minRpm = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-rpm"]'));
       const maxRpm = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-rpm"]'));
       const minLoad = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-load"]'));
       const maxLoad = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-load"]'));
-      summary('range', `RPM / Load Range · ${minRpm}–${maxRpm} · ${minLoad}–${maxLoad}`);
+      summary('range', 'RPM / Load Range');
 
       const stable = inputText(root.querySelector<HTMLInputElement>('input[data-role="stable-ms"]'), '0');
       const evidence = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-evidence-weight"]'), '0');
-      summary('guards', `Stability Filter · ${stable} ms · ≥${evidence}`);
+      summary('guards', 'Stability Filter');
 
       const authority = selectedText(root.querySelector<HTMLSelectElement>('select[data-ve-quick="cell-change"]'), 'Normal');
       const maxAbs = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-absolute-change"]'), '—');
       const maxPct = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-percent-change"]'), '—');
-      summary('cell-change', `Change Filter · ${authority} · ±${maxAbs} / ${maxPct}%`);
+      summary('cell-change', 'Change Filter');
 
       const scale = selectedText(root.querySelector<HTMLSelectElement>('select[data-role="mixture-scale"]'), 'AFR');
       const actual = shortText(selectedText(root.querySelector<HTMLSelectElement>('select[data-role="actual"]'), 'Auto'));
       const fuelMode = root.querySelector<HTMLSelectElement>('select[data-role="fuel-correction-mode"]')?.value ?? 'auto';
       const fuel = fuelMode === 'off' ? 'Context' : fuelMode === 'percent' ? 'STFT %' : 'STFT Auto';
-      summary('mixture', `Mixture Source · ${scale} · ${actual} · ${fuel}`);
+      summary('mixture', 'Mixture Source');
     };
 
     root.addEventListener('change', (event) => {
