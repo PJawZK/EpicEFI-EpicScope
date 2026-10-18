@@ -254,6 +254,11 @@ export async function runVeDelayEditingChecks() {
     s.root.querySelector('[data-ve-analyzer="grab-delay"]').click();
     for (let i = 0; i < 1000 && s.root.querySelector('[data-ve-analyzer="use-delay"]').disabled; i++) await settle();
     assert(s.root.querySelector('[data-ve-analyzer="delay-table"]').dataset.mode === 'recommendation', 'Initial discovery auto-activated');
+    const emptyDelay = s.cells().find((cell) => !cell.hasAttribute('data-delay-value'));
+    if (emptyDelay) {
+      assert(getComputedStyle(emptyDelay).backgroundColor === 'rgb(11, 23, 31)',
+        'Missing Lambda Delay value incorrectly received the colored VE heatmap');
+    }
     const recommendationCells = s.cells().map((cell) => ({ row: Number(cell.dataset.delayRow), col: Number(cell.dataset.delayCol) }));
     const rawRecommendations = s.cells().map((cell) => cell.dataset.delayRecommended);
     s.view.editDelayCells(recommendationCells, { kind: 'set', workingMs: 333 });
