@@ -138,3 +138,36 @@
     width: min(840px, calc(100vw - 32px));
   }
 }
+
+/* Typography consistency inside the secondary tools. The old v2 forms used
+ * 7–9px text, which is illegible at normal desktop scaling. */
+.ve-v50-tool-surface-head strong { font-size: 13px; }
+.ve-v50-tool-surface-body {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ve-v50-tool-surface-body label,
+.ve-v50-tool-surface-body input,
+.ve-v50-tool-surface-body select,
+.ve-v50-tool-surface-body button {
+  font-size: 12px;
+}
+.ve-v50-tool-surface-body label > span,
+.ve-v50-tool-surface-body .specialized-analyzer-options-grid label > span,
+.ve-v50-tool-surface-body .specialized-analyzer-controls label > span,
+.ve-v50-tool-surface-body .ve-delay-cell-editor-grid span {
+  font-size: 10px;
+  line-height: 1.3;
+}
+.ve-v50-tool-surface-body .specialized-analyzer-table th,
+.ve-v50-tool-surface-body .specialized-analyzer-table td,
+.ve-v50-tool-surface-body .ve-delay-table th,
+.ve-v50-tool-surface-body .ve-delay-table td {
+  font-size: 11px;
+}
+.ve-v50-tool-surface-body .ve-delay-result-note,
+.ve-v50-tool-surface-body .ve-delay-source-events,
+.ve-v50-tool-surface-body .ve-quick-qualification-note {
+  font-size: 11px;
+  line-height: 1.4;
+}
