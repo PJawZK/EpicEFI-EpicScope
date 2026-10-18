@@ -268,7 +268,11 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   evidence.setAttribute('aria-label', 'Cell Evidence');
   evidence.addEventListener('click', () => {
     const position = evidencePosition ?? session.selectedPositions()[0];
-    if (!position) return;
+    if (!position) {
+      evidence.title = 'Select a VE cell to inspect its evidence';
+      evidence.dispatchEvent(new CustomEvent('ve-cell-evidence-unavailable', { bubbles: true }));
+      return;
+    }
     const cell = veHost.querySelector<HTMLTableCellElement>(`td[data-ve-row="${position.row}"][data-ve-col="${position.col}"]`)
       ?? veHost.querySelector<HTMLTableCellElement>(`td[data-table-row="${position.row}"][data-table-col="${position.col}"]`);
     if (!cell) return;
@@ -300,7 +304,11 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     // Keep the explicit Evidence action available for alternate read-only result
     // views while hiding edit commands that would mutate proposal review values.
     for (const button of [...dom.toolbar.querySelectorAll<HTMLButtonElement>('button')]) {
-      if (button !== evidence) button.hidden = !table;
+      if (button !== evidence) {
+        button.hidden = false;
+        button.disabled = !table;
+        button.title = !table ? 'Editing applies to Proposed VE; switch Result View to Proposed VE' : button.getAttribute('aria-label') ?? '';
+      }
     }
     evidence.hidden = !renderedTable;
     dom.toolbar.hidden = !renderedTable;
