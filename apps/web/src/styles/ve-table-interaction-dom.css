@@ -253,3 +253,11 @@
   text-shadow: 0 0 1px #061016, 1px 1px 1px #061016;
   font-size: 8px;
 }
+
+/* v50 delta digits: improve readability within the same 32x32 cell geometry. */
+.ve-v50-port .ve-workbench-table td[data-table-value-state='lower'],
+.ve-v50-port .ve-workbench-table td[data-table-value-state='higher'] {
+  font-size: 11px !important;
+  font-weight: 750;
+  letter-spacing: -.15px;
+}
