@@ -152,7 +152,11 @@
 .ve-v50-port .specialized-analyzer-summary:empty {
   display: none !important;
 }
-.ve-v50-port > .specialized-analyzer-content:not(:has(.specialized-analyzer-summary > *)) {
+/* v2 reveals and populates this legacy summary after Run Analysis.
+ * Its semantic owners stay mounted, but v50 never shows the old inline result
+ * document below the compact table-first workbench. Tool-owned Lambda and
+ * Advanced nodes have already been reparented into their tool host. */
+.ve-v50-port > .specialized-analyzer-content {
   display: none !important;
 }
 
