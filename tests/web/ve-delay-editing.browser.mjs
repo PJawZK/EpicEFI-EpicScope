@@ -263,6 +263,16 @@ export async function runVeDelayEditingChecks() {
     const rawRecommendations = s.cells().map((cell) => cell.dataset.delayRecommended);
     s.view.editDelayCells(recommendationCells, { kind: 'set', workingMs: 333 });
     assert(s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled, 'Review edit silently promoted recommendation');
+    const explanation = s.root.querySelector('.ve-v50-run-chips .ve-v50-run-info');
+    const fix = s.root.querySelector('.ve-v50-run-chips .ve-v50-run-fix');
+    const blockerText = s.root.querySelector('.ve-v50-run-chips .ve-v50-run-blocker');
+    assert(explanation && fix && blockerText && !explanation.hidden && !fix.hidden
+      && blockerText.textContent.trim().length > 0,
+      'Blocked Run did not expose an explanation and Fix alongside readiness chips');
+    explanation.click(); await settle();
+    assert(!s.root.querySelector('.ve-run-info-popout').hidden,
+      'Visible main-bar readiness information did not open blocker details');
+    s.root.querySelector('.ve-run-info-close')?.click();
     const useOutside = s.root.querySelector('.ve-v50-run-chips .ve-v50-use-delay');
     const grabOutside = s.root.querySelector('.ve-v50-run-chips .ve-v50-grab-delay');
     assert(useOutside && grabOutside && !useOutside.hidden && !useOutside.disabled,
