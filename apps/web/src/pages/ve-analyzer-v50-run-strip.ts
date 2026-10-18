@@ -48,7 +48,15 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   grab.type = 'button';
   grab.className = 've-v50-status-chip ve-v50-grab-delay';
   grab.textContent = 'Grab lambda delays from log';
-  grab.addEventListener('click', () => semanticGrab?.click());
+  grab.addEventListener('click', () => {
+    if (!semanticGrab || semanticGrab.disabled) return;
+    // Discovery results live in the Lambda Delay owner. Reveal that surface
+    // before invoking discovery so progress/errors are visible to the user.
+    const trigger = root.querySelector<HTMLElement>('.ve-v50-lambda-tool-trigger');
+    const surface = root.querySelector<HTMLElement>('.ve-v50-tool-surface:has(.ve-v50-tool-lambda)');
+    if (surface?.hidden) trigger?.click();
+    semanticGrab.click();
+  });
 
   const use = document.createElement('button');
   use.type = 'button';
