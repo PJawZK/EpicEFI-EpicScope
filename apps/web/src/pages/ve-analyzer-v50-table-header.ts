@@ -146,9 +146,10 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     // The visible production panel is authoritative. v7 can change its panel
     // visibility before ARIA tab state settles, especially on programmatic tabs.
     const targetActive = !split && Boolean(targetPanel && !targetPanel.hidden);
-    // All layout/navigation controls live in the Target header in both modes.
-    // The VE edit toolbar and Result View remain in VE's header.
-    const activeHeader = targetHeader ?? veHeader;
+    // In split mode place layout/Target/Evidence controls on the Target side.
+    // In single mode dock them on the visible table's right edge, so the
+    // controls never disappear with the hidden Target panel.
+    const activeHeader = split || targetActive ? (targetHeader ?? veHeader) : veHeader;
     if (activeHeader && actions.parentElement !== activeHeader) activeHeader.append(actions);
 
     const veEntry = veSelect?.selectedOptions[0]?.textContent?.trim() || veSelect?.value || 'VE';
