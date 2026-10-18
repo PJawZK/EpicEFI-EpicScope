@@ -79,8 +79,17 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     else inputs.click();
   });
   chips.append(inputs, delay, grab, use, info, blocker, fix);
-  if (runButton) actionbar.insertBefore(chips, runButton);
-  else actionbar.append(chips);
+  if (runButton) {
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 've-v50-save-proposal';
+    save.textContent = 'Save to MSQ / Shim';
+    save.disabled = true;
+    save.title = 'Unavailable: reviewed proposal export and safe ECU/shim write reconciliation are not implemented.';
+    save.setAttribute('aria-label', 'Save proposal to MSQ or shim (not yet available)');
+    actionbar.insertBefore(chips, runButton);
+    actionbar.insertBefore(save, runButton);
+  } else actionbar.append(chips);
 
   let active = true;
   const sync = (): void => {
