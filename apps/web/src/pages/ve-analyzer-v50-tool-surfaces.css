@@ -187,3 +187,40 @@
     width: min(1080px, calc(100vw - 24px));
   }
 }
+
+/* Lambda's small 5-row grid must determine the natural popup height.
+ * The earlier max-content grid row could shrink while the scrollable body
+ * clipped its last rows; increasing popup width alone did not fix that. */
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, calc(100vw - 24px));
+  height: auto;
+  max-height: calc(100dvh - 48px);
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda)[hidden] { display: none; }
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) > .ve-v50-tool-surface-head {
+  flex: 0 0 36px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) > .ve-v50-tool-surface-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: calc(100dvh - 84px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table-shell {
+  max-height: none;
+  overflow: visible;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table {
+  width: 100%;
+  min-width: 0;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table th,
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table td {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
