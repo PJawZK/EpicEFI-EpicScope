@@ -22,6 +22,9 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   legacyDelay?.classList.add('ve-v50-legacy-run-status');
 
   const semanticGrab = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]');
+  const semanticUse = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]');
+  const quickFix = actionbar.querySelector<HTMLButtonElement>('.ve-run-quick-fix');
+  const infoButton = actionbar.querySelector<HTMLButtonElement>('.ve-run-info-button');
   const runButton = actionbar.querySelector<HTMLButtonElement>('.ve-workbench-run');
 
   const chips = document.createElement('div');
@@ -47,7 +50,35 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   grab.textContent = 'Grab lambda delays from log';
   grab.addEventListener('click', () => semanticGrab?.click());
 
-  chips.append(inputs, delay, grab);
+  const use = document.createElement('button');
+  use.type = 'button';
+  use.className = 've-v50-status-chip ve-v50-use-delay';
+  use.textContent = 'Use recommendation';
+  use.addEventListener('click', () => semanticUse?.click());
+
+  const blocker = document.createElement('span');
+  blocker.className = 've-v50-run-blocker';
+  blocker.setAttribute('role', 'status');
+  const info = document.createElement('button');
+  info.type = 'button';
+  info.className = 've-v50-run-info';
+  info.title = 'Explain analysis readiness';
+  info.setAttribute('aria-label', 'Analysis readiness information');
+  info.textContent = 'ⓘ';
+  info.addEventListener('click', () => {
+    if (infoButton) infoButton.click();
+    else inputs.click();
+  });
+  const fix = document.createElement('button');
+  fix.type = 'button';
+  fix.className = 've-v50-run-fix';
+  fix.textContent = 'Fix';
+  fix.addEventListener('click', () => {
+    if (quickFix && !quickFix.hidden) quickFix.click();
+    else if (inner.getReadiness().delayState === 'recommendation') use.click();
+    else inputs.click();
+  });
+  chips.append(inputs, delay, grab, use, info, blocker, fix);
   if (runButton) actionbar.insertBefore(chips, runButton);
   else actionbar.append(chips);
 
@@ -77,6 +108,17 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     }
 
     grab.disabled = !semanticGrab || semanticGrab.disabled || state.pending;
+    use.hidden = state.delayState !== 'recommendation';
+    use.disabled = !semanticUse || semanticUse.disabled || state.pending;
+    const firstBlocker = state.blockers[0];
+    blocker.textContent = state.active && firstBlocker ? firstBlocker.message : '';
+    blocker.hidden = !blocker.textContent;
+    info.hidden = !blocker.textContent;
+    fix.hidden = !blocker.textContent;
+    fix.disabled = state.pending;
+    fix.title = state.delayState === 'recommendation'
+      ? 'Activate the recommended Lambda Delay table'
+      : 'Go to the first unresolved input';
   };
 
   inner.onReadinessChange(sync);
