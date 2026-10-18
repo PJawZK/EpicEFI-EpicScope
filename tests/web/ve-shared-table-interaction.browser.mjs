@@ -99,6 +99,15 @@ export async function runVeSharedTableInteractionChecks() {
     targetActions.querySelector('.ve-v50-table-flip').click(); await settle();
     assert(!root.querySelector('[data-ve-analyzer="ve-table-view"]').closest('.ve-workbench-panel').hidden,
       'Returning to VE did not restore VE table');
+    const splitToggle = root.querySelector('.ve-v50-table-actions button[aria-label="Toggle VE and Target split view"]');
+    splitToggle.click(); await settle();
+    assert(layoutSelect.value === 'side-by-side', 'Split toggle failed to activate side-by-side mode');
+    assert(targetPanel.querySelector(':scope > header .ve-v50-table-actions')
+      && targetPanel.querySelector(':scope > header .ve-v50-target-host')
+      && targetPanel.querySelector(':scope > header button[aria-label="Cell Evidence"]'),
+      'Split mode does not keep Target, mode and Evidence controls in Target header');
+    splitToggle.click(); await settle();
+    assert(layoutSelect.value === 'single', 'Split toggle failed to return to single mode');
     checks.push('Target preserves dropdown, split and return actions without a duplicate edit toolbar');
 
     const fileInput = root.querySelector('[data-ve-analyzer="load-delay-file"]');
