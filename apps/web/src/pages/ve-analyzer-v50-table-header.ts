@@ -144,7 +144,9 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     // The visible production panel is authoritative. v7 can change its panel
     // visibility before ARIA tab state settles, especially on programmatic tabs.
     const targetActive = !split && Boolean(targetPanel && !targetPanel.hidden);
-    const activeHeader = targetActive ? targetHeader : veHeader;
+    // All layout/navigation controls live in the Target header in both modes.
+    // The VE edit toolbar and Result View remain in VE's header.
+    const activeHeader = targetHeader ?? veHeader;
     if (activeHeader && actions.parentElement !== activeHeader) activeHeader.append(actions);
 
     const veEntry = veSelect?.selectedOptions[0]?.textContent?.trim() || veSelect?.value || 'VE';
@@ -167,7 +169,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     targetHost.hidden = !targetSelect;
     // Target does not yet own a mutable table surface. Do not bind VE edits to Target.
     toolbarHost.hidden = targetActive || !sharedToolbar;
-    evidenceButton.hidden = targetActive || !root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
+    evidenceButton.hidden = !root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]');
     flipButton.hidden = Boolean(split);
     flipButton.textContent = targetActive ? '← VE Table' : `${targetName} →`;
     splitButton.setAttribute('aria-pressed', split ? 'true' : 'false');
