@@ -107,8 +107,9 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   });
 
   // Present one visible Cell Evidence action; the toolbar's semantic button stays hidden visually.
-  actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
-  veHeader.append(actions);
+  actions.append(toolbarHost, targetHost, splitButton, evidenceButton, flipButton);
+  veHeader.append(resultHost);
+  (targetHeader ?? veHeader).append(actions);
 
   let active = true;
   const scheduleSync = (): void => {
@@ -124,8 +125,9 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     // Restore these original instances, not replacements: they retain the
     // same listeners and semantic select authority.
     if (resultView && resultView.parentElement !== resultHost) resultHost.append(resultView);
+    if (resultHost.parentElement !== veHeader) veHeader.append(resultHost);
     if (!actions.contains(splitButton) || !actions.contains(evidenceButton) || !actions.contains(flipButton)) {
-      actions.append(toolbarHost, resultHost, targetHost, splitButton, evidenceButton, flipButton);
+      actions.append(toolbarHost, targetHost, splitButton, evidenceButton, flipButton);
     }
     const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
     // Keep the shared edit toolbar attached to its VE panel's stable header;
