@@ -223,7 +223,7 @@ export function mountAppShell(root: HTMLElement): void {
       <button type="button" class="workspace-undo" disabled title="Undo workspace change">↶</button>
       <button type="button" class="workspace-redo" disabled title="Redo workspace change">↷</button>
       <div class="settings-wrap">
-        <button type="button" class="settings-button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false">⚙</button>
+        <button type="button" class="settings-button" aria-label="Open EpicScope menu and settings" title="Menu and settings" aria-haspopup="dialog" aria-expanded="false">☰</button>
         <div class="settings-popover" role="dialog" aria-label="EpicScope settings" hidden>
           <div class="settings-popover-head">
             <strong>Settings</strong>
