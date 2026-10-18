@@ -210,3 +210,11 @@
   background-color: #101d28;
   color: #dbe8ef;
 }
+
+.ve-v50-evidence-hint {
+  font-size: 10px;
+  color: #ffdb86;
+  white-space: nowrap;
+  align-self: center;
+}
+.ve-v50-evidence-hint[hidden] { display: none !important; }
