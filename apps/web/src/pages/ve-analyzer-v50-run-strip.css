@@ -83,3 +83,17 @@
 .ve-v50-run-info:hover,
 .ve-v50-run-fix:hover { border-color: #3982b3; }
 .ve-v50-run-chips > [hidden] { display: none !important; }
+
+.ve-v50-save-proposal {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #344450;
+  border-radius: 4px;
+  background: #17212a;
+  color: #81929d;
+  font-size: 10px;
+  opacity: .55;
+  cursor: not-allowed;
+  white-space: nowrap;
+}
