@@ -235,3 +235,21 @@
 /* The moving Brush footprint is rendered by ve-table-brush-overlay.ts.
  * data-table-brush-preview remains interaction bookkeeping only; do not attach
  * visual cell rules here or pointer motion will invalidate table-cell paint. */
+/* Baseline delta is glyph-local: keep the heatmap visible while surrounding
+ * blue/red numbers with a narrow dark halo for contrast at every map hue. */
+.ve-v50-port .ve-workbench-table td[data-table-value-state='lower'],
+.ve-v50-port .ve-delay-table td[data-table-value-state='lower'],
+.ve-v50-port .ve-workbench-table td[data-table-value-state='higher'],
+.ve-v50-port .ve-delay-table td[data-table-value-state='higher'] {
+  text-shadow: -1px -1px 0 #071018, 1px -1px 0 #071018,
+               -1px 1px 0 #071018, 1px 1px 0 #071018,
+               0 0 2px #071018;
+}
+/* Marker hues are fixed, independent of VE heatmap level and delta text.
+ * Pinned status stays symbol-only with no additional cell border. */
+.ve-v50-port .ve-workbench-table td[data-table-pinned='true']::before,
+.ve-v50-port .ve-delay-table td[data-table-pinned='true']::before {
+  color: #69e8fa !important;
+  text-shadow: 0 0 1px #061016, 1px 1px 1px #061016;
+  font-size: 8px;
+}
