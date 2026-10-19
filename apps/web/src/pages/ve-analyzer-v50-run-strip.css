@@ -118,8 +118,77 @@
 }
 .ve-v50-port > .ve-v50-operation-status[data-state='idle'] { display: none; }
 .ve-v50-port > .ve-v50-operation-status[data-state='pending'] { border-color: #3479ae; }
-.ve-v50-port > .ve-v50-operation-status[data-state='success'] { border-color: #235f48; }
+.ve-v50-port > .ve-v50-operation-status[data-state='success'] { display: none; }
 .ve-v50-port > .ve-v50-operation-status[data-state='error'] {
   border-color: #b65c5c;
   color: #ffd4d4;
+}
+
+/* Completed analysis replaces the redundant success band with a reviewable
+ * summary. Pending/error/cancelled stage feedback is still displayed. */
+.ve-v50-port .ve-v50-summary-action[hidden],
+.ve-v50-port .ve-v50-completion-dialog[hidden] { display: none !important; }
+.ve-v50-completion-dialog {
+  position: fixed;
+  z-index: 125;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 64px);
+  border: 1px solid #3a5e71;
+  border-radius: 6px;
+  background: #0c1d27;
+  color: #dceaf1;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .65);
+}
+.ve-v50-completion-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2b4655;
+  font-size: 14px;
+}
+.ve-v50-completion-rows {
+  overflow: auto;
+  min-height: 0;
+  padding: 10px 12px;
+}
+.ve-v50-completion-rows > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.ve-v50-completion-rows span { color: #91aab8; }
+.ve-v50-completion-rows strong { overflow-wrap: anywhere; font-weight: 650; }
+.ve-v50-completion-dialog > footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-top: 1px solid #2b4655;
+}
+.ve-v50-completion-dialog button {
+  min-height: 31px;
+  padding: 0 12px;
+  border: 1px solid #38596b;
+  border-radius: 4px;
+  background: #112530;
+  color: #dceaf1;
+  cursor: pointer;
+}
+.ve-v50-completion-dialog .ve-v50-completion-view {
+  background: #075076;
+  border-color: #0d709f;
+}
+.ve-v50-completion-dialog .ve-v50-completion-x {
+  width: 29px;
+  padding: 0;
+  font-size: 20px;
 }
