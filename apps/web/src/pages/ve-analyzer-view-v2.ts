@@ -326,6 +326,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const setStage = (state: 'idle' | 'pending' | 'success' | 'error' | 'cancelled', message: string): void => {
     stageText.dataset.state = state;
     stageText.textContent = message;
+    root.dispatchEvent(new CustomEvent('ve-analysis-stage-changed', { detail: { state } }));
   };
   const runButton = root.querySelector<HTMLButtonElement>('.ve-workbench-run')!;
   const cancelButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="cancel-analysis"]')!;
@@ -999,13 +1000,15 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTuneTables();
       const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
       const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length; const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length; const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length; const delayCounts = cachedDelayTableCounts(workingDelayTable);
-      renderSummary([
+      const analysisSummaryRows: readonly [string, string][] = [
         ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${workingDelayTable.origin === 'saved-file' ? 'Saved file' : 'Current-log table'} · ${delayCounts.measured} measured · ${delayCounts.interpolated} interpolated · ${delayCounts.userEdited} user edited`],
         ['Fuel correction source', correctionSource], ['Fuel correction handling', correctionAssessment.applicable ? 'Compensated · percent fuel applied' : 'Context only'], ['Fuel correction samples', result.fuelCorrectionCompensated ? `${result.fuelCorrectionCompensatedSampleCount.toLocaleString()} compensated · ${result.fuelCorrectionUnavailableSampleCount.toLocaleString()} unavailable` : 'Not applied'],
         ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()],
         ['Evidence estimator', 'Weighted median · P10/P90 spread'], ['Evidence confidence', `${strongEvidenceCells} strong · ${moderateEvidenceCells} moderate · ${limitedEvidenceCells} limited`], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
-      ]);
-      setStage('success', correctionAssessment.applicable ? 'Guarded VE proposal calculated with per-operating-point delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged.' : 'Guarded VE proposal calculated with per-operating-point delay alignment. Original MSQ values remain unchanged.');
+      ];
+      renderSummary(analysisSummaryRows);
+      setStage('success', 'VE analysis complete.');
+      root.dispatchEvent(new CustomEvent('ve-analysis-complete', { detail: { rows: analysisSummaryRows } }));
       empty.hidden = true; content.hidden = false;
     } catch (error) {
       if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
