@@ -15,14 +15,13 @@ import { projectVeTable } from '../../apps/web/src/pages/ve-analyzer-table-proje
 
 /** Literal/rational reference results are derived in docs/VE_V50_NUMERICAL_AUDIT.md.
  * This file is shared with the real-browser probe; it has no Vitest/DOM dependency.
- * Known issues assert the intended mathematical boundary, not today's bad output.
+ * N-prefixed cases retain the Group 3 defect IDs as ordinary corrected regressions.
  */
 export interface VeNumericalReference {
   readonly id: string;
   readonly title: string;
   readonly expected: unknown;
   readonly run: () => unknown | Promise<unknown>;
-  readonly knownIssue?: string;
 }
 
 function range(values: readonly number[], times?: readonly number[], startSampleIndex = 0): NumericChannelRange {
@@ -210,29 +209,35 @@ const references: VeNumericalReference[] = [
     const r = buildVeEvidenceMap(i, { minimumStableDurationMs: 300 });
     return [r.invalidSampleCount, r.eligibleSampleCount, [...r.cells[0]!.sampleIndices]];
   } },
+  { id: 'R43', title: 'Selected accounting remains correct above 320k continuous valid observations', expected: [1, 0, 1, 1.1, 1], run: async () => {
+    const count = 320459, input = inputs(count);
+    const r = await buildVeEvidenceMapWithDelayTableAsync({ ...input, sampleIndices: [count - 1], delayTable: delay([100], [1000]) },
+      { minimumStableDurationMs: 0 }, { yieldControl: async () => {} });
+    return [r.inputSampleCount, r.delayUnavailableSampleCount, r.contributingSampleCount, r.cells[0]!.correctionRatio, input.actualMixture.validity[0]];
+  } },
   { id: 'N01', title: 'An exact sparse delay node must not depend on a zero-weight neighbor', expected: 200,
-    knownIssue: 'interpolateVeDelayTable requires unused bracket corners at an exact interior node', run: () => interpolateVeDelayTable(delay([100, 200, undefined], [1000, 2000, 3000]), 2000, 50) },
+    run: () => interpolateVeDelayTable(delay([100, 200, undefined], [1000, 2000, 3000]), 2000, 50) },
   { id: 'N02', title: 'Unavailable engine-point delay must withhold rather than retain observed-point delay', expected: [0, 2],
-    knownIssue: 'delay refinement silently retains the observed-point delay when refined lookup is unavailable', run: () => {
+    run: () => {
       const i = inputs(2, 14); const r = buildVeEvidenceMapWithDelayTable({ ...i, rpm: range([1000, 2000]), veRpmBins: [1000, 2000],
         target: { ...i.target, rpmBins: [1000, 2000], cols: 2, values: [14, 14] }, delayTable: delay([undefined, 100, 100], [1000, 2000, 3000]) }, { minimumStableDurationMs: 0 });
       return [r.contributingSampleCount, r.delayUnavailableSampleCount];
     } },
   { id: 'N03', title: 'Timestamp alignment must preserve the observation array sample-index origin', expected: 2,
-    knownIssue: 'aligned RPM/load arrays inherit the input engine range startSampleIndex instead of the actual-mixture origin', run: () => {
+    run: () => {
       const i = inputs(2, 14); const r = buildVeEvidenceMapWithDelayTable({ ...i, actualMixture: range([14, 14], [100, 200], 10),
         rpm: range([1000, 1000, 1000], [0, 100, 200]), load: range([50, 50, 50], [0, 100, 200]), delayTable: delay([0], [1000]) }, { minimumStableDurationMs: 0 });
       return r.contributingSampleCount;
     } },
   { id: 'N05', title: 'Delay-unavailable counts must be restricted to the selected input samples', expected: [1, 0, 1],
-    knownIssue: 'delay alignment counts unavailable observations outside the selected sample set', run: () => {
+    run: () => {
       const r = buildVeEvidenceMapWithDelayTable({ ...inputs(3, 14), sampleIndices: [2], delayTable: delay([100], [1000]) }, { minimumStableDurationMs: 0 });
       return [r.inputSampleCount, r.delayUnavailableSampleCount, r.contributingSampleCount];
     } },
 ];
 for (const [id, axes] of [['N04a', [3000, 2000, 1000]], ['N04b', [1000, 1000, 3000]], ['N04c', [1000, 3000, 2000]]] as const) {
   references.push({ id, title: 'Saved delay axes must be strictly increasing: ' + axes.join(','), expected: 'rejected',
-    knownIssue: 'saved-delay parser accepts axes incompatible with ascending binary lookup', run: () => {
+    run: () => {
       try { parseVeDelayTableFile(serializeVeDelayTable(delay([100, 200, 300], axes))); return 'accepted'; }
       catch { return 'rejected'; }
     } });

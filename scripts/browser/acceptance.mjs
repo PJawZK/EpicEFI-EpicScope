@@ -54,6 +54,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  const lifecycle=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-analyzer-lifecycle.browser.mjs');return m.runVeAnalyzerLifecycleChecks();})()`,60000);
  log('lifecycle checks',{result:lifecycle});await record('lifecycle-result.json',lifecycle);
  await record('ve-editing-retention.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-editing-retention.browser.mjs');return m.runVeEditingRetentionChecks();})()`,60000));
+ await record('ve-numerical-boundaries.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-numerical-boundaries.browser.mjs');return m.runVeNumericalBoundaryChecks();})()`,60000));
  const contexts=await evaluate(`(async()=>{const m=await import('${moduleBase}logger-analysis-context.browser.mjs');return m.runLoggerAnalysisContextChecks();})()`,60000);
  log('context checks',{result:contexts});await record('context-result.json',contexts);
  const activity=await evaluate(`(async()=>{const m=await import('${moduleBase}analyzer-activity.browser.mjs');return m.runAnalyzerActivityChecks();})()`,60000);

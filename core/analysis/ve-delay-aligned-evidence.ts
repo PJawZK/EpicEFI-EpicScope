@@ -1,3 +1,4 @@
+import { veAnalysisAxisIssue } from './ve-axis-validation';
 import { VE_ANALYSIS_BATCH_SIZE, finishVeAnalysis, runVeAnalysis, type VeAnalysisSteps, type VeAnalysisWorkOptions } from './ve-analysis-work';
 import type { NumericChannelRange } from '../log-model/log-types';
 import {
@@ -18,17 +19,16 @@ export interface VeDelayAlignedEvidenceResult extends VeEvidenceMapResult {
 }
 
 function alignedRange(
-  source: NumericChannelRange,
+  startSampleIndex: number,
   values: Float64Array,
   validity: Uint8Array,
   timeMs: Float64Array,
 ): NumericChannelRange {
   return {
-    ...source,
+    startSampleIndex,
     values,
     validity,
     timeMs,
-    ...(source.quality ? { quality: new Uint8Array(source.quality) } : {}),
   };
 }
 
@@ -51,6 +51,10 @@ export function buildVeEvidenceMapWithDelayTableAsync(inputs: VeDelayAlignedEvid
 }
 
 function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs, config: Omit<VeEvidenceConfig, 'delayMs'>, cooperative = false): VeAnalysisSteps<VeDelayAlignedEvidenceResult> {
+  for (const [name, axis] of [['Delay RPM', inputs.delayTable.rpmBins], ['Delay load', inputs.delayTable.loadBins]] as const) {
+    const issue = veAnalysisAxisIssue(axis);
+    if (issue) throw new RangeError(`${name}: ${issue}`);
+  }
   const length = inputs.actualMixture.values.length;
   const actualValues = new Float64Array(inputs.actualMixture.values);
   const actualValidity = new Uint8Array(inputs.actualMixture.validity);
@@ -64,16 +68,17 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
   let delayUnavailableSampleCount = 0;
 
   const unavailable = (local: number): void => {
-    if (actualValidity[local] === 1) delayUnavailableSampleCount += 1;
+    if (!inputs.sampleIndices && actualValidity[local] === 1) delayUnavailableSampleCount += 1;
     actualValidity[local] = 0;
   };
 
   for (let local = 0; local < length; local += 1) {
     if (local % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Aligning mixture delay', completed: local, total: length };
-    if (actualValidity[local] !== 1) continue;
+    // Preserve invalid-observation classification before testing delay support.
+    // A zero/nonfinite mixture or timestamp is not missing engine history.
+    if (actualValidity[local] !== 1 || !(actualValues[local]! > 0) || !Number.isFinite(actualValues[local])) continue;
     const mixtureTimeMs = inputs.actualMixture.timeMs[local];
     if (mixtureTimeMs === undefined || !Number.isFinite(mixtureTimeMs)) {
-      unavailable(local);
       continue;
     }
 
@@ -100,12 +105,23 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
 
     // Refine once using the operating point associated with the delayed engine event.
     const refinedDelayMs = interpolateVeDelayTable(inputs.delayTable, rpm, load);
-    if (refinedDelayMs !== undefined && Number.isFinite(refinedDelayMs) && refinedDelayMs >= 0 && Math.abs(refinedDelayMs - delayMs) > 0.5) {
+    if (refinedDelayMs === undefined || !Number.isFinite(refinedDelayMs) || refinedDelayMs < 0) {
+      unavailable(local);
+      continue;
+    }
+    if (Math.abs(refinedDelayMs - delayMs) > 0.5) {
       delayMs = refinedDelayMs;
       engineTimeMs = mixtureTimeMs - delayMs;
       rpm = interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs);
       load = interpolateNumericRangeAtTime(inputs.load, engineTimeMs);
       if (rpm === undefined || load === undefined) {
+        unavailable(local);
+        continue;
+      }
+      // Verify availability at the final engine point without adding another
+      // refinement iteration or substituting a delay from a different point.
+      const finalDelayMs = interpolateVeDelayTable(inputs.delayTable, rpm, load);
+      if (finalDelayMs === undefined || !Number.isFinite(finalDelayMs) || finalDelayMs < 0) {
         unavailable(local);
         continue;
       }
@@ -126,11 +142,25 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
     }
   }
 
-  const actualMixture = alignedRange(inputs.actualMixture, actualValues, actualValidity, alignedTimes);
-  const rpm = alignedRange(inputs.rpm, rpmValues, rpmValidity, alignedTimes);
-  const load = alignedRange(inputs.load, loadValues, loadValidity, alignedTimes);
+  // Count in the same selected observation geometry/multiplicity as the base
+  // evidence builder. Invalid/out-of-range selections remain its responsibility.
+  const selectedCount = inputs.sampleIndices?.length ?? 0;
+  const origin = inputs.actualMixture.startSampleIndex;
+  for (let position = 0; position < selectedCount; position += 1) {
+    if (position % VE_ANALYSIS_BATCH_SIZE === 0) yield { phase: 'Counting unavailable delay', completed: position, total: selectedCount };
+    const index = inputs.sampleIndices![position]!;
+    const local = index - origin;
+    if (Number.isSafeInteger(index) && local >= 0 && local < length
+      && inputs.actualMixture.validity[local] === 1 && actualValidity[local] === 0) delayUnavailableSampleCount += 1;
+  }
+
+  // Derived arrays share the observation origin. Raw-source quality/statistics
+  // and envelope metadata no longer describe these values and must not escape.
+  const actualMixture = alignedRange(origin, actualValues, actualValidity, alignedTimes);
+  const rpm = alignedRange(origin, rpmValues, rpmValidity, alignedTimes);
+  const load = alignedRange(origin, loadValues, loadValidity, alignedTimes);
   const fuelCorrectionPercent = inputs.fuelCorrectionPercent && correctionValues && correctionValidity
-    ? alignedRange(inputs.fuelCorrectionPercent, correctionValues, correctionValidity, alignedTimes)
+    ? alignedRange(origin, correctionValues, correctionValidity, alignedTimes)
     : undefined;
 
   const base = yield* buildVeEvidenceMapSteps({

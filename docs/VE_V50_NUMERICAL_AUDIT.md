@@ -4,6 +4,8 @@ Audit date: 2026-10-19. Base: `74e9342d90f1003e224e418dd12c11caf2134a0f`, branch
 
 This is the independent reference/audit checkpoint of the new ten-group plan. It does not implement Group 4 corrections or claim that every mathematical boundary is correct. Application code, analysis algorithms, model ownership, editing behavior and production listeners/observers remain unchanged. The durable additions are a shared numerical fixture, unit references and this ledger.
 
+> Historical Group 3 snapshot: Group 4 has since corrected N01–N05 and B01. See [Group 4 corrections](VE_V50_GROUP4_CORRECTIONS.md). The original expected-failure counts below describe the audit checkpoint; the current reference suite uses ordinary passing regressions.
+
 ## Reference method and scope
 
 `tests/fixtures/ve-numerical-references.ts` supplies explicit inputs and independently calculated expected outputs. `tests/analysis/ve-numerical-reference.test.ts` executes them. The same fixture executes through Vite in real Chromium in normal and Worker-disabled contexts; an external probe also mounts the production controller chain for B01/B02. Small numerical tolerances cover floating-point evaluation, not material differences. No rendered UI text supplies analytical input.

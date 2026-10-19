@@ -15,10 +15,7 @@ function matches(actual: unknown, expected: unknown): void {
 
 describe('VE v50 independent numerical reference ledger', () => {
   for (const reference of VE_NUMERICAL_REFERENCES) {
-    // Explicit expected failures keep known mathematical discrepancies visible.
-    // Group 4 must remove .fails only after correcting the owner and validating.
-    const test = reference.knownIssue ? it.fails : it;
-    test(`${reference.id}: ${reference.title}${reference.knownIssue ? ' [KNOWN ISSUE: ' + reference.knownIssue + ']' : ''}`, async () => {
+    it(`${reference.id}: ${reference.title}`, async () => {
       matches(await reference.run(), reference.expected);
     });
   }

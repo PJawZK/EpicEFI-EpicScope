@@ -1,3 +1,4 @@
+import { veAnalysisAxisIssue } from '../../../../core/analysis/ve-axis-validation';
 import { registerVeDelayPresentationOwner } from './ve-analyzer-delay-presentation-owner';
 import { projectVeTable, publishVeTableProjection, veSourceHeatLevel } from './ve-analyzer-table-projection';
 import { createOwnerEvidence, rejectOwnerCompletion } from '../observability/producers/owner';
@@ -706,7 +707,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const renderDelayDiscovery = (): void => {
     delayResponseLabel.textContent = `${displayScale(selectedScale())} response Δ threshold`;
     const actual = roleSelect('actual')?.value; const fuel = roleSelect('fuelCommand')?.value;
-    grabDelayButton.disabled = !actual || !fuel || !delaySettingsValid();
+    const axisIssue = veAnalysisAxisIssue(axisValues(tuneModel, select('rpm-axis')?.value ?? ''))
+      ?? veAnalysisAxisIssue(axisValues(tuneModel, select('load-axis')?.value ?? ''));
+    grabDelayButton.disabled = !actual || !fuel || !delaySettingsValid() || Boolean(axisIssue);
+    grabDelayButton.title = axisIssue ? `Fix VE delay geometry: ${axisIssue}` : '';
     const recommendationCounts = cachedDelayTableCounts(delayRecommendation);
     const workingCounts = cachedDelayTableCounts(workingDelayTable);
     delayHost.dataset.mode = workingDelayTable ? 'working' : delayRecommendation ? 'recommendation' : 'none';
@@ -718,6 +722,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       delayResultText.textContent = workingDelayTable
         ? `${workingDelayTable.origin === 'saved-file' ? `Loaded saved table${workingDelayTable.originLabel ? ` · ${workingDelayTable.originLabel}` : ''}` : 'Working table from current-log recommendation'} · ${workingCounts.userEdited} user-edited cells. You can still Grab lambda delays from log to compare fresh evidence without replacing this working table.`
         : fuel ? 'Discover from the current log or Load saved table. Discovery never replaces working authority until Use recommendation is pressed.' : 'Select a fuel-command / injector-PW source under Advanced inputs before current-log delay discovery, or load a saved table.';
+      if (axisIssue) delayResultText.textContent = `${workingDelayTable ? 'Working delay table retained. ' : ''}Current-log discovery unavailable: ${axisIssue} You can load a valid saved table separately.`;
       return;
     }
     delayResultTitle.textContent = `Current-log recommendation · ${recommendationCounts.measured} measured · ${recommendationCounts.interpolated} interpolated · ${recommendationCounts.insufficient} insufficient · ${recommendationCounts.userEdited} user edited`;
@@ -833,8 +838,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     for (const [role, label] of [['ve-table', 'MSQ VE table'], ['rpm-axis', 'VE RPM axis'], ['load-axis', 'VE load axis'], ['target-table', 'MSQ target mixture table'], ['target-rpm-axis', 'Target RPM axis'], ['target-load-axis', 'Target load axis']] as const) {
       const control = select(role);
       const values = role === 've-table' || role === 'target-table' ? tableEntry(tuneModel, control?.value ?? '')?.numericValues : axisValues(tuneModel, control?.value ?? '');
-      const valid = Boolean(values?.length);
-      add(role, label, 'Tune geometry', true, selectedText(control), valid ? 'Resolved' : 'Missing', valid, `[data-role="${role}"]`);
+      const axis = role.endsWith('axis');
+      const issue = axis ? veAnalysisAxisIssue(values) : undefined;
+      const valid = Boolean(values?.length) && !issue;
+      add(role, label, 'Tune geometry', true, selectedText(control), valid ? 'Resolved' : issue ?? 'Missing', valid, `[data-role="${role}"]`, issue ? `${label}: ${issue}` : undefined);
     }
     const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined;
     add('scope', 'Analysis scope', 'Log selection', true, selectedText(select('scope')), scope ? 'Resolved' : 'Missing', Boolean(scope), '[data-role="scope"]');

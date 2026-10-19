@@ -1,3 +1,4 @@
+import { veAnalysisAxisIssue } from './ve-axis-validation';
 import type {
   VeDelayConfidence,
   VeDelaySourceEvent,
@@ -127,6 +128,10 @@ export function parseVeDelayTableFile(text: string, fileLabel?: string): VeDelay
 
   const rpmBins = finiteArray(source.rpmBins, 'rpmBins');
   const loadBins = finiteArray(source.loadBins, 'loadBins');
+  for (const [name, values] of [['rpmBins', rpmBins], ['loadBins', loadBins]] as const) {
+    const issue = veAnalysisAxisIssue(values);
+    if (issue) throw new Error(`${name}: ${issue}`);
+  }
   const rows = source.rows;
   const cols = source.cols;
   if (typeof rows !== 'number' || typeof cols !== 'number' || !Number.isInteger(rows) || !Number.isInteger(cols) || rows !== loadBins.length || cols !== rpmBins.length) {
