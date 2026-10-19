@@ -41,6 +41,80 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   }
 
 
+  // The analysis owner publishes structured, read-only completion rows. Do not
+  // derive proposal semantics by parsing visible table cells or summary DOM.
+  const dialog = document.createElement('section');
+  dialog.className = 've-v50-completion-dialog';
+  dialog.hidden = true;
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-label', 'VE Analysis Complete');
+  const dialogHeading = document.createElement('strong');
+  dialogHeading.textContent = 'VE Analysis Complete';
+  const closeIcon = document.createElement('button');
+  closeIcon.type = 'button';
+  closeIcon.className = 've-v50-completion-x';
+  closeIcon.textContent = '×';
+  closeIcon.setAttribute('aria-label', 'Close analysis summary');
+  const dialogHead = document.createElement('header');
+  dialogHead.append(dialogHeading, closeIcon);
+  const dialogRows = document.createElement('div');
+  dialogRows.className = 've-v50-completion-rows';
+  const closeAction = document.createElement('button');
+  closeAction.type = 'button';
+  closeAction.textContent = 'Close';
+  const viewAction = document.createElement('button');
+  viewAction.type = 'button';
+  viewAction.textContent = 'View Proposal';
+  viewAction.className = 've-v50-completion-view';
+  const dialogFoot = document.createElement('footer');
+  dialogFoot.append(closeAction, viewAction);
+  dialog.append(dialogHead, dialogRows, dialogFoot);
+  const summaryAction = document.createElement('button');
+  summaryAction.type = 'button';
+  summaryAction.className = 've-v50-status-chip ve-v50-summary-action';
+  summaryAction.textContent = 'Summary';
+  summaryAction.hidden = true;
+  let completedRows: readonly [string, string][] | undefined;
+  const dismissSummary = (): void => { dialog.hidden = true; };
+  const showSummary = (): void => {
+    if (!completedRows || disposed || !active) return;
+    dialog.hidden = false;
+    closeIcon.focus();
+  };
+  for (const button of [closeIcon, closeAction, viewAction]) {
+    button.addEventListener('click', dismissSummary, { signal: events.signal });
+  }
+  summaryAction.addEventListener('click', showSummary, { signal: events.signal });
+  root.addEventListener('ve-analysis-complete', (event) => {
+    if (disposed) return;
+    const rows = (event as CustomEvent<{ rows: readonly [string, string][] }>).detail.rows;
+    completedRows = rows.map(([label, value]) => [label, value]);
+    dialogRows.replaceChildren(...completedRows.map(([label, value]) => {
+      const row = document.createElement('div');
+      const key = document.createElement('span');
+      key.textContent = label;
+      const text = document.createElement('strong');
+      text.textContent = value;
+      row.append(key, text);
+      return row;
+    }));
+    summaryAction.hidden = false;
+    showSummary();
+  }, { signal: events.signal });
+  root.addEventListener('ve-analysis-stage-changed', (event) => {
+    const state = (event as CustomEvent<{ state: string }>).detail.state;
+    if (state === 'success') return;
+    dismissSummary();
+    if (state !== 'pending' && state !== 'idle') return;
+    completedRows = undefined;
+    summaryAction.hidden = true;
+  }, { signal: events.signal });
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); dismissSummary(); }
+  }, { signal: events.signal });
+  root.append(dialog);
+
   const chips = document.createElement('div');
   chips.className = 've-v50-run-chips';
 
@@ -103,7 +177,7 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
       else inputs.click();
     }
   }, { signal: events.signal });
-  chips.append(inputs, delay, grab, use, info, blocker, fix);
+  chips.append(inputs, delay, grab, use, summaryAction, info, blocker, fix);
   if (runButton) {
     const save = document.createElement('button');
     save.type = 'button';
@@ -180,11 +254,13 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
       if (disposed) return;
       disposed = true;
       events.abort();
+      dialog.remove();
       active = false; unsubscribeReadiness();
       inner.dispose();
     },
     setActive(nextActive) { if (disposed) return;
       active = nextActive;
+      if (!nextActive) dismissSummary();
       inner.setActive(nextActive);
       if (nextActive) scheduleSync();
     },
