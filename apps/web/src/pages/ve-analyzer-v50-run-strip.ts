@@ -82,9 +82,17 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     dialog.hidden = false;
     closeIcon.focus();
   };
-  for (const button of [closeIcon, closeAction, viewAction]) {
+  for (const button of [closeIcon, closeAction]) {
     button.addEventListener('click', dismissSummary, { signal: events.signal });
   }
+  viewAction.addEventListener('click', () => {
+    const resultView = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer result view"]');
+    if (resultView && resultView.value !== 'proposal') {
+      resultView.value = 'proposal';
+      resultView.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    dismissSummary();
+  }, { signal: events.signal });
   summaryAction.addEventListener('click', showSummary, { signal: events.signal });
   root.addEventListener('ve-analysis-complete', (event) => {
     if (disposed) return;
