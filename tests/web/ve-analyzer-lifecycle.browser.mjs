@@ -1,3 +1,4 @@
+import { assertVeCompletion } from './ve-completion-contract.browser.mjs';
 import { veDelayEditOwner } from '../../apps/web/src/pages/ve-analyzer-delay-edit-owner';
 import { focusVeReadinessTarget } from '../../apps/web/src/pages/ve-analyzer-readiness';
 // Browser regression module: with Vite running, import this file through its /@fs/ URL
@@ -440,8 +441,8 @@ export async function runVeAnalyzerLifecycleChecks() {
       const retry = s.hold(); s.run(); await settle();
       assert(stage.dataset.state === 'pending' && !stage.textContent.includes('Controlled source read failure'), 'Retry retained stale error status');
       retry.resolve(traces); await completed(s); await settle();
-      assert(stage.dataset.state === 'success' && statusVisible(stage) && stage.textContent.startsWith('Guarded'),
-        'Successful retry did not replace the operation error visibly');
+      assertVeCompletion(s.root, s.view);
+      assert(!stage.textContent.includes('Controlled source read failure'), 'Successful retry retained the operation error');
       const minimum = s.root.querySelector('[data-role="min-rpm"]');
       minimum.value = '900'; minimum.dispatchEvent(new Event('change', { bubbles: true })); await settle();
       assert(stage.dataset.state === 'idle' && !statusVisible(stage) && !s.view.getPrimaryAnalysis(),
@@ -496,8 +497,8 @@ export async function runVeAnalyzerLifecycleChecks() {
         }
         await settle();
       }
-      assert(sawProgress && stage.dataset.state === 'success' && statusVisible(stage),
-        'Cached analysis did not expose progress and completion in the visible status');
+      assert(sawProgress, 'Cached analysis did not expose visible calculation progress');
+      assertVeCompletion(s.root, s.view);
     } finally { s.view.setActive(false); s.host.remove(); }
   });
   await check('readiness Fix reveals Advanced, compact setup and Lambda owners before focusing actionable controls', async () => {

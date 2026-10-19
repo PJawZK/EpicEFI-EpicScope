@@ -1,3 +1,4 @@
+import { assertVeCompletion } from './ve-completion-contract.browser.mjs';
 import { prepareMsqCandidate } from '../../apps/web/src/adapters/msq-candidate';
 const assert=(ok,message)=>{if(!ok)throw Error(message);};
 const settle=async()=>{await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));};
@@ -50,7 +51,8 @@ export async function runMsqReplacementChecks(goodSource){
  });
  await check('rejected candidate does not cancel an in-flight VE run',async()=>{
   document.querySelector('.ve-workbench-run').click();pick('bad-during-analysis.msq',async()=>'<msq>');
-  const deadline=performance.now()+30000;while(!document.querySelector('[data-ve-analyzer="stage"]').textContent.startsWith('Guarded')){assert(performance.now()<deadline,'Rejected candidate cancelled active analysis');await settle();}
+  const deadline=performance.now()+30000;while(document.querySelector('[data-ve-analyzer="stage"]').dataset.state!=='success'){assert(performance.now()<deadline,'Rejected candidate cancelled active analysis');await settle();}
+  assertVeCompletion(document.querySelector('.ve-analyzer-view:not([hidden])'));
   assert(button().dataset.loadState==='issue'&&JSON.stringify(snapshot())===JSON.stringify(initial),'Failed candidate changed pending analysis inputs/delay');
   openEvidence([...document.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find(c=>c.title.startsWith('Measured proposal')));await settle();assert(!panel.hidden&&panel.querySelector('.ve-evidence-detail-grid'),'Missing completed evidence after failed candidate');
  });
