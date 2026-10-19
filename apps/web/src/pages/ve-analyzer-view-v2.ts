@@ -1,3 +1,5 @@
+import { registerVeDelayPresentationOwner } from './ve-analyzer-delay-presentation-owner';
+import { projectVeTable, publishVeTableProjection, veSourceHeatLevel } from './ve-analyzer-table-projection';
 import { createOwnerEvidence, rejectOwnerCompletion } from '../observability/producers/owner';
 import type { Origin } from '../observability/record';
 import type { Operation } from '../observability/operation';
@@ -55,6 +57,8 @@ export interface VeAnalyzerViewController {
   getReadiness(): VeReadinessState;
   onReadinessChange(listener: () => void): () => void;
   setActive(active: boolean): void;
+  /** Terminal lifetime boundary; cancels pending authority and releases owned resources. */
+  dispose(): void;
   readonly sessionRevision: number;
   /** Current completed run only; undefined while invalidated or a new run is pending. */
   getPrimaryAnalysis(): VeAnalyzerPrimaryAnalysis | undefined;
@@ -166,12 +170,12 @@ function active(range: NumericChannelRange | undefined, sampleIndex: number): bo
 }
 
 function delayTableCounts(table: VeDelayTable | undefined): { measured: number; interpolated: number; insufficient: number; userEdited: number } {
-  return {
-    measured: table?.cells.filter((cell) => cell.state === 'measured').length ?? 0,
-    interpolated: table?.cells.filter((cell) => cell.state === 'interpolated').length ?? 0,
-    insufficient: table?.cells.filter((cell) => cell.state === 'insufficient').length ?? 0,
-    userEdited: table?.cells.filter((cell) => cell.workingProvenance === 'user-edited').length ?? 0,
-  };
+  const counts = { measured: 0, interpolated: 0, insufficient: 0, userEdited: 0 };
+  for (const cell of table?.cells ?? []) {
+    counts[cell.state] += 1;
+    if (cell.workingProvenance === 'user-edited') counts.userEdited += 1;
+  }
+  return counts;
 }
 
 function downloadText(filename: string, text: string): void {
@@ -187,6 +191,7 @@ function downloadText(filename: string, text: string): void {
 export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
   let context: LoggerAnalysisContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
   let viewActive = true;
+  let disposed = false;
   let pendingContext: LoggerAnalysisContext | undefined;
   let pendingTune: readonly [TuneModel | undefined, string | undefined] | undefined;
   let tuneModel: TuneModel | undefined;
@@ -269,7 +274,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       <label><span>Max VE change %</span><input data-role="max-percent-change" type="number" value="50" min="0"></label>
     </div>
     <div class="specialized-analyzer-guidance ve-mixture-warning" data-ve-analyzer="mixture-warning" hidden><strong>Mixture selection needs attention</strong><span></span></div>
-    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Proposal stage</strong><span data-ve-analyzer="stage">Run Analysis uses the working RPM × load delay table by timestamp, builds VE-node evidence, compensates only explicitly understood fuel corrections, and calculates guarded proposals. The original MSQ remains unchanged.</span></div>
+    <div class="specialized-analyzer-guidance ve-workbench-guidance"><strong>Proposal stage</strong><span data-ve-analyzer="stage" data-state="idle">Run Analysis uses the working RPM × load delay table by timestamp, builds VE-node evidence, compensates only explicitly understood fuel corrections, and calculates guarded proposals. The original MSQ remains unchanged.</span></div>
     <div class="specialized-analyzer-empty"><strong>VE Analyzer needs a loaded log plus valid VE/target tables, axes, primary channels and a working lambda-delay table.</strong><span>Run Analysis is explicit; changing setup invalidates the prior result instead of recomputing automatically.</span></div>
     <div class="specialized-analyzer-content" hidden>
       <div class="specialized-analyzer-summary" data-ve-analyzer="summary"></div>
@@ -318,6 +323,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const warning = root.querySelector<HTMLElement>('[data-ve-analyzer="mixture-warning"]')!;
   const warningText = warning.querySelector<HTMLElement>('span')!;
   const stageText = root.querySelector<HTMLElement>('[data-ve-analyzer="stage"]')!;
+  const setStage = (state: 'idle' | 'pending' | 'success' | 'error' | 'cancelled', message: string): void => {
+    stageText.dataset.state = state;
+    stageText.textContent = message;
+  };
   const runButton = root.querySelector<HTMLButtonElement>('.ve-workbench-run')!;
   const cancelButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="cancel-analysis"]')!;
   const grabDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]')!;
@@ -378,11 +387,6 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     label.append(caption, control); controls.append(label); return control;
   };
 
-  const tableScale = (entry: TuneEntry | undefined): { min: number; max: number } => {
-    const finite = entry?.numericValues?.filter(Number.isFinite) ?? [];
-    return { min: finite.length ? Math.min(...finite) : 0, max: finite.length ? Math.max(...finite) : 1 };
-  };
-
   const evidenceDetail = (cell: VeEvidenceMapResult['cells'][number] | undefined): string => {
     if (!cell || !(cell.totalWeight > 0)) return '';
     const p10 = cell.correctionP10Ratio === undefined ? '—' : formatPercent((cell.correctionP10Ratio - 1) * 100);
@@ -426,8 +430,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   const renderTable = (host: HTMLElement, entry: TuneEntry | undefined, x?: readonly number[], y?: readonly number[], evidence?: VeEvidenceMapResult, proposed?: VeProposalResult, workingValues?: readonly (number | undefined)[]): void => {
     if (!entry?.numericValues) { host.innerHTML = '<div class="ve-workbench-table-empty">No table selected</div>'; return; }
-    const scale = tableScale(entry);
+    const projection = projectVeTable(entry.numericValues, entry.rows, entry.cols, x, y, evidence, proposed);
     const table = document.createElement('table'); table.className = 've-workbench-table';
+    publishVeTableProjection(table, projection);
     const thead = document.createElement('thead'); const head = document.createElement('tr'); const corner = document.createElement('th'); corner.textContent = entry.units ?? ''; head.append(corner);
     for (let col = 0; col < entry.cols; col += 1) { const th = document.createElement('th'); th.textContent = x?.[col] !== undefined ? formatValue(x[col]!, 0) : String(col + 1); head.append(th); }
     thead.append(head);
@@ -435,7 +440,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     for (let row = entry.rows - 1; row >= 0; row -= 1) {
       const tr = document.createElement('tr'); const rowHead = document.createElement('th'); rowHead.textContent = y?.[row] !== undefined ? formatValue(y[row]!, 0) : String(row + 1); tr.append(rowHead);
       for (let col = 0; col < entry.cols; col += 1) {
-        const td = document.createElement('td'); const index = row * entry.cols + col; const current = entry.numericValues[index];
+        const td = document.createElement('td'); const index = row * entry.cols + col; const current = projection.cells[index]?.current;
         td.dataset.veRow = String(row); td.dataset.veCol = String(col);
         td.dataset.tableRow = String(row); td.dataset.tableCol = String(col);
         if (current !== undefined && Number.isFinite(current)) {
@@ -443,7 +448,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           const shown = workingValues ? workingValues[index]
             : proposalCell?.state === 'measured' && proposalCell.proposedValue !== undefined ? proposalCell.proposedValue : current;
           main.textContent = shown === undefined ? '—' : formatValue(shown, entry.digits);
-          td.append(main); td.style.setProperty('--ve-cell-level', scale.min === scale.max ? '0.5' : String(Math.max(0, Math.min(1, (current - scale.min) / (scale.max - scale.min)))));
+          td.append(main); td.style.setProperty('--ve-cell-level', veSourceHeatLevel(projection, current)!);
           const evidenceCell = evidence?.cells[index];
           if (proposalCell && proposalCell.state !== 'no-evidence') {
             const evidenceText = evidenceDetail(evidenceCell);
@@ -490,16 +495,26 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     }
   };
 
+  // Legacy embedded views render eagerly. The v50 tool explicitly claims
+  // visibility at installation; semantic delay authority never depends on it.
+  let delayPresentationVisible = true;
+  let renderedDelay: { generation: number; working: boolean; node: Element | null } | undefined;
   const renderDelayTable = (): void => {
+    if (!viewActive || !delayPresentationVisible) return;
     const tableModel = workingDelayTable ?? delayRecommendation;
+    const working = Boolean(workingDelayTable);
+    if (renderedDelay && renderedDelay.generation === delaySurfaceGeneration && renderedDelay.working === working
+      && renderedDelay.node === delayHost.firstElementChild) return;
+    const rememberRender = (): void => {
+      renderedDelay = { generation: delaySurfaceGeneration, working, node: delayHost.firstElementChild };
+    };
     if (!tableModel) {
       delayHost.innerHTML = '<div class="ve-workbench-table-empty">No delay table calculated or loaded</div>';
-      delayHost.dataset.mode = 'none';
+      rememberRender();
       selectedDelayCell = undefined;
       renderSelectedDelayCell();
       return;
     }
-    delayHost.dataset.mode = workingDelayTable ? 'working' : 'recommendation';
     const table = document.createElement('table'); table.className = 've-workbench-table ve-delay-table';
     const thead = document.createElement('thead'); const header = document.createElement('tr'); const corner = document.createElement('th'); corner.textContent = 'ms'; header.append(corner);
     for (const rpm of tableModel.rpmBins) { const th = document.createElement('th'); th.textContent = formatValue(rpm, 0); header.append(th); }
@@ -531,24 +546,95 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     }
     table.dataset.veLoadOrigin = 'lower-left';
     table.append(thead, tbody); delayHost.replaceChildren(table);
+    rememberRender();
     renderSelectedDelayCell();
   };
 
-  const renderTuneTables = (): void => {
-    ownerEvidence.event('ve.tables.render', { generation: runGeneration, proposed: Boolean(proposal) }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
-    const ve = tableEntry(tuneModel, select('ve-table')?.value ?? ''); const target = tableEntry(tuneModel, select('target-table')?.value ?? '');
-    const review = ensureVeReviewState();
-    renderTable(veHost, ve, axisValues(tuneModel, select('rpm-axis')?.value ?? ''), axisValues(tuneModel, select('load-axis')?.value ?? ''), result, proposal, review?.values);
-    // Shared table interaction is a separate presentation/input owner. Publish a
-    // synchronous render boundary so it can bind the newly replaced VE table
-    // before any same-turn pointer interaction; MutationObserver remains fallback.
+  registerVeDelayPresentationOwner(root, {
+    get visible() { return delayPresentationVisible; },
+    setVisible(visible) {
+      if (disposed) return;
+      if (delayPresentationVisible === visible) return;
+      delayPresentationVisible = visible;
+      if (visible) renderDelayTable();
+      root.dispatchEvent(new CustomEvent('ve-delay-table-visibility-changed'));
+    },
+  });
+
+  let vePresentation: {
+    model: TuneModel | undefined;
+    entry: TuneEntry | undefined;
+    rpmBins: readonly number[] | undefined;
+    loadBins: readonly number[] | undefined;
+    evidence: VeEvidenceMapResult | undefined;
+    proposal: VeProposalResult | undefined;
+    values: readonly (number | undefined)[] | undefined;
+    node: Element | null;
+  } | undefined;
+  const renderVeTable = (): void => {
+    const ve = tableEntry(tuneModel, select('ve-table')?.value ?? '');
+    const rpmBins = axisValues(tuneModel, select('rpm-axis')?.value ?? '');
+    const loadBins = axisValues(tuneModel, select('load-axis')?.value ?? '');
+    const values = ensureVeReviewState()?.values;
+    const sameSource = vePresentation && vePresentation.model === tuneModel && vePresentation.entry === ve
+      && vePresentation.rpmBins === rpmBins && vePresentation.loadBins === loadBins
+      && vePresentation.evidence === result && vePresentation.proposal === proposal
+      && vePresentation.node === veHost.firstElementChild;
+    if (!sameSource) {
+      renderTable(veHost, ve, rpmBins, loadBins, result, proposal, values);
+      ownerEvidence.event('ve.tables.render', { generation: runGeneration, proposed: Boolean(proposal) }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
+    } else if (vePresentation && vePresentation.values !== values && ve) {
+      // Review publication changes values, not geometry or generated evidence.
+      // Preserve cells, focus and the existing source/generated projection.
+      const table = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table');
+      if (table && (!table.dataset.veResultView || table.dataset.veResultView === 'proposal')) {
+        for (const cell of table.querySelectorAll<HTMLTableCellElement>('td[data-ve-row][data-ve-col]')) {
+          const index = Number(cell.dataset.veRow) * ve.cols + Number(cell.dataset.veCol);
+          if (vePresentation.values?.[index] === values?.[index]) continue;
+          const main = cell.querySelector<HTMLElement>(':scope > span');
+          if (!main) continue;
+          const value = values?.[index];
+          main.textContent = value === undefined ? '—' : ve.digits === undefined ? String(value) : value.toFixed(ve.digits);
+          cell.dataset.veResultValue = value === undefined ? '' : String(value);
+          cell.classList.toggle('ve-result-missing', value === undefined);
+        }
+      }
+    }
+    vePresentation = { model: tuneModel, entry: ve, rpmBins, loadBins, evidence: result, proposal, values, node: veHost.firstElementChild };
+    // Refresh interaction authority even when no DOM replacement was needed:
+    // broad semantic revision changes still retire obsolete history/drafts.
     root.dispatchEvent(new CustomEvent('ve-proposal-table-rendered'));
-    renderTable(targetHost, target, axisValues(tuneModel, select('target-rpm-axis')?.value ?? ''), axisValues(tuneModel, select('target-load-axis')?.value ?? ''));
+  };
+
+  // Source Target presentation has no dependency on proposal/review, analysis,
+  // log scope or delay authority. Tune entries and their numeric arrays are
+  // immutable; an accepted replacement model supplies a new render identity.
+  let targetPresentation: {
+    readonly model: TuneModel | undefined;
+    readonly entry: TuneEntry | undefined;
+    readonly rpmBins: readonly number[] | undefined;
+    readonly loadBins: readonly number[] | undefined;
+    readonly node: Element | null;
+  } | undefined;
+  const renderTargetTable = (): void => {
+    const entry = tableEntry(tuneModel, select('target-table')?.value ?? '');
+    const rpmBins = axisValues(tuneModel, select('target-rpm-axis')?.value ?? '');
+    const loadBins = axisValues(tuneModel, select('target-load-axis')?.value ?? '');
+    if (targetPresentation && targetPresentation.model === tuneModel && targetPresentation.entry === entry
+      && targetPresentation.rpmBins === rpmBins && targetPresentation.loadBins === loadBins
+      && targetPresentation.node === targetHost.firstElementChild) return;
+    renderTable(targetHost, entry, rpmBins, loadBins);
+    targetPresentation = { model: tuneModel, entry, rpmBins, loadBins, node: targetHost.firstElementChild };
+  };
+
+  const renderTuneTables = (): void => {
+    renderVeTable();
+    renderTargetTable();
     // Delay rendering belongs to renderDelayDiscovery/readiness.
   };
 
   const applyVeReviewValues = (edits: readonly VeProposalCellValueEdit[]): boolean => {
-    if (!viewActive || pendingContext || pendingTune || edits.length === 0) return false;
+    if (!viewActive || analysisPending || pendingContext || pendingTune || edits.length === 0) return false;
     const state = ensureVeReviewState();
     if (!state) return false;
     const next = [...state.values];
@@ -566,7 +652,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     }
     if (!changed) return false;
     veReviewState = { ...state, values: next, authorityGeneration: ++veReviewAuthorityGeneration };
-    renderTuneTables();
+    renderVeTable();
     return true;
   };
 
@@ -607,12 +693,22 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   const delaySettingsValid = (): boolean => positiveSetting('delay-command-threshold') !== undefined && positiveSetting('delay-response-threshold') !== undefined && positiveSetting('delay-search-window') !== undefined && nonNegativeSetting('delay-event-spacing') !== undefined && positiveSetting('delay-min-events') !== undefined;
 
+  const delayCountCache = new WeakMap<VeDelayTable, ReturnType<typeof delayTableCounts>>();
+  const emptyDelayCounts = delayTableCounts(undefined);
+  const cachedDelayTableCounts = (table: VeDelayTable | undefined): ReturnType<typeof delayTableCounts> => {
+    if (!table) return emptyDelayCounts;
+    let counts = delayCountCache.get(table);
+    if (!counts) { counts = delayTableCounts(table); delayCountCache.set(table, counts); }
+    return counts;
+  };
+
   const renderDelayDiscovery = (): void => {
     delayResponseLabel.textContent = `${displayScale(selectedScale())} response Δ threshold`;
     const actual = roleSelect('actual')?.value; const fuel = roleSelect('fuelCommand')?.value;
     grabDelayButton.disabled = !actual || !fuel || !delaySettingsValid();
-    const recommendationCounts = delayTableCounts(delayRecommendation);
-    const workingCounts = delayTableCounts(workingDelayTable);
+    const recommendationCounts = cachedDelayTableCounts(delayRecommendation);
+    const workingCounts = cachedDelayTableCounts(workingDelayTable);
+    delayHost.dataset.mode = workingDelayTable ? 'working' : delayRecommendation ? 'recommendation' : 'none';
     useDelayButton.disabled = !delayRecommendation || recommendationCounts.measured + recommendationCounts.interpolated === 0;
     saveDelayButton.disabled = !workingDelayTable;
     renderDelayTable();
@@ -628,6 +724,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   const invalidate = (): void => {
+    if (disposed) return;
     analysisOperation?.finish('superseded', 'semantic-input-change');
     analysisPending = false; cancelledAnalysis = false;
     publishPrimaryAnalysis(undefined);
@@ -636,7 +733,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     delayLoadGeneration += 1;
     runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren(); renderTuneTables();
     ownerEvidence.event('ve.invalidate', { generation: runGeneration, scope: select('scope')?.value ?? 'none' }, { stateRevision: sessionRevision });
-    stageText.textContent = 'Setup changed. Run Analysis to rebuild the delay-table-aligned evidence and guarded VE proposal; no tune state is modified.';
+    setStage('idle', 'Setup changed. Run Analysis to rebuild the delay-table-aligned evidence and guarded VE proposal; no tune state is modified.');
     renderReadiness();
   };
 
@@ -715,7 +812,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     sessionRevision += 1;
     delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined;
     if (removesEditableSurface) delaySurfaceGeneration += 1;
-    renderDelayDiscovery();
+    // Every caller publishes readiness/invalidation after changing setup.
   };
 
   const publishReadiness = (next: VeReadinessState): void => {
@@ -742,8 +839,8 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     add('scope', 'Analysis scope', 'Log selection', true, selectedText(select('scope')), scope ? 'Resolved' : 'Missing', Boolean(scope), '[data-role="scope"]');
     const mix = mixtureAssessment();
     add('mixture-scale', 'Mixture scale', 'Target / actual compatibility', true, displayScale(selectedScale()), mix.valid ? `Resolved · target ${displayScale(mix.targetScale)}` : 'Mismatch / verify', mix.valid, '[data-role="mixture-scale"]');
-    const delayCounts = delayTableCounts(workingDelayTable);
-    const recommendationCounts = delayTableCounts(delayRecommendation);
+    const delayCounts = cachedDelayTableCounts(workingDelayTable);
+    const recommendationCounts = cachedDelayTableCounts(delayRecommendation);
     const recommendationReady = Boolean(delayRecommendation) && recommendationCounts.measured + recommendationCounts.interpolated > 0;
     const delayState = workingDelayTable ? 'working' : recommendationReady ? 'recommendation' : 'missing';
     add(recommendationReady && !workingDelayTable ? 'delay-activate' : 'delay-create', 'Lambda delay table', 'Timestamp alignment', true,
@@ -844,7 +941,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (!workingDelayTable) delaySurfaceGeneration += 1;
     selectedDelayCell = undefined;
     ownerEvidence.event('ve.delay-discovery.published', { generation });
-    renderDelayDiscovery(); renderReadiness();
+    renderReadiness();
   }
 
   async function runAnalysis(origin: Origin = 'programmatic'): Promise<void> {
@@ -861,14 +958,14 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     let accepted = false;
     analysisPending = true;
     renderReadiness(); renderTuneTables(); summary.replaceChildren();
-    stageText.textContent = 'Loading analysis channels…';
+    setStage('pending', 'Loading analysis channels…');
     let resolvedRanges: ReadonlyMap<string, NumericChannelRange> | undefined;
     const reportedPhases = new Set<string>();
     let lastProgressAt = Number.NEGATIVE_INFINITY;
     try {
       const loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
       if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
-      const rangeMap = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); resolvedRanges = rangeMap; if (!renderReadiness(rangeMap)) { stageText.textContent = 'Required analysis channels are unavailable in the selected scope.'; return; }
+      const rangeMap = new Map(loaded.map((trace) => [trace.channel.id, trace.range])); resolvedRanges = rangeMap; if (!renderReadiness(rangeMap)) { setStage('error', 'Required analysis channels are unavailable in the selected scope. Verify the channel mappings and scope, then retry Run Analysis.'); return; }
       const rpm = rangeMap.get(roleSelect('rpm')!.value); const load = rangeMap.get(roleSelect('load')!.value); const actual = rangeMap.get(roleSelect('actual')!.value); if (!rpm || !load || !actual) return;
       const filtered = stateFilteredIndices(rpm, rangeMap); const minimumRpm = readNumber('min-rpm'); const maximumRpm = readNumber('max-rpm'); const minimumLoad = readNumber('min-load'); const maximumLoad = readNumber('max-load');
       const correctionChannel = selectedChannel('stft'); const correctionAssessment = currentFuelCorrection(); const correctionRange = correctionChannel ? rangeMap.get(correctionChannel.id) : undefined; if (correctionAssessment.applicable && !correctionRange) return;
@@ -887,7 +984,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           const now = performance.now();
           if (run === runGeneration && viewActive && (!reportedPhases.has(phase) || now - lastProgressAt >= 100)) {
             reportedPhases.add(phase); lastProgressAt = now;
-            stageText.textContent = `${phase} · ${completed.toLocaleString()} / ${total.toLocaleString()}`;
+            setStage('pending', `${phase} · ${completed.toLocaleString()} / ${total.toLocaleString()}`);
           }
         },
       });
@@ -901,23 +998,26 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       });
       const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTuneTables();
       const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
-      const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length; const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length; const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length; const delayCounts = delayTableCounts(workingDelayTable);
+      const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length; const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length; const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length; const delayCounts = cachedDelayTableCounts(workingDelayTable);
       renderSummary([
         ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${workingDelayTable.origin === 'saved-file' ? 'Saved file' : 'Current-log table'} · ${delayCounts.measured} measured · ${delayCounts.interpolated} interpolated · ${delayCounts.userEdited} user edited`],
         ['Fuel correction source', correctionSource], ['Fuel correction handling', correctionAssessment.applicable ? 'Compensated · percent fuel applied' : 'Context only'], ['Fuel correction samples', result.fuelCorrectionCompensated ? `${result.fuelCorrectionCompensatedSampleCount.toLocaleString()} compensated · ${result.fuelCorrectionUnavailableSampleCount.toLocaleString()} unavailable` : 'Not applied'],
         ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()],
         ['Evidence estimator', 'Weighted median · P10/P90 spread'], ['Evidence confidence', `${strongEvidenceCells} strong · ${moderateEvidenceCells} moderate · ${limitedEvidenceCells} limited`], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
       ]);
-      stageText.textContent = correctionAssessment.applicable ? 'Guarded VE proposal calculated with per-operating-point delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged.' : 'Guarded VE proposal calculated with per-operating-point delay alignment. Original MSQ values remain unchanged.';
+      setStage('success', correctionAssessment.applicable ? 'Guarded VE proposal calculated with per-operating-point delay alignment and known percent fuel-correction compensation. Original MSQ values remain unchanged.' : 'Guarded VE proposal calculated with per-operating-point delay alignment. Original MSQ values remain unchanged.');
       empty.hidden = true; content.hidden = false;
     } catch (error) {
       if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
       operation?.finish('failure', 'analysis-failed');
-      stageText.textContent = error instanceof Error ? error.message : String(error);
+      setStage('error', `Analysis failed: ${error instanceof Error ? error.message : String(error)}. Verify the source and analysis inputs, then retry Run Analysis.`);
     } finally {
       if (operation?.outcome === undefined) operation?.finish(accepted ? 'success' : 'failure', accepted ? 'published' : 'unavailable-or-failed');
       if (analysisOperation === operation) analysisOperation = undefined;
       if (run === runGeneration && viewActive) {
+        if (!accepted && stageText.dataset.state === 'pending') {
+          setStage('error', 'Analysis could not complete with the available channels. Verify the mappings and selected scope, then retry Run Analysis.');
+        }
         analysisPending = false;
         renderReadiness(resolvedRanges);
       }
@@ -938,7 +1038,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     delayLoadGeneration += 1;
     ownerEvidence.event('ve.rebuild', { generation: runGeneration }, { visibility: viewActive ? 'active' : 'hidden', stateRevision: sessionRevision });
     summary.replaceChildren();
-    stageText.textContent = 'Session inputs changed. Verify setup and Run Analysis; no tune state is modified.';
+    setStage('idle', 'Session inputs changed. Verify setup and Run Analysis; no tune state is modified.');
     const hadEditableDelaySurface = Boolean(workingDelayTable ?? delayRecommendation);
     controls.replaceChildren(); result = undefined; proposal = undefined; delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined; selectedDelayCell = undefined;
     if (hadEditableDelaySurface) delaySurfaceGeneration += 1;
@@ -1013,7 +1113,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       analysisOperation?.finish('cancelled', 'user-cancel');
       if (!analysisPending) return;
       runGeneration += 1; analysisPending = false; cancelledAnalysis = false;
-      stageText.textContent = 'Analysis cancelled. Run Analysis to rebuild current evidence.';
+      setStage('cancelled', 'Analysis cancelled. Run Analysis to rebuild current evidence.');
       renderReadiness();
     };
     runButton.onclick = (event) => { void runAnalysis(event.isTrusted ? 'user' : 'programmatic'); }; renderTuneTables(); renderReadiness(); content.hidden = false; empty.hidden = false;
@@ -1024,8 +1124,25 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const controller: VeAnalyzerViewController = {
     element: root,
     getReadiness() { return readinessState; },
-    onReadinessChange(listener) { readinessListeners.add(listener); return () => { readinessListeners.delete(listener); }; },
+    onReadinessChange(listener) { if (disposed) return () => {}; readinessListeners.add(listener); return () => { readinessListeners.delete(listener); }; },
+    dispose() {
+      if (disposed) return;
+      controller.setActive(false);
+      disposed = true;
+      // Terminal roots must also reject already-queued focus/reveal callbacks.
+      root.hidden = true;
+      sessionRevision += 1;
+      pendingContext = undefined; pendingTune = undefined;
+      primaryAnalysis = undefined; result = undefined; proposal = undefined;
+      delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined;
+      primaryAnalysisListeners.clear(); readinessListeners.clear();
+      veReviewState = undefined; vePresentation = undefined; targetPresentation = undefined;
+      delayEditSnapshotCache = undefined; renderedDelay = undefined;
+      tuneModel = undefined; tuneSourceName = undefined;
+      context = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+    },
     setActive(next) {
+      if (disposed) return;
       if (viewActive === next) { ownerEvidence.event('ve.activity.noop', { active: next }); return; }
       ownerEvidence.event('ve.activity.changed', { active: next, generation: runGeneration }, { visibility: next ? 'active' : 'hidden' });
       viewActive = next;
@@ -1043,7 +1160,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       if (cancelledAnalysis) {
         cancelledAnalysis = false;
         summary.replaceChildren(); renderTuneTables();
-        stageText.textContent = 'Analysis cancelled after leaving VE. Run Analysis to rebuild current evidence.';
+        setStage('cancelled', 'Analysis cancelled after leaving VE. Run Analysis to rebuild current evidence.');
       }
       renderReadiness();
     },
@@ -1051,10 +1168,12 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     get sessionRevision() { return sessionRevision; },
     getPrimaryAnalysis() { return primaryAnalysis; },
     onPrimaryAnalysisChange(listener) {
+      if (disposed) return () => {};
       primaryAnalysisListeners.add(listener);
       return () => { primaryAnalysisListeners.delete(listener); };
     },
     setContext(next) {
+      if (disposed) return false;
       if (!viewActive) { ownerEvidence.event('ve.context.deferred'); pendingContext = next; return false; }
       const sourceChanged = !sameVeSourceContext(context, next);
       const scopeSelect = select('scope')!;
@@ -1074,6 +1193,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       return true;
     },
     setTuneModel(model, sourceName) {
+      if (disposed) return false;
       if (!viewActive) { ownerEvidence.event('ve.tune.deferred'); pendingTune = [model, sourceName]; return false; }
       if (model === tuneModel && sourceName === tuneSourceName) { ownerEvidence.event('ve.tune.noop', {}, { stateRevision: sessionRevision }); return false; }
       ownerEvidence.event('ve.tune.changed', {}, { stateRevision: sessionRevision });

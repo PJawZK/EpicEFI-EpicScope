@@ -17,18 +17,31 @@ import {
 } from './ve-analyzer-view-v9';
 
 export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
-  const controller = installVeAnalyzerCellEvidence(createVeAnalyzerViewV9(observability), observability);
+  const controller = installVeAnalyzerCellEvidence(createVeAnalyzerViewV9(observability, { compactReadiness: true }), observability);
   const presented = installVeAnalyzerV50Presentation(controller);
-  installVeAnalyzerV50SetupDisclosurePolicy(presented.element);
+  const disposeDisclosures = installVeAnalyzerV50SetupDisclosurePolicy(presented.element);
   const proposalEditing = installVeAnalyzerProposalTableInteraction(presented);
   const tableHeader = installVeAnalyzerV50TableHeader(proposalEditing);
   const delayEditing = installVeAnalyzerDelayTableInteraction(tableHeader);
-  installVeAnalyzerV50ToolSurfaces(delayEditing.element);
+  const tools = installVeAnalyzerV50ToolSurfaces(delayEditing.element);
   const runStrip = installVeAnalyzerV50RunStrip(delayEditing);
-  installVeAnalyzerV50EvidenceInspector(runStrip.element);
-  installVeAnalyzerV50FinalLayout(runStrip.element);
-  installVeTableBrushOverlay(runStrip.element);
-  installVeTableToolbarSelectionAvailability(runStrip.element);
+  const inspector = installVeAnalyzerV50EvidenceInspector(runStrip.element);
+  const disposeLayout = installVeAnalyzerV50FinalLayout(runStrip);
+  const disposeOverlay = installVeTableBrushOverlay(runStrip.element);
+  const disposeAvailability = installVeTableToolbarSelectionAvailability(runStrip.element);
+  const setActive = runStrip.setActive.bind(runStrip);
+  const dispose = runStrip.dispose.bind(runStrip);
+  let disposed = false;
+  runStrip.setActive = (active) => {
+    if (disposed) return;
+    tools.setActive(active); inspector.setActive(active); setActive(active);
+  };
+  runStrip.dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    tools.dispose(); inspector.dispose(); disposeDisclosures();
+    disposeLayout(); disposeOverlay(); disposeAvailability(); dispose();
+  };
   return runStrip;
 }
 

@@ -29,8 +29,8 @@
   display: contents;
 }
 
-/* v7 continues to own these semantic selectors and may re-parent them during
- * layout synchronization. v50 provides the visible presentation elsewhere. */
+/* v7 owns selection semantics; v50 retains these mounted controls and
+ * supplies their visible presentation. */
 .ve-v50-table-head > .ve-table-header-controls > select[data-role='ve-table'],
 .ve-v50-table-head > .ve-table-header-controls > select[data-role='target-table'] {
   display: none !important;
@@ -56,10 +56,6 @@
 .ve-v50-table-toolbar-host {
   display: flex;
   align-items: center;
-}
-
-.ve-v50-table-toolbar-host .ve-proposal-shared-toolbar {
-  margin: 0;
 }
 
 .ve-v50-result-view-host,
@@ -189,14 +185,6 @@
   pointer-events: none;
 }
 
-/* Target tools have their own semantic working surface. They remain in the
- * Target header; only the common navigation/action cluster changes parent. */
-.ve-v50-port .ve-v50-table-head > .ve-target-shared-toolbar {
-  order: 1;
-  flex: 0 1 auto;
-  margin: 0 0 0 auto;
-}
-
 /* Use the app's dark native popup palette; otherwise Chromium may render the
  * Target selector's options as a white system menu over the dark header. */
 .ve-v50-port .ve-v50-target-host select,
@@ -218,3 +206,8 @@
   align-self: center;
 }
 .ve-v50-evidence-hint[hidden] { display: none !important; }
+
+/* Fix may expose the original VE selector without cloning its semantic owner. */
+.ve-v50-table-head > .ve-table-header-controls > select[data-role='ve-table'].ve-v50-readiness-target {
+  display: block !important;
+}

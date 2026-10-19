@@ -147,7 +147,7 @@ export function mountAppShell(root: HTMLElement): void {
     // Domain controllers can own observers/gesture state while active. Deactivate
     // Analyzer before the shell DOM is replaced so those owners release detached
     // view resources rather than waiting for a future navigation event.
-    analyzerPage.setActive(false);
+    analyzerPage.dispose();
     loggerPage.disposeSourceIntegrity();
     diagnosticExport?.abort();
     if (diagnosticHealthTimer !== undefined) clearInterval(diagnosticHealthTimer);

@@ -1,3 +1,4 @@
+import { hasAddedOrRemovedElement } from './ve-table-interaction-dom';
 const installedRoots = new WeakSet<HTMLElement>();
 
 const SELECTION_COMMAND_PREFIXES = [
@@ -36,8 +37,8 @@ function setSelectionAvailability(toolbar: HTMLElement | null): void {
  * selection, but command configuration must stay accessible before selection.
  * Undo/Redo remain driven by the table surface's history stacks.
  */
-export function installVeTableToolbarSelectionAvailability(root: HTMLElement): void {
-  if (installedRoots.has(root)) return;
+export function installVeTableToolbarSelectionAvailability(root: HTMLElement): () => void {
+  if (installedRoots.has(root)) return () => {};
   installedRoots.add(root);
 
   const sync = (): void => {
@@ -45,7 +46,7 @@ export function installVeTableToolbarSelectionAvailability(root: HTMLElement): v
     setSelectionAvailability(root.querySelector<HTMLElement>('.ve-delay-shared-toolbar'));
   };
 
-  root.addEventListener('click', (event) => {
+  const onClick = (event: MouseEvent): void => {
     const button = event.target instanceof Element
       ? event.target.closest<HTMLButtonElement>('.ve-table-edit-toolbar > button')
       : null;
@@ -56,16 +57,30 @@ export function installVeTableToolbarSelectionAvailability(root: HTMLElement): v
 
     event.preventDefault();
     event.stopImmediatePropagation();
-  }, { capture: true });
+  };
+  root.addEventListener('click', onClick, { capture: true });
 
   const observer = new MutationObserver((records) => {
-    if (records.some((record) => record.type === 'childList' || record.attributeName === 'data-table-selected')) sync();
+    if (hasAddedOrRemovedElement(records, '.ve-table-edit-toolbar')) sync();
   });
   observer.observe(root, {
     subtree: true,
     childList: true,
-    attributes: true,
-    attributeFilter: ['data-table-selected'],
   });
   sync();
+  return () => {
+    observer.disconnect(); root.removeEventListener('click', onClick, true);
+    installedRoots.delete(root);
+  };
+}
+
+/** History state belongs to its semantic edit surface, not toolbar DOM identity. */
+export function setTableHistoryAvailability(toolbar: HTMLElement, surface: { canUndo(): boolean; canRedo(): boolean }): void {
+  const availability = [['Undo', surface.canUndo()], ['Redo', surface.canRedo()]] as const;
+  for (const [label, available] of availability) {
+    const button = toolbar.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    if (!button) continue;
+    button.setAttribute('aria-disabled', available ? 'false' : 'true');
+    button.dataset.commandAvailable = String(available);
+  }
 }

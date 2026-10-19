@@ -10,6 +10,7 @@
   order: 99;
   margin-left: auto;
   min-width: 122px;
+  min-height: 34px;
 }
 
 /* Run blockers belong directly to the run/readiness band. */
@@ -83,6 +84,7 @@
 .ve-v50-port .ve-workbench-table {
   /* Keep semantic row geometry: forced 100% table height can create dark gaps. */
   height: auto;
+  border-spacing: 0;
 }
 
 .ve-v50-port .ve-workbench-table tbody tr {
@@ -134,9 +136,6 @@
   gap: 5px;
 }
 
-.ve-v50-port .ve-workbench-run {
-  min-height: 34px;
-}
 
 /* Native detail popovers/tool windows are overlays; their boxes must not
  * contribute to the four permanent workbench rows. */
@@ -163,7 +162,6 @@
 /* Opaque, borderless grid prevents subpixel seams between fractional-height
  * colored cells (the prior translucent cells exposed the near-black table
  * background as horizontal/vertical bars). Keep selection styling intact. */
-.ve-v50-port .ve-workbench-table { border-spacing: 0; }
 .ve-v50-port .ve-workbench-table tbody td,
 .ve-v50-port .ve-workbench-table tbody th {
   border-right: 0;

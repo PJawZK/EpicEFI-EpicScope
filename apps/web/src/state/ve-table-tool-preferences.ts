@@ -6,9 +6,8 @@ import type {
   TableInterpolationOptions,
 } from '../pages/ve-table-interaction';
 
-// Only Lambda Delay has a production shared-edit adapter today. VE/Target should
-// supply their own precision-derived defaults when real mutable tune/review owners
-// exist rather than inheriting guessed values from this transitional integration.
+// Persisted tool preferences belong to Lambda Delay. Proposal's shared adapter
+// keeps instance-local, precision-derived defaults; Target remains read-only.
 export type VeTableToolSurface = 'delay';
 
 export interface VeTableToolPreferences {

@@ -1,4 +1,6 @@
 import './ve-analyzer-v50-final-layout.css';
+import { refreshVeTableBrushOverlays } from './ve-table-brush-overlay';
+import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 
 const installedRoots = new WeakSet<HTMLElement>();
 
@@ -9,11 +11,13 @@ const installedRoots = new WeakSet<HTMLElement>();
  * restores the visual workflow order: compact setup -> readiness/status -> Run,
  * with blocker feedback immediately adjacent to the status row.
  */
-export function installVeAnalyzerV50FinalLayout(root: HTMLElement): void {
-  if (installedRoots.has(root)) return;
+export function installVeAnalyzerV50FinalLayout(controller: VeAnalyzerViewController): () => void {
+  const root = controller.element;
+  if (installedRoots.has(root)) return () => {};
   installedRoots.add(root);
 
   const sync = (): void => {
+    if (disposed) return;
     const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar');
     if (!actionbar) return;
 
@@ -29,7 +33,12 @@ export function installVeAnalyzerV50FinalLayout(root: HTMLElement): void {
   // Size each rendered table row from the table viewport instead of using
   // table{height:100%}, which can distribute anonymous extra row space and
   // leave dark unpainted bands. This is presentation only.
+  let disposed = false;
+  let frame: number | undefined;
+  let fitQueued = false;
   const fitRows = (): void => {
+    fitQueued = false;
+    if (disposed || !controller.getReadiness().active) return;
     for (const wrapper of root.querySelectorAll<HTMLElement>('.ve-workbench-table-wrap')) {
       if (wrapper.clientHeight < 1 || wrapper.clientWidth < 1) continue;
       const table = wrapper.querySelector<HTMLTableElement>('table.ve-workbench-table');
@@ -43,16 +52,32 @@ export function installVeAnalyzerV50FinalLayout(root: HTMLElement): void {
         table.style.setProperty('--ve-v50-row-height', next);
       }
     }
+    // Read final cell bounds only after row sizing and header composition.
+    refreshVeTableBrushOverlays(root);
   };
-  const scheduleFit = (): void => { requestAnimationFrame(fitRows); };
+  const scheduleFit = (): void => {
+    if (disposed || fitQueued || !controller.getReadiness().active) return;
+    fitQueued = true;
+    frame = requestAnimationFrame(fitRows);
+  };
   const resizeObserver = new ResizeObserver(scheduleFit);
-  for (const wrapper of root.querySelectorAll<HTMLElement>('.ve-workbench-table-wrap')) {
+  for (const wrapper of root.querySelectorAll<HTMLElement>('.ve-workbench-table-wrap, .ve-delay-table-shell')) {
     resizeObserver.observe(wrapper);
   }
 
   sync();
   queueMicrotask(sync);
   scheduleFit();
-  root.addEventListener('ve-proposal-table-rendered', () => { sync(); scheduleFit(); });
+  const onRender = (): void => { sync(); scheduleFit(); };
+  root.addEventListener('ve-proposal-table-rendered', onRender);
+  const unsubscribeReadiness = controller.onReadinessChange(scheduleFit);
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    resizeObserver.disconnect(); unsubscribeReadiness();
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    root.removeEventListener('ve-proposal-table-rendered', onRender);
+    installedRoots.delete(root);
+  };
 
 }

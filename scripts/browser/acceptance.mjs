@@ -38,7 +38,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await select('.ve-analyzer-view select[data-role=load]','ini:map');
  await file('input[data-ve-analyzer="load-delay-file"]',fixture('delay.json'));
  await wait('!document.querySelector(".ve-workbench-run").disabled');
- await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.focus();cell.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));const input=document.querySelector('.ve-table-inline-input');if(!input)throw Error('Shared delay editor did not open');input.value='125';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`));
+ await step('edit delay',()=>evaluate(`(()=>{document.querySelector('.ve-v50-lambda-tool-trigger').click();const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.focus();cell.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));const input=document.querySelector('.ve-table-inline-input');if(!input)throw Error('Shared delay editor did not open');input.value='125';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`));
  await step('Run Analysis',async()=>{await evaluate('document.querySelector(".ve-workbench-run").click()',60000);await wait('document.querySelector("[data-ve-analyzer=stage]").textContent.startsWith("Guarded")');});
  await runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,downloadDir,record});
  await record('anomaly-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runIntegratedAnomalyChecks();})()`,60000));
@@ -59,6 +59,15 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('activity checks',{result:activity});await record('activity-result.json',activity);
  const delayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.runVeDelayEditingChecks();})()`,60000);
  log('delay edit checks',{result:delayEdits});await record('delay-edit-result.json',delayEdits);
+ await record('ve-cpu-reuse.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-cpu-reuse.browser.mjs');return m.runVeCpuReuseChecks();})()`,60000));
+ await record('ve-presentation-lifetime.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-presentation-lifetime.browser.mjs');return m.runVePresentationLifetimeChecks();})()`,60000));
+ await record('ve-history-policy.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-history-policy.browser.mjs');return m.runVeHistoryPolicyChecks();})()`,60000));
+ await record('ve-group3.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-group3.browser.mjs');return m.runVeGroup3Checks();})()`,60000));
+ await record('ve-lambda-render.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-lambda-render.browser.mjs');return m.runVeLambdaRenderChecks();})()`,60000));
+ await record('ve-target-render.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-target-render.browser.mjs');return m.runVeTargetRenderChecks();})()`,60000));
+ await record('ve-result-projection.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-result-projection.browser.mjs');return m.runVeResultProjectionChecks();})()`,60000));
+ await record('ve-table-layout.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-table-layout.browser.mjs');return m.runVeTableLayoutChecks();})()`,60000));
+ await record('ve-transient-editing.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-transient-editing.browser.mjs');return m.runVeTransientEditingChecks();})()`,60000));
  const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);
  log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);
  const proposalEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-proposal-table-interaction.browser.mjs');return m.runVeProposalTableInteractionChecks();})()`,60000);

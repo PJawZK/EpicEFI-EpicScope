@@ -43,9 +43,11 @@ function overlayFor(shell: HTMLElement): HTMLCanvasElement {
   return canvas;
 }
 
-function sizeCanvas(canvas: HTMLCanvasElement, shell: HTMLElement): { width: number; height: number; dpr: number } {
-  const width = Math.max(shell.scrollWidth, shell.clientWidth, 1);
-  const height = Math.max(shell.scrollHeight, shell.clientHeight, 1);
+function sizeCanvas(canvas: HTMLCanvasElement, shell: HTMLElement, table: HTMLTableElement): { width: number; height: number; dpr: number } {
+  // The absolutely positioned canvas must not keep its own old scroll extent
+  // alive after the table/viewport shrinks.
+  const width = Math.max(table.offsetLeft + table.offsetWidth, shell.clientWidth, 1);
+  const height = Math.max(table.offsetTop + table.offsetHeight, shell.clientHeight, 1);
   const dpr = Math.max(1, Math.min(2, shell.ownerDocument.defaultView?.devicePixelRatio ?? 1));
   const pixelWidth = Math.max(1, Math.ceil(width * dpr));
   const pixelHeight = Math.max(1, Math.ceil(height * dpr));
@@ -68,13 +70,12 @@ function renderTable(table: HTMLTableElement): void {
   const shell = shellFor(table);
   if (!shell) return;
   const canvas = overlayFor(shell);
-  const { width, height, dpr } = sizeCanvas(canvas, shell);
-  const context = clear(canvas, width, height, dpr);
-  if (!context) return;
-
-  const active = table.dataset.tableBrush === 'true';
+  const active = table.dataset.tableBrush === 'true' && table.getClientRects().length > 0;
   canvas.hidden = !active;
   if (!active) return;
+  const { width, height, dpr } = sizeCanvas(canvas, shell, table);
+  const context = clear(canvas, width, height, dpr);
+  if (!context) return;
 
   const cells = [...table.querySelectorAll<HTMLTableCellElement>(PREVIEW_SELECTOR)];
   if (cells.length === 0) return;
@@ -86,8 +87,8 @@ function renderTable(table: HTMLTableElement): void {
 
   for (const cell of cells) {
     const rect = cell.getBoundingClientRect();
-    const x = rect.left - shellRect.left + shell.scrollLeft;
-    const y = rect.top - shellRect.top + shell.scrollTop;
+    const x = rect.left - shellRect.left - shell.clientLeft + shell.scrollLeft;
+    const y = rect.top - shellRect.top - shell.clientTop + shell.scrollTop;
     const w = rect.width;
     const h = rect.height;
     if (!(w > 0 && h > 0)) continue;
@@ -96,14 +97,20 @@ function renderTable(table: HTMLTableElement): void {
   }
 }
 
+/** Called by the existing layout owner after its final geometry writes. */
+export function refreshVeTableBrushOverlays(root: HTMLElement): void {
+  if (!installedRoots.has(root)) return;
+  for (const table of root.querySelectorAll<HTMLTableElement>(TABLE_SELECTOR)) renderTable(table);
+}
+
 function tableFor(target: Node): HTMLTableElement | undefined {
   if (target instanceof HTMLTableElement && target.matches(TABLE_SELECTOR)) return target;
   if (!(target instanceof Element)) return undefined;
   return target.closest<HTMLTableElement>(TABLE_SELECTOR) ?? undefined;
 }
 
-export function installVeTableBrushOverlay(root: HTMLElement): void {
-  if (installedRoots.has(root)) return;
+export function installVeTableBrushOverlay(root: HTMLElement): () => void {
+  if (installedRoots.has(root)) return () => {};
   installedRoots.add(root);
   ensureStyle(root.ownerDocument);
 
@@ -122,4 +129,8 @@ export function installVeTableBrushOverlay(root: HTMLElement): void {
   });
 
   for (const table of root.querySelectorAll<HTMLTableElement>(TABLE_SELECTOR)) renderTable(table);
+  return () => {
+    observer.disconnect(); installedRoots.delete(root);
+    for (const canvas of root.querySelectorAll<HTMLCanvasElement>('.ve-table-brush-overlay')) canvas.remove();
+  };
 }

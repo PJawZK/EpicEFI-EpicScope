@@ -1,3 +1,4 @@
+import { publishVeTableProjection, veTableProjection } from '../../apps/web/src/pages/ve-analyzer-table-projection';
 // Browser regression module: with Vite running, import this file through its /@fs/ URL
 // in Chromium and await runVeAnalyzerResultViewChecks(). No DOM emulator is used.
 import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
@@ -162,12 +163,32 @@ export async function runVeAnalyzerResultViewChecks() {
   evidenceOnly.title = 'Robust median +4.0%; P10 +2.0%; P90 +6.0%; spread 4.0%; confidence moderate; weight 2.000; samples 5.';
   noEvidence.title = '';
 
+  // Supply synthetic weak/evidence-only states through the typed presentation
+  // fixture, not through tooltip strings. Keep source, primary and review owners
+  // unchanged; the separate real-run projection suite checks their integration.
+  const table = measured.closest('table');
+  const originalProjection = veTableProjection(table);
+  const fixtureCells = [...originalProjection.cells];
+  const indexFor = cell => Number(cell.dataset.veRow) * originalProjection.cols + Number(cell.dataset.veCol);
+  fixtureCells[indexFor(weak)] = { ...fixtureCells[indexFor(weak)], state: 'weak-evidence', current: 70,
+    proposed: undefined, evidenceCandidate: 77, changeValue: 7, changePercent: 10,
+    correctionPercent: 10, spreadPercent: 4, confidence: 'limited', weight: 3.5, samples: 8 };
+  fixtureCells[indexFor(evidenceOnly)] = { ...fixtureCells[indexFor(evidenceOnly)], state: 'no-evidence', current: 80,
+    proposed: undefined, evidenceCandidate: undefined, changeValue: undefined, changePercent: undefined,
+    correctionPercent: 4, spreadPercent: 4, confidence: 'moderate', weight: 2, samples: 5 };
+  fixtureCells[indexFor(noEvidence)] = { ...fixtureCells[indexFor(noEvidence)], state: 'no-evidence', current: 90,
+    proposed: undefined, evidenceCandidate: undefined, changeValue: undefined, changePercent: undefined,
+    correctionPercent: undefined, spreadPercent: undefined, confidence: undefined, weight: undefined, samples: undefined };
+  publishVeTableProjection(table, { ...originalProjection, cells: fixtureCells });
+
   const bases = new Map(cells.map((cell) => [cell, baseLevel(cell)]));
   const measuredProposal = text(measured);
   const cycle = ['proposal', 'change', 'change-percent', 'mixture-error', 'samples', 'weight', 'confidence', 'spread', 'delay', 'proposal'];
 
   for (let repetition = 0; repetition < 2; repetition += 1) {
     if (repetition === 1) {
+      fixtureCells[indexFor(weak)] = { ...fixtureCells[indexFor(weak)], state: 'withheld-limit' };
+      publishVeTableProjection(table, { ...originalProjection, cells: [...fixtureCells] });
       weak.title = 'Recommendation withheld by configured change limits. Raw candidate 77 (+10.0%). Robust median +10.0%; P10 +8.0%; P90 +12.0%; spread 4.0%; confidence limited; weight 3.500; samples 8.';
     }
     for (const value of cycle) {
@@ -231,6 +252,7 @@ export async function runVeAnalyzerResultViewChecks() {
   }
 
   unsubscribe();
+  view.setActive(false);
   shell.remove();
   return {
     passed: 1,

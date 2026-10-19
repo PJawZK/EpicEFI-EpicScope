@@ -23,6 +23,7 @@ import {
 export interface AnalyzerPageController {
   readonly element: HTMLElement;
   setActive(active: boolean): void;
+  dispose(): void;
   readonly headerControl: HTMLElement;
   setContext(context: LoggerAnalysisContext): void;
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
@@ -66,6 +67,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   type AnalyzerView = 'compare' | 'tune-table' | 'boost' | 've' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
   let active = true;
+  let disposed = false;
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
   let comparisonChannels: LoggerAnalysisContext['channels'] = [];
@@ -382,6 +384,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
 
   const ownerEvidence = createOwnerEvidence(observability, 'analyzer-router');
   const routeActiveView = (renderComparison = true, tuneOnly = false): void => {
+    if (disposed) return;
     ownerEvidence.event('analyzer.route', { view: currentView, renderComparison, tuneOnly, active }, { visibility: active ? 'active' : 'hidden' });
     renderGeneration += 1;
     const selected = currentView === 'compare' ? undefined
@@ -421,6 +424,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   };
 
   const setView = (view: AnalyzerView, renderComparison = true, origin: Origin = 'programmatic'): void => {
+    if (disposed) return;
     if (currentView !== view) observability?.record({ recordKind: 'event', subsystem: 'navigation', component: 'analyzer', name: 'navigation.domain.changed', origin, activeView: view, visibility: active ? 'active' : 'hidden', metadata: { previous: currentView, next: view } });
     if (currentView !== view) for (const domain of domainViews) domain.setActive(false);
     currentView = view;
@@ -457,6 +461,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   };
 
   const setContext = (nextContext: LoggerAnalysisContext): void => {
+    if (disposed) return;
     context = nextContext;
     suppressNextRefresh();
     if (active) routeActiveView();
@@ -475,7 +480,15 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   return {
     element: root,
     headerControl,
+    dispose() {
+      if (disposed) return;
+      disposed = true; active = false;
+      renderGeneration += 1; contextUpdateGeneration += 1;
+      for (const view of domainViews) view.setActive(false);
+      veAnalyzerView.dispose();
+    },
     setActive(next) {
+      if (disposed) return;
       if (active === next) return;
       active = next;
       observability?.record({ recordKind: 'event', subsystem: 'navigation', component: 'analyzer', name: 'controller.activity.changed', origin: 'programmatic', activeView: currentView, visibility: next ? 'active' : 'hidden' });
@@ -483,6 +496,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
     },
     setContext,
     setTuneModel: (model, sourceName) => {
+      if (disposed) return;
       if (model === tuneModel && sourceName === tuneSourceName) return;
       tuneModel = model; tuneSourceName = sourceName;
       suppressNextRefresh();

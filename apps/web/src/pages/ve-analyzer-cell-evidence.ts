@@ -13,12 +13,6 @@ export interface VeEvidenceVisit {
   readonly durationMs: number | undefined;
 }
 
-function finite(value: string | undefined): number | undefined {
-  if (value === undefined || value.trim() === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function rangeTime(range: NumericChannelRange, sampleIndex: number): number | undefined {
   const local = sampleIndex - range.startSampleIndex;
   if (local < 0 || local >= range.timeMs.length) return undefined;
@@ -26,68 +20,79 @@ function rangeTime(range: NumericChannelRange, sampleIndex: number): number | un
   return value !== undefined && Number.isFinite(value) ? value : undefined;
 }
 
-/** Pick the longest contiguous source visit; ties prefer the longer time span. */
+/** Pick the longest contiguous source visit; ties prefer the longer time span.
+ * timeForSample is a pure retained-range lookup: only the winning visit is materialized.
+ */
 export function strongestVeEvidenceVisit(
   sampleIndices: ArrayLike<number>,
   timeForSample: (sampleIndex: number) => number | undefined,
   maxGapSamples = 1,
 ): VeEvidenceVisit | undefined {
-  const sorted = Array.from({ length: sampleIndices.length }, (_, index) => sampleIndices[index]!)
-    .filter(Number.isSafeInteger)
-    .sort((left, right) => left - right);
-  if (sorted.length === 0) return undefined;
+  // Evidence-map traversal publishes nondecreasing indices. Keep a defensive
+  // fallback for other callers, preserving duplicates and never mutating input.
+  let ordered = true;
+  let previous = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < sampleIndices.length; index += 1) {
+    const sample = sampleIndices[index]!;
+    if (!Number.isSafeInteger(sample) || sample < previous) { ordered = false; break; }
+    previous = sample;
+  }
+  const indices = ordered ? sampleIndices : Array.from(sampleIndices).filter(Number.isSafeInteger).sort((a, b) => a - b);
+  if (indices.length === 0) return undefined;
 
-  const runs: number[][] = [];
-  let current: number[] = [sorted[0]!];
-  for (let index = 1; index < sorted.length; index += 1) {
-    const sample = sorted[index]!;
-    const previous = current[current.length - 1]!;
-    if (sample - previous <= Math.max(1, maxGapSamples)) current.push(sample);
-    else {
-      runs.push(current);
-      current = [sample];
+  const gap = Math.max(1, maxGapSamples);
+  let bestStart = 0, bestEnd = 0;
+  let bestDuration: number | undefined;
+  let start = 0;
+  let timedCount = 0;
+  let minimum = Number.POSITIVE_INFINITY, maximum = Number.NEGATIVE_INFINITY;
+  const finishRun = (end: number): void => {
+    if (timedCount === 0) return;
+    const duration = timedCount > 1 ? maximum - minimum : 0;
+    const length = end - start, bestLength = bestEnd - bestStart;
+    if (length > bestLength || (length === bestLength && duration > (bestDuration ?? -1))) {
+      bestStart = start; bestEnd = end; bestDuration = duration;
+    }
+  };
+  for (let index = 0; index < indices.length; index += 1) {
+    const sample = indices[index]!;
+    if (index > start && !(sample - indices[index - 1]! <= gap)) {
+      finishRun(index);
+      start = index; timedCount = 0;
+      minimum = Number.POSITIVE_INFINITY; maximum = Number.NEGATIVE_INFINITY;
+    }
+    const time = timeForSample(sample);
+    if (time !== undefined) {
+      timedCount += 1;
+      minimum = Math.min(minimum, time); maximum = Math.max(maximum, time);
     }
   }
-  runs.push(current);
+  finishRun(indices.length);
+  if (bestEnd === bestStart) return undefined;
+  const samples: number[] = [], times: number[] = [];
+  for (let index = bestStart; index < bestEnd; index += 1) {
+    const sample = indices[index]!;
+    samples.push(sample);
+    const time = timeForSample(sample);
+    if (time !== undefined) times.push(time);
+  }
+  return { sampleIndices: samples, timeMs: times,
+    startSampleIndex: samples[0]!, endSampleIndex: samples[samples.length - 1]!, durationMs: bestDuration };
+}
 
-  const timed = runs.map((run) => {
-    const times = run.map(timeForSample).filter((value): value is number => value !== undefined);
-    let minimum = Number.POSITIVE_INFINITY;
-    let maximum = Number.NEGATIVE_INFINITY;
-    for (const time of times) {
-      minimum = Math.min(minimum, time);
-      maximum = Math.max(maximum, time);
-    }
-    const durationMs = times.length > 1 ? maximum - minimum : times.length === 1 ? 0 : undefined;
-    return { run, times, durationMs };
-  }).filter((entry) => entry.times.length > 0);
-  if (timed.length === 0) return undefined;
-
-  timed.sort((left, right) => right.run.length - left.run.length || (right.durationMs ?? -1) - (left.durationMs ?? -1));
-  const best = timed[0]!;
-  return {
-    sampleIndices: best.run,
-    timeMs: best.times,
-    startSampleIndex: best.run[0]!,
-    endSampleIndex: best.run[best.run.length - 1]!,
-    durationMs: best.durationMs,
-  };
+function isCurrentVeCell(root: HTMLElement, cell: HTMLTableCellElement): boolean {
+  const table = root.querySelector<HTMLTableElement>('[data-ve-analyzer="ve-table-view"] table.ve-workbench-table');
+  return cell.isConnected && Boolean(table?.contains(cell)) && cell.closest('table') === table;
 }
 
 function selectedCellCoordinates(cell: HTMLTableCellElement, rpmBins: readonly number[], loadBins: readonly number[]): { row: number; col: number; rpm: number; load: number } | undefined {
-  const table = cell.closest<HTMLTableElement>('table');
-  const rowElement = cell.parentElement as HTMLTableRowElement | null;
-  const header = table?.tHead?.rows[0];
-  if (!table || !rowElement || !header) return undefined;
-  const colDom = cell.cellIndex - 1;
-  if (colDom < 0) return undefined;
-  const rpm = finite(header.cells[cell.cellIndex]?.textContent?.trim());
-  const load = finite(rowElement.cells[0]?.textContent?.trim());
-  if (rpm === undefined || load === undefined) return undefined;
-
-  const col = rpmBins.findIndex((value) => Math.abs(value - rpm) < 1e-9);
-  const row = loadBins.findIndex((value) => Math.abs(value - load) < 1e-9);
-  return row >= 0 && col >= 0 ? { row, col, rpm, load } : undefined;
+  const rowText = cell.dataset.veRow, colText = cell.dataset.veCol;
+  if (!rowText?.trim() || !colText?.trim()) return undefined;
+  const row = Number(rowText), col = Number(colText);
+  if (!Number.isSafeInteger(row) || !Number.isSafeInteger(col) || row < 0 || col < 0
+    || row >= loadBins.length || col >= rpmBins.length) return undefined;
+  const rpm = rpmBins[col]!, load = loadBins[row]!;
+  return Number.isFinite(rpm) && Number.isFinite(load) ? { row, col, rpm, load } : undefined;
 }
 
 function format(value: number | undefined, digits = 2): string {
@@ -137,6 +142,8 @@ export function installVeAnalyzerCellEvidence(
 ): VeAnalyzerViewController {
   const ownerEvidence = createOwnerEvidence(observability, 've-popup');
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   let context: LoggerAnalysisContext = {
     traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [],
   };
@@ -156,9 +163,10 @@ export function installVeAnalyzerCellEvidence(
     }
   };
 
-  inner.onPrimaryAnalysisChange(invalidate);
+  const unsubscribePrimary = inner.onPrimaryAnalysisChange(invalidate);
 
   const showDetail = (cell: HTMLTableCellElement): void => {
+    if (!active || !isCurrentVeCell(root, cell)) return;
     const resolved = inner.getPrimaryAnalysis();
     const { panel, heading, body } = ensureDetailPanel(root);
     panel.hidden = false;
@@ -242,17 +250,31 @@ export function installVeAnalyzerCellEvidence(
   root.addEventListener('ve-cell-evidence-open', (event) => {
     const detail = (event as CustomEvent<{ readonly cell?: HTMLTableCellElement }>).detail;
     const cell = detail?.cell;
-    if (!cell || !cell.closest('[data-ve-analyzer="ve-table-view"]')) return;
+    if (!(cell instanceof HTMLTableCellElement)) return;
     showDetail(cell);
-  });
+  }, { signal: events.signal });
 
   const controller: VeAnalyzerViewController = {
     element: root,
-    setActive(next) {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      active = false; pendingContext = undefined; pendingTune = undefined;
+      unsubscribePrimary(); invalidate();
+      context = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+      inner.dispose();
+    },
+    setActive(next) { if (disposed) return;
       if (active === next) return;
       active = next;
       inner.setActive(next);
-      if (!active) return;
+      if (!active) {
+        const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
+        const panel = page.querySelector<HTMLElement>('.ve-cell-detail-popover');
+        if (panel) panel.hidden = true;
+        return;
+      }
       const tune = pendingTune; pendingTune = undefined;
       const nextContext = pendingContext; pendingContext = undefined;
       if (tune) controller.setTuneModel(tune[0], tune[1]);
@@ -265,6 +287,7 @@ export function installVeAnalyzerCellEvidence(
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(next) {
+      if (disposed) return false;
       if (!active) { pendingContext = next; return false; }
       context = next;
       const changed = inner.setContext(next);
@@ -275,12 +298,14 @@ export function installVeAnalyzerCellEvidence(
       return changed;
     },
     setTuneModel(model, sourceName) {
+      if (disposed) return false;
       if (!active) { pendingTune = [model, sourceName]; return false; }
       const changed = inner.setTuneModel(model, sourceName);
       if (changed) invalidate();
       return changed;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
     },
   };

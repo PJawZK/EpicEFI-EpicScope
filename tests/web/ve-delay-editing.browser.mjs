@@ -117,7 +117,7 @@ export async function runVeDelayEditingChecks() {
     shiftInput.value = '125'; shiftInput.dispatchEvent(new Event('input', { bubbles: true })); await settle();
     assert(s.cells().every(c => (c.querySelector('input')?.value ?? c.textContent) === '125') && all(s, 100) && s.view.sessionRevision === shiftRevision, 'Live range preview changed authority early or skipped cells');
     key(shiftInput, 'Enter'); await settle();
-    assert(all(s, 125) && s.view.sessionRevision === shiftRevision + 1 && s.counts.delay === 1 && s.counts.ve === 1 && s.counts.target === 1 && s.reads() === shiftReads, 'Shift-selected numeric replacement did not commit once without trace reads');
+    assert(all(s, 125) && s.view.sessionRevision === shiftRevision + 1 && s.counts.delay === 1 && s.counts.ve === 0 && s.counts.target === 0 && s.reads() === shiftReads, 'Shift-selected numeric replacement did not commit once without trace reads');
     checks.push('Shift-click preserves the anchor, previews numeric replacement across the range and commits once without F2');
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 }); await settle();
     rectangle(s); await settle();
@@ -125,10 +125,10 @@ export async function runVeDelayEditingChecks() {
     type(s, '175'); await settle();
     const observed = { revisionDelta: s.view.sessionRevision - before, values: values(s), selected: s.cells().filter(c=>c.dataset.delaySelected==='true').length, ...s.counts };
     console.info('delay-edit-counts: ' + JSON.stringify(observed));
-    assert(all(s, 175) && observed.revisionDelta === 1 && observed.delay === 1 && observed.ve === 1 && observed.target === 1,
+    assert(all(s, 175) && observed.revisionDelta === 1 && observed.delay === 1 && observed.ve === 0 && observed.target === 0,
       'Range edit must commit/invalidate/render once: ' + JSON.stringify(observed));
     assert(s.reads() === reads && s.cells().every((cell) => cell.dataset.delaySelected === 'true'), 'Edit loaded traces or lost selection');
-    checks.push('four-cell inline edit commits once with one revision and one render per table, no trace load');
+    checks.push('four-cell inline edit commits once with one revision, one Delay render, no unchanged VE/Target rebuild or trace load');
 
     s.resetCounts(); const stable = s.view.sessionRevision;
     type(s, '175'); await settle();
@@ -185,7 +185,7 @@ export async function runVeDelayEditingChecks() {
     assert(!s.view.editDelayCells([], { kind: 'revert' }), 'Empty command reported a change');
     s.view.setActive(false);
     assert(!s.view.editDelayCells(positions, { kind: 'set', workingMs: 333 }) && values(s).join(',') === snapshot, 'Hidden owner accepted an edit');
-    s.view.setActive(true); await settle();
+    s.view.setActive(true); s.root.querySelector('.ve-v50-lambda-tool-trigger').click(); await settle();
     checks.push('owner rejects invalid/empty/inactive commands without partial publication');
 
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 });
@@ -246,7 +246,7 @@ export async function runVeDelayEditingChecks() {
     oldInput.blur(); s.load(async () => saved(250)); await settle();
     assert(all(s, 250) && !s.root.querySelector('.ve-delay-inline-input'), 'Stale preview committed into replacement tune');
     rectangle(s); key(s.cells()[0], 'F2'); s.root.querySelector('.ve-delay-inline-input').value = '888';
-    s.view.setActive(false); s.view.setActive(true); await settle();
+    s.view.setActive(false); s.view.setActive(true); s.root.querySelector('.ve-v50-lambda-tool-trigger').click(); await settle();
     assert(all(s, 250) && !s.root.querySelector('.ve-delay-inline-input'), 'Navigation committed unsaved preview');
     checks.push('replacement/navigation cancel unsaved inline edits without contaminating the next session');
 
@@ -287,7 +287,7 @@ export async function runVeDelayEditingChecks() {
     const large = s.cells().map((cell) => ({ row: Number(cell.dataset.delayRow), col: Number(cell.dataset.delayCol) }));
     const largeRevision = s.view.sessionRevision, largeReads = s.reads(); s.resetCounts();
     s.view.editDelayCells(large, { kind: 'set', workingMs: 500 }); await settle();
-    assert(large.length === 256 && all(s, 500) && s.view.sessionRevision === largeRevision + 1 && s.counts.delay === 1 && s.counts.ve === 1 && s.counts.target === 1 && s.reads() === largeReads, 'Large selection repeated invalidation/render/read work');
+    assert(large.length === 256 && all(s, 500) && s.view.sessionRevision === largeRevision + 1 && s.counts.delay === 1 && s.counts.ve === 0 && s.counts.target === 0 && s.reads() === largeReads, 'Large selection repeated invalidation/render/read work');
     checks.push('256-cell owner command still invalidates/renders once without full-log work');
 
     return { passed: checks.length, checks, observed };

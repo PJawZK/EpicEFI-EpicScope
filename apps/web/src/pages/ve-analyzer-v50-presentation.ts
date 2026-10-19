@@ -1,3 +1,4 @@
+import { closeVeAnalyzerSetupDisclosures } from './ve-analyzer-v50-setup-disclosure';
 import type { LoggerAnalysisContext } from './logger-page';
 import { analyzerScopeBounds, selectedAnalyzerScope } from './analyzer-scope';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
@@ -11,18 +12,6 @@ function formatScopeTime(timeMs: number | undefined): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
-}
-
-function selectedText(control: HTMLSelectElement | null | undefined, fallback = 'Auto'): string {
-  return control?.selectedOptions[0]?.textContent?.trim() || fallback;
-}
-
-function inputText(control: HTMLInputElement | null | undefined, fallback = 'Full'): string {
-  return control?.value.trim() || fallback;
-}
-
-function shortText(value: string, max = 28): string {
-  return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 1))}…`;
 }
 
 interface SetupGroup {
@@ -67,6 +56,8 @@ function moveLabel(body: HTMLElement, label: HTMLLabelElement | undefined): void
  */
 export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   root.classList.add('ve-v50-port');
 
   const workbench = root.querySelector<HTMLElement>('.ve-workbench');
@@ -178,18 +169,26 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const range = currentScopeBounds;
     if (!context?.openRangeInLogger || !range) return;
     context.openRangeInLogger(range);
-  });
+  }, { signal: events.signal });
 
+  let active = true;
   const setupGroups = new Map<string, SetupGroup>();
   let syncSetupSummaries = (): void => {};
   let syncScopeChoices = (): void => {};
-  const scheduleSetupSummaries = (): void => queueMicrotask(() => {
-    syncScopeChoices();
-    syncSetupSummaries();
-  });
+  let setupQueued = false;
+  const scheduleSetupSummaries = (): void => {
+    if (!active || disposed || setupQueued) return;
+    setupQueued = true;
+    queueMicrotask(() => {
+      setupQueued = false;
+      if (!active || disposed) return;
+      syncScopeChoices();
+      syncSetupSummaries();
+    });
+  };
 
   const positionSetupDisclosure = (details: HTMLDetailsElement): void => {
-    if (!details.open) return;
+    if (!active || disposed || !details.open) return;
     const body = details.querySelector<HTMLElement>('.ve-v50-setup-body');
     const summary = details.querySelector<HTMLElement>(':scope > summary');
     if (!body || !summary) return;
@@ -277,27 +276,40 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const scopeChoices = document.createElement('div');
     scopeChoices.className = 've-v50-scope-choice-list';
     scopeGroup.body.append(scopeChoices);
+    let scopeOptionsKey: string | undefined;
+    let selectedScope: string | undefined;
     syncScopeChoices = (): void => {
       if (!semanticScopeSelect) return;
       const options = [...semanticScopeSelect.options];
-      scopeChoices.replaceChildren(...options.map((option) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 've-v50-scope-choice';
-        button.textContent = option.textContent?.trim() || option.value;
-        button.dataset.scopeValue = option.value;
-        button.dataset.selected = option.value === semanticScopeSelect.value ? 'true' : 'false';
-        button.setAttribute('aria-pressed', option.value === semanticScopeSelect.value ? 'true' : 'false');
-        button.addEventListener('click', () => {
-          if (semanticScopeSelect.value !== option.value) {
-            semanticScopeSelect.value = option.value;
-            semanticScopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          syncScopeChoices();
-          scopeGroup.details.open = false;
-        });
-        return button;
-      }));
+      const key = JSON.stringify(options.map(option => [option.value, option.textContent?.trim() || option.value, option.disabled]));
+      if (key !== scopeOptionsKey) {
+        scopeOptionsKey = key;
+        selectedScope = undefined;
+        scopeChoices.replaceChildren(...options.map(option => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 've-v50-scope-choice';
+          button.textContent = option.textContent?.trim() || option.value;
+          button.dataset.scopeValue = option.value;
+          button.disabled = option.disabled;
+          button.addEventListener('click', () => {
+            if (semanticScopeSelect.value !== option.value) {
+              semanticScopeSelect.value = option.value;
+              semanticScopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            syncScopeChoices();
+            scopeGroup.details.open = false;
+          }, { signal: events.signal });
+          return button;
+        }));
+      }
+      if (selectedScope === semanticScopeSelect.value) return;
+      selectedScope = semanticScopeSelect.value;
+      for (const button of scopeChoices.querySelectorAll<HTMLButtonElement>('button')) {
+        const selected = button.dataset.scopeValue === selectedScope;
+        button.dataset.selected = String(selected);
+        button.setAttribute('aria-pressed', String(selected));
+      }
     };
 
     for (const role of ['min-rpm', 'max-rpm', 'min-load', 'max-load'] as const) {
@@ -337,11 +349,11 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     for (const group of setupGroups.values()) {
       group.details.addEventListener('toggle', () => {
         if (group.details.open) requestAnimationFrame(() => positionSetupDisclosure(group.details));
-      });
+      }, { signal: events.signal });
     }
     window.addEventListener('resize', () => {
       for (const group of setupGroups.values()) if (group.details.open) positionSetupDisclosure(group.details);
-    });
+    }, { signal: events.signal });
 
     const advanced = root.querySelector<HTMLDetailsElement>('.ve-workbench-advanced');
     if (advanced) {
@@ -349,59 +361,52 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       advancedButton.type = 'button';
       advancedButton.className = 've-v50-advanced-button';
       advancedButton.textContent = 'Advanced';
-      advancedButton.addEventListener('click', () => {
+      advancedButton.onclick = () => {
+        closeVeAnalyzerSetupDisclosures(root);
         advanced.open = true;
         advanced.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      });
+      };
       quickControls.append(advancedButton);
     }
 
     syncSetupSummaries = (): void => {
       const summary = (id: string, text: string): void => {
         const node = setupGroups.get(id)?.summaryValue;
-        if (node) node.textContent = text;
+        if (node && node.textContent !== text) node.textContent = text;
       };
 
       summary('qualification', 'Analysis Mode');
       summary('scope', 'Log Scope');
-      syncScopeChoices();
 
-      const minRpm = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-rpm"]'));
-      const maxRpm = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-rpm"]'));
-      const minLoad = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-load"]'));
-      const maxLoad = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-load"]'));
       summary('range', 'RPM / Load Range');
-
-      const stable = inputText(root.querySelector<HTMLInputElement>('input[data-role="stable-ms"]'), '0');
-      const evidence = inputText(root.querySelector<HTMLInputElement>('input[data-role="min-evidence-weight"]'), '0');
       summary('guards', 'Stability Filter');
-
-      const authority = selectedText(root.querySelector<HTMLSelectElement>('select[data-ve-quick="cell-change"]'), 'Normal');
-      const maxAbs = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-absolute-change"]'), '—');
-      const maxPct = inputText(root.querySelector<HTMLInputElement>('input[data-role="max-percent-change"]'), '—');
       summary('cell-change', 'Change Filter');
-
-      const scale = selectedText(root.querySelector<HTMLSelectElement>('select[data-role="mixture-scale"]'), 'AFR');
-      const actual = shortText(selectedText(root.querySelector<HTMLSelectElement>('select[data-role="actual"]'), 'Auto'));
-      const fuelMode = root.querySelector<HTMLSelectElement>('select[data-role="fuel-correction-mode"]')?.value ?? 'auto';
-      const fuel = fuelMode === 'off' ? 'Context' : fuelMode === 'percent' ? 'STFT %' : 'STFT Auto';
       summary('mixture', 'Mixture Source');
     };
 
     root.addEventListener('change', (event) => {
-      syncScopeChoices();
-      syncSetupSummaries();
+      scheduleSetupSummaries();
       if (currentContext && event.target instanceof HTMLSelectElement && event.target.matches('select[data-role="scope"]')) renderScope(currentContext);
-    });
-    root.addEventListener('input', syncSetupSummaries);
+    }, { signal: events.signal });
+    root.addEventListener('input', scheduleSetupSummaries, { signal: events.signal });
     scheduleSetupSummaries();
   }
 
   return {
     element: root,
-    setActive(active) {
-      inner.setActive(active);
-      if (active) scheduleSetupSummaries();
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      active = false; currentContext = undefined; currentScopeBounds = undefined;
+      closeVeAnalyzerSetupDisclosures(root);
+      inner.dispose();
+    },
+    setActive(next) { if (disposed) return;
+      active = next;
+      inner.setActive(next);
+      if (next) scheduleSetupSummaries();
+      else closeVeAnalyzerSetupDisclosures(root);
     },
     editDelayCells(positions, edit) {
       const changed = inner.editDelayCells(positions, edit);
@@ -414,17 +419,20 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       renderScope(context);
       scheduleSetupSummaries();
       return changed;
     },
     setTuneModel(model, sourceName) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       scheduleSetupSummaries();
       return changed;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
       scheduleSetupSummaries();
     },

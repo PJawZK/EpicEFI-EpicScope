@@ -37,7 +37,7 @@
 
 .ve-v50-tool-surface-head strong {
   color: #dce9ef;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .ve-v50-tool-surface-close {
@@ -62,6 +62,8 @@
   min-height: 0;
   max-height: calc(100vh - 140px);
   overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .ve-v50-tool-details {
@@ -91,9 +93,7 @@
 
 @media (max-width: 900px) {
   .ve-v50-tool-surface {
-    top: 50%;
     width: calc(100vw - 16px);
-    height: max-content;
     max-height: calc(100vh - 72px);
   }
 }
@@ -138,11 +138,6 @@
 
 /* Typography consistency inside the secondary tools. The old v2 forms used
  * 7–9px text, which is illegible at normal desktop scaling. */
-.ve-v50-tool-surface-head strong { font-size: 13px; }
-.ve-v50-tool-surface-body {
-  font-size: 12px;
-  line-height: 1.4;
-}
 .ve-v50-tool-surface-body label,
 .ve-v50-tool-surface-body input,
 .ve-v50-tool-surface-body select,

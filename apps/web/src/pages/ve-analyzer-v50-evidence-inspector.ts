@@ -13,8 +13,9 @@ function selectedVeCell(target: EventTarget | null, root: HTMLElement): HTMLTabl
   return cell && root.contains(cell) ? cell : null;
 }
 
-function followSelection(root: HTMLElement, cell: HTMLTableCellElement): void {
+function followSelection(root: HTMLElement, cell: HTMLTableCellElement, isActive: () => boolean): void {
   queueMicrotask(() => {
+    if (!isActive()) return;
     const panel = detailPanel(root);
     if (!panel || panel.hidden || cell.dataset.tableSelected !== 'true' || !cell.isConnected) return;
     root.dispatchEvent(new CustomEvent('ve-cell-evidence-open', {
@@ -36,27 +37,36 @@ function clamp(value: number, minimum: number, maximum: number): number {
  * while open it follows the current VE selection, and its header can be dragged
  * without creating another evidence/state owner.
  */
-export function installVeAnalyzerV50EvidenceInspector(root: HTMLElement): void {
-  if (installedRoots.has(root)) return;
+export function installVeAnalyzerV50EvidenceInspector(root: HTMLElement): { setActive(active: boolean): void; dispose(): void } {
+  if (installedRoots.has(root)) return { setActive() {}, dispose() {} };
+  let active = true;
+  let disposed = false;
+  const events = new AbortController();
+  const isActive = (): boolean => active && !disposed;
   installedRoots.add(root);
 
   root.addEventListener('pointerdown', (event) => {
     const cell = selectedVeCell(event.target, root);
-    if (cell) followSelection(root, cell);
-  }, { capture: true });
+    if (cell) followSelection(root, cell, isActive);
+  }, { capture: true, signal: events.signal });
 
   root.addEventListener('focusin', (event) => {
     const cell = selectedVeCell(event.target, root);
-    if (cell) followSelection(root, cell);
-  });
+    if (cell) followSelection(root, cell, isActive);
+  }, { signal: events.signal });
 
-  const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
+  let boundPanel: HTMLElement | undefined;
+  let captureHeader: HTMLElement | undefined;
   let dragPointerId: number | undefined;
   let panel: HTMLElement | undefined;
   let offsetX = 0;
   let offsetY = 0;
 
   const finishDrag = (): void => {
+    if (dragPointerId !== undefined && captureHeader?.hasPointerCapture(dragPointerId)) {
+      captureHeader.releasePointerCapture(dragPointerId);
+    }
+    captureHeader = undefined;
     dragPointerId = undefined;
     if (panel) panel.dataset.dragging = 'false';
     panel = undefined;
@@ -80,14 +90,17 @@ export function installVeAnalyzerV50EvidenceInspector(root: HTMLElement): void {
     finishDrag();
   }
 
-  page.addEventListener('pointerdown', (event) => {
+  const startDrag = (event: PointerEvent): void => {
+    if (!isActive()) return;
     if (!(event.target instanceof Element)) return;
     const header = event.target.closest<HTMLElement>('.ve-cell-detail-popover > header');
-    if (!header || !page.contains(header) || event.target.closest('button')) return;
+    if (!header || !boundPanel?.contains(header) || event.target.closest('button')) return;
     const currentPanel = header.parentElement as HTMLElement | null;
     if (!currentPanel || currentPanel.hidden) return;
 
+    finishDrag();
     const rect = currentPanel.getBoundingClientRect();
+    captureHeader = header;
     dragPointerId = event.pointerId;
     panel = currentPanel;
     offsetX = event.clientX - rect.left;
@@ -103,5 +116,31 @@ export function installVeAnalyzerV50EvidenceInspector(root: HTMLElement): void {
     document.addEventListener('pointerup', up, true);
     document.addEventListener('pointercancel', up, true);
     event.preventDefault();
-  }, { capture: true });
+  };
+  // The semantic owner creates/reparents the panel after mounting. Bind to that
+  // exact panel when its existing open event has finished, not a guessed parent
+  // captured during construction of a still-detached view.
+  const bindPanel = (): void => {
+    if (!isActive()) return;
+    const next = detailPanel(root) ?? undefined;
+    if (next === boundPanel) return;
+    finishDrag();
+    boundPanel?.removeEventListener('pointerdown', startDrag, true);
+    boundPanel = next;
+    boundPanel?.addEventListener('pointerdown', startDrag, { capture: true, signal: events.signal });
+  };
+  root.addEventListener('ve-cell-evidence-open', bindPanel, { signal: events.signal });
+  bindPanel();
+  return {
+    setActive(next) {
+      if (disposed) return;
+      active = next;
+      if (!next) finishDrag();
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true; active = false;
+      finishDrag(); events.abort(); boundPanel = undefined; installedRoots.delete(root);
+    },
+  };
 }

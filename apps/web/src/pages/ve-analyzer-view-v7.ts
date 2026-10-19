@@ -1,5 +1,8 @@
+import type { VeReadinessPresentation } from './ve-analyzer-readiness';
+import { veTableProjection, veSourceHeatLevel } from './ve-analyzer-table-projection';
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
+import { placeAdaptedVeTableHeader } from './ve-analyzer-table-header-placement';
 import { veDelayEditOwner } from './ve-analyzer-delay-edit-owner';
 import { veProposalEditOwner } from './ve-analyzer-proposal-edit-owner';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
@@ -8,7 +11,6 @@ import type { LoggerAnalysisContext } from './logger-page';
 import { describeVeRunBlocker } from './ve-analyzer-blocker-info';
 import {
   VE_RESULT_VIEW_OPTIONS,
-  parseVeRenderedCellMetrics,
   veResultDisplay,
   type VeResultView,
 } from './ve-analyzer-result-view';
@@ -112,24 +114,12 @@ function interpolateDelay(surface: DelaySurface | undefined, rpm: number | undef
   return y.low === y.high ? top : top + (bottom - top) * y.fraction;
 }
 
-function finiteValues(values: readonly (number | undefined)[] | undefined): readonly number[] {
-  return values?.filter((value): value is number => value !== undefined && Number.isFinite(value)) ?? [];
-}
-
-function baseHeatLevel(value: number | undefined, values: readonly (number | undefined)[] | undefined): string | undefined {
-  if (value === undefined || !Number.isFinite(value)) return undefined;
-  const finite = finiteValues(values);
-  if (finite.length === 0) return undefined;
-  const min = Math.min(...finite);
-  const max = Math.max(...finite);
-  if (min === max) return '0.5';
-  return String(Math.max(0, Math.min(1, (value - min) / (max - min))));
-}
-
-export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+export function createVeAnalyzerView(observability?: ObservabilityRecorder, presentation: VeReadinessPresentation = {}): VeAnalyzerViewController {
   const ownerEvidence = createOwnerEvidence(observability, 've-presentation');
-  const inner = createVeAnalyzerViewV6(observability);
+  const inner = createVeAnalyzerViewV6(observability, presentation);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const workbench = root.querySelector<HTMLElement>('.ve-workbench')!;
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
@@ -170,8 +160,8 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
   let activeTableTab: VeTableTab = 've';
 
-  // v7 is the single owner of table layout, result-view selection and table-header controls.
-  // Later enhancement layers must not re-parent these nodes.
+  // v7 owns layout/result selection. An installed presentation may explicitly
+  // take over placement without changing those semantic controls.
   const veControls = document.createElement('div');
   veControls.className = 've-table-header-controls';
   const targetControls = document.createElement('div');
@@ -241,8 +231,8 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
     const delaySurface = view === 'delay' ? readDelaySurface(root) : undefined;
     const proposalSnapshot = veProposalEditOwner(root)?.snapshot();
-    const primary = inner.getPrimaryAnalysis();
-    const semanticSourceValues = primary?.veTable.numericValues ?? proposalSnapshot?.baselineValues;
+    const projection = veTableProjection(table);
+    if (!projection) return;
     const rendered: Array<{ cell: HTMLTableCellElement; value: number; mode: 'magnitude' | 'quality' | 'range' }> = [];
 
     for (const row of [...(table.tBodies[0]?.rows ?? [])]) {
@@ -250,27 +240,29 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         const cell = row.cells[col] as HTMLTableCellElement;
         const main = cell.querySelector<HTMLElement>(':scope > span');
         if (!main) continue;
+        if (view === 'proposal' && (cell.dataset.tableEditing === 'true' || cell.dataset.tablePreview === 'true'
+          || cell.dataset.tableLivePreview === 'true')) continue;
 
         const semanticRow = Number(cell.dataset.veRow);
         const semanticCol = Number(cell.dataset.veCol);
         const hasSemanticPosition = Number.isInteger(semanticRow) && Number.isInteger(semanticCol)
           && semanticRow >= 0 && semanticCol >= 0;
-        const sourceCols = primary?.veTable.cols ?? proposalSnapshot?.cols;
-        const sourceRows = primary?.veTable.rows ?? proposalSnapshot?.rows;
+        const sourceCols = projection.cols;
+        const sourceRows = projection.rows;
         const insideSource = hasSemanticPosition && sourceCols !== undefined && sourceRows !== undefined
           && semanticRow < sourceRows && semanticCol < sourceCols;
         const sourceIndex = insideSource ? semanticRow * sourceCols + semanticCol : undefined;
-        const sourceCurrent = sourceIndex === undefined ? undefined : primary?.veTable.numericValues?.[sourceIndex]
-          ?? proposalSnapshot?.baselineValues[sourceIndex];
-        const current = sourceCurrent !== undefined && Number.isFinite(sourceCurrent) ? sourceCurrent : undefined;
-        const baseLevel = baseHeatLevel(current, semanticSourceValues);
+        const metrics = sourceIndex === undefined ? undefined : projection.cells[sourceIndex];
+        if (!metrics) continue;
+        const current = metrics.current;
+        const baseLevel = veSourceHeatLevel(projection, current);
         if (current !== undefined) cell.dataset.veCurrentValue = String(current);
         else delete cell.dataset.veCurrentValue;
         if (baseLevel !== undefined) cell.dataset.veBaseLevel = baseLevel;
         else delete cell.dataset.veBaseLevel;
 
-        const rpm = insideSource ? (primary?.rpmBins[semanticCol] ?? proposalSnapshot?.rpmBins[semanticCol]) : undefined;
-        const load = insideSource ? (primary?.loadBins[semanticRow] ?? proposalSnapshot?.loadBins[semanticRow]) : undefined;
+        const rpm = insideSource ? projection.rpmBins?.[semanticCol] : undefined;
+        const load = insideSource ? projection.loadBins?.[semanticRow] : undefined;
 
         if (view === 'proposal' && proposalSnapshot && insideSource
           && semanticRow < proposalSnapshot.rows && semanticCol < proposalSnapshot.cols) {
@@ -283,7 +275,6 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           continue;
         }
 
-        const metrics = parseVeRenderedCellMetrics(cell.title, current === undefined ? '' : String(current));
         const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpm, load) : undefined;
         const display = veResultDisplay(metrics, view, delayMs);
         main.textContent = display.text;
@@ -332,30 +323,37 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let resultViewQueued = false;
   const scheduleResultView = (mutations?: MutationRecord[]): void => {
     ownerEvidence.event('ve.presentation.schedule', { queued: resultViewQueued, mutations: mutations?.length ?? 0 }, { origin: mutations ? 'observer' : 'programmatic' });
-    if (resultViewQueued) return;
+    if (disposed || !inner.getReadiness().active || resultViewQueued) return;
     resultViewQueued = true;
     queueMicrotask(() => {
       if (!resultViewQueued) return;
       resultViewQueued = false;
-      applyResultView();
+      if (!disposed && inner.getReadiness().active) applyResultView();
     });
   };
 
   const syncTableHeaderControls = (): void => {
     if (!veSelect || !targetSelect) return;
-    veControls.replaceChildren();
-    targetControls.replaceChildren();
+    if (placeAdaptedVeTableHeader(root)) return;
+    const place = (host: HTMLElement, nodes: HTMLElement[]): void => {
+      if (host.children.length !== nodes.length || nodes.some((node, index) => host.children[index] !== node)) {
+        host.replaceChildren(...nodes);
+      }
+    };
 
     const single = tableLayoutSelect.value === 'single';
     if (!single) {
-      veControls.append(tableLayoutLabel, resultViewLabel, veSelect);
-      targetControls.append(targetSelect);
+      // Retain hidden tabs so adapted navigation can reach their original
+      // handlers even when the saved initial layout is side-by-side.
+      place(veControls, [tableLayoutLabel, resultViewLabel, veSelect, tableTabs]);
+      place(targetControls, [targetSelect]);
       return;
     }
 
     // Single-table mode keeps all dropdowns together, then the separately styled tab group.
     const activeControls = activeTableTab === 've' ? veControls : targetControls;
-    activeControls.append(tableLayoutLabel, resultViewLabel, veSelect, targetSelect, tableTabs);
+    place(activeControls, [tableLayoutLabel, resultViewLabel, veSelect, targetSelect, tableTabs]);
+    place(activeControls === veControls ? targetControls : veControls, []);
   };
 
   const applyTableLayout = (): void => {
@@ -377,7 +375,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     const layout: VeTableLayout = tableLayoutSelect.value === 'single' ? 'single' : 'side-by-side';
     storeTableLayout(layout);
     applyTableLayout();
-  });
+  }, { signal: events.signal });
 
   resultViewSelect.addEventListener('change', (event) => {
     ownerEvidence.event('ve.result-view.changed', { view: resultViewSelect.value }, { origin: event.isTrusted ? 'user' : 'programmatic', stateRevision: inner.sessionRevision });
@@ -385,17 +383,17 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     storeResultView(view);
     resultViewQueued = false;
     applyResultView();
-  });
+  }, { signal: events.signal });
 
   veTabButton.addEventListener('click', () => {
     activeTableTab = 've';
     applyTableLayout();
-  });
+  }, { signal: events.signal });
 
   targetTabButton.addEventListener('click', () => {
     activeTableTab = 'target';
     applyTableLayout();
-  });
+  }, { signal: events.signal });
 
   const tableObserver = new MutationObserver(scheduleResultView);
   if (veHost) tableObserver.observe(veHost, { childList: true });
@@ -420,16 +418,34 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   popout.setAttribute('aria-label', 'Run Analysis blockers');
   actionbar.append(popout);
 
-  const renderPopout = (): void => {
+  const infoTrigger = (): HTMLButtonElement => root.querySelector<HTMLButtonElement>('.ve-v50-run-info') ?? infoButton;
+  const setExpanded = (expanded: boolean): void => {
+    infoButton.setAttribute('aria-expanded', String(expanded));
+    infoTrigger().setAttribute('aria-expanded', String(expanded));
+  };
+  const closePopout = (restoreFocus = false): void => {
+    popout.hidden = true;
+    setExpanded(false);
+    if (restoreFocus && !disposed && inner.getReadiness().active) infoTrigger().focus({ preventScroll: true });
+  };
+  let popoutKey = '';
+  const renderPopout = (opening = false): void => {
+    if (disposed) return;
     const state = inner.getReadiness();
     const entries = state.active && !state.pending ? state.blockers : [];
     infoButton.hidden = entries.length === 0;
     if (entries.length === 0) {
-      popout.hidden = true;
-      infoButton.setAttribute('aria-expanded', 'false');
-      popout.replaceChildren();
+      closePopout();
+      popoutKey = '';
+      if (popout.firstChild) popout.replaceChildren();
       return;
     }
+
+    // Closed information is lazy; unchanged visible blockers retain their DOM.
+    if (popout.hidden && !opening) return;
+    const key = JSON.stringify(entries);
+    if (key === popoutKey) return;
+    popoutKey = key;
 
     const header = document.createElement('div');
     header.className = 've-run-info-header';
@@ -441,9 +457,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     close.setAttribute('aria-label', 'Close Run Analysis information');
     close.textContent = '×';
     close.onclick = () => {
-      popout.hidden = true;
-      infoButton.setAttribute('aria-expanded', 'false');
-      infoButton.focus({ preventScroll: true });
+      closePopout(true);
     };
     header.append(title, close);
 
@@ -475,8 +489,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         jump.type = 'button';
         jump.textContent = 'Fix';
         jump.onclick = () => {
-          popout.hidden = true;
-          infoButton.setAttribute('aria-expanded', 'false');
+          closePopout();
           focusVeReadinessTarget(root, entry.targetSelector!);
         };
         item.append(jump);
@@ -488,17 +501,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   infoButton.onclick = () => {
-    renderPopout();
-    popout.hidden = !popout.hidden;
-    infoButton.setAttribute('aria-expanded', popout.hidden ? 'false' : 'true');
+    if (disposed || !inner.getReadiness().active) return;
+    if (!popout.hidden) { closePopout(true); return; }
+    renderPopout(true);
+    if (infoButton.hidden) return;
+    popout.hidden = false;
+    setExpanded(true);
+    popout.querySelector<HTMLButtonElement>('.ve-run-info-close')?.focus({ preventScroll: true });
   };
 
-  inner.onReadinessChange(() => {
+  const unsubscribeReadiness = inner.onReadinessChange(() => {
     const wasOpen = !popout.hidden;
     renderPopout();
     if (wasOpen && !infoButton.hidden) {
       popout.hidden = false;
-      infoButton.setAttribute('aria-expanded', 'true');
+      setExpanded(true);
     }
   });
 
@@ -506,23 +523,36 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (popout.hidden) return;
     const target = event.target;
     if (!(target instanceof Node)) return;
-    if (popout.contains(target) || infoButton.contains(target)) return;
-    popout.hidden = true;
-    infoButton.setAttribute('aria-expanded', 'false');
-  });
+    if (popout.contains(target) || infoButton.contains(target) || infoTrigger().contains(target)) return;
+    closePopout();
+  }, { signal: events.signal });
 
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || popout.hidden) return;
-    popout.hidden = true;
-    infoButton.setAttribute('aria-expanded', 'false');
-    infoButton.focus({ preventScroll: true });
-  });
+    event.preventDefault();
+    closePopout(true);
+  }, { signal: events.signal });
 
-  queueMicrotask(renderPopout);
+  queueMicrotask(() => renderPopout());
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      tableObserver.disconnect(); resultViewQueued = false;
+      unsubscribeReadiness(); closePopout();
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return;
+      if (!active) { tableObserver.disconnect(); resultViewQueued = false; closePopout(); }
+      inner.setActive(active);
+      if (active) {
+        if (veHost) tableObserver.observe(veHost, { childList: true });
+        scheduleResultView();
+      }
+    },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -530,22 +560,25 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (!changed) return false;
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      queueMicrotask(() => { if (!disposed && inner.getReadiness().active) syncTableHeaderControls(); });
       scheduleResultView();
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      queueMicrotask(() => { if (!disposed && inner.getReadiness().active) syncTableHeaderControls(); });
       scheduleResultView();
       return true;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      queueMicrotask(() => { if (!disposed && inner.getReadiness().active) syncTableHeaderControls(); });
       scheduleResultView();
     },
   };

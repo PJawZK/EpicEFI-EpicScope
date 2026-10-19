@@ -1,6 +1,8 @@
+import { veProposalEditOwner } from '../../apps/web/src/pages/ve-analyzer-proposal-edit-owner';
 import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
 import { parseMsq } from '../../core/parsers/msq/msq-parser';
 import { normalizeMsqTune } from '../../core/tune/tune-model';
+import { veDelayEditOwner } from '../../apps/web/src/pages/ve-analyzer-delay-edit-owner';
 import { serializeVeDelayTable } from '../../core/analysis/ve-delay-table-storage';
 
 const assert = (ok, message) => { if (!ok) throw Error(message); };
@@ -145,12 +147,25 @@ export async function runVeSharedTableInteractionChecks() {
     checks.push('Up/Down and Shift+Up follow visual row direction on the reversed load axis');
 
     const minRpm = root.querySelector('input[data-role="min-rpm"]');
-    const rangeSummary = root.querySelector('[data-ve-v50-summary="range"]');
+    const revisionBeforeRefresh = view.sessionRevision;
     minRpm.value = '1234';
     view.refresh();
     await settle();
-    assert(rangeSummary?.textContent?.includes('1234'), 'Compact setup summary did not resync after programmatic controller refresh');
-    checks.push('compact setup summaries resync after controller-driven/programmatic changes');
+    assert(root.querySelector('input[data-role="min-rpm"]') === minRpm && minRpm.value === '1234',
+      'Programmatic refresh replaced the range control or discarded its current value');
+    assert(view.sessionRevision === revisionBeforeRefresh, 'Presentation refresh invalidated the semantic session');
+    for (const [id, label] of [
+      ['qualification', 'Analysis Mode'], ['scope', 'Log Scope'], ['range', 'RPM / Load Range'],
+      ['guards', 'Stability Filter'], ['cell-change', 'Change Filter'], ['mixture', 'Mixture Source'],
+    ]) {
+      assert(root.querySelector(`[data-ve-v50-summary="${id}"]`)?.textContent === label,
+        `Compact ${id} label did not retain its purpose-only presentation after refresh`);
+    }
+    minRpm.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    assert(view.sessionRevision === revisionBeforeRefresh + 1 && minRpm.value === '1234',
+      'Range change did not reach the existing semantic owner exactly once');
+    checks.push('purpose-only setup labels preserve control identity/value through refresh and range changes invalidate once');
 
     const scopeSelect = root.querySelector('select[data-role="scope"]');
     scopeSelect.value = 'ab';
@@ -197,6 +212,8 @@ export async function runVeSharedTableInteractionChecks() {
     assert(storedTools.delay?.adjustmentStep === 7, 'Configured table step was not persisted by the production preference owner');
     assert(button(root, 'Interpolate horizontally') && button(root, 'Interpolate vertically') && button(root, 'Interpolate both directions'), 'Explicit H/V/2D interpolation tools are missing');
     checks.push('right-click tool configuration persists and explicit H/V/2D interpolation controls are present');
+    // Escape closes the Lambda tool too; resume editing through its owner.
+    if (lambdaPanel.hidden) lambdaTrigger.click();
 
     selectCell(cells()[0]);
     button(root, 'Pin').click();
@@ -269,6 +286,8 @@ export async function runVeSharedTableInteractionChecks() {
     await new Promise((resolve) => setTimeout(resolve, 125));
     assert(brushCell.dataset.tableLivePreview === 'true' && brushCell.textContent !== brushTextBefore,
       'Held Lambda Brush did not show its pending numeric value before pointer-up');
+    assert(brushCell.dataset.tableValueState === (Number(brushCell.textContent) < 100 ? 'lower' : 'higher'),
+      'Preview text mutations overwrote the pending delay marker');
     assert(values()[2] === beforeBrush && view.sessionRevision === brushRevision,
       'Lambda Brush live preview committed semantic authority before pointer-up');
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -294,6 +313,88 @@ export async function runVeSharedTableInteractionChecks() {
     assert(values()[2] < reverseStart && view.sessionRevision === reverseRevision + 1,
       'Stationary held Brush did not reverse direction when Shift changed without pointer motion');
     checks.push('held Brush reacts to Shift reversal even while the pointer remains stationary');
+
+    button(root, 'Continuous brush editing').click();
+    installDelayFile(fileInput, 200); await settle();
+    selectCell(cells()[0]); button(root, 'Increase selected cells').click(); await settle();
+    const once = values()[0];
+    selectCell(cells()[0]); button(root, 'Increase selected cells').click(); await settle();
+    const twice = values()[0];
+    for (const [action, expected] of [['Undo', once], ['Undo', 200], ['Redo', once], ['Redo', twice]]) {
+      button(root, action).click(); await settle();
+      assert(values()[0] === expected, `${action} lost multi-step delay history across own publications`);
+    }
+    view.setActive(false); view.setActive(true); root.querySelector('.ve-v50-lambda-tool-trigger').click(); view.refresh(); await settle();
+    button(root, 'Undo').click(); await settle();
+    assert(values()[0] === once, 'Unchanged delay navigation/refresh retired history');
+    checks.push('multi-step delay history survives own revisions and unchanged navigation/refresh');
+
+    const owner = veDelayEditOwner(root);
+    assert(owner.applyValues([{ row: 1, col: 0, workingMs: 333 }]), 'External delay edit fixture failed');
+    button(root, 'Redo').click(); await settle();
+    assert(values()[0] === 333 && button(root, 'Redo').getAttribute('aria-disabled') === 'true',
+      'External delay owner publication retained stale history');
+    installDelayFile(fileInput, 400); await settle();
+    button(root, 'Undo').click(); button(root, 'Redo').click(); await settle();
+    assert(values().every(value => value === 400) && button(root, 'Undo').getAttribute('aria-disabled') === 'true',
+      'Same-size delay replacement accepted history from the old table');
+    checks.push('external delay owner commands and same-size file replacement retire Undo and Redo');
+
+    const size = 32;
+    const bins = Array.from({ length: size }, (_, i) => 1000 + i * 100);
+    const loads = Array.from({ length: size }, (_, i) => 50 + i * 5);
+    const entries = [['veRpmBins', 1, size, bins], ['veLoadBins', size, 1, loads],
+      ['afrRpmBins', 1, size, bins], ['afrLoadBins', size, 1, loads],
+      ['veTable', size, size, Array(size * size).fill(60)], ['afrTable', size, size, Array(size * size).fill(14)]];
+    const largeTune = normalizeMsqTune(parseMsq('<msq><page>' + entries.map(([name, rows, cols, values]) =>
+      `<constant name="${name}" rows="${rows}" cols="${cols}">${values.join(' ')}</constant>`).join('') + '</page></msq>'));
+    localStorage.setItem('epicscope.veAnalyzer.resultView', 'proposal');
+    const large = createVeAnalyzerView();
+    const host = document.createElement('section'); host.className = 'analyzer-page';
+    host.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#081018';
+    host.append(large.element); document.body.append(host); large.element.hidden = false;
+    let reads = 0;
+    try {
+      large.setContext({ source: { identity: {}, sampleCount: 60, revision: 0 }, channels, traces: [],
+        aTimeMs: 0, bTimeMs: 3000, savedRanges: [], loadTraces: async () => { reads++; return traces; } });
+      large.setTuneModel(largeTune, 'brush-scale.msq');
+      const file = serializeVeDelayTable({ rpmBins: bins, loadBins: loads, rows: size, cols: size, origin: 'saved-file',
+        cells: Array.from({ length: size * size }, (_, index) => ({ row: Math.floor(index / size), col: index % size,
+          state: 'measured', workingMs: 100, recommendedMs: 100, workingProvenance: 'measured-recommendation',
+          eventCount: 5, confidence: 'moderate', sourceEvents: [] })) });
+      const input = large.element.querySelector('[data-ve-analyzer="load-delay-file"]');
+      Object.defineProperty(input, 'files', { configurable: true, value: [{ name: 'scale-delay.json', text: async () => file }] });
+      input.dispatchEvent(new Event('change', { bubbles: true })); await settle();
+      for (const domain of ['proposal', 'delay']) {
+        if (domain === 'delay') large.element.querySelector('.ve-v50-lambda-tool-trigger').click();
+        const owner = domain === 'proposal' ? veProposalEditOwner(large.element) : veDelayEditOwner(large.element);
+        const selector = domain === 'proposal' ? 'td[data-ve-row="16"][data-ve-col="16"]' : 'td[data-delay-row="16"][data-delay-col="16"]';
+        const toolbar = large.element.querySelector(`.ve-${domain}-shared-toolbar`);
+        const brush = toolbar.querySelector('button[aria-label="Continuous brush editing"]');
+        brush.click();
+        const before = owner.snapshot(), index = 16 * size + 16;
+        const currentCell = large.element.querySelector(selector), table = currentCell.closest('table');
+        const text = () => (currentCell.querySelector(':scope > span') ?? currentCell).textContent;
+        const originalText = text(), originalState = currentCell.dataset.tableValueState;
+        currentCell.setPointerCapture = () => {};
+        pointer(currentCell, 'pointerdown'); await new Promise(resolve => setTimeout(resolve, 200));
+        assert(owner.snapshot().values === before.values && owner.snapshot().authorityGeneration === before.authorityGeneration
+          && currentCell.closest('table') === table && table.isConnected && currentCell.dataset.tableLivePreview === 'true'
+          && text() !== originalText && currentCell.dataset.tableValueState !== 'same',
+          `${domain} 32x32 preview rebuilt/published authority or lost its live marker`);
+        pointer(document, 'pointercancel'); await settle();
+        assert(owner.snapshot().values === before.values && owner.snapshot().authorityGeneration === before.authorityGeneration
+          && text() === originalText && currentCell.dataset.tableValueState === originalState,
+          `${domain} 32x32 cancellation failed to restore text/state`);
+        pointer(currentCell, 'pointerdown'); await new Promise(resolve => setTimeout(resolve, 125));
+        pointer(document, 'pointerup'); await settle();
+        assert(owner.snapshot().authorityGeneration === before.authorityGeneration + 1 && owner.snapshot().values[index] !== before.values[index],
+          `${domain} 32x32 stroke did not commit exactly once`);
+        brush.click();
+      }
+      assert(reads === 0, 'Brush preview/edit loaded traces instead of using retained values');
+      checks.push('32x32 proposal/delay Brush previews preserve live markers and retained authority; cancel restores and release commits once');
+    } finally { large.setActive(false); host.remove(); }
 
     return { passed: checks.length, checks };
   } finally {

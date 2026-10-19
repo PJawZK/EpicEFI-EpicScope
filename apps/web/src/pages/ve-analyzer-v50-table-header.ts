@@ -1,3 +1,5 @@
+import { registerVeTableHeaderPlacement } from './ve-analyzer-table-header-placement';
+import { registerVeReadinessTargetRevealer } from './ve-analyzer-readiness';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import { VE_TABLE_TOOL_ICONS } from './ve-table-icons';
@@ -30,6 +32,8 @@ function prepareCompactHeading(header: HTMLElement | null | undefined): CompactH
  */
 export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   if (root.querySelector('.ve-v50-table-actions')) return inner;
 
   const veHost = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]');
@@ -81,7 +85,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     if (!layout) return;
     layout.value = layout.value === 'single' ? 'side-by-side' : 'single';
     layout.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  }, { signal: events.signal });
 
   const evidenceButton = document.createElement('button');
   evidenceButton.type = 'button';
@@ -91,7 +95,7 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   evidenceButton.innerHTML = VE_TABLE_TOOL_ICONS.cell;
   evidenceButton.addEventListener('click', () => {
     root.querySelector<HTMLButtonElement>('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]')?.click();
-  });
+  }, { signal: events.signal });
 
   const evidenceHint = document.createElement('span');
   evidenceHint.className = 've-v50-evidence-hint';
@@ -99,58 +103,47 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   evidenceHint.textContent = 'Select a VE cell first';
   root.addEventListener('ve-cell-evidence-unavailable', () => {
     evidenceHint.hidden = false;
-  });
-  veHost?.addEventListener('pointerdown', () => { evidenceHint.hidden = true; }, { capture: true });
+  }, { signal: events.signal });
+  veHost?.addEventListener('pointerdown', () => { evidenceHint.hidden = true; }, { capture: true, signal: events.signal });
 
   const flipButton = document.createElement('button');
   flipButton.type = 'button';
   flipButton.className = 've-v50-table-flip';
   flipButton.addEventListener('click', () => {
     const targetActive = Boolean(targetPanel && !targetPanel.hidden);
-    // v7 deliberately detaches the tab nav in side-by-side mode and restores
-    // it in single-table mode. Resolve the current nodes *now*, not at install.
+    // Tabs remain mounted under the semantic layout owner.
     const currentTab = root.querySelector<HTMLButtonElement>(
       targetActive ? '[data-table-tab="ve"]' : '[data-table-tab="target"]',
     );
     currentTab?.click();
-  });
+  }, { signal: events.signal });
 
   // Present one visible Cell Evidence action; the toolbar's semantic button stays hidden visually.
   actions.append(toolbarHost, targetHost, splitButton, evidenceButton, evidenceHint, flipButton);
   veHeader.append(resultHost);
   (targetHeader ?? veHeader).append(actions);
 
+  // Keep semantic controls mounted, including tabs used by single/split actions.
+  const layoutLabel = layout?.closest<HTMLElement>('label');
+  layoutLabel?.classList.add('ve-v50-semantic-control');
+  tabs?.classList.add('ve-v50-semantic-control');
+  controls.replaceChildren(...[layoutLabel, veSelect, tabs].filter((node): node is HTMLElement => Boolean(node)));
+  const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
+  if (sharedToolbar && sharedToolbar.parentElement !== veHeader) veHeader.append(sharedToolbar);
+
   let active = true;
+  let syncQueued = false;
   const scheduleSync = (): void => {
-    if (!active) return;
+    if (!active || syncQueued) return;
+    syncQueued = true;
     queueMicrotask(() => {
+      syncQueued = false;
       if (active) sync();
     });
   };
 
   const sync = (): void => {
     if (!active) return;
-    // v7 may detach children of its adapted header while reconciling layout.
-    // Restore these original instances, not replacements: they retain the
-    // same listeners and semantic select authority.
-    if (resultView && resultView.parentElement !== resultHost) resultHost.append(resultView);
-    if (resultHost.parentElement !== veHeader) veHeader.append(resultHost);
-    if (!actions.contains(splitButton) || !actions.contains(evidenceButton) || !actions.contains(flipButton)) {
-      actions.append(toolbarHost, targetHost, splitButton, evidenceButton, evidenceHint, flipButton);
-    }
-    const sharedToolbar = root.querySelector<HTMLElement>('.ve-proposal-shared-toolbar');
-    // Keep the shared edit toolbar attached to its VE panel's stable header;
-    // moving it with the active VE/Target header can detach it on evidence
-    // refresh and break consecutive inspector opens.
-    if (sharedToolbar && veHeader && sharedToolbar.parentElement !== veHeader) veHeader.append(sharedToolbar);
-
-    // v7 may re-parent these controls while synchronizing its semantic layout.
-    // Put the visible target selector back in the compact v50 host every pass.
-    if (targetSelect && targetSelect.parentElement !== targetHost) targetHost.append(targetSelect);
-
-    if (layout) layout.closest<HTMLElement>('label')?.classList.add('ve-v50-semantic-control');
-    if (tabs) tabs.classList.add('ve-v50-semantic-control');
-
     const split = layout?.value === 'side-by-side';
     // The visible production panel is authoritative. v7 can change its panel
     // visibility before ARIA tab state settles, especially on programmatic tabs.
@@ -187,24 +180,42 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     splitButton.setAttribute('aria-pressed', split ? 'true' : 'false');
   };
 
-  const actionObserver = new MutationObserver(() => {
-    if (active && (!actions.contains(splitButton) || !actions.contains(resultHost))) scheduleSync();
+  const unregisterRevealer = registerVeReadinessTargetRevealer(root, (target) => {
+    if (target !== veSelect && target !== targetSelect) return undefined;
+    if (target === veSelect) {
+      if (vePanel?.hidden) root.querySelector<HTMLButtonElement>('[data-table-tab="ve"]')?.click();
+      veSelect.classList.add('ve-v50-readiness-target');
+    }
+    sync();
+    return target;
   });
-  actionObserver.observe(actions, { childList: true });
-  root.addEventListener('change', scheduleSync);
+
+  const unregisterPlacement = registerVeTableHeaderPlacement(root, sync);
+  sync();
+  root.addEventListener('change', (event) => {
+    if (event.target === veSelect) veSelect?.classList.remove('ve-v50-readiness-target');
+    scheduleSync();
+  }, { signal: events.signal });
   root.addEventListener('click', (event) => {
     if (event.target instanceof Element && event.target.closest('.ve-v50-table-flip, .ve-workbench-table-tabs [data-table-tab], .ve-v50-table-icon-button')) {
       scheduleSync();
-      requestAnimationFrame(() => { if (active) sync(); });
     }
-  });
-  root.addEventListener('ve-proposal-table-rendered', scheduleSync);
-  inner.onPrimaryAnalysisChange(scheduleSync);
+  }, { signal: events.signal });
+  root.addEventListener('ve-proposal-table-rendered', scheduleSync, { signal: events.signal });
+  const unsubscribePrimary = inner.onPrimaryAnalysisChange(scheduleSync);
   scheduleSync();
 
   return {
     element: root,
-    setActive(nextActive) {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      active = false;
+      unsubscribePrimary(); unregisterPlacement(); unregisterRevealer();
+      inner.dispose();
+    },
+    setActive(nextActive) { if (disposed) return;
       active = nextActive;
       inner.setActive(nextActive);
       if (nextActive) scheduleSync();
@@ -216,16 +227,19 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (active) scheduleSync();
       return changed;
     },
     setTuneModel(model, sourceName) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (active) scheduleSync();
       return changed;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
       if (active) scheduleSync();
     },

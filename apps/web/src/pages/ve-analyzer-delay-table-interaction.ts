@@ -1,9 +1,11 @@
-import type { VeDelayCellPosition } from '../../../../core/analysis/ve-delay-table-editing';
+import { TableEditHistorySurface } from './ve-table-edit-history';
+import { setTableHistoryAvailability } from './ve-table-toolbar-availability';
+import { veDelayPresentationOwner } from './ve-analyzer-delay-presentation-owner';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
-import { veDelayEditOwner, type VeDelayCellValueEdit, type VeDelayEditOwner } from './ve-analyzer-delay-edit-owner';
-import { createTableInteractionDomController } from './ve-table-interaction-dom';
-import { TableInteractionSession, type TableEditSurface, type TableEditTransaction, type TableCellPosition } from './ve-table-interaction';
+import { veDelayEditOwner, type VeDelayCellValueEdit, type VeDelayEditOwner, type VeDelayEditSnapshot } from './ve-analyzer-delay-edit-owner';
+import { createTableInteractionDomController, hasAddedOrRemovedElement } from './ve-table-interaction-dom';
+import { TableInteractionSession, type TableCellPosition } from './ve-table-interaction';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import {
   brushOptions,
@@ -15,60 +17,37 @@ import {
 } from '../state/ve-table-tool-preferences';
 import '../styles/ve-table-interaction-dom.css';
 
-const HISTORY_LIMIT = 100;
-
-interface HistoryEntry {
-  readonly before: readonly VeDelayCellValueEdit[];
-  readonly after: readonly VeDelayCellValueEdit[];
-}
-
-function sameValue(left: number | undefined, right: number | undefined): boolean {
-  return left === right || (left !== undefined && right !== undefined && Number.isNaN(left) && Number.isNaN(right));
-}
-
-function snapshotValue(owner: VeDelayEditOwner, row: number, col: number): number | undefined {
-  const snapshot = owner.snapshot();
-  if (!snapshot || row < 0 || row >= snapshot.rows || col < 0 || col >= snapshot.cols) return undefined;
-  return snapshot.values[row * snapshot.cols + col];
-}
-
-class VeDelayTableEditSurface implements TableEditSurface {
-  readonly #owner: VeDelayEditOwner;
-  readonly #undo: HistoryEntry[] = [];
-  readonly #redo: HistoryEntry[] = [];
+class VeDelayTableEditSurface extends TableEditHistorySurface<VeDelayEditSnapshot, VeDelayCellValueEdit> {
   #baseline: readonly (number | undefined)[] | undefined;
   #baselineRows = 0;
   #baselineCols = 0;
 
   constructor(owner: VeDelayEditOwner) {
-    this.#owner = owner;
+    super({
+      snapshot: () => owner.snapshot(),
+      applyValues: edits => owner.applyValues(edits),
+      revert: positions => owner.revert(positions),
+      normalizeValue: (value, label) => label === 'direct-edit' && value < 0 ? undefined : Math.max(0, value),
+      createEdit: ({ row, col }, value) => ({ row, col, workingMs: value }),
+      editValue: edit => edit.workingMs,
+    });
   }
 
-  get rows(): number { return this.#owner.snapshot()?.rows ?? 0; }
-  get cols(): number { return this.#owner.snapshot()?.cols ?? 0; }
-  rowCoordinate(row: number): number { return this.#owner.snapshot()?.loadBins[row] ?? row; }
-  colCoordinate(col: number): number { return this.#owner.snapshot()?.rpmBins[col] ?? col; }
-  canUndo(): boolean { return this.#undo.length > 0; }
-  canRedo(): boolean { return this.#redo.length > 0; }
-
-  get(row: number, col: number): number {
-    const value = snapshotValue(this.#owner, row, col);
-    return value === undefined ? Number.NaN : value;
-  }
-
-  valueAt(position: TableCellPosition): number | undefined {
-    return snapshotValue(this.#owner, position.row, position.col);
-  }
-
-  baselineValueAt(position: TableCellPosition): number | undefined {
-    const snapshot = this.#owner.snapshot();
+  presentationSnapshot() {
+    const snapshot = this.synchronizeHistory();
     if (!snapshot) return undefined;
     if (!this.#baseline || this.#baselineRows !== snapshot.rows || this.#baselineCols !== snapshot.cols) {
       this.#baseline = [...snapshot.values];
       this.#baselineRows = snapshot.rows;
       this.#baselineCols = snapshot.cols;
     }
-    return this.#baseline[position.row * snapshot.cols + position.col];
+    return { ...snapshot, baselineValues: this.#baseline };
+  }
+
+  baselineValueAt(position: TableCellPosition): number | undefined {
+    const snapshot = this.presentationSnapshot();
+    if (!snapshot || position.row < 0 || position.row >= snapshot.rows || position.col < 0 || position.col >= snapshot.cols) return undefined;
+    return snapshot.baselineValues[position.row * snapshot.cols + position.col];
   }
 
   resetBaseline(): void {
@@ -77,119 +56,11 @@ class VeDelayTableEditSurface implements TableEditSurface {
     this.#baselineCols = 0;
   }
 
-  beginTransaction(label: string): TableEditTransaction {
-    const snapshot = this.#owner.snapshot();
-    const authorityGeneration = snapshot?.authorityGeneration;
-    const rows = snapshot?.rows ?? 0;
-    const cols = snapshot?.cols ?? 0;
-    const values = snapshot ? [...snapshot.values] : [];
-    const changed = new Map<number, number>();
-    let active = true;
-
-    const indexFor = (row: number, col: number): number => row * cols + col;
-    const inside = (row: number, col: number): boolean => row >= 0 && row < rows && col >= 0 && col < cols;
-
-    return {
-      get: (row, col): number => {
-        if (!active || !inside(row, col)) return Number.NaN;
-        const index = indexFor(row, col);
-        const pending = changed.get(index);
-        if (pending !== undefined) return pending;
-        const value = values[index];
-        return value === undefined ? Number.NaN : value;
-      },
-      set: (row, col, value): void => {
-        if (!active || !inside(row, col) || !Number.isFinite(value)) return;
-        if (label === 'direct-edit' && value < 0) return;
-        changed.set(indexFor(row, col), Math.max(0, value));
-      },
-      commit: (): boolean => {
-        if (!active) return false;
-        active = false;
-        const current = this.#owner.snapshot();
-        if (!snapshot || authorityGeneration === undefined || !current || current.authorityGeneration !== authorityGeneration || changed.size === 0) return false;
-        const before: VeDelayCellValueEdit[] = [];
-        const after: VeDelayCellValueEdit[] = [];
-        for (const [index, value] of changed) {
-          const row = Math.floor(index / cols);
-          const col = index % cols;
-          const previous = values[index];
-          if (sameValue(previous, value)) continue;
-          before.push({ row, col, workingMs: previous });
-          after.push({ row, col, workingMs: value });
-        }
-        if (after.length === 0 || !this.#owner.applyValues(after)) return false;
-        this.#pushUndo({ before, after });
-        this.#redo.length = 0;
-        return true;
-      },
-      cancel: (): void => { active = false; },
-    };
-  }
-
-  replaceWithUndefined(positions: readonly TableCellPosition[]): boolean {
-    return this.#recordExplicit(positions, (cells) => this.#owner.applyValues(cells.map(({ row, col }) => ({ row, col, workingMs: undefined }))));
-  }
-
-  revert(positions: readonly TableCellPosition[]): boolean {
-    return this.#recordExplicit(positions, () => this.#owner.revert(positions as readonly VeDelayCellPosition[]));
-  }
-
-  undo(): boolean {
-    const entry = this.#undo.pop();
-    if (!entry) return false;
-    if (!this.#owner.applyValues(entry.before)) {
-      this.#undo.push(entry);
-      return false;
-    }
-    this.#redo.push(entry);
-    if (this.#redo.length > HISTORY_LIMIT) this.#redo.shift();
-    return true;
-  }
-
-  redo(): boolean {
-    const entry = this.#redo.pop();
-    if (!entry) return false;
-    if (!this.#owner.applyValues(entry.after)) {
-      this.#redo.push(entry);
-      return false;
-    }
-    this.#pushUndo(entry);
-    return true;
-  }
-
-  resetHistory(): void {
-    this.#undo.length = 0;
-    this.#redo.length = 0;
-  }
-
-  #pushUndo(entry: HistoryEntry): void {
-    this.#undo.push(entry);
-    if (this.#undo.length > HISTORY_LIMIT) this.#undo.shift();
-  }
-
-  #recordExplicit(positions: readonly TableCellPosition[], action: (before: readonly VeDelayCellValueEdit[]) => boolean): boolean {
-    const before = positions.map(({ row, col }) => ({ row, col, workingMs: snapshotValue(this.#owner, row, col) }));
-    if (!action(before)) return false;
-    const after = positions.map(({ row, col }) => ({ row, col, workingMs: snapshotValue(this.#owner, row, col) }));
-    if (before.every((entry, index) => sameValue(entry.workingMs, after[index]?.workingMs))) return false;
-    this.#pushUndo({ before, after });
-    this.#redo.length = 0;
-    return true;
-  }
+  protected override authorityReplaced(): void { this.resetBaseline(); }
 }
 
 function currentDelayTable(host: HTMLElement): HTMLTableElement | undefined {
   return host.querySelector<HTMLTableElement>('table.ve-delay-table') ?? undefined;
-}
-
-function setHistoryAvailability(toolbar: HTMLElement, surface: VeDelayTableEditSurface): void {
-  const undo = toolbar.querySelector<HTMLButtonElement>('button[aria-label="Undo"]');
-  const redo = toolbar.querySelector<HTMLButtonElement>('button[aria-label="Redo"]');
-  undo?.setAttribute('aria-disabled', surface.canUndo() ? 'false' : 'true');
-  redo?.setAttribute('aria-disabled', surface.canRedo() ? 'false' : 'true');
-  if (undo) undo.dataset.commandAvailable = surface.canUndo() ? 'true' : 'false';
-  if (redo) redo.dataset.commandAvailable = surface.canRedo() ? 'true' : 'false';
 }
 
 /**
@@ -204,19 +75,20 @@ function setHistoryAvailability(toolbar: HTMLElement, surface: VeDelayTableEditS
  */
 export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const owner = veDelayEditOwner(root);
   const delayHost = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-table"]');
   if (!owner || !delayHost) return inner;
 
   delayHost.dataset.tableInteractionOwner = 'shared';
-  root.querySelector<HTMLElement>('.ve-delay-inline-hint')?.setAttribute('hidden', '');
   const legacyEditor = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-editor"]');
   if (legacyEditor) legacyEditor.hidden = true;
   delayHost.addEventListener('click', (event) => {
     if (!(event.target instanceof Element) || !event.target.closest('td[data-delay-row][data-delay-col]')) return;
     event.preventDefault();
     event.stopPropagation();
-  }, { capture: true });
+  }, { capture: true, signal: events.signal });
 
   const surface = new VeDelayTableEditSurface(owner);
   const session = new TableInteractionSession(surface);
@@ -238,6 +110,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     brush: () => brushOptions(toolPreferences),
     readValue: (position) => surface.valueAt(position),
     baselineValue: (position) => surface.baselineValueAt(position),
+    readValues: () => surface.presentationSnapshot(),
     formatPreviewValue: (_position, value) => String(Math.round(value)),
     adjustBrushRadius: (delta) => saveToolPreferences({
       ...toolPreferences,
@@ -284,9 +157,13 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
   dom.toolbar.classList.add('ve-delay-shared-toolbar');
   delayHost.insertAdjacentElement('beforebegin', dom.toolbar);
 
+  let active = true;
+  let boundTable: HTMLTableElement | undefined;
   const bind = (): void => {
-    dom.bindTable(currentDelayTable(delayHost));
-    setHistoryAvailability(dom.toolbar, surface);
+    if (disposed) return;
+    boundTable = active && veDelayPresentationOwner(root)?.visible !== false ? currentDelayTable(delayHost) : undefined;
+    dom.bindTable(boundTable);
+    setTableHistoryAvailability(dom.toolbar, surface);
   };
   const resetInteractionSession = (): void => {
     dom.cancelActiveInteraction();
@@ -295,31 +172,45 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     session.clearPins();
     surface.resetHistory();
     surface.resetBaseline();
-    setHistoryAvailability(dom.toolbar, surface);
+    setTableHistoryAvailability(dom.toolbar, surface);
   };
-  const observer = new MutationObserver(bind);
-  // v2 may rebuild the rendered table below a stable delay host when semantic
-  // setup changes (for example switching Analyzer scope). Observe the subtree so
-  // the shared controller always follows the currently rendered table, not only
-  // direct host-child replacements.
+  const observer = new MutationObserver((records) => {
+    if (active && hasAddedOrRemovedElement(records, 'table.ve-delay-table') && currentDelayTable(delayHost) !== boundTable) bind();
+  });
+  // Existing fallback follows real table replacement, not preview text. The
+  // tool visibility boundary binds revealed tables synchronously and unbinds
+  // hidden tables without withdrawing their semantic working authority.
   const observe = (): void => observer.observe(delayHost, { childList: true, subtree: true });
   observe();
+  root.addEventListener('ve-delay-table-visibility-changed', () => {
+    if (veDelayPresentationOwner(root)?.visible === false) dom.setBrushActive(false);
+    bind();
+  }, { signal: events.signal });
 
   root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]')
-    ?.addEventListener('click', () => dom.cancelActiveInteraction(), { capture: true });
+    ?.addEventListener('click', () => dom.cancelActiveInteraction(), { capture: true, signal: events.signal });
   root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]')
-    ?.addEventListener('click', resetInteractionSession, { capture: true });
+    ?.addEventListener('click', resetInteractionSession, { capture: true, signal: events.signal });
   root.querySelector<HTMLInputElement>('[data-ve-analyzer="load-delay-file"]')
-    ?.addEventListener('change', resetInteractionSession, { capture: true });
+    ?.addEventListener('change', resetInteractionSession, { capture: true, signal: events.signal });
   bind();
 
   return {
     element: root,
-    setActive(active) {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      active = false; observer.disconnect(); dom.destroy(); surface.resetHistory(); surface.resetBaseline();
+      inner.dispose();
+    },
+    setActive(nextActive) { if (disposed) return;
+      active = nextActive;
       if (!active) {
         dom.cancelActiveInteraction();
         dom.setBrushActive(false);
         observer.disconnect();
+        bind();
       }
       inner.setActive(active);
       if (active) {
@@ -342,7 +233,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
-      dom.cancelActiveInteraction();
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (changed) {
         resetInteractionSession();
@@ -351,7 +242,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
       return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
-      dom.cancelActiveInteraction();
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (changed) {
         resetInteractionSession();
@@ -360,6 +251,7 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
       return changed;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
       queueMicrotask(bind);
     },

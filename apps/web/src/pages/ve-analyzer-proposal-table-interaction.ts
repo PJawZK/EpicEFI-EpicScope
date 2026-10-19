@@ -1,16 +1,17 @@
+import { TableEditHistorySurface } from './ve-table-edit-history';
+import { setTableHistoryAvailability } from './ve-table-toolbar-availability';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import {
   veProposalEditOwner,
   type VeProposalCellValueEdit,
   type VeProposalEditOwner,
+  type VeProposalEditSnapshot,
 } from './ve-analyzer-proposal-edit-owner';
-import { createTableInteractionDomController } from './ve-table-interaction-dom';
+import { createTableInteractionDomController, hasAddedOrRemovedElement } from './ve-table-interaction-dom';
 import {
   TableInteractionSession,
   type TableBrushOptions,
-  type TableEditSurface,
-  type TableEditTransaction,
   type TableCellPosition,
   type TableInterpolationOptions,
 } from './ve-table-interaction';
@@ -18,151 +19,22 @@ import { VE_TABLE_TOOL_ICONS } from './ve-table-icons';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import '../styles/ve-table-interaction-dom.css';
 
-const HISTORY_LIMIT = 100;
-
-interface HistoryEntry {
-  readonly before: readonly VeProposalCellValueEdit[];
-  readonly after: readonly VeProposalCellValueEdit[];
-}
-
-function sameValue(left: number | undefined, right: number | undefined): boolean {
-  return left === right || (left !== undefined && right !== undefined && Number.isNaN(left) && Number.isNaN(right));
-}
-
-function snapshotValue(owner: VeProposalEditOwner, row: number, col: number): number | undefined {
-  const snapshot = owner.snapshot();
-  if (!snapshot || row < 0 || row >= snapshot.rows || col < 0 || col >= snapshot.cols) return undefined;
-  return snapshot.values[row * snapshot.cols + col];
-}
-
-class VeProposalTableEditSurface implements TableEditSurface {
-  readonly #owner: VeProposalEditOwner;
-  readonly #undo: HistoryEntry[] = [];
-  readonly #redo: HistoryEntry[] = [];
-
+class VeProposalTableEditSurface extends TableEditHistorySurface<VeProposalEditSnapshot, VeProposalCellValueEdit> {
   constructor(owner: VeProposalEditOwner) {
-    this.#owner = owner;
-  }
-
-  get rows(): number { return this.#owner.snapshot()?.rows ?? 0; }
-  get cols(): number { return this.#owner.snapshot()?.cols ?? 0; }
-  rowCoordinate(row: number): number { return this.#owner.snapshot()?.loadBins[row] ?? row; }
-  colCoordinate(col: number): number { return this.#owner.snapshot()?.rpmBins[col] ?? col; }
-  canUndo(): boolean { return this.#undo.length > 0; }
-  canRedo(): boolean { return this.#redo.length > 0; }
-
-  get(row: number, col: number): number {
-    const value = snapshotValue(this.#owner, row, col);
-    return value === undefined ? Number.NaN : value;
-  }
-
-  valueAt(position: TableCellPosition): number | undefined {
-    return snapshotValue(this.#owner, position.row, position.col);
+    super({
+      snapshot: () => owner.snapshot(),
+      applyValues: edits => owner.applyValues(edits),
+      revert: positions => owner.revert(positions),
+      normalizeValue: value => Math.max(0, value),
+      createEdit: ({ row, col }, value) => ({ row, col, value }),
+      editValue: edit => edit.value,
+    });
   }
 
   baselineValueAt(position: TableCellPosition): number | undefined {
-    const snapshot = this.#owner.snapshot();
+    const snapshot = this.currentSnapshot();
     if (!snapshot || position.row < 0 || position.row >= snapshot.rows || position.col < 0 || position.col >= snapshot.cols) return undefined;
     return snapshot.baselineValues[position.row * snapshot.cols + position.col];
-  }
-
-  beginTransaction(_label: string): TableEditTransaction {
-    const snapshot = this.#owner.snapshot();
-    const authorityGeneration = snapshot?.authorityGeneration;
-    const rows = snapshot?.rows ?? 0;
-    const cols = snapshot?.cols ?? 0;
-    const values = snapshot ? [...snapshot.values] : [];
-    const changed = new Map<number, number>();
-    let active = true;
-    const indexFor = (row: number, col: number): number => row * cols + col;
-    const inside = (row: number, col: number): boolean => row >= 0 && row < rows && col >= 0 && col < cols;
-
-    return {
-      get: (row, col): number => {
-        if (!active || !inside(row, col)) return Number.NaN;
-        const index = indexFor(row, col);
-        const pending = changed.get(index);
-        if (pending !== undefined) return pending;
-        const value = values[index];
-        return value === undefined ? Number.NaN : value;
-      },
-      set: (row, col, value): void => {
-        if (!active || !inside(row, col) || !Number.isFinite(value)) return;
-        changed.set(indexFor(row, col), Math.max(0, value));
-      },
-      commit: (): boolean => {
-        if (!active) return false;
-        active = false;
-        const current = this.#owner.snapshot();
-        if (!snapshot || authorityGeneration === undefined || !current || current.authorityGeneration !== authorityGeneration || changed.size === 0) return false;
-        const before: VeProposalCellValueEdit[] = [];
-        const after: VeProposalCellValueEdit[] = [];
-        for (const [index, value] of changed) {
-          const row = Math.floor(index / cols);
-          const col = index % cols;
-          const previous = values[index];
-          if (sameValue(previous, value)) continue;
-          before.push({ row, col, value: previous });
-          after.push({ row, col, value });
-        }
-        if (after.length === 0 || !this.#owner.applyValues(after)) return false;
-        this.#pushUndo({ before, after });
-        this.#redo.length = 0;
-        return true;
-      },
-      cancel: (): void => { active = false; },
-    };
-  }
-
-  replaceWithUndefined(positions: readonly TableCellPosition[]): boolean {
-    return this.#recordExplicit(positions, () => this.#owner.applyValues(positions.map(({ row, col }) => ({ row, col, value: undefined }))));
-  }
-
-  revert(positions: readonly TableCellPosition[]): boolean {
-    return this.#recordExplicit(positions, () => this.#owner.revert(positions));
-  }
-
-  undo(): boolean {
-    const entry = this.#undo.pop();
-    if (!entry) return false;
-    if (!this.#owner.applyValues(entry.before)) {
-      this.#undo.push(entry);
-      return false;
-    }
-    this.#redo.push(entry);
-    if (this.#redo.length > HISTORY_LIMIT) this.#redo.shift();
-    return true;
-  }
-
-  redo(): boolean {
-    const entry = this.#redo.pop();
-    if (!entry) return false;
-    if (!this.#owner.applyValues(entry.after)) {
-      this.#redo.push(entry);
-      return false;
-    }
-    this.#pushUndo(entry);
-    return true;
-  }
-
-  resetHistory(): void {
-    this.#undo.length = 0;
-    this.#redo.length = 0;
-  }
-
-  #pushUndo(entry: HistoryEntry): void {
-    this.#undo.push(entry);
-    if (this.#undo.length > HISTORY_LIMIT) this.#undo.shift();
-  }
-
-  #recordExplicit(positions: readonly TableCellPosition[], action: () => boolean): boolean {
-    const before = positions.map(({ row, col }) => ({ row, col, value: snapshotValue(this.#owner, row, col) }));
-    if (!action()) return false;
-    const after = positions.map(({ row, col }) => ({ row, col, value: snapshotValue(this.#owner, row, col) }));
-    if (before.every((entry, index) => sameValue(entry.value, after[index]?.value))) return false;
-    this.#pushUndo({ before, after });
-    this.#redo.length = 0;
-    return true;
   }
 }
 
@@ -177,15 +49,6 @@ function precisionStep(owner: VeProposalEditOwner): number {
   return digits !== undefined && Number.isInteger(digits) && digits >= 0 && digits <= 8 ? 1 / 10 ** digits : 0.1;
 }
 
-function setHistoryAvailability(toolbar: HTMLElement, surface: VeProposalTableEditSurface): void {
-  const undo = toolbar.querySelector<HTMLButtonElement>('button[aria-label="Undo"]');
-  const redo = toolbar.querySelector<HTMLButtonElement>('button[aria-label="Redo"]');
-  undo?.setAttribute('aria-disabled', surface.canUndo() ? 'false' : 'true');
-  redo?.setAttribute('aria-disabled', surface.canRedo() ? 'false' : 'true');
-  if (undo) undo.dataset.commandAvailable = surface.canUndo() ? 'true' : 'false';
-  if (redo) redo.dataset.commandAvailable = surface.canRedo() ? 'true' : 'false';
-}
-
 /**
  * Shared v50 edit adapter for the VE Proposal review surface.
  *
@@ -195,12 +58,16 @@ function setHistoryAvailability(toolbar: HTMLElement, surface: VeProposalTableEd
  */
 export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const owner = veProposalEditOwner(root);
   const veHost = root.querySelector<HTMLElement>('[data-ve-analyzer="ve-table-view"]');
   if (!owner || !veHost) return inner;
 
   const surface = new VeProposalTableEditSurface(owner);
   const session = new TableInteractionSession(surface);
+  let active = true;
+  let boundPending: boolean | undefined;
   let step: number | undefined;
   let previewDigits = owner.snapshot()?.digits;
   let smoothStrength = 0.5;
@@ -221,6 +88,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     brush: () => brush,
     readValue: (position) => surface.valueAt(position),
     baselineValue: (position) => surface.baselineValueAt(position),
+    readValues: () => owner.snapshot(),
     formatPreviewValue: (_position, value) => previewDigits === undefined ? String(Math.round(value * 1000) / 1000) : value.toFixed(previewDigits),
     adjustBrushRadius: (delta) => { brush = { ...brush, radius: Math.max(1, Math.min(8, brush.radius + delta)) }; },
     configuration: {
@@ -259,7 +127,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   // Evidence selection is semantic and independent from editability. Alternate
   // Result Views remain read-only, but clicking a VE node still selects the node
   // that the explicit Cell Evidence action will inspect.
-  veHost.addEventListener('pointerdown', rememberEvidencePosition, { capture: true });
+  veHost.addEventListener('pointerdown', rememberEvidencePosition, { capture: true, signal: events.signal });
 
   const evidence = document.createElement('button');
   evidence.type = 'button';
@@ -277,45 +145,56 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
       ?? veHost.querySelector<HTMLTableCellElement>(`td[data-table-row="${position.row}"][data-table-col="${position.col}"]`);
     if (!cell) return;
     root.dispatchEvent(new CustomEvent('ve-cell-evidence-open', { bubbles: false, detail: { cell } }));
-  });
+  }, { signal: events.signal });
   dom.toolbar.append(evidence);
 
-  // v7 owns .ve-table-header-controls and intentionally replaceChildren()s it
-  // whenever layout/table selectors are resynchronised. The edit toolbar is a
-  // separate owner and must therefore be a stable sibling in the panel header,
-  // not a child of v7's replaceable control host.
+  // Keep the edit toolbar outside the semantic selector host.
   const panelHeader = veHost.closest<HTMLElement>('.ve-workbench-panel')?.querySelector<HTMLElement>('header')
     ?? root.querySelector<HTMLElement>('.ve-workbench-panel header');
   panelHeader?.append(dom.toolbar);
 
+  let boundRenderedTable: HTMLTableElement | undefined;
+  let boundEditableTable: HTMLTableElement | undefined;
   const bind = (): void => {
-    // v7 rebuilds replace the table-header control children. If the shared
-    // toolbar was inside a replaced subtree, reattach the original toolbar
-    // element (and its listeners) to the current production panel header.
-    if (!root.contains(dom.toolbar)) {
-      const currentHeader = veHost.closest<HTMLElement>('.ve-workbench-panel')?.querySelector<HTMLElement>(':scope > header');
-      currentHeader?.append(dom.toolbar);
-    }
+    if (!active) return;
     previewDigits = owner.snapshot()?.digits;
     const renderedTable = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table') ?? undefined;
-    const table = currentProposalTable(veHost);
+    const pending = inner.getReadiness().pending;
+    boundPending = pending;
+    const table = pending ? undefined : currentProposalTable(veHost);
+    boundRenderedTable = renderedTable;
+    boundEditableTable = table;
+    if (pending) dom.setBrushActive(false);
     dom.bindTable(table);
-    setHistoryAvailability(dom.toolbar, surface);
+    setTableHistoryAvailability(dom.toolbar, surface);
     // Keep the explicit Evidence action available for alternate read-only result
     // views while hiding edit commands that would mutate proposal review values.
     for (const button of [...dom.toolbar.querySelectorAll<HTMLButtonElement>('button')]) {
       if (button !== evidence) {
         button.hidden = false;
         button.disabled = !table;
-        button.title = !table ? 'Editing applies to Proposed VE; switch Result View to Proposed VE' : button.getAttribute('aria-label') ?? '';
+        button.title = pending ? 'Proposal editing is unavailable while analysis is running'
+          : !table ? 'Editing applies to Proposed VE; switch Result View to Proposed VE' : button.getAttribute('aria-label') ?? '';
       }
     }
     evidence.hidden = !renderedTable;
     dom.toolbar.hidden = !renderedTable;
   };
-  const observer = new MutationObserver(bind);
+  const observer = new MutationObserver((records) => {
+    if (!active || (!records.some(record => record.type === 'attributes')
+      && !hasAddedOrRemovedElement(records, 'table.ve-workbench-table'))) return;
+    const rendered = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table') ?? undefined;
+    const editable = inner.getReadiness().pending ? undefined : currentProposalTable(veHost);
+    // The synchronous render event may already have bound this exact table.
+    if (rendered !== boundRenderedTable || editable !== boundEditableTable) bind();
+  });
   const observe = (): void => observer.observe(veHost, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ve-result-view'] });
-  root.addEventListener('ve-proposal-table-rendered', bind);
+  root.addEventListener('ve-proposal-table-rendered', bind, { signal: events.signal });
+  const unsubscribeReadiness = inner.onReadinessChange(() => {
+    // Only the pending transition changes editability. Other readiness updates
+    // must not add another whole-table refresh to their existing render paths.
+    if (inner.getReadiness().pending !== boundPending) bind();
+  });
   observe();
   bind();
 
@@ -326,12 +205,20 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     session.clearPins();
     surface.resetHistory();
     evidencePosition = undefined;
-    setHistoryAvailability(dom.toolbar, surface);
+    setTableHistoryAvailability(dom.toolbar, surface);
   };
 
   return {
     element: root,
-    setActive(active) {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      active = false; observer.disconnect(); unsubscribeReadiness(); dom.destroy(); surface.resetHistory();
+      inner.dispose();
+    },
+    setActive(nextActive) { if (disposed) return;
+      active = nextActive;
       if (!active) {
         dom.cancelActiveInteraction();
         dom.setBrushActive(false);
@@ -350,6 +237,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (changed) {
         resetInteraction();
@@ -358,6 +246,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
       return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (changed) {
         resetInteraction();
@@ -366,6 +255,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
       return changed;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
       queueMicrotask(bind);
     },

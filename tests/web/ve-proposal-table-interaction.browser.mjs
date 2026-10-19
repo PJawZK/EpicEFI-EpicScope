@@ -15,6 +15,7 @@ const model = () => normalizeMsqTune(parseMsq(`<msq><page>
 <constant name="afrRpmBins" rows="1" cols="3">1000 2000 3000</constant>
 <constant name="afrLoadBins" rows="3" cols="1">50 100 150</constant>
 <constant name="veTable" rows="3" cols="3" units="%">10 20 30 40 50 60 70 80 90</constant>
+<constant name="veTable2" rows="3" cols="3" units="%">120 120 120 120 120 120 120 120 120</constant>
 <constant name="afrTable" rows="3" cols="3" units="AFR">14 14 14 14 14 14 14 14 14</constant>
 </page></msq>`));
 
@@ -84,12 +85,13 @@ export async function runVeProposalTableInteractionChecks() {
   root.hidden = false;
 
   try {
-    view.setContext({
+    const context = {
       source: { identity: {}, sampleCount: 0, revision: 0 },
       sourceTimeRange: { startMs: 0, endMs: 0 },
       channels: [], traces: [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [],
       loadTraces: async () => [],
-    });
+    };
+    view.setContext(context);
     view.setTuneModel(tune, 'proposal-edit.msq');
     await settle();
 
@@ -202,6 +204,10 @@ export async function runVeProposalTableInteractionChecks() {
     const liveHeat = brushCenter.style.getPropertyValue('--ve-cell-level');
     assert(brushCenter.dataset.tableLivePreview === 'true' && liveText !== textBeforeBrush,
       'VE Proposal Brush did not render pending numeric values during the active stroke');
+    const baseline = snapshot(root).baselineValues[4];
+    const expectedPreviewState = Number(liveText) < baseline ? 'lower' : Number(liveText) > baseline ? 'higher' : 'same';
+    assert(brushCenter.dataset.tableValueState === expectedPreviewState && expectedPreviewState !== 'same',
+      'Preview text mutations overwrote the pending proposal higher/lower marker');
     assert(liveHeat !== heatBeforeBrush,
       'VE Proposal Brush did not update the cell heat/color with the pending numeric value');
     assert(valueAt(root, 1, 1) === semanticBeforeBrush,
@@ -210,6 +216,16 @@ export async function runVeProposalTableInteractionChecks() {
     await settle();
     assert(valueAt(root, 1, 1) !== semanticBeforeBrush,
       'VE Proposal Brush did not commit the previewed value on pointer-up');
+    const committed = snapshot(root);
+    const cancelCell = cell(root, 1, 1);
+    const committedText = cancelCell.querySelector(':scope > span').textContent;
+    const committedState = cancelCell.dataset.tableValueState;
+    cancelCell.setPointerCapture = () => {};
+    pointer(cancelCell, 'pointerdown'); await new Promise(resolve => setTimeout(resolve, 125));
+    pointer(document, 'pointercancel'); await settle();
+    assert(snapshot(root).values === committed.values && snapshot(root).authorityGeneration === committed.authorityGeneration
+      && cancelCell.querySelector(':scope > span').textContent === committedText && cancelCell.dataset.tableValueState === committedState,
+      'Cancelled proposal preview failed to restore committed text/marker without publication');
     brushButton.click();
     checks.push('VE Proposal Brush hover follows the pointer and live numeric/heat preview keeps one semantic commit per stroke');
 
@@ -251,6 +267,44 @@ export async function runVeProposalTableInteractionChecks() {
 
     assert(JSON.stringify(tune.byName.get('veTable').numericValues) === JSON.stringify(originalVe), 'VE Proposal review edits mutated the source TuneModel/MSQ authority');
     checks.push('VE Proposal edits remain review state and never mutate source TuneModel authority');
+
+    const historyButton = (name) => root.querySelector(`.ve-proposal-shared-toolbar button[aria-label="${name}"]`);
+    const historyBaseline = valueAt(root, 0, 0);
+    directEdit(root, 0, 0, 41); await settle();
+    directEdit(root, 0, 0, 42); await settle();
+    for (const [action, expected] of [['Undo', 41], ['Undo', historyBaseline], ['Redo', 41], ['Redo', 42]]) {
+      historyButton(action).click(); await settle();
+      assert(valueAt(root, 0, 0) === expected, `${action} lost multi-step proposal history across own publications`);
+    }
+    view.setActive(false); view.setActive(true);
+    view.setContext(context); view.setTuneModel(tune, 'proposal-edit.msq'); view.refresh();
+    resultView.value = 'samples'; resultView.dispatchEvent(new Event('change', { bubbles: true }));
+    resultView.value = 'proposal'; resultView.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    historyButton('Undo').click(); await settle();
+    assert(valueAt(root, 0, 0) === 41, 'Unchanged navigation/context/tune/refresh/Result View retired proposal history');
+    checks.push('multi-step proposal Undo/Redo survives own edits, unchanged navigation and presentation refresh');
+
+    const veSelect = root.querySelector('select[data-role="ve-table"]');
+    veSelect.value = 'veTable2'; veSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    historyButton('Undo').click(); historyButton('Redo').click(); await settle();
+    assert(valueAt(root, 0, 0) === 120 && historyButton('Undo').getAttribute('aria-disabled') === 'true'
+      && historyButton('Redo').getAttribute('aria-disabled') === 'true', 'History from the previous table contaminated a same-size replacement');
+    directEdit(root, 0, 0, 130); await settle();
+    historyButton('Undo').click(); await settle();
+    assert(valueAt(root, 0, 0) === 120, 'Replacement table could not establish independent history');
+    assert(owner.applyValues([{ row: 0, col: 0, value: 140 }]), 'External replacement fixture failed');
+    historyButton('Redo').click(); await settle();
+    assert(valueAt(root, 0, 0) === 140 && historyButton('Redo').getAttribute('aria-disabled') === 'true',
+      'External owner publication retained stale Redo');
+    directEdit(root, 0, 0, 150); await settle();
+    const minRpm = root.querySelector('input[data-role="min-rpm"]');
+    minRpm.value = '900'; minRpm.dispatchEvent(new Event('change', { bubbles: true }));
+    historyButton('Undo').click(); await settle();
+    assert(valueAt(root, 0, 0) === 150 && historyButton('Undo').getAttribute('aria-disabled') === 'true',
+      'Semantic qualification change retained stale proposal Undo');
+    checks.push('table replacement, external owner publication and semantic setup changes retire stale proposal history');
 
     return { passed: checks.length, checks };
   } finally {

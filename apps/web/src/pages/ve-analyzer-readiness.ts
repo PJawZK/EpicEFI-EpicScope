@@ -1,3 +1,8 @@
+/** Legacy factories retain their full status UI; v50 supplies its own compact projection. */
+export interface VeReadinessPresentation {
+  readonly compactReadiness?: boolean;
+}
+
 export interface VeProposalSettingInputs {
   readonly priorWeight: string;
   readonly minimumEvidenceWeight: string;
@@ -72,11 +77,35 @@ export function createVeReadiness(
   };
 }
 
+type ReadinessTargetRevealer = (target: HTMLElement) => HTMLElement | undefined;
+const targetRevealers = new WeakMap<HTMLElement, ReadinessTargetRevealer[]>();
+
+/** Presentation owners reveal only their own surfaces; no readiness state is copied. */
+export function registerVeReadinessTargetRevealer(root: HTMLElement, reveal: ReadinessTargetRevealer): () => void {
+  const owners = targetRevealers.get(root) ?? [];
+  owners.push(reveal);
+  targetRevealers.set(root, owners);
+  return () => {
+    const index = owners.indexOf(reveal);
+    if (index >= 0) owners.splice(index, 1);
+    if (!owners.length) targetRevealers.delete(root);
+  };
+}
+
 export function focusVeReadinessTarget(root: HTMLElement, selector: string): void {
   const target = root.querySelector<HTMLElement>(selector);
   if (!target) return;
-  const details = target.closest<HTMLDetailsElement>('details');
-  if (details) details.open = true;
-  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  queueMicrotask(() => target.focus({ preventScroll: true }));
+  let destination = target;
+  for (const reveal of targetRevealers.get(root) ?? []) {
+    const resolved = reveal(target);
+    if (resolved && root.contains(resolved)) { destination = resolved; break; }
+  }
+  for (let ancestor: HTMLElement | null = destination; ancestor && root.contains(ancestor); ancestor = ancestor.parentElement) {
+    if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+  }
+  requestAnimationFrame(() => {
+    if (!destination.isConnected || !root.contains(destination) || destination.closest('[hidden]')) return;
+    destination.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    destination.focus({ preventScroll: true });
+  });
 }

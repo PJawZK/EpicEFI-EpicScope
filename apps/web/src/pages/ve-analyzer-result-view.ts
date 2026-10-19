@@ -12,7 +12,7 @@ export type VeResultView =
 export type VeRenderedProposalState = 'no-evidence' | 'measured' | 'weak-evidence' | 'withheld-limit';
 export type VeRenderedConfidence = 'none' | 'limited' | 'moderate' | 'strong';
 
-export interface VeRenderedCellMetrics {
+export interface VeCellMetrics {
   readonly state: VeRenderedProposalState;
   readonly current: number | undefined;
   readonly proposed: number | undefined;
@@ -44,63 +44,6 @@ export const VE_RESULT_VIEW_OPTIONS: readonly { value: VeResultView; label: stri
   { value: 'delay', label: 'Lambda delay ms' },
 ] as const;
 
-function parsedNumber(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function matchNumber(text: string, expression: RegExp): number | undefined {
-  return parsedNumber(expression.exec(text)?.[1]);
-}
-
-function firstRenderedNumber(text: string): number | undefined {
-  return matchNumber(text.trim(), /^([+-]?\d+(?:\.\d+)?)/);
-}
-
-function confidenceFromTitle(title: string): VeRenderedConfidence | undefined {
-  const match = /confidence (none|limited|moderate|strong)/i.exec(title)?.[1]?.toLowerCase();
-  return match === 'none' || match === 'limited' || match === 'moderate' || match === 'strong' ? match : undefined;
-}
-
-/**
- * Parse evidence/proposal detail from the canonical detail string while taking
- * original/current VE from the caller's semantic source projection. The second
- * argument is never recovered from the mutable result-cell title.
- */
-export function parseVeRenderedCellMetrics(title: string, currentText: string): VeRenderedCellMetrics {
-  const state: VeRenderedProposalState = title.startsWith('Measured proposal')
-    ? 'measured'
-    : title.startsWith('Weak evidence')
-      ? 'weak-evidence'
-      : title.startsWith('Recommendation withheld')
-        ? 'withheld-limit'
-        : 'no-evidence';
-
-  const current = firstRenderedNumber(currentText);
-  const proposed = matchNumber(title, /\bproposed ([+-]?\d+(?:\.\d+)?)/i);
-  const evidenceCandidate = matchNumber(title, /\bRaw candidate ([+-]?\d+(?:\.\d+)?)/i);
-  const rawPercent = state === 'measured'
-    ? matchNumber(title, /\bchange ([+-]?\d+(?:\.\d+)?)%/i)
-    : matchNumber(title, /\(([+-]?\d+(?:\.\d+)?)%\)/);
-  const resultValue = state === 'measured' ? proposed : evidenceCandidate;
-  const changeValue = current !== undefined && resultValue !== undefined ? resultValue - current : undefined;
-
-  return {
-    state,
-    current,
-    proposed,
-    evidenceCandidate,
-    changeValue,
-    changePercent: rawPercent,
-    correctionPercent: matchNumber(title, /\bRobust median ([+-]?\d+(?:\.\d+)?)%/i),
-    spreadPercent: matchNumber(title, /\bspread ([+-]?\d+(?:\.\d+)?)%/i),
-    confidence: confidenceFromTitle(title),
-    weight: matchNumber(title, /\bweight ([+-]?\d+(?:\.\d+)?)/i),
-    samples: matchNumber(title, /\bsamples (\d+)/i),
-  };
-}
-
 function clean(value: number, digits: number): string {
   return value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
 }
@@ -109,7 +52,7 @@ function signed(value: number, digits: number, suffix = ''): string {
   return `${value > 0 ? '+' : ''}${clean(value, digits)}${suffix}`;
 }
 
-function baseDisplay(metrics: VeRenderedCellMetrics): VeResultDisplay {
+function baseDisplay(metrics: VeCellMetrics): VeResultDisplay {
   return {
     text: metrics.current === undefined ? '—' : clean(metrics.current, 2),
     numericValue: metrics.current,
@@ -128,7 +71,7 @@ export function confidenceRank(confidence: VeRenderedConfidence | undefined): nu
 }
 
 export function veResultDisplay(
-  metrics: VeRenderedCellMetrics,
+  metrics: VeCellMetrics,
   view: VeResultView,
   delayMs?: number,
 ): VeResultDisplay {

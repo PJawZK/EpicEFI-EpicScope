@@ -1,5 +1,8 @@
+import { veDelayEditOwner } from '../../apps/web/src/pages/ve-analyzer-delay-edit-owner';
+import { focusVeReadinessTarget } from '../../apps/web/src/pages/ve-analyzer-readiness';
 // Browser regression module: with Vite running, import this file through its /@fs/ URL
 // in Chromium and await runVeAnalyzerLifecycleChecks(). No DOM emulator is used.
+import { veProposalEditOwner } from '../../apps/web/src/pages/ve-analyzer-proposal-edit-owner';
 import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
 import { createVeAnalyzerView as createOwner } from '../../apps/web/src/pages/ve-analyzer-view-v2';
 import { parseMsq } from '../../core/parsers/msq/msq-parser';
@@ -52,7 +55,7 @@ async function setup(factory = createVeAnalyzerView, fixture = {}) {
   let loadCount = 0;
   const model = tune();
   const context = {
-    source: { identity: {}, sampleCount: 60, revision: 0 }, channels: fixture.channels ?? channels, traces: [],
+    source: { identity: {}, sampleCount: fixture.sampleCount ?? 60, revision: 0 }, channels: fixture.channels ?? channels, traces: [],
     loadTraces: async (ids) => { loadCount += 1; return gate ? gate.promise : (fixture.traces ?? traces).filter((trace) => ids.includes(trace.channel.id)); },
     aTimeMs: 0, bTimeMs: 3000, savedRanges: [{ label: 'saved', startMs: 0, endMs: 2000 }],
   };
@@ -114,6 +117,7 @@ export async function runVeAnalyzerLifecycleChecks() {
   for (const [name, factory] of [['v2 owner', createOwner], ['complete controller chain', createVeAnalyzerView]]) {
     await check(`${name}: unchanged updates preserve primary authority and edited delay`, async () => {
       const s = await setup(factory);
+      s.root.querySelector('.ve-v50-lambda-tool-trigger')?.click();
       const delay = s.root.querySelector('[data-ve-analyzer="delay-table"] td[data-delay-row="0"][data-delay-col="0"]');
       delay.onclick.call(delay, new PointerEvent('click'));
       s.root.querySelector('[data-ve-analyzer="delay-cell-working"]').value = '125';
@@ -188,7 +192,7 @@ export async function runVeAnalyzerLifecycleChecks() {
     const first = deferred(); loadFile(s.root, () => first.promise);
     loadFile(s.root, () => Promise.resolve(delayFile(200))); await settle();
     first.resolve(delayFile(125)); await settle();
-    assert(s.root.querySelector('[data-delay-row="0"][data-delay-col="0"]').dataset.delayValue === '200', 'Older file overwrote newer selection');
+    assert(veDelayEditOwner(s.root).snapshot()?.values[0] === 200, 'Older file overwrote newer selection');
     s.host.remove();
   });
   await check('cell detail reuses retained primary objects without loading traces and closes on replacement', async () => {
@@ -289,6 +293,7 @@ export async function runVeAnalyzerLifecycleChecks() {
       if (kind === 'qualification') {
         const input = s.root.querySelector('[data-ve-quick="min-tps"]'); input.value = '10'; input.dispatchEvent(new Event('change', { bubbles: true }));
       } else if (kind === 'delay-edit') {
+        s.root.querySelector('.ve-v50-lambda-tool-trigger').click();
         const cell = s.root.querySelector('[data-delay-row="0"][data-delay-col="0"]'); cell.onclick.call(cell, new PointerEvent('click'));
         s.root.querySelector('[data-ve-analyzer="delay-cell-working"]').value = '175'; s.root.querySelector('[data-ve-analyzer="delay-cell-apply"]').click();
       } else if (kind === 'delay-file') loadFile(s.root, () => Promise.resolve(delayFile(200)));
@@ -308,6 +313,281 @@ export async function runVeAnalyzerLifecycleChecks() {
     pending.resolve(traces); await completed(s); openEvidence(s, measured(s.root)); await settle();
     assert(!panel.hidden && panel.querySelector('.ve-evidence-detail-grid') !== oldGrid, 'Rerun reused invalidated cell detail');
     s.host.remove();
+  });
+  await check('new analysis publication retires the previous proposal history', async () => {
+    localStorage.setItem('epicscope.veAnalyzer.resultView', 'proposal');
+    const s = await setup();
+    try {
+      s.run(); await completed(s);
+      const edit = (value) => {
+        const cell = s.root.querySelector('td[data-ve-row="0"][data-ve-col="0"]');
+        cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true }));
+        const input = s.root.querySelector('.ve-table-inline-input');
+        assert(input, 'History replacement fixture could not open direct editing');
+        input.value = String(value); input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      };
+      const undo = () => s.root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Undo"]');
+      const redo = () => s.root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Redo"]');
+      edit(81); await settle();
+      assert(undo().getAttribute('aria-disabled') === 'false', 'Completed proposal did not establish history');
+      const pending = s.hold(); s.run(); await settle();
+      assert(undo().getAttribute('aria-disabled') === 'true', 'Run start retained the previous proposal history');
+      pending.resolve(traces); await completed(s); await settle();
+      const tableText = s.root.querySelector('[data-ve-analyzer="ve-table-view"]').textContent;
+      undo().click(); redo().click(); await settle();
+      assert(undo().getAttribute('aria-disabled') === 'true' && redo().getAttribute('aria-disabled') === 'true'
+        && s.root.querySelector('[data-ve-analyzer="ve-table-view"]').textContent === tableText,
+        'New proposal publication accepted stale Undo/Redo');
+    } finally { s.view.setActive(false); s.host.remove(); }
+  });
+  for (const outcome of ['complete', 'cancel', 'error', 'hidden']) {
+    await check(`pending proposal edits are rejected and editing resumes after ${outcome}`, async () => {
+      localStorage.setItem('epicscope.veAnalyzer.resultView', 'proposal');
+      const s = await setup();
+      try {
+        const owner = veProposalEditOwner(s.root);
+        const button = (label) => s.root.querySelector(`.ve-proposal-shared-toolbar button[aria-label="${label}"]`);
+        const cell = () => s.root.querySelector('td[data-ve-row="0"][data-ve-col="0"]');
+        const held = s.hold();
+        // A draft already open when Run starts must be cancelled, not committed.
+        cell().dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true }));
+        const draft = s.root.querySelector('.ve-table-inline-input');
+        assert(draft, 'Pending policy fixture could not open its initial draft');
+        draft.value = '80'; draft.dispatchEvent(new Event('input', { bubbles: true }));
+        s.run(); await settle();
+        assert(s.view.getReadiness().pending && !s.root.querySelector('.ve-table-inline-input'),
+          'Run start retained the inline draft or failed to enter pending state');
+        const before = owner.snapshot();
+        assert(before.values[0] === 70, 'Run start committed an unsaved draft');
+        assert(!owner.applyValues([{ row: 0, col: 0, value: 80 }]) && !owner.revert([{ row: 0, col: 0 }]),
+          'Pending semantic owner accepted direct or revert mutations');
+        for (const command of s.root.querySelectorAll('.ve-proposal-shared-toolbar button')) {
+          if (command.getAttribute('aria-label') === 'Cell Evidence') continue;
+          assert(command.disabled, `Pending proposal command was enabled: ${command.getAttribute('aria-label')}`);
+          command.click();
+        }
+        for (const key of ['F2', '9', 'Delete', 'Enter']) {
+          cell().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        }
+        await settle();
+        assert(!s.root.querySelector('.ve-table-inline-input') && owner.snapshot().values === before.values
+          && owner.snapshot().authorityGeneration === before.authorityGeneration,
+          'Pending keyboard/toolbar edits changed authority or opened an editor');
+        assert(!button('Cell Evidence').disabled, 'Pending state unnecessarily disabled the evidence action');
+
+        if (outcome === 'complete') { held.resolve(traces); await completed(s); }
+        else if (outcome === 'error') {
+          held.reject(new Error('Controlled pending-edit fixture read failure'));
+          for (let i = 0; i < 100 && s.view.getReadiness().pending; i += 1) await settle();
+        } else if (outcome === 'cancel') s.root.querySelector('[data-ve-analyzer="cancel-analysis"]').click();
+        else { s.view.setActive(false); s.view.setActive(true); }
+        await settle();
+        assert(!s.view.getReadiness().pending && !button('Increase selected cells').disabled,
+          `Proposal controls did not resume after ${outcome}`);
+        cell().dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true }));
+        const input = s.root.querySelector('.ve-table-inline-input');
+        assert(input, `Proposal keyboard editing did not resume after ${outcome}`);
+        input.value = '85'; input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        await settle();
+        assert(owner.snapshot().values[0] === 85, `Resumed edit did not commit after ${outcome}`);
+        if (outcome === 'cancel' || outcome === 'hidden') {
+          held.resolve(traces); await settle(); await settle();
+          assert(owner.snapshot().values[0] === 85 && !s.view.getPrimaryAnalysis(),
+            'Obsolete completion overwrote the edit accepted after cancellation');
+        }
+        assert(s.model.byName.get('veTable').numericValues.every(value => value === 70),
+          'Proposal editing changed source tune values');
+      } finally { s.view.setActive(false); s.host.remove(); }
+    });
+  }
+  const statusVisible = (stage) => {
+    const bounds = stage.getBoundingClientRect();
+    return bounds.height > 0 && bounds.width > 0 && bounds.top >= 0 && bounds.bottom <= innerHeight + 2
+      && bounds.left >= 0 && bounds.right <= innerWidth + 2 && getComputedStyle(stage).display !== 'none';
+  };
+  const setupVisible = async (fixture = {}) => {
+    const s = await setup(createVeAnalyzerView, fixture);
+    s.root.hidden = false;
+    s.host.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#081018';
+    return s;
+  };
+  await check('analysis errors remain visible independently of ready inputs and reset on retry or semantic changes', async () => {
+    const s = await setupVisible();
+    try {
+      const stage = s.root.querySelector('[data-ve-analyzer="stage"]');
+      assert(stage.classList.contains('ve-v50-operation-status') && stage.parentElement === s.root
+        && stage.getAttribute('role') === 'status' && stage.getAttribute('aria-live') === 'polite'
+        && s.root.querySelectorAll('[data-ve-analyzer="stage"]').length === 1,
+        'Visible operation status did not retain the existing owner output');
+      const failure = s.hold(); s.run(); await settle();
+      assert(stage.dataset.state === 'pending' && statusVisible(stage) && stage.textContent.includes('Loading'),
+        'Channel loading feedback remained hidden');
+      failure.reject(new Error('Controlled source read failure ' + 'x'.repeat(2048)));
+      for (let i = 0; i < 100 && s.view.getReadiness().pending; i += 1) await settle();
+      assert(stage.dataset.state === 'error' && statusVisible(stage)
+        && stage.textContent.includes('Controlled source read failure') && stage.textContent.includes('retry Run Analysis')
+        && s.view.getReadiness().ready && !s.view.getReadiness().pending,
+        'Analysis failure was hidden or confused with prerequisite readiness');
+      s.host.style.width = '320px'; await settle();
+      assert(stage.clientHeight <= 85 && stage.scrollWidth <= stage.clientWidth + 2,
+        'Long operation error escaped the bounded wrapping status surface');
+      s.host.style.width = '';
+      const errorText = stage.textContent;
+      s.view.refresh(); s.view.setContext(s.context); await settle();
+      assert(stage.textContent === errorText && stage.dataset.state === 'error', 'No-op refresh/context erased the operation error');
+      const retry = s.hold(); s.run(); await settle();
+      assert(stage.dataset.state === 'pending' && !stage.textContent.includes('Controlled source read failure'), 'Retry retained stale error status');
+      retry.resolve(traces); await completed(s); await settle();
+      assert(stage.dataset.state === 'success' && statusVisible(stage) && stage.textContent.startsWith('Guarded'),
+        'Successful retry did not replace the operation error visibly');
+      const minimum = s.root.querySelector('[data-role="min-rpm"]');
+      minimum.value = '900'; minimum.dispatchEvent(new Event('change', { bubbles: true })); await settle();
+      assert(stage.dataset.state === 'idle' && !statusVisible(stage) && !s.view.getPrimaryAnalysis(),
+        'Semantic changes retained a stale successful operation message');
+    } finally { s.view.setActive(false); s.host.remove(); }
+  });
+  await check('unavailable scoped channels produce a visible operation error instead of leaving Loading status', async () => {
+    const s = await setupVisible();
+    try {
+      const held = s.hold(); s.run(); held.resolve([]);
+      for (let i = 0; i < 100 && s.view.getReadiness().pending; i += 1) await settle();
+      const stage = s.root.querySelector('[data-ve-analyzer="stage"]');
+      assert(stage.dataset.state === 'error' && statusVisible(stage) && stage.textContent.includes('unavailable')
+        && !s.view.getPrimaryAnalysis() && !s.view.getReadiness().pending,
+        'Missing scoped channels left invisible/incomplete operation feedback');
+    } finally { s.view.setActive(false); s.host.remove(); }
+  });
+  for (const obsolete of ['success', 'error']) {
+    await check(`visible cancellation survives an obsolete ${obsolete} completion`, async () => {
+      const s = await setupVisible();
+      try {
+        const held = s.hold(); s.run(); await settle();
+        s.root.querySelector('[data-ve-analyzer="cancel-analysis"]').click();
+        const stage = s.root.querySelector('[data-ve-analyzer="stage"]'), message = stage.textContent;
+        assert(stage.dataset.state === 'cancelled' && statusVisible(stage) && message.includes('cancelled'),
+          'Cancellation feedback was not visible');
+        if (obsolete === 'success') held.resolve(traces); else held.reject(new Error('Obsolete status error'));
+        await settle(); await settle();
+        assert(stage.dataset.state === 'cancelled' && stage.textContent === message && !s.view.getPrimaryAnalysis(),
+          'Obsolete run overwrote cancellation feedback');
+      } finally { s.view.setActive(false); s.host.remove(); }
+    });
+  }
+  await check('cached browser-scale analysis exposes phase progress in the visible owner status', async () => {
+    const count = 320459;
+    const largeTraces = channels.map((channel, index) => ({ channel, complete: true, color: '#58aef6', range: {
+      startSampleIndex: 0, timeMs: Float64Array.from({ length: count }, (_, i) => i * 100),
+      values: Float64Array.from({ length: count }, (_, i) => index === 2 ? 14 + (i % 37) / 100 : [1000, 50, 15, 4][index]),
+      validity: new Uint8Array(count).fill(1),
+    } }));
+    const s = await setupVisible({ traces: largeTraces, sampleCount: count });
+    try {
+      const stage = s.root.querySelector('[data-ve-analyzer="stage"]');
+      s.run();
+      let sawProgress = false;
+      const deadline = performance.now() + 30000;
+      while (!s.view.getPrimaryAnalysis()) {
+        assert(performance.now() < deadline, `Analysis did not complete: ${stage.textContent}`);
+        if (stage.dataset.state === 'pending' && stage.textContent.includes(' / ')) {
+          assert(statusVisible(stage) && getComputedStyle(stage).display !== 'none', 'Calculation progress remained hidden');
+          sawProgress = true;
+        }
+        await settle();
+      }
+      assert(sawProgress && stage.dataset.state === 'success' && statusVisible(stage),
+        'Cached analysis did not expose progress and completion in the visible status');
+    } finally { s.view.setActive(false); s.host.remove(); }
+  });
+  await check('readiness Fix reveals Advanced, compact setup and Lambda owners before focusing actionable controls', async () => {
+    const s = await setupVisible();
+    const focused = async (target) => {
+      const deadline = performance.now() + 3000;
+      while (document.activeElement !== target || !statusVisible(target)) {
+        assert(performance.now() < deadline, `Fix did not visibly focus ${target.outerHTML.slice(0, 150)}`);
+        await settle();
+      }
+    };
+    const fix = async (code) => {
+      await settle();
+      const index = s.view.getReadiness().blockers.findIndex(blocker => blocker.code === code);
+      const info = s.root.querySelector('.ve-v50-run-info');
+      if (s.root.querySelector('.ve-run-info-popout').hidden) info.click();
+      const button = s.root.querySelectorAll('.ve-run-info-item')[index]?.querySelector('button');
+      assert(index >= 0 && button, `Missing ${code} blocker Fix`);
+      const revision = s.view.sessionRevision, reads = s.reads();
+      button.click();
+      await settle();
+      assert(s.view.sessionRevision === revision && s.reads() === reads, 'Reveal changed semantic authority or loaded traces');
+    };
+    try {
+      change(s.root, 'rpm', ''); await settle();
+      s.root.querySelector('.ve-v50-run-chips > .ve-v50-status-chip:first-child').click();
+      await fix('rpm');
+      const rpm = s.root.querySelector('[data-role="rpm"]');
+      await focused(rpm);
+      const advanced = rpm.closest('.ve-v50-tool-surface');
+      assert(!advanced.hidden && advanced.dataset.veToolMode === 'advanced', 'RPM Fix retained hidden Inputs-only mode');
+      await fix('rpm'); await focused(rpm);
+      assert(!advanced.hidden, 'Repeated Fix toggled the target surface closed');
+      s.root.querySelector('.ve-v50-run-fix').click(); await focused(rpm);
+      s.root.querySelector('.ve-v50-run-info').click();
+      s.root.querySelector('.ve-run-info-popout .ve-run-info-item button').click(); await focused(rpm);
+      change(s.root, 'rpm', 'rpm');
+      focusVeReadinessTarget(s.root, '[data-role="dfco"]');
+      await focused(s.root.querySelector('[data-role="dfco"]'));
+      assert(advanced.dataset.veToolMode === 'exclusions', 'State mapping reveal used a mode that hides exclusion controls');
+      const stable = s.root.querySelector('[data-role="stable-ms"]');
+      stable.value = ''; stable.dispatchEvent(new Event('change', { bubbles: true }));
+      await fix('stable-ms'); await focused(stable);
+      assert(stable.closest('details').open && advanced.hidden, 'Compact Fix left its disclosure closed or Advanced overlapping');
+      stable.value = '300'; stable.dispatchEvent(new Event('change', { bubbles: true }));
+      change(s.root, 'scope', 'ab');
+      focusVeReadinessTarget(s.root, '[data-role="scope"]');
+      await focused(s.root.querySelector('.ve-v50-scope-choice[data-selected="true"]'));
+      s.view.setTuneModel(tune(), 'fix-replacement.msq');
+      change(s.root, 'fuelCommand', '');
+      await fix('delay-create');
+      const load = s.root.querySelector('[data-ve-analyzer="load-delay"]');
+      await focused(load);
+      assert(!load.closest('.ve-v50-tool-surface').hidden, 'Delay Fix failed to reveal saved-table fallback');
+      change(s.root, 'fuelCommand', 'pw'); await fix('delay-create');
+      await focused(s.root.querySelector('[data-ve-analyzer="grab-delay"]'));
+    } finally { s.view.setActive(false); s.host.remove(); }
+  });
+  await check('table readiness reveal uses the original selector in the visible header without changing selection', async () => {
+    const s = await setupVisible();
+    try {
+      const layout = s.root.querySelector('select[aria-label="VE Analyzer table view"]');
+      layout.value = 'single'; layout.dispatchEvent(new Event('change', { bubbles: true }));
+      s.root.querySelector('.ve-v50-table-flip').click(); await settle();
+      const target = s.root.querySelector('select[data-role="ve-table"]');
+      const value = target.value, revision = s.view.sessionRevision;
+      focusVeReadinessTarget(s.root, '[data-role="ve-table"]');
+      const deadline = performance.now() + 3000;
+      while (document.activeElement !== target || !statusVisible(target)) {
+        assert(performance.now() < deadline, 'Table Fix did not reveal/focus the original VE selector'); await settle();
+      }
+      assert(target.value === value && s.view.sessionRevision === revision && s.root.querySelector('[data-role="ve-table"]') === target,
+        'Table reveal cloned or changed semantic controls');
+      target.dispatchEvent(new Event('change', { bubbles: true })); await settle();
+      assert(!target.classList.contains('ve-v50-readiness-target'), 'Temporary table selector reveal persisted after selection');
+    } finally { s.view.setActive(false); s.host.remove(); }
+  });
+  await check('unadapted readiness targets still open all native disclosure ancestors', async () => {
+    const root = document.createElement('section');
+    root.innerHTML = '<details><summary>Outer</summary><details><summary>Inner</summary><input aria-label="Native readiness target"></details></details>';
+    document.body.append(root);
+    try {
+      const target = root.querySelector('input');
+      focusVeReadinessTarget(root, 'input');
+      const deadline = performance.now() + 3000;
+      while (document.activeElement !== target) {
+        assert(performance.now() < deadline, 'Unadapted readiness focus failed'); await settle();
+      }
+      assert([...root.querySelectorAll('details')].every(details => details.open), 'Native readiness fallback left an ancestor closed');
+    } finally { root.remove(); }
   });
   return { passed: passed.length, checks: passed };
 }

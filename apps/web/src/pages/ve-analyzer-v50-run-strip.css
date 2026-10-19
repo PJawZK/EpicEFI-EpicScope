@@ -97,3 +97,29 @@
   cursor: not-allowed;
   white-space: nowrap;
 }
+
+/* The semantic owner's stage output is moved out of the hidden legacy guidance.
+ * Bound its height while keeping long errors readable by wrapping and scrolling. */
+.ve-v50-port > .ve-v50-operation-status {
+  display: block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-height: 84px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 5px 8px;
+  border: 1px solid #355363;
+  border-radius: 4px;
+  background: #0d1b24;
+  color: #d0dce2;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ve-v50-port > .ve-v50-operation-status[data-state='idle'] { display: none; }
+.ve-v50-port > .ve-v50-operation-status[data-state='pending'] { border-color: #3479ae; }
+.ve-v50-port > .ve-v50-operation-status[data-state='success'] { border-color: #235f48; }
+.ve-v50-port > .ve-v50-operation-status[data-state='error'] {
+  border-color: #b65c5c;
+  color: #ffd4d4;
+}

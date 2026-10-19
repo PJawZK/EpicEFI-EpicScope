@@ -53,6 +53,7 @@ export interface VeEvidenceCell {
   readonly correctionP90Ratio: number | undefined;
   readonly correctionSpreadPercent: number | undefined;
   readonly confidence: VeEvidenceConfidence;
+  /** Nondecreasing contributing source indices in traversal order; duplicates are retained. */
   readonly sampleIndices: Uint32Array;
 }
 

@@ -1,3 +1,4 @@
+import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import './ve-analyzer-v50-run-strip.css';
@@ -13,6 +14,8 @@ function isDelayRow(name: string): boolean {
  */
 export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): VeAnalyzerViewController {
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar');
   if (!actionbar || root.querySelector('.ve-v50-run-chips')) return inner;
 
@@ -23,9 +26,20 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
 
   const semanticGrab = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]');
   const semanticUse = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]');
-  const quickFix = actionbar.querySelector<HTMLButtonElement>('.ve-run-quick-fix');
   const infoButton = actionbar.querySelector<HTMLButtonElement>('.ve-run-info-button');
   const runButton = actionbar.querySelector<HTMLButtonElement>('.ve-workbench-run');
+
+  // Move the existing owner's output intact. Readiness describes prerequisites;
+  // operation progress/failure must remain visible independently of those chips.
+  const stage = root.querySelector<HTMLElement>('[data-ve-analyzer="stage"]');
+  if (stage) {
+    stage.classList.add('ve-v50-operation-status');
+    stage.setAttribute('role', 'status');
+    stage.setAttribute('aria-live', 'polite');
+    stage.setAttribute('aria-atomic', 'true');
+    actionbar.insertAdjacentElement('afterend', stage);
+  }
+
 
   const chips = document.createElement('div');
   chips.className = 've-v50-run-chips';
@@ -35,14 +49,14 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   inputs.className = 've-v50-status-chip';
   inputs.addEventListener('click', () => {
     root.querySelector<HTMLButtonElement>('.ve-v50-advanced-button:not(.ve-v50-exclusions-button)')?.click();
-  });
+  }, { signal: events.signal });
 
   const delay = document.createElement('button');
   delay.type = 'button';
   delay.className = 've-v50-status-chip';
   delay.addEventListener('click', () => {
     root.querySelector<HTMLElement>('.ve-v50-lambda-tool-trigger')?.click();
-  });
+  }, { signal: events.signal });
 
   const grab = document.createElement('button');
   grab.type = 'button';
@@ -56,13 +70,13 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     const surface = root.querySelector<HTMLElement>('.ve-v50-tool-surface:has(.ve-v50-tool-lambda)');
     if (surface?.hidden) trigger?.click();
     semanticGrab.click();
-  });
+  }, { signal: events.signal });
 
   const use = document.createElement('button');
   use.type = 'button';
   use.className = 've-v50-status-chip ve-v50-use-delay';
   use.textContent = 'Use recommendation';
-  use.addEventListener('click', () => semanticUse?.click());
+  use.addEventListener('click', () => semanticUse?.click(), { signal: events.signal });
 
   const blocker = document.createElement('span');
   blocker.className = 've-v50-run-blocker';
@@ -76,16 +90,19 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   info.addEventListener('click', () => {
     if (infoButton) infoButton.click();
     else inputs.click();
-  });
+  }, { signal: events.signal });
   const fix = document.createElement('button');
   fix.type = 'button';
   fix.className = 've-v50-run-fix';
   fix.textContent = 'Fix';
   fix.addEventListener('click', () => {
     if (inner.getReadiness().delayState === 'recommendation' && !use.disabled) use.click();
-    else if (quickFix && !quickFix.hidden) quickFix.click();
-    else inputs.click();
-  });
+    else {
+      const target = inner.getReadiness().blockers.find(entry => entry.targetSelector)?.targetSelector;
+      if (target) focusVeReadinessTarget(root, target);
+      else inputs.click();
+    }
+  }, { signal: events.signal });
   chips.append(inputs, delay, grab, use, info, blocker, fix);
   if (runButton) {
     const save = document.createElement('button');
@@ -100,9 +117,25 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   } else actionbar.append(chips);
 
   let active = true;
+  let syncQueued = false;
+  const scheduleSync = (): void => {
+    if (!active || disposed || syncQueued) return;
+    syncQueued = true;
+    queueMicrotask(() => {
+      syncQueued = false;
+      if (active && !disposed) sync();
+    });
+  };
+  let renderedState: ReturnType<VeAnalyzerViewController['getReadiness']> | undefined;
+  let renderedGrabDisabled: boolean | undefined;
+  let renderedUseDisabled: boolean | undefined;
   const sync = (): void => {
-    if (!active) return;
+    if (!active || disposed) return;
     const state = inner.getReadiness();
+    const grabDisabled = !semanticGrab || semanticGrab.disabled || state.pending;
+    const useDisabled = !semanticUse || semanticUse.disabled || state.pending;
+    if (renderedState === state && renderedGrabDisabled === grabDisabled && renderedUseDisabled === useDisabled) return;
+    renderedState = state; renderedGrabDisabled = grabDisabled; renderedUseDisabled = useDisabled;
     const requiredInputRows = state.rows.filter((row) => row.required && !isDelayRow(row.name));
     const inputsReady = requiredInputRows.length > 0 && requiredInputRows.every((row) => row.valid);
 
@@ -124,9 +157,9 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
       delay.title = 'Open Lambda Delay to discover or load a working table.';
     }
 
-    grab.disabled = !semanticGrab || semanticGrab.disabled || state.pending;
+    grab.disabled = grabDisabled;
     use.hidden = state.delayState !== 'recommendation';
-    use.disabled = !semanticUse || semanticUse.disabled || state.pending;
+    use.disabled = useDisabled;
     const firstBlocker = state.blockers[0];
     blocker.textContent = state.active && firstBlocker ? firstBlocker.message : '';
     blocker.hidden = !blocker.textContent;
@@ -138,19 +171,26 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
       : 'Go to the first unresolved input';
   };
 
-  inner.onReadinessChange(sync);
-  queueMicrotask(sync);
+  const unsubscribeReadiness = inner.onReadinessChange(scheduleSync);
+  scheduleSync();
 
   return {
     element: root,
-    setActive(nextActive) {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      active = false; unsubscribeReadiness();
+      inner.dispose();
+    },
+    setActive(nextActive) { if (disposed) return;
       active = nextActive;
       inner.setActive(nextActive);
-      if (nextActive) queueMicrotask(sync);
+      if (nextActive) scheduleSync();
     },
     editDelayCells(positions, edit) {
       const changed = inner.editDelayCells(positions, edit);
-      queueMicrotask(sync);
+      scheduleSync();
       return changed;
     },
     get sessionRevision() { return inner.sessionRevision; },
@@ -159,18 +199,21 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
-      if (active) queueMicrotask(sync);
+      if (active) scheduleSync();
       return changed;
     },
     setTuneModel(model, sourceName) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
-      if (active) queueMicrotask(sync);
+      if (active) scheduleSync();
       return changed;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
-      if (active) queueMicrotask(sync);
+      if (active) scheduleSync();
     },
   };
 }

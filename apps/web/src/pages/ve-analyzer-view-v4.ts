@@ -1,3 +1,4 @@
+import type { VeReadinessPresentation } from './ve-analyzer-readiness';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
@@ -6,9 +7,11 @@ import {
   type VeAnalyzerViewController,
 } from './ve-analyzer-view-v3';
 
-export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+export function createVeAnalyzerView(observability?: ObservabilityRecorder, presentation: VeReadinessPresentation = {}): VeAnalyzerViewController {
   const inner = createVeAnalyzerViewV3(observability);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const quick = root.querySelector<HTMLElement>('.ve-workbench-quick-controls')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
@@ -53,14 +56,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   };
 
-  inner.onReadinessChange(updateWorkflowState);
+  const unsubscribeReadiness = presentation.compactReadiness ? () => {} : inner.onReadinessChange(updateWorkflowState);
 
   delayHost.insertAdjacentElement('afterend', delayEditor);
-  updateWorkflowState();
+  if (!presentation.compactReadiness) updateWorkflowState();
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      unsubscribeReadiness();
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return; inner.setActive(active); },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -68,16 +78,19 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (!changed) return false;
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
       return true;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
     },
   };

@@ -1,3 +1,4 @@
+import type { VeReadinessPresentation } from './ve-analyzer-readiness';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
@@ -7,9 +8,11 @@ import {
 } from './ve-analyzer-view-v8';
 import '../styles/ve-analyzer-control-placement.css';
 
-export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV8(observability);
+export function createVeAnalyzerView(observability?: ObservabilityRecorder, presentation: VeReadinessPresentation = {}): VeAnalyzerViewController {
+  const inner = createVeAnalyzerViewV8(observability, presentation);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   let cancelRegrab: (() => void) | undefined;
 
   // Table layout/header ownership lives entirely in v7. This layer is limited
@@ -30,26 +33,38 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     cancelRegrab?.();
     const revision = inner.sessionRevision;
     let completed = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const finish = (): void => {
+      completed = true; observer.disconnect();
+      if (timeout !== undefined) clearTimeout(timeout);
+      cancelRegrab = undefined;
+    };
     const finishIfReady = (): void => {
       if (completed) return;
-      if (revision !== inner.sessionRevision) { completed = true; observer.disconnect(); return; }
+      if (revision !== inner.sessionRevision) { finish(); return; }
       const analyzing = /^Analyzing current-log delay evidence/i.test(delayResultTitle.textContent?.trim() ?? '');
       if (analyzing || useDelayButton.disabled) return;
-      completed = true;
-      observer.disconnect();
+      finish();
       useDelayButton.click();
     };
     const observer = new MutationObserver(finishIfReady);
-    cancelRegrab = () => { completed = true; observer.disconnect(); };
+    cancelRegrab = finish;
     observer.observe(delayResultTitle, { childList: true, subtree: true, characterData: true });
     observer.observe(useDelayButton, { attributes: true, attributeFilter: ['disabled'] });
-    setTimeout(() => observer.disconnect(), 30000);
+    timeout = setTimeout(finish, 30000);
     queueMicrotask(finishIfReady);
-  });
+  }, { signal: events.signal });
 
   return {
     element: root,
-    setActive(active) { if (!active) cancelRegrab?.(); inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      cancelRegrab?.();
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return; if (!active) cancelRegrab?.(); inner.setActive(active); },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -57,12 +72,15 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       return inner.setContext(context);
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       return inner.setTuneModel(model, sourceName);
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
     },
   };

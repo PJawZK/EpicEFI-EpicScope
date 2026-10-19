@@ -19,12 +19,35 @@ export interface TableInteractionDomCommands {
   readonly afterEdit?: () => void;
 }
 
+export interface TableValueSnapshot {
+  readonly revision: number;
+  readonly authorityGeneration: number;
+  readonly rows: number;
+  readonly cols: number;
+  readonly values: readonly (number | undefined)[];
+  readonly baselineValues: readonly (number | undefined)[];
+}
+
+/** Detect owner structure changes without treating preview text as replacement. */
+export function hasAddedOrRemovedElement(records: readonly MutationRecord[], selector: string): boolean {
+  return records.some(record => record.type === 'childList'
+    && [...record.addedNodes, ...record.removedNodes].some(node => node instanceof Element
+      && (node.matches(selector) || node.querySelector(selector) !== null)));
+}
+
+function valueFromSnapshot(snapshot: TableValueSnapshot | undefined, position: TableCellPosition, baseline = false): number | undefined {
+  if (!snapshot || position.row < 0 || position.row >= snapshot.rows || position.col < 0 || position.col >= snapshot.cols) return undefined;
+  return (baseline ? snapshot.baselineValues : snapshot.values)[position.row * snapshot.cols + position.col];
+}
+
 export interface TableInteractionDomPreferences {
   readonly adjustmentStep: () => number;
   readonly smoothStrength: () => number;
   readonly interpolation: () => TableInterpolationOptions;
   readonly brush: () => TableBrushOptions;
   readonly readValue?: (position: TableCellPosition) => number | undefined;
+  /** Borrow one semantic snapshot per refresh/preview pass, never one per cell. */
+  readonly readValues?: () => TableValueSnapshot | undefined;
   readonly baselineValue?: (position: TableCellPosition) => number | undefined;
   /** Presentation-only formatter for transient Brush values. */
   readonly formatPreviewValue?: (position: TableCellPosition, value: number) => string;
@@ -266,17 +289,20 @@ export function createTableInteractionDomController(
 
   const refreshValueStates = (): void => {
     if (!table || destroyed) return;
+    const snapshot = preferences.readValues?.();
     let heatMin: number | undefined;
     let heatMax: number | undefined;
     for (const cell of cachedCells) {
       const position = positionForCell(cell);
       if (!position) continue;
-      const currentValue = preferences.readValue?.(position);
-      const baselineValue = preferences.baselineValue?.(position);
+      const currentValue = preferences.readValues ? valueFromSnapshot(snapshot, position) : preferences.readValue?.(position);
+      const baselineValue = preferences.readValues ? valueFromSnapshot(snapshot, position, true) : preferences.baselineValue?.(position);
       if (currentValue !== undefined && Number.isFinite(currentValue)) {
         heatMin = heatMin === undefined ? currentValue : Math.min(heatMin, currentValue);
         heatMax = heatMax === undefined ? currentValue : Math.max(heatMax, currentValue);
       }
+      // A presentation refresh must not overwrite an uncommitted Brush marker.
+      if (brushValuePreviewOriginal.has(cell)) continue;
       if (currentValue !== undefined && baselineValue !== undefined && Number.isFinite(currentValue) && Number.isFinite(baselineValue)) {
         const epsilon = 1e-9 * Math.max(1, Math.abs(currentValue), Math.abs(baselineValue));
         const state = currentValue < baselineValue - epsilon ? 'lower' : currentValue > baselineValue + epsilon ? 'higher' : 'same';
@@ -317,8 +343,7 @@ export function createTableInteractionDomController(
   const valueNodeForCell = (cell: HTMLTableCellElement): HTMLElement =>
     cell.querySelector<HTMLElement>(':scope > span') ?? cell;
 
-  const setPreviewValueState = (cell: HTMLTableCellElement, position: TableCellPosition, value: number): void => {
-    const baseline = preferences.baselineValue?.(position);
+  const setPreviewValueState = (cell: HTMLTableCellElement, value: number, baseline: number | undefined): void => {
     if (baseline === undefined || !Number.isFinite(baseline)) return;
     const epsilon = 1e-9 * Math.max(1, Math.abs(value), Math.abs(baseline));
     setDataset(cell, 'tableValueState', value < baseline - epsilon ? 'lower' : value > baseline + epsilon ? 'higher' : 'same');
@@ -340,6 +365,7 @@ export function createTableInteractionDomController(
     if (!table || pendingBrushValuePreview.size === 0) return;
     const pending = pendingBrushValuePreview;
     pendingBrushValuePreview = new Map();
+    const snapshot = preferences.readValues?.();
     for (const entry of pending.values()) {
       const cell = cellFor(entry.position);
       if (!cell) continue;
@@ -353,7 +379,8 @@ export function createTableInteractionDomController(
       valueNode.textContent = preferences.formatPreviewValue?.(entry.position, entry.value) ?? String(Math.round(entry.value * 1000) / 1000);
       setDataset(cell, 'tableLivePreview', 'true');
       if (cell.dataset.delayRow !== undefined) setDataset(cell, 'delayPreview', 'true');
-      setPreviewValueState(cell, entry.position, entry.value);
+      setPreviewValueState(cell, entry.value, preferences.readValues
+        ? valueFromSnapshot(snapshot, entry.position, true) : preferences.baselineValue?.(entry.position));
       setPreviewHeat(cell, entry.value);
     }
   };
@@ -495,6 +522,7 @@ export function createTableInteractionDomController(
     input.autocomplete = 'off';
     input.spellcheck = false;
     const current = preferences.readValue?.(position);
+    const editAuthority = preferences.readValues?.();
     input.value = initial ?? (current !== undefined && Number.isFinite(current) ? String(current) : '');
     cell.dataset.tableEditing = 'true';
     if (cell.dataset.delayRow !== undefined) cell.dataset.delayEditing = 'true';
@@ -517,7 +545,13 @@ export function createTableInteractionDomController(
       delete cell.dataset.tableEditing;
       delete cell.dataset.delayEditing;
       restoreInlinePreview();
-      if (commit) {
+      const currentAuthority = preferences.readValues?.();
+      // Replacement rendering can blur an editor before the adapter cancels it.
+      // Never start a new transaction for a draft from an obsolete authority.
+      const authorityUnchanged = !preferences.readValues || (editAuthority !== undefined && currentAuthority !== undefined
+        && editAuthority.revision === currentAuthority.revision
+        && editAuthority.authorityGeneration === currentAuthority.authorityGeneration);
+      if (commit && authorityUnchanged) {
         if (raw === '') {
           const positions = selectedPositions();
           if (positions.length && commands.blankSelection?.(positions)) finishEdit();
@@ -727,6 +761,7 @@ export function createTableInteractionDomController(
   };
 
   const cancelActiveInteraction = (): void => {
+    closeToolConfiguration();
     finishInlineEdit?.(false);
     finishBrush(false);
     dragPointerId = undefined;
@@ -786,7 +821,6 @@ export function createTableInteractionDomController(
       table.removeEventListener('wheel', wheel);
     }
     table = undefined;
-    closeToolConfiguration();
     destroyed = true;
     toolbar.remove();
   };
