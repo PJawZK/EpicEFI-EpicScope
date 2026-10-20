@@ -33,10 +33,10 @@ export interface VeResultDisplay {
 }
 
 export const VE_RESULT_VIEW_OPTIONS: readonly { value: VeResultView; label: string }[] = [
-  { value: 'proposal', label: 'Proposed VE' },
-  { value: 'change', label: 'VE change' },
-  { value: 'change-percent', label: 'VE change %' },
-  { value: 'mixture-error', label: 'Mixture error %' },
+  { value: 'proposal', label: 'Working VE' },
+  { value: 'change', label: 'Analysis VE change' },
+  { value: 'change-percent', label: 'Analysis VE change %' },
+  { value: 'mixture-error', label: 'Base-VE correction %' },
   { value: 'samples', label: 'Samples' },
   { value: 'weight', label: 'Evidence weight' },
   { value: 'confidence', label: 'Confidence' },

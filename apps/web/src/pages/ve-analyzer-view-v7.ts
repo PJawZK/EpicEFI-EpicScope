@@ -202,10 +202,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
 
   const resultDescription = (view: VeResultView): string => {
     switch (view) {
-      case 'proposal': return baseVeHeaderDescription;
-      case 'change': return 'VE change from the original table; weak/withheld cells show the raw evidence candidate for review.';
-      case 'change-percent': return 'VE change in percent; weak/withheld cells show the raw evidence candidate for review.';
-      case 'mixture-error': return 'Robust target-vs-actual correction evidence after the configured fuel-correction handling.';
+      case 'proposal': return `${baseVeHeaderDescription} Editable working review; original tune and generated analysis remain separate.`;
+      case 'change': return 'Generated analysis change from the original tune, independent of working edits. Weak/withheld cells show raw candidate change, not an accepted proposal.';
+      case 'change-percent': return 'Generated analysis percent change from the original tune, independent of working edits. Weak/withheld cells show raw candidate change.';
+      case 'mixture-error': return 'Robust base-VE correction after configured applied-fuel-trim handling; this is not raw observed mixture error when compensation is enabled.';
       case 'samples': return 'Contributing sample count retained by each VE node.';
       case 'weight': return 'Cumulative spatial evidence weight retained by each VE node.';
       case 'confidence': return 'Evidence confidence derived from weight, repeat observations and correction spread.';
@@ -227,7 +227,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
       ? resultViewSelect.value as VeResultView
       : 'proposal';
     table.dataset.veResultView = view;
-    if (veHeaderDescription) veHeaderDescription.textContent = resultDescription(view);
+    if (veHeaderDescription) veHeaderDescription.textContent = resultDescription(view) + (view === 'proposal' ? '' : ' Missing metrics display original VE; hover a cell value to identify its source.');
 
     const delaySurface = view === 'delay' ? readDelaySurface(root) : undefined;
     const proposalSnapshot = veProposalEditOwner(root)?.snapshot();
@@ -267,6 +267,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
         if (view === 'proposal' && proposalSnapshot && insideSource
           && semanticRow < proposalSnapshot.rows && semanticCol < proposalSnapshot.cols) {
           const working = proposalSnapshot.values[semanticRow * proposalSnapshot.cols + semanticCol];
+          if (main.title !== 'Working review value; generated proposal and original tune are separate.') main.title = 'Working review value; generated proposal and original tune are separate.';
           main.textContent = working === undefined ? '—' : proposalSnapshot.digits === undefined
             ? String(working) : working.toFixed(proposalSnapshot.digits);
           cell.dataset.veResultValue = working === undefined ? '' : String(working);
@@ -277,6 +278,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
 
         const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpm, load) : undefined;
         const display = veResultDisplay(metrics, view, delayMs);
+        const valueTitle = view !== 'proposal' && display.scaleMode === 'base'
+          ? 'Selected metric unavailable: displaying original VE, not a value in the selected metric units.'
+          : view === 'delay' ? 'Interpolated working lambda delay in milliseconds.' : 'Retained generated analysis metric; independent of working review edits.';
+        if (main.title !== valueTitle) main.title = valueTitle;
         main.textContent = display.text;
         cell.dataset.veResultValue = display.numericValue === undefined ? '' : String(display.numericValue);
         cell.classList.toggle('ve-result-missing', display.numericValue === undefined);

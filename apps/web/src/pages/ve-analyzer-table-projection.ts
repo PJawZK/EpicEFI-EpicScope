@@ -2,6 +2,13 @@ import type { VeEvidenceMapResult } from '../../../../core/analysis/ve-evidence-
 import type { VeProposalResult } from '../../../../core/analysis/ve-proposal';
 import type { VeCellMetrics } from './ve-analyzer-result-view';
 
+/** Working values come from the review owner, never from formatted table text. */
+export function veWorkingCellMetrics(original: number | undefined, working: number | undefined) {
+  const value = working !== undefined && Number.isFinite(working) ? working : undefined;
+  const change = value !== undefined && original !== undefined && Number.isFinite(original) ? value - original : undefined;
+  return { value, change, changePercent: change !== undefined && original !== undefined && original !== 0 ? change / original * 100 : undefined };
+}
+
 export interface VeTableProjection {
   readonly rows: number;
   readonly cols: number;

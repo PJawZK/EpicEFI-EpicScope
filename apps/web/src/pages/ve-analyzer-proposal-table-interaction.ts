@@ -174,7 +174,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
         button.hidden = false;
         button.disabled = !table;
         button.title = pending ? 'Proposal editing is unavailable while analysis is running'
-          : !table ? 'Editing applies to Proposed VE; switch Result View to Proposed VE' : button.getAttribute('aria-label') ?? '';
+          : !table ? 'Editing applies to Working VE; switch Result View to Working VE' : button.getAttribute('aria-label') ?? '';
       }
     }
     evidence.hidden = !renderedTable;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VeEvidenceCell } from '../../core/analysis/ve-evidence-map';
 import type { VeProposalCell } from '../../core/analysis/ve-proposal';
-import { projectVeTable, veSourceHeatLevel } from '../../apps/web/src/pages/ve-analyzer-table-projection';
+import { projectVeTable, veSourceHeatLevel, veWorkingCellMetrics } from '../../apps/web/src/pages/ve-analyzer-table-projection';
 import { veResultDisplay } from '../../apps/web/src/pages/ve-analyzer-result-view';
 
 const evidence = (overrides: Partial<VeEvidenceCell> = {}): VeEvidenceCell => ({
@@ -15,6 +15,17 @@ const proposal = (overrides: Partial<VeProposalCell> = {}): VeProposalCell => ({
 });
 
 describe('VE Analyzer typed result views', () => {
+  it('projects working deltas against original tune without using the generated proposal', () => {
+    const working = veWorkingCellMetrics(70, 123.456);
+    expect(working.value).toBe(123.456); expect(working.change).toBeCloseTo(53.456, 10);
+    expect(working.changePercent).toBeCloseTo(76.36571428571429, 10);
+    expect(veWorkingCellMetrics(70, undefined)).toEqual({ value: undefined, change: undefined, changePercent: undefined });
+    expect(veWorkingCellMetrics(70, 0)).toEqual({ value: 0, change: -70, changePercent: -100 });
+    expect(veWorkingCellMetrics(0, 10)).toEqual({ value: 10, change: 10, changePercent: undefined });
+    expect(veWorkingCellMetrics(undefined, 10)).toEqual({ value: 10, change: undefined, changePercent: undefined });
+    expect(veWorkingCellMetrics(70, NaN).value).toBeUndefined();
+  });
+
   it('retains full precision from semantic proposal/evidence rather than rounded labels', () => {
     const metrics = projectVeTable([60], 1, 1, [1000.25], [50.5], { cells: [evidence()] }, { cells: [proposal()] }).cells[0]!;
     expect(metrics).toMatchObject({ state: 'measured', current: 60, proposed: 63.012345, changeValue: 3.012345,

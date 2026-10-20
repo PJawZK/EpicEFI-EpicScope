@@ -482,8 +482,8 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (!cell) { delayEditor.hidden = true; return; }
     delayEditor.hidden = false;
     delayCellHeading.textContent = `${formatValue(table.rpmBins[col]!, 0)} RPM / ${formatValue(table.loadBins[row]!, 0)} load`;
-    delayCellState.textContent = `${cell.state} · ${cell.eventCount} events · ${cell.confidence} confidence`;
-    delayCellRecommendation.textContent = cell.recommendedMs === undefined ? '—' : `${Math.round(cell.recommendedMs)} ms${cell.spreadMs !== undefined ? ` · spread ${Math.round(cell.spreadMs)} ms` : ''}`;
+    delayCellState.textContent = `${cell.state} recommendation · ${cell.eventCount} direct local events · ${cell.confidence} confidence`;
+    delayCellRecommendation.textContent = cell.recommendedMs === undefined ? '—' : `${Math.round(cell.recommendedMs)} ms${cell.spreadMs !== undefined ? ` · direct local spread ${Math.round(cell.spreadMs)} ms` : ''}`;
     delayCellProvenance.textContent = cell.workingProvenance ?? 'No working authority';
     delayCellWorking.value = cell.workingMs === undefined ? '' : String(Math.round(cell.workingMs));
     delayCellApply.disabled = false;
@@ -493,7 +493,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       delaySourceEvents.innerHTML = '<span>No direct discovery events are attached to this cell. Interpolated/user-filled cells are not presented as measured evidence.</span>';
     } else {
       const rows = events.map((event, index) => `<tr><td>${index + 1}</td><td>${Math.round(event.onsetDelayMs)} ms</td><td>${event.rpm === undefined ? '—' : Math.round(event.rpm)}</td><td>${event.load === undefined ? '—' : formatValue(event.load, 1)}</td><td>${Math.round(event.commandTimeMs)} ms</td><td>${Math.round(event.responseTimeMs)} ms</td></tr>`).join('');
-      delaySourceEvents.innerHTML = `<div class="ve-delay-source-events-title">Direct source events</div><div class="specialized-analyzer-table-wrap"><table class="specialized-analyzer-table"><thead><tr><th>#</th><th>Delay</th><th>RPM</th><th>Load</th><th>Command time</th><th>Response time</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      delaySourceEvents.innerHTML = `<div class="ve-delay-source-events-title">Direct local source events</div><div class="specialized-analyzer-table-wrap"><table class="specialized-analyzer-table"><thead><tr><th>#</th><th>Delay</th><th>RPM</th><th>Load</th><th>Command time</th><th>Response time</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
   };
 
@@ -533,7 +533,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         if (cell.recommendedMs !== undefined) td.dataset.delayRecommended = String(cell.recommendedMs);
         const shown = cell.workingMs;
         td.textContent = shown === undefined ? '—' : String(Math.round(shown));
-        td.title = `${cell.state} delay cell · ${cell.eventCount} events${cell.recommendedMs !== undefined ? ` · raw recommendation ${Math.round(cell.recommendedMs)} ms` : ''}${cell.workingMs !== undefined ? ` · editable value ${Math.round(cell.workingMs)} ms` : ' · editable value none'}${cell.workingProvenance ? ` · provenance ${cell.workingProvenance}` : ''}${cell.p10Ms !== undefined ? ` · P10 ${Math.round(cell.p10Ms)} ms` : ''}${cell.p90Ms !== undefined ? ` · P90 ${Math.round(cell.p90Ms)} ms` : ''} · confidence ${cell.confidence}`;
+        td.title = `${cell.state} delay cell · ${cell.eventCount} direct local events${cell.recommendedMs !== undefined ? ` · generated recommendation ${Math.round(cell.recommendedMs)} ms` : ''}${cell.workingMs !== undefined ? ` · editable value ${Math.round(cell.workingMs)} ms` : ' · editable value none'}${cell.workingProvenance ? ` · provenance ${cell.workingProvenance}` : ''}${cell.p10Ms !== undefined ? ` · direct local P10 ${Math.round(cell.p10Ms)} ms` : ''}${cell.p90Ms !== undefined ? ` · direct local P90 ${Math.round(cell.p90Ms)} ms` : ''} · confidence ${cell.confidence}`;
         td.onclick = () => { selectedDelayCell = { row, col }; renderSelectedDelayCell(); };
         if (td.title) {
           td.tabIndex = 0;

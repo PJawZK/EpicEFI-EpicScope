@@ -23,6 +23,15 @@ function event(rpm: number, load: number, onsetDelayMs: number): AfrDelayEvent {
 }
 
 describe('VE lambda delay table', () => {
+  it('retains sparse direct local events independently from an interpolated recommendation', () => {
+    const table = buildVeDelayTable([event(1000, 50, 100), event(1000, 50, 100), event(3000, 50, 300), event(3000, 50, 300), event(2000, 50, 500)],
+      [1000, 2000, 3000], [50], { minimumMeasuredEvents: 2, maximumInterpolationDistance: 0.6 });
+    const cell = table.cells[1]!;
+    expect(cell.state).toBe('interpolated'); expect(cell.recommendedMs).toBe(200);
+    expect(cell.eventCount).toBe(1); expect(cell.sourceEvents.map(e => e.onsetDelayMs)).toEqual([500]);
+    expect([cell.p10Ms, cell.p90Ms]).toEqual([500, 500]);
+  });
+
   it('derives a dedicated coarse delay geometry from sparse event evidence', () => {
     const rpm = Array.from({ length: 32 }, (_, index) => 600 + index * 200);
     const load = Array.from({ length: 32 }, (_, index) => 20 + index * 5);

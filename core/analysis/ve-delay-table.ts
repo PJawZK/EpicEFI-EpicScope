@@ -28,7 +28,8 @@ export interface VeDelayTableCell {
   readonly p90Ms: number | undefined;
   readonly spreadMs: number | undefined;
   readonly confidence: VeDelayConfidence;
-  /** Direct delay-discovery events assigned to this cell. Empty for interpolated cells. */
+  /** Direct delay-discovery events assigned to this cell, including sparse local events
+   * retained when its recommendation is interpolated from neighboring cells. */
   readonly sourceEvents: readonly VeDelaySourceEvent[];
 }
 

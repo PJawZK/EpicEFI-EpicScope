@@ -3,6 +3,8 @@ import { createOwnerEvidence } from '../observability/producers/owner';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
+import { veProposalEditOwner } from './ve-analyzer-proposal-edit-owner';
+import { veWorkingCellMetrics } from './ve-analyzer-table-projection';
 import '../styles/ve-analyzer-cell-evidence.css';
 
 export interface VeEvidenceVisit {
@@ -150,10 +152,12 @@ export function installVeAnalyzerCellEvidence(
   let active = true;
   let pendingContext: LoggerAnalysisContext | undefined;
   let pendingTune: readonly [import('../../../../core/tune/tune-model').TuneModel | undefined, string | undefined] | undefined;
-  const details = new Map<number, { readonly heading: string; readonly content: readonly HTMLElement[]; readonly open: HTMLButtonElement; readonly hasVisit: boolean }>();
+  const details = new Map<number, { readonly heading: string; readonly content: readonly HTMLElement[]; readonly open: HTMLButtonElement; readonly hasVisit: boolean; readonly updateWorking: () => void }>();
+  let shownIndex: number | undefined;
   const invalidate = (): void => {
     ownerEvidence.event('ve.popup.invalidate', { entries: details.size });
     details.clear();
+    shownIndex = undefined;
     const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
     const panel = page.querySelector<HTMLElement>('.ve-cell-detail-popover');
     if (panel) {
@@ -171,6 +175,7 @@ export function installVeAnalyzerCellEvidence(
     const { panel, heading, body } = ensureDetailPanel(root);
     panel.hidden = false;
     if (!resolved) {
+      shownIndex = undefined;
       heading.textContent = 'VE cell evidence';
       const unavailable = document.createElement('div');
       unavailable.className = 've-evidence-detail-loading';
@@ -183,9 +188,11 @@ export function installVeAnalyzerCellEvidence(
     const title = `VE evidence · ${format(coords.rpm, 0)} RPM / ${format(coords.load, 0)} load`;
 
     const index = coords.row * resolved.veTable.cols + coords.col;
+    shownIndex = index;
     const cached = details.get(index);
     ownerEvidence.event(cached ? 've.popup.cache-hit' : 've.popup.build', { entries: details.size, cell: index }, { visibility: active ? 'active' : 'hidden', stateRevision: inner.sessionRevision });
     if (cached) {
+      cached.updateWorking();
       cached.open.disabled = !cached.hasVisit || !context.openSamplesInLogger;
       if (heading.textContent !== cached.heading) heading.textContent = cached.heading;
       if (body.firstElementChild !== cached.content[0]) body.replaceChildren(...cached.content);
@@ -201,10 +208,13 @@ export function installVeAnalyzerCellEvidence(
     grid.className = 've-evidence-detail-grid';
     grid.append(
       metric('Original VE', format(current, resolved.veTable.digits)),
-      metric('Proposed VE', format(proposalCell.proposedValue, resolved.veTable.digits)),
-      metric('VE change', signed(proposalCell.changeValue, 2)),
-      metric('VE change %', signed(proposalCell.changePercent, 1, '%')),
-      metric('Mixture error', signed(evidenceCell.correctionPercent, 1, '%')),
+      metric('Generated proposed VE', format(proposalCell.proposedValue, resolved.veTable.digits)),
+      metric('Raw evidence candidate', format(proposalCell.evidenceCandidate, resolved.veTable.digits)),
+      metric('Analysis VE change', signed(proposalCell.changeValue, 2)),
+      metric('Analysis VE change %', signed(proposalCell.changePercent, 1, '%')),
+      metric('Analysis change basis', proposalCell.state === 'measured' ? 'Accepted generated proposal versus original tune' : proposalCell.evidenceCandidate === undefined ? 'No evidence candidate available' : 'Unaccepted raw candidate versus original tune'),
+      metric('Base-VE correction', signed(evidenceCell.correctionPercent, 1, '%')),
+      metric('Correction basis', resolved.evidence.fuelCorrectionCompensated ? 'Actual / target with applied fuel trim compensation' : 'Actual / target without applied fuel trim compensation'),
       metric('Samples', evidenceCell.sampleCount.toLocaleString()),
       metric('Evidence weight', format(evidenceCell.totalWeight, 3)),
       metric('Confidence', evidenceCell.confidence),
@@ -213,6 +223,20 @@ export function installVeAnalyzerCellEvidence(
       metric('Spread', evidenceCell.correctionSpreadPercent === undefined ? '—' : `${format(evidenceCell.correctionSpreadPercent, 1)}%`),
       metric('Proposal state', proposalCell.state),
     );
+
+    const workingMetrics = [metric('Working VE', '—'), metric('Working change', '—'), metric('Working change %', '—')];
+    grid.append(...workingMetrics);
+    const updateWorking = (): void => {
+      const snapshot = veProposalEditOwner(root)?.snapshot();
+      const working = snapshot && snapshot.rows === resolved.veTable.rows && snapshot.cols === resolved.veTable.cols ? snapshot.values[index] : undefined;
+      const values = veWorkingCellMetrics(current, working);
+      const texts = [format(values.value, resolved.veTable.digits), signed(values.change, 2), signed(values.changePercent, 1, '%')];
+      workingMetrics.forEach((node, i) => {
+        const output = node.lastElementChild!;
+        if (output.textContent !== texts[i]) output.textContent = texts[i]!;
+      });
+    };
+    updateWorking();
 
     const contextLine = document.createElement('div');
     contextLine.className = 've-evidence-detail-context';
@@ -243,9 +267,17 @@ export function installVeAnalyzerCellEvidence(
     }
     actions.append(open);
     const content = [grid, contextLine, actions];
-    details.set(index, { heading: title, content, open, hasVisit: Boolean(visit) });
+    details.set(index, { heading: title, content, open, hasVisit: Boolean(visit), updateWorking });
     body.replaceChildren(...content);
   };
+
+  // The existing owner publishes this local render event after working edits.
+  // Patch only the shown review fields; retained evidence/visits stay cached.
+  root.addEventListener('ve-proposal-table-rendered', () => {
+    if (!active || shownIndex === undefined) return;
+    const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
+    if (page.querySelector<HTMLElement>('.ve-cell-detail-popover')?.hidden === false) details.get(shownIndex)?.updateWorking();
+  }, { signal: events.signal });
 
   root.addEventListener('ve-cell-evidence-open', (event) => {
     const detail = (event as CustomEvent<{ readonly cell?: HTMLTableCellElement }>).detail;
