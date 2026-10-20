@@ -207,6 +207,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let readinessRowsKey = '';
 
   let delayGeneration = 0;
+  let delayDiscoveryFeedback: { generation: number; title: string; text: string } | undefined;
   let delayLoadGeneration = 0;
   let sessionRevision = 0;
   let delaySurfaceGeneration = 0;
@@ -717,16 +718,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     useDelayButton.disabled = !delayRecommendation || recommendationCounts.measured + recommendationCounts.interpolated === 0;
     saveDelayButton.disabled = !workingDelayTable;
     renderDelayTable();
+    if (delayDiscoveryFeedback?.generation === delayGeneration) {
+      delayResultTitle.textContent = delayDiscoveryFeedback.title;
+      delayResultText.textContent = delayDiscoveryFeedback.text;
+      return;
+    }
     if (!delayDiscovery || !delayRecommendation) {
       delayResultTitle.textContent = workingDelayTable ? 'Working delay table active' : 'No current-log delay recommendation calculated';
       delayResultText.textContent = workingDelayTable
-        ? `${workingDelayTable.origin === 'saved-file' ? `Loaded saved table${workingDelayTable.originLabel ? ` · ${workingDelayTable.originLabel}` : ''}` : 'Working table from current-log recommendation'} · ${workingCounts.userEdited} user-edited cells. You can still Grab lambda delays from log to compare fresh evidence without replacing this working table.`
+        ? `${workingDelayTable.origin === 'saved-file' ? `Loaded saved table${workingDelayTable.originLabel ? ` · ${workingDelayTable.originLabel}` : ''}` : 'Working table from current-log recommendation'} · ${workingCounts.userEdited} user-edited cells. A successful re-grab replaces this working table and its edits with the fresh recommendation; a failed discovery keeps it unchanged.`
         : fuel ? 'Discover from the current log or Load saved table. Discovery never replaces working authority until Use recommendation is pressed.' : 'Select a fuel-command / injector-PW source under Advanced inputs before current-log delay discovery, or load a saved table.';
       if (axisIssue) delayResultText.textContent = `${workingDelayTable ? 'Working delay table retained. ' : ''}Current-log discovery unavailable: ${axisIssue} You can load a valid saved table separately.`;
       return;
     }
     delayResultTitle.textContent = `Current-log recommendation · ${recommendationCounts.measured} measured · ${recommendationCounts.interpolated} interpolated · ${recommendationCounts.insufficient} insufficient · ${recommendationCounts.userEdited} user edited`;
-    delayResultText.textContent = `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. Raw discovered evidence remains preserved when recommendation cells are edited. ${workingDelayTable ? `Working authority remains ${workingDelayTable.origin === 'saved-file' ? 'the loaded saved table' : 'separate'} until Use recommendation is pressed.` : 'Recommendation remains separate until Use recommendation is pressed.'}`;
+    delayResultText.textContent = `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. Raw discovered evidence remains preserved when recommendation cells are edited. ${workingDelayTable ? 'Working delay table active. A successful re-grab replaces working values and edits; failed discovery keeps them unchanged.' : 'Recommendation remains separate until Use recommendation is pressed.'}`;
   };
 
   const invalidate = (): void => {
@@ -922,15 +928,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     const scope = select('scope') ? selectedAnalyzerScope(select('scope')!, context) : undefined; if (!scope) return;
     const rpmId = roleSelect('rpm')?.value; const loadId = roleSelect('load')?.value; const ids = [...new Set([actualId, fuelId, rpmId, loadId].filter((id): id is string => Boolean(id)))];
     const veRpm = axisValues(tuneModel, select('rpm-axis')?.value ?? ''); const veLoad = axisValues(tuneModel, select('load-axis')?.value ?? ''); if (!veRpm || !veLoad) return;
-    const bounds = analyzerScopeBounds(scope); const generation = ++delayGeneration; ownerEvidence.event('ve.delay-discovery.started', { generation }); delayResultTitle.textContent = 'Analyzing current-log delay evidence…'; delayResultText.textContent = 'Searching isolated fuel-command transitions and building a recommendation without replacing the working table.';
+    const hadWorkingTable = workingDelayTable !== undefined;
+    const bounds = analyzerScopeBounds(scope); const generation = ++delayGeneration;
+    ownerEvidence.event('ve.delay-discovery.started', { generation });
+    delayDiscoveryFeedback = { generation, title: 'Analyzing current-log delay evidence…', text: hadWorkingTable
+      ? 'Searching isolated fuel-command transitions. Successful discovery replaces the working table and its edits; failure keeps them unchanged.'
+      : 'Searching isolated fuel-command transitions. The recommendation requires Use recommendation before becoming working authority.' };
+    renderDelayDiscovery();
     let loaded: readonly import('./logger-page').LoggerAnalysisTraceContext[];
     try {
       loaded = await context.loadTraces(ids, bounds.startMs, bounds.endMs);
     } catch (error) {
       if (generation === delayGeneration) {
         ownerEvidence.event('ve.delay-discovery.failed', { generation });
-        delayResultTitle.textContent = 'Could not discover lambda delays';
-        delayResultText.textContent = error instanceof Error ? error.message : String(error);
+        delayDiscoveryFeedback = { generation, title: 'Could not discover lambda delays', text: error instanceof Error ? error.message : String(error) };
+        renderDelayDiscovery();
       }
       return;
     }
@@ -939,8 +951,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;
       delayDiscovery = undefined; delayRecommendation = undefined;
       if (removesEditableSurface) delaySurfaceGeneration += 1;
-      renderDelayDiscovery(); return;
+      delayDiscoveryFeedback = { generation, title: 'Could not discover lambda delays', text: 'Selected actual-mixture or fuel-command data is unavailable in the current scope. Check the selected channels and analysis range, then retry.' };
+      renderReadiness(); return;
     }
+    delayDiscoveryFeedback = undefined;
     delayDiscovery = analyzeAfrDelay({ actualAfr: actual, fuelCommand: fuel, ...(rpmId && ranges.get(rpmId) ? { rpm: ranges.get(rpmId)! } : {}), ...(loadId && ranges.get(loadId) ? { load: ranges.get(loadId)! } : {}) }, {
       commandDeltaThreshold: positiveSetting('delay-command-threshold')!, afrResponseThreshold: positiveSetting('delay-response-threshold')!, searchWindowMs: positiveSetting('delay-search-window')!, minimumEventSpacingMs: nonNegativeSetting('delay-event-spacing')!, responsePolarity: 'inverse',
     });
@@ -950,6 +964,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     selectedDelayCell = undefined;
     ownerEvidence.event('ve.delay-discovery.published', { generation });
     renderReadiness();
+    if (generation === delayGeneration && viewActive && !disposed) {
+      root.dispatchEvent(new CustomEvent('ve-delay-discovery-complete', { detail: { hadWorkingTable } }));
+    }
   }
 
   async function runAnalysis(origin: Origin = 'programmatic'): Promise<void> {
@@ -1104,7 +1121,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           root.dispatchEvent(new CustomEvent('ve-delay-file-accepted'));
           invalidate();
           ownerEvidence.event('ve.delay-file.published', { generation });
-          delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Current-log discovery remains separate until Use recommendation is pressed.`;
+          delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Successful re-grab replaces this working table with a fresh log-derived recommendation.`;
         } catch (error) {
           delayResultTitle.textContent = 'Could not load delay table'; delayResultText.textContent = error instanceof Error ? error.message : String(error);
         }

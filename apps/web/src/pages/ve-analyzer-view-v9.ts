@@ -13,46 +13,12 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
   const root = inner.element;
   let disposed = false;
   const events = new AbortController();
-  let cancelRegrab: (() => void) | undefined;
-
-  // Table layout/header ownership lives entirely in v7. This layer is limited
-  // to refreshing an already-active lambda-delay recommendation.
-  const grabDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]');
+  // Discovery completion belongs to the analytical owner. Never infer success
+  // from rendered status text or an enabled button: either can describe an old
+  // recommendation after a failed or superseded request.
   const useDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]');
-  const saveDelayButton = root.querySelector<HTMLButtonElement>('[data-ve-analyzer="save-delay"]');
-  const delayResultTitle = root.querySelector<HTMLElement>('[data-ve-analyzer="delay-result-title"]');
-
-  grabDelayButton?.addEventListener('click', () => {
-    // Initial discovery remains an explicit recommendation that still requires
-    // Use recommendation. If a working table already exists, however, re-grab is
-    // a deliberate refresh and should replace prior user edits with the newly
-    // log-derived recommendation.
-    const hadWorkingTable = saveDelayButton ? !saveDelayButton.disabled : false;
-    if (!hadWorkingTable || !useDelayButton || !delayResultTitle) return;
-
-    cancelRegrab?.();
-    const revision = inner.sessionRevision;
-    let completed = false;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const finish = (): void => {
-      completed = true; observer.disconnect();
-      if (timeout !== undefined) clearTimeout(timeout);
-      cancelRegrab = undefined;
-    };
-    const finishIfReady = (): void => {
-      if (completed) return;
-      if (revision !== inner.sessionRevision) { finish(); return; }
-      const analyzing = /^Analyzing current-log delay evidence/i.test(delayResultTitle.textContent?.trim() ?? '');
-      if (analyzing || useDelayButton.disabled) return;
-      finish();
-      useDelayButton.click();
-    };
-    const observer = new MutationObserver(finishIfReady);
-    cancelRegrab = finish;
-    observer.observe(delayResultTitle, { childList: true, subtree: true, characterData: true });
-    observer.observe(useDelayButton, { attributes: true, attributeFilter: ['disabled'] });
-    timeout = setTimeout(finish, 30000);
-    queueMicrotask(finishIfReady);
+  root.addEventListener('ve-delay-discovery-complete', (event) => {
+    if ((event as CustomEvent<{ hadWorkingTable: boolean }>).detail.hadWorkingTable) useDelayButton?.click();
   }, { signal: events.signal });
 
   return {
@@ -61,10 +27,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
       if (disposed) return;
       disposed = true;
       events.abort();
-      cancelRegrab?.();
       inner.dispose();
     },
-    setActive(active) { if (disposed) return; if (!active) cancelRegrab?.(); inner.setActive(active); },
+    setActive(active) { if (disposed) return; inner.setActive(active); },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
