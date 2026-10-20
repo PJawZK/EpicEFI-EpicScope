@@ -1021,7 +1021,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         evidence: result, proposal, veTable: ve, rpmBins: veRpm, loadBins: veLoad,
         actualRange: actual, qualificationLabel: selectedText(select('preset')), stateExcludedCount: filtered.excluded,
       });
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'publication-superseded'); return; }
       const complete = loaded.every((trace) => bounds.startMs === undefined || bounds.endMs === undefined ? trace.complete : trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs)); renderTuneTables();
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'render-superseded'); return; }
       const correctionSource = correctionChannel ? analyzerChannelOptionLabel(correctionChannel) : 'None';
       const strongEvidenceCells = result.cells.filter((cell) => cell.confidence === 'strong').length; const moderateEvidenceCells = result.cells.filter((cell) => cell.confidence === 'moderate').length; const limitedEvidenceCells = result.cells.filter((cell) => cell.confidence === 'limited').length; const delayCounts = cachedDelayTableCounts(workingDelayTable);
       const analysisSummaryRows: readonly [string, string][] = [
@@ -1031,8 +1033,14 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         ['Evidence estimator', 'Weighted median · P10/P90 spread'], ['Evidence confidence', `${strongEvidenceCells} strong · ${moderateEvidenceCells} moderate · ${limitedEvidenceCells} limited`], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
       ];
       renderSummary(analysisSummaryRows);
-      setStage('success', 'VE analysis complete.');
+      setStage('success', nextProposal.measuredCellCount > 0
+        ? `VE analysis complete · ${nextProposal.measuredCellCount.toLocaleString()} proposed · ${nextProposal.weakCellCount.toLocaleString()} weak · ${nextProposal.withheldCellCount.toLocaleString()} withheld · ${nextProposal.noEvidenceCellCount.toLocaleString()} without evidence. Review working values; tune unchanged.`
+        : `VE analysis complete · No cells qualified for a generated proposal · ${nextProposal.weakCellCount.toLocaleString()} weak · ${nextProposal.withheldCellCount.toLocaleString()} withheld · ${nextProposal.noEvidenceCellCount.toLocaleString()} without evidence. Review evidence, qualification and change limits; tune unchanged.`);
+      // Stage/primary subscribers can replace session inputs synchronously.
+      // Completion must still belong to this run after each publication.
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'status-superseded'); return; }
       root.dispatchEvent(new CustomEvent('ve-analysis-complete', { detail: { rows: analysisSummaryRows } }));
+      if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'completion-superseded'); return; }
       empty.hidden = true; content.hidden = false;
     } catch (error) {
       if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
