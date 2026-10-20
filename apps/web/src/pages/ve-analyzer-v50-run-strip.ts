@@ -76,9 +76,22 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   summaryAction.textContent = 'Summary';
   summaryAction.hidden = true;
   let completedRows: readonly [string, string][] | undefined;
-  const dismissSummary = (): void => { dialog.hidden = true; };
+  let summaryOpener: HTMLElement | undefined;
+  const dismissSummary = (): void => {
+    const hadFocus = dialog.contains(document.activeElement);
+    dialog.hidden = true;
+    const opener = summaryOpener;
+    summaryOpener = undefined;
+    if (!hadFocus || !active || disposed) return;
+    const canFocus = (element: HTMLElement | null | undefined): element is HTMLElement => Boolean(element?.isConnected
+      && element.getClientRects().length && !element.matches(':disabled'));
+    if (canFocus(opener)) opener.focus();
+    else if (canFocus(runButton)) runButton.focus();
+  };
   const showSummary = (): void => {
     if (!completedRows || disposed || !active) return;
+    if (dialog.hidden) summaryOpener = document.activeElement instanceof HTMLElement && root.contains(document.activeElement)
+      ? document.activeElement : runButton ?? undefined;
     dialog.hidden = false;
     closeIcon.focus();
   };
@@ -122,7 +135,15 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     summaryAction.hidden = true;
   }, { signal: events.signal });
   dialog.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') { event.preventDefault(); dismissSummary(); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismissSummary(); }
+    if (event.key !== 'Tab') return;
+    // The owner creates exactly these three focusable actions. Leave interior
+    // traversal to the browser and wrap only at the two boundaries.
+    if (event.shiftKey && document.activeElement === closeIcon) {
+      event.preventDefault(); viewAction.focus();
+    } else if (!event.shiftKey && document.activeElement === viewAction) {
+      event.preventDefault(); closeIcon.focus();
+    }
   }, { signal: events.signal });
   root.append(dialog);
 
