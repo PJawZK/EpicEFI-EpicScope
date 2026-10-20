@@ -191,8 +191,10 @@ export function installVeAnalyzerDelayTableInteraction(inner: VeAnalyzerViewCont
     ?.addEventListener('click', () => dom.cancelActiveInteraction(), { capture: true, signal: events.signal });
   root.querySelector<HTMLButtonElement>('[data-ve-analyzer="use-delay"]')
     ?.addEventListener('click', resetInteractionSession, { capture: true, signal: events.signal });
-  root.querySelector<HTMLInputElement>('[data-ve-analyzer="load-delay-file"]')
-    ?.addEventListener('change', resetInteractionSession, { capture: true, signal: events.signal });
+  // The loading owner notifies only after parsing/validation and stale-load
+  // checks accept a replacement. Picker changes and rejected reads must not
+  // destroy the current draft, selection, pins or history.
+  root.addEventListener('ve-delay-file-accepted', resetInteractionSession, { signal: events.signal });
   bind();
 
   return {

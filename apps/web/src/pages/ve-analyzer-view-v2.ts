@@ -1097,7 +1097,12 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       void file.text().then((text) => {
         if (generation !== delayLoadGeneration) { ownerEvidence.event('ve.delay-file.stale', { generation, currentGeneration: delayLoadGeneration }); return; }
         try {
-          workingDelayTable = parseVeDelayTableFile(text, file.name); delaySurfaceGeneration += 1; selectedDelayCell = undefined; invalidate();
+          const replacement = parseVeDelayTableFile(text, file.name);
+          workingDelayTable = replacement;
+          delaySurfaceGeneration += 1;
+          selectedDelayCell = undefined;
+          root.dispatchEvent(new CustomEvent('ve-delay-file-accepted'));
+          invalidate();
           ownerEvidence.event('ve.delay-file.published', { generation });
           delayResultTitle.textContent = 'Saved working delay table loaded'; delayResultText.textContent = `${file.name} is active as working authority. Current-log discovery remains separate until Use recommendation is pressed.`;
         } catch (error) {
