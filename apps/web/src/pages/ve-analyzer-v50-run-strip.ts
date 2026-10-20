@@ -86,6 +86,9 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     button.addEventListener('click', dismissSummary, { signal: events.signal });
   }
   viewAction.addEventListener('click', () => {
+    // v7 owns the active table tab. Selecting a result metric alone can leave
+    // Target visible in single-table layout, even when proposal is already set.
+    root.querySelector<HTMLButtonElement>('[data-table-tab="ve"]')?.click();
     const resultView = root.querySelector<HTMLSelectElement>('select[aria-label="VE Analyzer result view"]');
     if (resultView && resultView.value !== 'proposal') {
       resultView.value = 'proposal';
