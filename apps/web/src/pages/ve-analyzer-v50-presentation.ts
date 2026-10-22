@@ -1,6 +1,6 @@
 import { closeVeAnalyzerSetupDisclosures } from './ve-analyzer-v50-setup-disclosure';
 import type { LoggerAnalysisContext } from './logger-page';
-import { analyzerScopeBounds, selectedAnalyzerScope } from './analyzer-scope';
+import { analyzerScopeBounds, analyzerScopeOptions, selectedAnalyzerScope } from './analyzer-scope';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import '../styles/ve-analyzer-v50-port.css';
 
@@ -95,11 +95,15 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
         <span><strong data-ve-scope-label>Full Log</strong><span data-ve-scope-detail> · source extent</span></span>
         <span><span data-ve-scope-start>--:--</span> — <span data-ve-scope-end>--:--</span></span>
       </div>
-      <div class="ve-analysis-scope-strip" data-ve-scope-strip>
-        <div class="ve-analysis-scope-range" data-ve-scope-range></div>
-        <div class="ve-analysis-scope-marker ve-analysis-scope-marker-a" data-ve-scope-a hidden></div>
-        <div class="ve-analysis-scope-marker ve-analysis-scope-marker-b" data-ve-scope-b hidden></div>
-      </div>
+      <button type="button" class="ve-analysis-scope-strip ve-timeline-choice" data-ve-scope-strip data-ve-timeline-scope="full" aria-label="Full Log" aria-pressed="true">
+        <span class="ve-timeline-label">Full Log</span>
+        <span class="ve-timeline-lane">
+        <span class="ve-analysis-scope-range ve-timeline-band" data-scope-kind="full" data-ve-scope-range></span>
+        <span class="ve-analysis-scope-marker ve-analysis-scope-marker-a" data-ve-scope-a hidden></span>
+        <span class="ve-analysis-scope-marker ve-analysis-scope-marker-b" data-ve-scope-b hidden></span>
+        </span>
+      </button>
+      <div class="ve-analysis-scope-ranges" data-ve-timeline-ranges></div>
     </div>
     <button type="button" class="ve-analysis-scope-open" data-ve-scope-open disabled>Open in Logger</button>`;
 
@@ -113,16 +117,56 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
   const markerA = scope.querySelector<HTMLElement>('[data-ve-scope-a]')!;
   const markerB = scope.querySelector<HTMLElement>('[data-ve-scope-b]')!;
   const openScope = scope.querySelector<HTMLButtonElement>('[data-ve-scope-open]')!;
+  const timelineRanges = scope.querySelector<HTMLElement>('[data-ve-timeline-ranges]')!;
+  const fullScopeButton = scope.querySelector<HTMLButtonElement>('[data-ve-timeline-scope="full"]')!;
+  let timelineKey: string | undefined;
   let currentContext: LoggerAnalysisContext | undefined;
   let currentScopeBounds: { startMs: number; endMs: number; label: string } | undefined;
 
   const renderScope = (context: LoggerAnalysisContext): void => {
     currentContext = context;
     const extent = context.sourceTimeRange;
+    const scopeSelect = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+    const selected = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;
+    const extentValid = Boolean(extent && Number.isFinite(extent.startMs) && Number.isFinite(extent.endMs) && extent.endMs >= extent.startMs);
+    const options = analyzerScopeOptions(context).filter(option => option.kind === 'range');
+    const key = JSON.stringify(options);
+    if (key !== timelineKey) {
+      timelineKey = key;
+      timelineRanges.replaceChildren(...options.map(option => {
+        const button = document.createElement('button'); button.type = 'button';
+        button.className = 've-timeline-choice'; button.dataset.veTimelineScope = option.value;
+        button.dataset.scopeKind = option.value === 'ab' ? 'ab' : 'saved';
+        const label = document.createElement('span'); label.className = 've-timeline-label'; label.textContent = option.label;
+        const lane = document.createElement('span'); lane.className = 've-timeline-lane';
+        const band = document.createElement('span'); band.className = 've-timeline-band'; band.dataset.scopeKind = button.dataset.scopeKind;
+        const bounds = analyzerScopeBounds(option);
+        button.title = `${option.label}: ${bounds.startMs}–${bounds.endMs} ms`;
+        lane.append(band); button.append(label, lane); return button;
+      }));
+    }
+    options.forEach((option, index) => {
+      const bounds = analyzerScopeBounds(option);
+      const band = timelineRanges.children[index]!.querySelector<HTMLElement>('.ve-timeline-band')!;
+      band.hidden = !extentValid;
+      if (extentValid && extent) {
+        const span = Math.max(1, extent.endMs - extent.startMs);
+        const left = Math.max(0, Math.min(100, ((bounds.startMs! - extent.startMs) / span) * 100));
+        const right = Math.max(0, Math.min(100, ((bounds.endMs! - extent.startMs) / span) * 100));
+        band.hidden = bounds.endMs! < extent.startMs || bounds.startMs! > extent.endMs;
+        band.style.left = `${left}%`; band.style.width = `${Math.max(0, right - left)}%`;
+      }
+    });
+    for (const button of scope.querySelectorAll<HTMLButtonElement>('[data-ve-timeline-scope]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.veTimelineScope === scopeSelect?.value));
+    }
+    scopeRange.hidden = !extentValid;
+    fullScopeButton.title = extentValid ? 'Analyze the entire available Logger source' : 'Full Log — source extent unavailable';
     if (!extent || !Number.isFinite(extent.startMs) || !Number.isFinite(extent.endMs) || extent.endMs < extent.startMs) {
-      currentScopeBounds = undefined;
+      const bounds = selected ? analyzerScopeBounds(selected) : {};
+      currentScopeBounds = bounds.startMs !== undefined && bounds.endMs !== undefined ? { startMs: bounds.startMs, endMs: bounds.endMs, label: selected!.label } : undefined;
       scope.dataset.state = 'empty';
-      scopeLabel.textContent = 'Full Log';
+      scopeLabel.textContent = selected?.label ?? 'Full Log';
       scopeDetail.textContent = ' · source extent unavailable';
       scopeStart.textContent = '--:--';
       scopeEnd.textContent = '--:--';
@@ -130,20 +174,16 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
       scopeRange.style.width = '100%';
       markerA.hidden = true;
       markerB.hidden = true;
-      openScope.disabled = true;
+      openScope.disabled = !currentScopeBounds || !context.openRangeInLogger;
       return;
     }
 
     const start = Math.min(extent.startMs, extent.endMs);
     const end = Math.max(extent.startMs, extent.endMs);
     const span = Math.max(1, end - start);
-    const scopeSelect = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
-    const selected = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;
     const bounds = selected ? analyzerScopeBounds(selected) : {};
     const selectedStart = bounds.startMs ?? start;
     const selectedEnd = bounds.endMs ?? end;
-    const left = Math.max(0, Math.min(100, ((selectedStart - start) / span) * 100));
-    const right = Math.max(left, Math.min(100, ((selectedEnd - start) / span) * 100));
     const isFull = !selected || selected.kind === 'full';
 
     currentScopeBounds = { startMs: selectedStart, endMs: selectedEnd, label: selected?.label ?? 'Full Log' };
@@ -152,8 +192,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     scopeDetail.textContent = isFull ? ' · entire available source' : ` · ${formatScopeTime(selectedStart)}–${formatScopeTime(selectedEnd)}`;
     scopeStart.textContent = formatScopeTime(start);
     scopeEnd.textContent = formatScopeTime(end);
-    scopeRange.style.left = `${left}%`;
-    scopeRange.style.width = `${Math.max(0.2, right - left)}%`;
+    scopeRange.style.left = '0%';
+    scopeRange.style.width = '100%';
 
     const placeMarker = (node: HTMLElement, value: number | undefined): void => {
       node.hidden = value === undefined || !Number.isFinite(value);
@@ -164,7 +204,18 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     openScope.disabled = !context.openRangeInLogger;
   };
 
+  scope.addEventListener('click', event => {
+    if (disposed || !active || !(event.target instanceof Element)) return;
+    const button = event.target.closest<HTMLButtonElement>('[data-ve-timeline-scope]');
+    const select = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+    if (!button || !select || select.value === button.dataset.veTimelineScope) return;
+    if (![...select.options].some(option => option.value === button.dataset.veTimelineScope)) return;
+    select.value = button.dataset.veTimelineScope!;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }, { signal: events.signal });
+
   openScope.addEventListener('click', () => {
+    if (disposed || !active) return;
     const context = currentContext;
     const range = currentScopeBounds;
     if (!context?.openRangeInLogger || !range) return;
@@ -405,7 +456,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     setActive(next) { if (disposed) return;
       active = next;
       inner.setActive(next);
-      if (next) scheduleSetupSummaries();
+      if (next) { if (currentContext) renderScope(currentContext); scheduleSetupSummaries(); }
       else closeVeAnalyzerSetupDisclosures(root);
     },
     editDelayCells(positions, edit) {
@@ -421,7 +472,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     setContext(context: LoggerAnalysisContext) {
       if (disposed) return false;
       const changed = inner.setContext(context);
-      renderScope(context);
+      currentContext = context;
+      if (active) renderScope(context);
       scheduleSetupSummaries();
       return changed;
     },

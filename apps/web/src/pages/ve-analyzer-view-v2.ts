@@ -24,7 +24,7 @@ import { numericRangeCoversTime } from '../../../../core/analysis/range-statisti
 import type { ChannelDefinition, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TuneEntry, TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
-import { analyzerScopeBounds, populateAnalyzerScopeSelect, selectedAnalyzerScope } from './analyzer-scope';
+import { analyzerScopeBounds, populateAnalyzerScopeSelect, retainedAnalyzerScopeValue, selectedAnalyzerScope } from './analyzer-scope';
 import { analyzerChannelOptionLabel, suggestAnalyzerChannel, preferredVeActualMixtureChannel, updateVeActualMixtureOptions } from './analyzer-channel-roles';
 import { assessVeFuelCorrection, type VeFuelCorrectionMode } from './ve-fuel-correction';
 import { registerVeDelayEditOwner, type VeDelayCellValueEdit } from './ve-analyzer-delay-edit-owner';
@@ -819,9 +819,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     revert: (positions) => editDelayCells(positions, { kind: 'revert' }),
   });
 
-  const clearDelayRecommendation = (): void => {
+  const clearDelayRecommendation = (advanceSession = true): void => {
     const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;
-    sessionRevision += 1;
+    if (advanceSession) sessionRevision += 1;
     delayGeneration += 1; delayDiscovery = undefined; delayRecommendation = undefined;
     if (removesEditableSurface) delaySurfaceGeneration += 1;
     // Every caller publishes readiness/invalidation after changing setup.
@@ -1087,7 +1087,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     targetSelect.onchange = () => { remembered.set('target-table', targetSelect.value); const scale = inferTuneMixtureScale(tableEntry(tuneModel, targetSelect.value)); if (scale !== 'unknown') { scaleSelect.value = scale; remembered.set('mixture-scale', scale); const actual = roleSelect('actual'); if (actual) { updateVeActualMixtureOptions(actual, context.channels, scale); remembered.set('actual', actual.value); } syncDelayResponseDefault(); clearDelayRecommendation(); } fillAxis('target-rpm-axis', 'target-table', 'rpm'); fillAxis('target-load-axis', 'target-table', 'load'); invalidate(); };
     scaleSelect.onchange = () => { remembered.set('mixture-scale', scaleSelect.value); const actual = select('actual'); if (actual) { updateVeActualMixtureOptions(actual, context.channels, selectedScale()); remembered.set('actual', actual.value); } syncDelayResponseDefault(); clearDelayRecommendation(); invalidate(); };
     correctionModeSelect.onchange = () => { remembered.set('fuel-correction-mode', correctionModeSelect.value); invalidate(); };
-    populateAnalyzerScopeSelect(scopeSelect, context, remembered.get('scope') ?? 'full'); scopeSelect.onchange = () => { remembered.set('scope', scopeSelect.value); clearDelayRecommendation(); invalidate(); };
+    populateAnalyzerScopeSelect(scopeSelect, context, remembered.get('scope') ?? 'full'); scopeSelect.onchange = () => { remembered.set('scope', scopeSelect.value); clearDelayRecommendation(false); invalidate(); };
     presetSelect.replaceChildren(...PRESETS.map(([value, label]) => new Option(label, value))); presetSelect.value = remembered.get('preset') ?? 'recommended'; presetSelect.onchange = () => { remembered.set('preset', presetSelect.value); invalidate(); };
     fillRole(select('actual')!, ROLES.find((role) => role.key === 'actual')!); fillRole(select('stft')!, ROLES.find((role) => role.key === 'stft')!); for (const role of ROLES.filter((item) => item.key !== 'actual' && item.key !== 'stft')) fillRole(addAdvanced(role), role);
     // Presentation layers move controls; semantic ownership must not depend on their container.
@@ -1222,14 +1222,16 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         return scope ? JSON.stringify([scope.kind, ...Object.values(analyzerScopeBounds(scope))]) : 'unavailable';
       };
       const previousScope = scopeKey(context);
-      const preferred = scopeSelect.value || remembered.get('scope') || 'full';
+      const currentValue = scopeSelect.value || remembered.get('scope') || 'full';
+      const preferred = sourceChanged && currentValue.startsWith('saved:') ? 'full' : retainedAnalyzerScopeValue(currentValue, context, next);
       context = next;
       populateAnalyzerScopeSelect(scopeSelect, next, preferred);
       const scopeChanged = previousScope !== scopeKey(next);
       ownerEvidence.event(!sourceChanged && !scopeChanged ? 've.context.noop' : 've.context.changed', { sourceChanged, scopeChanged }, { stateRevision: sessionRevision, sourceRevision: next.source?.revision ?? 0 });
-      if (!sourceChanged && !scopeChanged) return false;
       remembered.set('scope', scopeSelect.value);
-      rebuild();
+      if (!sourceChanged && !scopeChanged) return false;
+      if (sourceChanged) rebuild();
+      else { clearDelayRecommendation(false); invalidate(); }
       return true;
     },
     setTuneModel(model, sourceName) {

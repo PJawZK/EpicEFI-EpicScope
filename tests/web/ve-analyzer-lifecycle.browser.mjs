@@ -165,7 +165,12 @@ export async function runVeAnalyzerLifecycleChecks() {
       }
       pending.resolve(traces); await settle();
       assert(!measured(s.root) && summary(s.root) === '' && !s.view.getPrimaryAnalysis(), 'Old analysis wrote into new session');
-      assert(s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled, 'Old working delay survived replacement');
+      if (kind === 'selected-saved-range') {
+        assert(!s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled
+          && veDelayEditOwner(s.root).snapshot()?.values[0] === 100
+          && s.root.querySelector('[data-role="scope"]').value === 'full',
+          'Scope-only replacement lost working delay or rebound an edited saved range');
+      } else assert(s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled, 'Old working delay survived source/tune replacement');
       s.host.remove();
     });
   }

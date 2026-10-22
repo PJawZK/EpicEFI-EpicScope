@@ -1,3 +1,4 @@
+import { runNativeTimelineScope } from './ve-timeline-scope.mjs';
 import { runNativeCompletionFocus } from './ve-completion-focus.mjs';
 import { runDiagnosticsAcceptance } from './diagnostics.mjs';
 import fs from 'node:fs/promises';
@@ -56,6 +57,8 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('lifecycle checks',{result:lifecycle});await record('lifecycle-result.json',lifecycle);
  await record('ve-editing-retention.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-editing-retention.browser.mjs');return m.runVeEditingRetentionChecks();})()`,60000));
  await record('ve-numerical-boundaries.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-numerical-boundaries.browser.mjs');return m.runVeNumericalBoundaryChecks();})()`,60000));
+ await record('ve-timeline-native.json', await runNativeTimelineScope({ call, evaluate, moduleBase }));
+ await record('ve-timeline-scope.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-timeline-scope.browser.mjs');return m.runVeTimelineScopeChecks();})()`,60000));
  await record('ve-completion-summary.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-summary.browser.mjs');return m.runVeCompletionSummaryChecks();})()`,60000));
  await record('ve-completion-focus-native.json', await runNativeCompletionFocus({ call, evaluate, moduleBase }));
  await record('ve-completion-focus.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-focus.browser.mjs');return m.runVeCompletionFocusChecks();})()`,60000));
