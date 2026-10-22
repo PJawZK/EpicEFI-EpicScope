@@ -159,16 +159,17 @@
   display: none !important;
 }
 
-/* Opaque, borderless grid prevents subpixel seams between fractional-height
- * colored cells (the prior translucent cells exposed the near-black table
- * background as horizontal/vertical bars). Keep selection styling intact. */
+/* Preserve opaque, borderless heat cells. Fractional native-table paint still
+ * needs the edge treatment below; opacity alone does not eliminate its gaps.
+ * Keep selection styling intact. */
 .ve-v50-port .ve-workbench-table tbody td,
 .ve-v50-port .ve-workbench-table tbody th {
   border-right: 0;
   border-bottom: 0;
 }
 .ve-v50-port .ve-workbench-table tbody td {
-  background: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
+  --ve-cell-heat-color: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
+  background: var(--ve-cell-heat-color);
 }
 
 /* Lambda Delay has explicit missing/insufficient cells. They must never
@@ -181,4 +182,11 @@
 }
 .ve-v50-port .ve-delay-table td[data-delay-value] {
   background: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
+}
+
+/* Cover fractional native-table paint gaps with the cell's existing heat color;
+ * keep measured/working state markers and active selection outlines intact. */
+.ve-v50-port .ve-workbench-table:not(.ve-delay-table) td:not([data-table-selected='true']):not(:focus-visible) {
+  outline: 1px solid var(--ve-cell-heat-color);
+  outline-offset: 0;
 }

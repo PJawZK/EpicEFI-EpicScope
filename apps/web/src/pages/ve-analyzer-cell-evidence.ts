@@ -1,3 +1,4 @@
+import { formatVeMetric as format, formatSignedVeMetric as signed } from './ve-metric-format';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
@@ -95,16 +96,6 @@ function selectedCellCoordinates(cell: HTMLTableCellElement, rpmBins: readonly n
     || row >= loadBins.length || col >= rpmBins.length) return undefined;
   const rpm = rpmBins[col]!, load = loadBins[row]!;
   return Number.isFinite(rpm) && Number.isFinite(load) ? { row, col, rpm, load } : undefined;
-}
-
-function format(value: number | undefined, digits = 2): string {
-  if (value === undefined || !Number.isFinite(value)) return '—';
-  return value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
-}
-
-function signed(value: number | undefined, digits = 2, suffix = ''): string {
-  if (value === undefined || !Number.isFinite(value)) return '—';
-  return `${value > 0 ? '+' : ''}${format(value, digits)}${suffix}`;
 }
 
 function percentFromRatio(value: number | undefined): string {

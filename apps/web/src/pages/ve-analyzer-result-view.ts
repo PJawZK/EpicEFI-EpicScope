@@ -1,3 +1,4 @@
+import { formatVeMetric as clean, formatSignedVeMetric as signed } from './ve-metric-format';
 export type VeResultView =
   | 'proposal'
   | 'change'
@@ -44,17 +45,9 @@ export const VE_RESULT_VIEW_OPTIONS: readonly { value: VeResultView; label: stri
   { value: 'delay', label: 'Lambda delay ms' },
 ] as const;
 
-function clean(value: number, digits: number): string {
-  return value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
-}
-
-function signed(value: number, digits: number, suffix = ''): string {
-  return `${value > 0 ? '+' : ''}${clean(value, digits)}${suffix}`;
-}
-
-function baseDisplay(metrics: VeCellMetrics): VeResultDisplay {
+function baseDisplay(metrics: VeCellMetrics, digits: number): VeResultDisplay {
   return {
-    text: metrics.current === undefined ? '—' : clean(metrics.current, 2),
+    text: metrics.current === undefined ? '—' : clean(metrics.current, digits),
     numericValue: metrics.current,
     scaleMode: 'base',
   };
@@ -74,45 +67,46 @@ export function veResultDisplay(
   metrics: VeCellMetrics,
   view: VeResultView,
   delayMs?: number,
+  digits = 2,
 ): VeResultDisplay {
   switch (view) {
     case 'proposal': {
       const value = metrics.state === 'measured' ? metrics.proposed : metrics.current;
-      return { text: value === undefined ? '—' : clean(value, 2), numericValue: value, scaleMode: 'base' };
+      return { text: value === undefined ? '—' : clean(value, digits), numericValue: value, scaleMode: 'base' };
     }
     case 'change':
       return metrics.changeValue === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: signed(metrics.changeValue, 2), numericValue: metrics.changeValue, scaleMode: 'magnitude' };
     case 'change-percent':
       return metrics.changePercent === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: signed(metrics.changePercent, 1, '%'), numericValue: metrics.changePercent, scaleMode: 'magnitude' };
     case 'mixture-error':
       return metrics.correctionPercent === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: signed(metrics.correctionPercent, 1, '%'), numericValue: metrics.correctionPercent, scaleMode: 'magnitude' };
     case 'samples':
       return metrics.samples === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: String(Math.round(metrics.samples)), numericValue: metrics.samples, scaleMode: 'quality' };
     case 'weight':
       return metrics.weight === undefined
-        ? baseDisplay(metrics)
-        : { text: clean(metrics.weight, 2), numericValue: metrics.weight, scaleMode: 'quality' };
+        ? baseDisplay(metrics, digits)
+        : { text: clean(metrics.weight, 3), numericValue: metrics.weight, scaleMode: 'quality' };
     case 'confidence': {
       const rank = confidenceRank(metrics.confidence);
-      if (rank === undefined || !metrics.confidence || metrics.confidence === 'none') return baseDisplay(metrics);
+      if (rank === undefined || !metrics.confidence || metrics.confidence === 'none') return baseDisplay(metrics, digits);
       const text = `${metrics.confidence[0]!.toUpperCase()}${metrics.confidence.slice(1)}`;
       return { text, numericValue: rank, scaleMode: 'quality' };
     }
     case 'spread':
       return metrics.spreadPercent === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: `${clean(metrics.spreadPercent, 1)}%`, numericValue: metrics.spreadPercent, scaleMode: 'magnitude' };
     case 'delay':
       return delayMs === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: `${Math.round(delayMs)}`, numericValue: delayMs, scaleMode: 'range' };
   }
 }

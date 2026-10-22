@@ -1,3 +1,4 @@
+import { formatVeMetric } from './ve-metric-format';
 import type { VeReadinessPresentation } from './ve-analyzer-readiness';
 import { veTableProjection, veSourceHeatLevel } from './ve-analyzer-table-projection';
 import { createOwnerEvidence } from '../observability/producers/owner';
@@ -268,8 +269,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
           && semanticRow < proposalSnapshot.rows && semanticCol < proposalSnapshot.cols) {
           const working = proposalSnapshot.values[semanticRow * proposalSnapshot.cols + semanticCol];
           if (main.title !== 'Working review value; generated proposal and original tune are separate.') main.title = 'Working review value; generated proposal and original tune are separate.';
-          main.textContent = working === undefined ? '—' : proposalSnapshot.digits === undefined
-            ? String(working) : working.toFixed(proposalSnapshot.digits);
+          main.textContent = formatVeMetric(working, proposalSnapshot.digits);
           cell.dataset.veResultValue = working === undefined ? '' : String(working);
           cell.classList.toggle('ve-result-missing', working === undefined);
           restoreBaseLevel(cell);
@@ -277,7 +277,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder, pres
         }
 
         const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpm, load) : undefined;
-        const display = veResultDisplay(metrics, view, delayMs);
+        const display = veResultDisplay(metrics, view, delayMs, proposalSnapshot?.digits);
         const valueTitle = view !== 'proposal' && display.scaleMode === 'base'
           ? 'Selected metric unavailable: displaying original VE, not a value in the selected metric units.'
           : view === 'delay' ? 'Interpolated working lambda delay in milliseconds.' : 'Retained generated analysis metric; independent of working review edits.';

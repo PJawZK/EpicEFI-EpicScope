@@ -73,7 +73,7 @@ export async function runVeGroup3Checks() {
     const retained = table(), projection = veTableProjection(retained);
     s.view.refresh(); s.view.refresh(); await settle(); assert(table() === retained && veTableProjection(table()) === projection, 'Unchanged VE refresh rebuilt its grid/projection');
     const first = owner.snapshot(); owner.applyValues([{ row: 0, col: 0, value: 123.456 }]); await settle();
-    assert(table() === retained && veTableProjection(table()) === projection && cell(0).querySelector(':scope > span').textContent === '123.456'
+    assert(table() === retained && veTableProjection(table()) === projection && cell(0).querySelector(':scope > span').textContent === '123.46' && owner.snapshot().values[0] === 123.456
       && owner.snapshot().authorityGeneration === first.authorityGeneration + 1, 'Working edit did not patch its existing cell with one publication');
     checks.push('Unchanged VE refresh retains grid/projection; working publication patches values without rebuilding geometry or generated metrics');
 
@@ -93,7 +93,8 @@ export async function runVeGroup3Checks() {
     assert(table() === retained && cell(0).dataset.tableLivePreview === 'true' && owner.snapshot().values === before.values, 'VE refresh cancelled or published a Brush preview');
     pointer(document, 'pointerup'); await settle();
     assert(owner.snapshot().authorityGeneration === before.authorityGeneration + 1 && table() === retained
-      && Number(cell(0).querySelector(':scope > span').textContent) === owner.snapshot().values[0], 'Retained Brush failed one release publication/display');
+      && Number(cell(0).querySelector(':scope > span').textContent) === Number(owner.snapshot().values[0].toFixed(2))
+      && owner.snapshot().values[0] !== before.values[0], 'Retained Brush failed one release publication/display');
     assert(s.reads() === 0, 'Scope/render presentation unexpectedly read traces');
     checks.push('Held Brush survives VE refresh, keeps preview authority private and commits once into the retained grid');
   } finally { s.view.setActive(false); s.host.remove(); }

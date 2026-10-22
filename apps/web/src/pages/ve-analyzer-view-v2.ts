@@ -1,3 +1,4 @@
+import { formatVeMetric, formatSignedVeMetric } from './ve-metric-format';
 import { veAnalysisAxisIssue } from '../../../../core/analysis/ve-axis-validation';
 import { registerVeDelayPresentationOwner } from './ve-analyzer-delay-presentation-owner';
 import { projectVeTable, publishVeTableProjection, veSourceHeatLevel } from './ve-analyzer-table-projection';
@@ -122,12 +123,11 @@ function selectedText(control: HTMLSelectElement | undefined): string {
 function formatValue(value: number, digits?: number): string {
   if (!Number.isFinite(value)) return '—';
   const precision = Math.max(0, Math.min(3, digits ?? (Math.abs(value) < 20 ? 2 : 1)));
-  return value.toFixed(precision).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
+  return formatVeMetric(value, precision);
 }
 
 function formatPercent(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return '—';
-  return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
+  return formatSignedVeMetric(value, 1, '%');
 }
 
 function tableEntry(model: TuneModel | undefined, name: string): TuneEntry | undefined {
@@ -597,7 +597,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           const main = cell.querySelector<HTMLElement>(':scope > span');
           if (!main) continue;
           const value = values?.[index];
-          main.textContent = value === undefined ? '—' : ve.digits === undefined ? String(value) : value.toFixed(ve.digits);
+          main.textContent = formatVeMetric(value, ve.digits);
           cell.dataset.veResultValue = value === undefined ? '' : String(value);
           cell.classList.toggle('ve-result-missing', value === undefined);
         }
