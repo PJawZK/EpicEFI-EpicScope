@@ -17,6 +17,7 @@ export interface TableInteractionDomCommands {
   readonly blankSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly deleteSelection?: (positions: readonly TableCellPosition[]) => boolean;
   readonly afterEdit?: () => void;
+  readonly pinsChanged?: (positions: readonly TableCellPosition[]) => void;
 }
 
 export interface TableValueSnapshot {
@@ -185,6 +186,7 @@ export function createTableInteractionDomController(
   const interpolateBoth = createToolButton(VE_TABLE_TOOL_ICONS.interpolateBoth, 'Interpolate both directions · right-click settings', () => interpolateWith('both'));
   const pin = createToolButton(VE_TABLE_TOOL_ICONS.pin, 'Pin or unpin selected cells', () => {
     session.togglePinsForSelection();
+    commands.pinsChanged?.(session.pinnedPositions());
     refreshInteraction();
   });
   const brush = createToolButton(VE_TABLE_TOOL_ICONS.brush, 'Continuous brush editing', () => setBrushActive(!brushActive));

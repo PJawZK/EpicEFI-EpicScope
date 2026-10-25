@@ -29,7 +29,7 @@ import { analyzerScopeBounds, populateAnalyzerScopeSelect, retainedAnalyzerScope
 import { analyzerChannelOptionLabel, suggestAnalyzerChannel, preferredVeActualMixtureChannel, updateVeActualMixtureOptions } from './analyzer-channel-roles';
 import { assessVeFuelCorrection, type VeFuelCorrectionMode } from './ve-fuel-correction';
 import { registerVeDelayEditOwner, type VeDelayCellValueEdit } from './ve-analyzer-delay-edit-owner';
-import { registerVeProposalEditOwner, type VeProposalCellValueEdit } from './ve-analyzer-proposal-edit-owner';
+import { registerVeProposalEditOwner, type VeProposalCellValueEdit, type VeProposalCellPosition } from './ve-analyzer-proposal-edit-owner';
 import {
   assessTargetMixtureTable,
   inferTuneMixtureScale,
@@ -88,32 +88,28 @@ export function sameVeSourceContext(left: LoggerAnalysisContext, right: LoggerAn
 }
 
 type RoleKey = 'rpm' | 'load' | 'actual' | 'target' | 've' | 'fuelCommand' | 'dfco' | 'fuelCutReason' | 'aeActive' | 'decelActive' | 'totalCorrection' | 'stft' | 'ltft';
-type RolePurpose = 'Primary calculation' | 'Qualification / context' | 'State exclusion';
+type RolePurpose = 'Primary calculation' | 'Context only' | 'Delay discovery' | 'Fuel compensation' | 'State exclusion';
 interface RoleDef { readonly key: RoleKey; readonly label: string; readonly required: boolean; readonly purpose: RolePurpose; }
 
 const ROLES: readonly RoleDef[] = [
   { key: 'rpm', label: 'RPM', required: true, purpose: 'Primary calculation' },
   { key: 'load', label: 'VE-table load', required: true, purpose: 'Primary calculation' },
   { key: 'actual', label: 'Actual mixture', required: true, purpose: 'Primary calculation' },
-  { key: 'target', label: 'Logged target mixture', required: false, purpose: 'Qualification / context' },
-  { key: 've', label: 'Effective / runtime VE', required: false, purpose: 'Qualification / context' },
-  { key: 'fuelCommand', label: 'Fuel command / injector PW', required: false, purpose: 'Qualification / context' },
+  { key: 'target', label: 'Logged target mixture', required: false, purpose: 'Context only' },
+  { key: 've', label: 'Effective / runtime VE', required: false, purpose: 'Context only' },
+  { key: 'fuelCommand', label: 'Fuel command / injector PW', required: false, purpose: 'Delay discovery' },
   { key: 'dfco', label: 'DFCO state', required: false, purpose: 'State exclusion' },
   { key: 'fuelCutReason', label: 'Fuel-cut reason', required: false, purpose: 'State exclusion' },
   { key: 'aeActive', label: 'AE state', required: false, purpose: 'State exclusion' },
   { key: 'decelActive', label: 'Decel state', required: false, purpose: 'State exclusion' },
-  { key: 'totalCorrection', label: 'Total fuel correction', required: false, purpose: 'Qualification / context' },
-  { key: 'stft', label: 'STFT / EGO correction', required: false, purpose: 'Qualification / context' },
-  { key: 'ltft', label: 'LTFT correction', required: false, purpose: 'Qualification / context' },
+  { key: 'totalCorrection', label: 'Total fuel correction', required: false, purpose: 'Context only' },
+  { key: 'stft', label: 'STFT / EGO correction', required: false, purpose: 'Fuel compensation' },
+  { key: 'ltft', label: 'LTFT correction', required: false, purpose: 'Context only' },
 ];
 
 const PRESETS = [
-  ['recommended', 'Recommended VE Analysis'],
-  ['steady', 'Steady-state only'],
-  ['warm', 'Warm engine only'],
-  ['cruise', 'Cruise / light load'],
-  ['boost', 'Boost / high load'],
-  ['custom', 'Custom'],
+  ['recommended', 'State exclusions enabled'],
+  ['custom', 'State exclusions disabled'],
 ] as const;
 
 function selectedText(control: HTMLSelectElement | undefined): string {
@@ -226,6 +222,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let workingDelayTable: VeDelayTable | undefined;
   let selectedDelayCell: { row: number; col: number } | undefined;
   let veReviewAuthorityGeneration = 0;
+  let pinAuthority: { model: TuneModel | undefined; key: string } | undefined;
+  let pinnedWorkingValues = new Map<number, number | undefined>();
+  let pinnedPositions: readonly VeProposalCellPosition[] = [];
   let veReviewState: {
     readonly key: string;
     readonly model: TuneModel | undefined;
@@ -254,7 +253,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       <button type="button" data-ve-analyzer="cancel-analysis" hidden>Cancel analysis</button>
       <label><span>Mixture scale</span><select data-role="mixture-scale"><option value="afr">AFR</option><option value="lambda">Lambda</option></select></label>
       <label><span>Scope</span><select data-role="scope"></select></label>
-      <label><span>Qualification</span><select data-role="preset"></select></label>
+      <label><span>State exclusions</span><select data-role="preset"></select></label>
       <span class="ve-workbench-state" data-ve-analyzer="readiness">Not ready</span>
     </div>
     <div class="ve-workbench-quick-controls">
@@ -404,9 +403,14 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     const loadBins = axisValues(tuneModel, select('load-axis')?.value ?? '');
     if (!entry?.numericValues || !rpmBins || !loadBins || rpmBins.length !== entry.cols || loadBins.length !== entry.rows) {
       veReviewState = undefined;
+      pinAuthority = undefined; pinnedWorkingValues.clear(); pinnedPositions = [];
       return undefined;
     }
     const key = `${entry.name}|${select('rpm-axis')?.value ?? ''}|${select('load-axis')?.value ?? ''}`;
+    if (!pinAuthority || pinAuthority.model !== tuneModel || pinAuthority.key !== key) {
+      pinAuthority = { model: tuneModel, key };
+      pinnedWorkingValues.clear(); pinnedPositions = [];
+    }
     if (!veReviewState || veReviewState.key !== key || veReviewState.model !== tuneModel || veReviewState.proposal !== proposal
       || veReviewState.rows !== entry.rows || veReviewState.cols !== entry.cols) {
       const baselineValues = entry.numericValues.map((current, index) => {
@@ -423,7 +427,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         rpmBins: [...rpmBins],
         loadBins: [...loadBins],
         baselineValues,
-        values: [...baselineValues],
+        values: baselineValues.map((value, index) => pinnedWorkingValues.has(index) ? pinnedWorkingValues.get(index) : value),
         digits: entry.digits,
         authorityGeneration: ++veReviewAuthorityGeneration,
       };
@@ -455,7 +459,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
           const evidenceCell = evidence?.cells[index];
           if (proposalCell && proposalCell.state !== 'no-evidence') {
             const evidenceText = evidenceDetail(evidenceCell);
-            td.title = proposalCell.state === 'measured'
+            td.title = proposalCell.state === 'pinned' ? `Pinned: excluded from generated VE changes. Working value retained. ${evidenceText}` : proposalCell.state === 'measured'
               ? `Measured proposal. Current ${formatValue(current, entry.digits)}, proposed ${formatValue(proposalCell.proposedValue!, entry.digits)}, change ${formatPercent(proposalCell.changePercent)}. ${evidenceText}`
               : proposalCell.state === 'weak-evidence'
                 ? `Weak evidence only. Raw candidate ${formatValue(proposalCell.evidenceCandidate!, entry.digits)} (${formatPercent(proposalCell.changePercent)}); no proposal is emitted. ${evidenceText}`
@@ -654,6 +658,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       changed = true;
     }
     if (!changed) return false;
+    for (const [index, value] of lastByIndex) if (pinnedWorkingValues.has(index)) pinnedWorkingValues.set(index, value);
     veReviewState = { ...state, values: next, authorityGeneration: ++veReviewAuthorityGeneration };
     renderVeTable();
     return true;
@@ -665,6 +670,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       return state ? {
         revision: sessionRevision,
         authorityGeneration: state.authorityGeneration,
+        pinnedPositions,
         rows: state.rows,
         cols: state.cols,
         rpmBins: state.rpmBins,
@@ -675,6 +681,20 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       } : undefined;
     },
     applyValues: applyVeReviewValues,
+    setPinned(positions) {
+      if (disposed || !viewActive || pendingContext || pendingTune) return false;
+      const state = ensureVeReviewState(); if (!state) return false;
+      const indices = new Set<number>();
+      for (const { row, col } of positions) {
+        if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= state.rows || col < 0 || col >= state.cols) return false;
+        indices.add(row * state.cols + col);
+      }
+      if (indices.size === pinnedWorkingValues.size && [...indices].every(index => pinnedWorkingValues.has(index))) return false;
+      pinnedWorkingValues = new Map([...indices].map(index => [index, state.values[index]]));
+      pinnedPositions = [...indices].map(index => ({ row: Math.floor(index / state.cols), col: index % state.cols }));
+      invalidate(true);
+      return true;
+    },
     revert: (positions) => {
       const state = ensureVeReviewState();
       if (!state) return false;
@@ -735,15 +755,23 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     delayResultText.textContent = `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. Raw discovered evidence remains preserved when recommendation cells are edited. ${workingDelayTable ? 'Working delay table active. A successful re-grab replaces working values and edits; failed discovery keeps them unchanged.' : 'Recommendation remains separate until Use recommendation is pressed.'}`;
   };
 
-  const invalidate = (): void => {
+  const invalidate = (retainReview = false): void => {
     if (disposed) return;
+    const retained = retainReview ? ensureVeReviewState() : undefined;
     analysisOperation?.finish('superseded', 'semantic-input-change');
     analysisPending = false; cancelledAnalysis = false;
     publishPrimaryAnalysis(undefined);
     sessionRevision += 1;
     delayGeneration += 1;
     delayLoadGeneration += 1;
-    runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren(); renderTuneTables();
+    runGeneration += 1; result = undefined; proposal = undefined; summary.replaceChildren();
+    if (retained) {
+      const state = ensureVeReviewState();
+      // A primary subscriber can replace the tune synchronously. Never carry
+      // working values into that newer table authority, even at the same size.
+      if (state && state.model === retained.model && state.key === retained.key) veReviewState = { ...state, values: retained.values };
+    }
+    renderTuneTables();
     ownerEvidence.event('ve.invalidate', { generation: runGeneration, scope: select('scope')?.value ?? 'none' }, { stateRevision: sessionRevision });
     setStage('idle', 'Setup changed. Run Analysis to rebuild the delay-table-aligned evidence and guarded VE proposal; no tune state is modified.');
     renderReadiness();
@@ -978,6 +1006,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (!scope || !ve?.numericValues || !target?.numericValues || !veRpm || !veLoad || !targetRpm || !targetLoad) return;
     const ids = [...new Set(ROLES.map((role) => roleSelect(role.key)?.value).filter((id): id is string => Boolean(id)))]; const bounds = analyzerScopeBounds(scope);
     const delayTable = workingDelayTable;
+    const pinnedCellIndices = new Set(pinnedWorkingValues.keys());
     const operation = ownerEvidence.begin('ve.analysis', { generation: run, sessionRevision, channels: ids.length, scope: scope.kind }, origin);
     analysisOperation = operation;
     let accepted = false;
@@ -1014,7 +1043,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         },
       });
       if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
-      const nextProposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, nextResult, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')! }); if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
+      const nextProposal = buildVeProposal(ve.numericValues, ve.rows, ve.cols, nextResult, { priorWeight: nonNegativeSetting('prior-weight')!, minimumEvidenceWeight: nonNegativeSetting('min-evidence-weight')!, maximumAbsoluteChange: nonNegativeSetting('max-absolute-change')!, maximumPercentChange: nonNegativeSetting('max-percent-change')!, pinnedCellIndices }); if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'generation-or-hidden'); return; }
       result = nextResult; proposal = nextProposal;
       accepted = true;
       publishPrimaryAnalysis({
@@ -1030,12 +1059,12 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         ['Tune source', tuneSourceName ?? 'No MSQ loaded'], ['VE table', ve.name], ['Target table', target.name], ['Mixture scale', displayScale(selectedScale())], ['Scope', scope.label], ['Qualification', selectedText(select('preset'))], ['Working delay', `${workingDelayTable.origin === 'saved-file' ? 'Saved file' : 'Current-log table'} · ${delayCounts.measured} measured · ${delayCounts.interpolated} interpolated · ${delayCounts.userEdited} user edited`],
         ['Fuel correction source', correctionSource], ['Fuel correction handling', correctionAssessment.applicable ? 'Compensated · percent fuel applied' : 'Context only'], ['Fuel correction samples', result.fuelCorrectionCompensated ? `${result.fuelCorrectionCompensatedSampleCount.toLocaleString()} compensated · ${result.fuelCorrectionUnavailableSampleCount.toLocaleString()} unavailable` : 'Not applied'],
         ['Input samples', result.inputSampleCount.toLocaleString()], ['State-excluded samples', filtered.excluded.toLocaleString()], ['Delay unavailable', result.delayUnavailableSampleCount.toLocaleString()], ['Stable eligible samples', result.eligibleSampleCount.toLocaleString()], ['Transient rejected', result.transientRejectedSampleCount.toLocaleString()], ['Contributing samples', result.contributingSampleCount.toLocaleString()],
-        ['Evidence estimator', 'Weighted median · P10/P90 spread'], ['Evidence confidence', `${strongEvidenceCells} strong · ${moderateEvidenceCells} moderate · ${limitedEvidenceCells} limited`], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
+        ['Evidence estimator', 'Weighted median · P10/P90 spread'], ['Evidence confidence', `${strongEvidenceCells} strong · ${moderateEvidenceCells} moderate · ${limitedEvidenceCells} limited`], ['Measured proposal cells', proposal.measuredCellCount.toLocaleString()], ['Weak evidence cells', proposal.weakCellCount.toLocaleString()], ['Withheld by limits', proposal.withheldCellCount.toLocaleString()], ['No-evidence cells', proposal.noEvidenceCellCount.toLocaleString()], ['Pinned cells (excluded from proposal)', proposal.pinnedCellCount.toLocaleString()], ['Prior weight', String(nonNegativeSetting('prior-weight'))], ['Minimum evidence weight', String(nonNegativeSetting('min-evidence-weight'))], ['Change limits', `±${nonNegativeSetting('max-absolute-change')} VE / ±${nonNegativeSetting('max-percent-change')}%`], ['Coverage', complete ? 'Complete' : 'Partial decoded'], ['Tune mutation', 'None'],
       ];
       renderSummary(analysisSummaryRows);
       setStage('success', nextProposal.measuredCellCount > 0
-        ? `VE analysis complete · ${nextProposal.measuredCellCount.toLocaleString()} proposed · ${nextProposal.weakCellCount.toLocaleString()} weak · ${nextProposal.withheldCellCount.toLocaleString()} withheld · ${nextProposal.noEvidenceCellCount.toLocaleString()} without evidence. Review working values; tune unchanged.`
-        : `VE analysis complete · No cells qualified for a generated proposal · ${nextProposal.weakCellCount.toLocaleString()} weak · ${nextProposal.withheldCellCount.toLocaleString()} withheld · ${nextProposal.noEvidenceCellCount.toLocaleString()} without evidence. Review evidence, qualification and change limits; tune unchanged.`);
+        ? `VE analysis complete · ${nextProposal.measuredCellCount.toLocaleString()} proposed · ${nextProposal.weakCellCount.toLocaleString()} weak · ${nextProposal.withheldCellCount.toLocaleString()} withheld · ${nextProposal.noEvidenceCellCount.toLocaleString()} without evidence.${nextProposal.pinnedCellCount ? ` ${nextProposal.pinnedCellCount} pinned cells excluded.` : ''} Review working values; tune unchanged.`
+        : `VE analysis complete · No cells qualified for a generated proposal · ${nextProposal.weakCellCount.toLocaleString()} weak · ${nextProposal.withheldCellCount.toLocaleString()} withheld · ${nextProposal.noEvidenceCellCount.toLocaleString()} without evidence.${nextProposal.pinnedCellCount ? ` ${nextProposal.pinnedCellCount} pinned cells excluded.` : ''} Review evidence, qualification and change limits; tune unchanged.`);
       // Stage/primary subscribers can replace session inputs synchronously.
       // Completion must still belong to this run after each publication.
       if (run !== runGeneration || !viewActive) { rejectOwnerCompletion(operation, 'status-superseded'); return; }
@@ -1088,7 +1117,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     scaleSelect.onchange = () => { remembered.set('mixture-scale', scaleSelect.value); const actual = select('actual'); if (actual) { updateVeActualMixtureOptions(actual, context.channels, selectedScale()); remembered.set('actual', actual.value); } syncDelayResponseDefault(); clearDelayRecommendation(); invalidate(); };
     correctionModeSelect.onchange = () => { remembered.set('fuel-correction-mode', correctionModeSelect.value); invalidate(); };
     populateAnalyzerScopeSelect(scopeSelect, context, remembered.get('scope') ?? 'full'); scopeSelect.onchange = () => { remembered.set('scope', scopeSelect.value); clearDelayRecommendation(false); invalidate(); };
-    presetSelect.replaceChildren(...PRESETS.map(([value, label]) => new Option(label, value))); presetSelect.value = remembered.get('preset') ?? 'recommended'; presetSelect.onchange = () => { remembered.set('preset', presetSelect.value); invalidate(); };
+    presetSelect.replaceChildren(...PRESETS.map(([value, label]) => new Option(label, value))); presetSelect.value = remembered.get('preset') === 'custom' ? 'custom' : 'recommended'; presetSelect.onchange = () => { remembered.set('preset', presetSelect.value); invalidate(); };
     fillRole(select('actual')!, ROLES.find((role) => role.key === 'actual')!); fillRole(select('stft')!, ROLES.find((role) => role.key === 'stft')!); for (const role of ROLES.filter((item) => item.key !== 'actual' && item.key !== 'stft')) fillRole(addAdvanced(role), role);
     // Presentation layers move controls; semantic ownership must not depend on their container.
     for (const role of ['min-rpm', 'max-rpm', 'min-load', 'max-load', 'stable-ms', 'prior-weight', 'min-evidence-weight', 'max-absolute-change', 'max-percent-change'] as const) {
@@ -1174,6 +1203,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       sessionRevision += 1;
       pendingContext = undefined; pendingTune = undefined;
       primaryAnalysis = undefined; result = undefined; proposal = undefined;
+      pinnedWorkingValues.clear(); pinnedPositions = []; pinAuthority = undefined;
       delayDiscovery = undefined; delayRecommendation = undefined; workingDelayTable = undefined;
       primaryAnalysisListeners.clear(); readinessListeners.clear();
       veReviewState = undefined; vePresentation = undefined; targetPresentation = undefined;

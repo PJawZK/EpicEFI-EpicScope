@@ -111,6 +111,8 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     blankSelection: (positions) => surface.replaceWithUndefined(positions),
     deleteSelection: (positions) => surface.replaceWithUndefined(positions),
     afterEdit: () => queueMicrotask(bind),
+    // Semantic invalidation publishes the existing synchronous table-render event.
+    pinsChanged: positions => { owner.setPinned(positions); },
   });
 
   dom.toolbar.classList.add('ve-proposal-shared-toolbar');
@@ -162,6 +164,7 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     const pending = inner.getReadiness().pending;
     boundPending = pending;
     const table = pending ? undefined : currentProposalTable(veHost);
+    session.setPins(owner.snapshot()?.pinnedPositions ?? []);
     boundRenderedTable = renderedTable;
     boundEditableTable = table;
     if (pending) dom.setBrushActive(false);

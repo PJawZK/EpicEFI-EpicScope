@@ -41,9 +41,13 @@ export async function runVeVisualPresentationChecks(){
   const rect=cell.getBoundingClientRect();cell.setPointerCapture=()=>{};
   for(const type of ['pointerdown','pointerup'])cell.dispatchEvent(new PointerEvent(type,{pointerId:34,pointerType:'mouse',bubbles:true,cancelable:true}));
   s.root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Pin or unpin selected cells"]').click();await settle();
-  const after=cell.getBoundingClientRect();
-  assert(cell.dataset.tableSelected==='true'&&getComputedStyle(cell).outlineWidth==='2px'&&cell.dataset.tablePinned==='true'
-    &&getComputedStyle(cell,'::before').content.includes('◆')&&rect.width===after.width&&rect.height===after.height,'Heat edge treatment hid selection/pins or changed geometry');
+  // Pins now invalidate generated analysis, so query its current rendered cell
+  // rather than retaining a node from the retired evidence projection.
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const pinned=s.root.querySelector('td[data-ve-row="0"][data-ve-col="0"]'),after=pinned.getBoundingClientRect();
+  assert(pinned.dataset.tableSelected==='true'&&getComputedStyle(pinned).outlineWidth==='2px'&&pinned.dataset.tablePinned==='true'
+    &&getComputedStyle(pinned,'::before').content.includes('◆')&&rect.width===after.width&&rect.height===after.height,'Heat edge treatment hid selection/pins or changed geometry');
+  assert(!s.view.getPrimaryAnalysis()&&s.view.sessionRevision===revision+1&&s.reads()===reads&&veProposalEditOwner(s.root).snapshot().values[0]===123.456789,'Pin invalidation lost working value, retained obsolete analysis or read traces');
   checks.push('Selection outline, symbol-only pin and cell geometry survive the heatmap paint treatment');
   return{passed:checks.length,checks};
  }finally{s.view.dispose();s.host.remove();}

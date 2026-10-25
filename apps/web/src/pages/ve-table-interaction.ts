@@ -289,6 +289,14 @@ export class TableInteractionSession {
     this.#pinned.clear();
   }
 
+  /** Synchronize an adapter's semantic pins without publishing another edit. */
+  setPins(positions: readonly TableCellPosition[]): void {
+    this.#pinned.clear();
+    for (const position of positions) {
+      if (this.#inside(position)) this.#pinned.add(key(position.row, position.col));
+    }
+  }
+
   replaceSelection(value: number): boolean {
     if (!Number.isFinite(value) || this.#selected.size === 0) return false;
     const transaction = this.#surface.beginTransaction('direct-edit');

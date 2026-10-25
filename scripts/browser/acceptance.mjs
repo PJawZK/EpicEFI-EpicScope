@@ -59,6 +59,8 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('ve-editing-retention.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-editing-retention.browser.mjs');return m.runVeEditingRetentionChecks();})()`,60000));
  await record('ve-numerical-boundaries.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-numerical-boundaries.browser.mjs');return m.runVeNumericalBoundaryChecks();})()`,60000));
  await record('ve-interpolation-strength.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-interpolation-strength.browser.mjs');return m.runVeInterpolationStrengthChecks();})()`,120000));
+ await record('ve-pinned-analysis.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-pinned-analysis.browser.mjs');return m.runVePinnedAnalysisChecks();})()`,60000));
+ await record('ve-settings-effects.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-settings-effects.browser.mjs');return m.runVeSettingsEffectsChecks();})()`,120000));
  await record('ve-heatmap-paint.json', await runVeHeatmapPaint({ call, evaluate, moduleBase, downloadDir }));
  await record('ve-visual-presentation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-visual-presentation.browser.mjs');return m.runVeVisualPresentationChecks();})()`,60000));
  await record('ve-timeline-native.json', await runNativeTimelineScope({ call, evaluate, moduleBase }));

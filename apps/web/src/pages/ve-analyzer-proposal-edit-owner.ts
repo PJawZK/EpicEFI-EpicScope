@@ -10,6 +10,7 @@ export interface VeProposalCellValueEdit extends VeProposalCellPosition {
 export interface VeProposalEditSnapshot {
   readonly revision: number;
   readonly authorityGeneration: number;
+  readonly pinnedPositions?: readonly VeProposalCellPosition[];
   readonly rows: number;
   readonly cols: number;
   readonly rpmBins: readonly number[];
@@ -25,6 +26,7 @@ export interface VeProposalEditOwner {
   snapshot(): VeProposalEditSnapshot | undefined;
   applyValues(edits: readonly VeProposalCellValueEdit[]): boolean;
   revert(positions: readonly VeProposalCellPosition[]): boolean;
+  setPinned(positions: readonly VeProposalCellPosition[]): boolean;
 }
 
 const OWNERS = new WeakMap<HTMLElement, VeProposalEditOwner>();

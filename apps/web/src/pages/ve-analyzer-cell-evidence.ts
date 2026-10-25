@@ -203,7 +203,7 @@ export function installVeAnalyzerCellEvidence(
       metric('Raw evidence candidate', format(proposalCell.evidenceCandidate, resolved.veTable.digits)),
       metric('Analysis VE change', signed(proposalCell.changeValue, 2)),
       metric('Analysis VE change %', signed(proposalCell.changePercent, 1, '%')),
-      metric('Analysis change basis', proposalCell.state === 'measured' ? 'Accepted generated proposal versus original tune' : proposalCell.evidenceCandidate === undefined ? 'No evidence candidate available' : 'Unaccepted raw candidate versus original tune'),
+      metric('Analysis change basis', proposalCell.state === 'pinned' ? 'Pinned: excluded from generated VE changes; working value retained' : proposalCell.state === 'measured' ? 'Accepted generated proposal versus original tune' : proposalCell.evidenceCandidate === undefined ? 'No evidence candidate available' : 'Unaccepted raw candidate versus original tune'),
       metric('Base-VE correction', signed(evidenceCell.correctionPercent, 1, '%')),
       metric('Correction basis', resolved.evidence.fuelCorrectionCompensated ? 'Actual / target with applied fuel trim compensation' : 'Actual / target without applied fuel trim compensation'),
       metric('Samples', evidenceCell.sampleCount.toLocaleString()),

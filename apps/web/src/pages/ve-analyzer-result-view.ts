@@ -10,7 +10,7 @@ export type VeResultView =
   | 'spread'
   | 'delay';
 
-export type VeRenderedProposalState = 'no-evidence' | 'measured' | 'weak-evidence' | 'withheld-limit';
+export type VeRenderedProposalState = import('../../../../core/analysis/ve-proposal').VeProposalState;
 export type VeRenderedConfidence = 'none' | 'limited' | 'moderate' | 'strong';
 
 export interface VeCellMetrics {

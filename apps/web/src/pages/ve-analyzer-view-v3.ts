@@ -72,7 +72,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     <label><span>TPS source</span><select data-ve-quick="tps-source"></select></label>
     <label><span>Min TPS</span><input data-ve-quick="min-tps" type="number" step="any"></label>
     <label><span>Max TPS</span><input data-ve-quick="max-tps" type="number" step="any"></label>
-    <span class="ve-quick-qualification-note">Quick qualification is applied before VE evidence; source names are shown exactly as supplied.</span>`;
+    <span class="ve-quick-qualification-note">CLT/TPS, RPM/load and stability filters remain active independently of state exclusions. Source names are shown exactly as supplied.</span>`;
   quick.append(qualificationHost);
 
   const authoritySelect = authorityLabel.querySelector<HTMLSelectElement>('select')!;
@@ -168,7 +168,9 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   authoritySelect.addEventListener('change', () => {
-    syncAuthorityUi(true);
+    // The explicit invalidation below owns this semantic change. Dispatching a
+    // second change from the numeric prior would invalidate/render twice.
+    syncAuthorityUi(false);
     invalidate();
   }, { signal: events.signal });
 
