@@ -18,6 +18,8 @@ export async function runVeCellEvidenceReleaseChecks(){
    cell.setPointerCapture=()=>{};
    cell.dispatchEvent(new PointerEvent('pointerdown',{pointerId:12,pointerType:'mouse',bubbles:true,cancelable:true}));
    await settle();cell.dispatchEvent(new PointerEvent('pointerup',{pointerId:12,pointerType:'mouse',bubbles:true,cancelable:true}));cell.click();await settle();
+   assert(!panel||panel.hidden,'Default cell selection opened evidence while toggle is off');
+   const toggle=s.root.querySelector('.ve-v50-table-header button[aria-label="Cell Evidence"]')??s.root.querySelector('.ve-v50-table-icon-button[aria-label="Cell Evidence"]');toggle.click();await settle();
    assert(!panel.hidden&&panel.querySelector('.ve-evidence-detail-grid')&&panel.querySelectorAll('.ve-evidence-detail-metric').length>=18,'Mouse release replaced structured evidence with tooltip text');
    const grid=panel.querySelector('.ve-evidence-detail-grid');
    cell.click();await settle();assert(panel.querySelector('.ve-evidence-detail-grid')===grid,'Repeated click rebuilt cached evidence');
@@ -41,7 +43,9 @@ export async function runVeCellEvidenceReleaseChecks(){
    assert(s.view.getPrimaryAnalysis()===primary&&s.reads()===reads&&s.view.sessionRevision===revision,'Presentation changed numerical authority or re-read traces');
    checks.push(`AFR ${afr}: generated/edit/revert colors use original tune while review baseline and primary stay retained`);
    const other=s.root.querySelector('td[data-ve-row="1"][data-ve-col="1"]');other.click();await settle();assert(!panel.hidden&&panel.querySelector('.ve-evidence-detail-grid'),'Unaffected cell lost structured evidence');
-   panel.querySelector('header button').click();
+   toggle.click();cell.click();await settle();assert(panel.hidden&&toggle.getAttribute('aria-pressed')==='false','Disabled inspector reopened on selection');
+   toggle.click();await settle();assert(!panel.hidden&&toggle.getAttribute('aria-pressed')==='true','Re-enabled inspector did not reopen selected evidence');
+   panel.querySelector('header button').click();assert(toggle.getAttribute('aria-pressed')==='false','Close did not disable inspector');
    const brush=s.root.querySelector('.ve-proposal-shared-toolbar button[aria-label="Continuous brush editing"]');brush.click();cell.click();await settle();assert(panel.hidden,'Brush click opened evidence');brush.click();
    cell.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));const draft=s.root.querySelector('.ve-table-inline-input');assert(draft,'Missing edit draft');draft.click();await settle();assert(panel.hidden,'Editor click opened evidence');draft.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
    assert(s.reads()===reads,'Evidence selection loaded traces');checks.push(`AFR ${afr}: unaffected cells share the structured owner without trace reads`);

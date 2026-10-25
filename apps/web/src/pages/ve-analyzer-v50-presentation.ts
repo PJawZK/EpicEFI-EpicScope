@@ -1,6 +1,6 @@
 import { closeVeAnalyzerSetupDisclosures } from './ve-analyzer-v50-setup-disclosure';
 import type { LoggerAnalysisContext } from './logger-page';
-import { analyzerScopeBounds, analyzerScopeOptions, selectedAnalyzerScope } from './analyzer-scope';
+import { analyzerScopeBounds, selectedAnalyzerScope } from './analyzer-scope';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import '../styles/ve-analyzer-v50-port.css';
 
@@ -95,21 +95,15 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
         <span><strong data-ve-scope-label>Full Log</strong><span data-ve-scope-detail> · source extent</span></span>
         <span><span data-ve-scope-start>--:--</span> — <span data-ve-scope-end>--:--</span></span>
       </div>
-      <button type="button" class="ve-analysis-scope-strip ve-timeline-choice" data-ve-scope-strip data-ve-timeline-scope="full" aria-label="Full Log" aria-pressed="true">
-        <span class="ve-timeline-label">Full Log</span>
-        <span class="ve-timeline-lane">
-        <span class="ve-analysis-scope-range ve-timeline-band" data-scope-kind="full" data-ve-scope-range></span>
-        </span>
-      </button>
-      <div class="ve-timeline-choice ve-timeline-edit-row">
-        <button type="button" class="ve-timeline-label" data-ve-timeline-scope="ab" disabled>Selected Range (A–B)</button>
+      <div class="ve-timeline-choice ve-timeline-edit-row" data-ve-timeline-current>
+        <span class="ve-timeline-label" data-ve-timeline-label>Full Log</span>
         <div class="ve-timeline-lane ve-timeline-edit-track" data-ve-range-track aria-label="Select VE analysis range" title="Drag to select; Shift-drag replaces any range. Drag A/B to adjust or the band to move. Focus A/B and use arrows (Shift for fine steps), Home or End.">
+          <span class="ve-timeline-band" data-scope-kind="full" data-ve-scope-range></span>
           <span class="ve-timeline-band" data-scope-kind="ab" data-ve-edit-range hidden></span>
           <span class="ve-analysis-scope-marker ve-analysis-scope-marker-a" data-ve-scope-a data-ve-range-handle="a" role="slider" aria-label="VE range start A in milliseconds" aria-orientation="horizontal" tabindex="0" hidden></span>
           <span class="ve-analysis-scope-marker ve-analysis-scope-marker-b" data-ve-scope-b data-ve-range-handle="b" role="slider" aria-label="VE range end B in milliseconds" aria-orientation="horizontal" tabindex="0" hidden></span>
         </div>
       </div>
-      <div class="ve-analysis-scope-ranges" data-ve-timeline-ranges></div>
     </div>
     <button type="button" class="ve-analysis-scope-open" data-ve-scope-open disabled>Open in Logger</button>`;
 
@@ -123,12 +117,9 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
   const markerA = scope.querySelector<HTMLElement>('[data-ve-scope-a]')!;
   const markerB = scope.querySelector<HTMLElement>('[data-ve-scope-b]')!;
   const openScope = scope.querySelector<HTMLButtonElement>('[data-ve-scope-open]')!;
-  const timelineRanges = scope.querySelector<HTMLElement>('[data-ve-timeline-ranges]')!;
-  const fullScopeButton = scope.querySelector<HTMLButtonElement>('[data-ve-timeline-scope="full"]')!;
-  const rangeButton = scope.querySelector<HTMLButtonElement>('[data-ve-timeline-scope="ab"]')!;
+  const timelineLabel = scope.querySelector<HTMLElement>('[data-ve-timeline-label]')!;
   const rangeTrack = scope.querySelector<HTMLElement>('[data-ve-range-track]')!;
   const editRange = scope.querySelector<HTMLElement>('[data-ve-edit-range]')!;
-  let timelineKey: string | undefined;
   let currentContext: LoggerAnalysisContext | undefined;
   let currentScopeBounds: { startMs: number; endMs: number; label: string } | undefined;
 
@@ -138,49 +129,20 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const scopeSelect = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
     const selected = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;
     const extentValid = Boolean(extent && Number.isFinite(extent.startMs) && Number.isFinite(extent.endMs) && extent.endMs >= extent.startMs);
-    const options = analyzerScopeOptions(context).filter(option => option.kind === 'range' && option.value !== 'ab');
+    const isAb = scopeSelect?.value === 'ab';
+    timelineLabel.textContent = isAb ? 'Selected Range (A–B)' : selected?.label ?? 'Full Log';
+    timelineLabel.title = timelineLabel.textContent;
+    scopeRange.dataset.scopeKind = selected?.kind === 'range' && !isAb ? 'saved' : 'full';
     const hasRange = context.aTimeMs !== undefined && context.bTimeMs !== undefined && Number.isFinite(context.aTimeMs) && Number.isFinite(context.bTimeMs) && context.aTimeMs !== context.bTimeMs;
-    rangeButton.disabled = !hasRange;
     rangeTrack.setAttribute('aria-disabled', String(!extentValid || !extent || extent.endMs <= extent.startMs || !context.setAnalysisRange));
-    editRange.hidden = !extentValid || !hasRange;
+    editRange.hidden = !extentValid || !hasRange || !isAb;
     if (!editRange.hidden && extent) {
       const start = Math.max(extent.startMs, Math.min(context.aTimeMs!, context.bTimeMs!));
       const end = Math.min(extent.endMs, Math.max(context.aTimeMs!, context.bTimeMs!));
       editRange.style.left = `${(start - extent.startMs) / Math.max(1, extent.endMs - extent.startMs) * 100}%`;
       editRange.style.width = `${Math.max(0, end - start) / Math.max(1, extent.endMs - extent.startMs) * 100}%`;
     }
-    const key = JSON.stringify(options);
-    if (key !== timelineKey) {
-      timelineKey = key;
-      timelineRanges.replaceChildren(...options.map(option => {
-        const button = document.createElement('button'); button.type = 'button';
-        button.className = 've-timeline-choice'; button.dataset.veTimelineScope = option.value;
-        button.dataset.scopeKind = option.value === 'ab' ? 'ab' : 'saved';
-        const label = document.createElement('span'); label.className = 've-timeline-label'; label.textContent = option.label;
-        const lane = document.createElement('span'); lane.className = 've-timeline-lane';
-        const band = document.createElement('span'); band.className = 've-timeline-band'; band.dataset.scopeKind = button.dataset.scopeKind;
-        const bounds = analyzerScopeBounds(option);
-        button.title = `${option.label}: ${bounds.startMs}–${bounds.endMs} ms`;
-        lane.append(band); button.append(label, lane); return button;
-      }));
-    }
-    options.forEach((option, index) => {
-      const bounds = analyzerScopeBounds(option);
-      const band = timelineRanges.children[index]!.querySelector<HTMLElement>('.ve-timeline-band')!;
-      band.hidden = !extentValid;
-      if (extentValid && extent) {
-        const span = Math.max(1, extent.endMs - extent.startMs);
-        const left = Math.max(0, Math.min(100, ((bounds.startMs! - extent.startMs) / span) * 100));
-        const right = Math.max(0, Math.min(100, ((bounds.endMs! - extent.startMs) / span) * 100));
-        band.hidden = bounds.endMs! < extent.startMs || bounds.startMs! > extent.endMs;
-        band.style.left = `${left}%`; band.style.width = `${Math.max(0, right - left)}%`;
-      }
-    });
-    for (const button of scope.querySelectorAll<HTMLButtonElement>('[data-ve-timeline-scope]')) {
-      button.setAttribute('aria-pressed', String(button.dataset.veTimelineScope === scopeSelect?.value));
-    }
-    scopeRange.hidden = !extentValid;
-    fullScopeButton.title = extentValid ? 'Analyze the entire available Logger source' : 'Full Log — source extent unavailable';
+    scopeRange.hidden = !extentValid || isAb;
     if (!extent || !Number.isFinite(extent.startMs) || !Number.isFinite(extent.endMs) || extent.endMs < extent.startMs) {
       const bounds = selected ? analyzerScopeBounds(selected) : {};
       currentScopeBounds = bounds.startMs !== undefined && bounds.endMs !== undefined ? { startMs: bounds.startMs, endMs: bounds.endMs, label: selected!.label } : undefined;
@@ -211,11 +173,11 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     scopeDetail.textContent = isFull ? ' · entire available source' : ` · ${formatScopeTime(selectedStart)}–${formatScopeTime(selectedEnd)}`;
     scopeStart.textContent = formatScopeTime(start);
     scopeEnd.textContent = formatScopeTime(end);
-    scopeRange.style.left = '0%';
-    scopeRange.style.width = '100%';
+    scopeRange.style.left = `${Math.max(0, Math.min(100, (selectedStart - start) / span * 100))}%`;
+    scopeRange.style.width = `${Math.max(0, Math.min(end, selectedEnd) - Math.max(start, selectedStart)) / span * 100}%`;
 
     const placeMarker = (node: HTMLElement, value: number | undefined): void => {
-      node.hidden = value === undefined || !Number.isFinite(value);
+      node.hidden = !isAb || value === undefined || !Number.isFinite(value);
       if (!node.hidden) node.style.left = `${Math.max(0, Math.min(100, ((value! - start) / span) * 100))}%`;
       node.tabIndex = context.setAnalysisRange ? 0 : -1;
       node.setAttribute('aria-valuemin', String(start)); node.setAttribute('aria-valuemax', String(end));
@@ -266,7 +228,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     event.preventDefault();
     const handle = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-ve-range-handle]')?.dataset.veRangeHandle : undefined;
     const hasRange = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
-    const mode = event.shiftKey ? 'new' : handle === 'a' || handle === 'b' ? handle : hasRange && event.target === editRange ? 'move' : 'new';
+    const editingAb = root.querySelector<HTMLSelectElement>('select[data-role="scope"]')?.value === 'ab';
+    const mode = event.shiftKey || !editingAb ? 'new' : handle === 'a' || handle === 'b' ? handle : hasRange && event.target === editRange ? 'move' : 'new';
     rangeGesture = { pointerId: event.pointerId, context, origin: time,
       a: mode === 'new' ? time : mode === 'move' ? Math.min(context.aTimeMs!, context.bTimeMs!) : context.aTimeMs!,
       b: mode === 'new' ? time : mode === 'move' ? Math.max(context.aTimeMs!, context.bTimeMs!) : context.bTimeMs!, mode };
@@ -301,16 +264,6 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     event.preventDefault(); cancelRangeGesture();
     const bounded = Math.max(extent.startMs, Math.min(extent.endMs, value));
     selectAcceptedRange(context, handle === 'a' ? bounded : context.aTimeMs, handle === 'b' ? bounded : context.bTimeMs);
-  }, { signal: events.signal });
-
-  scope.addEventListener('click', event => {
-    if (disposed || !active || !(event.target instanceof Element)) return;
-    const button = event.target.closest<HTMLButtonElement>('[data-ve-timeline-scope]');
-    const select = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
-    if (!button || !select || select.value === button.dataset.veTimelineScope) return;
-    if (![...select.options].some(option => option.value === button.dataset.veTimelineScope)) return;
-    select.value = button.dataset.veTimelineScope!;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
   }, { signal: events.signal });
 
   openScope.addEventListener('click', () => {

@@ -80,7 +80,8 @@ function openEvidence(s, cell) {
   cell.dispatchEvent(new PointerEvent('pointerup', { pointerId: 41, pointerType: 'mouse', bubbles: true, cancelable: true }));
   const button = [...s.root.querySelectorAll('.ve-proposal-shared-toolbar button')].find((candidate) => candidate.title === 'Cell Evidence');
   assert(button, 'Cell Evidence tool missing');
-  button.click();
+  if (button.getAttribute('aria-pressed') === 'true') s.root.dispatchEvent(new CustomEvent('ve-cell-evidence-open', { detail: { cell } }));
+  else button.click();
 }
 
 async function completed(s) {

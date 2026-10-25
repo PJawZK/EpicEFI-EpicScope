@@ -1,7 +1,7 @@
 // Native shell integration complements controller-dispatched gesture cases.
 export async function runNativeVeTimelineSelection({ call, evaluate, moduleBase }) {
   await evaluate(`document.querySelectorAll('.ve-analyzer-view .ve-v50-tool-surface:not([hidden]) .ve-v50-tool-surface-close').forEach(button=>button.click())`);
-  await evaluate(`document.querySelector('[data-ve-timeline-scope="full"]').click()`);
+  await evaluate(`(()=>{const s=document.querySelector('.ve-analyzer-view select[data-role=scope]');s.value='full';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   const before = await evaluate(`(async()=>{const m=await import('${moduleBase}observability-lifecycle.browser.mjs');const records=m.readApplicationObservability().records;const root=document.querySelector('.analyzer-page:not([hidden]) .ve-analyzer-view');const track=root.querySelector('[data-ve-range-track]'),handle=root.querySelector('[data-ve-range-handle="a"]'),r=track.getBoundingClientRect();return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},start:Number(handle.getAttribute('aria-valuemin')),end:Number(handle.getAttribute('aria-valuemax')),context:records.filter(r=>r.name==='analysis.context.changed').at(-1)};})()`);
   const start = { x: Math.round(before.rect.x + before.rect.width * 0.2), y: before.rect.y + before.rect.height / 2 };
   const end = { x: Math.round(before.rect.x + before.rect.width * 0.8), y: start.y };
@@ -18,7 +18,7 @@ export async function runNativeVeTimelineSelection({ call, evaluate, moduleBase 
   await evaluate(`document.querySelector('[data-epicscope-mode=logger]').click();document.querySelector('[data-epicscope-mode=analyzer]').click()`);
   const returned = await inspect();
   if (returned.scope !== 'ab' || returned.context.metadata.aTimeMs !== committed.context.metadata.aTimeMs || returned.context.metadata.bTimeMs !== committed.context.metadata.bTimeMs) throw Error('Logger round trip lost selected VE range');
-  await evaluate(`document.querySelector('[data-ve-timeline-scope="full"]').click()`);
+  await evaluate(`(()=>{const s=document.querySelector('.ve-analyzer-view select[data-role=scope]');s.value='full';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   // Later shell replacement fixtures require a completed Full Log baseline.
   // Restore it explicitly: changing scope correctly invalidated the old one.
   await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-contract.browser.mjs');return m.runVeShellCompletionChecks();})()`,60000);

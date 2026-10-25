@@ -40,19 +40,24 @@ function clamp(value: number, minimum: number, maximum: number): number {
 export function installVeAnalyzerV50EvidenceInspector(root: HTMLElement): { setActive(active: boolean): void; dispose(): void } {
   if (installedRoots.has(root)) return { setActive() {}, dispose() {} };
   let active = true;
+  let enabled = false;
   let disposed = false;
   const events = new AbortController();
-  const isActive = (): boolean => active && !disposed;
+  const isActive = (): boolean => active && enabled && !disposed;
   installedRoots.add(root);
+
+  root.addEventListener('ve-cell-evidence-mode', event => {
+    enabled = (event as CustomEvent<{ enabled: boolean }>).detail.enabled;
+  }, { signal: events.signal });
 
   root.addEventListener('pointerdown', (event) => {
     const cell = selectedVeCell(event.target, root);
-    if (cell) followSelection(root, cell, isActive);
+    if (cell && cell.closest('table')?.dataset.tableBrush !== 'true') followSelection(root, cell, isActive);
   }, { capture: true, signal: events.signal });
 
   root.addEventListener('focusin', (event) => {
     const cell = selectedVeCell(event.target, root);
-    if (cell) followSelection(root, cell, isActive);
+    if (cell && cell.closest('table')?.dataset.tableBrush !== 'true') followSelection(root, cell, isActive);
   }, { signal: events.signal });
 
   let boundPanel: HTMLElement | undefined;

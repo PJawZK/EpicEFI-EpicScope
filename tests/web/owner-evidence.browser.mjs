@@ -8,7 +8,7 @@ import { setupVeLifecycleFixture } from './ve-analyzer-lifecycle.browser.mjs';
 const assert=(ok,message)=>{if(!ok)throw Error(message);};
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(check,message){const end=performance.now()+10000;while(!check()){if(performance.now()>end)throw Error(message);await pause(10);}}
-function openEvidence(root,cell){assert(cell,'Missing measured VE cell');cell.setPointerCapture=()=>{};cell.dispatchEvent(new PointerEvent('pointerdown',{pointerId:61,pointerType:'mouse',bubbles:true,cancelable:true}));cell.dispatchEvent(new PointerEvent('pointerup',{pointerId:61,pointerType:'mouse',bubbles:true,cancelable:true}));const tool=[...root.querySelectorAll('.ve-proposal-shared-toolbar button')].find(candidate=>candidate.title==='Cell Evidence');assert(tool,'Cell Evidence tool missing');tool.click();}
+function openEvidence(root,cell){assert(cell,'Missing measured VE cell');cell.setPointerCapture=()=>{};cell.dispatchEvent(new PointerEvent('pointerdown',{pointerId:61,pointerType:'mouse',bubbles:true,cancelable:true}));cell.dispatchEvent(new PointerEvent('pointerup',{pointerId:61,pointerType:'mouse',bubbles:true,cancelable:true}));const tool=[...root.querySelectorAll('.ve-proposal-shared-toolbar button')].find(candidate=>candidate.title==='Cell Evidence');assert(tool,'Cell Evidence tool missing');if(tool.getAttribute('aria-pressed')==='true')root.dispatchEvent(new CustomEvent('ve-cell-evidence-open',{detail:{cell}}));else tool.click();}
 export async function runOwnerEvidenceChecks(){
  const session=createObservabilitySession({maxRecordBytes:8192}),r=session.recorder,checks=[];
  const records=()=>r.snapshot(),count=name=>records().filter(x=>x.name===name).length;
@@ -29,6 +29,7 @@ export async function runOwnerEvidenceChecks(){
   const headerEvidence = root.querySelector('.ve-v50-table-actions button[aria-label="Cell Evidence"]');
   assert(headerEvidence && !headerEvidence.hidden,
     'Visible v50 Cell Evidence action missing');
+  headerEvidence.click();await pause(0);assert(headerEvidence.getAttribute('aria-pressed')==='false','Visible Evidence toggle did not disable inspection');
   const beforeHeaderOpen = count('ve.popup.cache-hit');
   headerEvidence.click(); await pause(0);
   assert(count('ve.popup.cache-hit') > beforeHeaderOpen,

@@ -46,25 +46,23 @@ export async function runVeTimelineScopeChecks() {
   {
     const s = await setup();
     try {
-      const button = value => s.root.querySelector(`[data-ve-timeline-scope="${value}"]`);
-      assert(['full', 'ab', 'saved:0', 'saved:1'].every(value => button(value)?.tagName === 'BUTTON'), 'Timeline lacks native selectable Logger ranges');
-      const row = value => button(value).closest('.ve-timeline-choice');
-      const colors = ['full', 'ab', 'saved:0'].map(value => getComputedStyle(row(value).querySelector('.ve-timeline-band')).backgroundColor);
-      assert(new Set(colors).size === 3, 'Full/A-B/saved ranges lack distinct visual colors');
-      const lanes = ['full','ab','saved:0'].map(value => row(value).querySelector('.ve-timeline-lane').getBoundingClientRect());
-      assert(lanes.every(lane => Math.abs(lane.left - lanes[0].left) < 1 && Math.abs(lane.width - lanes[0].width) < 1), 'Timeline ranges do not share the same time-axis lane');
+      const row=s.root.querySelector('[data-ve-timeline-current]'),track=s.root.querySelector('[data-ve-range-track]'),label=s.root.querySelector('[data-ve-timeline-label]');
+      assert(s.root.querySelectorAll('.ve-timeline-choice').length===1,'More than one timeline row is rendered');
+      const colors=[];
       for (const [value, expected] of [['saved:1', [3000,4000]], ['ab', [0,3000]], ['full', [0,5900]]]) {
-        const revision = s.view.sessionRevision, reads = s.reads(); button(value).click(); await settle();
-        assert(s.root.querySelector('[data-role="scope"]').value === value && button(value).getAttribute('aria-pressed') === 'true'
-          && s.view.sessionRevision === revision + 1 && s.reads() === reads, 'Timeline did not delegate one semantic scope change');
-        s.root.querySelector('[data-ve-scope-open]').click(); assert(JSON.stringify([s.request().startMs,s.request().endMs]) === JSON.stringify(expected), 'Logger handoff invented bounds');
-        const nextRevision = s.view.sessionRevision; button(value).click(); assert(s.view.sessionRevision === nextRevision, 'Re-selecting active scope invalidated analysis');
+        const revision=s.view.sessionRevision,reads=s.reads();
+        s.root.querySelector(`[data-scope-value="${value}"]`).click();await settle();
+        assert(s.root.querySelector('[data-role="scope"]').value===value&&s.view.sessionRevision===revision+1&&s.reads()===reads,'Log Scope did not delegate one semantic scope change');
+        const band=s.root.querySelector(value==='ab'?'[data-ve-edit-range]':'[data-ve-scope-range]');
+        assert(!band.hidden&&s.root.querySelectorAll('.ve-timeline-choice').length===1,'Selected scope does not use the single track');colors.push(getComputedStyle(band).backgroundColor);
+        const bounds=track.getBoundingClientRect(),text=label.getBoundingClientRect();assert(bounds.left-text.right<=8,'Timeline reserves unused filler after its label');
+        s.root.querySelector('[data-ve-scope-open]').click();assert(JSON.stringify([s.request().startMs,s.request().endMs])===JSON.stringify(expected),'Logger handoff invented bounds');
+        s.root.querySelector(`[data-scope-value="${value}"]`).click();assert(s.view.sessionRevision===revision+1,'Re-selecting active scope invalidated analysis');
       }
-      change(s, 'saved:0'); await settle(); assert(button('saved:0').getAttribute('aria-pressed') === 'true', 'Setup selector and timeline lost synchronization');
-      const node = button('saved:0'); s.view.setContext(s.context); s.view.refresh(); await settle(); assert(button('saved:0') === node, 'No-op context/refresh rebuilt timeline controls');
-      s.view.setContext({ ...s.context, sourceTimeRange: { startMs: 0, endMs: 10000 } }); await settle();
-      assert(button('saved:0') === node && button('saved:0').querySelector('.ve-timeline-band').style.left === '10%', 'Extent-only update rebuilt controls or left stale range geometry');
-      checks.push('Native timeline controls use distinct colors, synchronize setup, delegate bounds and reuse nodes');
+      assert(new Set(colors).size===3,'Selected Full/A-B/saved scopes lack distinct colors');
+      change(s,'saved:0');await settle();s.view.setContext(s.context);s.view.refresh();await settle();assert(s.root.querySelector('[data-ve-timeline-current]')===row,'No-op context rebuilt shared timeline');
+      s.view.setContext({...s.context,sourceTimeRange:{startMs:0,endMs:10000}});await settle();assert(s.root.querySelector('[data-ve-timeline-current]')===row&&s.root.querySelector('[data-ve-scope-range]').style.left==='10%','Extent update rebuilt track or left stale geometry');
+      checks.push('One compact timeline follows Log Scope, retains distinct colors and exact bounds, and reuses nodes');
     } finally { s.view.dispose(); s.host.remove(); }
   }
   {
@@ -81,7 +79,7 @@ export async function runVeTimelineScopeChecks() {
     const s = await setup();
     try {
       s.view.setContext({ ...s.context, sourceTimeRange: undefined, aTimeMs: NaN, savedRanges: [] }); await settle();
-      assert(s.root.querySelector('[data-ve-scope-open]').disabled && s.root.querySelector('[data-ve-timeline-scope="ab"]').disabled
+      assert(s.root.querySelector('[data-ve-scope-open]').disabled && s.root.querySelector('[data-scope-value="ab"]').disabled
         && s.root.querySelector('[data-ve-scope-start]').textContent === '--:--', 'Unknown extent or invalid Logger range fabricated usable bounds');
       checks.push('Unavailable extent and nonfinite Logger ranges remain unavailable, never fabricated');
     } finally { s.view.dispose(); s.host.remove(); }
@@ -91,7 +89,7 @@ export async function runVeTimelineScopeChecks() {
     try {
       const traces = await s.context.loadTraces(['rpm', 'map', 'afr', 'pw']);
       const held = s.hold(); s.run(); await settle();
-      s.root.querySelector('[data-ve-timeline-scope="saved:0"]').click();
+      s.root.querySelector('[data-scope-value="saved:0"]').click();
       held.resolve(traces); await settle(); await settle();
       assert(!s.view.getPrimaryAnalysis() && s.root.querySelector('.ve-v50-completion-dialog').hidden, 'Old-scope completion survived timeline selection');
       checks.push('Timeline selection rejects an obsolete pending analysis completion');
@@ -100,11 +98,11 @@ export async function runVeTimelineScopeChecks() {
   {
     const s = await setup();
     try {
-      change(s, 'saved:1'); const node = s.root.querySelector('[data-ve-timeline-scope="saved:1"]');
+      change(s, 'saved:1'); const node = s.root.querySelector('[data-ve-timeline-current]');
       s.view.setActive(false); s.view.setContext({ ...s.context, savedRanges: [...s.context.savedRanges].reverse() }); await settle();
-      assert(s.root.querySelector('[data-ve-timeline-scope="saved:1"]') === node, 'Hidden context update rebuilt timeline DOM');
+      assert(s.root.querySelector('[data-ve-timeline-current]') === node, 'Hidden context update rebuilt timeline DOM');
       s.view.setActive(true); await settle();
-      assert(s.root.querySelector('[data-role="scope"]').value === 'saved:0' && s.root.querySelector('[data-ve-timeline-scope="saved:0"]').getAttribute('aria-pressed') === 'true', 'Restored timeline lost deferred semantic range selection');
+      assert(s.root.querySelector('[data-role="scope"]').value === 'saved:0' && s.root.querySelector('[data-ve-timeline-label]').textContent === 'Beta', 'Restored timeline lost deferred semantic range selection');
       s.view.setContext({ ...s.context, source: { ...s.context.source, identity: {} } }); await settle();
       assert(s.root.querySelector('[data-role="scope"]').value === 'full' && !veDelayEditOwner(s.root).snapshot(), 'Source replacement retained old-log saved selection/working delay');
       checks.push('Hidden updates defer timeline work; restoration remaps selection and real source replacement retires old authority');
@@ -116,11 +114,11 @@ export async function runVeTimelineScopeChecks() {
 let native;
 export async function prepareVeTimelineNativeCheck() {
   native = await setup(); native.nativeRevision = native.view.sessionRevision; native.nativeReads = native.reads();
-  native.root.querySelector('[data-ve-timeline-scope="ab"]').focus();
+  native.root.querySelector('[data-ve-v50-setup=scope]').open=true;native.root.querySelector('[data-scope-value="ab"]').focus();
 }
 export function checkVeTimelineNativeCheck(value, offset) {
   assert(native.root.querySelector('[data-role="scope"]').value === value && native.view.sessionRevision === native.nativeRevision + offset
     && native.reads() === native.nativeReads, 'Native timeline key did not delegate one scope change: ' + JSON.stringify({expected:value,actual:native.root.querySelector('[data-role=scope]').value,revision:native.view.sessionRevision,before:native.nativeRevision,reads:native.reads(),beforeReads:native.nativeReads,focus:document.activeElement?.outerHTML.slice(0,160)}));
-  native.root.querySelector('[data-ve-timeline-scope="saved:0"]').focus(); return true;
+  native.root.querySelector('[data-ve-v50-setup=scope]').open=true;native.root.querySelector('[data-scope-value="saved:0"]').focus(); return true;
 }
 export function disposeVeTimelineNativeCheck() { native?.view.dispose(); native?.host.remove(); native = undefined; }

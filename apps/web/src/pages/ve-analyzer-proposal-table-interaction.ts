@@ -137,7 +137,15 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
   evidence.innerHTML = VE_TABLE_TOOL_ICONS.cell;
   evidence.title = 'Cell Evidence';
   evidence.setAttribute('aria-label', 'Cell Evidence');
+  evidence.setAttribute('aria-pressed', 'false');
+  root.addEventListener('ve-cell-evidence-mode', event => {
+    const enabled = (event as CustomEvent<{ enabled: boolean }>).detail.enabled;
+    evidence.setAttribute('aria-pressed', String(enabled)); evidence.dataset.active = String(enabled);
+  }, { signal: events.signal });
   evidence.addEventListener('click', () => {
+    const enabled = evidence.getAttribute('aria-pressed') !== 'true';
+    root.dispatchEvent(new CustomEvent('ve-cell-evidence-mode', { detail: { enabled } }));
+    if (!enabled) return;
     const position = evidencePosition ?? session.selectedPositions()[0];
     if (!position) {
       evidence.title = 'Select a VE cell to inspect its evidence';

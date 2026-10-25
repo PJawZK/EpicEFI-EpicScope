@@ -48,9 +48,10 @@ export async function runVeTimelineSelectionChecks() {
     await drag(0.9, 0.1);
     assert(Math.abs(context.aTimeMs - 590) < 1e-6 && Math.abs(context.bTimeMs - 5310) < 1e-6, 'Reverse gesture was not normalized');
     const retainedA = context.aTimeMs, retainedB = context.bTimeMs;
-    s.root.querySelector('[data-ve-timeline-scope=full]').click(); await settle();
+    field().value='full';field().dispatchEvent(new Event('change',{bubbles:true})); await settle();
     assert(field().value === 'full' && context.aTimeMs === retainedA && context.bTimeMs === retainedB, 'Full Log deleted selected range');
     checks.push('Reverse drags normalize bounds; Full Log retains the editable range for later reuse');
+    field().value='ab';field().dispatchEvent(new Event('change',{bubbles:true}));await settle();
     const width = context.bTimeMs - context.aTimeMs;
     await drag(0.5, 1, s.root.querySelector('[data-ve-edit-range]'));
     assert(Math.abs(context.bTimeMs - 5900) < 1e-6 && Math.abs(context.bTimeMs - context.aTimeMs - width) < 1e-6, 'Moving selection failed to preserve width at source boundary');

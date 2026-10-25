@@ -211,3 +211,5 @@
 .ve-v50-table-head > .ve-table-header-controls > select[data-role='ve-table'].ve-v50-readiness-target {
   display: block !important;
 }
+
+.ve-v50-table-icon-button[aria-pressed='true'] { background: #174258; border-color: #60d9ff; color: #e3f8ff; }

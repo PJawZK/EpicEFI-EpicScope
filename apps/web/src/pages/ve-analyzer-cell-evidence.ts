@@ -141,6 +141,11 @@ export function installVeAnalyzerCellEvidence(
     traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [],
   };
   let active = true;
+  let inspectionEnabled = false;
+  let closeButton: HTMLButtonElement | undefined;
+  const disableInspection = (): void => {
+    root.dispatchEvent(new CustomEvent('ve-cell-evidence-mode', { detail: { enabled: false } }));
+  };
   let pendingContext: LoggerAnalysisContext | undefined;
   let pendingTune: readonly [import('../../../../core/tune/tune-model').TuneModel | undefined, string | undefined] | undefined;
   const details = new Map<number, { readonly heading: string; readonly content: readonly HTMLElement[]; readonly open: HTMLButtonElement; readonly hasVisit: boolean; readonly updateWorking: () => void }>();
@@ -164,6 +169,12 @@ export function installVeAnalyzerCellEvidence(
     if (!active || !isCurrentVeCell(root, cell)) return;
     const resolved = inner.getPrimaryAnalysis();
     const { panel, heading, body } = ensureDetailPanel(root);
+    const nextClose = panel.querySelector<HTMLButtonElement>('header button')!;
+    if (closeButton !== nextClose) {
+      closeButton?.removeEventListener('click', disableInspection);
+      closeButton = nextClose;
+      closeButton.addEventListener('click', disableInspection, { signal: events.signal });
+    }
     panel.hidden = false;
     if (!resolved) {
       shownIndex = undefined;
@@ -276,21 +287,31 @@ export function installVeAnalyzerCellEvidence(
     ? target.closest<HTMLTableCellElement>('td[data-ve-row][data-ve-col]') : null;
   root.addEventListener('click', event => {
     const cell = eventCell(event.target);
-    if (!cell || (event.target instanceof Element && event.target.closest('input, button, select, textarea'))
+    if (!inspectionEnabled || !cell || (event.target instanceof Element && event.target.closest('input, button, select, textarea'))
       || cell.dataset.tableEditing === 'true' || cell.closest('table')?.dataset.tableBrush === 'true') return;
-    showDetail(cell);
+    root.dispatchEvent(new CustomEvent('ve-cell-evidence-open', { detail: { cell } }));
   }, { signal: events.signal });
   root.addEventListener('keydown', event => {
-    if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
+    if (!inspectionEnabled || event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
     // An inline editor owns its own keys; only a focused cell activates evidence.
     if (!(event.target instanceof HTMLTableCellElement) || !isCurrentVeCell(root, event.target)) return;
-    event.preventDefault(); showDetail(event.target);
+    event.preventDefault(); root.dispatchEvent(new CustomEvent('ve-cell-evidence-open', { detail: { cell: event.target } }));
+  }, { signal: events.signal });
+
+  root.addEventListener('ve-cell-evidence-mode', event => {
+    inspectionEnabled = (event as CustomEvent<{ enabled: boolean }>).detail.enabled;
+    if (!inspectionEnabled) {
+      const page = root.closest<HTMLElement>('.analyzer-page') ?? root.parentElement ?? root;
+      const panel = page.querySelector<HTMLElement>('.ve-cell-detail-popover');
+      if (panel) panel.hidden = true;
+    }
   }, { signal: events.signal });
 
   root.addEventListener('ve-cell-evidence-open', (event) => {
     const detail = (event as CustomEvent<{ readonly cell?: HTMLTableCellElement }>).detail;
     const cell = detail?.cell;
-    if (!(cell instanceof HTMLTableCellElement)) return;
+    if (!(cell instanceof HTMLTableCellElement) || !active || !isCurrentVeCell(root, cell)) return;
+    if (!inspectionEnabled) root.dispatchEvent(new CustomEvent('ve-cell-evidence-mode', { detail: { enabled: true } }));
     showDetail(cell);
   }, { signal: events.signal });
 
@@ -299,7 +320,7 @@ export function installVeAnalyzerCellEvidence(
     dispose() {
       if (disposed) return;
       disposed = true;
-      events.abort();
+      events.abort(); closeButton = undefined;
       active = false; pendingContext = undefined; pendingTune = undefined;
       unsubscribePrimary(); invalidate();
       context = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };

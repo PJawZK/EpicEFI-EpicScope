@@ -91,7 +91,12 @@ export function installVeAnalyzerV50TableHeader(inner: VeAnalyzerViewController)
   evidenceButton.type = 'button';
   evidenceButton.className = 've-v50-table-icon-button';
   evidenceButton.setAttribute('aria-label', 'Cell Evidence');
-  evidenceButton.title = 'Cell Evidence';
+  evidenceButton.title = 'Toggle Cell Evidence';
+  evidenceButton.setAttribute('aria-pressed', 'false');
+  root.addEventListener('ve-cell-evidence-mode', event => {
+    const enabled = (event as CustomEvent<{ enabled: boolean }>).detail.enabled;
+    evidenceButton.setAttribute('aria-pressed', String(enabled));
+  }, { signal: events.signal });
   evidenceButton.innerHTML = VE_TABLE_TOOL_ICONS.cell;
   evidenceButton.addEventListener('click', () => {
     root.querySelector<HTMLButtonElement>('.ve-proposal-shared-toolbar button[aria-label="Cell Evidence"]')?.click();
