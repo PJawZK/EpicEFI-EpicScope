@@ -19,8 +19,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # Preview the validated VE Analyzer v50 runtime without merging it into main.
+      - name: Checkout VE Analyzer v50 acceptance build
         uses: actions/checkout@v6
+        with:
+          ref: 8ba0c7a45d18346e111b84f0d14066c3fefd887e
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -36,7 +39,7 @@ jobs:
 
       - name: Build
         env:
-          VITE_EPICSCOPE_BUILD_SHA: ${{ github.sha }}
+          VITE_EPICSCOPE_BUILD_SHA: 8ba0c7a45d18346e111b84f0d14066c3fefd887e
         run: npm run build
 
       - name: Configure Pages
