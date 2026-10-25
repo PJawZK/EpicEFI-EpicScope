@@ -1,3 +1,4 @@
+import type { VeMsqWriteSnapshot } from '../../../../core/tune/ve-msq-write';
 export interface VeProposalCellPosition {
   readonly row: number;
   readonly col: number;
@@ -24,6 +25,9 @@ export interface VeProposalEditSnapshot {
 
 export interface VeProposalEditOwner {
   snapshot(): VeProposalEditSnapshot | undefined;
+  /** Capture committed Working VE, independently of visible Result View. No I/O. */
+  captureMsqWrite(): VeMsqWriteSnapshot | undefined;
+  isMsqWriteCurrent(snapshot: VeMsqWriteSnapshot): boolean;
   applyValues(edits: readonly VeProposalCellValueEdit[]): boolean;
   revert(positions: readonly VeProposalCellPosition[]): boolean;
   setPinned(positions: readonly VeProposalCellPosition[]): boolean;

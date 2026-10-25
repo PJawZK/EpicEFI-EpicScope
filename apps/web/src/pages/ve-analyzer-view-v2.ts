@@ -671,6 +671,24 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   registerVeProposalEditOwner(root, {
+    captureMsqWrite() {
+      if (disposed || !viewActive || analysisPending || pendingContext || pendingTune || !tuneModel) return undefined;
+      const state = ensureVeReviewState();
+      const entry = tableEntry(tuneModel, select('ve-table')?.value ?? '');
+      const rpmAxis = tuneModel.byName.get(select('rpm-axis')?.value ?? '');
+      const loadAxis = tuneModel.byName.get(select('load-axis')?.value ?? '');
+      if (!state || !entry || !rpmAxis || !loadAxis) return undefined;
+      return Object.freeze({ tuneModel, entry, rpmAxis, loadAxis, rows: state.rows, cols: state.cols,
+        revision: sessionRevision, authorityGeneration: state.authorityGeneration, values: Object.freeze([...state.values]) });
+    },
+    isMsqWriteCurrent(snapshot) {
+      return !disposed && viewActive && !analysisPending && !pendingContext && !pendingTune
+        && snapshot.tuneModel === tuneModel && snapshot.revision === sessionRevision
+        && snapshot.authorityGeneration === veReviewState?.authorityGeneration
+        && snapshot.entry === tableEntry(tuneModel, select('ve-table')?.value ?? '')
+        && snapshot.rpmAxis === tuneModel?.byName.get(select('rpm-axis')?.value ?? '')
+        && snapshot.loadAxis === tuneModel?.byName.get(select('load-axis')?.value ?? '');
+    },
     snapshot: () => {
       const state = ensureVeReviewState();
       return state ? {

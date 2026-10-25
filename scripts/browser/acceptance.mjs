@@ -20,6 +20,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('anomaly-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runAnomalyChecks();})()`,60000));
  await record('owner-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}owner-evidence.browser.mjs');return m.runOwnerEvidenceChecks();})()`,60000));
  await record('msq-document-loading.json', await evaluate(`(async()=>{const m=await import('${moduleBase}msq-document-loading.browser.mjs');return m.runMsqDocumentLoadingChecks();})()`,60000));
+ await record('msq-ve-writer.json', await evaluate(`(async()=>{const m=await import('${moduleBase}msq-ve-writer.browser.mjs');return m.runMsqVeWriterChecks();})()`,60000));
  await record('parser-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}parser-evidence.browser.mjs');return m.runParserEvidenceParity();})()`,60000));
  await record('performance-migration.json', await evaluate(`(async()=>{const m=await import('${moduleBase}performance-migration.browser.mjs');return m.capturePerformanceParity();})()`,60000));
  await record('observability-foundation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-foundation.browser.mjs');return m.runObservabilityFoundationChecks();})()`,60000));
