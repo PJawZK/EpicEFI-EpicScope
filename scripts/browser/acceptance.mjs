@@ -1,4 +1,5 @@
 import { runVeHeatmapPaint } from './ve-heatmap-paint.mjs';
+import { runNativeVeTimelineSelection } from './ve-timeline-selection.mjs';
 import { runNativeTimelineScope } from './ve-timeline-scope.mjs';
 import { runNativeCompletionFocus } from './ve-completion-focus.mjs';
 import { runDiagnosticsAcceptance } from './diagnostics.mjs';
@@ -43,6 +44,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await wait('!document.querySelector(".ve-workbench-run").disabled');
  await step('edit delay',()=>evaluate(`(()=>{document.querySelector('.ve-v50-lambda-tool-trigger').click();const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.focus();cell.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));const input=document.querySelector('.ve-table-inline-input');if(!input)throw Error('Shared delay editor did not open');input.value='125';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`));
  await step('Run Analysis', async () => record('ve-completion-shell.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-contract.browser.mjs');return m.runVeShellCompletionChecks();})()`,60000)));
+ await record('ve-timeline-selection-native.json', await runNativeVeTimelineSelection({ call, evaluate, moduleBase }));
  await runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,downloadDir,record});
  await record('anomaly-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runIntegratedAnomalyChecks();})()`,60000));
  await record('owner-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}owner-evidence.browser.mjs');return m.runIntegratedOwnerEvidence();})()`,60000));
@@ -65,6 +67,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('ve-visual-presentation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-visual-presentation.browser.mjs');return m.runVeVisualPresentationChecks();})()`,60000));
  await record('ve-timeline-native.json', await runNativeTimelineScope({ call, evaluate, moduleBase }));
  await record('ve-timeline-scope.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-timeline-scope.browser.mjs');return m.runVeTimelineScopeChecks();})()`,60000));
+ await record('ve-timeline-selection.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-timeline-selection.browser.mjs');return m.runVeTimelineSelectionChecks();})()`,60000));
  await record('ve-completion-summary.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-summary.browser.mjs');return m.runVeCompletionSummaryChecks();})()`,60000));
  await record('ve-completion-focus-native.json', await runNativeCompletionFocus({ call, evaluate, moduleBase }));
  await record('ve-completion-focus.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-focus.browser.mjs');return m.runVeCompletionFocusChecks();})()`,60000));

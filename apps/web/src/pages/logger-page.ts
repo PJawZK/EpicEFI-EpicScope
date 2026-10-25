@@ -183,6 +183,8 @@ export interface LoggerAnalysisContext {
   }) => void;
   /** Authoritative whole-source extent captured with this source-bound context. */
   readonly sourceTimeRange?: { readonly startMs: number; readonly endMs: number };
+  /** True means accepted (including unchanged). Reject commands from retired source/extents. */
+  readonly setAnalysisRange?: (request: { readonly startMs: number; readonly endMs: number }) => boolean;
   readonly openRangeInLogger?: (request: {
     readonly startMs: number;
     readonly endMs: number;
@@ -237,6 +239,7 @@ export interface LoggerPageController {
   getAnalysisSourceState(): { readonly identity: object | undefined; readonly revision: number; readonly sampleCount: number; readonly aTimeMs: number | undefined; readonly bTimeMs: number | undefined };
   focusAnalysisTimes(timeMs: readonly number[]): void;
   focusAnalysisRange(startMs: number, endMs: number): void;
+  refreshAnalysisRangeStatistics(): void;
   restoreWorkspaceState(state: LoggerWorkspaceState): Promise<void>;
   restoreActiveWorkspace(): Promise<void>;
   reconcileAssignedChannels(): void;
@@ -512,6 +515,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   const graphSelector = createGraphSelector();
   let viewport: TimelineViewport | undefined;
   let analysisStartMs: number | undefined;
+  let analysisRangeStatisticsDirty = false;
   let analysisEndMs: number | undefined;
   let previousCursorTimeMs = 0;
   let workspaceCounter = 1;
@@ -1843,6 +1847,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   });
 
   const refreshSelectedChannelStatistics = (): void => {
+    analysisRangeStatisticsDirty = false;
     const channelId = inspector.getSelectedDetailsChannelId();
     if (!channelId) return;
     const channel = channelDefinitions.get(channelId);
@@ -1919,7 +1924,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     analysisEndMs = bTimeMs;
     paneRuntimes.forEach((runtime) => runtime.graph.setAnalysisRange(aTimeMs, bTimeMs));
     rangeQualification.setRange(aTimeMs, bTimeMs);
-    refreshSelectedChannelStatistics();
+    if (page.hidden) analysisRangeStatisticsDirty = true;
+    else refreshSelectedChannelStatistics();
   });
 
   valueSearch.onJump((timeMs) => {
@@ -2489,6 +2495,16 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       loadTraces,
       ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),
       ...(sourceTimeRange ? { sourceTimeRange } : {}),
+      setAnalysisRange: ({ startMs, endMs }) => {
+        if (!source || source !== channelDataSource || sourceRevision !== analysisDataRevision || source.sampleCount !== sampleExtent || !sourceTimeRange
+          || sourceTimeRange.startMs !== analysisSourceTimeRange?.startMs || sourceTimeRange.endMs !== analysisSourceTimeRange?.endMs
+          || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
+        const start = Math.max(sourceTimeRange.startMs, Math.min(startMs, endMs));
+        const end = Math.min(sourceTimeRange.endMs, Math.max(startMs, endMs));
+        if (!(end > start)) return false;
+        timeline.setAnalysisRange(start, end);
+        return analysisStartMs === start && analysisEndMs === end;
+      },
       aTimeMs: analysisStartMs,
       bTimeMs: analysisEndMs,
       savedRanges: timeline.getWorkspaceState().savedRanges.map((range) => ({ ...range })),
@@ -2604,6 +2620,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     getAnalysisSourceState: () => ({ identity: channelDataSource, revision: analysisDataRevision, sampleCount: channelDataSource?.sampleCount ?? 0, aTimeMs: analysisStartMs, bTimeMs: analysisEndMs }),
     focusAnalysisTimes,
     focusAnalysisRange,
+    refreshAnalysisRangeStatistics: () => { if (!page.hidden && analysisRangeStatisticsDirty) refreshSelectedChannelStatistics(); },
     restoreWorkspaceState,
     restoreActiveWorkspace: async () => {
       const workspaceId = activeWorkspaceId;

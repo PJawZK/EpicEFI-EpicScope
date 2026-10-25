@@ -1069,19 +1069,27 @@ export function mountAppShell(root: HTMLElement): void {
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
     }
     if (activeMode === 'analyzer') {
-      if (change !== 'tune') analyzerPage.setContext({
-        ...loggerPage.getAnalysisContext(),
-        openSamplesInLogger: (request) => {
-          loggerPage.focusAnalysisTimes(request.timeMs);
-          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
-          setEpicScopeMode('logger');
-        },
-        openRangeInLogger: (request) => {
-          loggerPage.focusAnalysisRange(request.startMs, request.endMs);
-          appStatus.textContent = `Logger · ${request.label}`;
-          setEpicScopeMode('logger');
-        },
-      });
+      if (change !== 'tune') {
+        const loggerContext = loggerPage.getAnalysisContext();
+        analyzerPage.setContext({
+          ...loggerContext,
+          setAnalysisRange: (request) => {
+            if (!loggerContext.setAnalysisRange?.(request)) return false;
+            publishAnalysisInputs();
+            return true;
+          },
+          openSamplesInLogger: (request) => {
+            loggerPage.focusAnalysisTimes(request.timeMs);
+            appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
+            setEpicScopeMode('logger');
+          },
+          openRangeInLogger: (request) => {
+            loggerPage.focusAnalysisRange(request.startMs, request.endMs);
+            appStatus.textContent = `Logger · ${request.label}`;
+            setEpicScopeMode('logger');
+          },
+        });
+      }
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
       if (change !== 'tune') analyzerPage.setActive(true);
       analyzerPage.refresh();
@@ -1114,6 +1122,7 @@ export function mountAppShell(root: HTMLElement): void {
     const analyzerActive = mode === 'analyzer';
     const histogramActive = mode === 'histogram';
     loggerPage.element.hidden = !loggerActive;
+    if (loggerActive) loggerPage.refreshAnalysisRangeStatistics();
     analyzerPage.setActive(false);
     analyzerPage.element.hidden = !analyzerActive;
     histogramPage.element.hidden = !histogramActive;

@@ -48,9 +48,10 @@ export async function runVeTimelineScopeChecks() {
     try {
       const button = value => s.root.querySelector(`[data-ve-timeline-scope="${value}"]`);
       assert(['full', 'ab', 'saved:0', 'saved:1'].every(value => button(value)?.tagName === 'BUTTON'), 'Timeline lacks native selectable Logger ranges');
-      const colors = ['full', 'ab', 'saved:0'].map(value => getComputedStyle(button(value).querySelector('.ve-timeline-band')).backgroundColor);
+      const row = value => button(value).closest('.ve-timeline-choice');
+      const colors = ['full', 'ab', 'saved:0'].map(value => getComputedStyle(row(value).querySelector('.ve-timeline-band')).backgroundColor);
       assert(new Set(colors).size === 3, 'Full/A-B/saved ranges lack distinct visual colors');
-      const lanes = ['full','ab','saved:0'].map(value => button(value).querySelector('.ve-timeline-lane').getBoundingClientRect());
+      const lanes = ['full','ab','saved:0'].map(value => row(value).querySelector('.ve-timeline-lane').getBoundingClientRect());
       assert(lanes.every(lane => Math.abs(lane.left - lanes[0].left) < 1 && Math.abs(lane.width - lanes[0].width) < 1), 'Timeline ranges do not share the same time-axis lane');
       for (const [value, expected] of [['saved:1', [3000,4000]], ['ab', [0,3000]], ['full', [0,5900]]]) {
         const revision = s.view.sessionRevision, reads = s.reads(); button(value).click(); await settle();
@@ -80,7 +81,7 @@ export async function runVeTimelineScopeChecks() {
     const s = await setup();
     try {
       s.view.setContext({ ...s.context, sourceTimeRange: undefined, aTimeMs: NaN, savedRanges: [] }); await settle();
-      assert(s.root.querySelector('[data-ve-scope-open]').disabled && !s.root.querySelector('[data-ve-timeline-scope="ab"]')
+      assert(s.root.querySelector('[data-ve-scope-open]').disabled && s.root.querySelector('[data-ve-timeline-scope="ab"]').disabled
         && s.root.querySelector('[data-ve-scope-start]').textContent === '--:--', 'Unknown extent or invalid Logger range fabricated usable bounds');
       checks.push('Unavailable extent and nonfinite Logger ranges remain unavailable, never fabricated');
     } finally { s.view.dispose(); s.host.remove(); }

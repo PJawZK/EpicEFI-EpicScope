@@ -99,10 +99,16 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
         <span class="ve-timeline-label">Full Log</span>
         <span class="ve-timeline-lane">
         <span class="ve-analysis-scope-range ve-timeline-band" data-scope-kind="full" data-ve-scope-range></span>
-        <span class="ve-analysis-scope-marker ve-analysis-scope-marker-a" data-ve-scope-a hidden></span>
-        <span class="ve-analysis-scope-marker ve-analysis-scope-marker-b" data-ve-scope-b hidden></span>
         </span>
       </button>
+      <div class="ve-timeline-choice ve-timeline-edit-row">
+        <button type="button" class="ve-timeline-label" data-ve-timeline-scope="ab" disabled>Selected Range (A–B)</button>
+        <div class="ve-timeline-lane ve-timeline-edit-track" data-ve-range-track aria-label="Select VE analysis range" title="Drag to select; Shift-drag replaces any range. Drag A/B to adjust or the band to move. Focus A/B and use arrows (Shift for fine steps), Home or End.">
+          <span class="ve-timeline-band" data-scope-kind="ab" data-ve-edit-range hidden></span>
+          <span class="ve-analysis-scope-marker ve-analysis-scope-marker-a" data-ve-scope-a data-ve-range-handle="a" role="slider" aria-label="VE range start A in milliseconds" aria-orientation="horizontal" tabindex="0" hidden></span>
+          <span class="ve-analysis-scope-marker ve-analysis-scope-marker-b" data-ve-scope-b data-ve-range-handle="b" role="slider" aria-label="VE range end B in milliseconds" aria-orientation="horizontal" tabindex="0" hidden></span>
+        </div>
+      </div>
       <div class="ve-analysis-scope-ranges" data-ve-timeline-ranges></div>
     </div>
     <button type="button" class="ve-analysis-scope-open" data-ve-scope-open disabled>Open in Logger</button>`;
@@ -119,6 +125,9 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
   const openScope = scope.querySelector<HTMLButtonElement>('[data-ve-scope-open]')!;
   const timelineRanges = scope.querySelector<HTMLElement>('[data-ve-timeline-ranges]')!;
   const fullScopeButton = scope.querySelector<HTMLButtonElement>('[data-ve-timeline-scope="full"]')!;
+  const rangeButton = scope.querySelector<HTMLButtonElement>('[data-ve-timeline-scope="ab"]')!;
+  const rangeTrack = scope.querySelector<HTMLElement>('[data-ve-range-track]')!;
+  const editRange = scope.querySelector<HTMLElement>('[data-ve-edit-range]')!;
   let timelineKey: string | undefined;
   let currentContext: LoggerAnalysisContext | undefined;
   let currentScopeBounds: { startMs: number; endMs: number; label: string } | undefined;
@@ -129,7 +138,17 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const scopeSelect = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
     const selected = scopeSelect ? selectedAnalyzerScope(scopeSelect, context) : undefined;
     const extentValid = Boolean(extent && Number.isFinite(extent.startMs) && Number.isFinite(extent.endMs) && extent.endMs >= extent.startMs);
-    const options = analyzerScopeOptions(context).filter(option => option.kind === 'range');
+    const options = analyzerScopeOptions(context).filter(option => option.kind === 'range' && option.value !== 'ab');
+    const hasRange = context.aTimeMs !== undefined && context.bTimeMs !== undefined && Number.isFinite(context.aTimeMs) && Number.isFinite(context.bTimeMs) && context.aTimeMs !== context.bTimeMs;
+    rangeButton.disabled = !hasRange;
+    rangeTrack.setAttribute('aria-disabled', String(!extentValid || !extent || extent.endMs <= extent.startMs || !context.setAnalysisRange));
+    editRange.hidden = !extentValid || !hasRange;
+    if (!editRange.hidden && extent) {
+      const start = Math.max(extent.startMs, Math.min(context.aTimeMs!, context.bTimeMs!));
+      const end = Math.min(extent.endMs, Math.max(context.aTimeMs!, context.bTimeMs!));
+      editRange.style.left = `${(start - extent.startMs) / Math.max(1, extent.endMs - extent.startMs) * 100}%`;
+      editRange.style.width = `${Math.max(0, end - start) / Math.max(1, extent.endMs - extent.startMs) * 100}%`;
+    }
     const key = JSON.stringify(options);
     if (key !== timelineKey) {
       timelineKey = key;
@@ -188,7 +207,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
 
     currentScopeBounds = { startMs: selectedStart, endMs: selectedEnd, label: selected?.label ?? 'Full Log' };
     scope.dataset.state = isFull ? 'full' : 'range';
-    scopeLabel.textContent = selected?.label ?? 'Full Log';
+    scopeLabel.textContent = scopeSelect?.value === 'ab' ? 'Selected Range (A–B)' : selected?.label ?? 'Full Log';
     scopeDetail.textContent = isFull ? ' · entire available source' : ` · ${formatScopeTime(selectedStart)}–${formatScopeTime(selectedEnd)}`;
     scopeStart.textContent = formatScopeTime(start);
     scopeEnd.textContent = formatScopeTime(end);
@@ -198,11 +217,91 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     const placeMarker = (node: HTMLElement, value: number | undefined): void => {
       node.hidden = value === undefined || !Number.isFinite(value);
       if (!node.hidden) node.style.left = `${Math.max(0, Math.min(100, ((value! - start) / span) * 100))}%`;
+      node.tabIndex = context.setAnalysisRange ? 0 : -1;
+      node.setAttribute('aria-valuemin', String(start)); node.setAttribute('aria-valuemax', String(end));
+      node.setAttribute('aria-valuenow', String(value ?? start));
+      node.setAttribute('aria-disabled', rangeTrack.getAttribute('aria-disabled')!);
     };
     placeMarker(markerA, context.aTimeMs);
     placeMarker(markerB, context.bTimeMs);
     openScope.disabled = !context.openRangeInLogger;
   };
+
+  // The gesture owns preview geometry only. Logger accepts a single commit and
+  // republishes its context before the existing scope selector is changed.
+  type RangeGesture = { pointerId: number; context: LoggerAnalysisContext; origin: number; a: number; b: number; mode: 'new' | 'a' | 'b' | 'move' };
+  let rangeGesture: RangeGesture | undefined;
+  const gestureBounds = (gesture: RangeGesture, time: number): readonly [number, number] => {
+    if (gesture.mode === 'a') return [time, gesture.b];
+    if (gesture.mode === 'move') {
+      const extent = gesture.context.sourceTimeRange!;
+      const delta = Math.max(extent.startMs - gesture.a, Math.min(extent.endMs - gesture.b, time - gesture.origin));
+      return [gesture.a + delta, gesture.b + delta];
+    }
+    return [gesture.a, time];
+  };
+  const cancelRangeGesture = (): void => {
+    const gesture = rangeGesture; rangeGesture = undefined;
+    if (!gesture) return;
+    if (rangeTrack.hasPointerCapture(gesture.pointerId)) rangeTrack.releasePointerCapture(gesture.pointerId);
+    if (active && !disposed && currentContext) renderScope(currentContext);
+  };
+  const rangeTime = (clientX: number): number | undefined => {
+    const extent = currentContext?.sourceTimeRange, rect = rangeTrack.getBoundingClientRect();
+    if (!extent || !Number.isFinite(extent.startMs) || !Number.isFinite(extent.endMs) || rect.width <= 0 || !(extent.endMs > extent.startMs)) return undefined;
+    return extent.startMs + Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (extent.endMs - extent.startMs);
+  };
+  const selectAcceptedRange = (context: LoggerAnalysisContext, a: number, b: number): void => {
+    if (!active || disposed || !Number.isFinite(a) || !Number.isFinite(b) || a === b) return;
+    if (!context.setAnalysisRange?.({ startMs: Math.min(a, b), endMs: Math.max(a, b) })) return;
+    const select = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+    if (select && select.value !== 'ab' && [...select.options].some(option => option.value === 'ab')) {
+      select.value = 'ab'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (currentContext) renderScope(currentContext);
+  };
+  rangeTrack.addEventListener('pointerdown', event => {
+    const context = currentContext, time = rangeTime(event.clientX);
+    if (!active || disposed || rangeGesture || event.button !== 0 || !context?.setAnalysisRange || time === undefined) return;
+    event.preventDefault();
+    const handle = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-ve-range-handle]')?.dataset.veRangeHandle : undefined;
+    const hasRange = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
+    const mode = event.shiftKey ? 'new' : handle === 'a' || handle === 'b' ? handle : hasRange && event.target === editRange ? 'move' : 'new';
+    rangeGesture = { pointerId: event.pointerId, context, origin: time,
+      a: mode === 'new' ? time : mode === 'move' ? Math.min(context.aTimeMs!, context.bTimeMs!) : context.aTimeMs!,
+      b: mode === 'new' ? time : mode === 'move' ? Math.max(context.aTimeMs!, context.bTimeMs!) : context.bTimeMs!, mode };
+    if (mode === 'a' || mode === 'b') (mode === 'a' ? markerA : markerB).focus({ preventScroll: true });
+    rangeTrack.setPointerCapture(event.pointerId);
+  }, { signal: events.signal });
+  rangeTrack.addEventListener('pointermove', event => {
+    const gesture = rangeGesture, time = rangeTime(event.clientX), extent = gesture?.context.sourceTimeRange;
+    if (!gesture || gesture.pointerId !== event.pointerId || time === undefined || !extent) return;
+    const [a, b] = gestureBounds(gesture, time);
+    const span = extent.endMs - extent.startMs;
+    editRange.hidden = false; editRange.style.left = `${(Math.min(a, b) - extent.startMs) / span * 100}%`; editRange.style.width = `${Math.abs(b - a) / span * 100}%`;
+    for (const [node, value] of [[markerA, a], [markerB, b]] as const) { node.hidden = false; node.style.left = `${(value - extent.startMs) / span * 100}%`; }
+  }, { signal: events.signal });
+  rangeTrack.addEventListener('pointerup', event => {
+    const gesture = rangeGesture, time = rangeTime(event.clientX);
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const [a, b] = time === undefined ? [gesture.a, gesture.b] : gestureBounds(gesture, time);
+    cancelRangeGesture();
+    if (time !== undefined && currentContext === gesture.context) selectAcceptedRange(gesture.context, a, b);
+  }, { signal: events.signal });
+  for (const event of ['pointercancel', 'lostpointercapture'] as const) rangeTrack.addEventListener(event, cancelRangeGesture, { signal: events.signal });
+  rangeTrack.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); cancelRangeGesture(); return; }
+    const context = currentContext, extent = context?.sourceTimeRange;
+    const handle = event.target instanceof HTMLElement ? event.target.dataset.veRangeHandle : undefined;
+    if (!active || disposed || !context?.setAnalysisRange || !extent || !handle || context.aTimeMs === undefined || context.bTimeMs === undefined || rangeTrack.getAttribute('aria-disabled') === 'true') return;
+    const step = Math.max(1, (extent.endMs - extent.startMs) / (event.shiftKey ? 1000 : 100));
+    const current = handle === 'a' ? context.aTimeMs : context.bTimeMs;
+    const value = event.key === 'Home' ? extent.startMs : event.key === 'End' ? extent.endMs : event.key === 'ArrowLeft' ? current - step : event.key === 'ArrowRight' ? current + step : undefined;
+    if (value === undefined) return;
+    event.preventDefault(); cancelRangeGesture();
+    const bounded = Math.max(extent.startMs, Math.min(extent.endMs, value));
+    selectAcceptedRange(context, handle === 'a' ? bounded : context.aTimeMs, handle === 'b' ? bounded : context.bTimeMs);
+  }, { signal: events.signal });
 
   scope.addEventListener('click', event => {
     if (disposed || !active || !(event.target instanceof Element)) return;
@@ -331,7 +430,8 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     let selectedScope: string | undefined;
     syncScopeChoices = (): void => {
       if (!semanticScopeSelect) return;
-      const options = [...semanticScopeSelect.options];
+      const options = [...semanticScopeSelect.options].map(option => ({ value: option.value, textContent: option.value === 'ab' ? 'Selected Range (A–B)' : option.textContent, disabled: option.disabled }));
+      if (!options.some(option => option.value === 'ab')) options.splice(1, 0, { value: 'ab', textContent: 'Selected Range (A–B)', disabled: true });
       const key = JSON.stringify(options.map(option => [option.value, option.textContent?.trim() || option.value, option.disabled]));
       if (key !== scopeOptionsKey) {
         scopeOptionsKey = key;
@@ -448,6 +548,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     dispose() {
       if (disposed) return;
       disposed = true;
+      cancelRangeGesture();
       events.abort();
       active = false; currentContext = undefined; currentScopeBounds = undefined;
       closeVeAnalyzerSetupDisclosures(root);
@@ -455,6 +556,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     },
     setActive(next) { if (disposed) return;
       active = next;
+      if (!next) cancelRangeGesture();
       inner.setActive(next);
       if (next) { if (currentContext) renderScope(currentContext); scheduleSetupSummaries(); }
       else closeVeAnalyzerSetupDisclosures(root);
@@ -471,6 +573,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       if (disposed) return false;
+      if (rangeGesture && rangeGesture.context !== context) cancelRangeGesture();
       const changed = inner.setContext(context);
       currentContext = context;
       if (active) renderScope(context);
