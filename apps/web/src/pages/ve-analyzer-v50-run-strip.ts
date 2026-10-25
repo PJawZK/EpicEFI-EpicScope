@@ -1,3 +1,4 @@
+import type { MsqSaveState } from '../msq-save-contract';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
@@ -206,17 +207,31 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
     }
   }, { signal: events.signal });
   chips.append(inputs, delay, grab, use, summaryAction, info, blocker, fix);
-  if (runButton) {
-    const save = document.createElement('button');
-    save.type = 'button';
-    save.className = 've-v50-save-proposal';
-    save.textContent = 'Save to MSQ / Shim';
-    save.disabled = true;
-    save.title = 'Unavailable: reviewed proposal export and safe ECU/shim write reconciliation are not implemented.';
-    save.setAttribute('aria-label', 'Save proposal to MSQ or shim (not yet available)');
-    actionbar.insertBefore(chips, runButton);
-    actionbar.insertBefore(save, runButton);
-  } else actionbar.append(chips);
+  const save = document.createElement('button');
+  save.type='button';save.className='ve-v50-save-proposal';save.textContent='Save MSQ';save.disabled=true;
+  save.title='Load a writable MSQ and matching INI before saving.';save.setAttribute('aria-label','Save Working VE to loaded MSQ');
+  const saveFeedback=document.createElement('div');saveFeedback.className='ve-v50-msq-feedback';saveFeedback.hidden=true;saveFeedback.setAttribute('role','status');saveFeedback.setAttribute('aria-live','polite');
+  const saveText=document.createElement('span'),reload=document.createElement('button');reload.type='button';reload.textContent='Reload MSQ';reload.hidden=true;saveFeedback.append(saveText,reload);
+  const confirmReload=document.createElement('dialog');confirmReload.className='ve-msq-reload-confirm';
+  confirmReload.innerHTML='<p>Reload the changed MSQ? This replaces the loaded tune and discards the current VE working edits and analysis after the file is accepted.</p><button type="button" data-msq-keep>Keep working edits</button><button type="button" data-msq-reload>Reload and discard VE edits</button>';
+  root.append(confirmReload);
+  reload.addEventListener('click',()=>{if(!confirmReload.open)confirmReload.showModal();},{signal:events.signal});
+  confirmReload.querySelector('[data-msq-keep]')!.addEventListener('click',()=>confirmReload.close(),{signal:events.signal});
+  confirmReload.querySelector('[data-msq-reload]')!.addEventListener('click',()=>{confirmReload.close();root.dispatchEvent(new CustomEvent('ve-msq-reload-request',{bubbles:true}));},{signal:events.signal});
+  save.addEventListener('pointerdown',event=>{if(!root.dispatchEvent(new CustomEvent('ve-msq-save-preflight',{cancelable:true})))event.preventDefault();},{signal:events.signal});
+  save.addEventListener('click',()=>root.dispatchEvent(new CustomEvent('ve-msq-save-request',{bubbles:true,cancelable:true})),{signal:events.signal});
+  let blockedSaveMessage: string | undefined;
+  let saveState: MsqSaveState={available:false,busy:false,outcome:'idle',message:save.title,reload:false};
+  const syncSave=():void=>{
+    save.disabled=!saveState.available||saveState.busy||inner.getReadiness().pending;
+    save.textContent=saveState.busy?'Saving MSQ…':'Save MSQ';save.title=saveState.message;
+    saveFeedback.hidden=saveState.outcome==='idle'&&!saveState.message;
+    saveText.textContent=blockedSaveMessage??saveState.message;saveFeedback.hidden=!blockedSaveMessage&&saveFeedback.hidden;saveFeedback.dataset.state=blockedSaveMessage?'issue':saveState.outcome;reload.hidden=!saveState.reload;reload.disabled=saveState.busy;
+  };
+  root.addEventListener('ve-msq-save-state',event=>{saveState=(event as CustomEvent<MsqSaveState>).detail;blockedSaveMessage=undefined;syncSave();},{signal:events.signal});
+  root.addEventListener('ve-msq-save-blocked',event=>{blockedSaveMessage=(event as CustomEvent<string>).detail;syncSave();},{signal:events.signal});
+  if (runButton) {actionbar.insertBefore(chips,runButton);actionbar.insertBefore(save,runButton);}else actionbar.append(chips,save);
+  actionbar.insertAdjacentElement('afterend',saveFeedback);
 
   let active = true;
   let discoveryPending = false;
@@ -239,6 +254,7 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   const sync = (): void => {
     if (!active || disposed) return;
     const state = inner.getReadiness();
+    syncSave();
     const grabDisabled = !semanticGrab || semanticGrab.disabled || state.pending || discoveryPending;
     const useDisabled = !semanticUse || semanticUse.disabled || state.pending;
     if (renderedState === state && renderedGrabDisabled === grabDisabled && renderedUseDisabled === useDisabled) return;
@@ -300,14 +316,14 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
       disposed = true;
       events.abort();
       dialog.remove();
-      delayFeedback.remove();
+      delayFeedback.remove();saveFeedback.remove();confirmReload.close();confirmReload.remove();
       active = false; unsubscribeReadiness();
       inner.dispose();
     },
     setActive(nextActive) { if (disposed) return;
       active = nextActive;
       if (!nextActive) {
-        dismissSummary(); discoveryPending = false; delayFeedback.hidden = true;
+        dismissSummary(); confirmReload.close(); discoveryPending = false; delayFeedback.hidden = true;
         grab.textContent = 'Grab lambda delays from log';
       }
       inner.setActive(nextActive);

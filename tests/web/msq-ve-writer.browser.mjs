@@ -16,6 +16,7 @@ export async function runMsqVeWriterChecks(){
   const noOp=prepareVeMsqWrite(d,s,ini());assert(noOp.changedCells===0&&noOp.bytes.every((b,i)=>b===before[i])&&noOp.bytes.length===before.length,'No-op rewrite changed bytes');
   const next={...s,values:[47.7375,38.27,39.005,38.36,0,650]};const plan=prepareVeMsqWrite(d,next,ini());
   const expected=d.text.replace('38.19  38.27\t38.32','47.74  38.27\t39.01').replace('38.36 38.40 38.48','38.36 0 650');
+  assert(!new DOMParser().parseFromString(plan.text,'application/xml').querySelector('parsererror'),'Worker-compatible writer produced invalid XML');
   assert(plan.text===expected&&plan.changedCells===4&&plan.values[2]===39.01,'Rectangular VE-only patch changed whitespace/orientation/metadata or used digits1');
   assert(d.bytes.every((b,i)=>b===before[i])&&d.model.byName.get('veTable').numericValues[0]===38.19,'Writer mutated accepted document/model');
   assert((utf8&&plan.bytes[0]===239)||(!utf8&&plan.bytes.includes(229)),'Original encoding/BOM lost');

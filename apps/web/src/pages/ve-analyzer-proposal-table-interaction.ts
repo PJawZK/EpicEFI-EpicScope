@@ -116,6 +116,15 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     pinsChanged: positions => { owner.setPinned(positions); },
   });
 
+  const guardMsqDraft = (event: Event): void => {
+    if (dom.hasPendingEdit()) {
+      event.preventDefault();
+      root.dispatchEvent(new CustomEvent('ve-msq-save-blocked',{detail:'Finish the cell editor or Brush stroke before saving MSQ.'}));
+    }
+  };
+  root.addEventListener('ve-msq-save-request',guardMsqDraft,{signal:events.signal});
+  root.addEventListener('ve-msq-save-preflight',guardMsqDraft,{signal:events.signal});
+
   dom.toolbar.classList.add('ve-proposal-shared-toolbar');
   let evidencePosition: TableCellPosition | undefined;
   const rememberEvidencePosition = (event: PointerEvent): void => {

@@ -1,3 +1,6 @@
+import { veProposalEditOwner } from './ve-analyzer-proposal-edit-owner';
+import type { VeMsqWriteSnapshot } from '../../../../core/tune/ve-msq-write';
+import type { MsqSaveState } from '../msq-save-contract';
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import type { Origin } from '../observability/record';
@@ -29,6 +32,11 @@ export interface AnalyzerPageController {
   setTuneModel(model: TuneModel | undefined, sourceName?: string): void;
   openRangeCompareScope(scopeValue: 'ab'): void;
   refresh(): void;
+  openVeMsqSaveReview(): void;
+  captureVeMsqWrite(): VeMsqWriteSnapshot | undefined;
+  isVeMsqWriteCurrent(snapshot: VeMsqWriteSnapshot): boolean;
+  setMsqSaveState(state: MsqSaveState): void;
+  onVeWorkingChange(listener: () => void): () => void;
 }
 
 function formatNumber(value: number | undefined, precision = 3): string {
@@ -68,6 +76,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   let currentView: AnalyzerView = 'compare';
   let active = true;
   let disposed = false;
+  const saveEvents = new AbortController();
   let tuneModel: TuneModel | undefined;
   let tuneSourceName: string | undefined;
   let comparisonChannels: LoggerAnalysisContext['channels'] = [];
@@ -480,9 +489,17 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   return {
     element: root,
     headerControl,
+    openVeMsqSaveReview() {setView('ve',true,'user');},
+    captureVeMsqWrite() { return active && currentView === 've' && !disposed ? veProposalEditOwner(veAnalyzerView.element)?.captureMsqWrite() : undefined; },
+    isVeMsqWriteCurrent(snapshot) { return active && currentView === 've' && !disposed && (veProposalEditOwner(veAnalyzerView.element)?.isMsqWriteCurrent(snapshot) ?? false); },
+    setMsqSaveState(state) { if(!disposed)veAnalyzerView.element.dispatchEvent(new CustomEvent('ve-msq-save-state',{detail:state})); },
+    onVeWorkingChange(listener) {
+      veAnalyzerView.element.addEventListener('ve-proposal-table-rendered',listener,{signal:saveEvents.signal});
+      return () => veAnalyzerView.element.removeEventListener('ve-proposal-table-rendered',listener);
+    },
     dispose() {
       if (disposed) return;
-      disposed = true; active = false;
+      disposed = true; active = false; saveEvents.abort();
       renderGeneration += 1; contextUpdateGeneration += 1;
       for (const view of domainViews) view.setActive(false);
       veAnalyzerView.dispose();

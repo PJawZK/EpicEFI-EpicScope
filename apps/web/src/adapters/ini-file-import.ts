@@ -1,3 +1,4 @@
+import { parseIniMsqWriteCatalog, type IniMsqWriteCatalog } from '../../../../core/parsers/ini/ini-msq-write-policy';
 import {
   buildIniChannelCatalog,
   type ChannelCatalog,
@@ -31,6 +32,7 @@ export interface IniImportPerformance {
 }
 
 export interface ImportedIniFile {
+  readonly msqWriteCatalog: IniMsqWriteCatalog;
   readonly fileName: string;
   readonly parsed: IniChannelParseResult;
   readonly catalog: ChannelCatalog;
@@ -50,6 +52,7 @@ export async function importIniFile(file: File): Promise<ImportedIniFile> {
   const parseStart = now();
   const parsed = parseIniChannelSections(text);
   const tableDefinitions = parseIniTableEditorDefinitions(text);
+  const msqWriteCatalog = parseIniMsqWriteCatalog(text);
   const parseMs = now() - parseStart;
 
   const catalogStart = now();
@@ -75,6 +78,7 @@ export async function importIniFile(file: File): Promise<ImportedIniFile> {
   for (const key of outputKeys) if (!datalogKeys.has(key)) outputOnlyCount += 1;
 
   return {
+    msqWriteCatalog,
     fileName: file.name,
     parsed,
     catalog,

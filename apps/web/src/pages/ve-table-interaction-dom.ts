@@ -63,6 +63,7 @@ export interface TableInteractionDomController {
   setBrushActive(active: boolean): void;
   cancelActiveInteraction(): void;
   destroy(): void;
+  hasPendingEdit(): boolean;
 }
 
 function positionKey(position: TableCellPosition): string {
@@ -827,5 +828,5 @@ export function createTableInteractionDomController(
     toolbar.remove();
   };
 
-  return { toolbar, bindTable, refresh, setBrushActive, cancelActiveInteraction, destroy };
+  return { toolbar, bindTable, refresh, setBrushActive, cancelActiveInteraction, destroy, hasPendingEdit: () => inlineInput !== undefined || brushPointerId !== undefined };
 }

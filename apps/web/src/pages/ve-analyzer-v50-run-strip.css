@@ -90,13 +90,14 @@
   padding: 0 13px;
   border: 1px solid #344450;
   border-radius: 4px;
-  background: #17212a;
-  color: #81929d;
+  background: #113043;
+  color: #dce9ef;
   font-size: 10px;
-  opacity: .55;
-  cursor: not-allowed;
+  cursor: pointer;
   white-space: nowrap;
 }
+.ve-v50-save-proposal:disabled { opacity:.55; cursor:not-allowed; }
+.ve-v50-save-proposal:hover:not(:disabled) { border-color:#60d9ff; }
 
 /* The semantic owner's stage output is moved out of the hidden legacy guidance.
  * Bound its height while keeping long errors readable by wrapping and scrolling. */
@@ -205,3 +206,10 @@
 }
 .ve-v50-delay-feedback[data-state='error'], .ve-v50-delay-feedback[data-state='warning'] { color: #ffd18a; }
 .ve-v50-delay-feedback[hidden] { display: none; }
+
+.ve-v50-msq-feedback { display:flex; align-items:center; gap:8px; padding:3px 7px; color:#b9d7df; font-size:11px; }
+.ve-v50-msq-feedback[hidden] { display:none; }
+.ve-v50-msq-feedback[data-state='conflict'],.ve-v50-msq-feedback[data-state='uncertain'],.ve-v50-msq-feedback[data-state='issue'] { color:#ffd18a; }
+.ve-v50-msq-feedback button { flex:none; }
+.ve-msq-reload-confirm { max-width:480px; background:#0d1b24; color:#dce9ef; border:1px solid #355363; border-radius:6px; }
+.ve-msq-reload-confirm::backdrop { background:#0008; }

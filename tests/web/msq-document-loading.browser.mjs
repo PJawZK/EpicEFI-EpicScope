@@ -36,5 +36,7 @@ export async function runMsqDocumentLoadingChecks(){
  assert(loader.current.name==='pending.msq'&&loader.current.model.byName.get('veTable').numericValues[0]===65,'Cancelling chooser cancelled an existing valid read');checks.push('Cancelling a picker preserves an already-running load');
  assert(!msqFilePicker({isSecureContext:true})&&!msqFilePicker({isSecureContext:false,showOpenFilePicker:async()=>[handle]}),'Unsupported/insecure environment advertises native picking');
  const host={isSecureContext:true,showOpenFilePicker(){assert(this===host,'Native picker lost host binding');return Promise.resolve([handle]);}};assert((await msqFilePicker(host)({multiple:false,types:[]}))[0]===handle,'Supported picker not bound');checks.push('Capability detection distinguishes secure native access from read-only fallback');
+ const late=deferred(),lifecycleEvents=[],closing=createMsqDocumentLoader({loading(){},accepted:d=>lifecycleEvents.push(d),rejected:(_n,e)=>lifecycleEvents.push(e)});
+ const lateLoad=closing.loadFile({name:'disposed.msq',arrayBuffer:()=>late.promise});closing.dispose();late.resolve(await file().arrayBuffer());await lateLoad;assert(!closing.current&&!closing.pending&&lifecycleEvents.length===0,'Disposed loader accepted a stale file');checks.push('Loader disposal releases accepted data and rejects late completions');
  return{passed:checks.length,checks};
 }
