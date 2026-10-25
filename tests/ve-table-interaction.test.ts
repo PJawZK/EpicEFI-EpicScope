@@ -58,6 +58,77 @@ function memorySurface(rows: number, cols: number, initial: readonly number[], r
 }
 
 describe('VE shared table interaction boundary', () => {
+  for (const axis of ['horizontal', 'vertical'] as const) {
+    for (const method1d of ['linear', 'shape'] as const) {
+      for (const strength of [0, 0.5, 1]) {
+        it(`${axis}/${method1d} preserves strength ${strength} on a 32-cell 200-to-150 range`, () => {
+          const initial = [200, ...new Array<number>(30).fill(100), 150];
+          const memory = memorySurface(axis === 'horizontal' ? 1 : 32, axis === 'horizontal' ? 32 : 1, initial);
+          const session = new TableInteractionSession(memory.surface);
+          session.setRectangle({ row: 0, col: 0 }, axis === 'horizontal' ? { row: 0, col: 31 } : { row: 31, col: 0 });
+          expect(session.interpolate({ axis, method1d, strength, clamp: true })).toBe(strength > 0);
+          const values = memory.values();
+          expect(values[0]).toBe(200);
+          expect(values[31]).toBe(150);
+          for (let index = 1; index < 31; index += 1) {
+            expect(values[index]).toBeCloseTo(100 + (100 - 50 * index / 31) * strength, 10);
+          }
+          expect(memory.commits()).toBe(strength > 0 ? 1 : 0);
+        });
+      }
+    }
+  }
+
+  for (const method2d of ['bilinear', 'boundary'] as const) {
+    for (const strength of [0, 0.5, 1]) {
+      it(`${method2d} respects strength ${strength} without projecting the original into boundary limits`, () => {
+        const memory = memorySurface(3, 3, [200, 180, 150, 200, 100, 150, 200, 180, 150]);
+        const session = new TableInteractionSession(memory.surface);
+        session.setRectangle({ row: 0, col: 0 }, { row: 2, col: 2 });
+        expect(session.interpolate({ axis: 'both', method2d, strength, clamp: true })).toBe(strength > 0);
+        expect(memory.values()[4]).toBe(100 + ((method2d === 'bilinear' ? 175 : 180) - 100) * strength);
+        expect(memory.values()[0]).toBe(200);
+        expect(memory.values()[8]).toBe(150);
+        expect(memory.commits()).toBe(strength > 0 ? 1 : 0);
+      });
+    }
+  }
+
+  it('clamps an overshooting boundary target before blending from the existing value', () => {
+    for (const shouldClamp of [false, true]) {
+      const memory = memorySurface(3, 3, [10, 100, 20, 100, 1000, 100, 30, 100, 40]);
+      const session = new TableInteractionSession(memory.surface);
+      session.setRectangle({ row: 0, col: 0 }, { row: 2, col: 2 });
+      session.interpolate({ axis: 'both', method2d: 'boundary', strength: 0.5, clamp: shouldClamp });
+      expect(memory.values()[4]).toBe(shouldClamp ? 550 : 587.5);
+    }
+  });
+
+  for (const axis of ['horizontal', 'vertical'] as const) {
+    for (const method2d of ['bilinear', 'boundary'] as const) {
+      it(`delegates ${method2d} on a single ${axis} line without losing half strength`, () => {
+        const memory = memorySurface(axis === 'horizontal' ? 1 : 3, axis === 'horizontal' ? 3 : 1, [200, 100, 150]);
+        const session = new TableInteractionSession(memory.surface);
+        session.setRectangle({ row: 0, col: 0 }, axis === 'horizontal' ? { row: 0, col: 2 } : { row: 2, col: 0 });
+        session.interpolate({ axis: 'both', method2d, strength: 0.5, clamp: true });
+        expect(memory.values()).toEqual([200, 137.5, 150]);
+      });
+    }
+  }
+
+  for (const axis of ['horizontal', 'vertical'] as const) {
+    it(`distinguishes neighbor-informed shape from linear ${axis} interpolation`, () => {
+      for (const method1d of ['linear', 'shape'] as const) {
+        const memory = memorySurface(axis === 'horizontal' ? 1 : 5, axis === 'horizontal' ? 5 : 1, [0, 1, 100, 3, 6]);
+        const session = new TableInteractionSession(memory.surface);
+        session.setRectangle(axis === 'horizontal' ? { row: 0, col: 1 } : { row: 1, col: 0 }, axis === 'horizontal' ? { row: 0, col: 3 } : { row: 3, col: 0 });
+        session.interpolate({ axis, method1d, strength: 0.5, clamp: true });
+        expect(memory.values()[2]).toBeCloseTo(method1d === 'linear' ? 51 : (100 + 63 / 34) / 2, 10);
+        expect(memory.values().filter((_, index) => index !== 2)).toEqual([0, 1, 3, 6]);
+      }
+    });
+  }
+
   it('keeps pins session-local and protects destructive bulk adjustment', () => {
     const memory = memorySurface(2, 2, [1, 2, 3, 4]);
     const session = new TableInteractionSession(memory.surface);

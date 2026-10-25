@@ -412,8 +412,10 @@ export class TableInteractionSession {
       // Undefined interior cells are valid interpolation targets. Existing
       // finite cells blend by strength; an empty cell receives the interpolated
       // value directly because there is no numeric source value to blend from.
-      let value = original === undefined ? target : original + (target - original) * strength;
-      if (shouldClamp) value = clamp(value, min, max);
+      // Clamp the computed target, not the blended result: an existing value
+      // outside the anchor range must still move only by the chosen strength.
+      const boundedTarget = shouldClamp ? clamp(target, min, max) : target;
+      const value = original === undefined ? boundedTarget : original + (boundedTarget - original) * strength;
       if (!Number.isFinite(value)) return;
       transaction.set(row, col, value);
       changed = true;

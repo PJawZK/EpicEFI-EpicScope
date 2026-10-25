@@ -193,7 +193,7 @@ export function installTableToolConfiguration(
     const element = open(
       event,
       `${both ? 'Both-directions interpolation' : 'Interpolation'} · ${owner.label}`,
-      'Normal click applies the current method. Pins remain untouched; H/V pins also act as interior anchors.',
+      'Normal click applies the current method. Strength blends existing values toward the target; blanks receive the target. Pins remain untouched; H/V pins also act as interior anchors.',
     );
     const method = selectField('Method', both
       ? [['bilinear', 'Bilinear · four corners'], ['boundary', 'Boundary surface · all four edges']]
@@ -206,7 +206,7 @@ export function installTableToolConfiguration(
     clamp.type = 'checkbox';
     clamp.checked = current.clamp ?? true;
     const clampText = document.createElement('span');
-    clampText.textContent = both ? 'Clamp to boundary range' : 'Clamp to anchor range';
+    clampText.textContent = both ? 'Clamp target to boundary range' : 'Clamp target to anchor range';
     clampLabel.append(clamp, clampText);
     element.append(method.label, strength.label, clampLabel);
     const commit = (): void => {

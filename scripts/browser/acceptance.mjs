@@ -58,6 +58,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('lifecycle checks',{result:lifecycle});await record('lifecycle-result.json',lifecycle);
  await record('ve-editing-retention.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-editing-retention.browser.mjs');return m.runVeEditingRetentionChecks();})()`,60000));
  await record('ve-numerical-boundaries.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-numerical-boundaries.browser.mjs');return m.runVeNumericalBoundaryChecks();})()`,60000));
+ await record('ve-interpolation-strength.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-interpolation-strength.browser.mjs');return m.runVeInterpolationStrengthChecks();})()`,120000));
  await record('ve-heatmap-paint.json', await runVeHeatmapPaint({ call, evaluate, moduleBase, downloadDir }));
  await record('ve-visual-presentation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-visual-presentation.browser.mjs');return m.runVeVisualPresentationChecks();})()`,60000));
  await record('ve-timeline-native.json', await runNativeTimelineScope({ call, evaluate, moduleBase }));

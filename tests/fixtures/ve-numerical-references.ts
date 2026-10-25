@@ -181,7 +181,7 @@ const references: VeNumericalReference[] = [
     interpolateEdit([0, NaN, 20, NaN, NaN, NaN, 40, NaN, 60], [0, 1, 4], [0, 1, 4], { axis: 'both', method2d: 'bilinear', strength: 1 }).values[4] },
   { id: 'R35', title: 'Boundary surface equals bilinear base plus weighted edge deviations', expected: 20, run: () =>
     interpolateEdit([0, 8, 20, 12, 999, 32, 40, 48, 60], [0, 1, 4], [0, 1, 4], { axis: 'both', method2d: 'boundary', strength: 1 }).values[4] },
-  { id: 'R36', title: 'Current policy: clamp is applied after strength blend', expected: [78.125, 20], run: () => [false, true].map(clamp =>
+  { id: 'R36', title: 'Clamp bounds the interpolation target before strength blending', expected: [78.125, 78.125], run: () => [false, true].map(clamp =>
     interpolateEdit([10, 100, 20], [1000, 1500, 3000], [50], { axis: 'horizontal', strength: 0.25, clamp }).values[1]) },
   { id: 'R37', title: 'Presentation rounding retains full numerical proposal authority', expected: ['73.78', 2730 / 37, '5.4%', 200 / 37], run: () => {
     const p = buildVeProposal([70], 1, 1, buildVeEvidenceMap(inputs(), { minimumStableDurationMs: 0 }), { priorWeight: 17, minimumEvidenceWeight: 8, maximumAbsoluteChange: 100, maximumPercentChange: 100 });

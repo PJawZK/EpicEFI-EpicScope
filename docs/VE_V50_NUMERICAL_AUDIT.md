@@ -6,6 +6,8 @@ This is the independent reference/audit checkpoint of the new ten-group plan. It
 
 > Historical Group 3 snapshot: Group 4 has since corrected N01–N05 and B01. See [Group 4 corrections](VE_V50_GROUP4_CORRECTIONS.md). The original expected-failure counts below describe the audit checkpoint; the current reference suite uses ordinary passing regressions.
 
+> Subsequent interpolation correction (2026-10-25): the user requested strength-preserving interpolation. Follow-up Group 2 changes R36 from post-blend clamping to target clamping before blending. The historical R36 description below records the old behavior; the current shared fixture expects78.125 with clamp either enabled or disabled. See [the correction and validation](VE_V50_FOLLOWUP_GROUP2_INTERPOLATION.md).
+
 ## Reference method and scope
 
 `tests/fixtures/ve-numerical-references.ts` supplies explicit inputs and independently calculated expected outputs. `tests/analysis/ve-numerical-reference.test.ts` executes them. The same fixture executes through Vite in real Chromium in normal and Worker-disabled contexts; an external probe also mounts the production controller chain for B01/B02. Small numerical tolerances cover floating-point evaluation, not material differences. No rendered UI text supplies analytical input.
