@@ -20,7 +20,7 @@ import {
 } from '../../../../core/channels/channel-binding';
 import type { ChannelCatalog } from '../../../../core/channels/channel-catalog';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
-import { prepareMsqCandidate } from '../adapters/msq-candidate';
+import { createMsqDocumentLoader, msqFilePicker } from '../adapters/msq-document-loader';
 import { type TuneModel } from '../../../../core/tune/tune-model';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
@@ -595,7 +595,6 @@ export function mountAppShell(root: HTMLElement): void {
   let activeIniTableDefinitions: readonly IniTableEditorDefinition[] = [];
   let activeIniSourceName: string | undefined;
   let activeIniBinding: BoundChannelCatalog | undefined;
-  let msqLoadGeneration = 0;
   let activeTuneModel: TuneModel | undefined;
   let activeTuneSourceName: string | undefined;
   let currentRawLog: {
@@ -1209,7 +1208,9 @@ export function mountAppShell(root: HTMLElement): void {
   });
   loadMsqButton.addEventListener('click', () => {
     closeLoadDataMenu();
-    msqInput.click();
+    const picker = msqFilePicker();
+    if (picker) void msqDocuments.choose(picker);
+    else msqInput.click();
   });
 
   unloadIniButton.addEventListener('click', () => {
@@ -1287,48 +1288,39 @@ export function mountAppShell(root: HTMLElement): void {
     });
   });
 
+  const msqDocuments = createMsqDocumentLoader({
+    loading(name) {
+      setSourceLoadState(loadMsqButton, 'loading', `Reading ${name}; the current tune remains active until validation succeeds.`);
+      appStatus.textContent = 'Validating MSQ candidate…';
+      parserStatus.textContent = 'TUNE-MSQ · reading local candidate';
+    },
+    rejected(name, error) {
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The MSQ file could not be read.';
+      const retained = msqDocuments.current ? `${msqDocuments.current.name} remains active.` : 'No tune has been loaded.';
+      setSourceLoadState(loadMsqButton, 'issue', `${name}: ${detail} ${retained} Choose an MSQ file to retry.`);
+      appStatus.textContent = `MSQ candidate rejected · ${retained}`;
+      parserStatus.textContent = `TUNE-MSQ · ${detail}`;
+    },
+    accepted(document) {
+      activeTuneModel = document.model;
+      activeTuneSourceName = document.name;
+      const tableCount = document.model.entries.filter(entry => entry.kind === 'table').length;
+      const access = document.handle ? 'file handle retained; saving not yet available' : 'read-only file load';
+      setSourceLoadState(loadMsqButton, 'success', `${document.name} · ${document.model.entries.length.toLocaleString()} tune entries · ${tableCount.toLocaleString()} table(s) · ${document.encoding} · ${access}`);
+      appStatus.textContent = `${document.name} loaded · ${document.model.entries.length.toLocaleString()} tune entries`;
+      parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only · ${access}`;
+      try { publishAnalysisInputs('tune'); }
+      catch (error) {
+        const detail = error instanceof Error ? error.message : 'Analysis view update failed.';
+        setSourceLoadState(loadMsqButton, 'issue', `${document.name} was accepted, but the active analysis view could not update: ${detail}`);
+        appStatus.textContent = `${document.name} loaded · reopen the analysis view to retry its display`;
+      }
+    },
+  });
   msqInput.addEventListener('change', () => {
     const file = msqInput.files?.item(0);
     msqInput.value = '';
-    if (!file) return;
-    const generation = ++msqLoadGeneration;
-    // Keep the picker usable: a later selection supersedes this read.
-    setSourceLoadState(loadMsqButton, 'loading', `Reading ${file.name}; the current tune remains active until validation succeeds.`);
-    appStatus.textContent = 'Validating MSQ candidate…';
-    parserStatus.textContent = 'TUNE-MSQ · reading local candidate';
-
-    void (async () => {
-      let model: TuneModel;
-      try {
-        const source = await file.text();
-        if (generation !== msqLoadGeneration) return;
-        model = prepareMsqCandidate(source);
-      } catch (error) {
-        if (generation !== msqLoadGeneration) return;
-        const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The MSQ file could not be read.';
-        const retained = activeTuneModel ? `${activeTuneSourceName ?? 'The current tune'} remains active.` : 'No tune has been loaded.';
-        setSourceLoadState(loadMsqButton, 'issue', `${file.name}: ${detail} ${retained} Choose an MSQ file to retry.`);
-        appStatus.textContent = `MSQ candidate rejected · ${retained}`;
-        parserStatus.textContent = `TUNE-MSQ · ${detail}`;
-        return;
-      }
-      if (generation !== msqLoadGeneration) return;
-      // Acceptance is complete. New model identity advances existing tune-owner generations.
-      activeTuneModel = model;
-      activeTuneSourceName = file.name;
-      const tableCount = model.entries.filter((entry) => entry.kind === 'table').length;
-      setSourceLoadState(loadMsqButton, 'success', `${file.name} · ${model.entries.length.toLocaleString()} tune entries · ${tableCount.toLocaleString()} table(s)`);
-      appStatus.textContent = `${file.name} loaded · ${model.entries.length.toLocaleString()} tune entries`;
-      parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only`;
-      try {
-        publishAnalysisInputs('tune');
-      } catch (error) {
-        // Presentation failure after acceptance is not a rejected replacement or a rollback.
-        const detail = error instanceof Error ? error.message : 'Analysis view update failed.';
-        setSourceLoadState(loadMsqButton, 'issue', `${file.name} was accepted, but the active analysis view could not update: ${detail}`);
-        appStatus.textContent = `${file.name} loaded · reopen the analysis view to retry its display`;
-      }
-    })();
+    if (file) void msqDocuments.loadFile(file);
   });
 
   iniInput.addEventListener('change', () => {
