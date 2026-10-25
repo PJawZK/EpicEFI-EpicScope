@@ -76,3 +76,51 @@ export async function runVeDelayWorkflowChecks() {
   checks.push('Runtime Load Data order remains INI, MSQ, Log, Unload, Connect with existing owner');
   return { passed: checks.length, checks };
 }
+
+export async function runVeDelayGrabPresentationChecks() {
+  const checks = [];
+  for (const outcome of ['success', 'error', 'empty', 'flat', 'stale', 'hidden']) {
+    const s = await setup();
+    try {
+      const surface = s.root.querySelector('.ve-v50-tool-surface:has(.ve-v50-tool-lambda)');
+      const grab = s.root.querySelector('.ve-v50-grab-delay');
+      assert(surface.hidden, 'Fixture unexpectedly opens the Lambda tool');
+      const before = s.owner.snapshot(), reads = s.reads(), held = s.hold();
+      grab.click(); await settle();
+      assert(surface.hidden, 'Grab lambda delays opened the table instead of only discovering values');
+      const feedback = s.root.querySelector('.ve-v50-delay-feedback');
+      assert(!feedback.hidden && feedback.dataset.state === 'pending' && grab.disabled && s.reads() === reads + 1, 'Hidden-table discovery lacks visible progress or single-request guard');
+      grab.click(); s.view.refresh(); await settle();
+      assert(s.reads() === reads + 1 && feedback.dataset.state === 'pending' && surface.hidden, 'Refresh or repeated click restarted discovery or opened table');
+      if (outcome === 'stale') s.view.setTuneModel({ ...s.model }, 'new-session.msq');
+      if (outcome === 'hidden') { s.view.setActive(false); assert(feedback.hidden, 'Inactive view retained operation feedback'); }
+      if (outcome === 'error') held.reject(Error('Controlled discovery read error'));
+      else held.resolve(outcome === 'empty' ? [] : outcome === 'flat' ? traces.map(trace => ({ ...trace, range: { ...trace.range, values: new Float64Array(60).fill(trace.range.values[0]) } })) : traces);
+      await settle();
+      if (outcome === 'hidden') { s.view.setActive(true); await settle(); }
+      assert(surface.hidden, `${outcome}: completion opened table`);
+      if (outcome === 'success') assert(s.owner.snapshot().values[0] === 200 && feedback.dataset.state === 'success', 'Fresh discovery failed to replace working177 with200');
+      else if (outcome === 'stale') assert(!s.owner.snapshot() && feedback.hidden && !grab.textContent.includes('Grabbing'), 'Old discovery/status completed into replacement session');
+      else if (outcome === 'flat' || outcome === 'hidden') assert(s.owner.snapshot().values === before.values && !grab.disabled && !grab.textContent.includes('Grabbing') && (outcome !== 'flat' || feedback.dataset.state === 'warning'), 'No-event/hidden discovery changed working values or left progress stuck');
+      else assert(s.owner.snapshot().values === before.values && feedback.dataset.state === 'error' && !grab.disabled, 'Failed discovery lost working authority, actionable feedback or retry');
+      checks.push(`${outcome}: discover without opening table; retain typed progress/result and correct working authority`);
+    } finally { s.view.dispose(); s.host.remove(); }
+  }
+  {
+    const s = await setup();
+    try {
+      s.view.setTuneModel({ ...s.model }, 'recommendation.msq');
+      const surface = s.root.querySelector('.ve-v50-tool-surface:has(.ve-v50-tool-lambda)');
+      s.root.querySelector('.ve-v50-grab-delay').click(); await settle();
+      assert(surface.hidden && s.view.getReadiness().delayState === 'recommendation' && s.root.querySelector('[data-ve-analyzer=save-delay]').disabled, 'New recommendation was activated or shown automatically');
+      s.root.querySelector('.ve-v50-use-delay').click(); await settle();
+      assert(surface.hidden && s.owner.snapshot().values[0] === 200 && s.view.getReadiness().delayState === 'working', 'Explicit activation did not remain independent from table opening');
+      s.root.querySelector('.ve-v50-run-chips > .ve-v50-status-chip:nth-child(2)').click(); await settle();
+      assert(!surface.hidden && surface.querySelector('table.ve-delay-table'), 'Explicit Lambda action did not open retained table');
+      s.root.querySelector('.ve-v50-grab-delay').click(); await settle();
+      assert(!surface.hidden, 'Grab unexpectedly closed an already-open table');
+      checks.push('Recommendation/activation/opening stay separate; an explicitly open table stays open');
+    } finally { s.view.dispose(); s.host.remove(); }
+  }
+  return { passed: checks.length, checks };
+}

@@ -1,6 +1,7 @@
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { LoggerAnalysisContext } from './logger-page';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
+import type { VeDelayDiscoveryStatus } from './ve-analyzer-view-v2';
 import './ve-analyzer-v50-run-strip.css';
 
 function isDelayRow(name: string): boolean {
@@ -170,11 +171,6 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   grab.textContent = 'Grab lambda delays from log';
   grab.addEventListener('click', () => {
     if (!semanticGrab || semanticGrab.disabled) return;
-    // Discovery results live in the Lambda Delay owner. Reveal that surface
-    // before invoking discovery so progress/errors are visible to the user.
-    const trigger = root.querySelector<HTMLElement>('.ve-v50-lambda-tool-trigger');
-    const surface = root.querySelector<HTMLElement>('.ve-v50-tool-surface:has(.ve-v50-tool-lambda)');
-    if (surface?.hidden) trigger?.click();
     semanticGrab.click();
   }, { signal: events.signal });
 
@@ -223,6 +219,11 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   } else actionbar.append(chips);
 
   let active = true;
+  let discoveryPending = false;
+  const delayFeedback = document.createElement('div');
+  delayFeedback.className = 've-v50-delay-feedback'; delayFeedback.hidden = true;
+  delayFeedback.setAttribute('role', 'status'); delayFeedback.setAttribute('aria-live', 'polite'); delayFeedback.setAttribute('aria-atomic', 'true');
+  actionbar.insertAdjacentElement('afterend', delayFeedback);
   let syncQueued = false;
   const scheduleSync = (): void => {
     if (!active || disposed || syncQueued) return;
@@ -238,7 +239,7 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   const sync = (): void => {
     if (!active || disposed) return;
     const state = inner.getReadiness();
-    const grabDisabled = !semanticGrab || semanticGrab.disabled || state.pending;
+    const grabDisabled = !semanticGrab || semanticGrab.disabled || state.pending || discoveryPending;
     const useDisabled = !semanticUse || semanticUse.disabled || state.pending;
     if (renderedState === state && renderedGrabDisabled === grabDisabled && renderedUseDisabled === useDisabled) return;
     renderedState = state; renderedGrabDisabled = grabDisabled; renderedUseDisabled = useDisabled;
@@ -278,6 +279,18 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   };
 
   const unsubscribeReadiness = inner.onReadinessChange(scheduleSync);
+  root.addEventListener('ve-delay-discovery-status', event => {
+    if (!active || disposed) return;
+    const status = (event as CustomEvent<VeDelayDiscoveryStatus>).detail;
+    discoveryPending = status.state === 'pending';
+    const label = discoveryPending ? 'Grabbing lambda delays…' : 'Grab lambda delays from log';
+    if (grab.textContent !== label) grab.textContent = label;
+    delayFeedback.hidden = status.state === 'idle';
+    delayFeedback.dataset.state = status.state;
+    if (delayFeedback.textContent !== status.message) delayFeedback.textContent = status.message;
+    delayFeedback.title = status.message;
+    scheduleSync();
+  }, { signal: events.signal });
   scheduleSync();
 
   return {
@@ -287,12 +300,16 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
       disposed = true;
       events.abort();
       dialog.remove();
+      delayFeedback.remove();
       active = false; unsubscribeReadiness();
       inner.dispose();
     },
     setActive(nextActive) { if (disposed) return;
       active = nextActive;
-      if (!nextActive) dismissSummary();
+      if (!nextActive) {
+        dismissSummary(); discoveryPending = false; delayFeedback.hidden = true;
+        grab.textContent = 'Grab lambda delays from log';
+      }
       inner.setActive(nextActive);
       if (nextActive) scheduleSync();
     },

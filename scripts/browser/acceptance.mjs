@@ -73,6 +73,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('ve-completion-focus.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-focus.browser.mjs');return m.runVeCompletionFocusChecks();})()`,60000));
  await record('ve-view-proposal.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-view-proposal.browser.mjs');return m.runVeViewProposalChecks();})()`,60000));
  await record('ve-delay-workflow.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-workflow.browser.mjs');return m.runVeDelayWorkflowChecks();})()`,60000));
+ await record('ve-delay-grab-presentation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-workflow.browser.mjs');return m.runVeDelayGrabPresentationChecks();})()`,60000));
  await record('ve-delay-replacement.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-replacement.browser.mjs');return m.runVeDelayReplacementChecks();})()`,60000));
  await record('ve-authority.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-authority.browser.mjs');return m.runVeAuthorityChecks();})()`,60000));
  const contexts=await evaluate(`(async()=>{const m=await import('${moduleBase}logger-analysis-context.browser.mjs');return m.runLoggerAnalysisContextChecks();})()`,60000);

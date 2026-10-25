@@ -54,6 +54,12 @@ export interface VeAnalyzerPrimaryAnalysis {
   readonly stateExcludedCount: number;
 }
 
+/** Presentation feedback from the existing discovery owner, not analytical authority. */
+export interface VeDelayDiscoveryStatus {
+  readonly state: 'idle' | 'pending' | 'error' | 'success' | 'warning';
+  readonly message: string;
+}
+
 export interface VeAnalyzerViewController {
   readonly element: HTMLElement;
   getReadiness(): VeReadinessState;
@@ -203,7 +209,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let readinessRowsKey = '';
 
   let delayGeneration = 0;
-  let delayDiscoveryFeedback: { generation: number; title: string; text: string } | undefined;
+  let delayDiscoveryFeedback: { generation: number; state: 'pending' | 'error'; title: string; text: string } | undefined;
   let delayLoadGeneration = 0;
   let sessionRevision = 0;
   let delaySurfaceGeneration = 0;
@@ -725,6 +731,16 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     return counts;
   };
 
+  let lastDelayMessage = '';
+  const showDelayMessage = (state: VeDelayDiscoveryStatus['state'], title: string, text: string): void => {
+    if (delayResultTitle.textContent !== title) delayResultTitle.textContent = title;
+    if (delayResultText.textContent !== text) delayResultText.textContent = text;
+    const detail: VeDelayDiscoveryStatus = { state, message: state === 'idle' ? '' : `${title}. ${text}` };
+    const key = JSON.stringify(detail);
+    if (key === lastDelayMessage) return;
+    lastDelayMessage = key;
+    root.dispatchEvent(new CustomEvent<VeDelayDiscoveryStatus>('ve-delay-discovery-status', { detail }));
+  };
   const renderDelayDiscovery = (): void => {
     delayResponseLabel.textContent = `${displayScale(selectedScale())} response Δ threshold`;
     const actual = roleSelect('actual')?.value; const fuel = roleSelect('fuelCommand')?.value;
@@ -739,20 +755,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     saveDelayButton.disabled = !workingDelayTable;
     renderDelayTable();
     if (delayDiscoveryFeedback?.generation === delayGeneration) {
-      delayResultTitle.textContent = delayDiscoveryFeedback.title;
-      delayResultText.textContent = delayDiscoveryFeedback.text;
+      showDelayMessage(delayDiscoveryFeedback.state, delayDiscoveryFeedback.title, delayDiscoveryFeedback.text);
       return;
     }
     if (!delayDiscovery || !delayRecommendation) {
-      delayResultTitle.textContent = workingDelayTable ? 'Working delay table active' : 'No current-log delay recommendation calculated';
-      delayResultText.textContent = workingDelayTable
+      const title = workingDelayTable ? 'Working delay table active' : 'No current-log delay recommendation calculated';
+      let text = workingDelayTable
         ? `${workingDelayTable.origin === 'saved-file' ? `Loaded saved table${workingDelayTable.originLabel ? ` · ${workingDelayTable.originLabel}` : ''}` : 'Working table from current-log recommendation'} · ${workingCounts.userEdited} user-edited cells. A successful re-grab replaces this working table and its edits with the fresh recommendation; a failed discovery keeps it unchanged.`
         : fuel ? 'Discover from the current log or Load saved table. Discovery never replaces working authority until Use recommendation is pressed.' : 'Select a fuel-command / injector-PW source under Advanced inputs before current-log delay discovery, or load a saved table.';
-      if (axisIssue) delayResultText.textContent = `${workingDelayTable ? 'Working delay table retained. ' : ''}Current-log discovery unavailable: ${axisIssue} You can load a valid saved table separately.`;
+      if (axisIssue) text = `${workingDelayTable ? 'Working delay table retained. ' : ''}Current-log discovery unavailable: ${axisIssue} You can load a valid saved table separately.`;
+      showDelayMessage('idle', title, text);
       return;
     }
-    delayResultTitle.textContent = `Current-log recommendation · ${recommendationCounts.measured} measured · ${recommendationCounts.interpolated} interpolated · ${recommendationCounts.insufficient} insufficient · ${recommendationCounts.userEdited} user edited`;
-    delayResultText.textContent = `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. Raw discovered evidence remains preserved when recommendation cells are edited. ${workingDelayTable ? 'Working delay table active. A successful re-grab replaces working values and edits; failed discovery keeps them unchanged.' : 'Recommendation remains separate until Use recommendation is pressed.'}`;
+    showDelayMessage(recommendationCounts.measured + recommendationCounts.interpolated > 0 ? 'success' : 'warning',
+      `Current-log recommendation · ${recommendationCounts.measured} measured · ${recommendationCounts.interpolated} interpolated · ${recommendationCounts.insufficient} insufficient · ${recommendationCounts.userEdited} user edited`,
+      `${delayDiscovery.usableEventCount}/${delayDiscovery.candidateEventCount} usable response events · ${delayDiscovery.rejectedNoResponseCount} no-response · ${delayDiscovery.rejectedOverlapCount} overlap · ${delayDiscovery.rejectedGapCount} gap rejections. Raw discovered evidence remains preserved when recommendation cells are edited. ${workingDelayTable ? 'Working delay table active. A successful re-grab replaces working values and edits; failed discovery keeps them unchanged.' : 'Recommendation remains separate until Use recommendation is pressed.'}`);
   };
 
   const invalidate = (retainReview = false): void => {
@@ -959,7 +976,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     const hadWorkingTable = workingDelayTable !== undefined;
     const bounds = analyzerScopeBounds(scope); const generation = ++delayGeneration;
     ownerEvidence.event('ve.delay-discovery.started', { generation });
-    delayDiscoveryFeedback = { generation, title: 'Analyzing current-log delay evidence…', text: hadWorkingTable
+    delayDiscoveryFeedback = { generation, state: 'pending', title: 'Analyzing current-log delay evidence…', text: hadWorkingTable
       ? 'Searching isolated fuel-command transitions. Successful discovery replaces the working table and its edits; failure keeps them unchanged.'
       : 'Searching isolated fuel-command transitions. The recommendation requires Use recommendation before becoming working authority.' };
     renderDelayDiscovery();
@@ -969,7 +986,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     } catch (error) {
       if (generation === delayGeneration) {
         ownerEvidence.event('ve.delay-discovery.failed', { generation });
-        delayDiscoveryFeedback = { generation, title: 'Could not discover lambda delays', text: error instanceof Error ? error.message : String(error) };
+        delayDiscoveryFeedback = { generation, state: 'error', title: 'Could not discover lambda delays', text: error instanceof Error ? error.message : String(error) };
         renderDelayDiscovery();
       }
       return;
@@ -979,7 +996,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       const removesEditableSurface = !workingDelayTable && delayRecommendation !== undefined;
       delayDiscovery = undefined; delayRecommendation = undefined;
       if (removesEditableSurface) delaySurfaceGeneration += 1;
-      delayDiscoveryFeedback = { generation, title: 'Could not discover lambda delays', text: 'Selected actual-mixture or fuel-command data is unavailable in the current scope. Check the selected channels and analysis range, then retry.' };
+      delayDiscoveryFeedback = { generation, state: 'error', title: 'Could not discover lambda delays', text: 'Selected actual-mixture or fuel-command data is unavailable in the current scope. Check the selected channels and analysis range, then retry.' };
       renderReadiness(); return;
     }
     delayDiscoveryFeedback = undefined;
