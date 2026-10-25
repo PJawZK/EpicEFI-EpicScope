@@ -270,6 +270,23 @@ export function installVeAnalyzerCellEvidence(
     if (page.querySelector<HTMLElement>('.ve-cell-detail-popover')?.hidden === false) details.get(shownIndex)?.updateWorking();
   }, { signal: events.signal });
 
+  // Click and keyboard activation share the retained evidence owner. App-level
+  // tooltip presentation must never replace this structured panel after release.
+  const eventCell = (target: EventTarget | null): HTMLTableCellElement | null => target instanceof Element
+    ? target.closest<HTMLTableCellElement>('td[data-ve-row][data-ve-col]') : null;
+  root.addEventListener('click', event => {
+    const cell = eventCell(event.target);
+    if (!cell || (event.target instanceof Element && event.target.closest('input, button, select, textarea'))
+      || cell.dataset.tableEditing === 'true' || cell.closest('table')?.dataset.tableBrush === 'true') return;
+    showDetail(cell);
+  }, { signal: events.signal });
+  root.addEventListener('keydown', event => {
+    if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
+    // An inline editor owns its own keys; only a focused cell activates evidence.
+    if (!(event.target instanceof HTMLTableCellElement) || !isCurrentVeCell(root, event.target)) return;
+    event.preventDefault(); showDetail(event.target);
+  }, { signal: events.signal });
+
   root.addEventListener('ve-cell-evidence-open', (event) => {
     const detail = (event as CustomEvent<{ readonly cell?: HTMLTableCellElement }>).detail;
     const cell = detail?.cell;

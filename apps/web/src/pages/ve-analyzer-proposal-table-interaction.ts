@@ -15,6 +15,7 @@ import {
   type TableCellPosition,
   type TableInterpolationOptions,
 } from './ve-table-interaction';
+import { veTableProjection } from './ve-analyzer-table-projection';
 import { VE_TABLE_TOOL_ICONS } from './ve-table-icons';
 import type { VeAnalyzerViewController } from './ve-analyzer-view-v9';
 import '../styles/ve-table-interaction-dom.css';
@@ -29,12 +30,6 @@ class VeProposalTableEditSurface extends TableEditHistorySurface<VeProposalEditS
       createEdit: ({ row, col }, value) => ({ row, col, value }),
       editValue: edit => edit.value,
     });
-  }
-
-  baselineValueAt(position: TableCellPosition): number | undefined {
-    const snapshot = this.currentSnapshot();
-    if (!snapshot || position.row < 0 || position.row >= snapshot.rows || position.col < 0 || position.col >= snapshot.cols) return undefined;
-    return snapshot.baselineValues[position.row * snapshot.cols + position.col];
   }
 }
 
@@ -87,8 +82,14 @@ export function installVeAnalyzerProposalTableInteraction(inner: VeAnalyzerViewC
     interpolation: () => interpolation,
     brush: () => brush,
     readValue: (position) => surface.valueAt(position),
-    baselineValue: (position) => surface.baselineValueAt(position),
-    readValues: () => owner.snapshot(),
+    readValues: () => {
+      const snapshot = owner.snapshot();
+      const table = veHost.querySelector<HTMLTableElement>('table.ve-workbench-table');
+      const projection = table ? veTableProjection(table) : undefined;
+      // Only the DOM comparison snapshot uses original tune values. The review
+      // owner/history retain the generated baseline for Revert and Undo/Redo.
+      return snapshot && projection ? { ...snapshot, baselineValues: projection.originalValues } : snapshot;
+    },
     formatPreviewValue: (_position, value) => previewDigits === undefined ? String(Math.round(value * 1000) / 1000) : value.toFixed(previewDigits),
     adjustBrushRadius: (delta) => { brush = { ...brush, radius: Math.max(1, Math.min(8, brush.radius + delta)) }; },
     configuration: {

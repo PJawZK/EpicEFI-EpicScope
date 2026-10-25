@@ -44,9 +44,6 @@ export function preferGasScaleAfrOption(control: HTMLSelectElement, scale: strin
 
 function detailTitle(cell: HTMLTableCellElement): string {
   if (cell.classList.contains('ve-delay-table') || cell.closest('.ve-delay-table')) return 'Lambda delay detail';
-  if (cell.title.startsWith('Measured proposal')) return 'VE proposed change';
-  if (cell.title.startsWith('Weak evidence')) return 'VE weak evidence';
-  if (cell.title.startsWith('Recommendation withheld')) return 'VE recommendation withheld';
   return 'Cell detail';
 }
 
@@ -77,7 +74,8 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
   };
 
   const showCellDetail = (cell: HTMLTableCellElement): void => {
-    if (!cell.title) return;
+    // VE cells belong to the structured evidence owner, including release clicks.
+    if (cell.closest('[data-ve-analyzer="ve-table-view"]') || !cell.title) return;
     detailHeading.textContent = detailTitle(cell);
     detailText.textContent = cell.title;
     detail.hidden = false;
@@ -92,7 +90,7 @@ export function installVeAnalyzerUiRefinements(root: HTMLElement): void {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const target = event.target;
     const cell = target instanceof HTMLTableCellElement && target.matches('.ve-analyzer-view td[data-ve-has-detail="true"]') ? target : null;
-    if (!cell) return;
+    if (!cell || cell.closest('[data-ve-analyzer="ve-table-view"]')) return;
     event.preventDefault();
     showCellDetail(cell);
   });

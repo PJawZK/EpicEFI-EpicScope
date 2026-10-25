@@ -227,9 +227,9 @@
   contain: paint;
 }
 
-.ve-workbench-table td[data-table-value-state='lower'],
+.ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='lower'],
 .ve-delay-table td[data-table-value-state='lower'] { color: #73bfff !important; }
-.ve-workbench-table td[data-table-value-state='higher'],
+.ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='higher'],
 .ve-delay-table td[data-table-value-state='higher'] { color: #ff7d83 !important; }
 
 /* The moving Brush footprint is rendered by ve-table-brush-overlay.ts.
@@ -237,9 +237,9 @@
  * visual cell rules here or pointer motion will invalidate table-cell paint. */
 /* Baseline delta is glyph-local: keep the heatmap visible while surrounding
  * blue/red numbers with a narrow dark halo for contrast at every map hue. */
-.ve-v50-port .ve-workbench-table td[data-table-value-state='lower'],
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='lower'],
 .ve-v50-port .ve-delay-table td[data-table-value-state='lower'],
-.ve-v50-port .ve-workbench-table td[data-table-value-state='higher'],
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='higher'],
 .ve-v50-port .ve-delay-table td[data-table-value-state='higher'] {
   text-shadow: -1px -1px 0 #071018, 1px -1px 0 #071018,
                -1px 1px 0 #071018, 1px 1px 0 #071018,
@@ -255,8 +255,8 @@
 }
 
 /* v50 delta digits: improve readability within the same 32x32 cell geometry. */
-.ve-v50-port .ve-workbench-table td[data-table-value-state='lower'],
-.ve-v50-port .ve-workbench-table td[data-table-value-state='higher'] {
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='lower'],
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='higher'] {
   font-size: 11px !important;
   font-weight: 750;
   letter-spacing: -.15px;

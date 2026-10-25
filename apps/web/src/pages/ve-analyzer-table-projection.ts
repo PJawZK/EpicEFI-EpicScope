@@ -10,6 +10,8 @@ export function veWorkingCellMetrics(original: number | undefined, working: numb
 }
 
 export interface VeTableProjection {
+  /** Borrowed immutable tune values for presentation comparisons, not edit/revert authority. */
+  readonly originalValues: readonly number[];
   readonly rows: number;
   readonly cols: number;
   readonly rpmBins: readonly number[] | undefined;
@@ -41,7 +43,7 @@ export function projectVeTable(
       confidence: retained?.confidence, weight: retained?.totalWeight, samples: retained?.sampleCount,
     });
   }
-  return { rows, cols, rpmBins, loadBins, cells, heatRange: min === Infinity ? undefined : { min, max } };
+  return { originalValues: values, rows, cols, rpmBins, loadBins, cells, heatRange: min === Infinity ? undefined : { min, max } };
 }
 
 export function veSourceHeatLevel(projection: VeTableProjection, value: number | undefined): string | undefined {
