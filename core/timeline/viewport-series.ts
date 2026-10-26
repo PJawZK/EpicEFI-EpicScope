@@ -443,3 +443,10 @@ export function buildViewportTraceSeries(range: NumericChannelRange, startMs: nu
   }
   return { mode: 'envelope', points };
 }
+
+/** Zero-copy time slice for presentation; original sample indices and validity retained. */
+export function sliceNumericRangeByTime(range: NumericChannelRange, startMs: number, endMs: number): NumericChannelRange {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) throw new RangeError('Invalid recorded presentation bounds.');
+  const start = lowerBound(range.timeMs, startMs), end = upperBound(range.timeMs, endMs);
+  return { startSampleIndex: range.startSampleIndex + start, timeMs: range.timeMs.subarray(start, end), values: range.values.subarray(start, end), validity: range.validity.subarray(start, end) };
+}

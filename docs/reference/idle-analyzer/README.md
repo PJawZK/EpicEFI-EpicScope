@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Native region manager and combined analysis](NATIVE_REGION_MANAGER_CHECKPOINT.md) adds editable inclusion/exclusion, independent graph focus, source-time region markers and deduplicated union analysis, using existing Logger/source owners.
+
 [Trace fidelity and recorded candidate regions](NATIVE_REGIONS_TRACE_CHECKPOINT.md) adds Logger-style dense/raw trace rendering, a smaller desktop axis margin, and an explicit RPM-only discovery → review → Logger A/B workflow. Full region management and qualification remain deferred.
 
 [Stability layout and reuse checkpoint](NATIVE_STABILITY_PARITY_CHECKPOINT.md) follows the user's comparison with the accepted HTML: a compact native workspace, recorded controller context, canonical target-unit resolution, hover evidence and Logger-authoritative timeline gestures. EpicScope's existing header, theme, navigation and bottom interface remain shared. No standalone application chrome is copied.

@@ -88,3 +88,32 @@
 .idle-actionbar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .idle-actionbar input { width: 62px; }
 .idle-actionbar [data-idle=candidates] { max-width: 220px; }
+
+.idle-region-key { color: var(--detail); font-size: 10px; }
+.idle-region-key[hidden], .idle-toolbar label[hidden] { display: none; }
+.idle-region-markers { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.idle-region-markers .idle-region-marker { position: absolute; top: 3px; bottom: 3px; min-width: 2px; padding: 0; border-radius: 0; pointer-events: auto; }
+.idle-region-marker.is-included { background: #337c66aa; border: 1px solid #7bd2b1; }
+.idle-region-marker.is-excluded { background: #52616a88; border: 1px dashed #87949d; }
+.idle-region-marker.is-focused { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 3; }
+.idle-region-markers > span { pointer-events: none !important; background: transparent; }
+.idle-range-handle { z-index: 4; }
+.idle-region-manager { color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); width: min(1100px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: 85vh; padding: 12px; font-size: 12px; }
+.idle-region-manager[open] { display: flex; flex-direction: column; gap: 8px; }
+.idle-region-manager::backdrop { background: #0009; }
+.idle-region-manager header, .idle-region-manager footer, .idle-region-create { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.idle-region-manager header { justify-content: space-between; }
+.idle-region-manager h2 { font-size: 16px; margin: 0; }
+.idle-region-manager p { margin: 0; line-height: 1.5; }
+.idle-region-manager [role=status] { color: var(--warn); }
+.idle-region-table { overflow: auto; min-height: 60px; }
+.idle-region-table table { width: 100%; border-collapse: collapse; min-width: 800px; }
+.idle-region-table td, .idle-region-table th { padding: 5px; text-align: left; border-bottom: 1px solid var(--line); }
+.idle-region-table input[type=number] { width: 95px; }
+.idle-region-table input[data-edit=label] { width: 150px; }
+.idle-region-table tr.is-focused { background: var(--accent-soft); }
+.idle-region-table td:last-child { white-space: nowrap; }
+.idle-region-create input[type=number] { width: 100px; }
+.idle-region-create label { display: flex; gap: 4px; align-items: center; }
+.idle-region-create { padding-top: 8px; border-top: 1px solid var(--line); }
+@media (max-width: 540px) { .idle-region-manager { padding: 8px; } .idle-toolbar [data-idle=focus] { max-width: 220px; } }

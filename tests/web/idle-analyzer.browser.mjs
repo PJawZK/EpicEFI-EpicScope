@@ -55,9 +55,9 @@ export async function runIdleAnalyzerChecks() {
     const f = fixture(), m = mount(); try {
       m.view.setContext(f.context); m.view.setActive(true); await wait();
       m.field('start').value = '.1'; m.field('end').value = '.2'; m.field('apply-region').click(); await wait();
-      assert(m.field('samples').textContent === '2' && f.calls.at(-1).start === 100, 'Manual bounds not applied');
+      assert(m.field('samples').textContent === '2' && m.view.element.querySelectorAll('.idle-region-manager tbody tr').length === 1 && f.calls.length === 1, 'Manual bounds not applied');
       m.field('start').value = '-1'; m.field('apply-region').click(); await wait();
-      assert(m.field('samples').textContent === '2' && f.calls.length === 2 && m.field('status').textContent.includes('Previous region retained'), 'Invalid region replaced accepted state');
+      assert(m.field('samples').textContent === '2' && f.calls.length === 1 && m.field('status').textContent.includes('Previous region retained'), 'Invalid region replaced accepted state');
     } finally { m.close(); }
   });
   await check('Logger A/B and saved ranges are real scope choices and preserve semantics across reordering', async () => {
@@ -219,6 +219,60 @@ export async function runIdleAnalyzerChecks() {
       assert(m.field('scope').value==='full'&&m.field('samples').textContent==='121'&&f.calls.length===1,'Refused Logger range replaced analysis');
       change(m.field('candidate-rpm'),'');m.field('discover').click();await wait();assert(f.calls.length===1&&m.field('status').textContent.includes('positive'),'Invalid settings read source');
     } finally {m.close();}
+  });
+  await check('region manager unions overlaps, separates excluded graph focus and uses retained source evidence', async()=>{
+    const f=fixture([900,1000,1100,2000,900,1000]),m=mount();let navigation;
+    f.context.openRangeInLogger=request=>{navigation=request;};
+    let commits=0;f.context.setAnalysisRange=({startMs,endMs})=>{commits++;f.context={...f.context,aTimeMs:startMs,bTimeMs:endMs};m.view.setContext(f.context);return true;};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();
+      const dialog=m.view.element.querySelector('.idle-region-manager'),button=name=>dialog.querySelector(`[data-manager="${name}"]`);
+      const add=(a,b,label)=>{dialog.querySelector('[data-new=start]').value=String(a);dialog.querySelector('[data-new=end]').value=String(b);dialog.querySelector('[data-new=label]').value=label;button('add').click();};
+      add(0,.2,'First');add(.1,.2,'Overlap');add(.4,.5,'Last');button('analyze').click();await wait();
+      assert(m.field('scope').value==='regions'&&m.field('samples').textContent==='5'&&m.field('rmse').textContent==='77.46','Union included gap or counted overlap twice');
+      assert(f.calls.length===1,'Union reread full retained source');
+      const rows=()=>[...dialog.querySelectorAll('tbody tr')];
+      let overlap=rows()[1].querySelector('[data-include]');overlap.checked=false;overlap.dispatchEvent(new Event('change',{bubbles:true}));await wait();
+      assert(m.field('region-evidence').textContent.startsWith('2 included regions')&&m.field('samples').textContent==='5'&&f.calls.length===1,'Same-union inclusion left stale presentation metadata');
+      overlap=rows()[1].querySelector('[data-include]');overlap.checked=true;overlap.dispatchEvent(new Event('change',{bubbles:true}));await wait();
+      for(let index=0;index<2;index++){const input=rows()[index].querySelector('[data-include]');input.checked=false;input.dispatchEvent(new Event('change',{bubbles:true}));}
+      await wait();assert(m.field('samples').textContent==='2','Exclusions not applied');
+      rows()[0].querySelector('[data-manager=focus]').click();
+      assert(m.field('samples').textContent==='2'&&f.calls.length===1&&m.field('region-label').textContent.includes('First (excluded)'),'Viewing excluded region changed analysis');
+      assert(m.view.element.querySelectorAll('.idle-region-marker.is-excluded').length===2&&m.view.element.querySelector('.idle-region-marker.is-focused'),'Missing included/excluded/focus presentation');
+      button('close').click();m.field('logger').click();assert(navigation.startMs===0&&navigation.endMs===200,'Logger handoff used union instead of viewed region');
+      const track=m.field('range-track'),rect=track.getBoundingClientRect();track.setPointerCapture=()=>{};
+      for(const [type,x] of [['pointerdown',.6],['pointermove',.8],['pointerup',.8]])track.dispatchEvent(new PointerEvent(type,{pointerId:91,button:0,shiftKey:true,bubbles:true,cancelable:true,clientX:rect.left+rect.width*x,clientY:rect.top+8}));
+      await wait();assert(commits===1&&m.field('scope').value==='regions'&&m.field('focus').value==='logger'&&m.field('samples').textContent==='2'&&f.calls.length===1,'Logger timeline drag changed union analysis or reread source');
+      m.field('manage-regions').click();button('none').click();await wait();assert(m.field('samples').textContent==='0'&&m.field('status').textContent.includes('No included'),'Empty included scope fell back to full log');
+      button('all').click();await wait();assert(m.field('samples').textContent==='5'&&f.calls.length===1,'Include all failed or reread source');
+      const first=rows()[0];first.querySelector('[data-edit=start]').value='-1';first.querySelector('[data-manager=edit]').click();
+      assert(dialog.querySelector('[data-manager=message]').textContent.includes('Previous regions retained')&&m.field('samples').textContent==='5','Invalid edit destroyed state');
+      first.querySelector('[data-edit=start]').value='.1';first.querySelector('[data-manager=edit]').click();await wait();assert(m.field('samples').textContent==='4','Accepted edit did not update union');
+    }finally{m.close();}
+  });
+  await check('managed focus and edits survive navigation; source revision retires definitions and pending union work', async()=>{
+    const f=fixture([900,1000,1100,2000,900,1000]),m=mount();
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();
+      const d=m.view.element.querySelector('.idle-region-manager');d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.2';d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();await wait();
+      const id=d.querySelector('tr[data-region-id]').dataset.regionId;change(m.field('focus'),id);const calls=f.calls.length;
+      m.view.setActive(false);assert(!d.open,'Dialog remained modal over another domain');m.view.setContext({...f.context});m.view.setActive(true);await wait();
+      assert(m.field('focus').value===id&&m.field('samples').textContent==='3'&&f.calls.length===calls,'Navigation destroyed session or reread data');
+      let release;const next={...f.context,source:{...f.context.source,revision:1},loadTraces:()=>new Promise(resolve=>{release=resolve;})};
+      m.view.setContext(next);await wait();assert(d.querySelectorAll('tbody tr').length===0&&m.field('samples').textContent==='0','Revised source retained old definitions');
+      change(m.field('scope'),'full');await wait();m.view.setActive(false);const html=m.view.element.innerHTML;release(f.traces);await wait();assert(m.view.element.innerHTML===html,'Retired completion changed hidden session');
+    }finally{m.close();}
+  });
+  await check('obsolete union reads cannot overwrite a newer empty included selection', async()=>{
+    const f=fixture([900,1000,1100,2000,900,1000]),m=mount(),releases=[];
+    f.context.loadTraces=()=>new Promise(resolve=>releases.push(resolve));
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');
+      d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.2';d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();d.querySelector('[data-manager=none]').click();
+      releases.at(-1)(f.traces);await wait();assert(m.field('samples').textContent==='0','Latest empty selection failed');
+      for(const release of releases.slice(0,-1))release(f.traces);await wait();assert(m.field('samples').textContent==='0'&&m.field('status').textContent.includes('No included'),'Obsolete union overwrote newer selection');
+    }finally{m.close();}
   });
   await check('320459-sample browser analysis renders bounded SVG evidence without argument-limit failure', async () => {
     const values = new Float64Array(320459).fill(1000), f = fixture(values), m = mount(); try {

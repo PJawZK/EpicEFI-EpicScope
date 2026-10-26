@@ -50,3 +50,19 @@ export function discoverIdleCandidates(rpm: NumericChannelRange, options: IdleCa
   finish();
   return { regions, totalCount };
 }
+
+export interface IdleRegionBounds { readonly startMs: number; readonly endMs: number; }
+/** Inclusive union, preserving gaps. Does not fill the bounding envelope between regions. */
+export function mergeIdleRegionBounds(regions: readonly IdleRegionBounds[]): IdleRegionBounds[] {
+  const sorted = regions.map(({ startMs, endMs }) => {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new RangeError('Invalid Idle region bounds.');
+    return { startMs, endMs };
+  }).sort((a, b) => a.startMs - b.startMs);
+  const merged: IdleRegionBounds[] = [];
+  for (const region of sorted) {
+    const previous = merged.at(-1);
+    if (previous && region.startMs <= previous.endMs) merged[merged.length - 1] = { startMs: previous.startMs, endMs: Math.max(previous.endMs, region.endMs) };
+    else merged.push(region);
+  }
+  return merged;
+}

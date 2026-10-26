@@ -70,3 +70,34 @@ describe('native Idle stability contract', () => {
     expect(result.sampleIndices[count - 1]).toBe(40 + count - 1);
   });
 });
+
+describe('included Idle region union', () => {
+  it('counts overlap/shared endpoints once and excludes intervening driving samples', () => {
+    const rpm = range([900,1000,1100,2000,900,1000]);
+    const result = analyzeIdleStability(rpm, range([1000,1000,1000,1000,1000,1000]), { regions: [{startMs:0,endMs:100},{startMs:100,endMs:200},{startMs:400,endMs:500}] });
+    expect([...result.sampleIndices]).toEqual([0,1,2,4,5]);
+    expect(result.analysis.rpm.mean).toBe(980);
+    expect(result.analysis.rpm.standardDeviation).toBeCloseTo(Math.sqrt(7000));
+    expect(result.analysis.tracking?.rmse).toBeCloseTo(Math.sqrt(6000));
+    expect(result.inBandPercent).toBe(40);
+    expect(result.error?.validity[3]).toBe(0);
+  });
+  it('explicitly empty included regions never fall back to full log', () => {
+    const result = analyzeIdleStability(range([900,1000]), range([1000,1000]), {regions:[]});
+    expect(result.sampleIndices.length).toBe(0); expect(result.analysis.rpm.validSampleCount).toBe(0);
+    expect(result.inBandPercent).toBeUndefined(); expect(result.analysis.rpm.standardDeviation).toBeUndefined();
+  });
+  it('preserves invalid source indices within the union and rejects invalid bounds', () => {
+    const rpm=range([900,1000,1100],7);rpm.validity[1]=0;
+    const result=analyzeIdleStability(rpm,undefined,{regions:[{startMs:0,endMs:200},{startMs:0,endMs:100}]});
+    expect([...result.sampleIndices]).toEqual([7,8,9]);expect(result.analysis.rpm.invalidSampleCount).toBe(1);
+    expect(()=>analyzeIdleStability(rpm,undefined,{regions:[{startMs:NaN,endMs:100}]})).toThrow(RangeError);
+  });
+});
+
+it('unions >320k samples without spreading, duplicates or gap contamination',()=>{
+  const n=320459,rpm:NumericChannelRange={startSampleIndex:7,values:new Float64Array(n).fill(1000),timeMs:Float64Array.from({length:n},(_,i)=>i*100),validity:new Uint8Array(n).fill(1)};
+  const result=analyzeIdleStability(rpm,rpm,{regions:[{startMs:0,endMs:10000000},{startMs:5000000,endMs:15000000},{startMs:20000000,endMs:32045800}]});
+  expect(result.sampleIndices.length).toBe(270460);expect(result.analysis.rpm.validSampleCount).toBe(270460);expect(result.analysis.tracking?.rmse).toBe(0);
+  expect(result.sampleIndices[150000]).toBe(150007);expect(result.sampleIndices[150001]).toBe(200007);
+});

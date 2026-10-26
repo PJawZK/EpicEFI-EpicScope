@@ -25,3 +25,10 @@ describe('Logger/Idle recorded trace policy', () => {
     expect(buildViewportTraceSeries(dense, 0, 9990, 100).points.filter(p => p.breakBefore)).toHaveLength(2);
   });
 });
+
+it('slices recorded presentation without copies, interpolation or renumbering', async()=>{
+  const {sliceNumericRangeByTime}=await import('../../core/timeline/viewport-series');
+  const rpm=range(10);rpm.validity[3]=0;const sliced=sliceNumericRangeByTime(rpm,20,40);
+  expect(sliced.startSampleIndex).toBe(2);expect([...sliced.timeMs]).toEqual([20,30,40]);
+  expect([...sliced.validity]).toEqual([1,0,1]);expect(sliced.values.buffer).toBe(rpm.values.buffer);
+});
