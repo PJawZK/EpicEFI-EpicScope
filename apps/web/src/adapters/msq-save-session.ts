@@ -7,6 +7,7 @@ export interface MsqSaveOptions {
   readonly capture: () => VeMsqWriteSnapshot | undefined;
   readonly current: (snapshot: VeMsqWriteSnapshot) => boolean;
   readonly canPrepare: () => boolean;
+  readonly pickerUnavailable?: () => string | undefined;
   readonly prepare: (document: AcceptedMsqDocument, snapshot: VeMsqWriteSnapshot, catalog: IniMsqWriteCatalog, signal: AbortSignal, baseBytes: Uint8Array) => Promise<PreparedMsqBytes>;
   readonly notify: (state: MsqSaveState) => void;
 }
@@ -22,7 +23,7 @@ export function createMsqSaveSession(options: MsqSaveOptions) {
     if (conflict || uncertain) return message || 'Reload MSQ before another save.';
     if (loading) return 'Wait for the MSQ load to finish.';
     if (!document) return 'Load an MSQ before saving.';
-    if (!document.handle?.requestPermission || !document.handle.createWritable) return 'Reopen the MSQ through a supported file-handle picker to overwrite it.';
+    if (!document.handle?.requestPermission || !document.handle.createWritable) return options.pickerUnavailable?.() || 'Enable saving to this MSQ to verify file access without resetting analysis or working edits.';
     if (!options.canPrepare()) return 'MSQ saving requires browser Worker support.';
     if (!catalog) return 'Reload the matching INI this session to enable MSQ saving.';
     if (catalog.issue || !catalog.signatures.length || catalog.signatures.some(s=>s!==document!.model.identity.signature)) return 'Load an INI matching the MSQ firmware before saving.';
@@ -31,7 +32,7 @@ export function createMsqSaveSession(options: MsqSaveOptions) {
   const publish = (): void => {
     if (disposed) return;
     const reason = unavailable();
-    options.notify({available:!busy&&!reason,busy,outcome:conflict?'conflict':uncertain?'uncertain':outcome,message:reason||message,reload:conflict||uncertain});
+    options.notify({available:!busy&&!reason,busy,enableAccess:!!document&&(!document.handle?.requestPermission||!document.handle.createWritable)&&!!options.pickerUnavailable&&!options.pickerUnavailable()&&!conflict&&!uncertain,accessPending:loading,outcome:conflict?'conflict':uncertain?'uncertain':outcome,message:outcome==='issue'&&message&&!busy&&!loading&&!conflict&&!uncertain?message:reason||message,reload:conflict||uncertain});
   };
   const read = async (d: AcceptedMsqDocument): Promise<Uint8Array> => new Uint8Array(await (await d.handle!.getFile()).arrayBuffer());
   const mismatch = (actual: Uint8Array): void => {
@@ -43,6 +44,7 @@ export function createMsqSaveSession(options: MsqSaveOptions) {
     get busy(): boolean { return busy; },
     get document(): AcceptedMsqDocument | undefined { return document; },
     setLoading(next: boolean) { loading=next; publish(); },
+    reportAccessIssue(detail: string) { if(disposed)return;outcome='issue';message=detail;publish(); },
     setDocument(next: AcceptedMsqDocument) {
       if (busy) throw new Error('Cannot replace MSQ during a save.');
       document=next;expected=next.bytes.slice();saved=undefined;conflict=false;uncertain=false;outcome='idle';message='';publish();

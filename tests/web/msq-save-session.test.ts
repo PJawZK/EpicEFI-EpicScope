@@ -28,6 +28,14 @@ function setup(){
  return{session,document,states,original,get disk(){return disk;},get counts(){return{permissions,writes,closes,aborts};},setDisk:(text:string)=>{disk=new TextEncoder().encode(text);},setPermission:(next:'granted'|'denied')=>{permission=next;},setCloseFailure:()=>{failClose=true;},setReadFailure:()=>{failReadback=true;},onWrite:(next:()=>void)=>{onWrite=next;},onClose:(next:()=>void)=>{onClose=next;},snapshot:()=>snapshot,selectEntry:(name:string)=>{snapshot={...snapshot,entry:model.byName.get(name)!,values:[65,60,60,60],authorityGeneration:snapshot.authorityGeneration+1};session.reviewChanged();},edit:(values:readonly(number|undefined)[])=>{snapshot={...snapshot,values,authorityGeneration:snapshot.authorityGeneration+1};session.reviewChanged();},prepare:(next:typeof prepare)=>{prepare=next;}};
 }
 describe('explicit MSQ overwrite transaction',()=>{
+ it('distinguishes unsupported picker from access attachment and preserves access failure feedback',()=>{
+  const states:MsqSaveState[]=[];let reason:string|undefined='Native picker unavailable';
+  const s=setup(),session=createMsqSaveSession({capture:()=>s.snapshot(),current:()=>true,canPrepare:()=>true,pickerUnavailable:()=>reason,prepare:async()=>{throw Error('not used');},notify:state=>states.push(state)});
+  session.setDocument({...s.document,handle:undefined});expect(states.at(-1)!.enableAccess).toBe(false);expect(states.at(-1)!.message).toBe(reason);
+  reason=undefined;session.setLoading(false);expect(states.at(-1)!.enableAccess).toBe(true);expect(states.at(-1)!.message).toContain('without resetting');
+  session.reportAccessIssue('Selected MSQ differs');expect(states.at(-1)!.message).toBe('Selected MSQ differs');expect(states.at(-1)!.reload).toBe(false);expect(states.at(-1)!.enableAccess).toBe(true);
+  session.setLoading(true);expect(states.at(-1)!.accessPending).toBe(true);expect(states.at(-1)!.available).toBe(false);session.dispose();
+ });
  it('writes only VE, verifies readback, preserves original session reference and tracks newer edits',async()=>{
   const s=setup();await s.session.save();expect(s.counts).toEqual({permissions:1,writes:1,closes:1,aborts:0});
   expect(new TextDecoder().decode(s.disk)).toBe(source.replace('70 70 70 70','80.13 70 70 70'));

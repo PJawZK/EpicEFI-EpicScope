@@ -23,7 +23,7 @@ import {
 } from '../../../../core/channels/channel-binding';
 import type { ChannelCatalog } from '../../../../core/channels/channel-catalog';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
-import { createMsqDocumentLoader, msqFilePicker } from '../adapters/msq-document-loader';
+import { createMsqDocumentLoader, msqFilePicker, msqFilePickerUnavailable } from '../adapters/msq-document-loader';
 import { type TuneModel } from '../../../../core/tune/tune-model';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
@@ -1352,7 +1352,7 @@ export function mountAppShell(root: HTMLElement): void {
 
   msqSave=createMsqSaveSession({
     capture:()=>analyzerPage.captureVeMsqWrite(),current:snapshot=>analyzerPage.isVeMsqWriteCurrent(snapshot),
-    canPrepare:()=>typeof Worker==='function',prepare:prepareMsqInWorker,notify:state=>{analyzerPage.setMsqSaveState(state);msqNotice.hidden=!state.reload;if(state.reload)msqNoticeText.textContent=state.message;},
+    canPrepare:()=>typeof Worker==='function',pickerUnavailable:()=>msqFilePickerUnavailable(),prepare:prepareMsqInWorker,notify:state=>{analyzerPage.setMsqSaveState(state);msqNotice.hidden=!state.reload;if(state.reload)msqNoticeText.textContent=state.message;},
   });
   msqSave.setCatalog(activeIniWriteCatalog);
   checkMsqExternal=()=>msqSave!.checkExternal();
@@ -1361,12 +1361,28 @@ export function mountAppShell(root: HTMLElement): void {
     const handle=msqDocuments.current?.handle;
     if(!msqSave!.busy&&handle&&activeMode==='analyzer')void msqDocuments.choose(async()=>[handle]);
   };
+  const enableAccessRequest=():void=>{
+    const picker=msqFilePicker();
+    if(msqSave!.busy||msqDocuments.pending||msqDocuments.attaching)return;
+    if(!picker){msqSave!.reportAccessIssue(msqFilePickerUnavailable()!);return;}
+    msqSave!.setLoading(true);
+    void msqDocuments.attachAccess(picker).then(result=>{
+      if(result.status==='attached'){
+        // Access-only update: do not call setTuneModel or publish source acceptance.
+        msqSave!.setDocument(result.document);
+        loadMsqButton.title=loadMsqButton.title.replace('read-only file load','file handle retained');
+        if(parserStatus.textContent?.includes('read-only file load'))parserStatus.textContent=parserStatus.textContent.replace('read-only file load','file handle retained');
+      } else if(result.status==='issue')msqSave!.reportAccessIssue(result.message);
+    }).finally(()=>msqSave!.setLoading(msqDocuments.pending));
+  };
+  analyzerPage.element.addEventListener('ve-msq-enable-access-request',enableAccessRequest);
   analyzerPage.element.addEventListener('ve-msq-save-request',saveRequest);
   analyzerPage.element.addEventListener('ve-msq-reload-request',reloadRequest);
   const unsubscribeMsqReview=analyzerPage.onVeWorkingChange(()=>msqSave!.reviewChanged());
   disposeMsqSave=()=>{
     msqSave!.dispose();msqDocuments.dispose();unsubscribeMsqReview();
     analyzerPage.element.removeEventListener('ve-msq-save-request',saveRequest);
+    analyzerPage.element.removeEventListener('ve-msq-enable-access-request',enableAccessRequest);
     analyzerPage.element.removeEventListener('ve-msq-reload-request',reloadRequest);
   };
 

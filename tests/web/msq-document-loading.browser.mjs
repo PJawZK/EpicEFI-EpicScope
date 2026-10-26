@@ -1,4 +1,4 @@
-import { createMsqDocumentLoader, msqFilePicker } from '../../apps/web/src/adapters/msq-document-loader';
+import { createMsqDocumentLoader, msqFilePicker, msqFilePickerUnavailable } from '../../apps/web/src/adapters/msq-document-loader';
 const assert=(ok,message)=>{if(!ok)throw Error(message);};
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 const text=value=>`<?xml version="1.0" encoding="ISO-8859-1"?><msq><versionInfo signature="test"/><page number="0"><constant name="label">"åäö ° µ"</constant><constant name="veTable" rows="2" cols="2" digits="1">${value} 38.27 38.32 38.36</constant></page></msq>`;
@@ -38,5 +38,29 @@ export async function runMsqDocumentLoadingChecks(){
  const host={isSecureContext:true,showOpenFilePicker(){assert(this===host,'Native picker lost host binding');return Promise.resolve([handle]);}};assert((await msqFilePicker(host)({multiple:false,types:[]}))[0]===handle,'Supported picker not bound');checks.push('Capability detection distinguishes secure native access from read-only fallback');
  const late=deferred(),lifecycleEvents=[],closing=createMsqDocumentLoader({loading(){},accepted:d=>lifecycleEvents.push(d),rejected:(_n,e)=>lifecycleEvents.push(e)});
  const lateLoad=closing.loadFile({name:'disposed.msq',arrayBuffer:()=>late.promise});closing.dispose();late.resolve(await file().arrayBuffer());await lateLoad;assert(!closing.current&&!closing.pending&&lifecycleEvents.length===0,'Disposed loader accepted a stale file');checks.push('Loader disposal releases accepted data and rejects late completions');
+ const accessEvents=[],access=createMsqDocumentLoader({loading(){},accepted:d=>accessEvents.push(d),rejected:(_n,e)=>accessEvents.push(e)});
+ await access.loadFile(f);const reference=access.current,model=reference.model;
+ let permissionRequests=0,writes=0;
+ const writable={...handle,requestPermission:async()=>{permissionRequests++;return'granted';},createWritable:async()=>{writes++;throw Error('Attachment must never write');}};
+ let accessResult=await access.attachAccess(async()=>{throw new DOMException('Cancelled','AbortError');});
+ assert(accessResult.status==='cancelled'&&access.current===reference,'Access cancellation changed authority');
+ accessResult=await access.attachAccess(async()=>{throw new DOMException('Denied','NotAllowedError');});
+ assert(accessResult.status==='issue'&&access.current===reference,'Access denial changed authority');checks.push('Access chooser cancellation/denial retains accepted source without replacement');
+ accessResult=await access.attachAccess(async()=>[{...writable,getFile:async()=>file('different.msq',48.19)}]);
+ assert(accessResult.status==='issue'&&accessResult.message.includes('differs')&&access.current===reference,'Different same-length bytes attached');
+ accessResult=await access.attachAccess(async()=>[{...writable,getFile:async()=>new File(['other'],'different.msq')}]);
+ assert(accessResult.status==='issue'&&access.current===reference,'Different-size file attached');checks.push('Access attachment rejects different same-size and different-size files without losing accepted state');
+ accessResult=await access.attachAccess(async()=>[{...writable,getFile:async()=>{throw Error('Read denied');}}]);
+ assert(accessResult.status==='issue'&&access.current===reference,'Access read failure replaced source');
+ accessResult=await access.attachAccess(async()=>[{...writable,createWritable:undefined}]);
+ assert(accessResult.status==='issue'&&access.current===reference,'Read-only native handle attached');checks.push('Failed reads and incapable handles cannot attach write access');
+ accessResult=await access.attachAccess(async()=>[writable]);
+ assert(accessResult.status==='attached'&&access.current.model===model&&access.current.bytes===reference.bytes&&access.current.text===reference.text&&access.current.generation===reference.generation&&access.current.handle===writable&&accessEvents.length===1&&permissionRequests===0&&writes===0,'Access attachment accepted a replacement tune or requested writes');checks.push('Identical-byte attachment retains model/bytes/generation and emits no tune acceptance or write requests');
+ const accessHeld=deferred(),oldAccess=access.attachAccess(async()=>[{...writable,getFile:()=>accessHeld.promise}]);await Promise.resolve();
+ await access.loadFile(file('replacement.msq',60));const replacement=access.current;accessHeld.resolve(f);accessResult=await oldAccess;
+ assert(accessResult.status==='stale'&&access.current===replacement&&!replacement.handle,'Late access attached to replacement tune');checks.push('Replacement source rejects obsolete access attachment');
+ const accessLate=deferred(),disposedAccess=access.attachAccess(()=>accessLate.promise);access.dispose();accessLate.resolve([writable]);
+ assert((await disposedAccess).status==='stale'&&!access.current,'Disposed access completion published authority');
+ assert(msqFilePickerUnavailable({isSecureContext:true}).includes('does not expose')&&msqFilePickerUnavailable({isSecureContext:false}).includes('secure')&&!msqFilePickerUnavailable(host),'Capability reasons fail to distinguish API absence from insecure context');checks.push('Disposed access is rejected; unsupported/insecure picker has an actionable distinct reason');
  return{passed:checks.length,checks};
 }

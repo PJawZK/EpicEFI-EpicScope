@@ -212,6 +212,8 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   save.title='Load a writable MSQ and matching INI before saving.';save.setAttribute('aria-label','Save Working VE to loaded MSQ');
   const saveFeedback=document.createElement('div');saveFeedback.className='ve-v50-msq-feedback';saveFeedback.hidden=true;saveFeedback.setAttribute('role','status');saveFeedback.setAttribute('aria-live','polite');
   const saveText=document.createElement('span'),reload=document.createElement('button');reload.type='button';reload.textContent='Reload MSQ';reload.hidden=true;saveFeedback.append(saveText,reload);
+  const enableAccess=document.createElement('button');enableAccess.type='button';enableAccess.dataset.msqEnableAccess='';enableAccess.textContent='Enable saving to this MSQ';enableAccess.hidden=true;saveFeedback.append(enableAccess);
+  enableAccess.addEventListener('click',()=>root.dispatchEvent(new CustomEvent('ve-msq-enable-access-request',{bubbles:true})),{signal:events.signal});
   const confirmReload=document.createElement('dialog');confirmReload.className='ve-msq-reload-confirm';
   confirmReload.innerHTML='<p>Reload the changed MSQ? This replaces the loaded tune and discards the current VE working edits and analysis after the file is accepted.</p><button type="button" data-msq-keep>Keep working edits</button><button type="button" data-msq-reload>Reload and discard VE edits</button>';
   root.append(confirmReload);
@@ -223,6 +225,7 @@ export function installVeAnalyzerV50RunStrip(inner: VeAnalyzerViewController): V
   let blockedSaveMessage: string | undefined;
   let saveState: MsqSaveState={available:false,busy:false,outcome:'idle',message:save.title,reload:false};
   const syncSave=():void=>{
+    enableAccess.hidden=!saveState.enableAccess;enableAccess.disabled=saveState.busy||!!saveState.accessPending;
     save.disabled=!saveState.available||saveState.busy||inner.getReadiness().pending;
     save.textContent=saveState.busy?'Saving MSQ…':'Save MSQ';save.title=saveState.message;
     saveFeedback.hidden=saveState.outcome==='idle'&&!saveState.message;
