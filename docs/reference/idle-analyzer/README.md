@@ -10,7 +10,8 @@
 - [Idle Analyzer v3.5.6 reference](Idle_Analyzer_v3_5_6_Reference.html) — accepted compact adaptive workspace, true October 20 embedded MLG evidence, secondary September 30 MLG import, corrected matching-interval finder and chronology warnings.
 - [Idle Analyzer v3.5.7 — source navigation](Idle_Analyzer_v3_5_7_Source_Navigation.html) — preserved, offline HTML experiment. Adds two-source timeline navigation and source-labeled detected events without changing the v3.5.6 diagnosis/parser calculations.
 - [Idle Analyzer v3.5.8 — A/B region navigation](Idle_Analyzer_v3_5_8_AB_Region_Navigation.html) — preserved experimental snapshot: A can create a real manual region at unmarked timeline positions (Alt+click forces one within existing ranges), and both timeline tracks support Home/End/arrow-key navigation. B manual interval selection and source identity remain preserved.
-- [Idle Analyzer v3.5.9 — A/B refinement](Idle_Analyzer_v3_5_9_AB_Region_Refinement.html) — **latest** HTML experiment: moves selected manual A/B regions without generating a new A region at each keyboard step; supports Alt+click manual placement and arrow-key repositioning for either timeline.\n- [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — status and integration cautions established prior to v3.5.7.
+- [Idle Analyzer v3.5.9 — A/B refinement](Idle_Analyzer_v3_5_9_AB_Region_Refinement.html)
+- [Idle Analyzer v3.5.10 — comparison session](Idle_Analyzer_v3_5_10_Comparison_Session.html) — **latest experimental snapshot**: fingerprint-checked, local-only restoration of the last imported B selection after re-importing the identical MLG. — **latest** HTML experiment: moves selected manual A/B regions without generating a new A region at each keyboard step; supports Alt+click manual placement and arrow-key repositioning for either timeline.\n- [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — status and integration cautions established prior to v3.5.7.
 
 The HTML files are **versioned standalone snapshots**. Changes in this branch must remain in these documents while the user evaluates their behavior. Production porting requires separate authorization.
 
@@ -66,3 +67,12 @@ In v3.5.7, open **Compare → Operating conditions** to see independent A/B even
 - This change only touches the HTML reference snapshot and README, not production application code.
 - **Validation gate remains open:** no automated Chromium/Playwright access or local copy of the real September 30 MLG was available in this session; source inspection and GitHub commit verification are not substitutes for real-log browser replay. Test A/B region motion, compare modal syncing, restore after re-open, chronology warnings, keyboard focus, and 390px layout before declaring accepted.
 - The next data-contract work should preserve missing-source refusal, sample validity, source identity and explicit non-improvement classification without importing prototype MLG parser logic into production.
+
+## v3.5.10 checkpoint (2026-10-26)
+
+- User manually reported v3.5.9 behaving as before; treated as permission to progress, not as comprehensive mathematical/browser validation.
+- Comparison session saves reference identity, second-source sampled fingerprint/name, baseline region ID, candidate ID or bounded manual start/end/purpose, graph alignment and trace selection. The MLG bytes are **not** stored.
+- On re-import, restored B selection is only eligible if the sampled fingerprint agrees; mismatched recordings use the normal selection path and explicitly identify the mismatch. The re-import remains a required user action.
+- File fingerprints sample three bounded segments and do not constitute cryptographic proof of full-byte equality; do not treat source identity as ECU tune provenance.
+- Manual restore is in-memory until the source is re-imported. The UI remains intentionally read-only. No production code or ECU write boundary changed.
+- **Validation pending:** actual Chromium import/reopen replay, matching and mismatching recording tests, A/B modal/state synchronization, mode-switch persistence, and responsive layout checks.
