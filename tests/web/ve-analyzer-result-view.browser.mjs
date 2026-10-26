@@ -1,3 +1,4 @@
+import { publishVeTableProjection, veTableProjection } from '../../apps/web/src/pages/ve-analyzer-table-projection';
 // Browser regression module: with Vite running, import this file through its /@fs/ URL
 // in Chromium and await runVeAnalyzerResultViewChecks(). No DOM emulator is used.
 import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
@@ -145,35 +146,59 @@ export async function runVeAnalyzerResultViewChecks() {
   const resultView = view.element.querySelector('select[aria-label="VE Analyzer result view"]');
   assert(resultView, 'Result View selector missing');
 
-  // The app-level UI refinement reverses load rows. Distinct tune values prove
-  // Result View maps by authoritative coordinates rather than rendered row order.
+  // The app-level UI refinement keeps presentation independent from semantic
+  // coordinates. Distinct tune values prove Result View maps by data-ve-row/col
+  // and retained source state rather than rendered row/header text.
   const cells = [60, 70, 80, 90].map((value) => byCurrent(view.element, value));
-  assert(cells.every(Boolean), 'Model-derived current VE metadata did not survive the reversed load-axis presentation');
+  assert(cells.every(Boolean), 'Semantic current VE metadata was not projected for the rendered table');
   const [measured, weak, evidenceOnly, noEvidence] = cells;
 
-  // Keep one genuine measured title from the analyzer, then exercise the other
-  // presentation classes explicitly. Their current VE must still come from the
-  // retained primary TuneEntry, not from whichever Result View was visible last.
+  // Keep one genuine measured detail but deliberately poison its Current text.
+  // The visible source VE must still come from retained analysis state.
   const genuineMeasured = [...view.element.querySelectorAll('[data-ve-analyzer="ve-table-view"] tbody td')]
     .find((cell) => cell.title.startsWith('Measured proposal'));
   assert(genuineMeasured, 'Fixture did not produce a measured proposal');
-  measured.title = genuineMeasured.title;
+  measured.title = genuineMeasured.title.replace(/Current\s+[+-]?\d+(?:\.\d+)?/i, 'Current 999');
   weak.title = 'Weak evidence only. Raw candidate 77 (+10.0%); no proposal is emitted. Robust median +10.0%; P10 +8.0%; P90 +12.0%; spread 4.0%; confidence limited; weight 3.500; samples 8.';
   evidenceOnly.title = 'Robust median +4.0%; P10 +2.0%; P90 +6.0%; spread 4.0%; confidence moderate; weight 2.000; samples 5.';
   noEvidence.title = '';
 
+  // Supply synthetic weak/evidence-only states through the typed presentation
+  // fixture, not through tooltip strings. Keep source, primary and review owners
+  // unchanged; the separate real-run projection suite checks their integration.
+  const table = measured.closest('table');
+  const originalProjection = veTableProjection(table);
+  const fixtureCells = [...originalProjection.cells];
+  const indexFor = cell => Number(cell.dataset.veRow) * originalProjection.cols + Number(cell.dataset.veCol);
+  fixtureCells[indexFor(weak)] = { ...fixtureCells[indexFor(weak)], state: 'weak-evidence', current: 70,
+    proposed: undefined, evidenceCandidate: 77, changeValue: 7, changePercent: 10,
+    correctionPercent: 10, spreadPercent: 4, confidence: 'limited', weight: 3.5, samples: 8 };
+  fixtureCells[indexFor(evidenceOnly)] = { ...fixtureCells[indexFor(evidenceOnly)], state: 'no-evidence', current: 80,
+    proposed: undefined, evidenceCandidate: undefined, changeValue: undefined, changePercent: undefined,
+    correctionPercent: 4, spreadPercent: 4, confidence: 'moderate', weight: 2, samples: 5 };
+  fixtureCells[indexFor(noEvidence)] = { ...fixtureCells[indexFor(noEvidence)], state: 'no-evidence', current: 90,
+    proposed: undefined, evidenceCandidate: undefined, changeValue: undefined, changePercent: undefined,
+    correctionPercent: undefined, spreadPercent: undefined, confidence: undefined, weight: undefined, samples: undefined };
+  publishVeTableProjection(table, { ...originalProjection, cells: fixtureCells });
+
   const bases = new Map(cells.map((cell) => [cell, baseLevel(cell)]));
+  const measuredProposal = text(measured);
   const cycle = ['proposal', 'change', 'change-percent', 'mixture-error', 'samples', 'weight', 'confidence', 'spread', 'delay', 'proposal'];
 
   for (let repetition = 0; repetition < 2; repetition += 1) {
+    if (repetition === 1) {
+      fixtureCells[indexFor(weak)] = { ...fixtureCells[indexFor(weak)], state: 'withheld-limit' };
+      publishVeTableProjection(table, { ...originalProjection, cells: [...fixtureCells] });
+      weak.title = 'Recommendation withheld by configured change limits. Raw candidate 77 (+10.0%). Robust median +10.0%; P10 +8.0%; P90 +12.0%; spread 4.0%; confidence limited; weight 3.500; samples 8.';
+    }
     for (const value of cycle) {
       resultView.value = value;
       resultView.dispatchEvent(new Event('change', { bubbles: true }));
-      // The selected view must commit its value and fallback heat together,
-      // before any observer or post-render correction microtask can run.
+      // The selected view must commit source fallback value and source heat
+      // together, before any observer/post-render correction microtask.
       if (value !== 'proposal' && value !== 'delay') {
         assert(text(noEvidence) === '90', `${value} did not synchronously preserve source VE`);
-        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === '0.5', `${value} requires a deferred fallback heat correction`);
+        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === bases.get(noEvidence), `${value} requires a deferred source-heat correction`);
       }
       await settle();
 
@@ -188,28 +213,29 @@ export async function runVeAnalyzerResultViewChecks() {
       }
 
       if (value === 'proposal') {
-        assert(text(weak) === '70', 'Weak cell did not fall back to original VE in Proposed VE view');
+        assert(text(measured) === measuredProposal, 'Measured proposal changed after source-title corruption/result cycling');
+        assert(text(weak) === '70', 'Weak/withheld cell did not fall back to original VE in Proposed VE view');
         assert(text(evidenceOnly) === '80', 'Evidence-only cell did not fall back to original VE in Proposed VE view');
         assert(text(noEvidence) === '90', 'No-evidence cell did not fall back to original VE in Proposed VE view');
       }
       if (value === 'samples') {
-        assert(text(weak) === '8', 'Weak-cell Samples metric was not retained');
+        assert(text(weak) === '8', 'Weak/withheld Samples metric was not retained');
         assert(text(evidenceOnly) === '5', 'Evidence-only Samples metric was not retained');
         assert(text(noEvidence) === '90', 'No-evidence Samples fallback lost original VE');
-        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === '0.5', 'No-evidence Samples fallback lost neutral heat level');
+        assert(noEvidence.style.getPropertyValue('--ve-cell-level') === bases.get(noEvidence), 'No-evidence Samples fallback lost original VE heat');
       }
       if (value === 'confidence') {
-        assert(text(weak) === 'Limited', 'Weak-cell Confidence metric was not retained');
+        assert(text(weak) === 'Limited', 'Weak/withheld Confidence metric was not retained');
         assert(text(evidenceOnly) === 'Moderate', 'Evidence-only Confidence metric was not retained');
         assert(text(noEvidence) === '90', 'No-evidence Confidence fallback lost original VE');
       }
       if (value === 'change') {
-        assert(text(weak) === '+7', 'Weak-cell VE change was not calculated from original VE 70');
+        assert(text(weak) === '+7', 'Weak/withheld VE change was not calculated from original VE 70');
         assert(text(evidenceOnly) === '80', 'Evidence-only VE-change fallback lost original VE');
         assert(text(noEvidence) === '90', 'No-evidence VE-change fallback lost original VE');
       }
       if (value === 'mixture-error') {
-        assert(text(weak) === '+10%', 'Weak-cell mixture metric was not retained');
+        assert(text(weak) === '+10%', 'Weak/withheld mixture metric was not retained');
         assert(text(evidenceOnly) === '+4%', 'Evidence-only mixture metric was not retained');
         assert(text(noEvidence) === '90', 'No-evidence mixture fallback lost original VE');
       }
@@ -219,17 +245,17 @@ export async function runVeAnalyzerResultViewChecks() {
           || (cell === evidenceOnly && (value === 'change' || value === 'change-percent'))
           || (cell === weak && value === 'proposal');
         if (isBase) {
-          const expected = value === 'proposal' ? bases.get(cell) : '0.5';
-          assert(cell.style.getPropertyValue('--ve-cell-level') === expected, `${value} did not restore ${value === 'proposal' ? 'base' : 'neutral fallback'} heat level`);
+          assert(cell.style.getPropertyValue('--ve-cell-level') === bases.get(cell), `${value} did not restore original VE heat level`);
         }
       }
     }
   }
 
   unsubscribe();
+  view.setActive(false);
   shell.remove();
   return {
     passed: 1,
-    checks: ['full-stack Result View keeps source-authoritative VE values, proposal/neutral fallback heat and real delay metrics through repeated cycles'],
+    checks: ['full-stack Result View keeps semantic source VE/base heat and valid delay metrics through repeated measured/weak-withheld/evidence-only/no-evidence cycles'],
   };
 }

@@ -43,6 +43,8 @@ export interface TimelineShellController {
   stepCursor(direction: -1 | 1): void;
   addUserMarker(): void;
   setAnalysisBoundary(boundary: 'a' | 'b'): void;
+  /** One annotation/workspace publication; false means invalid or unchanged. */
+  setAnalysisRange(startMs: number, endMs: number): boolean;
   navigateMarker(direction: 'previous' | 'next'): void;
   onCursorChange(listener: (timeMs: number) => void): void;
   onViewportIntent(listener: (intent: TimelineViewportIntent) => void): void;
@@ -235,6 +237,9 @@ export function createTimelineShell(): TimelineShellController {
 
   const renderOverview = (): void => {
     const rect = overview.getBoundingClientRect();
+    // The existing resize owner redraws on reveal; hidden annotations must not
+    // rebuild full-source envelopes into a synthetic 1px canvas.
+    if (rect.width <= 0 || rect.height <= 0) return;
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
     const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
@@ -776,6 +781,16 @@ export function createTimelineShell(): TimelineShellController {
 
   setAButton.addEventListener('click', () => setAnalysisBoundary('a'));
   setBButton.addEventListener('click', () => setAnalysisBoundary('b'));
+  const setAnalysisRange = (startMs: number, endMs: number): boolean => {
+    if (fullDuration() <= 0 || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
+    const start = Math.max(fullStartMs, Math.min(startMs, endMs));
+    const end = Math.min(fullEndMs, Math.max(startMs, endMs));
+    if (!(end > start) || (aTimeMs === start && bTimeMs === end)) return false;
+    aTimeMs = start; bTimeMs = end;
+    renderRangeState(); renderOverview();
+    emitAnnotationState(); emitWorkspaceMutation();
+    return true;
+  };
   analyzeButton.addEventListener('click', () => {
     if (aTimeMs === undefined || bTimeMs === undefined || aTimeMs === bTimeMs) return;
     analyzeRequestListener?.({ aTimeMs, bTimeMs });
@@ -928,6 +943,7 @@ export function createTimelineShell(): TimelineShellController {
     stepCursor,
     addUserMarker,
     setAnalysisBoundary,
+    setAnalysisRange,
     navigateMarker,
     onCursorChange: (listener) => { cursorListener = listener; },
     onViewportIntent: (listener) => { viewportListener = listener; },

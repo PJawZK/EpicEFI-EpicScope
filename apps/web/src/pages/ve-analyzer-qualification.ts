@@ -139,18 +139,51 @@ export function veQualificationSamplePasses(
   return true;
 }
 
+function hasQualification(settings: VeQuickQualificationSettings): boolean {
+  return settings.minimumClt !== undefined || settings.minimumTps !== undefined || settings.maximumTps !== undefined;
+}
+
+function qualifiedRange(range: NumericChannelRange, passes: (local: number) => boolean): NumericChannelRange {
+  const validity = new Uint8Array(range.validity);
+  for (let local = 0; local < validity.length; local += 1) {
+    if (validity[local] === 1 && !passes(local)) validity[local] = 0;
+  }
+  return { ...range, validity };
+}
+
 export function applyVeQualificationValidity(
   range: NumericChannelRange,
   settings: VeQuickQualificationSettings,
   cltRange?: NumericChannelRange,
   tpsRange?: NumericChannelRange,
 ): NumericChannelRange {
-  if (settings.minimumClt === undefined && settings.minimumTps === undefined && settings.maximumTps === undefined) return range;
-  const validity = new Uint8Array(range.validity);
-  for (let local = 0; local < validity.length; local += 1) {
-    if (validity[local] !== 1) continue;
-    const sampleIndex = range.startSampleIndex + local;
-    if (!veQualificationSamplePasses(sampleIndex, settings, cltRange, tpsRange)) validity[local] = 0;
-  }
-  return { ...range, validity };
+  if (!hasQualification(settings)) return range;
+  return qualifiedRange(range, local => veQualificationSamplePasses(range.startSampleIndex + local, settings, cltRange, tpsRange));
+}
+
+/** One request-local qualification decision per sample of each shared geometry.
+ * Each trace retains its own validity and indexing; nothing is cached across loads.
+ */
+export function applyVeQualificationValidityBatch(
+  ranges: readonly NumericChannelRange[],
+  settings: VeQuickQualificationSettings,
+  cltRange?: NumericChannelRange,
+  tpsRange?: NumericChannelRange,
+): readonly NumericChannelRange[] {
+  if (!hasQualification(settings)) return ranges;
+  const decisions = new Map<string, Uint8Array>();
+  return ranges.map(range => {
+    const key = `${range.startSampleIndex}:${range.validity.length}`;
+    let mask = decisions.get(key);
+    if (!mask) { mask = new Uint8Array(range.validity.length); decisions.set(key, mask); }
+    const sharedMask = mask;
+    return qualifiedRange(range, local => {
+      let decision = sharedMask[local]!;
+      if (decision === 0) {
+        decision = veQualificationSamplePasses(range.startSampleIndex + local, settings, cltRange, tpsRange) ? 1 : 2;
+        sharedMask[local] = decision;
+      }
+      return decision === 1;
+    });
+  });
 }

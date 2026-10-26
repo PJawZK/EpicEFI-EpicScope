@@ -1,3 +1,4 @@
+import { formatVeMetric as clean, formatSignedVeMetric as signed } from './ve-metric-format';
 export type VeResultView =
   | 'proposal'
   | 'change'
@@ -9,10 +10,10 @@ export type VeResultView =
   | 'spread'
   | 'delay';
 
-export type VeRenderedProposalState = 'no-evidence' | 'measured' | 'weak-evidence' | 'withheld-limit';
+export type VeRenderedProposalState = import('../../../../core/analysis/ve-proposal').VeProposalState;
 export type VeRenderedConfidence = 'none' | 'limited' | 'moderate' | 'strong';
 
-export interface VeRenderedCellMetrics {
+export interface VeCellMetrics {
   readonly state: VeRenderedProposalState;
   readonly current: number | undefined;
   readonly proposed: number | undefined;
@@ -33,10 +34,10 @@ export interface VeResultDisplay {
 }
 
 export const VE_RESULT_VIEW_OPTIONS: readonly { value: VeResultView; label: string }[] = [
-  { value: 'proposal', label: 'Proposed VE' },
-  { value: 'change', label: 'VE change' },
-  { value: 'change-percent', label: 'VE change %' },
-  { value: 'mixture-error', label: 'Mixture error %' },
+  { value: 'proposal', label: 'Working VE' },
+  { value: 'change', label: 'Analysis VE change' },
+  { value: 'change-percent', label: 'Analysis VE change %' },
+  { value: 'mixture-error', label: 'Base-VE correction %' },
   { value: 'samples', label: 'Samples' },
   { value: 'weight', label: 'Evidence weight' },
   { value: 'confidence', label: 'Confidence' },
@@ -44,70 +45,9 @@ export const VE_RESULT_VIEW_OPTIONS: readonly { value: VeResultView; label: stri
   { value: 'delay', label: 'Lambda delay ms' },
 ] as const;
 
-function parsedNumber(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function matchNumber(text: string, expression: RegExp): number | undefined {
-  return parsedNumber(expression.exec(text)?.[1]);
-}
-
-function firstRenderedNumber(text: string): number | undefined {
-  return matchNumber(text.trim(), /^([+-]?\d+(?:\.\d+)?)/);
-}
-
-function confidenceFromTitle(title: string): VeRenderedConfidence | undefined {
-  const match = /confidence (none|limited|moderate|strong)/i.exec(title)?.[1]?.toLowerCase();
-  return match === 'none' || match === 'limited' || match === 'moderate' || match === 'strong' ? match : undefined;
-}
-
-export function parseVeRenderedCellMetrics(title: string, renderedText: string): VeRenderedCellMetrics {
-  const state: VeRenderedProposalState = title.startsWith('Measured proposal')
-    ? 'measured'
-    : title.startsWith('Weak evidence')
-      ? 'weak-evidence'
-      : title.startsWith('Recommendation withheld')
-        ? 'withheld-limit'
-        : 'no-evidence';
-
-  const currentFromTitle = matchNumber(title, /\bCurrent ([+-]?\d+(?:\.\d+)?)/i);
-  const current = currentFromTitle ?? firstRenderedNumber(renderedText);
-  const proposed = matchNumber(title, /\bproposed ([+-]?\d+(?:\.\d+)?)/i);
-  const evidenceCandidate = matchNumber(title, /\bRaw candidate ([+-]?\d+(?:\.\d+)?)/i);
-  const rawPercent = state === 'measured'
-    ? matchNumber(title, /\bchange ([+-]?\d+(?:\.\d+)?)%/i)
-    : matchNumber(title, /\(([+-]?\d+(?:\.\d+)?)%\)/);
-  const resultValue = state === 'measured' ? proposed : evidenceCandidate;
-  const changeValue = current !== undefined && resultValue !== undefined ? resultValue - current : undefined;
-
+function baseDisplay(metrics: VeCellMetrics, digits: number): VeResultDisplay {
   return {
-    state,
-    current,
-    proposed,
-    evidenceCandidate,
-    changeValue,
-    changePercent: rawPercent,
-    correctionPercent: matchNumber(title, /\bRobust median ([+-]?\d+(?:\.\d+)?)%/i),
-    spreadPercent: matchNumber(title, /\bspread ([+-]?\d+(?:\.\d+)?)%/i),
-    confidence: confidenceFromTitle(title),
-    weight: matchNumber(title, /\bweight ([+-]?\d+(?:\.\d+)?)/i),
-    samples: matchNumber(title, /\bsamples (\d+)/i),
-  };
-}
-
-function clean(value: number, digits: number): string {
-  return value.toFixed(digits).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, '').replace(/\.$/, '');
-}
-
-function signed(value: number, digits: number, suffix = ''): string {
-  return `${value > 0 ? '+' : ''}${clean(value, digits)}${suffix}`;
-}
-
-function baseDisplay(metrics: VeRenderedCellMetrics): VeResultDisplay {
-  return {
-    text: metrics.current === undefined ? '—' : clean(metrics.current, 2),
+    text: metrics.current === undefined ? '—' : clean(metrics.current, digits),
     numericValue: metrics.current,
     scaleMode: 'base',
   };
@@ -124,48 +64,49 @@ export function confidenceRank(confidence: VeRenderedConfidence | undefined): nu
 }
 
 export function veResultDisplay(
-  metrics: VeRenderedCellMetrics,
+  metrics: VeCellMetrics,
   view: VeResultView,
   delayMs?: number,
+  digits = 2,
 ): VeResultDisplay {
   switch (view) {
     case 'proposal': {
       const value = metrics.state === 'measured' ? metrics.proposed : metrics.current;
-      return { text: value === undefined ? '—' : clean(value, 2), numericValue: value, scaleMode: 'base' };
+      return { text: value === undefined ? '—' : clean(value, digits), numericValue: value, scaleMode: 'base' };
     }
     case 'change':
       return metrics.changeValue === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: signed(metrics.changeValue, 2), numericValue: metrics.changeValue, scaleMode: 'magnitude' };
     case 'change-percent':
       return metrics.changePercent === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: signed(metrics.changePercent, 1, '%'), numericValue: metrics.changePercent, scaleMode: 'magnitude' };
     case 'mixture-error':
       return metrics.correctionPercent === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: signed(metrics.correctionPercent, 1, '%'), numericValue: metrics.correctionPercent, scaleMode: 'magnitude' };
     case 'samples':
       return metrics.samples === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: String(Math.round(metrics.samples)), numericValue: metrics.samples, scaleMode: 'quality' };
     case 'weight':
       return metrics.weight === undefined
-        ? baseDisplay(metrics)
-        : { text: clean(metrics.weight, 2), numericValue: metrics.weight, scaleMode: 'quality' };
+        ? baseDisplay(metrics, digits)
+        : { text: clean(metrics.weight, 3), numericValue: metrics.weight, scaleMode: 'quality' };
     case 'confidence': {
       const rank = confidenceRank(metrics.confidence);
-      if (rank === undefined || !metrics.confidence || metrics.confidence === 'none') return baseDisplay(metrics);
+      if (rank === undefined || !metrics.confidence || metrics.confidence === 'none') return baseDisplay(metrics, digits);
       const text = `${metrics.confidence[0]!.toUpperCase()}${metrics.confidence.slice(1)}`;
       return { text, numericValue: rank, scaleMode: 'quality' };
     }
     case 'spread':
       return metrics.spreadPercent === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: `${clean(metrics.spreadPercent, 1)}%`, numericValue: metrics.spreadPercent, scaleMode: 'magnitude' };
     case 'delay':
       return delayMs === undefined
-        ? baseDisplay(metrics)
+        ? baseDisplay(metrics, digits)
         : { text: `${Math.round(delayMs)}`, numericValue: delayMs, scaleMode: 'range' };
   }
 }

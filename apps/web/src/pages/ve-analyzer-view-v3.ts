@@ -4,7 +4,7 @@ import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import {
-  applyVeQualificationValidity,
+  applyVeQualificationValidityBatch,
   preferredVeQualificationChannel,
   veQualificationChannelCompatible,
   VE_CELL_CHANGE_PRIOR_WEIGHT,
@@ -36,6 +36,8 @@ function optionForChannel(channel: ChannelDefinition): HTMLOptionElement {
 export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
   const inner = createVeAnalyzerViewV2(observability);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   let sourceContext: LoggerAnalysisContext = {
     traces: [],
     channels: [],
@@ -70,7 +72,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     <label><span>TPS source</span><select data-ve-quick="tps-source"></select></label>
     <label><span>Min TPS</span><input data-ve-quick="min-tps" type="number" step="any"></label>
     <label><span>Max TPS</span><input data-ve-quick="max-tps" type="number" step="any"></label>
-    <span class="ve-quick-qualification-note">Quick qualification is applied before VE evidence; source names are shown exactly as supplied.</span>`;
+    <span class="ve-quick-qualification-note">CLT/TPS, RPM/load and stability filters remain active independently of state exclusions. Source names are shown exactly as supplied.</span>`;
   quick.append(qualificationHost);
 
   const authoritySelect = authorityLabel.querySelector<HTMLSelectElement>('select')!;
@@ -142,7 +144,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (prior.dataset.veAuthorityLinked !== 'true') {
       prior.addEventListener('change', () => {
         if (authoritySelect.value !== 'custom') syncAuthorityUi(true);
-      });
+      }, { signal: events.signal });
       prior.dataset.veAuthorityLinked = 'true';
     }
   };
@@ -166,20 +168,22 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   authoritySelect.addEventListener('change', () => {
-    syncAuthorityUi(true);
+    // The explicit invalidation below owns this semantic change. Dispatching a
+    // second change from the numeric prior would invalidate/render twice.
+    syncAuthorityUi(false);
     invalidate();
-  });
+  }, { signal: events.signal });
 
   for (const control of [cltSelect, minCltInput, tpsSelect, minTpsInput, maxTpsInput]) {
-    control.addEventListener('change', invalidate);
+    control.addEventListener('change', invalidate, { signal: events.signal });
   }
 
   root.querySelector<HTMLButtonElement>('.ve-workbench-run')?.addEventListener('click', () => {
     qualificationLoadPending = true;
-  }, { capture: true });
+  }, { capture: true, signal: events.signal });
   root.querySelector<HTMLButtonElement>('[data-ve-analyzer="grab-delay"]')?.addEventListener('click', () => {
     qualificationLoadPending = false;
-  }, { capture: true });
+  }, { capture: true, signal: events.signal });
 
   const wrappedContext = (next: LoggerAnalysisContext): LoggerAnalysisContext => ({
     ...next,
@@ -196,10 +200,8 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       const cltTrace = current.cltChannelId ? loaded.find((trace) => trace.channel.id === current.cltChannelId) : undefined;
       const tpsTrace = current.tpsChannelId ? loaded.find((trace) => trace.channel.id === current.tpsChannelId) : undefined;
 
-      return loaded.map((trace) => ({
-        ...trace,
-        range: applyVeQualificationValidity(trace.range, current, cltTrace?.range, tpsTrace?.range),
-      }));
+      const qualified = applyVeQualificationValidityBatch(loaded.map(trace => trace.range), current, cltTrace?.range, tpsTrace?.range);
+      return loaded.map((trace, index) => ({ ...trace, range: qualified[index]! }));
     },
   });
 
@@ -209,7 +211,14 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      sourceContext = { traces: [], channels: [], loadTraces: async () => [], aTimeMs: undefined, bTimeMs: undefined, savedRanges: [] };
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return; inner.setActive(active); },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -217,6 +226,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(next) {
+      if (disposed) return false;
       const sourceChanged = !sameVeSourceContext(sourceContext, next);
       sourceContext = next;
       if (sourceChanged) populateQualificationSources();
@@ -226,12 +236,14 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       return changed;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       applyUi(false);
       const changed = inner.setTuneModel(model, sourceName);
       if (changed) applyUi(false);
       return changed;
     },
     refresh() {
+      if (disposed) return;
       applyUi(false);
       inner.refresh();
       applyUi(false);

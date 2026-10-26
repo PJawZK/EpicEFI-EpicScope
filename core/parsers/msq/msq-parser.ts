@@ -35,7 +35,7 @@ function decodeXml(value: string): string {
   });
 }
 
-function attributes(source: string): Readonly<Record<string, string>> {
+export function attributes(source: string): Readonly<Record<string, string>> {
   const result: Record<string, string> = {};
   const pattern = /([A-Za-z_][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   let match: RegExpExecArray | null;

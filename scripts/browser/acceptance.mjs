@@ -1,3 +1,7 @@
+import { runVeHeatmapPaint } from './ve-heatmap-paint.mjs';
+import { runNativeVeTimelineSelection } from './ve-timeline-selection.mjs';
+import { runNativeTimelineScope } from './ve-timeline-scope.mjs';
+import { runNativeCompletionFocus } from './ve-completion-focus.mjs';
 import { runDiagnosticsAcceptance } from './diagnostics.mjs';
 import fs from 'node:fs/promises';
 
@@ -15,6 +19,9 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('persistence-native.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-persistence.browser.mjs');return m.runPersistenceChecks();})()`,60000));
  await record('anomaly-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runAnomalyChecks();})()`,60000));
  await record('owner-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}owner-evidence.browser.mjs');return m.runOwnerEvidenceChecks();})()`,60000));
+ await record('msq-document-loading.json', await evaluate(`(async()=>{const m=await import('${moduleBase}msq-document-loading.browser.mjs');return m.runMsqDocumentLoadingChecks();})()`,60000));
+ await record('msq-ve-writer.json', await evaluate(`(async()=>{const m=await import('${moduleBase}msq-ve-writer.browser.mjs');return m.runMsqVeWriterChecks();})()`,60000));
+ await record('msq-save.json', await evaluate(`(async()=>{const m=await import('${moduleBase}msq-save.browser.mjs');return m.runMsqSaveChecks();})()`,60000));
  await record('parser-evidence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}parser-evidence.browser.mjs');return m.runParserEvidenceParity();})()`,60000));
  await record('performance-migration.json', await evaluate(`(async()=>{const m=await import('${moduleBase}performance-migration.browser.mjs');return m.capturePerformanceParity();})()`,60000));
  await record('observability-foundation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-foundation.browser.mjs');return m.runObservabilityFoundationChecks();})()`,60000));
@@ -38,8 +45,9 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await select('.ve-analyzer-view select[data-role=load]','ini:map');
  await file('input[data-ve-analyzer="load-delay-file"]',fixture('delay.json'));
  await wait('!document.querySelector(".ve-workbench-run").disabled');
- await step('edit delay',()=>evaluate(`(()=>{const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.onclick.call(cell,new PointerEvent('click'));document.querySelector('[data-ve-analyzer="delay-cell-working"]').value='125';document.querySelector('[data-ve-analyzer="delay-cell-apply"]').click();})()`));
- await step('Run Analysis',async()=>{await evaluate('document.querySelector(".ve-workbench-run").click()',60000);await wait('document.querySelector("[data-ve-analyzer=stage]").textContent.startsWith("Guarded")');});
+ await step('edit delay',()=>evaluate(`(()=>{document.querySelector('.ve-v50-lambda-tool-trigger').click();const cell=document.querySelector('[data-delay-row="0"][data-delay-col="0"]');cell.focus();cell.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));const input=document.querySelector('.ve-table-inline-input');if(!input)throw Error('Shared delay editor did not open');input.value='125';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`));
+ await step('Run Analysis', async () => record('ve-completion-shell.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-contract.browser.mjs');return m.runVeShellCompletionChecks();})()`,60000)));
+ await record('ve-timeline-selection-native.json', await runNativeVeTimelineSelection({ call, evaluate, moduleBase }));
  await runDiagnosticsAcceptance({call,evaluate,wait,moduleBase,downloadDir,record});
  await record('anomaly-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}observability-anomalies.browser.mjs');return m.runIntegratedAnomalyChecks();})()`,60000));
  await record('owner-integrated.json', await evaluate(`(async()=>{const m=await import('${moduleBase}owner-evidence.browser.mjs');return m.runIntegratedOwnerEvidence();})()`,60000));
@@ -53,12 +61,66 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  log('publication checks',{result:publication});await record('publication-result.json',publication);
  const lifecycle=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-analyzer-lifecycle.browser.mjs');return m.runVeAnalyzerLifecycleChecks();})()`,60000);
  log('lifecycle checks',{result:lifecycle});await record('lifecycle-result.json',lifecycle);
+ await record('ve-editing-retention.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-editing-retention.browser.mjs');return m.runVeEditingRetentionChecks();})()`,60000));
+ await record('ve-numerical-boundaries.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-numerical-boundaries.browser.mjs');return m.runVeNumericalBoundaryChecks();})()`,60000));
+ await record('ve-interpolation-strength.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-interpolation-strength.browser.mjs');return m.runVeInterpolationStrengthChecks();})()`,120000));
+ await record('ve-pinned-analysis.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-pinned-analysis.browser.mjs');return m.runVePinnedAnalysisChecks();})()`,60000));
+ await record('ve-settings-effects.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-settings-effects.browser.mjs');return m.runVeSettingsEffectsChecks();})()`,120000));
+ await record('ve-heatmap-paint.json', await runVeHeatmapPaint({ call, evaluate, moduleBase, downloadDir }));
+ await record('ve-visual-presentation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-visual-presentation.browser.mjs');return m.runVeVisualPresentationChecks();})()`,60000));
+ await record('ve-timeline-native.json', await runNativeTimelineScope({ call, evaluate, moduleBase }));
+ await record('ve-timeline-scope.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-timeline-scope.browser.mjs');return m.runVeTimelineScopeChecks();})()`,60000));
+ await record('ve-timeline-selection.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-timeline-selection.browser.mjs');return m.runVeTimelineSelectionChecks();})()`,60000));
+ await record('ve-completion-summary.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-summary.browser.mjs');return m.runVeCompletionSummaryChecks();})()`,60000));
+ await record('ve-completion-focus-native.json', await runNativeCompletionFocus({ call, evaluate, moduleBase }));
+ await record('ve-completion-focus.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-completion-focus.browser.mjs');return m.runVeCompletionFocusChecks();})()`,60000));
+ await record('ve-view-proposal.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-view-proposal.browser.mjs');return m.runVeViewProposalChecks();})()`,60000));
+ await record('ve-delay-workflow.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-workflow.browser.mjs');return m.runVeDelayWorkflowChecks();})()`,60000));
+ await record('ve-delay-grab-presentation.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-workflow.browser.mjs');return m.runVeDelayGrabPresentationChecks();})()`,60000));
+ await record('ve-cell-evidence-release.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-cell-evidence-release.browser.mjs');return m.runVeCellEvidenceReleaseChecks();})()`,60000));
+ await record('ve-delay-replacement.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-replacement.browser.mjs');return m.runVeDelayReplacementChecks();})()`,60000));
+ await record('ve-authority.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-authority.browser.mjs');return m.runVeAuthorityChecks();})()`,60000));
  const contexts=await evaluate(`(async()=>{const m=await import('${moduleBase}logger-analysis-context.browser.mjs');return m.runLoggerAnalysisContextChecks();})()`,60000);
  log('context checks',{result:contexts});await record('context-result.json',contexts);
  const activity=await evaluate(`(async()=>{const m=await import('${moduleBase}analyzer-activity.browser.mjs');return m.runAnalyzerActivityChecks();})()`,60000);
  log('activity checks',{result:activity});await record('activity-result.json',activity);
  const delayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-delay-editing.browser.mjs');return m.runVeDelayEditingChecks();})()`,60000);
  log('delay edit checks',{result:delayEdits});await record('delay-edit-result.json',delayEdits);
+ await record('ve-cpu-reuse.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-cpu-reuse.browser.mjs');return m.runVeCpuReuseChecks();})()`,60000));
+ await record('ve-presentation-lifetime.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-presentation-lifetime.browser.mjs');return m.runVePresentationLifetimeChecks();})()`,60000));
+ await record('ve-history-policy.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-history-policy.browser.mjs');return m.runVeHistoryPolicyChecks();})()`,60000));
+ await record('ve-group3.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-group3.browser.mjs');return m.runVeGroup3Checks();})()`,60000));
+ await record('ve-lambda-render.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-lambda-render.browser.mjs');return m.runVeLambdaRenderChecks();})()`,60000));
+ await record('ve-target-render.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-target-render.browser.mjs');return m.runVeTargetRenderChecks();})()`,60000));
+ await record('ve-result-projection.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-result-projection.browser.mjs');return m.runVeResultProjectionChecks();})()`,60000));
+ await record('ve-table-layout.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-table-layout.browser.mjs');return m.runVeTableLayoutChecks();})()`,60000));
+ await record('ve-transient-editing.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-transient-editing.browser.mjs');return m.runVeTransientEditingChecks();})()`,60000));
+ const sharedDelayEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-shared-table-interaction.browser.mjs');return m.runVeSharedTableInteractionChecks();})()`,60000);
+ log('shared delay interaction checks',{result:sharedDelayEdits});await record('shared-delay-interaction-result.json',sharedDelayEdits);
+ const proposalEdits=await evaluate(`(async()=>{const m=await import('${moduleBase}ve-proposal-table-interaction.browser.mjs');return m.runVeProposalTableInteractionChecks();})()`,60000);
+ log('VE Proposal interaction checks',{result:proposalEdits});await record('ve-proposal-interaction-result.json',proposalEdits);
+
+ // Focus the real application shell before geometry assertions. Focused component
+ // fixtures above intentionally create/remove their own Analyzer roots and may leave
+ // the shell on another Analyzer domain.
+ await evaluate(`(()=>{const mode=document.querySelector('[data-epicscope-mode=analyzer]');mode?.click();const s=document.querySelector('.analyzer-header-view-select');if(!s)throw Error('Analyzer domain selector missing before responsive acceptance');s.value='ve';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+ await wait(`!!document.querySelector('.analyzer-page:not([hidden]) .ve-analyzer-view.ve-v50-port:not([hidden])')`);
+ // Publication/replacement fixtures above can intentionally leave the shell with
+ // a new tune and no remembered VE table. Select the first real table candidate so
+ // responsive acceptance measures the actual rendered work surface, not an empty
+ // "No table selected" placeholder.
+ await evaluate(`(()=>{const root=document.querySelector('.analyzer-page:not([hidden]) .ve-analyzer-view.ve-v50-port:not([hidden])');for(const role of ['ve-table','target-table']){const s=root?.querySelector('select[data-role="'+role+'"]');if(!s)continue;const option=[...s.options].find(o=>o.value);if(option&&s.value!==option.value){s.value=option.value;s.dispatchEvent(new Event('change',{bubbles:true}));}}})()`);
+ await wait(`!!document.querySelector('.analyzer-page:not([hidden]) .ve-analyzer-view.ve-v50-port:not([hidden]) .ve-workbench-table td')`);
+
+ for (const width of [1024,1366,1920]) {
+   await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+   const responsive = await evaluate(`(async()=>{const m=await import('${moduleBase}ve-v50-responsive.browser.mjs');return m.runVeV50ResponsiveChecks(${width});})()`,60000);
+   await record(`ve-v50-responsive-${width}.json`, responsive);
+   await fs.mkdir(downloadDir, { recursive: true });
+   const screenshot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+   await fs.writeFile(`${downloadDir}/ve-v50-${width}.png`, Buffer.from(screenshot.data, 'base64'));
+ }
+ await call('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
 
  await record('result-view.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ve-analyzer-result-view.browser.mjs');return m.runVeAnalyzerResultViewChecks();})()`,60000));
  // Final integration gate: native shell import -> authoritative Parser state ->

@@ -1,0 +1,192 @@
+/* Final v50 proportion pass: preserve the frozen 40px status band rather than
+ * giving it the same deeper padding as the 38px compound setup row. */
+.ve-v50-port .ve-workbench-actionbar {
+  min-height: 40px;
+  padding: 4px 7px;
+  align-items: center;
+}
+
+.ve-v50-port .ve-workbench-run {
+  order: 99;
+  margin-left: auto;
+  min-width: 122px;
+  min-height: 34px;
+}
+
+/* Run blockers belong directly to the run/readiness band. */
+.ve-v50-port .ve-run-blocker-panel {
+  margin-top: 0;
+}
+
+/* The original v2 page skeleton used a permanent Proposal-stage guidance row
+ * plus a large empty-state panel. In the v50 workbench those conditions are
+ * already represented by the compact readiness/run band and blocker surface.
+ * Keep the semantic nodes for lifecycle/state ownership, but remove them from
+ * the normal visible layout so the table remains the dominant work surface. */
+.ve-v50-port .ve-workbench-guidance,
+.ve-v50-port > .specialized-analyzer-empty {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .ve-v50-port .ve-workbench-run {
+    margin-left: 0;
+  }
+}
+
+
+/* Full-height v50 VE mode: consume the space between the app header and its
+ * status bar. Other Analyzer modes retain their ordinary document layout. */
+.analyzer-page:has(> .ve-analyzer-view.ve-v50-port:not([hidden])) {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  padding: 5px 7px;
+  overflow: hidden;
+}
+
+.analyzer-page > .ve-analyzer-view.ve-v50-port:not([hidden]) {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.ve-v50-port > .ve-workbench {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.ve-v50-port .ve-workbench-panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ve-v50-port .ve-workbench-panel > header {
+  flex: 0 0 auto;
+}
+
+.ve-v50-port .ve-workbench-table-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.ve-v50-port .ve-workbench-table {
+  /* Keep semantic row geometry: forced 100% table height can create dark gaps. */
+  height: auto;
+  border-spacing: 0;
+}
+
+.ve-v50-port .ve-workbench-table tbody tr {
+  height: var(--ve-v50-row-height, 16px);
+}
+.ve-v50-port .ve-workbench-table tbody th,
+.ve-v50-port .ve-workbench-table tbody td {
+  height: var(--ve-v50-row-height, 16px);
+  min-height: 16px;
+  padding: 0 2px;
+}
+.ve-v50-port .ve-workbench-table thead th {
+  height: 20px;
+  min-height: 20px;
+  padding: 0 2px;
+}
+
+.ve-v50-port > .ve-analysis-scope-navigator,
+.ve-v50-port > .ve-workbench-quick-controls,
+.ve-v50-port > .ve-workbench-actionbar {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.ve-v50-port > .ve-analysis-scope-navigator {
+  padding: 3px 5px;
+  gap: 3px;
+}
+
+.ve-v50-port .ve-analysis-scope-strip {
+  height: 17px;
+}
+
+.ve-v50-port > .ve-workbench-quick-controls {
+  min-height: 45px;
+  padding: 4px 5px;
+  gap: 5px;
+}
+
+.ve-v50-port .ve-v50-setup-group > summary,
+.ve-v50-port .ve-v50-advanced-button {
+  min-height: 32px;
+}
+
+.ve-v50-port > .ve-workbench-actionbar {
+  min-height: 43px;
+  padding: 3px 5px;
+  gap: 5px;
+}
+
+
+/* Native detail popovers/tool windows are overlays; their boxes must not
+ * contribute to the four permanent workbench rows. */
+.ve-v50-port > .ve-v50-tool-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+
+/* v2's summary shell remains after Lambda/Advanced are moved to tool surfaces.
+ * An empty summary must not draw the stray rule above the app status bar. */
+.ve-v50-port .specialized-analyzer-summary:empty {
+  display: none !important;
+}
+/* v2 reveals and populates this legacy summary after Run Analysis.
+ * Its semantic owners stay mounted, but v50 never shows the old inline result
+ * document below the compact table-first workbench. Tool-owned Lambda and
+ * Advanced nodes have already been reparented into their tool host. */
+.ve-v50-port > .specialized-analyzer-content {
+  display: none !important;
+}
+
+/* Preserve opaque, borderless heat cells. Fractional native-table paint still
+ * needs the edge treatment below; opacity alone does not eliminate its gaps.
+ * Keep selection styling intact. */
+.ve-v50-port .ve-workbench-table tbody td,
+.ve-v50-port .ve-workbench-table tbody th {
+  border-right: 0;
+  border-bottom: 0;
+}
+.ve-v50-port .ve-workbench-table tbody td {
+  --ve-cell-heat-color: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
+  background: var(--ve-cell-heat-color);
+}
+
+/* Lambda Delay has explicit missing/insufficient cells. They must never
+ * inherit the generic VE colored-cell heatmap merely because a TD exists. */
+.ve-v50-port .ve-delay-table td:not([data-delay-value]),
+.ve-v50-port .ve-delay-table td[data-delay-state='insufficient']:not([data-delay-value]) {
+  background: #0b171f !important;
+  background-image: none !important;
+  color: #718793;
+}
+.ve-v50-port .ve-delay-table td[data-delay-value] {
+  background: hsl(calc(116 - (var(--ve-cell-level, .5) * 116)) 72% calc(35% + (var(--ve-cell-level, .5) * 9%)));
+}
+
+/* Cover fractional native-table paint gaps with the cell's existing heat color;
+ * keep measured/working state markers and active selection outlines intact. */
+.ve-v50-port .ve-workbench-table:not(.ve-delay-table) td:not([data-table-selected='true']):not(:focus-visible) {
+  outline: 1px solid var(--ve-cell-heat-color);
+  outline-offset: 0;
+}

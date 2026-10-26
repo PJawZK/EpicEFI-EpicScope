@@ -1,0 +1,263 @@
+.ve-table-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ve-table-edit-toolbar > button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid #31505f;
+  border-radius: 3px;
+  background: #10212c;
+  color: #c9d9e1;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ve-table-edit-toolbar > button:hover,
+.ve-table-edit-toolbar > button:focus-visible,
+.ve-table-edit-toolbar > button[data-active='true'] {
+  border-color: #4b88a6;
+  background: #153346;
+  color: #eff8fb;
+}
+
+.ve-table-edit-toolbar > button[aria-pressed='true'] {
+  border-color: #54a7cf;
+  background: #16445b;
+  color: #f3fbff;
+}
+
+.ve-table-edit-toolbar > button[aria-disabled='true'] {
+  border-color: #253944;
+  background: #0b1720;
+  color: #627884;
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+.ve-table-edit-toolbar > button[aria-disabled='true']:hover,
+.ve-table-edit-toolbar > button[aria-disabled='true']:focus-visible {
+  border-color: #2a404c;
+  background: #0c1821;
+  color: #6d828c;
+}
+
+/* Lambda Delay is the first production surface on the shared v50 table tools.
+ * Keep its toolbar visually attached to the table rather than introducing a new
+ * panel/window around it.
+ */
+.ve-delay-shared-toolbar {
+  min-height: 35px;
+  margin: 6px 0 0;
+  padding: 4px 6px;
+  border: 1px solid #263b4c;
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: #0a1820;
+}
+
+.ve-delay-shared-toolbar + .ve-delay-table-shell {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.ve-workbench-table td[data-table-selected='true'],
+.ve-delay-table td[data-table-selected='true'] {
+  outline: 2px solid rgba(202, 235, 249, .92);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.ve-workbench-table td[data-table-anchor='true'],
+.ve-delay-table td[data-table-anchor='true'] {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .96);
+}
+
+/* Frozen v50 pin contract: symbol only. Do not add a special pinned border. */
+.ve-workbench-table td[data-table-pinned='true']::before,
+.ve-delay-table td[data-table-pinned='true']::before {
+  content: '◆';
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  color: rgba(244, 249, 251, .9);
+  font-size: 6px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.ve-workbench-table td[data-table-editing='true'],
+.ve-delay-table td[data-table-editing='true'] {
+  overflow: visible;
+}
+
+.ve-table-inline-input {
+  position: absolute;
+  z-index: 6;
+  inset: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  padding: 0 2px;
+  border: 1px solid #9ddcf6;
+  border-radius: 2px;
+  outline: 0;
+  background: #07141c;
+  color: #f1f8fb;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ve-workbench-table[data-table-brush='true'],
+.ve-delay-table[data-table-brush='true'] {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+
+.ve-table-edit-toolbar {
+  position: relative;
+}
+
+.ve-table-tool-options {
+  position: absolute;
+  z-index: 120;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(145px, 1fr));
+  gap: 8px;
+  width: min(310px, calc(100vw - 28px));
+  padding: 10px;
+  border: 1px solid #31505f;
+  border-radius: 5px;
+  background: #0b151e;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .42);
+}
+
+.ve-table-tool-options-head,
+.ve-table-tool-options-foot {
+  grid-column: 1 / -1;
+}
+
+.ve-table-tool-options-head {
+  display: grid;
+  gap: 3px;
+}
+
+.ve-table-tool-options-head strong {
+  color: #dce9ef;
+  font-size: 10px;
+}
+
+.ve-table-tool-options-head span,
+.ve-table-tool-options-foot {
+  color: #8299a5;
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.ve-table-tool-options > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #8399a4;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.ve-table-tool-options input,
+.ve-table-tool-options select {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 1px solid #2f4b59;
+  border-radius: 3px;
+  background: #101d28;
+  color: #dbe8ef;
+}
+
+.ve-table-tool-options .ve-table-tool-options-check {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ve-table-tool-options .ve-table-tool-options-check input {
+  width: auto;
+  min-height: 0;
+}
+
+.ve-table-tool-options-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ve-table-tool-options-foot button {
+  min-height: 28px;
+}
+
+
+/* Frozen v50 table tool visual vocabulary. */
+.ve-table-edit-toolbar > button {
+  width: 29px;
+  height: 29px;
+  min-height: 29px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+.ve-table-edit-toolbar > button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.ve-workbench-table td[data-table-row][data-table-col],
+.ve-delay-table td[data-table-row][data-table-col] {
+  contain: paint;
+}
+
+.ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='lower'],
+.ve-delay-table td[data-table-value-state='lower'] { color: #73bfff !important; }
+.ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='higher'],
+.ve-delay-table td[data-table-value-state='higher'] { color: #ff7d83 !important; }
+
+/* The moving Brush footprint is rendered by ve-table-brush-overlay.ts.
+ * data-table-brush-preview remains interaction bookkeeping only; do not attach
+ * visual cell rules here or pointer motion will invalidate table-cell paint. */
+/* Baseline delta is glyph-local: keep the heatmap visible while surrounding
+ * blue/red numbers with a narrow dark halo for contrast at every map hue. */
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='lower'],
+.ve-v50-port .ve-delay-table td[data-table-value-state='lower'],
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='higher'],
+.ve-v50-port .ve-delay-table td[data-table-value-state='higher'] {
+  text-shadow: -1px -1px 0 #071018, 1px -1px 0 #071018,
+               -1px 1px 0 #071018, 1px 1px 0 #071018,
+               0 0 2px #071018;
+}
+/* Marker hues are fixed, independent of VE heatmap level and delta text.
+ * Pinned status stays symbol-only with no additional cell border. */
+.ve-v50-port .ve-workbench-table td[data-table-pinned='true']::before,
+.ve-v50-port .ve-delay-table td[data-table-pinned='true']::before {
+  color: #69e8fa !important;
+  text-shadow: 0 0 1px #061016, 1px 1px 1px #061016;
+  font-size: 8px;
+}
+
+/* v50 delta digits: improve readability within the same 32x32 cell geometry. */
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='lower'],
+.ve-v50-port .ve-workbench-table:is([data-ve-result-view='proposal'], :not([data-ve-result-view])) td[data-table-value-state='higher'] {
+  font-size: 11px !important;
+  font-weight: 750;
+  letter-spacing: -.15px;
+}

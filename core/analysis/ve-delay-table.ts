@@ -1,3 +1,4 @@
+import { veAnalysisAxisIssue } from './ve-axis-validation';
 import type { AfrDelayEvent } from './afr-delay-analyzer';
 
 export type VeDelayCellState = 'measured' | 'interpolated' | 'insufficient';
@@ -27,7 +28,8 @@ export interface VeDelayTableCell {
   readonly p90Ms: number | undefined;
   readonly spreadMs: number | undefined;
   readonly confidence: VeDelayConfidence;
-  /** Direct delay-discovery events assigned to this cell. Empty for interpolated cells. */
+  /** Direct delay-discovery events assigned to this cell, including sparse local events
+   * retained when its recommendation is interpolated from neighboring cells. */
   readonly sourceEvents: readonly VeDelaySourceEvent[];
 }
 
@@ -158,7 +160,10 @@ export function buildVeDelayTable(
   loadBins: readonly number[],
   config: VeDelayTableConfig = {},
 ): VeDelayTable {
-  if (rpmBins.length === 0 || loadBins.length === 0) throw new RangeError('VE delay table requires non-empty RPM and load axes.');
+  for (const [name, axis] of [['Delay RPM', rpmBins], ['Delay load', loadBins]] as const) {
+    const issue = veAnalysisAxisIssue(axis);
+    if (issue) throw new RangeError(`${name}: ${issue}`);
+  }
   const minimumMeasuredEvents = Math.max(1, Math.floor(config.minimumMeasuredEvents ?? 3));
   const interpolationNeighbors = Math.max(2, Math.floor(config.interpolationNeighbors ?? 4));
   const maximumInterpolationDistance = config.maximumInterpolationDistance ?? 0.35;
@@ -305,6 +310,7 @@ function bracket(value: number, bins: readonly number[]): { low: number; high: n
     if (value < bins[mid]!) high = mid;
     else low = mid;
   }
+  if (value === bins[low]) return { low, high: low, fraction: 0 };
   const span = bins[high]! - bins[low]!;
   if (!(span > 0)) return undefined;
   return { low, high, fraction: (value - bins[low]!) / span };
@@ -322,7 +328,7 @@ export function interpolateVeDelayTable(table: VeDelayTable, rpm: number, load: 
   const v10 = at(y.low, x.high);
   const v01 = at(y.high, x.low);
   const v11 = at(y.high, x.high);
-  if (v10 === undefined || v01 === undefined || v11 === undefined) return undefined;
+  if (v10 === undefined || v01 === undefined || v11 === undefined || !Number.isFinite(v10) || !Number.isFinite(v01) || !Number.isFinite(v11)) return undefined;
   const top = x.low === x.high ? v00 : v00 + (v10 - v00) * x.fraction;
   const bottom = x.low === x.high ? v01 : v01 + (v11 - v01) * x.fraction;
   return y.low === y.high ? top : top + (bottom - top) * y.fraction;

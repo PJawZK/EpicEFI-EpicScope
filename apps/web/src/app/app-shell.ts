@@ -1,3 +1,6 @@
+import { createMsqSaveSession } from '../adapters/msq-save-session';
+import { prepareMsqInWorker } from '../adapters/msq-write-preparation';
+import type { IniMsqWriteCatalog } from '../../../../core/parsers/ini/ini-msq-write-policy';
 import { createDiagnosticsView } from '../components/diagnostics-view';
 import { captureDiagnostics } from '../observability/capture';
 import { buildDiagnosticsBundle } from '../observability/export';
@@ -20,7 +23,7 @@ import {
 } from '../../../../core/channels/channel-binding';
 import type { ChannelCatalog } from '../../../../core/channels/channel-catalog';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
-import { prepareMsqCandidate } from '../adapters/msq-candidate';
+import { createMsqDocumentLoader, msqFilePicker, msqFilePickerUnavailable } from '../adapters/msq-document-loader';
 import { type TuneModel } from '../../../../core/tune/tune-model';
 import { PersistenceFormatError } from '../../../../core/persistence/versioned-artifact';
 import { importIniFile } from '../adapters/ini-file-import';
@@ -119,31 +122,43 @@ export function mountAppShell(root: HTMLElement): void {
     rememberRuntimeError(runtimeRejectionEntry(event.reason));
   };
 
+  let checkMsqExternal: () => Promise<void> = async () => {};
+  let disposeMsqSave: () => void = () => {};
+  let msqSave: ReturnType<typeof createMsqSaveSession> | undefined;
+  const onMsqFocus = (): void => { if(document.visibilityState==='visible')void checkMsqExternal(); };
+
   const onPageHide = (event: PageTransitionEvent): void => {
     if (event.persisted) observability.checkpoint('page.suspended');
-    else observability.end();
+    else {observability.end();disposeMsqSave();}
     if (event.persisted) void persistence.flush();
     else void persistence.dispose();
   };
   const onPageShow = (event: PageTransitionEvent): void => {
-    if (event.persisted) observability.checkpoint('page.resumed');
+    if (event.persisted) {observability.checkpoint('page.resumed');void checkMsqExternal();}
   };
   const onVisibility = (): void => {
     recorder.record({ recordKind: 'event', subsystem: 'application', component: 'document', name: 'document.visibility.changed', origin: 'system', activeView: activeMode, metadata: { visibility: document.visibilityState } });
     if (document.visibilityState === 'hidden') void persistence.flush();
+    else void checkMsqExternal();
   };
   window.addEventListener('error', onRuntimeError);
   window.addEventListener('unhandledrejection', onUnhandledRejection);
   window.addEventListener('pagehide', onPageHide);
   window.addEventListener('pageshow', onPageShow);
+  window.addEventListener('focus',onMsqFocus);
   document.addEventListener('visibilitychange', onVisibility);
   appObservability.set(root, { session: observability, persistence, dispose() {
     window.removeEventListener('error', onRuntimeError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
     window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('pageshow', onPageShow);
+    window.removeEventListener('focus',onMsqFocus);disposeMsqSave();checkMsqExternal=async()=>{};
     document.removeEventListener('visibilitychange', onVisibility);
     document.removeEventListener('pointerdown', onTransientPointerDown, true);
+    // Domain controllers can own observers/gesture state while active. Deactivate
+    // Analyzer before the shell DOM is replaced so those owners release detached
+    // view resources rather than waiting for a future navigation event.
+    analyzerPage.dispose();
     loggerPage.disposeSourceIntegrity();
     diagnosticExport?.abort();
     if (diagnosticHealthTimer !== undefined) clearInterval(diagnosticHealthTimer);
@@ -219,7 +234,7 @@ export function mountAppShell(root: HTMLElement): void {
       <button type="button" class="workspace-undo" disabled title="Undo workspace change">↶</button>
       <button type="button" class="workspace-redo" disabled title="Redo workspace change">↷</button>
       <div class="settings-wrap">
-        <button type="button" class="settings-button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false">⚙</button>
+        <button type="button" class="settings-button" aria-label="Open EpicScope menu and settings" title="Menu and settings" aria-haspopup="dialog" aria-expanded="false">☰</button>
         <div class="settings-popover" role="dialog" aria-label="EpicScope settings" hidden>
           <div class="settings-popover-head">
             <strong>Settings</strong>
@@ -466,6 +481,13 @@ export function mountAppShell(root: HTMLElement): void {
   const loadedLog = header.querySelector<HTMLElement>('.loaded-log strong');
   const appStatus = footer.querySelector<HTMLElement>('.app-status');
   const parserStatus = footer.querySelector<HTMLElement>('.parser-status');
+  const msqNotice=document.createElement('aside');msqNotice.className='msq-external-notice';msqNotice.hidden=true;msqNotice.setAttribute('role','alert');
+  const msqNoticeText=document.createElement('span'),msqReview=document.createElement('button'),msqDismiss=document.createElement('button');
+  msqReview.type='button';msqReview.textContent='Review in VE Analyzer';msqDismiss.type='button';msqDismiss.textContent='Dismiss';
+  msqNotice.append(msqNoticeText,msqReview,msqDismiss);
+  msqReview.addEventListener('click',()=>{analyzerPage.openVeMsqSaveReview();if(activeMode!=='analyzer')setEpicScopeMode('analyzer','user');msqNotice.hidden=true;});
+  msqDismiss.addEventListener('click',()=>{msqNotice.hidden=true;});
+
   const modeChip = header.querySelector<HTMLElement>('.mode-chip');
   const modeChoices = [...header.querySelectorAll<HTMLButtonElement>('[data-epicscope-mode]')];
   const settingsButton = header.querySelector<HTMLButtonElement>('.settings-button');
@@ -588,10 +610,10 @@ export function mountAppShell(root: HTMLElement): void {
   const iniCatalogStorage = createIniCatalogLocalStorageAdapter(undefined, recorder);
   let activeWorkspaceSource: LogSourceIdentity | undefined;
   let activeIniCatalog: ChannelCatalog | undefined;
+  let activeIniWriteCatalog: IniMsqWriteCatalog | undefined;
   let activeIniTableDefinitions: readonly IniTableEditorDefinition[] = [];
   let activeIniSourceName: string | undefined;
   let activeIniBinding: BoundChannelCatalog | undefined;
-  let msqLoadGeneration = 0;
   let activeTuneModel: TuneModel | undefined;
   let activeTuneSourceName: string | undefined;
   let currentRawLog: {
@@ -1065,14 +1087,27 @@ export function mountAppShell(root: HTMLElement): void {
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
     }
     if (activeMode === 'analyzer') {
-      if (change !== 'tune') analyzerPage.setContext({
-        ...loggerPage.getAnalysisContext(),
-        openSamplesInLogger: (request) => {
-          loggerPage.focusAnalysisTimes(request.timeMs);
-          appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
-          setEpicScopeMode('logger');
-        },
-      });
+      if (change !== 'tune') {
+        const loggerContext = loggerPage.getAnalysisContext();
+        analyzerPage.setContext({
+          ...loggerContext,
+          setAnalysisRange: (request) => {
+            if (!loggerContext.setAnalysisRange?.(request)) return false;
+            publishAnalysisInputs();
+            return true;
+          },
+          openSamplesInLogger: (request) => {
+            loggerPage.focusAnalysisTimes(request.timeMs);
+            appStatus.textContent = `Logger · ${request.label} · ${request.sampleIndices.length.toLocaleString()} evidence point${request.sampleIndices.length === 1 ? '' : 's'}`;
+            setEpicScopeMode('logger');
+          },
+          openRangeInLogger: (request) => {
+            loggerPage.focusAnalysisRange(request.startMs, request.endMs);
+            appStatus.textContent = `Logger · ${request.label}`;
+            setEpicScopeMode('logger');
+          },
+        });
+      }
       analyzerPage.setTuneModel(activeTuneModel, activeTuneSourceName);
       if (change !== 'tune') analyzerPage.setActive(true);
       analyzerPage.refresh();
@@ -1105,6 +1140,7 @@ export function mountAppShell(root: HTMLElement): void {
     const analyzerActive = mode === 'analyzer';
     const histogramActive = mode === 'histogram';
     loggerPage.element.hidden = !loggerActive;
+    if (loggerActive) loggerPage.refreshAnalysisRangeStatistics();
     analyzerPage.setActive(false);
     analyzerPage.element.hidden = !analyzerActive;
     histogramPage.element.hidden = !histogramActive;
@@ -1186,15 +1222,20 @@ export function mountAppShell(root: HTMLElement): void {
     fileInput.click();
   });
   loadIniButton.addEventListener('click', () => {
+    if(msqSave?.busy)return;
     closeLoadDataMenu();
     iniInput.click();
   });
   loadMsqButton.addEventListener('click', () => {
+    if(msqSave?.busy)return;
     closeLoadDataMenu();
-    msqInput.click();
+    const picker = msqFilePicker();
+    if (picker) void msqDocuments.choose(picker);
+    else msqInput.click();
   });
 
   unloadIniButton.addEventListener('click', () => {
+    if(msqSave?.busy)return;
     if (!activeIniCatalog) return;
 
     const unloadedSourceName = activeIniSourceName ?? 'INI';
@@ -1227,7 +1268,7 @@ export function mountAppShell(root: HTMLElement): void {
     }
 
     analyzerPage.setActive(false);
-    activeIniCatalog = undefined;
+    activeIniCatalog = undefined;activeIniWriteCatalog=undefined;msqSave?.setCatalog(undefined);
     activeIniTableDefinitions = [];
     saveIniTableEditorDefinitions(activeIniTableDefinitions, recorder);
     activeIniSourceName = undefined;
@@ -1269,53 +1310,86 @@ export function mountAppShell(root: HTMLElement): void {
     });
   });
 
+  const msqDocuments = createMsqDocumentLoader({
+    canAccept: () => !msqSave?.busy,
+    loading(name) {
+      msqSave?.setLoading(true);
+      setSourceLoadState(loadMsqButton, 'loading', `Reading ${name}; the current tune remains active until validation succeeds.`);
+      appStatus.textContent = 'Validating MSQ candidate…';
+      parserStatus.textContent = 'TUNE-MSQ · reading local candidate';
+    },
+    rejected(name, error) {
+      msqSave?.setLoading(msqDocuments.pending);
+      const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The MSQ file could not be read.';
+      const retained = msqDocuments.current ? `${msqDocuments.current.name} remains active.` : 'No tune has been loaded.';
+      setSourceLoadState(loadMsqButton, 'issue', `${name}: ${detail} ${retained} Choose an MSQ file to retry.`);
+      appStatus.textContent = `MSQ candidate rejected · ${retained}`;
+      parserStatus.textContent = `TUNE-MSQ · ${detail}`;
+    },
+    accepted(document) {
+      activeTuneModel = document.model;
+      activeTuneSourceName = document.name;
+      msqSave?.setDocument(document);
+      const tableCount = document.model.entries.filter(entry => entry.kind === 'table').length;
+      const access = document.handle ? 'file handle retained' : 'read-only file load';
+      setSourceLoadState(loadMsqButton, 'success', `${document.name} · ${document.model.entries.length.toLocaleString()} tune entries · ${tableCount.toLocaleString()} table(s) · ${document.encoding} · ${access}`);
+      appStatus.textContent = `${document.name} loaded · ${document.model.entries.length.toLocaleString()} tune entries`;
+      parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only · ${access}`;
+      try { publishAnalysisInputs('tune'); }
+      catch (error) {
+        const detail = error instanceof Error ? error.message : 'Analysis view update failed.';
+        setSourceLoadState(loadMsqButton, 'issue', `${document.name} was accepted, but the active analysis view could not update: ${detail}`);
+        appStatus.textContent = `${document.name} loaded · reopen the analysis view to retry its display`;
+      }
+      msqSave?.setLoading(false);
+    },
+  });
   msqInput.addEventListener('change', () => {
     const file = msqInput.files?.item(0);
     msqInput.value = '';
-    if (!file) return;
-    const generation = ++msqLoadGeneration;
-    // Keep the picker usable: a later selection supersedes this read.
-    setSourceLoadState(loadMsqButton, 'loading', `Reading ${file.name}; the current tune remains active until validation succeeds.`);
-    appStatus.textContent = 'Validating MSQ candidate…';
-    parserStatus.textContent = 'TUNE-MSQ · reading local candidate';
-
-    void (async () => {
-      let model: TuneModel;
-      try {
-        const source = await file.text();
-        if (generation !== msqLoadGeneration) return;
-        model = prepareMsqCandidate(source);
-      } catch (error) {
-        if (generation !== msqLoadGeneration) return;
-        const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '') || 'The MSQ file could not be read.';
-        const retained = activeTuneModel ? `${activeTuneSourceName ?? 'The current tune'} remains active.` : 'No tune has been loaded.';
-        setSourceLoadState(loadMsqButton, 'issue', `${file.name}: ${detail} ${retained} Choose an MSQ file to retry.`);
-        appStatus.textContent = `MSQ candidate rejected · ${retained}`;
-        parserStatus.textContent = `TUNE-MSQ · ${detail}`;
-        return;
-      }
-      if (generation !== msqLoadGeneration) return;
-      // Acceptance is complete. New model identity advances existing tune-owner generations.
-      activeTuneModel = model;
-      activeTuneSourceName = file.name;
-      const tableCount = model.entries.filter((entry) => entry.kind === 'table').length;
-      setSourceLoadState(loadMsqButton, 'success', `${file.name} · ${model.entries.length.toLocaleString()} tune entries · ${tableCount.toLocaleString()} table(s)`);
-      appStatus.textContent = `${file.name} loaded · ${model.entries.length.toLocaleString()} tune entries`;
-      parserStatus.textContent = `TUNE-MSQ · ${tableCount.toLocaleString()} table(s) · session only`;
-      try {
-        publishAnalysisInputs('tune');
-      } catch (error) {
-        // Presentation failure after acceptance is not a rejected replacement or a rollback.
-        const detail = error instanceof Error ? error.message : 'Analysis view update failed.';
-        setSourceLoadState(loadMsqButton, 'issue', `${file.name} was accepted, but the active analysis view could not update: ${detail}`);
-        appStatus.textContent = `${file.name} loaded · reopen the analysis view to retry its display`;
-      }
-    })();
+    if (file) void msqDocuments.loadFile(file);
   });
+
+  msqSave=createMsqSaveSession({
+    capture:()=>analyzerPage.captureVeMsqWrite(),current:snapshot=>analyzerPage.isVeMsqWriteCurrent(snapshot),
+    canPrepare:()=>typeof Worker==='function',pickerUnavailable:()=>msqFilePickerUnavailable(),prepare:prepareMsqInWorker,notify:state=>{analyzerPage.setMsqSaveState(state);msqNotice.hidden=!state.reload;if(state.reload)msqNoticeText.textContent=state.message;},
+  });
+  msqSave.setCatalog(activeIniWriteCatalog);
+  checkMsqExternal=()=>msqSave!.checkExternal();
+  const saveRequest=(event:Event):void=>{if(!event.defaultPrevented)void msqSave!.save();};
+  const reloadRequest=():void=>{
+    const handle=msqDocuments.current?.handle;
+    if(!msqSave!.busy&&handle&&activeMode==='analyzer')void msqDocuments.choose(async()=>[handle]);
+  };
+  const enableAccessRequest=():void=>{
+    const picker=msqFilePicker();
+    if(msqSave!.busy||msqDocuments.pending||msqDocuments.attaching)return;
+    if(!picker){msqSave!.reportAccessIssue(msqFilePickerUnavailable()!);return;}
+    msqSave!.setLoading(true);
+    void msqDocuments.attachAccess(picker).then(result=>{
+      if(result.status==='attached'){
+        // Access-only update: do not call setTuneModel or publish source acceptance.
+        msqSave!.setDocument(result.document);
+        loadMsqButton.title=loadMsqButton.title.replace('read-only file load','file handle retained');
+        if(parserStatus.textContent?.includes('read-only file load'))parserStatus.textContent=parserStatus.textContent.replace('read-only file load','file handle retained');
+      } else if(result.status==='issue')msqSave!.reportAccessIssue(result.message);
+    }).finally(()=>msqSave!.setLoading(msqDocuments.pending));
+  };
+  analyzerPage.element.addEventListener('ve-msq-enable-access-request',enableAccessRequest);
+  analyzerPage.element.addEventListener('ve-msq-save-request',saveRequest);
+  analyzerPage.element.addEventListener('ve-msq-reload-request',reloadRequest);
+  const unsubscribeMsqReview=analyzerPage.onVeWorkingChange(()=>msqSave!.reviewChanged());
+  disposeMsqSave=()=>{
+    msqSave!.dispose();msqDocuments.dispose();unsubscribeMsqReview();
+    analyzerPage.element.removeEventListener('ve-msq-save-request',saveRequest);
+    analyzerPage.element.removeEventListener('ve-msq-enable-access-request',enableAccessRequest);
+    analyzerPage.element.removeEventListener('ve-msq-reload-request',reloadRequest);
+  };
 
   iniInput.addEventListener('change', () => {
     const file = iniInput.files?.item(0);
     iniInput.value = '';
+    if(msqSave?.busy)return;
     if (!file) return;
 
     loadIniButton.disabled = true;
@@ -1326,6 +1400,7 @@ export function mountAppShell(root: HTMLElement): void {
 
     void importIniFile(file)
       .then(async (imported) => {
+        if(msqSave?.busy)throw new Error('Finish saving MSQ before replacing the INI.');
         const grouped = new Map<string, {
           code: string;
           severity: 'info' | 'warning' | 'error';
@@ -1354,6 +1429,7 @@ export function mountAppShell(root: HTMLElement): void {
         publicationPending = true;
         analyzerPage.setActive(false);
         activeIniCatalog = imported.catalog;
+        activeIniWriteCatalog=imported.msqWriteCatalog;msqSave?.setCatalog(activeIniWriteCatalog);
         activeIniTableDefinitions = imported.tableDefinitions;
         saveIniTableEditorDefinitions(activeIniTableDefinitions, recorder);
         activeIniSourceName = imported.fileName;
@@ -2090,7 +2166,7 @@ export function mountAppShell(root: HTMLElement): void {
       });
   });
 
-  app.append(header, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput);
+  app.append(header, msqNotice, loggerPage.element, analyzerPage.element, histogramPage.element, footer, fileInput, iniInput, msqInput);
   root.append(app);
   observeAcceptedInputs();
   for (const view of ['logger', 'analyzer', 'histogram']) recorder.record({ recordKind: 'event', subsystem: 'navigation', component: 'shell', name: 'page.visibility.changed', origin: 'system', activeView: view, visibility: view === activeMode ? 'active' : 'hidden' });

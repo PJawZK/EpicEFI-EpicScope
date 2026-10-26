@@ -17,7 +17,7 @@ export async function runVeReadinessOwnerChecks(){
  let reads=0,load=async(ids)=>traces.filter(t=>ids.includes(t.channel.id));
  const context={source:{identity:{},sampleCount:60,revision:0},channels,traces:[],loadTraces:async(ids)=>{reads++;return load(ids);},aTimeMs:0,bTimeMs:3000,savedRanges:[]};
  const change=(role,value)=>{const field=root.querySelector(`[data-role="${role}"]`);field.value=value;field.dispatchEvent(new Event('change',{bubbles:true}));};
- const blockerText=()=>root.querySelector('.ve-run-blocker-panel').textContent;
+ const blockerText=()=>root.querySelector('.ve-v50-run-blocker').textContent;
  const button=root.querySelector('.ve-workbench-run');const stable=()=>root.querySelector('[data-role="stable-ms"]');
  const agree=()=>{const state=view.getReadiness();assert(button.disabled===!state.canRun,'Run gate differs from owner');assert(root.querySelector('[data-ve-analyzer="readiness"]').textContent===state.text,'Summary differs from owner');assert(root.querySelector('[data-ve-analyzer="advanced-readiness"]').textContent===state.text,'Advanced summary differs from owner');return state;};
  try{
@@ -27,7 +27,7 @@ export async function runVeReadinessOwnerChecks(){
   stable().value='';stable().dispatchEvent(new Event('change',{bubbles:true}));await settle();
   assert(button.disabled&&blockerText().includes('Minimum stable duration'),'Missing stable duration lacks an actionable blocker');
   assert(agree().blockers.some(b=>b.code==='stable-ms'&&b.targetSelector==='[data-role="stable-ms"]'),'Stable duration has no structured Fix target');
-  root.querySelector('.ve-run-quick-fix').click();await settle();assert(document.activeElement===stable(),'Quick Fix did not focus required stable duration: '+JSON.stringify({blockers:view.getReadiness().blockers,active:document.activeElement?.outerHTML.slice(0,250),hidden:stable().closest('[hidden]')?.className}));
+  root.querySelector('.ve-v50-run-fix').click();await wait(()=>document.activeElement===stable(),'Quick Fix did not finish revealing/focusing stable duration');assert(document.activeElement===stable(),'Quick Fix did not focus required stable duration: '+JSON.stringify({blockers:view.getReadiness().blockers,active:document.activeElement?.outerHTML.slice(0,250),hidden:stable().closest('[hidden]')?.className}));
   checks.push('blank stable duration has an owner blocker and working Quick Fix instead of a generic dead end');
   assert(initiallyDisabled&&initialState?.canRun===false&&initialState.text==='Not ready','Initial Run gate disagrees with empty owner state');
   checks.push('fresh controller starts with a disabled Run gate and matching empty readiness');

@@ -1,12 +1,13 @@
 import type { VeEvidenceMapResult } from './ve-evidence-map';
 
-export type VeProposalState = 'no-evidence' | 'weak-evidence' | 'measured' | 'withheld-limit';
+export type VeProposalState = 'no-evidence' | 'weak-evidence' | 'measured' | 'withheld-limit' | 'pinned';
 
 export interface VeProposalConfig {
   readonly priorWeight: number;
   readonly minimumEvidenceWeight: number;
   readonly maximumAbsoluteChange: number;
   readonly maximumPercentChange: number;
+  readonly pinnedCellIndices?: ReadonlySet<number>;
 }
 
 export interface VeProposalCell {
@@ -28,6 +29,7 @@ export interface VeProposalResult {
   readonly weakCellCount: number;
   readonly withheldCellCount: number;
   readonly noEvidenceCellCount: number;
+  readonly pinnedCellCount: number;
 }
 
 function finiteNonNegative(value: number, label: string): number {
@@ -53,12 +55,18 @@ export function buildVeProposal(
   let weakCellCount = 0;
   let withheldCellCount = 0;
   let noEvidenceCellCount = 0;
+  let pinnedCellCount = 0;
 
   for (let index = 0; index < rows * cols; index += 1) {
     const row = Math.floor(index / cols);
     const col = index % cols;
     const currentValue = currentValues[index]!;
     const source = evidence.cells[index]!;
+    if (config.pinnedCellIndices?.has(index)) {
+      pinnedCellCount += 1;
+      cells.push({ row, col, currentValue, evidenceCandidate: undefined, proposedValue: undefined, changeValue: undefined, changePercent: undefined, state: 'pinned', totalWeight: source.totalWeight, sampleCount: source.sampleCount });
+      continue;
+    }
     if (!(source.totalWeight > 0) || source.correctionRatio === undefined || !Number.isFinite(currentValue)) {
       noEvidenceCellCount += 1;
       cells.push({ row, col, currentValue, evidenceCandidate: undefined, proposedValue: undefined, changeValue: undefined, changePercent: undefined, state: 'no-evidence', totalWeight: source.totalWeight, sampleCount: source.sampleCount });
@@ -90,5 +98,5 @@ export function buildVeProposal(
     cells.push({ row, col, currentValue, evidenceCandidate, proposedValue, changeValue, changePercent, state: 'measured', totalWeight: source.totalWeight, sampleCount: source.sampleCount });
   }
 
-  return { cells, measuredCellCount, weakCellCount, withheldCellCount, noEvidenceCellCount };
+  return { cells, measuredCellCount, weakCellCount, withheldCellCount, noEvidenceCellCount, pinnedCellCount };
 }

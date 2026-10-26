@@ -1,0 +1,75 @@
+# VE Analyzer v50 manual acceptance findings
+
+Branch: `ui/ve-analyzer-v50-reconcile`
+
+These findings come from the first hands-on production-port test against the frozen v50 reference. They are acceptance requirements for the VE Analyzer branch before the final Codex audit/PR. They do not authorize merging to `main`.
+
+## Confirmed working
+
+- File loading works.
+- Loaded sources reach Analyzer.
+- VE Analyzer renders.
+
+## Current implementation checkpoint
+
+The branch now has a shared table-editing core with semantic adapters for Lambda Delay and VE Proposal/review values. The browser acceptance contract has been migrated so `Delete` means clear/none, `Revert` explicitly restores retained recommendation/baseline values, and Cell Evidence is opened through its explicit table tool rather than by intercepting a normal VE cell click. Owner-observability browser coverage has also been migrated to exercise that explicit Evidence tool.
+
+The expanded full Web CI gate is green, including 1024/1366/1920 responsive disclosure checks and the dedicated real-browser VE Proposal interaction module in both staged/fallback acceptance. Proposal acceptance covers direct typing without F2, commit-on-new-cell, Delete/Revert separation, lower/higher baseline memory, +/- adjustment, Shift-rectangle selection, Brush footprint behavior, sparse both-directions interpolation, explicit Cell Evidence on read-only Result Views, and preservation of immutable source TuneModel authority.
+
+With that parity evidence in place, the production controller chain no longer installs the transitional v5 Lambda Delay gesture/editor owner. v6 now builds directly on v4; Lambda Delay production input is owned by the shared table-interaction adapter. The v5 source file is retained only as superseded/reference code until final cleanup, not as a live production owner.
+
+## Interaction performance checkpoint
+
+After the functional interaction pass, the shared table controller was found to be doing semantic value/baseline work and whole-table DOM decoration on pointer/selection hot paths. The performance pass now caches rendered cell coordinates, separates lightweight selection/Brush decoration from full semantic value refresh, avoids rewriting unchanged DOM attributes, and caches the Lambda Delay semantic value vector for one table authority generation. This is intended to preserve the accepted behavior while removing avoidable per-pointer O(table) semantic work and repeated whole-table snapshot allocation.
+
+The next manual pass should judge click/drag/Brush responsiveness before any further visual redesign.
+
+## Live Brush value preview checkpoint
+
+The performance pass must not make Brush opaque. During an active stroke, only the cells touched by pending Brush pulses are updated in the DOM, with their pending numeric values and lower/higher baseline-memory color visible before pointer-up. Those updates are presentation-only: semantic table authority and undo history still commit exactly once when the stroke ends. Pointer movement is batched through `requestAnimationFrame` and does not restore the old whole-table semantic refresh cost. Cancel restores the pre-stroke text/state.
+
+Dedicated unit and real-browser acceptance now cover this distinction for both VE Proposal and Lambda Delay: the visible numeric text must change during the active stroke while the semantic owner/revision remains unchanged until pointer-up, then the previewed stroke commits once.
+
+## Table interaction requirements
+
+The production port must use one shared table-editing interaction core wherever VE Analyzer exposes editable tables. Domain values remain owned by semantic adapters; selection, pins, Brush gesture state and tool configuration do not become tune-domain truth.
+
+Required behavior:
+
+1. Single click selects one cell.
+2. Shift-click and drag select rectangular ranges; a normal new single selection replaces the previous selection.
+3. After selecting a cell/range, typing a numeric value immediately starts replacement with live preview. F2 is optional compatibility, not a required path.
+4. Clicking another cell while a direct edit is active commits the previous typed value, clears the previous selection and selects the new cell in the same gesture.
+5. Delete clears the selected working value(s) to no value/undefined where the table domain permits it. Revert remains a separate explicit command.
+6. Each editable surface retains an original/baseline value snapshot for the current authority. Unchanged text stays normal; committed values lower than baseline use blue text; committed values higher than baseline use red text. A new semantic table authority establishes a new baseline.
+7. Brush activation/stroke must not retain stale highlighted selection. The current weighted Brush footprint must be visibly highlighted so the user can see which cells the next pulse can affect.
+8. Brush remains the v50 continuous spray interaction: hold accumulates, drag sweeps, Shift reverses, wheel changes radius, pins are skipped, one stroke is one undo transaction.
+9. +/- must change eligible selected values by the configured increment and remain one transaction.
+10. Interpolation must fill undefined/none cells between valid anchors. H/V require valid endpoints (plus pinned interior anchors); undefined interior cells are valid interpolation targets. Shape mode may use finite outside neighbors as tangent context but must not fail merely because optional outside context is undefined. 2D Bilinear must work from four valid corners with undefined interior/edge cells; Boundary Surface may synthesize missing edge samples from edge endpoints rather than failing the whole command.
+11. The both-directions interpolation tool uses the frozen v50 both-directions icon, not the text `2D`.
+12. Table tools use the frozen v50 SVG icon family for Undo, Redo, +/-, Pin, Brush, H/V/Both interpolation, Smooth, Clear and Revert.
+13. This established icon family is the VE Analyzer authority now and is intended to become the wider EpicScope icon vocabulary later, after VE Analyzer is correct.
+
+## VE proposal / evidence interaction
+
+Normal VE-table cell selection/editing must not be intercepted by Cell Evidence. Cell Evidence remains a separate inspector/tool: selecting a cell updates the selected semantic cell, and opening Evidence is an explicit action. The frozen prototype intent is a persistent/movable Cell Evidence inspector that can stay open while selection changes.
+
+The VE/proposal table must be wired to the same shared edit core rather than retaining evidence-popup-only cell interaction. Its edits are review/working proposal state; they do not silently mutate the source MSQ or write/burn an ECU.
+
+## Lambda Delay ownership
+
+Lambda Delay now has one production editing owner: the shared table-edit controller plus the semantic Lambda adapter. The superseded v5 inline-selection/editor implementation is no longer installed by the production v6 chain. Keep the old source only until final cleanup/audit confirms no external compatibility reason to retain it.
+
+## Scope setup
+
+The Scope setup disclosure must not contain another select/dropdown. The disclosure itself is the one menu; its body is a direct list of the currently available semantic scope choices (Full Log, Current A/B when available, and saved Logger ranges when available) matching the frozen HTML approach.
+
+If only Full Log exists, the menu simply contains that one direct choice.
+
+## Popup/dropdown placement
+
+VE Analyzer popovers/tool-configuration menus must choose their opening direction from available viewport space. Lower controls should open upward when there is insufficient room below; upper controls should open downward when that is the available direction. Use one positioning policy rather than multiple competing menu-placement systems.
+
+## Architecture boundary
+
+`ve-table-interaction.ts` / the shared DOM interaction controller are the reusable table-edit core. VE Proposal, Target (when editing is exposed), and Lambda Delay should use adapters into that one core rather than separate gesture/edit implementations. Broader app-wide adoption is deferred until the VE Analyzer implementation is correct and accepted.

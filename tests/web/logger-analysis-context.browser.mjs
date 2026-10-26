@@ -56,11 +56,24 @@ export async function runLoggerAnalysisContextChecks() {
     const a = fixture('A'), b = fixture('B');
     set(a);
     const old = logger.getAnalysisContext();
+    logger.element.hidden = true;
+    let rangeMutations = 0; logger.onWorkspaceMutation(() => rangeMutations++);
+    const beforeSelection = a.calls.length;
+    assert(old.setAnalysisRange({ startMs: 300, endMs: -100 }), 'Current context did not accept/clamp reversed selection');
+    const range = logger.getAnalysisContext(), workspaceRange = logger.getWorkspaceState().timeline;
+    assert(range.aTimeMs === 0 && range.bTimeMs === 300 && workspaceRange.aTimeMs === 0 && workspaceRange.bTimeMs === 300 && rangeMutations === 1 && a.calls.length === beforeSelection, 'Selection was not atomic, persisted in wrong owner or read hidden data');
+    assert(old.setAnalysisRange({ startMs: 0, endMs: 300 }) && rangeMutations === 1, 'Unchanged range created another workspace mutation');
+    assert(!old.setAnalysisRange({ startMs: 1000, endMs: 2000 }) && !old.setAnalysisRange({ startMs: NaN, endMs: 300 }) && !old.setAnalysisRange({ startMs: 200, endMs: 200 }) && rangeMutations === 1, 'Invalid range mutated Logger');
+    checks.push('Source-bound A/B commit is atomic, clamps reversed bounds, preserves workspace and rejects no-op/invalid mutations without hidden reads');
     set(b);
+    assert(!old.setAnalysisRange({ startMs: 100, endMs: 200 }) && logger.getAnalysisContext().aTimeMs === undefined, 'Stale range command changed replacement source');
+    checks.push('Old source-bound selection cannot write A/B into replacement Logger source');
     const before = b.calls.length;
     const loaded = await old.loadTraces(['rpm']);
     assert(old.source.identity === a.source && loaded[0]?.range.values[0] === 100 && loaded[0].channel === a.channels[0] && b.calls.length === before, 'Retained context used replacement source or metadata');
     checks.push('retained context invoked after replacement reads only its advertised source/metadata');
+    assert(old.sourceTimeRange?.startMs === 0 && old.sourceTimeRange?.endMs === 500, 'Retained context lost its authoritative source time extent');
+    checks.push('analysis context captures authoritative whole-source time extent with its source lifetime');
 
     set(a);
     const pendingContext = logger.getAnalysisContext();

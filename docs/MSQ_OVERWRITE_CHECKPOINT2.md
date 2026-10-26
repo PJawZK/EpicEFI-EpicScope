@@ -1,0 +1,41 @@
+# MSQ overwrite — checkpoint 2: VE-only validated document writer
+
+Baseline: checkpoint1 `7bede4d7315b84854bb5ff54ff7eb42cdf0f8cf5`. This checkpoint prepares bytes in memory only. Save remains disabled; no handle permission, filesystem write, download, source reload or ECU/Shim write is performed. Stop before checkpoint3.
+
+## Existing authority and boundaries
+
+The v2 Working VE owner now exposes `captureMsqWrite()` and `isMsqWriteCurrent()`. Capture borrows immutable tune/entry/axis identities and copies/freezes committed working values with dimensions, session revision and authority generation. It includes generated review, subsequent manual edits and pinned values, independently of Result View or rendered text. Hidden/disposed/pending-analysis or deferred-input owners cannot capture. A later edit, tune/session/axis replacement or inactive owner rejects currency. Capturing neither starts analysis nor loads traces. Uncommitted editor/Brush drafts are intentionally not included; checkpoint3 must finish or block those interactions before capturing.
+
+`prepareVeMsqWrite` in the document adapter consumes an accepted document, captured review and matching INI source. It does not own or modify tune/review state. The resulting plan retains original document and snapshot tokens, verified bytes/text, quantized expected values, rounded-cell count and changed-cell count. Checkpoint3 must recheck owner currency and document identity around async permission/I/O; a valid pure plan alone is not permission to write.
+
+## Storage policy, not display digits
+
+The new conservative INI resolver reuses the existing quote/comment-aware CSV helpers. It requires literal matching firmware signatures, selected constant table shape/units, supported integer storage types, positive literal scale, zero translation and finite limits. Conditional definitions must agree on storage/type/shape/address/range; different display-digit settings are allowed. It does not guess preprocessor branches, evaluate expressions or hard-code the user's firmware limits globally. Unsupported floating storage, translations, formulas, absent/mismatched signatures and conflicting alternatives reject explicitly.
+
+The supplied INI resolves to U16, scale0.01, range0–650 for the32×32 VE table, despite MSQ digits1. Numerical output uses storage steps, positive half-up rounding, and only an8-ULP-at-raw-units tolerance at exact half boundaries to avoid floating multiplication noise. Decimal integer arithmetic produces plain decimal tokens. Examples:47.7375→47.74;1.005→1.01;38.58×1.25→48.23;48.224999→48.22. Repeated quantization is stable. Blanks, nonfinite/negative/out-of-range/unrepresentable values fail instead of clamping or filling. An unchanged source value off the declared storage grid fails instead of silently changing an unedited cell.
+
+## Document preservation and verification
+
+The writer verifies tune/entry/axis identities, geometry, original bytes/text/encoding coherence and accepted model agreement. It selects exactly one XML entry by page number, kind and name; duplicates fail closed. A quote-aware lexical locator tracks DOM elements while skipping comments, CDATA and processing instructions. It obtains the exact original payload span without serializing the XML document or using regex alone to identify the authoritative entry.
+
+Only changed numerical tokens in that payload are substituted. Original whitespace, unmodified token spelling, all axes, other tables, unknown sections/attributes/comments, namespaces and metadata remain untouched. ISO-8859-1 and UTF-8 BOM behavior are preserved byte-for-byte outside replacements; no-op plans reproduce the entire original byte sequence. The resulting document is encoded, decoded and parsed again; every unrelated normalized entry and metadata field must equal the accepted model, while VE values must equal the expected output.
+
+DTD documents and selected numeric payloads containing markup/entities are deliberately unsupported. Existing import syntax remains a separate boundary: the legacy variable regex does not support raw `>` inside a variable attribute. The synthetic test initially exposed that pre-existing limitation; its equivalent escaped variable attribute is used, while raw quoted `>` is still tested in an unrelated settings element supported by import and the new locator. No general parser refactor was included.
+
+## Numerical reference and browser verification
+
+The external ORG/ALT files and matching INI remain outside the repo and untouched. Both source and separately minified production writer modules were exercised in real Chromium, in staged/fallback sessions. All1024 ORG×1.25 quantized values exactly match TunerStudio3.3.01 ALT values. Unrelated original XML, including writeDate, remains unchanged. TunerStudio itself changed writeDate when saving ALT; our plan intentionally does not, because the user's allowed modifications are VE values only. Minimal decimal spelling can differ from TunerStudio's spelling (e.g.48 versus48.0), while numeric values agree. TunerStudio desktop acceptance remains a manual checkpoint3 validation.
+
+Browser tests cover Latin1/UTF8-BOM byte identity, rectangular row/column ordering, source immutability, pinned/manual/generated captures, Result Views, stale/pending/hidden ownership and failures for ambiguous or unsupported sources. Unit tests cover rounding, storage limits, signature/type/shape/unit mismatches and conditional agreement. The normal production application smoke still verifies disabled Save and existing UI/load contracts. The writer is intentionally dormant in the application bundle until checkpoint3; the separate production writer bundle validates its compiled numerical path without activating any save UI.
+
+## Performance and checkpoint3 handoff
+
+Observed in-memory plan preparation for the supplied~0.77MB MSQ plus~5.7MB INI took~0.33–0.63s across these headless checks (minified writer~0.33–0.39s). This is synchronous XML/INI validation/calculation over already-resident strings, not file I/O, MLG decoding or full-log analysis. It is not a Brave/hardware benchmark. Do not put this on render/selection/readiness paths. Before wiring Save, retain/resolve verified INI storage metadata at its accepted catalog generation and assess reuse of validated document structure to remove repeated work; then profile whether preparation should run behind a bounded asynchronous/worker boundary. Do not remove output verification merely to reduce timing.
+
+The active INI import currently retains catalog/table definitions, not raw INI or a write-policy catalog. Checkpoint3 must explicitly expose/bind the required storage metadata at INI acceptance, rather than infer limits from DOM or MSQ display digits. The resolver in this checkpoint accepts explicit INI source for that future integration; it is not yet wired to the shell.
+
+`changedCells` is relative to the immutable loaded tune, not the latest saved disk contents. In checkpoint3, skipping a write must compare planned bytes with tracked current/saved disk bytes. Restoring original VE after an earlier save can legitimately require writing a plan whose changedCells is0. Preserve the session's original reference unless a deliberate rebase contract is chosen. Detect outside edits before replacing anything; keep the file handle/document association transactional.
+
+Artifacts, exact SHA, results and checksums: `/workspace/epicscope-msq-checkpoint2/`. No push/main merge/deployment change is included. Actual OS picker, permission, overwrite/readback, external-change activation handling, latest-revision saved status and editor/Brush settlement remain checkpoint3 work.
+
+Final gates: build/typecheck and986 unit tests/140files passed. All1,430 Chromium checks/160 result groups passed (715 per mode). All44 native built-application smoke checks passed with Save disabled. Separate source and minified writer numerical reference checks passed in both modes, matching all1024 TunerStudio values and retaining unrelated original content. No tests skipped or timeouts relaxed. Existing bundle-size warning remains. No original or ALT MSQ was overwritten, and user files were not added to the repository.

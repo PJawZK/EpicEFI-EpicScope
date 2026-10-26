@@ -970,3 +970,9 @@ button:disabled { opacity: .48; cursor: default; }
 
 .diagnostics-view[data-lens="Export report"] .diagnostics-content { min-height:0; max-height:none; }
 .bug-report-panel > .bug-report-text { min-height:220px; max-height:30vh; }
+
+.msq-external-notice { position:fixed; top:calc(var(--header-h) + 8px); left:50%; transform:translateX(-50%); z-index:200; display:flex; align-items:center; gap:8px; width:max-content; max-width:calc(100vw - 24px); padding:10px; background:#182531; border:1px solid #e8b34e; border-radius:5px; color:#ffd18a; box-shadow:0 8px 24px #0007; font-size:12px; }
+.msq-external-notice span { max-width:420px; }
+.msq-external-notice button { flex:none; }
+.msq-external-notice[hidden] { display:none; }
+@media(max-width:700px) { .msq-external-notice { flex-wrap:wrap; width:calc(100vw - 24px); } }

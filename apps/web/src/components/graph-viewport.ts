@@ -454,6 +454,9 @@ export function createGraphViewport(): GraphViewportController {
       ? (globalThis.performance?.now() ?? Date.now())
       : 0;
     const rect = canvas.getBoundingClientRect();
+    // Preserve semantic range state while hidden; the existing ResizeObserver
+    // draws it when shown instead of scanning cached traces into a 1px canvas.
+    if (rect.width <= 0 || rect.height <= 0) return;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.round(rect.width));
     const height = Math.max(1, Math.round(rect.height));
