@@ -9,8 +9,8 @@
 
 - [Idle Analyzer v3.5.6 reference](Idle_Analyzer_v3_5_6_Reference.html) — accepted compact adaptive workspace, true October 20 embedded MLG evidence, secondary September 30 MLG import, corrected matching-interval finder and chronology warnings.
 - [Idle Analyzer v3.5.7 — source navigation](Idle_Analyzer_v3_5_7_Source_Navigation.html) — preserved, offline HTML experiment. Adds two-source timeline navigation and source-labeled detected events without changing the v3.5.6 diagnosis/parser calculations.
-- [Idle Analyzer v3.5.8 — A/B region navigation](Idle_Analyzer_v3_5_8_AB_Region_Navigation.html) — latest experimental standalone snapshot: A can create a real manual region at unmarked timeline positions (Alt+click forces one within existing ranges), and both timeline tracks support Home/End/arrow-key navigation. B manual interval selection and source identity remain preserved.
-- [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — status and integration cautions established prior to v3.5.7.
+- [Idle Analyzer v3.5.8 — A/B region navigation](Idle_Analyzer_v3_5_8_AB_Region_Navigation.html) — preserved experimental snapshot: A can create a real manual region at unmarked timeline positions (Alt+click forces one within existing ranges), and both timeline tracks support Home/End/arrow-key navigation. B manual interval selection and source identity remain preserved.
+- [Idle Analyzer v3.5.9 — A/B refinement](Idle_Analyzer_v3_5_9_AB_Region_Refinement.html) — **latest** HTML experiment: moves selected manual A/B regions without generating a new A region at each keyboard step; supports Alt+click manual placement and arrow-key repositioning for either timeline.\n- [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — status and integration cautions established prior to v3.5.7.
 
 The HTML files are **versioned standalone snapshots**. Changes in this branch must remain in these documents while the user evaluates their behavior. Production porting requires separate authorization.
 
@@ -58,3 +58,11 @@ In v3.5.7, open **Compare → Operating conditions** to see independent A/B even
 - Timeline keyboard controls: Left/Right move by a quarter of the selected window, Home/End move to source boundaries, Enter/Space select the current center. A's new reference selection is persisted through the existing real-source preference path.
 - This is **source-level verification only**. Browser interaction, numeric diagnostics and responsive UI checks remain **pending** for v3.5.8. Do not merge, port to production or represent the new snapshot as accepted until tested.
 - Next: browser-test both modes with the September 30 recording, check A/B independence, re-open restore, event navigation, keyboard access, and 390px responsiveness. Then advance source/channel authority, comparison-session persistence and incomplete placeholders.
+
+## v3.5.9 follow-up checkpoint (2026-10-26)
+
+- v3.5.8 static inspection exposed two interaction defects: arrow-key movement in A could merely reselect the old region or multiply manual regions; manual B placement within an existing same-source region could silently select the region rather than move a manual interval.
+- New v3.5.9 uses editable manual intervals, keeps A and B independent, and retains each recording's original time axis. Directional keyboard movement explicitly requests interval repositioning.
+- This change only touches the HTML reference snapshot and README, not production application code.
+- **Validation gate remains open:** no automated Chromium/Playwright access or local copy of the real September 30 MLG was available in this session; source inspection and GitHub commit verification are not substitutes for real-log browser replay. Test A/B region motion, compare modal syncing, restore after re-open, chronology warnings, keyboard focus, and 390px layout before declaring accepted.
+- The next data-contract work should preserve missing-source refusal, sample validity, source identity and explicit non-improvement classification without importing prototype MLG parser logic into production.
