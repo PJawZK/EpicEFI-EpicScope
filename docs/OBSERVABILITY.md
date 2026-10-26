@@ -1,5 +1,9 @@
 # EpicScope Observability Architecture
 
+## Production status interpretation — 2026-10-26
+
+This file contains both implemented-stage notes and older future-tense migration language. Read current diagnostics/report/runtime owners before calling anything unimplemented; a statement that "implementation should begin" further below is historical architecture guidance, not a current instruction to replace a working system. Foundation and stages 2–9 are reported implemented, with bounded anomaly signals, previous-session recovery and captured Diagnostics/export; optional baseline intelligence is not started. Exact parity, overhead and original-user-machine acceptance remain evidence tasks. See [current handoff](HANDOFF.md) and [discrepancy ledger](DOC_DISCREPANCY_LEDGER.md). This editorial clarification makes no runtime certification beyond existing repository implementation evidence.
+
 ## Status
 
 Approved architectural direction. **Required migration stages implemented locally: foundation and stages 2–9.** Runtime, Perf, canonical Parser reporting and high-value owner state/render/async/persistence evidence are integrated. Explicit owner producers borrow existing revisions/generations and preserve domain behavior; no generic controller wrapper or new observer/listener is installed. Initial bounded anomaly rules and batched IndexedDB previous-session recovery are integrated; unified captured Diagnostics/export is installed; parity-gated report/contract cleanup is complete locally. Optional baseline intelligence is not started. Original-recording/target-hardware acceptance remains pending; see HANDOFF.md.
