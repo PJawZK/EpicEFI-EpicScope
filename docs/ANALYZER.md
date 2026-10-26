@@ -19,7 +19,11 @@ For present-tense continuation state, `HANDOFF.md` remains authoritative. Resear
 
 The Analyzer selector is a compact dropdown in the global analysis header.
 
-## Current development position — 2026-10-16
+## Current Analyzer addendum — 2026-10-26
+
+VE v50 and subsequent corrections are integrated into `main`; the PR #462 maturity paragraph below is historical. Logger is the source/selection authority; VE range editing uses existing Logger A–B state and saved ranges, not independently fabricated boundaries. Other analyzer maturity remains uneven: Fueling and non-knock Ignition comparatively mature experimental, Boost strong foundation, Idle/AE and Fuel Pressure/Injector/Trigger/Sync candidates for targeted evidence-driven improvement. Do not infer the scientific quality of analysis merely from green automation.
+
+## Historical development position — 2026-10-16
 
 Analyzer maturity is deliberately uneven rather than falsely uniform.
 
