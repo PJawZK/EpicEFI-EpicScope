@@ -4,7 +4,15 @@
 
 # EpicScope Roadmap
 
-## Roadmap principles
+## Integrated baseline and sequencing — 2026-10-26
+
+Current code on `main` is the behavior authority; see [current handoff](HANDOFF.md) and [discrepancy ledger](DOC_DISCREPANCY_LEDGER.md). PR #466 brought VE v50 and MSQ file workflows into main; PR #467 added MLG complete-prefix recovery at runtime checkpoint `f6bdbf7`. The former October 16 "UI polish next; D-058 implementation next" execution position below is historical, not a current work order.
+
+Current sequencing is **manual original-file acceptance and measured performance**, targeted defects/policy decisions, and only then newly authorized analyzer or platform implementation. The bounded diagnostics/observability foundation is already described as implemented in parts; optional baseline intelligence and some target-hardware verification remain open. MLG v3 and the native Linux product remain future tracks. Do not refactor current runtime merely to match an old roadmap statement.
+
+## Historical execution baseline (2026-10-16)
+
+
 
 The roadmap describes intended capability and implementation order. It does not authorize code to bypass `FILE_ARCHITECTURE.md`, subsystem ownership, browser acceptance requirements or ECU safety rules.
 
