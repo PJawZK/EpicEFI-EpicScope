@@ -16,7 +16,13 @@ It is not only a graph viewer and it is not a live ECU tune editor. Tune/MSQ dat
 2. **EpicScope Linux** — primary production target after Web maturity review.
 3. **EpicScope for EpicHub / Android** — later reuse of proven analysis concepts without forcing Android constraints into earlier stages.
 
-## Current Web implementation state — 2026-10-16
+## Current Web product addendum — 2026-10-26
+
+`main` code is authoritative over this document's older snapshots. VE v50 (reviewed working/source/generated separation, cell evidence, interpolation, pins and Logger-owned ranges) and native-capability-dependent same-file MSQ Save are integrated through PR #466. PR #467 adds recognized incomplete-tail MLG import recovery: structurally complete prefix retained with an integrity warning, incomplete final record excluded, while strict low-level scanning remains default. It does not make corrupted samples trusted or alter original file bytes. See [handoff](HANDOFF.md) and [MLG recovery](MLG_INCOMPLETE_TAIL_RECOVERY.md).
+
+Saving an MSQ file is **not** applying analysis to an ECU. Native picker/write permission and TunerStudio interoperability remain manual acceptance; automatic Shim/ECU write or Burn is not implemented. The October 16 baseline below is historical, not a reason to remove or reimplement current capabilities.
+
+## Historical Web implementation state — 2026-10-16
 
 EpicScope Web is a usable large-log/live-source analysis reference with:
 
