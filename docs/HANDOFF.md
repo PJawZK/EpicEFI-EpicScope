@@ -31,6 +31,10 @@ Documentation-only maintenance must not alter application source, package depend
 
 **Live path:** Existing read-only `ts_shim` telemetry with Pi Zero 2 W/Mega144H7 validation; it is not an authorization for live ECU changes. Linux production app and later Android/EpicHub reuse remain future stages.
 
+## Acceptance and priorities
+
+[Pass D technical acceptance matrix and evidence-based priorities](TECHNICAL_ACCEPTANCE_AND_PRIORITIES_2026-10-26.md) separates real-file acceptance, reproducible defects, numerical policy decisions and future product scope. It does not authorize runtime changes or declare acceptance complete.
+
 ## Open findings / explicit acceptance work
 
 1. User-machine acceptance of original large MLG, performance, memory, responsiveness, diagnostics export and Logger/Analyzer/Histogram round trip. The exact-file import was tested, but no universal hardware performance claim follows.
