@@ -162,3 +162,19 @@ Next work is:
 3. staged implementation of D-058 unified observability/diagnostics;
 4. later targeted Analyzer/MLG v3 work only where evidence or demand justifies it;
 5. Web functional maturity review before Linux production implementation becomes primary.
+
+
+## Pass C branch governance audit — 2026-10-26
+
+Current production code remains authoritative. **No runtime code change, branch deletion or historical branch merge is authorized by this inventory.** Branch ancestry is not proof of behavioral equivalence.
+
+At the documentation checkpoint, 12 non-main remote branches were compared with `main`. Nine were behind with zero ahead commits: `checkpoint/completed-improvements-target18-20261016`, `fix/lambda-delay-shift-selection-20261017`, `fix/mlg-incomplete-tail-and-worker-errors-20261026`, `fix/ve-v50-recovered-through-group-7c-20261022`, `integration/source-integrity-target1-20261016`, `integration/ve-v50-main-20261026`, `ui/ve-analyzer-v50-reconcile`, and the two `ui/ve-analyzer-v50-reconcile-overlay-scratch*` branches. They are **historical cleanup candidates**, not urgent deletions.
+
+The three divergent branches require separate classification:
+
+- `fix/ve-v50-reviewed-groups-1-7` (2 ahead, 41 behind at audit): its unique tree diff against `main` consisted of `docs/reference/README.md` and `docs/reference/VE_Analyzer_v50_Frozen.html`. Both files were copied **without content changes** onto `main` in Pass C. The frozen reference remains non-authoritative for calculations. Do not delete the branch until verifying other retention needs and that the source blob IDs remain identical.
+- `ui/ve-analyzer-v50-port` (61 ahead, 378 behind): old alternate VE editing/UI branch. The implementation comparison is **not** an exhaustive 61-commit patch-equivalence audit. Representative current versus old files: `core/analysis/ve-delay-table-editing.ts` has the same Git blob (`3c969164c336c67fd19c694451f0500af419e9a5`); `ve-table-interaction.ts`, `ve-analyzer-v50-presentation.ts`, and `ve-analyzer-delay-table-interaction.ts` are *different*, with larger/current owner structures. This confirms overlapping evolution, **not** equivalence of every old commit. Four historical port/reconciliation documents are also unique in the old-branch diff and may merit archiving before eventual branch deletion. Keep branch until a true unique-behavior/patch and unique-document provenance audit closes.
+- `browser-previews` (3 ahead, 436 behind): special preview-publication branch with a generated-assets-like tree, **not** ordinary source. Retain unless separately verifying deployed preview workflow and replacement publication design.
+
+Preliminary safe classification: keep `main` and preview infrastructure; retain both divergent VE branches pending the precise checks above; fully behind branches may be pruned selectively after user approval, never through this docs pass. Do not treat source-file differences as evidence of defects, and do not cherry-pick historical code into production just to make trees match.
+
