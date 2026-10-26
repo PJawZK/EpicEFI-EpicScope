@@ -13,6 +13,7 @@ import {
 } from '../../../../core/analysis/range-statistics';
 import { buildStableValueScale, type StableValueScale } from '../../../../core/timeline/value-scale';
 import {
+  nearestNumericSample,
   buildRawViewportSeries,
   buildViewportEnvelope,
   buildViewportEnvelopeFromBlocks,
@@ -221,31 +222,7 @@ function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRe
 }
 
 function nearestValue(range: NumericChannelRange, cursorTimeMs: number): number | undefined {
-  if (range.timeMs.length === 0) return undefined;
-  const firstTime = range.timeMs[0];
-  const lastTime = range.timeMs[range.timeMs.length - 1];
-  if (firstTime === undefined || lastTime === undefined || cursorTimeMs < firstTime || cursorTimeMs > lastTime) {
-    return undefined;
-  }
-  let low = 0;
-  let high = range.timeMs.length - 1;
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2);
-    const value = range.timeMs[mid] ?? 0;
-    if (value < cursorTimeMs) low = mid + 1;
-    else high = mid;
-  }
-
-  let index = low;
-  if (index > 0) {
-    const current = range.timeMs[index] ?? Number.POSITIVE_INFINITY;
-    const previous = range.timeMs[index - 1] ?? Number.NEGATIVE_INFINITY;
-    if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
-  }
-
-  if (range.validity[index] !== 1) return undefined;
-  const value = range.values[index];
-  return value !== undefined && Number.isFinite(value) ? value : undefined;
+  return nearestNumericSample(range, cursorTimeMs)?.value;
 }
 
 function stableScaleFromStatistics(

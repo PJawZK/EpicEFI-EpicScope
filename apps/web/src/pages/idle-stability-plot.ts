@@ -1,13 +1,10 @@
-import type { NumericChannelRange } from '../../../../core/log-model/log-types';
-import { buildViewportEnvelope, buildRawViewportSeries } from '../../../../core/timeline/viewport-series';
+import { buildViewportEnvelope, buildRawViewportSeries, nearestNumericSample } from '../../../../core/timeline/viewport-series';
 import { buildStableValueScale } from '../../../../core/timeline/value-scale';
 import { createFullViewport, panViewport, zoomViewport, type TimelineViewport } from '../../../../core/timeline/viewport-state';
+import type { AnalyzerEvidenceSeries } from './analyzer-event-evidence';
 
-const NS = 'http://www.w3.org/2000/svg';
-const WIDTH = 1000;
-const LEFT = 65;
-const RIGHT = 980;
-const PLOT_WIDTH = RIGHT - LEFT;
+export interface IdlePlotSeries extends AnalyzerEvidenceSeries { readonly unit: string; readonly color: string; readonly pane: 0 | 1; }
+const NS = 'http://www.w3.org/2000/svg', WIDTH = 1000, LEFT = 55, RIGHT = 985, PLOT_WIDTH = RIGHT - LEFT;
 function svgNode(tag: string, attrs: Record<string, string>, text?: string): SVGElement {
   const node = document.createElementNS(NS, tag);
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
@@ -15,117 +12,125 @@ function svgNode(tag: string, attrs: Record<string, string>, text?: string): SVG
   return node;
 }
 
-/** Display projection of accepted numeric ranges; never reads a source or calculates analysis. */
+/** Recorded presentation only. Shares Logger viewport, sample lookup and envelope primitives. */
 export function createIdleStabilityPlot() {
-  const element = document.createElementNS(NS, 'svg');
-  element.classList.add('idle-stability-plot');
-  element.setAttribute('viewBox', `0 0 ${WIDTH} 480`);
-  element.setAttribute('role', 'img');
-  element.setAttribute('aria-label', 'Recorded RPM and target above; actual minus target error below. Wheel zoom, drag pan, double-click fit.');
-  element.setAttribute('tabindex', '0');
+  const element = document.createElement('div'); element.className = 'idle-plot-surface';
+  const svg = document.createElementNS(NS, 'svg'); svg.classList.add('idle-stability-plot');
+  svg.setAttribute('viewBox', `0 0 ${WIDTH} 480`); svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Recorded RPM and target; base, correction and final position. Wheel zoom, drag pan, Shift-drag zoom, Home to fit.'); svg.setAttribute('tabindex', '0');
+  const tooltip = document.createElement('div'); tooltip.className = 'idle-plot-tooltip'; tooltip.hidden = true; tooltip.setAttribute('role', 'status');
+  const legend = document.createElement('div'); legend.className = 'idle-plot-legend'; legend.setAttribute('aria-label', 'Recorded trace visibility');
+  element.append(svg, tooltip, legend);
   const events = new AbortController();
-  let active = false;
+  legend.addEventListener('click', event => {
+    const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-trace-label]') : null;
+    if (!active || !button) return; const label = button.dataset.traceLabel!;
+    if (hidden.has(label)) hidden.delete(label); else hidden.add(label);
+    button.setAttribute('aria-pressed', String(!hidden.has(label))); draw();
+  }, { signal: events.signal });
+  let active = false, series: readonly IdlePlotSeries[] = [], hidden = new Set<string>();
   let viewport: TimelineViewport | undefined;
-  let ranges: readonly (NumericChannelRange | undefined)[] = [];
   let scales: readonly { min: number; max: number }[] = [];
-  let drag: { x: number; start: TimelineViewport; pointer: number } | undefined;
-  const readout = svgNode('text', { x: '75', y: '22', class: 'idle-plot-cursor' });
+  let drag: { x: number; start: TimelineViewport; pointer: number; zoom: boolean } | undefined;
+  const crosshair = svgNode('line', { stroke: '#94aebd', 'stroke-dasharray': '3 3', y1: '28', y2: '440', 'pointer-events': 'none' });
+  const fractionAt = (x: number) => Math.max(0, Math.min(1, ((x - svg.getBoundingClientRect().left) / svg.getBoundingClientRect().width * WIDTH - LEFT) / PLOT_WIDTH));
+  const timeAt = (x: number) => viewport!.visibleStartMs + fractionAt(x) * (viewport!.visibleEndMs - viewport!.visibleStartMs);
   const xFor = (time: number) => LEFT + (time - viewport!.visibleStartMs) / Math.max(1, viewport!.visibleEndMs - viewport!.visibleStartMs) * PLOT_WIDTH;
-  const yFor = (value: number, pane: number) => 42 + pane * 232 + 172 - (value - scales[pane]!.min) / (scales[pane]!.max - scales[pane]!.min) * 172;
+  const yFor = (value: number, pane: number) => 30 + pane * 232 + 178 - (value - scales[pane]!.min) / (scales[pane]!.max - scales[pane]!.min) * 178;
   const draw = () => {
     if (!active) return;
-    element.replaceChildren();
-    element.append(readout);
+    svg.replaceChildren(); tooltip.hidden = true;
     if (!viewport) return;
     for (let pane = 0; pane < 2; pane += 1) {
-      const top = 42 + pane * 232;
-      element.append(svgNode('text', { x: String(LEFT), y: String(top - 8) }, pane ? 'RPM ERROR · actual − target (RPM)' : 'RPM RESPONSE · actual / target (RPM)'));
+      const top = 30 + pane * 232;
+      svg.append(svgNode('text', { x: String(LEFT), y: String(top - 9) }, pane ? 'AIRFLOW REQUESTS · position (%) / correction (pp)' : 'RPM CONTROL · actual / target'));
       for (let tick = 0; tick <= 4; tick += 1) {
-        const y = top + tick / 4 * 172;
-        element.append(svgNode('line', { x1: String(LEFT), x2: String(RIGHT), y1: String(y), y2: String(y), stroke: '#25404e' }));
-        const value = scales[pane]!.max - tick / 4 * (scales[pane]!.max - scales[pane]!.min);
-        element.append(svgNode('text', { x: '57', y: String(y + 4), 'text-anchor': 'end' }, value.toFixed(0)));
+        const y = top + tick / 4 * 178;
+        svg.append(svgNode('line', { x1: String(LEFT), x2: String(RIGHT), y1: String(y), y2: String(y), stroke: 'var(--line-soft, #253846)' }));
+        svg.append(svgNode('text', { x: String(LEFT - 8), y: String(y + 4), 'text-anchor': 'end' }, (scales[pane]!.max - tick / 4 * (scales[pane]!.max - scales[pane]!.min)).toFixed(0)));
       }
       for (let tick = 0; tick <= 4; tick += 1) {
         const time = viewport.visibleStartMs + tick / 4 * (viewport.visibleEndMs - viewport.visibleStartMs);
-        element.append(svgNode('text', { x: String(LEFT + tick / 4 * PLOT_WIDTH), y: String(top + 193), 'text-anchor': tick === 0 ? 'start' : tick === 4 ? 'end' : 'middle' }, `${(time / 1000).toFixed(2)} s`));
+        svg.append(svgNode('text', { x: String(LEFT + tick / 4 * PLOT_WIDTH), y: String(top + 198), 'text-anchor': tick === 0 ? 'start' : tick === 4 ? 'end' : 'middle' }, `${(time / 1000).toFixed(2)} s`));
       }
     }
-    ranges.forEach((range, index) => {
-      if (!range) return;
-      const pane = index === 2 ? 1 : 0;
-      let d = '';
+    series.forEach((entry, index) => {
+      if (hidden.has(entry.label)) return;
+      const range = entry.range; let d = '';
       if (range.values.length <= 2000) {
-        const points = buildRawViewportSeries(range, viewport!.visibleStartMs, viewport!.visibleEndMs);
-        for (const point of points) {
-          d += `${point.breakBefore ? 'M' : 'L'}${xFor(point.timeMs).toFixed(2)},${yFor(point.value, pane).toFixed(2)} `;
-          // A single recorded sample remains visible without inventing a connecting segment.
-          if (point.breakBefore) d += `l.1,0 `;
+        for (const point of buildRawViewportSeries(range, viewport!.visibleStartMs, viewport!.visibleEndMs)) {
+          d += `${point.breakBefore ? 'M' : 'L'}${xFor(point.timeMs).toFixed(2)},${yFor(point.value, entry.pane).toFixed(2)} `;
+          if (point.breakBefore) d += 'l.1,0 ';
         }
       } else {
-        // Independent min/max columns preserve peaks and never connect across missing bins.
-        const envelope = buildViewportEnvelope(range, viewport!.visibleStartMs, viewport!.visibleEndMs, PLOT_WIDTH);
-        for (const column of envelope.columns) {
-          const x = LEFT + column.x;
-          d += `M${x},${yFor(column.min, pane).toFixed(2)}L${x + .2},${yFor(column.max, pane).toFixed(2)} `;
+        for (const column of buildViewportEnvelope(range, viewport!.visibleStartMs, viewport!.visibleEndMs, PLOT_WIDTH).columns) {
+          const x = LEFT + column.x; d += `M${x},${yFor(column.min, entry.pane).toFixed(2)}L${x + .2},${yFor(column.max, entry.pane).toFixed(2)} `;
         }
       }
-      element.append(svgNode('path', { d, fill: 'none', stroke: ['#61b8ed', '#7bd2b1', '#e8b46d'][index]!, 'stroke-width': '1.5', 'data-idle-trace': String(index) }));
+      const path = svgNode('path', { d, fill: 'none', stroke: entry.color, 'stroke-width': '1.3', 'vector-effect': 'non-scaling-stroke', 'data-idle-trace': String(index), 'data-trace-label': entry.label });
+      svg.append(path);
     });
-    if (!ranges[2]) element.append(svgNode('text', { x: '350', y: '360' }, 'Target unavailable — error evidence not calculated'));
+    if (!series.some(entry => entry.pane === 1)) svg.append(svgNode('text', { x: '300', y: '350' }, 'Controller context unavailable · map recorded position channels'));
   };
   const fit = () => { if (viewport) { viewport = createFullViewport(viewport.fullStartMs, viewport.fullEndMs); draw(); } };
-  element.addEventListener('wheel', event => {
-    if (!active || !viewport) return;
-    event.preventDefault();
-    const rect = element.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, ((event.clientX - rect.left) / rect.width * WIDTH - LEFT) / PLOT_WIDTH));
-    viewport = zoomViewport(viewport, event.deltaY < 0 ? .8 : 1.25, viewport.visibleStartMs + fraction * (viewport.visibleEndMs - viewport.visibleStartMs));
-    draw();
-  }, { passive: false, signal: events.signal });
-  element.addEventListener('pointerdown', event => {
+  const zoom = (factor: number) => { if (active && viewport) { viewport = zoomViewport(viewport, factor, (viewport.visibleStartMs + viewport.visibleEndMs) / 2); draw(); } };
+  svg.addEventListener('wheel', event => { if (!active || !viewport) return; event.preventDefault(); viewport = zoomViewport(viewport, event.deltaY < 0 ? .8 : 1.25, timeAt(event.clientX)); draw(); }, { passive: false, signal: events.signal });
+  svg.addEventListener('pointerdown', event => {
     if (!active || !viewport || event.button !== 0) return;
-    element.setPointerCapture(event.pointerId);
-    drag = { x: event.clientX, start: viewport, pointer: event.pointerId };
+    event.preventDefault(); svg.setPointerCapture(event.pointerId); drag = { x: event.clientX, start: viewport, pointer: event.pointerId, zoom: event.shiftKey };
   }, { signal: events.signal });
-  element.addEventListener('pointermove', event => {
+  svg.addEventListener('pointermove', event => {
     if (!active || !viewport) return;
-    const rect = element.getBoundingClientRect();
     if (drag) {
-      viewport = panViewport(drag.start, -(event.clientX - drag.x) / rect.width * WIDTH / PLOT_WIDTH * (drag.start.visibleEndMs - drag.start.visibleStartMs));
-      draw();
-    } else {
-      const fraction = Math.max(0, Math.min(1, ((event.clientX - rect.left) / rect.width * WIDTH - LEFT) / PLOT_WIDTH));
-      readout.textContent = `Source time ${((viewport.visibleStartMs + fraction * (viewport.visibleEndMs - viewport.visibleStartMs)) / 1000).toFixed(3)} s`;
+      tooltip.hidden = true;
+      if (!drag.zoom) { viewport = panViewport(drag.start, -(event.clientX - drag.x) / svg.getBoundingClientRect().width * WIDTH / PLOT_WIDTH * (drag.start.visibleEndMs - drag.start.visibleStartMs)); draw(); }
+      return;
     }
+    const reference = series[0]; const sample = reference ? nearestNumericSample(reference.range, timeAt(event.clientX)) : undefined;
+    if (!sample) { tooltip.hidden = true; crosshair.remove(); return; }
+    crosshair.setAttribute('x1', String(xFor(sample.timeMs))); crosshair.setAttribute('x2', String(xFor(sample.timeMs))); svg.append(crosshair);
+    const title = document.createElement('strong'); title.textContent = `${(sample.timeMs / 1000).toFixed(3)} s · sample ${sample.sampleIndex}`; tooltip.replaceChildren(title);
+    for (const entry of series) {
+      if (hidden.has(entry.label)) continue;
+      const index = sample.sampleIndex - entry.range.startSampleIndex, value = entry.range.values[index];
+      const valid = entry.range.validity[index] === 1 && entry.range.timeMs[index] === sample.timeMs && value !== undefined && Number.isFinite(value);
+      const row = document.createElement('div'); row.style.color = entry.color; row.textContent = `${entry.label}: ${valid ? value.toFixed(2) + ' ' + entry.unit : 'Unavailable'}`; tooltip.append(row);
+    }
+    const rect = element.getBoundingClientRect(); tooltip.style.left = `${Math.max(0, Math.min(rect.width - 230, event.clientX - rect.left + 12))}px`;
+    tooltip.style.top = `${Math.max(0, Math.min(rect.height - 135, event.clientY - rect.top + 10))}px`; tooltip.hidden = false;
   }, { signal: events.signal });
-  const end = () => { if (drag && element.hasPointerCapture(drag.pointer)) element.releasePointerCapture(drag.pointer); drag = undefined; };
-  element.addEventListener('pointerup', end, { signal: events.signal });
-  element.addEventListener('pointercancel', end, { signal: events.signal });
-  element.addEventListener('dblclick', fit, { signal: events.signal });
-  element.addEventListener('keydown', event => {
-    if (!active || !viewport) return;
-    if (!['ArrowLeft', 'ArrowRight', '+', '-', 'Home'].includes(event.key)) return;
-    event.preventDefault();
-    if (event.key === 'Home') { fit(); return; }
-    viewport = event.key === '+' || event.key === '-'
-      ? zoomViewport(viewport, event.key === '+' ? .8 : 1.25, (viewport.visibleStartMs + viewport.visibleEndMs) / 2)
-      : panViewport(viewport, (event.key === 'ArrowLeft' ? -.1 : .1) * (viewport.visibleEndMs - viewport.visibleStartMs));
-    draw();
+  const end = (event?: PointerEvent) => {
+    const old = drag; drag = undefined;
+    if (old && event && old.zoom && viewport && Math.abs(event.clientX - old.x) > 3) {
+      const a = timeAt(old.x), b = timeAt(event.clientX); viewport = { ...old.start, visibleStartMs: Math.min(a, b), visibleEndMs: Math.max(a, b) }; draw();
+    }
+    if (old && svg.hasPointerCapture(old.pointer)) svg.releasePointerCapture(old.pointer);
+  };
+  svg.addEventListener('pointerup', end, { signal: events.signal });
+  svg.addEventListener('pointercancel', () => end(), { signal: events.signal });
+  svg.addEventListener('pointerleave', () => { tooltip.hidden = true; crosshair.remove(); }, { signal: events.signal });
+  svg.addEventListener('dblclick', fit, { signal: events.signal });
+  svg.addEventListener('keydown', event => {
+    if (!active || !viewport || !['ArrowLeft', 'ArrowRight', '+', '-', 'Home'].includes(event.key)) return;
+    event.preventDefault(); if (event.key === 'Home') fit(); else if (event.key === '+' || event.key === '-') zoom(event.key === '+' ? .8 : 1.25);
+    else { viewport = panViewport(viewport, (event.key === 'ArrowLeft' ? -.1 : .1) * (viewport.visibleEndMs - viewport.visibleStartMs)); draw(); }
   }, { signal: events.signal });
   return {
-    element, fit,
-    setActive(next: boolean) { active = next; if (!next) end(); else draw(); },
-    clear() { ranges = []; viewport = undefined; readout.textContent = ''; element.replaceChildren(); },
-    setData(rpm: NumericChannelRange, target: NumericChannelRange | undefined, error: NumericChannelRange | undefined, startMs: number, endMs: number) {
-      ranges = [rpm, target, error];
-      const rpmScale = buildStableValueScale(rpm);
-      const targetScale = target ? buildStableValueScale(target) : rpmScale;
-      scales = [{ min: Math.min(rpmScale.min, targetScale.min), max: Math.max(rpmScale.max, targetScale.max) }, error ? buildStableValueScale(error) : { min: -1, max: 1 }];
-      viewport = createFullViewport(startMs, endMs);
-      readout.textContent = '';
+    element, fit, zoom,
+    setActive(next: boolean) { active = next; if (!next) { end(); tooltip.hidden = true; } else draw(); },
+    clear() { series = []; viewport = undefined; svg.replaceChildren(); legend.replaceChildren(); tooltip.hidden = true; },
+    setData(entries: readonly IdlePlotSeries[], startMs: number, endMs: number) {
+      series = entries; const perPane = [0, 1].map(pane => {
+        const bounds = entries.filter(entry => entry.pane === pane).map(entry => buildStableValueScale(entry.range));
+        return bounds.reduce((a, b) => ({ min: Math.min(a.min, b.min), max: Math.max(a.max, b.max) }), bounds[0] ?? { min: -1, max: 1 });
+      }); scales = perPane; viewport = createFullViewport(startMs, endMs);
+      legend.replaceChildren();
+      for (const entry of entries) {
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = entry.label; button.style.color = entry.color; button.setAttribute('aria-pressed', String(!hidden.has(entry.label)));
+        button.dataset.traceLabel = entry.label; legend.append(button);
+      }
       draw();
     },
-    dispose() { end(); events.abort(); ranges = []; viewport = undefined; element.replaceChildren(); },
+    dispose() { end(); events.abort(); series = []; viewport = undefined; element.replaceChildren(); },
   };
 }

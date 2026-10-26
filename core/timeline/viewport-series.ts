@@ -383,3 +383,36 @@ export function buildRawViewportSeries(
   return points;
 }
 
+
+/** Recorded cursor lookup shared by Logger and Analyzer; never interpolates invalid samples. */
+export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number; value: number } | undefined {
+  if (!Number.isFinite(cursorTimeMs)) return undefined;
+  if (range.timeMs.length === 0) return undefined;
+  const firstTime = range.timeMs[0];
+  const lastTime = range.timeMs[range.timeMs.length - 1];
+  if (firstTime === undefined || lastTime === undefined || cursorTimeMs < firstTime || cursorTimeMs > lastTime) {
+    return undefined;
+  }
+  let low = 0;
+  let high = range.timeMs.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const value = range.timeMs[mid] ?? 0;
+    if (value < cursorTimeMs) low = mid + 1;
+    else high = mid;
+  }
+
+  let index = low;
+  if (index > 0) {
+    const current = range.timeMs[index] ?? Number.POSITIVE_INFINITY;
+    const previous = range.timeMs[index - 1] ?? Number.NEGATIVE_INFINITY;
+    if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
+  }
+
+  if (range.validity[index] !== 1) return undefined;
+  const value = range.values[index];
+  const timeMs = range.timeMs[index];
+  return value !== undefined && Number.isFinite(value) && timeMs !== undefined && Number.isFinite(timeMs)
+    ? { sampleIndex: range.startSampleIndex + index, timeMs, value } : undefined;
+}
+

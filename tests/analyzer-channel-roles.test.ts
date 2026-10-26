@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../core/log-model/log-types';
-import { suggestAnalyzerChannel } from '../apps/web/src/pages/analyzer-channel-roles';
+import { suggestAnalyzerChannel, idleRoleUnit } from '../apps/web/src/pages/analyzer-channel-roles';
 
 function channel(sourceName: string, displayName = sourceName): ChannelDefinition {
   return {
@@ -12,6 +12,16 @@ function channel(sourceName: string, displayName = sourceName): ChannelDefinitio
 }
 
 describe('Idle analyzer canonical channel roles', () => {
+  it('declares missing units only for canonical roles and refuses contradictory or fuzzy units', () => {
+    expect(idleRoleUnit(channel('idleTarget'), 'target')).toEqual({ unit: 'RPM', authority: 'canonical-role' });
+    expect(idleRoleUnit(channel('Idle: Target RPM'), 'target')?.authority).toBe('canonical-role');
+    expect(idleRoleUnit(channel('baseIdlePosition'), 'basePosition')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('Closed loop'), 'closedLoop')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('Idle: Position'), 'finalPosition')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('strange idle target guess'), 'target')).toBeUndefined();
+    expect(idleRoleUnit({ ...channel('idleTarget'), unit: 'kPa' }, 'target')).toBeUndefined();
+    expect(idleRoleUnit({ ...channel('RPM'), unit: 'RPM' }, 'rpm')?.authority).toBe('source');
+  });
   it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
     const rpm = { ...channel('RPM'), id: 'mlg:33' };
     const target = { ...channel('Idle: Target RPM'), id: 'mlg:2273' };

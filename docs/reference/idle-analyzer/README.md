@@ -7,7 +7,9 @@
 
 ## Current implementation checkpoint
 
-[First native Stability vertical slice](NATIVE_STABILITY_CHECKPOINT.md) records working functionality, owner/numerical contracts, validation, deliberate prototype deviations and remaining work. The previous readiness assessment below describes its audited pre-implementation baseline; its documentation-only restrictions were superseded by the user’s explicit native-slice instruction. Stop for review after this checkpoint. The next action is manual review of the native Stability slice and its documented deviations before selecting additional functionality.
+[Stability layout and reuse checkpoint](NATIVE_STABILITY_PARITY_CHECKPOINT.md) follows the user's comparison with the accepted HTML: a compact native workspace, recorded controller context, canonical target-unit resolution, hover evidence and Logger-authoritative timeline gestures. EpicScope's existing header, theme, navigation and bottom interface remain shared. No standalone application chrome is copied.
+
+[First native Stability vertical slice](NATIVE_STABILITY_CHECKPOINT.md) remains the historical foundation checkpoint. The readiness assessment below describes its pre-implementation baseline; the user's subsequent native-integration instructions superseded its documentation-only boundary. Stop for manual review of this workspace correction before implementing another diagnostic mode.
 
 ## Source files
 

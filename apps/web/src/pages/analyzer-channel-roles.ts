@@ -132,9 +132,9 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'idle:target': { exact: ['ini:idleTarget', 'idleTarget', 'Idle: Target RPM'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i], exclude: [/base|error|stepper|position/i] },
 
   // Outer idle RPM controller. These values decide the requested idle-air position.
-  'idle:basePosition': { exact: ['ini:baseIdlePosition', 'baseIdlePosition'], include: [/base.*idle.*position/i, /idle.*base.*value/i] },
-  'idle:closedLoop': { exact: ['ini:idleClosedLoop', 'idleClosedLoop'], include: [/idle.*closed.*loop/i], exclude: [/active/i, /state/i] },
-  'idle:finalPosition': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/current.*idle.*position/i, /idle.*final.*position/i] },
+  'idle:basePosition': { exact: ['ini:baseIdlePosition', 'baseIdlePosition', 'idle: base value'], include: [/base.*idle.*position/i, /idle.*base.*value/i] },
+  'idle:closedLoop': { exact: ['ini:idleClosedLoop', 'idleClosedLoop', 'Closed loop'], include: [/idle.*closed.*loop/i], exclude: [/active/i, /state/i] },
+  'idle:finalPosition': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/current.*idle.*position/i, /idle.*final.*position/i] },
   'idle:p': { exact: ['ini:idleStatus_pTerm', 'idleStatus_pTerm'], include: [/idle.*p.*term/i, /pid.*p.*idle/i, /idle.*proportional/i], exclude: [/dc.*idle.*position/i] },
   'idle:i': { exact: ['ini:idleStatus_iTerm', 'idleStatus_iTerm'], include: [/idle.*i.*term/i, /pid.*i.*idle/i, /idle.*integral/i], exclude: [/dc.*idle.*position/i] },
   'idle:d': { exact: ['ini:idleStatus_dTerm', 'idleStatus_dTerm'], include: [/idle.*d.*term/i, /pid.*d.*idle/i, /idle.*derivative/i], exclude: [/dc.*idle.*position/i] },
@@ -150,11 +150,11 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'idle:dcOutput': { exact: ['ini:dcIdlePositionStatus_output', 'dcIdlePositionStatus_output'], include: [/dc.*idle.*position.*output/i] },
 
   // Generic IAC/stepper/solenoid evidence uses the outer controller's final requested position.
-  'idle:valve': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /current.*idle.*position/i] },
+  'idle:valve': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /current.*idle.*position/i] },
 
   'idle:etbTarget': { exact: ['ini:targetWithIdlePosition', 'targetWithIdlePosition'], include: [/etb.*target.*with.*idle/i, /idle.*etb.*target/i, /etb.*idle.*target/i, /idle.*throttle.*target/i] },
   'idle:etbPosition': { include: [/etb.*position/i, /electronic.*throttle.*position/i, /throttle.*position/i], exclude: [/target/i, /pedal/i] },
-  'idle:etbContribution': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
+  'idle:etbContribution': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
   'idle:ignitionAdvance': { include: [/idle.*ignition.*advance/i, /idle.*spark.*advance/i, /ignition.*advance/i, /spark.*advance/i] },
   'idle:ignitionCorrection': { include: [/idle.*ignition.*(correction|trim|delta)/i, /idle.*spark.*(correction|trim|delta)/i] },
 
@@ -309,4 +309,17 @@ export function suggestAnalyzerChannel(
     }
   }
   return Number.isFinite(selectedScore) ? selected : undefined;
+}
+
+/** Missing source units may use a verified canonical Idle role, never a fuzzy label or conflicting unit. */
+export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' | 'basePosition' | 'closedLoop' | 'finalPosition'):
+  { readonly unit: 'RPM' | '%'; readonly authority: 'source' | 'canonical-role' } | undefined {
+  if (channel.valueType === 'bitfield') return undefined;
+  const rpm = role === 'rpm' || role === 'target';
+  const identity = channelRoleIdentity(channel);
+  if (identity.unit) return (rpm ? ['rpm', 'rev/min'].includes(identity.unit) : ['%', 'percent'].includes(identity.unit))
+    ? { unit: rpm ? 'RPM' : '%', authority: 'source' } : undefined;
+  const exact = RULES[`idle:${role}`]?.exact;
+  if (!exact?.some(alias => identity.exact.includes(alias.toLowerCase()))) return undefined;
+  return { unit: rpm ? 'RPM' : '%', authority: 'canonical-role' };
 }

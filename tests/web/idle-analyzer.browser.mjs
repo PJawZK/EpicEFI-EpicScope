@@ -37,7 +37,7 @@ export async function runIdleAnalyzerChecks() {
       m.view.setActive(true); await wait();
       assert(f.calls.length === 1 && f.calls[0].ids.join(',') === 'rpm,target', 'Did not batch required channels once');
       assert(m.field('sigma').textContent === '100.00' && m.field('rmse').textContent === '81.65', 'Incorrect reference metrics');
-      assert(m.view.element.querySelectorAll('[data-idle-trace]').length === 3, 'Missing actual/target/error graph');
+      assert(m.view.element.querySelectorAll('[data-idle-trace]').length === 2, 'Missing actual/target graph');
       assert(m.field('source').textContent.includes('fixture.mlg'), 'Missing canonical source name');
       assert(!m.view.element.querySelector('iframe'), 'Embedded prototype');
     } finally { m.close(); }
@@ -136,11 +136,57 @@ export async function runIdleAnalyzerChecks() {
       m.close(); const html = m.view.element.innerHTML; m.view.setContext(f.context); m.view.setActive(true); await wait(); assert(m.view.element.innerHTML === html, 'Disposed view changed');
     } finally { m.close(); }
   });
+  await check('canonical unitless target/controller context, hover, trace reuse and recorded region card', async () => {
+    const f = fixture(), m = mount();
+    f.context.channels[1] = { ...f.context.channels[1], sourceName: 'Idle: Target RPM', displayName: 'Idle: Target RPM', unit: '' };
+    f.traces[1].channel = f.context.channels[1];
+    for (const [id, sourceName, values] of [['base','idle: base value',[15,16,17]], ['correction','Closed loop',[-1,0,1]], ['final','Idle: Position',[14,16,18]]]) {
+      const channel = { id, sourceName, displayName: sourceName, valueType: 'number' };
+      f.context.channels.push(channel); f.traces.push({ channel, complete: true, color: '#abc', range: { startSampleIndex: 10, timeMs: Float64Array.from([0,100,200]), values: Float64Array.from(values), validity: Uint8Array.from([1,1,1]) } });
+    }
+    try {
+      m.view.setContext(f.context); m.view.setActive(true); await wait();
+      assert(f.calls.length === 1 && f.calls[0].ids.length === 5, 'Controller data was not loaded in one shared request');
+      assert(m.field('rmse').textContent === '81.65' && m.view.element.querySelectorAll('[data-idle-trace]').length === 5, 'Unitless canonical target/context not used');
+      assert(m.field('mapping-note').textContent.includes('canonical role; source unit unspecified'), 'Role unit authority not disclosed');
+      const svg = m.view.element.querySelector('svg'), rect = svg.getBoundingClientRect();
+      svg.dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left+rect.width*.5, clientY: rect.top+50, bubbles: true }));
+      const tip=m.view.element.querySelector('.idle-plot-tooltip'); assert(!tip.hidden && tip.textContent.includes('Base request') && tip.textContent.includes('sample 11'), 'Missing source-indexed hover context');
+      m.view.element.querySelector('.idle-plot-legend button[data-trace-label="Base request"]').click();
+      assert(m.view.element.querySelectorAll('[data-idle-trace]').length===4 && f.calls.length===1, 'Legend toggle repeated analysis or failed');
+      m.field('region-focus').click(); assert(f.calls.length===1, 'Region card reloaded source');
+    } finally { m.close(); }
+  });
+  await check('timeline commits once through Logger authority and performs no reads during preview', async () => {
+    const f = fixture(), m = mount(); let commits = 0;
+    f.context.setAnalysisRange = ({startMs,endMs}) => { commits++; f.context = { ...f.context, aTimeMs: startMs, bTimeMs: endMs }; m.view.setContext(f.context); return true; };
+    try {
+      m.view.setContext(f.context); m.view.setActive(true); await wait();
+      change(m.field('scope'),'ab'); await wait(); const before=f.calls.length;
+      m.field('range-b').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true})); await wait();
+      assert(commits===1 && f.calls.length===before+1 && f.calls.at(-1).end===102, 'Range commit cascaded or bypassed Logger');
+      assert(m.field('scope').value==='ab' && m.field('range-b').getAttribute('aria-valuenow')==='102', 'Range/selector diverged from Logger');
+      m.view.setActive(false); m.field('range-b').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true})); assert(commits===1,'Hidden range edited Logger');
+    } finally { m.close(); }
+  });
+  await check('native timeline pointer preview is presentation-only; release commits one real range', async () => {
+    const f = fixture(), m = mount(); let commits = 0;
+    f.context.setAnalysisRange = ({startMs,endMs}) => { commits++; f.context = { ...f.context, aTimeMs: startMs, bTimeMs: endMs }; m.view.setContext(f.context); return true; };
+    try {
+      m.view.setContext(f.context); m.view.setActive(true); await wait();
+      const track = m.field('range-track'), rect = track.getBoundingClientRect(); track.setPointerCapture = () => {};
+      const pointer = (type, x) => track.dispatchEvent(new PointerEvent(type, {pointerId:71,button:0,bubbles:true,cancelable:true,clientX:rect.left+rect.width*x,clientY:rect.top+8}));
+      pointer('pointerdown',.2); pointer('pointermove',.8);
+      assert(commits===0 && f.calls.length===1 && m.field('samples').textContent==='3', 'Pointer preview mutated source/results');
+      pointer('pointerup',.8); await wait();
+      assert(commits===1 && f.calls.length===2 && Math.abs(f.calls.at(-1).start-40)<.01 && Math.abs(f.calls.at(-1).end-160)<.01, 'Pointer release duplicated/misrouted range');
+    } finally { m.close(); }
+  });
   await check('320459-sample browser analysis renders bounded SVG evidence without argument-limit failure', async () => {
     const values = new Float64Array(320459).fill(1000), f = fixture(values), m = mount(); try {
       m.view.setContext(f.context); m.view.setActive(true); await wait();
       assert(m.field('samples').textContent.replaceAll(',', '') === '320459' && m.field('rmse').textContent === '0.00', 'Large browser analysis failed');
-      assert(m.view.element.querySelectorAll('svg path').length === 3 && m.view.element.querySelectorAll('svg *').length < 100, 'Unbounded graph DOM');
+      assert(m.view.element.querySelectorAll('svg path').length === 2 && m.view.element.querySelectorAll('svg *').length < 100, 'Unbounded graph DOM');
     } finally { m.close(); }
   });
   return { passed: checks.length, checks };
@@ -150,6 +196,7 @@ export async function runIdleShellChecks() {
   const root = document.querySelector('.idle-analyzer-view');
   const select = document.querySelector('.analyzer-header-view-select');
   assert(root && select, 'Native Idle entry missing');
+  const sharedHeader = document.querySelector('.app-header'), sharedFooter = document.querySelector('.status-bar');
   // Open the real Analyzer route using its shell control; file inputs were loaded by acceptance runner.
   document.querySelector('[data-epicscope-mode=analyzer]').click();
   change(select, 'idle-stability');
@@ -158,10 +205,16 @@ export async function runIdleShellChecks() {
   assert(!root.hidden && source.includes('navigation.mlg'), 'Real canonical recording not bound to native Idle');
   assert(root.querySelector('[data-idle=samples]').textContent !== '—', 'No real imported evidence');
   assert(root.querySelectorAll('[data-idle-trace]').length >= 1, 'Real recording graph missing');
+  assert(sharedHeader === document.querySelector('.app-header') && sharedFooter === document.querySelector('.status-bar')
+    && document.querySelectorAll('.app-header').length === 1 && document.querySelectorAll('.status-bar').length === 1
+    && !root.querySelector('.app-header,.status-bar'), 'Idle replaced or copied the shared shell menus');
+  assert(getComputedStyle(root.closest('.analyzer-page').querySelector('.analyzer-head')).display === 'none', 'Redundant Analyzer title banner consumes workspace');
+  const footerTop = sharedFooter.getBoundingClientRect().top;
+  assert(root.getBoundingClientRect().bottom <= footerTop + 1, 'Desktop workspace scrolls past shared bottom interface');
   assert([...select.options].some(option => option.value === 'idle'), 'Existing Idle Control Diagnostics removed');
   change(select, 'idle'); await wait(); change(select, 'idle-stability'); await wait();
   assert(root.querySelector('[data-idle=source]').textContent === source, 'Navigation changed source');
-  return { passed: 3, checks: ['real-shell MLG import binds canonical source and native stability graphs', 'existing Idle Control Diagnostics remains available', 'Idle route round trip retains source evidence'], observed: { source, samples: root.querySelector('[data-idle=samples]').textContent, status: root.querySelector('[data-idle=status]').textContent } };
+  return { passed: 4, checks: ['real-shell MLG import binds canonical source and native stability graphs', 'shared EpicScope header/footer are retained once and desktop workspace fits between them', 'existing Idle Control Diagnostics remains available', 'Idle route round trip retains source evidence'], observed: { source, samples: root.querySelector('[data-idle=samples]').textContent, status: root.querySelector('[data-idle=status]').textContent } };
 }
 
 export function runIdleNarrowChecks() {

@@ -31,6 +31,7 @@ button:disabled { opacity: .48; cursor: default; }
   width: 100%;
   height: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--header-h) minmax(0, 1fr) var(--status-h);
   background: linear-gradient(#09121a, var(--bg));
 }
@@ -714,7 +715,7 @@ button:disabled { opacity: .48; cursor: default; }
   :root { --inspector-w: 220px; }
 
   .app-header {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
     gap: 5px;
     padding-inline: 5px;
   }
@@ -734,6 +735,21 @@ button:disabled { opacity: .48; cursor: default; }
   .panel-empty { padding: 16px; }
 
   .parser-diagnostics-content { grid-template-columns: 1fr; }
+}
+
+/* Shared narrow header: let existing selectors shrink instead of widening the
+ * application grid. Keep the same menu buttons and status bar on every page. */
+@media (max-width: 540px) {
+  .app-header .brand { min-width: 0; }
+  .app-header .analyzer-selector-slot,
+  .app-header .histogram-selector-slot,
+  .app-header .graph-selector-slot { min-width: 0; flex: 1 1 auto; }
+  .app-header .analyzer-header-view,
+  .app-header .histogram-header-view { min-width: 0; width: 100%; }
+  .app-header .analyzer-header-view select,
+  .app-header .histogram-header-view select { min-width: 0; width: 100%; }
+  .app-header .header-context { overflow: hidden; }
+  .status-bar { min-width: 0; overflow: hidden; }
 }
 
 

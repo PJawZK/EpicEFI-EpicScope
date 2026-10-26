@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../core/timeline/viewport-series';
+import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks, nearestNumericSample } from '../../core/timeline/viewport-series';
+
+it('shared cursor returns original sample identity, never an interpolated or invalid value', () => {
+  const range = { startSampleIndex: 10, timeMs: Float64Array.from([100, 200, 300]), values: Float64Array.from([900, 999, 1100]), validity: Uint8Array.from([1, 0, 1]) };
+  expect(nearestNumericSample(range, 110)).toEqual({ sampleIndex: 10, timeMs: 100, value: 900 });
+  expect(nearestNumericSample(range, 150)).toEqual({ sampleIndex: 10, timeMs: 100, value: 900 });
+  expect(nearestNumericSample(range, 200)).toBeUndefined();
+  expect(nearestNumericSample(range, 99)).toBeUndefined();
+  expect(nearestNumericSample(range, NaN)).toBeUndefined();
+});
 
 describe('buildViewportEnvelope', () => {
   it('excludes invalid samples while preserving first/min/max/last raw samples', () => {
