@@ -140,4 +140,19 @@ describe('AFR response-delay analyzer', () => {
     expect(result.events.at(-1)?.commandSampleIndex).toBe((delays.length - 1) * 30 + 2);
   });
 
+  it('keeps full, ordered, and unsorted duplicate scopes equivalent at nonzero offsets', () => {
+    const fixture = isolatedEvents([3, 1, 4]);
+    const inputs = { fuelCommand: { ...fixture.fuelCommand, startSampleIndex: 17 }, actualAfr: { ...fixture.actualAfr, startSampleIndex: 17 } };
+    const indices = Uint32Array.from({ length: inputs.fuelCommand.values.length }, (_, index) => index + 17);
+    const full = analyzeAfrDelay(inputs, timingConfig);
+    expect(full.usableEventCount).toBe(3);
+    expect(analyzeAfrDelay(inputs, timingConfig, indices)).toEqual(full);
+    const messy = [...indices].reverse().flatMap(index => [index, index]);
+    messy.push(Number.NaN, 1.5, Number.POSITIVE_INFINITY);
+    const original = messy.slice();
+    expect(analyzeAfrDelay(inputs, timingConfig, messy)).toEqual(full);
+    expect(messy).toEqual(original);
+    expect(analyzeAfrDelay(inputs, timingConfig, []) .events).toEqual([]);
+  });
+
 });

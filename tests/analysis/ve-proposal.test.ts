@@ -35,6 +35,30 @@ function evidence(ratios: readonly (number | undefined)[], weights: readonly num
 }
 
 describe('VE proposal model', () => {
+  it('counts protected cells separately even without evidence or with an otherwise withheld correction', () => {
+    const result = buildVeProposal([60, 70], 1, 2, evidence([undefined, 5], [0, 20]), {
+      priorWeight: 0, minimumEvidenceWeight: 5, maximumAbsoluteChange: 1, maximumPercentChange: 1,
+      pinnedCellIndices: new Set([0, 1]),
+    });
+    expect(result.cells.map(cell => cell.state)).toEqual(['pinned', 'pinned']);
+    expect(result.pinnedCellCount).toBe(2);
+    expect(result.noEvidenceCellCount + result.weakCellCount + result.withheldCellCount + result.measuredCellCount).toBe(0);
+  });
+  it('excludes pinned nodes from generated proposals without discarding neighboring evidence', () => {
+    const source = evidence([1.1, 1.2], [20, 20]);
+    const result = buildVeProposal([60, 70], 1, 2, source, {
+      priorWeight: 0, minimumEvidenceWeight: 5, maximumAbsoluteChange: 50, maximumPercentChange: 50,
+      pinnedCellIndices: new Set([0]),
+    });
+    expect(result.cells[0]!.state).toBe('pinned');
+    expect(result.cells[0]!.proposedValue).toBeUndefined();
+    expect(result.cells[0]!.evidenceCandidate).toBeUndefined();
+    expect(result.cells[1]!.proposedValue).toBe(84);
+    expect(result.pinnedCellCount).toBe(1);
+    expect(result.measuredCellCount).toBe(1);
+    expect(result.noEvidenceCellCount).toBe(0);
+    expect(source.cells.map(cell => cell.totalWeight)).toEqual([20, 20]);
+  });
   it('blends accepted evidence with the current VE as an explicit prior', () => {
     const result = buildVeProposal([60], 1, 1, evidence([1.1], [20]), {
       priorWeight: 20,

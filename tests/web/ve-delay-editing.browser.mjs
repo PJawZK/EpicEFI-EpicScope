@@ -52,7 +52,12 @@ async function setup() {
     input.dispatchEvent(new Event('change', { bubbles: true }));
   };
   load(async () => saved(100)); await settle();
+  const lambdaTrigger = root.querySelector('.ve-v50-lambda-tool-trigger');
+  lambdaTrigger?.click(); await settle();
   const delayHost = root.querySelector('[data-ve-analyzer="delay-table"]');
+  const lambdaDetails = delayHost?.closest('details');
+  const lambdaPanel = lambdaDetails?.closest('.ve-v50-tool-surface');
+  assert(lambdaTrigger && lambdaDetails?.open && lambdaPanel && !lambdaPanel.hidden, 'Lambda Delay tool did not open for editing fixture');
   const counts = { delay: 0, ve: 0, target: 0 };
   const undo = [];
   // Local fixture-host spies count actual DOM commits, never global DOM methods.
@@ -112,7 +117,7 @@ export async function runVeDelayEditingChecks() {
     shiftInput.value = '125'; shiftInput.dispatchEvent(new Event('input', { bubbles: true })); await settle();
     assert(s.cells().every(c => (c.querySelector('input')?.value ?? c.textContent) === '125') && all(s, 100) && s.view.sessionRevision === shiftRevision, 'Live range preview changed authority early or skipped cells');
     key(shiftInput, 'Enter'); await settle();
-    assert(all(s, 125) && s.view.sessionRevision === shiftRevision + 1 && s.counts.delay === 1 && s.counts.ve === 1 && s.counts.target === 1 && s.reads() === shiftReads, 'Shift-selected numeric replacement did not commit once without trace reads');
+    assert(all(s, 125) && s.view.sessionRevision === shiftRevision + 1 && s.counts.delay === 1 && s.counts.ve === 0 && s.counts.target === 0 && s.reads() === shiftReads, 'Shift-selected numeric replacement did not commit once without trace reads');
     checks.push('Shift-click preserves the anchor, previews numeric replacement across the range and commits once without F2');
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 }); await settle();
     rectangle(s); await settle();
@@ -120,10 +125,10 @@ export async function runVeDelayEditingChecks() {
     type(s, '175'); await settle();
     const observed = { revisionDelta: s.view.sessionRevision - before, values: values(s), selected: s.cells().filter(c=>c.dataset.delaySelected==='true').length, ...s.counts };
     console.info('delay-edit-counts: ' + JSON.stringify(observed));
-    assert(all(s, 175) && observed.revisionDelta === 1 && observed.delay === 1 && observed.ve === 1 && observed.target === 1,
+    assert(all(s, 175) && observed.revisionDelta === 1 && observed.delay === 1 && observed.ve === 0 && observed.target === 0,
       'Range edit must commit/invalidate/render once: ' + JSON.stringify(observed));
     assert(s.reads() === reads && s.cells().every((cell) => cell.dataset.delaySelected === 'true'), 'Edit loaded traces or lost selection');
-    checks.push('four-cell inline edit commits once with one revision and one render per table, no trace load');
+    checks.push('four-cell inline edit commits once with one revision, one Delay render, no unchanged VE/Target rebuild or trace load');
 
     s.resetCounts(); const stable = s.view.sessionRevision;
     type(s, '175'); await settle();
@@ -131,8 +136,12 @@ export async function runVeDelayEditingChecks() {
     checks.push('unchanged inline edit retains session and table DOM');
 
     key(s.cells()[0], 'Delete'); await settle();
-    assert(all(s, 100) && s.view.sessionRevision === stable + 1 && s.cells().every((cell) => cell.dataset.delayProvenance === 'measured-recommendation'), 'Delete did not revert the selected recommendation in one operation');
-    checks.push('Delete reverts the whole selection to evidence recommendation/provenance');
+    assert(all(s, '') && s.view.sessionRevision === stable + 1 && s.cells().every((cell) => cell.dataset.delayRecommended === '100' && cell.dataset.delayProvenance === 'user-edited'), 'Delete did not clear the selected working values in one operation');
+    const revertAfterDelete = [...s.root.querySelectorAll('.ve-delay-shared-toolbar button')].find((candidate) => candidate.title.startsWith('Revert selected cells'));
+    assert(revertAfterDelete, 'Revert tool missing after Delete');
+    revertAfterDelete.click(); await settle();
+    assert(all(s, 100) && s.cells().every((cell) => cell.dataset.delayProvenance === 'measured-recommendation'), 'Explicit Revert did not restore retained recommendations');
+    checks.push('Delete clears working values; explicit Revert restores retained recommendation/provenance');
 
     const cancelRevision = s.view.sessionRevision;
     type(s, '999', 'Escape'); await settle();
@@ -142,9 +151,14 @@ export async function runVeDelayEditingChecks() {
 
     type(s, ''); await settle();
     assert(all(s, '') && s.cells().every((cell) => cell.dataset.delayRecommended === '100' && cell.dataset.delayProvenance === 'user-edited'), 'Blank edit erased recommendation evidence');
+    const blankRevision = s.view.sessionRevision;
     key(s.cells()[0], 'Delete'); await settle();
-    assert(all(s, 100), 'Delete did not restore explicitly cleared values');
-    checks.push('blank commit clears working values only; Delete restores retained evidence');
+    assert(all(s, '') && s.view.sessionRevision === blankRevision, 'Delete changed an already empty working selection');
+    const revertBlank = [...s.root.querySelectorAll('.ve-delay-shared-toolbar button')].find((candidate) => candidate.title.startsWith('Revert selected cells'));
+    assert(revertBlank, 'Revert tool missing for explicitly cleared values');
+    revertBlank.click(); await settle();
+    assert(all(s, 100), 'Explicit Revert did not restore retained evidence after a blank edit');
+    checks.push('blank commit and Delete preserve none; explicit Revert restores retained evidence');
 
     const invalidRevision = s.view.sessionRevision;
     for (const invalid of ['-2', 'bad', 'Infinity']) type(s, invalid);
@@ -171,7 +185,7 @@ export async function runVeDelayEditingChecks() {
     assert(!s.view.editDelayCells([], { kind: 'revert' }), 'Empty command reported a change');
     s.view.setActive(false);
     assert(!s.view.editDelayCells(positions, { kind: 'set', workingMs: 333 }) && values(s).join(',') === snapshot, 'Hidden owner accepted an edit');
-    s.view.setActive(true); await settle();
+    s.view.setActive(true); s.root.querySelector('.ve-v50-lambda-tool-trigger').click(); await settle();
     checks.push('owner rejects invalid/empty/inactive commands without partial publication');
 
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 });
@@ -181,8 +195,15 @@ export async function runVeDelayEditingChecks() {
     let withdrawals = 0; const unsubscribe = s.view.onPrimaryAnalysisChange(() => { withdrawals += 1; });
     assert(!s.view.editDelayCells(positions, { kind: 'set', workingMs: 100 }) && s.view.getPrimaryAnalysis() === primary, 'No-op withdrew primary authority');
     const measured = [...s.root.querySelectorAll('[data-ve-analyzer="ve-table-view"] td')].find((cell) => cell.title.startsWith('Measured proposal'));
-    assert(measured, 'Expected measured evidence cell'); measured.click(); await settle();
-    assert(!s.host.querySelector('.ve-cell-detail-popover').hidden, 'Evidence did not open');
+    assert(measured, 'Expected measured evidence cell');
+    measured.setPointerCapture = () => {};
+    measured.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 31, pointerType: 'mouse', bubbles: true, cancelable: true }));
+    measured.dispatchEvent(new PointerEvent('pointerup', { pointerId: 31, pointerType: 'mouse', bubbles: true, cancelable: true }));
+    assert(s.host.querySelector('.ve-cell-detail-popover').hidden, 'Normal VE selection unexpectedly opened Cell Evidence');
+    const evidenceButton = [...s.root.querySelectorAll('.ve-proposal-shared-toolbar button')].find((candidate) => candidate.title === 'Cell Evidence');
+    assert(evidenceButton, 'Cell Evidence tool missing from VE Proposal toolbar');
+    evidenceButton.click(); await settle();
+    assert(!s.host.querySelector('.ve-cell-detail-popover').hidden, 'Explicit Cell Evidence tool did not open retained evidence');
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 145 }); await settle();
     assert(withdrawals === 1 && !s.view.getPrimaryAnalysis() && s.host.querySelector('.ve-cell-detail-popover').hidden, 'Batch did not withdraw evidence/proposal once');
     unsubscribe(); checks.push('no-op retains primary evidence; real batch withdraws primary and popup once');
@@ -196,14 +217,13 @@ export async function runVeDelayEditingChecks() {
         if (option.value === 'delay') assert(text === '145', 'Delay Result View missed batch values');
         else {
           assert(Number(text) === Number(cell.dataset.veCurrentValue), 'Fallback Result View lost source VE after edit');
-          assert(cell.style.getPropertyValue('--ve-cell-level') === (option.value === 'proposal' ? cell.dataset.veBaseLevel : '0.5'), 'Fallback heat differs from the accepted contract');
+          assert(cell.style.getPropertyValue('--ve-cell-level') === cell.dataset.veBaseLevel, 'Fallback heat differs from original VE heat');
         }
       }
     }
     assert(s.reads() === presentationReads && s.view.sessionRevision === presentationRevision, 'Result Views recalculated edited session');
     resultView.value = 'proposal'; resultView.dispatchEvent(new Event('change', { bubbles: true })); await settle();
-    checks.push('post-edit Result Views preserve source VE, neutral fallback heat and working delays without calculation');
-
+    checks.push('post-edit Result Views preserve source VE, source fallback heat and working delays without calculation');
 
     const pending = deferred(); s.load(() => pending.promise); await settle();
     s.view.editDelayCells(positions, { kind: 'set', workingMs: 160 });
@@ -226,7 +246,7 @@ export async function runVeDelayEditingChecks() {
     oldInput.blur(); s.load(async () => saved(250)); await settle();
     assert(all(s, 250) && !s.root.querySelector('.ve-delay-inline-input'), 'Stale preview committed into replacement tune');
     rectangle(s); key(s.cells()[0], 'F2'); s.root.querySelector('.ve-delay-inline-input').value = '888';
-    s.view.setActive(false); s.view.setActive(true); await settle();
+    s.view.setActive(false); s.view.setActive(true); s.root.querySelector('.ve-v50-lambda-tool-trigger').click(); await settle();
     assert(all(s, 250) && !s.root.querySelector('.ve-delay-inline-input'), 'Navigation committed unsaved preview');
     checks.push('replacement/navigation cancel unsaved inline edits without contaminating the next session');
 
@@ -234,19 +254,40 @@ export async function runVeDelayEditingChecks() {
     s.root.querySelector('[data-ve-analyzer="grab-delay"]').click();
     for (let i = 0; i < 1000 && s.root.querySelector('[data-ve-analyzer="use-delay"]').disabled; i++) await settle();
     assert(s.root.querySelector('[data-ve-analyzer="delay-table"]').dataset.mode === 'recommendation', 'Initial discovery auto-activated');
+    const emptyDelay = s.cells().find((cell) => !cell.hasAttribute('data-delay-value'));
+    if (emptyDelay) {
+      assert(getComputedStyle(emptyDelay).backgroundColor === 'rgb(11, 23, 31)',
+        'Missing Lambda Delay value incorrectly received the colored VE heatmap');
+    }
     const recommendationCells = s.cells().map((cell) => ({ row: Number(cell.dataset.delayRow), col: Number(cell.dataset.delayCol) }));
     const rawRecommendations = s.cells().map((cell) => cell.dataset.delayRecommended);
     s.view.editDelayCells(recommendationCells, { kind: 'set', workingMs: 333 });
     assert(s.root.querySelector('[data-ve-analyzer="save-delay"]').disabled, 'Review edit silently promoted recommendation');
-    s.root.querySelector('[data-ve-analyzer="use-delay"]').click(); await settle();
+    const explanation = s.root.querySelector('.ve-v50-run-chips .ve-v50-run-info');
+    const fix = s.root.querySelector('.ve-v50-run-chips .ve-v50-run-fix');
+    const blockerText = s.root.querySelector('.ve-v50-run-chips .ve-v50-run-blocker');
+    assert(explanation && fix && blockerText && !explanation.hidden && !fix.hidden
+      && blockerText.textContent.trim().length > 0,
+      'Blocked Run did not expose an explanation and Fix alongside readiness chips');
+    explanation.click(); await settle();
+    assert(!s.root.querySelector('.ve-run-info-popout').hidden,
+      'Visible main-bar readiness information did not open blocker details');
+    s.root.querySelector('.ve-run-info-close')?.click();
+    const useOutside = s.root.querySelector('.ve-v50-run-chips .ve-v50-use-delay');
+    const grabOutside = s.root.querySelector('.ve-v50-run-chips .ve-v50-grab-delay');
+    assert(useOutside && grabOutside && !useOutside.hidden && !useOutside.disabled,
+      'Recommended Lambda delay cannot be activated from main bar');
+    assert(useOutside.previousElementSibling === grabOutside, 'Use recommendation is not after Grab lambda delays');
+    useOutside.click(); await settle();
     assert(all(s, 333) && s.cells().every((cell, index) => cell.dataset.delayRecommended === rawRecommendations[index]), 'Use recommendation lost reviewed edits/raw evidence');
+    assert(useOutside.hidden, 'Use recommendation stayed visible after activating a working delay table');
     checks.push('recommendation-only edits stay separate and survive explicit activation with raw evidence');
 
     s.load(async () => saved(100, 16)); await settle();
     const large = s.cells().map((cell) => ({ row: Number(cell.dataset.delayRow), col: Number(cell.dataset.delayCol) }));
     const largeRevision = s.view.sessionRevision, largeReads = s.reads(); s.resetCounts();
     s.view.editDelayCells(large, { kind: 'set', workingMs: 500 }); await settle();
-    assert(large.length === 256 && all(s, 500) && s.view.sessionRevision === largeRevision + 1 && s.counts.delay === 1 && s.counts.ve === 1 && s.counts.target === 1 && s.reads() === largeReads, 'Large selection repeated invalidation/render/read work');
+    assert(large.length === 256 && all(s, 500) && s.view.sessionRevision === largeRevision + 1 && s.counts.delay === 1 && s.counts.ve === 0 && s.counts.target === 0 && s.reads() === largeReads, 'Large selection repeated invalidation/render/read work');
     checks.push('256-cell owner command still invalidates/renders once without full-log work');
 
     return { passed: checks.length, checks, observed };

@@ -1,3 +1,4 @@
+import { veAnalysisAxisIssue } from './ve-axis-validation';
 import { VE_ANALYSIS_BATCH_SIZE, finishVeAnalysis, sortVeAnalysisValues, type VeAnalysisSteps } from './ve-analysis-work';
 import type { NumericChannelRange } from '../log-model/log-types';
 import type { NumericHeatmapAxisBin } from './heatmap';
@@ -53,6 +54,7 @@ export interface VeEvidenceCell {
   readonly correctionP90Ratio: number | undefined;
   readonly correctionSpreadPercent: number | undefined;
   readonly confidence: VeEvidenceConfidence;
+  /** Nondecreasing contributing source indices in traversal order; duplicates are retained. */
   readonly sampleIndices: Uint32Array;
 }
 
@@ -134,6 +136,7 @@ function axisBracket(value: number, bins: readonly number[]): { low: number; hig
     if (value < bins[mid]!) high = mid;
     else low = mid;
   }
+  if (value === bins[low]) return { low, high: low, fraction: 0 };
   const span = bins[high]! - bins[low]!;
   if (!(span > 0)) return undefined;
   return { low, high, fraction: (value - bins[low]!) / span };
@@ -232,6 +235,10 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
 }
 
 export function* buildVeEvidenceMapSteps(inputs: VeEvidenceInputs, config: VeEvidenceConfig = {}, cooperative = false): VeAnalysisSteps<VeEvidenceMapResult> {
+  for (const [name, axis] of [['VE RPM', inputs.veRpmBins], ['VE load', inputs.veLoadBins], ['Target RPM', inputs.target.rpmBins], ['Target load', inputs.target.loadBins]] as const) {
+    const issue = veAnalysisAxisIssue(axis);
+    if (issue) throw new RangeError(`${name}: ${issue}`);
+  }
   let indices: number[];
   if (cooperative) {
     indices = [];

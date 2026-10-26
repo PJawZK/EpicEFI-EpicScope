@@ -1,12 +1,13 @@
+import type { VeReadinessPresentation } from './ve-analyzer-readiness';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import { VE_CELL_CHANGE_PRIOR_WEIGHT, type VeCellChangeAuthority } from './ve-analyzer-qualification';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import {
-  createVeAnalyzerView as createVeAnalyzerViewV5,
+  createVeAnalyzerView as createVeAnalyzerViewV4,
   type VeAnalyzerViewController,
-} from './ve-analyzer-view-v5';
+} from './ve-analyzer-view-v4';
 
 const OPTIONAL_BOUND_ROLES = [
   'min-rpm',
@@ -15,9 +16,13 @@ const OPTIONAL_BOUND_ROLES = [
   'max-load',
 ] as const;
 
-export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV5(observability);
+export function createVeAnalyzerView(observability?: ObservabilityRecorder, presentation: VeReadinessPresentation = {}): VeAnalyzerViewController {
+  // Shared table interaction owns production delay input. This layer adds
+  // readiness presentation and prior-authority defaults to the existing owner.
+  const inner = createVeAnalyzerViewV4(observability, presentation);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
 
   const blockerPanel = document.createElement('div');
@@ -54,16 +59,15 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   let renderQueued = false;
   const scheduleRenderBlockers = (): void => {
-    if (renderQueued) return;
+    if (disposed || presentation.compactReadiness || renderQueued) return;
     renderQueued = true;
     queueMicrotask(() => {
       renderQueued = false;
-      renderBlockers();
+      if (!disposed) renderBlockers();
     });
   };
 
   const renderBlockers = (): void => {
-    annotateOptionalBounds();
     const state = inner.getReadiness();
     const blockers = state.blockers;
     if (!state.active || state.pending || blockers.length === 0) {
@@ -98,18 +102,26 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     }
   };
 
-  inner.onReadinessChange(scheduleRenderBlockers);
-  root.addEventListener('change', syncPriorAuthority);
+  annotateOptionalBounds();
+  const unsubscribeReadiness = presentation.compactReadiness ? () => {} : inner.onReadinessChange(scheduleRenderBlockers);
+  root.addEventListener('change', syncPriorAuthority, { signal: events.signal });
   root.addEventListener('input', event => {
     if (event.target instanceof Element && event.target.closest('.ve-delay-inline-input')) return;
     syncPriorAuthority();
-  });
+  }, { signal: events.signal });
 
   scheduleRenderBlockers();
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      unsubscribeReadiness();
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return; inner.setActive(active); },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -117,22 +129,25 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (!changed) return false;
       scheduleRenderBlockers();
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
       scheduleRenderBlockers();
       return true;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
       scheduleRenderBlockers();
     },
   };
 }
 
-export type { VeAnalyzerViewController } from './ve-analyzer-view-v5';
+export type { VeAnalyzerViewController } from './ve-analyzer-view-v4';

@@ -1,3 +1,4 @@
+import type { VeReadinessPresentation } from './ve-analyzer-readiness';
 import type { ObservabilityRecorder } from '../observability/recorder';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { TuneModel } from '../../../../core/tune/tune-model';
@@ -9,9 +10,11 @@ import {
 import '../app/font-intensity-settings';
 import '../styles/ve-analyzer-polish.css';
 
-export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
-  const inner = createVeAnalyzerViewV7(observability);
+export function createVeAnalyzerView(observability?: ObservabilityRecorder, presentation: VeReadinessPresentation = {}): VeAnalyzerViewController {
+  const inner = createVeAnalyzerViewV7(observability, presentation);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
   const infoButton = root.querySelector<HTMLButtonElement>('.ve-run-info-button')!;
 
@@ -29,18 +32,26 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   status.append(infoButton, readiness, quickFix);
 
   const syncQuickFix = (): void => {
+    if (disposed) return;
     const state = inner.getReadiness();
     const firstFix = state.active && !state.pending ? state.blockers.find(blocker => blocker.targetSelector) : undefined;
     quickFix.hidden = !firstFix;
     quickFix.onclick = firstFix ? () => focusVeReadinessTarget(root, firstFix.targetSelector!) : null;
   };
 
-  inner.onReadinessChange(syncQuickFix);
-  queueMicrotask(syncQuickFix);
+  const unsubscribeReadiness = presentation.compactReadiness ? () => {} : inner.onReadinessChange(syncQuickFix);
+  if (!presentation.compactReadiness) queueMicrotask(syncQuickFix);
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      unsubscribeReadiness();
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return; inner.setActive(active); },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -48,16 +59,19 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (!changed) return false;
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
       return true;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
     },
   };

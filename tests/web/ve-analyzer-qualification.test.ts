@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition, NumericChannelRange } from '../../core/log-model/log-types';
 import {
   applyVeQualificationValidity,
+  applyVeQualificationValidityBatch,
   preferredVeQualificationChannel,
   VE_CELL_CHANGE_PRIOR_WEIGHT,
   veCellChangeAuthorityForPrior,
@@ -89,4 +90,41 @@ describe('VE Analyzer quick qualification', () => {
     const qualified = applyVeQualificationValidity(source, { minimumClt: 70 });
     expect([...qualified.validity]).toEqual([0, 0]);
   });
+  it('shares aligned decisions without losing each trace validity or scoped geometry', () => {
+    const clt = range([50, 80, 90, 60, 100], 20), tps = range([10, 20, 95, 30, 40], 20);
+    const first = range([1, 2, 3, 4], 20); first.validity.set([0, 1, 1, 1]);
+    const second = range([5, 6, 7, 8], 20); second.validity.set([1, 0, 2, 1]);
+    const shifted = range([1, 2, 3, 4], 21), short = range([1, 2], 20), outside = range([1, 2], 30);
+    const inputs = [first, second, shifted, short, outside];
+    const originals = inputs.map(input => input.validity.slice());
+    const settings = { minimumClt: 70, maximumTps: 90 };
+    const output = applyVeQualificationValidityBatch(inputs, settings, clt, tps);
+    for (const [index, input] of inputs.entries()) {
+      expect(output[index]?.validity).toEqual(applyVeQualificationValidity(input, settings, clt, tps).validity);
+      expect(input.validity).toEqual(originals[index]);
+      expect(output[index]?.values).toBe(input.values);
+      expect(output[index]?.timeMs).toBe(input.timeMs);
+    }
+    expect([...output[1]!.validity]).toEqual([0, 0, 2, 0]);
+    expect(applyVeQualificationValidityBatch(inputs, {})).toBe(inputs);
+    const changed = applyVeQualificationValidityBatch(inputs, { minimumClt: 0 }, clt);
+    expect([...changed[0]!.validity]).toEqual([0, 1, 1, 1]);
+    expect([...applyVeQualificationValidityBatch(inputs, settings)[0]!.validity]).toEqual([0, 0, 0, 0]);
+  });
+
+  it('preserves twelve independently valid traces above 320k samples', () => {
+    const count = 320_459;
+    const source: NumericChannelRange = { startSampleIndex: 100, values: new Float64Array(count).fill(80),
+      timeMs: Float64Array.from({ length: count }, (_, index) => index * 10), validity: new Uint8Array(count).fill(1) };
+    const inputs = Array.from({ length: 12 }, (_, index) => {
+      const validity = new Uint8Array(source.validity); validity[index] = 0;
+      return { ...source, validity };
+    });
+    const output = applyVeQualificationValidityBatch(inputs, { minimumClt: 70 }, source);
+    for (let index = 0; index < inputs.length; index += 1) {
+      expect(output[index]!.validity.every((value, sample) => value === inputs[index]!.validity[sample])).toBe(true);
+      expect(output[index]!.validity === inputs[index]!.validity).toBe(false);
+    }
+  });
+
 });

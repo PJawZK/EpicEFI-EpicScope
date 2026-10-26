@@ -11,7 +11,7 @@ const DEFAULT_MAX_LINES = 250_000;
 const DEFAULT_MAX_ENTRIES_PER_SECTION = 25_000;
 const DEFAULT_MAX_LINE_LENGTH = 128 * 1024;
 
-function stripInlineComment(line: string): string {
+export function stripInlineComment(line: string): string {
   let quote: '"' | "'" | undefined;
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
@@ -25,7 +25,7 @@ function stripInlineComment(line: string): string {
   return line;
 }
 
-function splitCommaFields(value: string): string[] {
+export function splitCommaFields(value: string): string[] {
   const fields: string[] = [];
   let current = '';
   let quote: '"' | "'" | undefined;

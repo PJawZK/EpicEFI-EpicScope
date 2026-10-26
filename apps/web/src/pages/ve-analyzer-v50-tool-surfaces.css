@@ -1,0 +1,265 @@
+.ve-v50-tool-host {
+  position: static;
+  pointer-events: none;
+}
+
+.ve-v50-tool-surface {
+  position: fixed;
+  z-index: 90;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  grid-template-rows: 36px minmax(0, auto);
+  width: min(900px, calc(100vw - 32px));
+  height: max-content;
+  max-height: calc(100vh - 100px);
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  border: 1px solid #355363;
+  border-radius: 6px;
+  background: #0d1b24;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, .48);
+  pointer-events: auto;
+}
+
+.ve-v50-tool-surface[hidden] {
+  display: none;
+}
+
+.ve-v50-tool-surface-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 7px;
+  border-bottom: 1px solid #263d49;
+}
+
+.ve-v50-tool-surface-head strong {
+  color: #dce9ef;
+  font-size: 13px;
+}
+
+.ve-v50-tool-surface-close {
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #d0dce2;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ve-v50-tool-surface-close:hover {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+.ve-v50-tool-surface-body {
+  min-height: 0;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ve-v50-tool-details {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ve-v50-tool-details > summary[hidden] {
+  display: none;
+}
+
+.ve-v50-tool-details:not([open]) > :not(summary) {
+  display: none;
+}
+
+.ve-v50-lambda-tool-trigger {
+  cursor: pointer;
+}
+
+.ve-v50-lambda-tool-trigger:hover,
+.ve-v50-lambda-tool-trigger:focus-visible {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+@media (max-width: 900px) {
+  .ve-v50-tool-surface {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 72px);
+  }
+}
+
+/* Distinct tool views over one controller-owned Advanced subtree. Never move
+ * role selects or readiness tbody out of the Advanced details. */
+.ve-v50-tool-surface[data-ve-tool-mode='inputs'] .specialized-analyzer-controls,
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-events {
+  display: none !important;
+}
+.ve-v50-tool-surface[data-ve-tool-mode='advanced'] .specialized-analyzer-events {
+  display: none !important;
+}
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls {
+  display: grid;
+}
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > :not(label) {
+  display: none !important;
+}
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label:not(:has(select[data-role='dfco'], select[data-role='fuelCutReason'], select[data-role='aeActive'], select[data-role='decelActive'])) {
+  display: none !important;
+}
+
+/* Compact scoped tools do not inherit the giant old Advanced dimensions. */
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .ve-axis-mapping-advanced,
+.ve-v50-tool-surface[data-ve-tool-mode='inputs'] .ve-axis-mapping-advanced { display: none !important; }
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label { min-width: 0; }
+.ve-v50-tool-surface[data-ve-tool-mode='exclusions'] .specialized-analyzer-controls > label select { width: 100%; }
+
+@media (min-width: 901px) {
+  .ve-v50-tool-surface[data-ve-tool-mode='exclusions'] {
+    width: min(560px, calc(100vw - 32px));
+  }
+  .ve-v50-tool-surface[data-ve-tool-mode='inputs'] {
+    width: min(840px, calc(100vw - 32px));
+  }
+  .ve-v50-tool-surface[data-ve-tool-mode='advanced'] {
+    width: min(760px, calc(100vw - 32px));
+  }
+}
+
+/* Typography consistency inside the secondary tools. The old v2 forms used
+ * 7–9px text, which is illegible at normal desktop scaling. */
+.ve-v50-tool-surface-body label,
+.ve-v50-tool-surface-body input,
+.ve-v50-tool-surface-body select,
+.ve-v50-tool-surface-body button {
+  font-size: 12px;
+}
+.ve-v50-tool-surface-body label > span,
+.ve-v50-tool-surface-body .specialized-analyzer-options-grid label > span,
+.ve-v50-tool-surface-body .specialized-analyzer-controls label > span,
+.ve-v50-tool-surface-body .ve-delay-cell-editor-grid span {
+  font-size: 10px;
+  line-height: 1.3;
+}
+.ve-v50-tool-surface-body .specialized-analyzer-table th,
+.ve-v50-tool-surface-body .specialized-analyzer-table td,
+.ve-v50-tool-surface-body .ve-delay-table th,
+.ve-v50-tool-surface-body .ve-delay-table td {
+  font-size: 11px;
+}
+.ve-v50-tool-surface-body .ve-delay-result-note,
+.ve-v50-tool-surface-body .ve-delay-source-events,
+.ve-v50-tool-surface-body .ve-quick-qualification-note {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* One cohesive Lambda Delay tool layout; the existing semantic controls,
+ * recommendation and editable table retain their original DOM and handlers. */
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(760px, calc(100vw - 24px));
+  min-width: 0;
+  max-height: calc(100dvh - 48px);
+  height: auto;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda)[hidden] { display: none; }
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) > .ve-v50-tool-surface-head {
+  flex: 0 0 36px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) > .ve-v50-tool-surface-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  max-height: calc(100dvh - 86px);
+  overflow: auto;
+  padding: 8px 10px 12px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-v50-tool-details {
+  width: 100%;
+  box-sizing: border-box;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  align-items: end;
+  padding: 0 0 9px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid > label {
+  min-width: 0;
+  align-self: stretch;
+  grid-template-rows: minmax(28px, auto) 32px;
+  align-content: end;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid > label input {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid > button {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 3px 5px;
+  white-space: normal;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid > button[data-ve-analyzer='grab-delay'] {
+  grid-column: span 2;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid > input[hidden] {
+  display: none;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-guidance {
+  margin: 0 0 8px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-shared-toolbar {
+  margin-top: 5px;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table-shell {
+  width: max-content;
+  max-width: 100%;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  margin: 5px 0 0;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table {
+  width: max-content;
+  min-width: 0;
+  table-layout: fixed;
+}
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table th,
+.ve-v50-tool-surface:has(.ve-v50-tool-lambda) .ve-delay-table td {
+  box-sizing: border-box;
+  width: 86px;
+  min-width: 86px;
+  max-width: 86px;
+  height: 28px;
+  min-height: 28px;
+}
+@media (max-width: 700px) {
+  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) {
+    width: calc(100vw - 16px);
+  }
+  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ve-v50-tool-surface:has(.ve-v50-tool-lambda) .specialized-analyzer-options-grid > button[data-ve-analyzer='grab-delay'] {
+    grid-column: span 2;
+  }
+}

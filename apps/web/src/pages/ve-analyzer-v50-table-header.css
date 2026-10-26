@@ -1,0 +1,215 @@
+.ve-v50-table-head {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ve-v50-table-head > div:not(.ve-table-header-controls):not(.ve-v50-table-actions) {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ve-v50-table-head .ve-v50-legacy-table-description {
+  display: none !important;
+}
+
+.ve-v50-table-head .ve-v50-table-identity {
+  display: inline;
+  margin: 0;
+  color: #748c99;
+  font-size: 8px;
+}
+
+.ve-v50-table-head > .ve-table-header-controls {
+  display: contents;
+}
+
+/* v7 owns selection semantics; v50 retains these mounted controls and
+ * supplies their visible presentation. */
+.ve-v50-table-head > .ve-table-header-controls > select[data-role='ve-table'],
+.ve-v50-table-head > .ve-table-header-controls > select[data-role='target-table'] {
+  display: none !important;
+}
+
+/* The old workbench legend was useful during the transitional overlay design,
+ * but the frozen v50 header is intentionally compact. Evidence remains visible
+ * in cell markers and the explicit Cell Evidence inspector. */
+.ve-v50-port .ve-workbench-panel:first-child > header > div::after {
+  content: none !important;
+  display: none !important;
+}
+
+.ve-v50-table-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ve-v50-table-toolbar-host {
+  display: flex;
+  align-items: center;
+}
+
+.ve-v50-result-view-host,
+.ve-v50-target-host {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #93a8b3;
+  font-size: 8px;
+  text-transform: none;
+}
+
+.ve-v50-result-view-host select,
+.ve-v50-target-host select {
+  min-width: 0;
+  height: 28px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: #d8e5eb;
+  font-size: 9px;
+}
+
+.ve-v50-table-icon-button,
+.ve-v50-table-flip {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid #2f4b59;
+  border-radius: 4px;
+  background: #0b1b24;
+  color: #d0dce2;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.ve-v50-table-icon-button {
+  width: 34px;
+  padding: 0;
+}
+
+.ve-v50-table-icon-button:hover,
+.ve-v50-table-flip:hover {
+  border-color: #3479ae;
+  background: #102437;
+}
+
+.ve-v50-semantic-control {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  .ve-v50-table-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .ve-v50-table-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Compact target selector must override the older workbench-wide select width
+ * constraints and reserve physical room for the native dropdown indicator. */
+.ve-v50-port .ve-workbench-panel .ve-v50-target-host {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(290px, 27vw);
+  overflow: hidden;
+}
+.ve-v50-port .ve-workbench-panel .ve-v50-target-host select {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 138px;
+  max-width: min(230px, 22vw);
+  height: 28px;
+  padding: 0 23px 0 7px;
+  margin: 0;
+  border: 0;
+  flex: 1 1 auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ve-v50-port .ve-workbench-panel .ve-v50-result-view-host select {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 175px;
+  padding-right: 23px;
+}
+
+/* One visible inspector action: the semantic toolbar button stays mounted for
+ * its existing event/evidence owner, but the v50 header presents the action. */
+.ve-v50-port .ve-proposal-shared-toolbar > button[aria-label='Cell Evidence'] {
+  display: none;
+}
+
+/* The shared toolbar stays anchored to VE's stable header across v7 rebuilds.
+ * The v50 action cluster follows it visually without moving semantic nodes. */
+.ve-v50-port .ve-v50-table-head > .ve-proposal-shared-toolbar {
+  order: 1;
+  flex: 0 1 auto;
+  margin: 0 0 0 auto;
+}
+.ve-v50-port .ve-v50-table-head > .ve-v50-table-actions {
+  order: 2;
+  flex: 0 1 auto;
+  margin-left: 0;
+}
+.ve-v50-port .ve-v50-table-head > div:not(.ve-table-header-controls):not(.ve-v50-table-actions):not(.ve-proposal-shared-toolbar) {
+  order: 0;
+  margin-right: auto;
+}
+
+.ve-v50-table-icon-button > svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Use the app's dark native popup palette; otherwise Chromium may render the
+ * Target selector's options as a white system menu over the dark header. */
+.ve-v50-port .ve-v50-target-host select,
+.ve-v50-port .ve-v50-result-view-host select {
+  color-scheme: dark;
+  background-color: #0b1b24;
+  color: #d8e5eb;
+}
+.ve-v50-port .ve-v50-target-host select option,
+.ve-v50-port .ve-v50-result-view-host select option {
+  background-color: #101d28;
+  color: #dbe8ef;
+}
+
+.ve-v50-evidence-hint {
+  font-size: 10px;
+  color: #ffdb86;
+  white-space: nowrap;
+  align-self: center;
+}
+.ve-v50-evidence-hint[hidden] { display: none !important; }
+
+/* Fix may expose the original VE selector without cloning its semantic owner. */
+.ve-v50-table-head > .ve-table-header-controls > select[data-role='ve-table'].ve-v50-readiness-target {
+  display: block !important;
+}
+
+.ve-v50-table-icon-button[aria-pressed='true'] { background: #174258; border-color: #60d9ff; color: #e3f8ff; }

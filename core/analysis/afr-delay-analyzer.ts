@@ -74,10 +74,27 @@ function sample(range: NumericChannelRange | undefined, sampleIndex: number): Sa
 }
 
 function selectedIndices(reference: NumericChannelRange, sampleIndices?: ArrayLike<number>): number[] {
-  const raw = sampleIndices
-    ? Array.from({ length: sampleIndices.length }, (_, index) => sampleIndices[index])
-    : Array.from({ length: reference.values.length }, (_, index) => reference.startSampleIndex + index);
-  return [...new Set(raw.filter((value): value is number => Number.isSafeInteger(value)))].sort((left, right) => left - right);
+  // Full-range traversal is already unique and ordered. Explicit scopes still
+  // filter invalid entries and deduplicate/sort only when their order needs it.
+  if (!sampleIndices) {
+    const indices: number[] = [];
+    for (let local = 0; local < reference.values.length; local += 1) {
+      const sampleIndex = reference.startSampleIndex + local;
+      if (Number.isSafeInteger(sampleIndex)) indices.push(sampleIndex);
+    }
+    return indices;
+  }
+  const indices: number[] = [];
+  let ordered = true;
+  let previous = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < sampleIndices.length; index += 1) {
+    const sampleIndex = sampleIndices[index]!;
+    if (!Number.isSafeInteger(sampleIndex)) continue;
+    if (sampleIndex <= previous) ordered = false;
+    previous = sampleIndex;
+    indices.push(sampleIndex);
+  }
+  return ordered ? indices : [...new Set(indices)].sort((left, right) => left - right);
 }
 
 // Internal contract: callers provide ascending values; interpolation never mutates them.

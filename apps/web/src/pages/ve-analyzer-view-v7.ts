@@ -1,13 +1,17 @@
+import { formatVeMetric } from './ve-metric-format';
+import type { VeReadinessPresentation } from './ve-analyzer-readiness';
+import { veTableProjection, veSourceHeatLevel } from './ve-analyzer-table-projection';
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
-import { veResultViewUsesNeutralFallback } from './ve-analyzer-result-heat';
+import { placeAdaptedVeTableHeader } from './ve-analyzer-table-header-placement';
+import { veDelayEditOwner } from './ve-analyzer-delay-edit-owner';
+import { veProposalEditOwner } from './ve-analyzer-proposal-edit-owner';
 import { focusVeReadinessTarget } from './ve-analyzer-readiness';
 import type { TuneModel } from '../../../../core/tune/tune-model';
 import type { LoggerAnalysisContext } from './logger-page';
 import { describeVeRunBlocker } from './ve-analyzer-blocker-info';
 import {
   VE_RESULT_VIEW_OPTIONS,
-  parseVeRenderedCellMetrics,
   veResultDisplay,
   type VeResultView,
 } from './ve-analyzer-result-view';
@@ -61,61 +65,19 @@ function storeResultView(view: VeResultView): void {
   }
 }
 
-function finiteNumber(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function matchingAxisIndex(value: number | undefined, bins: readonly number[]): number | undefined {
-  if (value === undefined || !Number.isFinite(value)) return undefined;
-  for (let index = 0; index < bins.length; index += 1) {
-    const bin = bins[index]!;
-    const tolerance = Math.max(1e-9, Math.abs(bin) * 1e-9);
-    if (Math.abs(bin - value) <= tolerance) return index;
-  }
-  return undefined;
-}
-
-function primaryCellCurrent(
-  owner: VeAnalyzerViewController,
-  rpm: number | undefined,
-  load: number | undefined,
-): number | undefined {
-  const primary = owner.getPrimaryAnalysis();
-  const values = primary?.veTable.numericValues;
-  if (!primary || !values) return undefined;
-  const col = matchingAxisIndex(rpm, primary.rpmBins);
-  const row = matchingAxisIndex(load, primary.loadBins);
-  if (row === undefined || col === undefined) return undefined;
-  const value = values[row * primary.veTable.cols + col];
-  return value !== undefined && Number.isFinite(value) ? value : undefined;
-}
-
 function readDelaySurface(root: HTMLElement): DelaySurface | undefined {
-  const table = root.querySelector<HTMLTableElement>('.ve-delay-table');
-  const header = table?.tHead?.rows[0];
-  const body = table?.tBodies[0];
-  if (!table || !header || !body) return undefined;
+  const snapshot = veDelayEditOwner(root)?.snapshot();
+  if (!snapshot || snapshot.rows <= 0 || snapshot.cols <= 0) return undefined;
+  if (snapshot.rpmBins.length !== snapshot.cols || snapshot.loadBins.length !== snapshot.rows) return undefined;
+  if (snapshot.values.length !== snapshot.rows * snapshot.cols) return undefined;
+  if (!snapshot.rpmBins.every(Number.isFinite) || !snapshot.loadBins.every(Number.isFinite)) return undefined;
 
-  const rpmBins = [...header.cells].slice(1).map((cell) => finiteNumber(cell.textContent?.trim())).filter((value): value is number => value !== undefined);
-  if (rpmBins.length === 0) return undefined;
-
-  const rows = [...body.rows].map((row) => {
-    const load = finiteNumber(row.cells[0]?.textContent?.trim());
-    const values = [...row.cells].slice(1).map((cell) => {
-      const td = cell as HTMLTableCellElement;
-      return finiteNumber(td.dataset.delayValue) ?? finiteNumber(td.textContent?.trim());
-    });
-    return load === undefined ? undefined : { load, values };
-  }).filter((row): row is { load: number; values: (number | undefined)[] } => row !== undefined)
-    .sort((a, b) => a.load - b.load);
-
-  if (rows.length === 0) return undefined;
+  const rows = Array.from({ length: snapshot.rows }, (_, row) =>
+    snapshot.values.slice(row * snapshot.cols, (row + 1) * snapshot.cols));
   return {
-    rpmBins,
-    loadBins: rows.map((row) => row.load),
-    rows: rows.map((row) => row.values),
+    rpmBins: snapshot.rpmBins,
+    loadBins: snapshot.loadBins,
+    rows,
   };
 }
 
@@ -153,10 +115,12 @@ function interpolateDelay(surface: DelaySurface | undefined, rpm: number | undef
   return y.low === y.high ? top : top + (bottom - top) * y.fraction;
 }
 
-export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeAnalyzerViewController {
+export function createVeAnalyzerView(observability?: ObservabilityRecorder, presentation: VeReadinessPresentation = {}): VeAnalyzerViewController {
   const ownerEvidence = createOwnerEvidence(observability, 've-presentation');
-  const inner = createVeAnalyzerViewV6(observability);
+  const inner = createVeAnalyzerViewV6(observability, presentation);
   const root = inner.element;
+  let disposed = false;
+  const events = new AbortController();
   const workbench = root.querySelector<HTMLElement>('.ve-workbench')!;
   const actionbar = root.querySelector<HTMLElement>('.ve-workbench-actionbar')!;
   const readiness = root.querySelector<HTMLElement>('[data-ve-analyzer="readiness"]')!;
@@ -197,8 +161,8 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   const targetSelect = root.querySelector<HTMLSelectElement>('select[data-role="target-table"]');
   let activeTableTab: VeTableTab = 've';
 
-  // v7 is the single owner of table layout, result-view selection and table-header controls.
-  // Later enhancement layers must not re-parent these nodes.
+  // v7 owns layout/result selection. An installed presentation may explicitly
+  // take over placement without changing those semantic controls.
   const veControls = document.createElement('div');
   veControls.className = 've-table-header-controls';
   const targetControls = document.createElement('div');
@@ -239,10 +203,10 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
 
   const resultDescription = (view: VeResultView): string => {
     switch (view) {
-      case 'proposal': return baseVeHeaderDescription;
-      case 'change': return 'VE change from the original table; weak/withheld cells show the raw evidence candidate for review.';
-      case 'change-percent': return 'VE change in percent; weak/withheld cells show the raw evidence candidate for review.';
-      case 'mixture-error': return 'Robust target-vs-actual correction evidence after the configured fuel-correction handling.';
+      case 'proposal': return `${baseVeHeaderDescription} Editable working review; original tune and generated analysis remain separate.`;
+      case 'change': return 'Generated analysis change from the original tune, independent of working edits. Weak/withheld cells show raw candidate change, not an accepted proposal.';
+      case 'change-percent': return 'Generated analysis percent change from the original tune, independent of working edits. Weak/withheld cells show raw candidate change.';
+      case 'mixture-error': return 'Robust base-VE correction after configured applied-fuel-trim handling; this is not raw observed mixture error when compensation is enabled.';
       case 'samples': return 'Contributing sample count retained by each VE node.';
       case 'weight': return 'Cumulative spatial evidence weight retained by each VE node.';
       case 'confidence': return 'Evidence confidence derived from weight, repeat observations and correction spread.';
@@ -264,38 +228,68 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
       ? resultViewSelect.value as VeResultView
       : 'proposal';
     table.dataset.veResultView = view;
-    if (veHeaderDescription) veHeaderDescription.textContent = resultDescription(view);
+    if (veHeaderDescription) veHeaderDescription.textContent = resultDescription(view) + (view === 'proposal' ? '' : ' Missing metrics display original VE; hover a cell value to identify its source.');
 
-    const rpmBins = [...(table.tHead?.rows[0]?.cells ?? [])].slice(1).map((cell) => finiteNumber(cell.textContent?.trim()));
     const delaySurface = view === 'delay' ? readDelaySurface(root) : undefined;
+    const proposalSnapshot = veProposalEditOwner(root)?.snapshot();
+    const projection = veTableProjection(table);
+    if (!projection) return;
     const rendered: Array<{ cell: HTMLTableCellElement; value: number; mode: 'magnitude' | 'quality' | 'range' }> = [];
 
     for (const row of [...(table.tBodies[0]?.rows ?? [])]) {
-      const load = finiteNumber(row.cells[0]?.textContent?.trim());
       for (let col = 1; col < row.cells.length; col += 1) {
         const cell = row.cells[col] as HTMLTableCellElement;
         const main = cell.querySelector<HTMLElement>(':scope > span');
         if (!main) continue;
-        if (cell.dataset.veBaseLevel === undefined) cell.dataset.veBaseLevel = cell.style.getPropertyValue('--ve-cell-level');
+        if (view === 'proposal' && (cell.dataset.tableEditing === 'true' || cell.dataset.tablePreview === 'true'
+          || cell.dataset.tableLivePreview === 'true')) continue;
 
-        const rpm = rpmBins[col - 1];
-        let current = primaryCellCurrent(inner, rpm, load) ?? finiteNumber(cell.dataset.veCurrentValue);
-        if (current === undefined) {
-          current = parseVeRenderedCellMetrics(cell.title, main.textContent ?? '').current;
-        }
+        const semanticRow = Number(cell.dataset.veRow);
+        const semanticCol = Number(cell.dataset.veCol);
+        const hasSemanticPosition = Number.isInteger(semanticRow) && Number.isInteger(semanticCol)
+          && semanticRow >= 0 && semanticCol >= 0;
+        const sourceCols = projection.cols;
+        const sourceRows = projection.rows;
+        const insideSource = hasSemanticPosition && sourceCols !== undefined && sourceRows !== undefined
+          && semanticRow < sourceRows && semanticCol < sourceCols;
+        const sourceIndex = insideSource ? semanticRow * sourceCols + semanticCol : undefined;
+        const metrics = sourceIndex === undefined ? undefined : projection.cells[sourceIndex];
+        if (!metrics) continue;
+        const current = metrics.current;
+        const baseLevel = veSourceHeatLevel(projection, current);
         if (current !== undefined) cell.dataset.veCurrentValue = String(current);
+        else delete cell.dataset.veCurrentValue;
+        if (baseLevel !== undefined) cell.dataset.veBaseLevel = baseLevel;
+        else delete cell.dataset.veBaseLevel;
 
-        const metrics = parseVeRenderedCellMetrics(cell.title, current === undefined ? '' : String(current));
+        const rpm = insideSource ? projection.rpmBins?.[semanticCol] : undefined;
+        const load = insideSource ? projection.loadBins?.[semanticRow] : undefined;
+
+        if (view === 'proposal' && proposalSnapshot && insideSource
+          && semanticRow < proposalSnapshot.rows && semanticCol < proposalSnapshot.cols) {
+          const working = proposalSnapshot.values[semanticRow * proposalSnapshot.cols + semanticCol];
+          if (main.title !== 'Working review value; generated proposal and original tune are separate.') main.title = 'Working review value; generated proposal and original tune are separate.';
+          main.textContent = formatVeMetric(working, proposalSnapshot.digits);
+          cell.dataset.veResultValue = working === undefined ? '' : String(working);
+          cell.classList.toggle('ve-result-missing', working === undefined);
+          restoreBaseLevel(cell);
+          continue;
+        }
+
         const delayMs = view === 'delay' ? interpolateDelay(delaySurface, rpm, load) : undefined;
-        const display = veResultDisplay(metrics, view, delayMs);
+        const display = veResultDisplay(metrics, view, delayMs, proposalSnapshot?.digits);
+        const valueTitle = view !== 'proposal' && display.scaleMode === 'base'
+          ? 'Selected metric unavailable: displaying original VE, not a value in the selected metric units.'
+          : view === 'delay' ? 'Interpolated working lambda delay in milliseconds.' : 'Retained generated analysis metric; independent of working review edits.';
+        if (main.title !== valueTitle) main.title = valueTitle;
         main.textContent = display.text;
         cell.dataset.veResultValue = display.numericValue === undefined ? '' : String(display.numericValue);
         cell.classList.toggle('ve-result-missing', display.numericValue === undefined);
 
         if (view === 'proposal' || display.scaleMode === 'base') {
-          // Missing alternate metrics are neutral; proposal and delay retain base heat.
-          if (veResultViewUsesNeutralFallback(view, display)) cell.style.setProperty('--ve-cell-level', '0.5');
-          else restoreBaseLevel(cell);
+          // Falling back to original VE restores original VE heat. A valid Delay
+          // metric keeps its own range scaling instead of being treated as base.
+          restoreBaseLevel(cell);
           continue;
         }
         if (display.numericValue !== undefined) {
@@ -334,30 +328,37 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   let resultViewQueued = false;
   const scheduleResultView = (mutations?: MutationRecord[]): void => {
     ownerEvidence.event('ve.presentation.schedule', { queued: resultViewQueued, mutations: mutations?.length ?? 0 }, { origin: mutations ? 'observer' : 'programmatic' });
-    if (resultViewQueued) return;
+    if (disposed || !inner.getReadiness().active || resultViewQueued) return;
     resultViewQueued = true;
     queueMicrotask(() => {
       if (!resultViewQueued) return;
       resultViewQueued = false;
-      applyResultView();
+      if (!disposed && inner.getReadiness().active) applyResultView();
     });
   };
 
   const syncTableHeaderControls = (): void => {
     if (!veSelect || !targetSelect) return;
-    veControls.replaceChildren();
-    targetControls.replaceChildren();
+    if (placeAdaptedVeTableHeader(root)) return;
+    const place = (host: HTMLElement, nodes: HTMLElement[]): void => {
+      if (host.children.length !== nodes.length || nodes.some((node, index) => host.children[index] !== node)) {
+        host.replaceChildren(...nodes);
+      }
+    };
 
     const single = tableLayoutSelect.value === 'single';
     if (!single) {
-      veControls.append(tableLayoutLabel, resultViewLabel, veSelect);
-      targetControls.append(targetSelect);
+      // Retain hidden tabs so adapted navigation can reach their original
+      // handlers even when the saved initial layout is side-by-side.
+      place(veControls, [tableLayoutLabel, resultViewLabel, veSelect, tableTabs]);
+      place(targetControls, [targetSelect]);
       return;
     }
 
     // Single-table mode keeps all dropdowns together, then the separately styled tab group.
     const activeControls = activeTableTab === 've' ? veControls : targetControls;
-    activeControls.append(tableLayoutLabel, resultViewLabel, veSelect, targetSelect, tableTabs);
+    place(activeControls, [tableLayoutLabel, resultViewLabel, veSelect, targetSelect, tableTabs]);
+    place(activeControls === veControls ? targetControls : veControls, []);
   };
 
   const applyTableLayout = (): void => {
@@ -379,7 +380,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     const layout: VeTableLayout = tableLayoutSelect.value === 'single' ? 'single' : 'side-by-side';
     storeTableLayout(layout);
     applyTableLayout();
-  });
+  }, { signal: events.signal });
 
   resultViewSelect.addEventListener('change', (event) => {
     ownerEvidence.event('ve.result-view.changed', { view: resultViewSelect.value }, { origin: event.isTrusted ? 'user' : 'programmatic', stateRevision: inner.sessionRevision });
@@ -387,17 +388,17 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     storeResultView(view);
     resultViewQueued = false;
     applyResultView();
-  });
+  }, { signal: events.signal });
 
   veTabButton.addEventListener('click', () => {
     activeTableTab = 've';
     applyTableLayout();
-  });
+  }, { signal: events.signal });
 
   targetTabButton.addEventListener('click', () => {
     activeTableTab = 'target';
     applyTableLayout();
-  });
+  }, { signal: events.signal });
 
   const tableObserver = new MutationObserver(scheduleResultView);
   if (veHost) tableObserver.observe(veHost, { childList: true });
@@ -422,16 +423,34 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   popout.setAttribute('aria-label', 'Run Analysis blockers');
   actionbar.append(popout);
 
-  const renderPopout = (): void => {
+  const infoTrigger = (): HTMLButtonElement => root.querySelector<HTMLButtonElement>('.ve-v50-run-info') ?? infoButton;
+  const setExpanded = (expanded: boolean): void => {
+    infoButton.setAttribute('aria-expanded', String(expanded));
+    infoTrigger().setAttribute('aria-expanded', String(expanded));
+  };
+  const closePopout = (restoreFocus = false): void => {
+    popout.hidden = true;
+    setExpanded(false);
+    if (restoreFocus && !disposed && inner.getReadiness().active) infoTrigger().focus({ preventScroll: true });
+  };
+  let popoutKey = '';
+  const renderPopout = (opening = false): void => {
+    if (disposed) return;
     const state = inner.getReadiness();
     const entries = state.active && !state.pending ? state.blockers : [];
     infoButton.hidden = entries.length === 0;
     if (entries.length === 0) {
-      popout.hidden = true;
-      infoButton.setAttribute('aria-expanded', 'false');
-      popout.replaceChildren();
+      closePopout();
+      popoutKey = '';
+      if (popout.firstChild) popout.replaceChildren();
       return;
     }
+
+    // Closed information is lazy; unchanged visible blockers retain their DOM.
+    if (popout.hidden && !opening) return;
+    const key = JSON.stringify(entries);
+    if (key === popoutKey) return;
+    popoutKey = key;
 
     const header = document.createElement('div');
     header.className = 've-run-info-header';
@@ -443,9 +462,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     close.setAttribute('aria-label', 'Close Run Analysis information');
     close.textContent = '×';
     close.onclick = () => {
-      popout.hidden = true;
-      infoButton.setAttribute('aria-expanded', 'false');
-      infoButton.focus({ preventScroll: true });
+      closePopout(true);
     };
     header.append(title, close);
 
@@ -477,8 +494,7 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
         jump.type = 'button';
         jump.textContent = 'Fix';
         jump.onclick = () => {
-          popout.hidden = true;
-          infoButton.setAttribute('aria-expanded', 'false');
+          closePopout();
           focusVeReadinessTarget(root, entry.targetSelector!);
         };
         item.append(jump);
@@ -490,17 +506,21 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
   };
 
   infoButton.onclick = () => {
-    renderPopout();
-    popout.hidden = !popout.hidden;
-    infoButton.setAttribute('aria-expanded', popout.hidden ? 'false' : 'true');
+    if (disposed || !inner.getReadiness().active) return;
+    if (!popout.hidden) { closePopout(true); return; }
+    renderPopout(true);
+    if (infoButton.hidden) return;
+    popout.hidden = false;
+    setExpanded(true);
+    popout.querySelector<HTMLButtonElement>('.ve-run-info-close')?.focus({ preventScroll: true });
   };
 
-  inner.onReadinessChange(() => {
+  const unsubscribeReadiness = inner.onReadinessChange(() => {
     const wasOpen = !popout.hidden;
     renderPopout();
     if (wasOpen && !infoButton.hidden) {
       popout.hidden = false;
-      infoButton.setAttribute('aria-expanded', 'true');
+      setExpanded(true);
     }
   });
 
@@ -508,23 +528,36 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     if (popout.hidden) return;
     const target = event.target;
     if (!(target instanceof Node)) return;
-    if (popout.contains(target) || infoButton.contains(target)) return;
-    popout.hidden = true;
-    infoButton.setAttribute('aria-expanded', 'false');
-  });
+    if (popout.contains(target) || infoButton.contains(target) || infoTrigger().contains(target)) return;
+    closePopout();
+  }, { signal: events.signal });
 
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || popout.hidden) return;
-    popout.hidden = true;
-    infoButton.setAttribute('aria-expanded', 'false');
-    infoButton.focus({ preventScroll: true });
-  });
+    event.preventDefault();
+    closePopout(true);
+  }, { signal: events.signal });
 
-  queueMicrotask(renderPopout);
+  queueMicrotask(() => renderPopout());
 
   return {
     element: root,
-    setActive(active) { inner.setActive(active); },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      events.abort();
+      tableObserver.disconnect(); resultViewQueued = false;
+      unsubscribeReadiness(); closePopout();
+      inner.dispose();
+    },
+    setActive(active) { if (disposed) return;
+      if (!active) { tableObserver.disconnect(); resultViewQueued = false; closePopout(); }
+      inner.setActive(active);
+      if (active) {
+        if (veHost) tableObserver.observe(veHost, { childList: true });
+        scheduleResultView();
+      }
+    },
     editDelayCells(positions, edit) { return inner.editDelayCells(positions, edit); },
     get sessionRevision() { return inner.sessionRevision; },
     getPrimaryAnalysis() { return inner.getPrimaryAnalysis(); },
@@ -532,22 +565,25 @@ export function createVeAnalyzerView(observability?: ObservabilityRecorder): VeA
     getReadiness() { return inner.getReadiness(); },
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
+      if (disposed) return false;
       const changed = inner.setContext(context);
       if (!changed) return false;
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      queueMicrotask(() => { if (!disposed && inner.getReadiness().active) syncTableHeaderControls(); });
       scheduleResultView();
       return true;
     },
     setTuneModel(model: TuneModel | undefined, sourceName?: string) {
+      if (disposed) return false;
       const changed = inner.setTuneModel(model, sourceName);
       if (!changed) return false;
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      queueMicrotask(() => { if (!disposed && inner.getReadiness().active) syncTableHeaderControls(); });
       scheduleResultView();
       return true;
     },
     refresh() {
+      if (disposed) return;
       inner.refresh();
-      queueMicrotask(() => { renderPopout(); syncTableHeaderControls(); });
+      queueMicrotask(() => { if (!disposed && inner.getReadiness().active) syncTableHeaderControls(); });
       scheduleResultView();
     },
   };
