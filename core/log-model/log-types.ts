@@ -37,6 +37,13 @@ export interface ParserDiagnostic {
   readonly message: string;
   readonly recoverable: boolean;
   readonly offset?: number;
+  /** Physical EOF loss at a known block boundary; never represents an indexed sample. */
+  readonly incompleteTail?: {
+    readonly kind: 'block-header' | 'logger-record' | 'marker';
+    readonly actualBytes: number;
+    readonly expectedBytes: number;
+    readonly missingBytes: number;
+  };
   /** Source-relative timestamp when a parser diagnostic maps to one concrete source event. */
   readonly timeMs?: number;
   /** Optional source-integrity semantics used by presentation without re-parsing diagnostic text. */

@@ -39,6 +39,8 @@ export interface MlgRecordScanResult {
 
 export interface MlgRecordScanOptions {
   readonly validateCrc?: boolean;
+  /** Strict by default; file import may retain an indexed prefix at physical EOF. */
+  readonly incompleteTail?: 'reject' | 'retain-complete-records';
   readonly onFixedRecordChunk?: (bytes: Uint8Array, firstRecordIndex: number, recordCount: number, blockLength: number) => void;
 }
 
@@ -152,7 +154,11 @@ export function classifyMlgRetryDiagnostics(
   }
 
   const classified: ParserDiagnostic[] = [];
+  // Staged CRC validation appends diagnostics after indexing. Keep the physical
+  // tail notice last in both paths without sorting or touching log samples.
+  const tailDiagnostics: ParserDiagnostic[] = [];
   for (const diagnostic of diagnostics) {
+    if (diagnostic.code === 'mlg-incomplete-tail') {tailDiagnostics.push(diagnostic);continue;}
     if (
       diagnostic.code === 'mlg-counter-discontinuity'
       && diagnostic.offset !== undefined
@@ -204,6 +210,7 @@ export function classifyMlgRetryDiagnostics(
     });
   }
 
+  for (const diagnostic of tailDiagnostics) classified.push(diagnostic);
   return {
     diagnostics: classified,
     recoveredRetryCount,
@@ -514,6 +521,7 @@ async function scanMlgRecordsGeneral(
   source: RandomAccessByteSource,
   header: MlgHeader,
   validateCrc: boolean,
+  incompleteTail: MlgRecordScanOptions['incompleteTail'],
 ): Promise<MlgRecordScanResult> {
   const offsets = new GrowingFloat64Buffer();
   const times = new GrowingFloat64Buffer();
@@ -540,12 +548,33 @@ async function scanMlgRecordsGeneral(
   const recordLength = header.recordLength;
   const standardBlockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
 
+  const retainTail = (at: number, expectedBytes: number, kind: NonNullable<ParserDiagnostic['incompleteTail']>['kind'], availableBlockType?: number): boolean => {
+    if (incompleteTail !== 'retain-complete-records' || standardRecordIndex === 0) return false;
+    if (kind === 'block-header' && availableBlockType !== STANDARD_BLOCK_TYPE && availableBlockType !== MARKER_BLOCK_TYPE) {
+      throw new MlgFormatError('unsupported-block-type', `Unsupported MLG block type ${availableBlockType} at offset ${at}.`, at);
+    }
+    const actualBytes = source.size - at;
+    diagnostics.push({
+      code: 'mlg-incomplete-tail', severity: 'warning', recoverable: true, offset: at,
+      message: `Incomplete MLG ${kind} at offset ${at}: ${actualBytes} of ${expectedBytes} bytes available; ${expectedBytes - actualBytes} bytes missing. The incomplete tail is excluded; ${standardRecordIndex} complete records are retained with their existing integrity checks.`,
+      incompleteTail: {kind, actualBytes, expectedBytes, missingBytes: expectedBytes - actualBytes},
+      sourceIntegrity: {kind: 'delivery-loss', breaksContinuity: true},
+    });
+    return true;
+  };
+
   // Parse many complete blocks synchronously from each source chunk. The old
   // scanner awaited two async reads per record even when both reads hit its
   // in-memory chunk cache. On a ~36k-record log that meant ~72k Promise/await
   // boundaries. This loop keeps the same bounded-memory model while reducing
   // source reads/awaits to roughly fileSize / SCAN_CHUNK_SIZE.
-  while (offset < source.size) {
+  scan: while (offset < source.size) {
+    if (source.size - offset < BLOCK_HEADER_LENGTH && incompleteTail === 'retain-complete-records' && standardRecordIndex > 0) {
+      const tailReadStart = now();
+      const tail = await readChunk(source, offset, 1);
+      sourceReadMs += now() - tailReadStart;
+      if (retainTail(offset, BLOCK_HEADER_LENGTH, 'block-header', tail[0])) break;
+    }
     const chunkStart = offset;
     const readStart = now();
     const chunk = await readChunk(source, chunkStart, BLOCK_HEADER_LENGTH);
@@ -557,6 +586,7 @@ async function scanMlgRecordsGeneral(
       const absoluteOffset = chunkStart + cursor;
       const bytesRemainingInFile = source.size - absoluteOffset;
       if (bytesRemainingInFile < BLOCK_HEADER_LENGTH) {
+        if (retainTail(absoluteOffset, BLOCK_HEADER_LENGTH, 'block-header', chunk[cursor])) break scan;
         throw new MlgFormatError(
           'short-read',
           `Truncated MLG block header at offset ${absoluteOffset}.`,
@@ -584,6 +614,7 @@ async function scanMlgRecordsGeneral(
       }
 
       if (blockLength > bytesRemainingInFile) {
+        if (retainTail(absoluteOffset, blockLength, blockType === STANDARD_BLOCK_TYPE ? 'logger-record' : 'marker')) break scan;
         throw new MlgFormatError(
           'short-read',
           blockType === STANDARD_BLOCK_TYPE
@@ -746,7 +777,7 @@ export async function scanMlgRecords(
 ): Promise<MlgRecordScanResult> {
   const validateCrc = options.validateCrc ?? true;
   const fixed = await tryScanFixedRecords(source, header, validateCrc, options.onFixedRecordChunk);
-  const result = fixed ?? await scanMlgRecordsGeneral(source, header, validateCrc);
+  const result = fixed ?? await scanMlgRecordsGeneral(source, header, validateCrc, options.incompleteTail);
 
   if (!validateCrc) return result;
 

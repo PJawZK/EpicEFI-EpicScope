@@ -109,4 +109,4 @@ export interface MlgWorkerValidatedPayload {
 export type MlgWorkerResponse =
   | { readonly type: 'indexed'; readonly payload: MlgWorkerIndexedPayload }
   | { readonly type: 'validated'; readonly payload: MlgWorkerValidatedPayload }
-  | { readonly type: 'error'; readonly message: string; readonly code?: string };
+  | { readonly type: 'error'; readonly message: string; readonly code?: string; readonly failureKind?: 'format' | 'runtime'; readonly offset?: number };
