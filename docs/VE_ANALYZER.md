@@ -1,5 +1,11 @@
 # VE Analyzer specification
 
+## Integrated v50 behavior addendum — 2026-10-26
+
+Read current TypeScript source and regression tests before interpreting older PR #462 status paragraphs below. VE v50 and correction Groups 2–6 were integrated to `main` through PR #466. Active code separates original tune, generated proposal and reviewed working values; pin protection excludes updates without discarding neighboring evidence, interpolation strength applies to the bounded target before blending, Logger provides Full Log/A–B/saved scope authority, and Lambda Delay discovery does not require opening the delay table. Structured Cell Evidence and red/blue original-tune comparison are presentation paths, not DOM-derived analytical inputs. Reference: [Group 2](VE_V50_FOLLOWUP_GROUP2_INTERPOLATION.md), [Group 3](VE_V50_FOLLOWUP_GROUP3_SETTINGS_PINS.md), [Group 4](VE_V50_FOLLOWUP_GROUP4_TIMELINE_SELECTION.md), [Group 5](VE_V50_FOLLOWUP_GROUP5_DELAY_DISCOVERY.md), [Group 6](VE_V50_FOLLOWUP_GROUP6_CELL_EVIDENCE.md).
+
+The earlier dropdown complaint remained unreproduced. Numerical questions B02 and R28/R29, and the one-pass delay-refinement policy, remain review/acceptance items, not asserted implementation failures. No automatic ECU writing/Burn. Historic runtime SHAs below are provenance, not the current HEAD.
+
 ## Status
 
 VE Analyzer is implemented and real-log/browser validated. This document is the current algorithm/evidence/product contract. `VE_ANALYZER_WORKBENCH.md` is the companion UI/workflow contract.
