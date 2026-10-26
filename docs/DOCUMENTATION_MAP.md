@@ -1,8 +1,16 @@
 # EpicScope documentation authority map
 
-Date: 2026-10-16
+Last authority refresh: 2026-10-26
 
 This file defines how repository documentation should be interpreted so historical plans/research do not override current product state.
+
+## Code-first interpretation (2026-10-26)
+
+Current `main` implementation, its explicit code/test contracts and observed runtime behavior take priority over all written summaries, historical branches and standalone prototypes. This includes the current handoff: if it disagrees with implementation, mark a documentation mismatch; do not alter correct runtime code to satisfy a stale sentence. A code defect must be established separately with evidence. Docs-only changes should not affect application behavior.
+
+PR #466 integrated VE v50 and MSQ workflows; PR #467 merged complete-prefix MLG recovery at runtime checkpoint `f6bdbf78643754d1bf3398980bcad3583201fef9`. Historic PR #462 remains valid provenance, not the latest baseline. Pages builds `main`. [Archived handoff checkpoints](handoffs/ARCHIVE_THROUGH_2026-10-26.md) retain original wording and are **not** present-tense instructions. `HANDOFF.md` now contains a concise current-state index and unresolved acceptance/policy distinctions.
+
+The older 2026-10-16 snapshot below is preserved as historical context until Pass B reconciles individual subsystem specifications against current code. Do not interpret it as current project status.
 
 ## Present-tense authority
 
@@ -20,9 +28,9 @@ Use these documents for current project state and continuation:
 
 If two current-facing documents disagree, `HANDOFF.md` and the actual current `main` runtime win until the contradiction is corrected. An explicit later accepted decision may refine an older decision while preserving the older record for traceability.
 
-## Current project snapshot
+## Historical project snapshot (2026-10-16)
 
-As of 2026-10-16:
+As of 2026-10-16 (superseded by current code and handoff):
 
 - `main` is the only product/continuation authority;
 - PR #462 is merged at `2fdce3a4fc2a8759a45058c0ebc06dba0ed4739b`;
