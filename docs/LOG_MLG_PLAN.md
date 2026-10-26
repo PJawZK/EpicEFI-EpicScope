@@ -4,6 +4,10 @@
 
 # EpicScope LOG-MLG Plan
 
+## Complete-prefix recovery addendum — 2026-10-26
+
+Current `main` includes PR #467. `core/parsers/mlg/mlg-records.ts` implements an explicit `incompleteTail` policy; browser file-import owners opt into retaining **only structurally complete preceding logger records** when a recognized final block stops at physical EOF. Strict scanning remains the default. The missing tail is not fabricated, padded, included in analysis or written back to source. Preserve existing CRC validation and show the integrity warning alongside a usable Ready state. See [MLG tail recovery](MLG_INCOMPLETE_TAIL_RECOVERY.md) and its tests. The original validated log retained 159,022 complete records and 28 unrecovered CRC exclusions. This does not extend support to v3 or arbitrary corruption.
+
 ## Status
 
 **MLVLG v1/v2 implementation complete; MLG v3 compatibility researched but not yet implemented.**
