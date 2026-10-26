@@ -231,3 +231,59 @@ describe('staged CRC validation', () => {
     }));
   });
 });
+
+
+describe('explicit complete-prefix tail recovery', () => {
+  async function scan(bytes: Uint8Array, recover = true) {
+    const source = new MemoryByteSource(bytes);
+    const {header} = await parseMlgHeader(source);
+    return scanMlgRecords(source, header, {incompleteTail: recover ? 'retain-complete-records' : 'reject'});
+  }
+  it.each([1,2,3,4,5])('excludes a %i-byte partial final logger block with exact metadata; strict still rejects', async length => {
+    const header=createScalarHeaderFixture({version:2,type:0}),block=loggerBlock(0,100,[7]),tail=loggerBlock(1,200,[8]).slice(0,length),bytes=concat(header,block,tail),original=bytes.slice();
+    const result=await scan(bytes);
+    expect([...result.records.offsets]).toEqual([header.length]);expect([...result.records.crcValid]).toEqual([1]);expect(result.records.timeMs.length).toBe(1);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({code:'mlg-incomplete-tail',severity:'warning',offset:header.length+block.length,sourceIntegrity:{kind:'delivery-loss',breaksContinuity:true},incompleteTail:{kind:length<4?'block-header':'logger-record',actualBytes:length,expectedBytes:length<4?4:6,missingBytes:(length<4?4:6)-length}}));
+    expect(bytes).toEqual(original);await expect(scan(bytes,false)).rejects.toMatchObject({code:'short-read'});
+  });
+  it('retains prior complete markers, excludes an incomplete marker, and does not invent a sample/time',async()=>{
+    const header=createScalarHeaderFixture({version:2,type:0}),block=loggerBlock(0,100,[7]),marker=markerBlock(1,110,'complete'),tail=markerBlock(2,120,'partial').slice(0,20);
+    const result=await scan(concat(header,block,marker,tail));expect(result.records.offsets.length).toBe(1);expect(result.markers).toHaveLength(1);expect(result.markers[0]!.label).toBe('complete');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({code:'mlg-incomplete-tail',incompleteTail:{kind:'marker',actualBytes:20,expectedBytes:54,missingBytes:34}}));
+  });
+  it('rejects tails without a complete logger record and unknown block types even in recovery mode',async()=>{
+    const header=createScalarHeaderFixture({version:2,type:0});
+    await expect(scan(concat(header,loggerBlock(0,100,[7]).slice(0,4)))).rejects.toMatchObject({code:'short-read'});
+    await expect(scan(concat(header,markerBlock(0,100,'marker'),new Uint8Array([0,1,0,1])))).rejects.toMatchObject({code:'short-read'});
+    await expect(scan(concat(header,loggerBlock(0,100,[7]),new Uint8Array([9,1,0,1])))).rejects.toMatchObject({code:'unsupported-block-type'});
+  });
+  it('rejects unknown EOF types even with an incomplete header, including at a scan-chunk boundary',async()=>{
+    const header=createScalarHeaderFixture({version:2,type:0});
+    for(const tail of [new Uint8Array([9]),new Uint8Array([9,0,0])])await expect(scan(concat(header,loggerBlock(0,100,[7]),tail))).rejects.toMatchObject({code:'unsupported-block-type'});
+    const blockLength=65536,count=128,bytes=new Uint8Array(blockLength*count+1);
+    for(let i=0;i<count;i++)bytes[i*blockLength+1]=i;
+    const modelHeader=(await parseMlgHeader(new MemoryByteSource(header))).header;
+    const options={incompleteTail:'retain-complete-records' as const};
+    const recovered=await scanMlgRecords(new MemoryByteSource(bytes),{...modelHeader,dataBeginIndex:0,recordLength:blockLength-5},options);
+    expect(recovered.records.offsets.length).toBe(count);
+    bytes[bytes.length-1]=9;
+    await expect(scanMlgRecords(new MemoryByteSource(bytes),{...modelHeader,dataBeginIndex:0,recordLength:blockLength-5},options)).rejects.toMatchObject({code:'unsupported-block-type'});
+  });
+  it('retains previous CRC exclusions and complete input remains warning-free',async()=>{
+    const header=createScalarHeaderFixture({version:2,type:0}),bad=loggerBlock(0,100,[7],8),good=loggerBlock(1,200,[8]);
+    const result=await scan(concat(header,bad,good,new Uint8Array([0,2,1,0])));expect([...result.records.crcValid]).toEqual([0,1]);expect(result.diagnostics.some(d=>d.code==='mlg-crc-mismatch')).toBe(true);
+    const complete=await scan(concat(header,good));expect(complete.diagnostics.some(d=>d.code==='mlg-incomplete-tail')).toBe(false);
+  });
+  it('does not treat a short backing-source read as an incomplete physical tail',async()=>{
+    const bytes=concat(createScalarHeaderFixture({version:2,type:0}),loggerBlock(0,100,[7]),new Uint8Array([0,1,0,2])),source=new MemoryByteSource(bytes),{header}=await parseMlgHeader(source);
+    await expect(scanMlgRecords({size:bytes.length,read:async(offset,length)=>(await source.read(offset,length)).slice(0,-1)},header,{incompleteTail:'retain-complete-records'})).rejects.toMatchObject({code:'short-read'});
+  });
+  it('refills across scan chunks before diagnosing only physical EOF',async()=>{
+    const length=65000,blockLength=length+5,count=130,bytes=new Uint8Array(count*blockLength+4);
+    for(let i=0;i<count;i++){bytes[i*blockLength]=0;bytes[i*blockLength+1]=i;}
+    bytes.set([0,count,0,1],count*blockLength);
+    const originalHeader=(await parseMlgHeader(new MemoryByteSource(createScalarHeaderFixture({version:2,type:0})))).header;
+    const result=await scanMlgRecords(new MemoryByteSource(bytes),{...originalHeader,dataBeginIndex:0,recordLength:length},{incompleteTail:'retain-complete-records'});
+    expect(result.records.offsets.length).toBe(count);expect(result.records.offsets[count-1]).toBe((count-1)*blockLength);expect(result.diagnostics.filter(d=>d.code==='mlg-incomplete-tail')).toHaveLength(1);
+  });
+});

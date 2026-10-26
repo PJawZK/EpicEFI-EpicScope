@@ -1,3 +1,4 @@
+import { MlgFormatError, isMlgFormatErrorCode } from '../../../../core/parsers/mlg/mlg-errors';
 import { MlgNumericChannelDataSource } from '../../../../core/parsers/mlg/mlg-channel-data';
 import { annotateMlgSourceIntegrityDiagnostics } from '../../../../core/parsers/mlg/mlg-integrity';
 import type { NumericChannelDataSource } from '../../../../core/log-model/log-types';
@@ -124,7 +125,9 @@ export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPri
     }
 
     const suffix = message.code ? ` [${message.code}]` : '';
-    const error = new Error(`${message.message}${suffix}`);
+    const error = message.failureKind === 'format' && isMlgFormatErrorCode(message.code)
+      ? new MlgFormatError(message.code, message.message, Number.isSafeInteger(message.offset) && message.offset! >= 0 ? message.offset : undefined)
+      : new Error(`${message.message}${suffix}`);
     if (!indexedSettled) {
       indexedSettled = true;
       rejectIndexed(error);

@@ -1,3 +1,4 @@
+import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import type { LogTimeRange, ParserDiagnostic } from '../../../../core/log-model/log-types';
 import { parseMlgHeader } from '../../../../core/parsers/mlg/mlg-header';
 import type { MlgHeader } from '../../../../core/parsers/mlg/mlg-format';
@@ -470,6 +471,7 @@ scope.onmessage = (event): void => {
         headerResult.header,
         {
           validateCrc: false,
+          incompleteTail: 'retain-complete-records',
           ...(capturedPriority.length > 0 ? {
             onFixedRecordChunk: (bytes, firstRecordIndex, recordCount, fixedBlockLength) => {
               const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -676,6 +678,8 @@ scope.onmessage = (event): void => {
       scope.postMessage({
         type: 'error',
         message,
+        failureKind: error instanceof MlgFormatError ? 'format' : 'runtime',
+        ...(error instanceof MlgFormatError && error.offset !== undefined ? {offset: error.offset} : {}),
         ...(code ? { code } : {}),
       });
     }

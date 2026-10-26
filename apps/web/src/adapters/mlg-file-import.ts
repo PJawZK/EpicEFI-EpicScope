@@ -16,7 +16,7 @@ export async function importMlgFile(file: File): Promise<ImportedMlgFile> {
     displayName: file.name,
     format: 'MLG',
     sizeBytes: file.size,
-  });
+  }, { incompleteTail: 'retain-complete-records' });
   return {
     ...parsed,
     channelData: createPersistentColumnCacheDataSource(

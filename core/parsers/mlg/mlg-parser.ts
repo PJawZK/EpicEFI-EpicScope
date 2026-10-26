@@ -53,6 +53,7 @@ function buildTimeRange(timeMs: Float64Array): LogTimeRange | undefined {
 export async function parseMlg(
   source: RandomAccessByteSource,
   sourceIdentity: LogSourceIdentity,
+  options: { readonly incompleteTail?: 'reject' | 'retain-complete-records' } = {},
 ): Promise<ParsedMlgLog> {
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const totalStart = now();
@@ -65,7 +66,7 @@ export async function parseMlg(
   const headerCpuMs = Math.max(0, headerMs - headerReadMs);
 
   const scanStart = now();
-  const scanResult = await scanMlgRecords(source, headerResult.header);
+  const scanResult = await scanMlgRecords(source, headerResult.header, {incompleteTail: options.incompleteTail ?? 'reject'});
   const recordScanMs = now() - scanStart;
 
   const finalizeStart = now();

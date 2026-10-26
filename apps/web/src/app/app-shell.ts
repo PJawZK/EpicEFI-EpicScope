@@ -54,6 +54,10 @@ import {
 import { SHIM_CAPTURE_SOURCE_EVENT, type ShimCaptureSourceEventDetail } from './shim-capture-source-event';
 import { SHIM_CHANNEL_CATALOG_EVENT, type ShimChannelCatalogEventDetail } from './shim-channel-catalog-event';
 
+function mlgTailStatus(diagnostics: readonly { readonly code: string }[]): string {
+  return diagnostics.some(d => d.code === 'mlg-incomplete-tail') ? ' · incomplete tail excluded' : '';
+}
+
 function importErrorMessage(error: unknown): string {
   if (error instanceof MlgFormatError) {
     return `${error.message} [${error.code}]`;
@@ -1877,10 +1881,10 @@ export function mountAppShell(root: HTMLElement): void {
     setSourceLoadState(
       openButton,
       hasWarningOrError(parsed.summary.diagnostics) ? 'issue' : 'success',
-      `${parsed.summary.source.displayName} · ${parsed.recordIndex.offsets.length.toLocaleString()} records`,
+      `${parsed.summary.source.displayName} · ${parsed.recordIndex.offsets.length.toLocaleString()} records${mlgTailStatus(parsed.summary.diagnostics)}`,
     );
-    appStatus.textContent = 'Ready';
-    parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only`;
+    appStatus.textContent = `Ready${mlgTailStatus(parsed.summary.diagnostics)}`;
+    parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only${mlgTailStatus(parsed.summary.diagnostics)}`;
   };
 
   const importOnMainThread = async (file: File, operation?: Operation): Promise<void> => {
@@ -2058,6 +2062,9 @@ export function mountAppShell(root: HTMLElement): void {
           ? 'Ready · prioritizing restored channels during CRC…'
           : 'Ready · validating CRC…';
         parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · CRC validating`;
+        appStatus.textContent += mlgTailStatus(indexed.summary.diagnostics);
+        parserStatus.textContent += mlgTailStatus(indexed.summary.diagnostics);
+        openButton.title += mlgTailStatus(indexed.summary.diagnostics);
         openButton.disabled = false;
 
         void staged.validated
@@ -2117,12 +2124,13 @@ export function mountAppShell(root: HTMLElement): void {
             setSourceLoadState(
               openButton,
               hasWarningOrError(validated.diagnostics) ? 'issue' : 'success',
-              `${indexed.summary.source.displayName} · ${crcStatus} · ${indexed.recordIndex.offsets.length.toLocaleString()} records`,
+              `${indexed.summary.source.displayName} · ${crcStatus} · ${indexed.recordIndex.offsets.length.toLocaleString()} records${mlgTailStatus(validated.diagnostics)}`,
             );
             appStatus.textContent = unrecoveredCrcCount > 0
               ? `Ready · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
               : 'Ready';
-            parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · ${crcStatus} · local only`;
+            appStatus.textContent += mlgTailStatus(validated.diagnostics);
+            parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · ${crcStatus} · local only${mlgTailStatus(validated.diagnostics)}`;
             finishSourceLoad(loadOperation, 'success');
             activeStagedImport = undefined;
           })
@@ -2147,6 +2155,17 @@ export function mountAppShell(root: HTMLElement): void {
       .catch((workerError: unknown) => {
         if (activeStagedImport !== staged) return;
         activeStagedImport = undefined;
+        if (workerError instanceof MlgFormatError) {
+          currentRawLog = undefined;
+          finishSourceLoad(loadOperation, 'failure');
+          loggerPage.setImportError(importErrorMessage(workerError), loadOperation ? {operationId:loadOperation.id} : {});
+          publishAnalysisInputs();
+          activeWorkspaceSource = undefined;workspacePersistenceBlocked = false;forgetWorkspaceButton.disabled = true;
+          setPersistenceStatus('Open a log to enable per-log local restore.');
+          setSourceLoadState(openButton, 'issue', `Log import failed: ${importErrorMessage(workerError)}`);
+          appStatus.textContent = 'Import failed';parserStatus.textContent = 'LOG-MLG · parser error';openButton.disabled = false;
+          return;
+        }
         setSourceLoadState(openButton, 'loading', `${file.name} · worker unavailable, using main thread`);
         recorder.record({ recordKind: 'event', subsystem: 'source', component: 'log-import', name: 'source.load.worker-fallback', origin: 'system', ...(loadOperation ? { operationId: loadOperation.id } : {}) });
         appStatus.textContent = 'Worker unavailable · using main thread…';

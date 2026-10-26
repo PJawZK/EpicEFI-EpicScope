@@ -1,5 +1,11 @@
 # EpicScope Handoff
 
+## Current main follow-up — incomplete MLG tail recovery (2026-10-26)
+
+Main integration PR #466 was explicitly accepted and merged at `8adf15c3b14b80c2ab1ff9cf98be924734aa6642`; main and Pages now contain the reviewed VE/MSQ work. Earlier candidate/draft/unchanged-main instructions below describe historical checkpoints.
+
+The uploaded log was verified and reproduced. It ends inside its final record; both the prior Pages runtime and baseline main reject that exact input. Current focused correction on `fix/mlg-incomplete-tail-and-worker-errors-20261026` retains complete records with explicit tail diagnostics at the scanner/import owner and avoids retrying known worker format errors on the main thread. Strict low-level parsing remains default; file imports opt into recovery. Existing CRC exclusions remain intact. See `docs/MLG_INCOMPLETE_TAIL_RECOVERY.md`. Final publication/validation state is recorded in the external artifact handoff; no original MLG data or private uploads are committed. Manual user-file acceptance and Brave/TunerStudio desktop-permission testing remain separate.
+
 ## Current integration candidate — 2026-10-26
 
 This checkpoint supersedes older branch/stop instructions below for the v50 integration workstream. Candidate: `integration/ve-v50-main-20261026`, merging main `d401d40b9a65c2a19400db0b71a9aaf8cdff0c9c` with tested development commit `3a67965dba2660161df436c1317801a1487b6353`. Main's research proposal is preserved. Pages checkout/build SHA is returned to the workflow commit, removing the temporary `8ba0c7a` acceptance-runtime pin. Main and the live site remain unchanged until explicit production merge acceptance.
