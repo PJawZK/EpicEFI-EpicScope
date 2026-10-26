@@ -13,7 +13,11 @@ Status vocabulary:
 - **Deferred** — deliberately not current work.
 - **Not applicable to EpicScope** — useful research, but primarily belongs to another EpicEFI product.
 
-## Current project disposition — 2026-10-16
+## Integrated research disposition addendum — 2026-10-26
+
+Current `main` code and verified tests outrank this document's October 16 categories. VE v50 and reviewed follow-up corrections are integrated through PR #466; recognized MLG incomplete-tail recovery through PR #467. The existing observability document describes foundation and migration stages 2–9 as implemented; older entries describing the entire initiative as "Planned" must be read as historical design states pending individual code-evidence reconciliation. Optional baseline intelligence is not implemented. Passive diagnostic/correction analyzers remain proposals, not live autonomous correction features. Preserve original external research notes without editing their observations; use [discrepancy ledger](../DOC_DISCREPANCY_LEDGER.md) for outstanding classification questions.
+
+## Historical project disposition — 2026-10-16
 
 - Logger is a mature functional reference; broad optimization remains paused unless a measured regression appears.
 - Generic Histogram research parity is closed for the approved scope.
