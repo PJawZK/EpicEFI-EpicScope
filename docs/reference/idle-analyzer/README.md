@@ -10,8 +10,9 @@
 - [Idle Analyzer v3.5.6 reference](Idle_Analyzer_v3_5_6_Reference.html) — accepted compact adaptive workspace, true October 20 embedded MLG evidence, secondary September 30 MLG import, corrected matching-interval finder and chronology warnings.
 - [Idle Analyzer v3.5.7 — source navigation](Idle_Analyzer_v3_5_7_Source_Navigation.html) — preserved, offline HTML experiment. Adds two-source timeline navigation and source-labeled detected events without changing the v3.5.6 diagnosis/parser calculations.
 - [Idle Analyzer v3.5.8 — A/B region navigation](Idle_Analyzer_v3_5_8_AB_Region_Navigation.html) — preserved experimental snapshot: A can create a real manual region at unmarked timeline positions (Alt+click forces one within existing ranges), and both timeline tracks support Home/End/arrow-key navigation. B manual interval selection and source identity remain preserved.
-- [Idle Analyzer v3.5.9 — A/B refinement](Idle_Analyzer_v3_5_9_AB_Region_Refinement.html)
-- [Idle Analyzer v3.5.10 — comparison session](Idle_Analyzer_v3_5_10_Comparison_Session.html) — **latest experimental snapshot**: fingerprint-checked, local-only restoration of the last imported B selection after re-importing the identical MLG. — **latest** HTML experiment: moves selected manual A/B regions without generating a new A region at each keyboard step; supports Alt+click manual placement and arrow-key repositioning for either timeline.\n- [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — status and integration cautions established prior to v3.5.7.
+- [Idle Analyzer v3.5.9 — A/B refinement](Idle_Analyzer_v3_5_9_AB_Region_Refinement.html) — preserved manual A/B movement and keyboard refinement.
+- [Idle Analyzer v3.5.10 — comparison session](Idle_Analyzer_v3_5_10_Comparison_Session.html) — **latest experimental snapshot**: sampled-fingerprint-bound, local-only restoration of imported B selection after re-import. A sampled match is not proof of identical file bytes.
+- [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — historical status and integration cautions.
 
 The HTML files are **versioned standalone snapshots**. Changes in this branch must remain in these documents while the user evaluates their behavior. Production porting requires separate authorization.
 
@@ -31,24 +32,30 @@ The HTML files are **versioned standalone snapshots**. Changes in this branch mu
 
 **Important:** This is interaction testing, not mathematical approval of every diagnostic mode, user-configurable watch threshold, or derived conclusion. The file still includes independently implemented MLG parsing and illustrative tuning content that must **not** become production authority.
 
-## Current outstanding gaps
+## Complete integration-readiness pass (2026-10-26)
 
-- Use real matching INI and MSQ source authority for every table, channel unit, scale, calibration value and firmware-specific behavior.
-- Compare mode needs a more robust source manager, optionally two manually selectable A/B intervals, independent source validity, state persistence and repeatable multiple recordings.
-- Replace fixed and demo scaffolding with versioned, testable source contracts. Validate MLG CRC/retry semantics against EpicScope production parser.
-- Independently test each diagnostic mode, controller terminology, hypotheses, and thresholds against real recordings and alternate conditions.
-- Allow graph/evidence selection to open the actual Logger sample/time range when integrated in production; the present standalone Logger action remains a placeholder.
-- Do not score reversed chronology, unmatched tests, missing tune identity, or unmeasured mechanical/electrical loads as tune improvement.
-- Preserve the no-write/no-Burn boundary until explicit future approval.
+Audited prototype commit: `1717d28305b52a921db09141de37aca5d02e462e`; production baseline remains main `702c880a29baa28b762ac26f7f7ed55ef01239ef`.
 
-## Integration plan — HTML first
+- [Integration-readiness audit](INTEGRATION_READINESS_AUDIT.md) — evidence, confirmed defects, numerical reference cases, priorities and validation limits.
+- [Functional coverage matrix](FUNCTIONAL_COVERAGE_MATRIX.md) — all major modes, controls, function families and workflows classified; tested versus source-reviewed behavior identified.
+- [Source-authority reconciliation](SOURCE_AUTHORITY_RECONCILIATION.md) — actual production owners, reuse decisions and proposed source/quality/role/selection/comparison/provenance/result/graph/persistence contracts.
+- [Integration implementation plan](INTEGRATION_IMPLEMENTATION_PLAN.md) — seven bounded stages with regression requirements, blockers and review stops.
 
-1. Continue refining the HTML workflow **on this branch** with explicit acceptance tests and source-labeled evidence.
-2. Establish test fixtures/contracts based on existing EpicScope owners: `core/parsers/mlg/*`, `core/analysis/idle-control-diagnostics.ts`, `core/analysis/specialized-analyzers.ts`, `apps/web/src/pages/specialized-analyzer-suite-view.ts`, and Logger analysis context. Do not copy the standalone parser into application code.
-3. Freeze an accepted HTML design/interaction reference and numerical source specification. Only then propose a **separate scoped production implementation** and ask for authorization.
-4. Never merge this experimental branch merely because browser checks pass.
+**Assessment:** suitable for a staged native integration specification, not a direct production port or analytical sign-off. Preserve the accepted interface and use current production authority. No new HTML version was needed; all five snapshots remain unchanged. No production/test/dependency/workflow change or main merge was made.
 
-## Local acceptance suggestion
+Fresh isolated Chromium checks covered all eight modes and their three assessment tabs, A/B source navigation, independent-source prefix import, session refusal/matching/mismatching re-import, settings/panels, read-only tune references, Help, plan round-trip and desktop/narrow rendering. A 2,000-record real October25 prefix agrees with production on 1,995 trusted samples, but production also retains/classifies five recovered retries. Existing relevant production tests: **36 passed across five files**. These results do not establish a full-size B performance baseline or causal tuning improvement.
+
+Confirmed blockers include stale replacement completion, destructive failed B replacement, missing-role percentages appearing as zero, unused Stationary/Fan/minimum-evidence settings in the real path, duplicate events across overlapping regions, inconsistent retained/live result invalidation, moved built-in A bounds lost on reload, non-round-trippable plans, and a 320,001-sample metric spread failure. Mathematical contracts also differ from production for σ, DC error sign and recovery timing. See the audit for precise paths and distinctions.
+
+Healthy behavior to retain: missing B blocks evidence; raw imported logs are not persisted in localStorage; matching/mismatching sampled fingerprints govern B interval restoration; source axes remain independent; normalized graphs are explicitly shape-only; interval suggestions are ranked by operating conditions rather than favorable RMSE; fixture tables and Logger placeholder are clearly labeled.
+
+## Recommended next action
+
+Review and authorize **implementation Stage1: source fixtures and numerical contracts** separately. Continue one bounded stage at a time with local commit/handoff and review stops. Reuse canonical parser/workers/data sources, existing Idle/DC analysis, role resolution, Logger callbacks and persistence patterns. Correct most remaining prototype faults once at native owners rather than creating another standalone parser/state system or polishing additional illustrative features.
+
+Original September30 MLG, exact October MSQ/INI/firmware provenance, full-scale independent B replay and manual native acceptance remain open. t63/frequency/gain recommendations may stay visibly unavailable. No Idle ECU write/Burn work is included. Stop after this readiness pass; do not merge this experimental branch because browser checks pass.
+
+## Historical local acceptance suggestion (v3.5.7)
 
 In v3.5.7, open **Compare → Operating conditions** to see independent A/B event cards. Then use **Compare → Before / after tuning** and import September 30. Try clicking the imported B timeline: the B interval should move, the blue reference trace should stay on October 20, and the comparison assessment should remain cautious about calibration provenance.
 
@@ -76,3 +83,7 @@ In v3.5.7, open **Compare → Operating conditions** to see independent A/B even
 - File fingerprints sample three bounded segments and do not constitute cryptographic proof of full-byte equality; do not treat source identity as ECU tune provenance.
 - Manual restore is in-memory until the source is re-imported. The UI remains intentionally read-only. No production code or ECU write boundary changed.
 - **Validation pending:** actual Chromium import/reopen replay, matching and mismatching recording tests, A/B modal/state synchronization, mode-switch persistence, and responsive layout checks.
+
+## Validation status after the readiness pass
+
+The earlier v3.5.8–10 “pending” notes above are historical checkpoints. The latest v3.5.10 navigation, matching/mismatching B re-import, missing-source refusal and narrow-layout behavior now have bounded Chromium evidence recorded in the new audit. This does not retroactively validate every old snapshot or the unavailable original September recording. The audit explicitly lists remaining source, analytical, accessibility and full-log gates; it also records defects found by the new checks.
