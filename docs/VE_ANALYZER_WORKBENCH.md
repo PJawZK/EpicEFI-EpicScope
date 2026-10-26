@@ -1,5 +1,11 @@
 # VE Analyzer workbench contract
 
+## Current v50 workbench addendum — 2026-10-26
+
+Current `main` UI code and browser tests override older PR #462 groupings/diagram descriptions below. The integrated v50 workbench is table-first with VE/Target split or single presentation; Logger-owned Full Log/A–B/saved range selections; explicitly activated delay recommendations; Result Views with distinct source, generated and working states; protected pin behavior; structured Cell Evidence retained across released clicks; and red/blue direction coloring relative to original tune. See [current VE specification](VE_ANALYZER.md), [scope review](VE_V50_FOLLOWUP_GROUP4_TIMELINE_SELECTION.md), and [evidence review](VE_V50_FOLLOWUP_GROUP6_CELL_EVIDENCE.md).
+
+Manual acceptance still matters for real-data dropdown behavior, Brush responsiveness, accessible dialog interactions, native browser selection and 32×32 rendering at actual zoom. Prior acceptance records below apply to historical revisions; they do not validate every later change.
+
 ## Status
 
 This document is the normative UI/workflow companion to `VE_ANALYZER.md`.
