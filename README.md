@@ -38,7 +38,17 @@ The Web implementation establishes **what EpicScope should do** and is also the 
 - Linux target baseline: Debian 13 Stable.
 - License: Apache License 2.0.
 
-## Current Web state — 2026-10-16
+## Current Web state — 2026-10-26
+
+**Current source authority:** `main` code is primary; [current handoff](docs/HANDOFF.md) indexes the integrated work, known limitations and manual acceptance. If a document disagrees with production code, correct the document rather than changing proven behavior to match it. Historical notes are preserved [separately](docs/handoffs/ARCHIVE_THROUGH_2026-10-26.md).
+
+The 2026-10-26 production checkpoint is `f6bdbf78643754d1bf3398980bcad3583201fef9` (PR #467). PR #466 integrated the VE Analyzer v50 review work and MSQ Save workflow; PR #467 added incomplete-MLG-tail complete-prefix recovery and typed worker format-error handling. Web CI and Pages deployment passed at this checkpoint. The exact-file validation retained 159,022 structurally complete records while excluding the incomplete tail and preserving 28 unrecovered CRC exclusions. A Ready state can correctly coexist with an integrity warning; see [MLG recovery](docs/MLG_INCOMPLETE_TAIL_RECOVERY.md).
+
+VE Analyzer now includes reviewed numeric interpolation, pin-protected proposals, structured Cell Evidence, Lambda Delay discovery, and Logger-owned Full Log/A–B/saved scopes. Native same-file MSQ Save requires browser permissions and manual TunerStudio interoperability acceptance. Automated checks are not a substitute for real-browser acceptance, especially large-log responsiveness, Brush feel and native file writes. No automatic ECU write or Burn is implemented.
+
+Unified bounded observability and Diagnostics capabilities are substantially implemented; old sections describing D-058 implementation as entirely future are historical. Confirm exact capabilities from code and [observability contract](docs/OBSERVABILITY.md). MLG v3, Linux production, and passive diagnostic/correction analyzer concepts remain future/research tracks as documented.
+
+### Historical maturity snapshot (2026-10-16)
 
 EpicScope Web has mature functional foundations across Logger, Histogram and Analyzer and remains the product-semantics/reference implementation.
 
@@ -149,6 +159,9 @@ Key constraints: bounded low-overhead flight-recorder behavior, explicit session
 The available connector used for the 2026-10-16 cleanup could close obsolete PRs and classify remote refs but did not expose branch deletion. Superseded refs are listed in `docs/BRANCH_CLEANUP_2026-10-15.md` and may be deleted with normal Git/GitHub controls.
 
 ## Recommended continuation
+
+The older numbered plan below represents the October 16 baseline, not the current execution order. Consult [the current handoff](docs/HANDOFF.md) and current code first. Immediate priorities are real-world MLG/MSQ acceptance, documentation reconciliation, and only then explicitly selected engineering tasks. Do not restart the already integrated VE or observability foundations based on an older plan.
+
 
 1. focused UI polish from the accepted `main` baseline;
 2. CI plus browser sanity checks for interaction-affecting polish;
