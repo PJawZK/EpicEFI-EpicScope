@@ -56,6 +56,7 @@ export async function runLoggerAnalysisContextChecks() {
     const a = fixture('A'), b = fixture('B');
     set(a);
     const old = logger.getAnalysisContext();
+    assert(old.source.descriptor?.displayName === 'A' && old.source.descriptor.id === a.summary.source.id, 'Source descriptor was not captured with source lifetime');
     logger.element.hidden = true;
     let rangeMutations = 0; logger.onWorkspaceMutation(() => rangeMutations++);
     const beforeSelection = a.calls.length;
@@ -66,6 +67,7 @@ export async function runLoggerAnalysisContextChecks() {
     assert(!old.setAnalysisRange({ startMs: 1000, endMs: 2000 }) && !old.setAnalysisRange({ startMs: NaN, endMs: 300 }) && !old.setAnalysisRange({ startMs: 200, endMs: 200 }) && rangeMutations === 1, 'Invalid range mutated Logger');
     checks.push('Source-bound A/B commit is atomic, clamps reversed bounds, preserves workspace and rejects no-op/invalid mutations without hidden reads');
     set(b);
+    assert(old.source.descriptor.displayName === 'A' && logger.getAnalysisContext().source.descriptor.displayName === 'B', 'Source descriptor rebound across replacement');
     assert(!old.setAnalysisRange({ startMs: 100, endMs: 200 }) && logger.getAnalysisContext().aTimeMs === undefined, 'Stale range command changed replacement source');
     checks.push('Old source-bound selection cannot write A/B into replacement Logger source');
     const before = b.calls.length;

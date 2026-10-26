@@ -12,6 +12,14 @@ function channel(sourceName: string, displayName = sourceName): ChannelDefinitio
 }
 
 describe('Idle analyzer canonical channel roles', () => {
+  it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
+    const rpm = { ...channel('RPM'), id: 'mlg:33' };
+    const target = { ...channel('Idle: Target RPM'), id: 'mlg:2273' };
+    const candidates = [channel('IdleDiag Catch Drop RPM'), channel('Idle: Target RPM base'), channel('Idle: Target ERROR'), rpm, target];
+    expect(suggestAnalyzerChannel('idle', 'rpm', candidates)).toBe(rpm);
+    expect(suggestAnalyzerChannel('idle', 'target', candidates)).toBe(target);
+    expect(suggestAnalyzerChannel('idle', 'rpm', candidates.slice(0, 3))).toBeUndefined();
+  });
   const channels = [
     channel('idleStatus_pTerm', 'Idle: P Term'),
     channel('idleStatus_iTerm', 'Idle: I Term'),

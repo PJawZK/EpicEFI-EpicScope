@@ -167,7 +167,7 @@ export interface LoggerAnalysisTraceContext {
 
 export interface LoggerAnalysisContext {
   /** Stable source lifetime plus changes to its sample/validity data, independent of navigation. */
-  readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number };
+  readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number; readonly descriptor?: LogSourceIdentity };
   readonly traces: readonly LoggerAnalysisTraceContext[];
   readonly channels: readonly ChannelDefinition[];
   /** Bound to this context's source, available catalog and sample extent; no implicit rebinding on replacement. */
@@ -2401,6 +2401,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const source = channelDataSource;
     const sampleExtent = source?.sampleCount ?? 0;
     const sourceRevision = analysisDataRevision;
+    const descriptor = integritySource ? { ...integritySource } : undefined;
     const sourceTimeRange = analysisSourceTimeRange ? { startMs: analysisSourceTimeRange.startMs, endMs: analysisSourceTimeRange.endMs } : undefined;
     const channels = analysisChannels();
     const definitions = new Map(channels.map((channel) => [channel.id, channel]));
@@ -2493,7 +2494,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       traces,
       channels,
       loadTraces,
-      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),
+      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision, ...(descriptor ? { descriptor } : {}) } } : {}),
       ...(sourceTimeRange ? { sourceTimeRange } : {}),
       setAnalysisRange: ({ startMs, endMs }) => {
         if (!source || source !== channelDataSource || sourceRevision !== analysisDataRevision || source.sampleCount !== sampleExtent || !sourceTimeRange

@@ -128,8 +128,8 @@ export function updateVeActualMixtureOptions(control: HTMLSelectElement, channel
 // Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
 // Canonical runtime channels are preferred where EpicEFI has an established name; fuzzy matching is fallback only.
 const RULES: Readonly<Record<string, RoleRule>> = {
-  'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
-  'idle:target': { exact: ['ini:idleTarget', 'idleTarget'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i] },
+  'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue', 'RPM', 'Engine RPM'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i], exclude: [/target|error|drop|delta|diag|limit/i] },
+  'idle:target': { exact: ['ini:idleTarget', 'idleTarget', 'Idle: Target RPM'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i], exclude: [/base|error|stepper|position/i] },
 
   // Outer idle RPM controller. These values decide the requested idle-air position.
   'idle:basePosition': { exact: ['ini:baseIdlePosition', 'baseIdlePosition'], include: [/base.*idle.*position/i, /idle.*base.*value/i] },

@@ -30,6 +30,7 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await record('histogram-math-preview.json', await evaluate(`(async()=>{const m=await import('${moduleBase}histogram-math-preview.browser.mjs');return m.runHistogramMathPreviewChecks();})()`,60000));
  await record('local-persistence.json', await evaluate(`(async()=>{const m=await import('${moduleBase}local-persistence.browser.mjs');return m.runLocalPersistenceChecks();})()`,60000));
  await record('histogram-formula.json', await evaluate(`(async()=>{const m=await import('${moduleBase}histogram-formula-pipeline.browser.mjs');return m.runHistogramFormulaPipelineChecks();})()`,60000));
+ await record('idle-analyzer.json', await evaluate(`(async()=>{const m=await import('${moduleBase}idle-analyzer.browser.mjs');return m.runIdleAnalyzerChecks();})()`,60000));
  await record('mlg-integrity.json', await evaluate(`(async()=>{const m=await import('${moduleBase}mlg-integrity.browser.mjs');return m.runMlgIntegrityChecks();})()`,60000));
  await record('source-integrity-cpu.json', await evaluate(`(async()=>{const m=await import('${moduleBase}source-integrity-cpu.browser.mjs');return m.runSourceIntegrityCpuChecks();})()`,60000));
  await record('source-integrity-owner.json', await evaluate(`(async()=>{const m=await import('${moduleBase}source-integrity-owner.browser.mjs');return m.runSourceIntegrityOwnerChecks();})()`,60000));
@@ -37,6 +38,10 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await step('INI',async()=>{await file('input[accept=".ini,text/plain"]',fixture('navigation.ini'));await wait('document.querySelector(".load-ini").dataset.loadState==="success"');});
  await step('MSQ',async()=>{await file('input[accept^=".msq"]',fixture('audit.msq'));await wait('document.querySelector(".load-msq").dataset.loadState==="success"');});
  await step('MLG',async()=>{await file('input[accept^=".mlg"]',fixture('navigation.mlg'));await wait(mode === 'staged' ? 'document.querySelector(".parser-status").textContent.includes("CRC validated")' : 'document.querySelector(".open-log").dataset.loadState==="success"');});
+ await record('idle-shell.json', await evaluate(`(async()=>{const m=await import('${moduleBase}idle-analyzer.browser.mjs');return m.runIdleShellChecks();})()`,60000));
+ await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+ await record('idle-narrow.json', await evaluate(`(async()=>{const m=await import('${moduleBase}idle-analyzer.browser.mjs');return m.runIdleNarrowChecks();})()`,60000));
+ await call('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
  const authorityInputs = {iniSource: await fs.readFile(fixture('navigation.ini'), 'utf8'), msqSource: await fs.readFile(fixture('audit.msq'), 'utf8')};
  await record('ini-table-authority.json', await evaluate(`(async()=>{const m=await import('${moduleBase}ini-table-authority.browser.mjs');return m.runIniTableAuthorityChecks(${JSON.stringify(authorityInputs)});})()`,60000));
  await step('Analyzer click',()=>evaluate('document.querySelector("[data-epicscope-mode=analyzer]").click()'));

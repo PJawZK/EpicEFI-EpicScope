@@ -2,8 +2,12 @@
 
 **Branch:** `ui/idle-analyzer-html-integration`  
 **Base:** EpicScope `main` at `702c880a29baa28b762ac26f7f7ed55ef01239ef` (2026-10-26)  
-**Scope:** Offline HTML prototype + design/validation documentation **only**.  
-**Explicit boundary:** No modifications to EpicScope production application, runtime, parser, tests, dependencies, release workflows, firmware, or ECU; no merge to `main`.
+**Current scope:** First native recorded-data Stability slice, authorized after the completed readiness assessment; frozen standalone HTML remains the visual/behavioral reference.
+**Explicit boundary:** Scoped native TypeScript/CSS integration and focused tests only; no standalone HTML changes, dependencies/framework, release workflows, firmware, ECU writes/Burn or merge to `main`.
+
+## Current implementation checkpoint
+
+[First native Stability vertical slice](NATIVE_STABILITY_CHECKPOINT.md) records working functionality, owner/numerical contracts, validation, deliberate prototype deviations and remaining work. The previous readiness assessment below describes its audited pre-implementation baseline; its documentation-only restrictions were superseded by the user’s explicit native-slice instruction. Stop for review after this checkpoint. The next action is manual review of the native Stability slice and its documented deviations before selecting additional functionality.
 
 ## Source files
 
@@ -14,7 +18,7 @@
 - [Idle Analyzer v3.5.10 — comparison session](Idle_Analyzer_v3_5_10_Comparison_Session.html) — **latest experimental snapshot**: sampled-fingerprint-bound, local-only restoration of imported B selection after re-import. A sampled match is not proof of identical file bytes.
 - [Previous functional maturity audit](READINESS_AUDIT_v3_5_6.md) — historical status and integration cautions.
 
-The HTML files are **versioned standalone snapshots**. Changes in this branch must remain in these documents while the user evaluates their behavior. Production porting requires separate authorization.
+The HTML files are **preserved versioned standalone snapshots**. The user has now authorized the bounded native Stability slice. Additional modes, broad optimization or main integration require subsequent review.
 
 ## v3.5.7 changes and observations
 
@@ -49,7 +53,7 @@ Confirmed blockers include stale replacement completion, destructive failed B re
 
 Healthy behavior to retain: missing B blocks evidence; raw imported logs are not persisted in localStorage; matching/mismatching sampled fingerprints govern B interval restoration; source axes remain independent; normalized graphs are explicitly shape-only; interval suggestions are ranked by operating conditions rather than favorable RMSE; fixture tables and Logger placeholder are clearly labeled.
 
-## Recommended next action
+## Readiness recommendation at the assessment checkpoint (historical)
 
 Review and authorize **implementation Stage1: source fixtures and numerical contracts** separately. Continue one bounded stage at a time with local commit/handoff and review stops. Reuse canonical parser/workers/data sources, existing Idle/DC analysis, role resolution, Logger callbacks and persistence patterns. Correct most remaining prototype faults once at native owners rather than creating another standalone parser/state system or polishing additional illustrative features.
 

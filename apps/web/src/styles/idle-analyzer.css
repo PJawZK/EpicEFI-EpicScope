@@ -1,0 +1,47 @@
+.idle-analyzer-view { min-width: 0; color: #d9e9ef; background: #081720; border: 1px solid #294451; border-radius: 6px; padding: 8px; font-size: 12px; }
+.analyzer-page--idle-stability { min-width: 0; width: 100%; }
+.epicscope-app:has(.idle-analyzer-view:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
+.idle-analyzer-view[hidden] { display: none; }
+.idle-analyzer-view button, .idle-analyzer-view input, .idle-analyzer-view select { color: #d9e9ef; background: #102735; border: 1px solid #365967; border-radius: 4px; padding: 7px 9px; min-width: 0; font: inherit; }
+.idle-analyzer-view button { cursor: pointer; }
+.idle-analyzer-view button:disabled { cursor: default; opacity: .55; }
+.idle-analyzer-view :focus-visible { outline: 2px solid #6ad6ec; outline-offset: 2px; }
+.idle-toolbar, .idle-setup, .idle-plot-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.idle-toolbar { padding-bottom: 8px; border-bottom: 1px solid #294451; }
+.idle-toolbar label, .idle-setup label { display: flex; align-items: center; gap: 6px; }
+.idle-toolbar [data-idle=source] { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.idle-readonly { color: #e2c77d; font-size: 10px; }
+.idle-workspace { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr); gap: 10px; margin: 8px 0; }
+.idle-main, .idle-assessment { min-width: 0; border: 1px solid #294451; border-radius: 5px; padding: 8px; }
+.idle-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.idle-metrics > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; background: #102531; padding: 10px; border: 1px solid #294451; border-radius: 4px; }
+.idle-metrics strong { font-size: 18px; overflow-wrap: anywhere; }
+.idle-metrics span, .idle-main > p, .idle-scope-note { color: #98b7c4; }
+.idle-stability-plot { display: block; width: 100%; min-height: 260px; background: #0a1c27; margin-top: 6px; touch-action: none; user-select: none; }
+.idle-stability-plot text { fill: #9cb9c5; font: 12px system-ui, sans-serif; }
+.idle-plot-tools span { flex: 1; }
+.idle-region-evidence { border-top: 1px solid #294451; padding-top: 9px; }
+.idle-assessment header { display: grid; gap: 8px; }
+.idle-assessment [role=status] { color: #e2c77d; overflow-wrap: anywhere; }
+.idle-assessment nav { display: flex; gap: 4px; margin: 14px 0; }
+.idle-assessment nav button { flex: 1; }
+.idle-assessment nav button[aria-pressed=true] { background: #19475d; }
+.idle-assessment h3 { color: #9dc3d4; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 16px 0 6px; }
+.idle-assessment p { line-height: 1.65; overflow-wrap: anywhere; }
+.idle-setup { border-top: 1px solid #294451; padding-top: 10px; }
+.idle-setup select { max-width: 245px; }
+.idle-setup input { width: 100px; }
+.idle-setup [data-idle=run] { background: #125575; margin-left: auto; }
+.idle-scope-note { flex-basis: 100%; margin-bottom: 0; }
+@media (max-width: 900px) { .idle-workspace { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 540px) {
+  .idle-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .idle-toolbar select { max-width: 210px; }
+  .idle-toolbar [data-idle=source] { flex-basis: 100%; }
+  .idle-stability-plot text { font-size: 23px; }
+  .idle-setup label { flex-wrap: wrap; max-width: 100%; }
+  .idle-setup select { max-width: 210px; }
+  .epicscope-app:has(.idle-analyzer-view:not([hidden])) .analyzer-header-view select { width: 80px; min-width: 0; }
+  .epicscope-app:has(.idle-analyzer-view:not([hidden])) .header-context { display: none; }
+  .epicscope-app:has(.idle-analyzer-view:not([hidden])) .status-bar { min-width: 0; overflow: hidden; }
+}
