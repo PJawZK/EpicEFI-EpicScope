@@ -23,7 +23,10 @@
 .idle-metrics span { color: var(--detail); font-size: 10px; }
 .idle-main > [data-idle=plot] { min-height: 0; flex: 1 1 0; }
 .idle-plot-surface { height: 100%; display: flex; flex-direction: column; position: relative; min-height: 0; }
-.idle-stability-plot { display: block; width: 100%; height: 100%; flex: 1 1 0; min-height: 0; background: transparent; touch-action: none; user-select: none; }
+.idle-plot-frame { flex: 1 1 0; min-height: 0; position: relative; }
+.idle-plot-y-axis { position: absolute; inset: 0 auto 0 0; width: 32px; color: var(--detail); font-size: 11px; pointer-events: none; }
+.idle-plot-y-axis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.idle-stability-plot { display: block; width: calc(100% - 40px); margin-left: 40px; height: 100%; min-height: 0; background: transparent; touch-action: none; user-select: none; }
 .idle-stability-plot text { fill: var(--detail); font: 11px system-ui, sans-serif; }
 .idle-plot-legend { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 7px; padding: 4px; }
 .idle-plot-legend button { border: 0; padding: 0 3px; background: transparent; font-size: 10px; }
@@ -81,3 +84,7 @@
   .idle-setup label { flex-wrap: wrap; max-width: 100%; }
   .idle-setup select { max-width: 205px; }
 }
+
+.idle-actionbar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.idle-actionbar input { width: 62px; }
+.idle-actionbar [data-idle=candidates] { max-width: 220px; }

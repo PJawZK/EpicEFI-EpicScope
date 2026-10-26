@@ -5,6 +5,7 @@ import { analyzerChannelOptionLabel, suggestAnalyzerChannel, idleRoleUnit } from
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import { analyzeIdleStability, type IdleStabilityResult } from '../../../../core/analysis/idle-stability';
+import { discoverIdleCandidates, type IdleCandidateOptions } from '../../../../core/analysis/idle-regions';
 import { createIdleStabilityPlot, type IdlePlotSeries } from './idle-stability-plot';
 import { installAnalyzerRangeInteraction } from './analyzer-range-interaction';
 import { createOwnerEvidence } from '../observability/producers/owner';
@@ -35,6 +36,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let committingRange = false;
   let scopeValue = 'full';
   let manual: { startMs: number; endMs: number } | undefined;
+  let discoveryGeneration = 0;
+  let discovery: { source: object; key: string; result: ReturnType<typeof discoverIdleCandidates> } | undefined;
+  let discoveryPending = false;
   let tab: Tab = 'diagnosis';
   const root = document.createElement('section');
   root.className = 'idle-analyzer-view';
@@ -59,7 +63,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
         <span data-idle="scope-band" class="idle-range-band"></span><span data-idle="edit-band" class="idle-range-band idle-range-edit" hidden></span>
         <span data-idle="range-a" class="idle-range-handle" role="slider" aria-label="Idle range start A in milliseconds" tabindex="0" hidden></span>
         <span data-idle="range-b" class="idle-range-handle" role="slider" aria-label="Idle range end B in milliseconds" tabindex="0" hidden></span></div></section>
-    <div class="idle-actionbar"><span data-idle="scope-note">Select a known idle region. Automatic qualification is not integrated.</span><span class="idle-readonly">Read only</span><button type="button" data-idle="run">▶ Run Analysis</button></div>
+    <div class="idle-actionbar"><label>Auto-detect ≤ <input type="number" min="1" step="50" value="1200" data-idle="candidate-rpm" aria-label="Candidate maximum RPM"> RPM</label><label>Min <input type="number" min="0.1" step="1" value="8" data-idle="candidate-duration" aria-label="Candidate minimum duration in seconds"> s</label>
+      <button type="button" data-idle="discover">Find candidates</button><select data-idle="candidates" aria-label="Review RPM candidate region" disabled><option value="">No discovered candidates</option></select>
+      <span data-idle="scope-note">RPM-only candidates require review; not automatically idle-qualified.</span><span class="idle-readonly">Read only</span><button type="button" data-idle="run">▶ Run Analysis</button></div>
     <details class="idle-setup" data-idle="setup"><summary>Channels and manual region</summary><div class="idle-setup-body">
       <span data-idle="source">Load a recorded MLG through Open Log.</span><label>RPM <select data-idle="rpm" aria-label="Idle RPM channel"></select></label>
       <label>Idle target <select data-idle="target" aria-label="Idle target channel"></select></label>
@@ -87,6 +93,20 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if (!scope) return undefined;
     return scope.kind === 'full' ? context.sourceTimeRange : analyzerScopeBounds(scope) as { startMs: number; endMs: number };
   };
+  const resetDiscovery = () => {
+    discoveryGeneration += 1; discoveryPending = false; discovery = undefined;
+    field<HTMLButtonElement>('discover').disabled = false;
+    field<HTMLSelectElement>('candidates').replaceChildren(new Option('No discovered candidates', ''));
+    field<HTMLSelectElement>('candidates').disabled = true;
+    field('scope-note').textContent = 'RPM-only candidates require review; not automatically idle-qualified.';
+  };
+  const candidateOptions = (): IdleCandidateOptions | undefined => {
+    const rpm = field<HTMLInputElement>('candidate-rpm'), duration = field<HTMLInputElement>('candidate-duration');
+    const maximumRpm = Number(rpm.value), minimumDurationMs = Number(duration.value) * 1000;
+    return rpm.value.trim() && duration.value.trim() && Number.isFinite(maximumRpm) && maximumRpm > 0 && Number.isFinite(minimumDurationMs) && minimumDurationMs > 0
+      ? { maximumRpm, minimumDurationMs, maximumGapMs: 250 } : undefined;
+  };
+  const discoveryKey = (options: IdleCandidateOptions) => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.channels, rpmId, options]);
   const renderTimeline = () => {
     const extent = context.sourceTimeRange, bounds = selectedBounds();
     const track = field('range-track'), band = field('scope-band'), edit = field('edit-band');
@@ -105,18 +125,20 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     } else { field('range-a').hidden = true; field('range-b').hidden = true; }
     field('region-label').textContent = scopeSelect.selectedOptions[0]?.textContent ?? 'Recorded region';
   };
+  const commitRange = (captured: LoggerAnalysisContext, a: number, b: number) => {
+    const previous = scopeValue; scopeValue = 'ab'; committingRange = true;
+    let committed = false;
+    try { committed = captured.setAnalysisRange?.({ startMs: a, endMs: b }) ?? false; }
+    finally { committingRange = false; }
+    if (!committed) { scopeValue = previous; status('Logger could not accept this range. Previous region retained.'); }
+    configure(context); if (committed) void analyze();
+    return committed;
+  };
   const rangeInteraction = installAnalyzerRangeInteraction({
     track: field('range-track'), band: field('edit-band'), start: field('range-a'), end: field('range-b'), signal: events.signal,
     getState: () => active && !disposed && context.source?.descriptor?.format === 'MLG' ? { context, editing: scopeValue === 'ab' } : undefined,
     render: () => { if (active && !disposed) renderTimeline(); },
-    commit: (captured, a, b) => {
-      const previous = scopeValue; scopeValue = 'ab'; committingRange = true;
-      let committed = false;
-      try { committed = captured.setAnalysisRange?.({ startMs: a, endMs: b }) ?? false; }
-      finally { committingRange = false; }
-      if (!committed) scopeValue = previous;
-      configure(context); if (committed) void analyze();
-    },
+    commit: commitRange,
   });
   const section = (title: string, text: string) => {
     const element = document.createElement('section');
@@ -151,6 +173,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     rangeInteraction.contextChanged(next);
     const sourceChanged = context.source?.identity !== next.source?.identity;
     const catalogChanged = !sameChannelOptionCatalog(context.channels, next.channels);
+    if (sourceChanged || catalogChanged || context.source?.revision !== next.source?.revision || context.source?.sampleCount !== next.source?.sampleCount) resetDiscovery();
     if (sourceChanged) { scopeValue = 'full'; manual = undefined; }
     else scopeValue = retainedAnalyzerScopeValue(scopeValue, context, next);
     context = next;
@@ -238,11 +261,48 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (request === generation) { pendingKey = undefined; runButton.disabled = false; }
     }
   };
+  const discover = async () => {
+    if (!active || disposed || discoveryPending) return;
+    const options = candidateOptions(), source = context.source, bounds = context.sourceTimeRange;
+    if (!options) { status('Enter a positive RPM ceiling and minimum duration.'); return; }
+    if (!source || source.descriptor?.format !== 'MLG' || !bounds || !rpmId) { status('Load recorded RPM evidence before discovering candidates.'); return; }
+    const key = discoveryKey(options);
+    if (discovery?.source === source.identity && discovery.key === key) { status('Candidate list is current; review a recorded interval.'); return; }
+    const captured = context, requestedRpm = rpmId, request = ++discoveryGeneration;
+    discoveryPending = true; field<HTMLButtonElement>('discover').disabled = true; status('Finding RPM-only candidate intervals…');
+    try {
+      // Reuse accepted full-source RPM evidence when available; otherwise one captured read.
+      const trace = scopeValue === 'full' && accepted?.source === source.identity ? accepted.rpm
+        : (await captured.loadTraces([requestedRpm], bounds.startMs, bounds.endMs)).find(item => item.channel.id === requestedRpm);
+      if (!active || disposed || request !== discoveryGeneration) return;
+      if (!trace || !(trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs))) throw new Error('Full-source RPM coverage is required for discovery. Existing analysis retained.');
+      const result = discoverIdleCandidates(trace.range, options);
+      discovery = { source: source.identity, key, result };
+      const select = field<HTMLSelectElement>('candidates');
+      select.replaceChildren(new Option(result.totalCount ? 'Review candidate…' : 'No matching candidate intervals', ''));
+      result.regions.forEach((region, index) => select.add(new Option(`${index + 1}: ${(region.startMs / 1000).toFixed(2)}–${(region.endMs / 1000).toFixed(2)} s`, String(index))));
+      select.disabled = !result.regions.length;
+      field('scope-note').textContent = `${result.totalCount} RPM-only candidates${result.totalCount > result.regions.length ? '; first 200 listed' : ''} · 0 < RPM ≤ ${options.maximumRpm} · ≥ ${options.minimumDurationMs / 1000} s · gaps ≤ 250 ms. Review throttle, temperature and loads.`;
+      status('Candidate discovery complete; analysis region unchanged.');
+    } catch (error) {
+      if (active && !disposed && request === discoveryGeneration) status(error instanceof Error ? error.message : 'Candidate discovery failed; existing analysis retained.');
+    } finally {
+      if (request === discoveryGeneration) { discoveryPending = false; field<HTMLButtonElement>('discover').disabled = false; }
+    }
+  };
   const listen = (node: HTMLElement, action: () => void, event = 'click') => node.addEventListener(event, () => {
     if (active && !disposed) action();
   }, { signal: events.signal });
-  listen(rpmSelect, () => { rpmId = rpmSelect.value; void analyze(); }, 'change');
+  listen(rpmSelect, () => { resetDiscovery(); rpmId = rpmSelect.value; void analyze(); }, 'change');
   for (const role of CONTEXT_ROLES) listen(contextSelects[role], () => { contextIds[role] = contextSelects[role].value; void analyze(); }, 'change');
+  listen(field('discover'), () => { void discover(); });
+  for (const name of ['candidate-rpm', 'candidate-duration']) listen(field(name), resetDiscovery, 'change');
+  listen(field('candidates'), () => {
+    const select = field<HTMLSelectElement>('candidates'), options = candidateOptions();
+    if (!select.value || !options || discovery?.source !== context.source?.identity || discovery?.key !== discoveryKey(options)) return;
+    const region = discovery.result.regions[Number(select.value)];
+    if (region && !commitRange(context, region.startMs, region.endMs)) select.value = '';
+  }, 'change');
   listen(field('settings'), () => { field<HTMLDetailsElement>('setup').open = !field<HTMLDetailsElement>('setup').open; });
   listen(field('region-focus'), plot.fit);
   listen(field('zoom-in'), () => plot.zoom(.8));
@@ -268,7 +328,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     setActive(next: boolean) {
       if (disposed || active === next) return;
       active = next; plot.setActive(next);
-      if (!next) { rangeInteraction.cancel(); generation += 1; pendingKey = undefined; return; }
+      if (!next) { rangeInteraction.cancel(); generation += 1; discoveryGeneration += 1; discoveryPending = false; field<HTMLButtonElement>('discover').disabled = false; pendingKey = undefined; return; }
       if (pendingContext) { const nextContext = pendingContext; pendingContext = undefined; configure(nextContext); }
       void analyze();
     },
@@ -278,6 +338,6 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       configure(next); if (!committingRange) void analyze();
     },
     refresh() { void analyze(); },
-    dispose() { disposed = true; active = false; generation += 1; accepted = undefined; pendingContext = undefined; rangeInteraction.cancel(); events.abort(); plot.dispose(); },
+    dispose() { disposed = true; active = false; generation += 1; discoveryGeneration += 1; discovery = undefined; accepted = undefined; pendingContext = undefined; rangeInteraction.cancel(); events.abort(); plot.dispose(); },
   };
 }

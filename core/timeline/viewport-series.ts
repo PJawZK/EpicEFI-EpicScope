@@ -416,3 +416,30 @@ export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: n
     ? { sampleIndex: range.startSampleIndex + index, timeMs, value } : undefined;
 }
 
+
+/** Actual first/extrema/last samples in time order, shared with Logger rendering. */
+export function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly { timeMs: number; value: number }[] {
+  const candidates = [
+    { timeMs: column.firstTimeMs, value: column.first },
+    { timeMs: column.minTimeMs, value: column.min },
+    { timeMs: column.maxTimeMs, value: column.max },
+    { timeMs: column.lastTimeMs, value: column.last },
+  ].sort((left, right) => left.timeMs - right.timeMs);
+  return candidates.filter((point, index) => index === 0 || point.timeMs !== candidates[index - 1]!.timeMs || point.value !== candidates[index - 1]!.value);
+}
+
+/** Logger density policy: raw visible samples when sparse; ordered extrema when dense. */
+export function buildViewportTraceSeries(range: NumericChannelRange, startMs: number, endMs: number, pixelWidth: number): {
+  readonly mode: 'raw' | 'envelope'; readonly points: readonly RawViewportPoint[];
+} {
+  const envelope = buildViewportEnvelope(range, startMs, endMs, pixelWidth);
+  if (envelope.validSampleCount <= pixelWidth * 2) return { mode: 'raw', points: buildRawViewportSeries(range, startMs, endMs) };
+  const points: RawViewportPoint[] = [];
+  let previousX: number | undefined;
+  for (const column of envelope.columns) {
+    const representatives = rawRepresentativePoints(column);
+    representatives.forEach((point, index) => points.push({ ...point, breakBefore: index === 0 && (previousX === undefined || column.x - previousX > 2) }));
+    previousX = column.x;
+  }
+  return { mode: 'envelope', points };
+}

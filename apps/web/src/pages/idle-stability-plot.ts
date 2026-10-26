@@ -1,10 +1,10 @@
-import { buildViewportEnvelope, buildRawViewportSeries, nearestNumericSample } from '../../../../core/timeline/viewport-series';
+import { buildViewportTraceSeries, nearestNumericSample } from '../../../../core/timeline/viewport-series';
 import { buildStableValueScale } from '../../../../core/timeline/value-scale';
 import { createFullViewport, panViewport, zoomViewport, type TimelineViewport } from '../../../../core/timeline/viewport-state';
 import type { AnalyzerEvidenceSeries } from './analyzer-event-evidence';
 
 export interface IdlePlotSeries extends AnalyzerEvidenceSeries { readonly unit: string; readonly color: string; readonly pane: 0 | 1; }
-const NS = 'http://www.w3.org/2000/svg', WIDTH = 1000, LEFT = 55, RIGHT = 985, PLOT_WIDTH = RIGHT - LEFT;
+const NS = 'http://www.w3.org/2000/svg', WIDTH = 1000, LEFT = 0, RIGHT = 985, PLOT_WIDTH = RIGHT - LEFT;
 function svgNode(tag: string, attrs: Record<string, string>, text?: string): SVGElement {
   const node = document.createElementNS(NS, tag);
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
@@ -15,12 +15,14 @@ function svgNode(tag: string, attrs: Record<string, string>, text?: string): SVG
 /** Recorded presentation only. Shares Logger viewport, sample lookup and envelope primitives. */
 export function createIdleStabilityPlot() {
   const element = document.createElement('div'); element.className = 'idle-plot-surface';
+  const frame = document.createElement('div'); frame.className = 'idle-plot-frame';
+  const axis = document.createElement('div'); axis.className = 'idle-plot-y-axis';
   const svg = document.createElementNS(NS, 'svg'); svg.classList.add('idle-stability-plot');
   svg.setAttribute('viewBox', `0 0 ${WIDTH} 480`); svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Recorded RPM and target; base, correction and final position. Wheel zoom, drag pan, Shift-drag zoom, Home to fit.'); svg.setAttribute('tabindex', '0');
   const tooltip = document.createElement('div'); tooltip.className = 'idle-plot-tooltip'; tooltip.hidden = true; tooltip.setAttribute('role', 'status');
   const legend = document.createElement('div'); legend.className = 'idle-plot-legend'; legend.setAttribute('aria-label', 'Recorded trace visibility');
-  element.append(svg, tooltip, legend);
+  frame.append(axis, svg); element.append(frame, tooltip, legend);
   const events = new AbortController();
   legend.addEventListener('click', event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-trace-label]') : null;
@@ -37,9 +39,10 @@ export function createIdleStabilityPlot() {
   const timeAt = (x: number) => viewport!.visibleStartMs + fractionAt(x) * (viewport!.visibleEndMs - viewport!.visibleStartMs);
   const xFor = (time: number) => LEFT + (time - viewport!.visibleStartMs) / Math.max(1, viewport!.visibleEndMs - viewport!.visibleStartMs) * PLOT_WIDTH;
   const yFor = (value: number, pane: number) => 30 + pane * 232 + 178 - (value - scales[pane]!.min) / (scales[pane]!.max - scales[pane]!.min) * 178;
+  const traceCache = new Map<IdlePlotSeries, { key: string; trace: ReturnType<typeof buildViewportTraceSeries> }>();
   const draw = () => {
     if (!active) return;
-    svg.replaceChildren(); tooltip.hidden = true;
+    svg.replaceChildren(); axis.replaceChildren(); tooltip.hidden = true;
     if (!viewport) return;
     for (let pane = 0; pane < 2; pane += 1) {
       const top = 30 + pane * 232;
@@ -47,7 +50,8 @@ export function createIdleStabilityPlot() {
       for (let tick = 0; tick <= 4; tick += 1) {
         const y = top + tick / 4 * 178;
         svg.append(svgNode('line', { x1: String(LEFT), x2: String(RIGHT), y1: String(y), y2: String(y), stroke: 'var(--line-soft, #253846)' }));
-        svg.append(svgNode('text', { x: String(LEFT - 8), y: String(y + 4), 'text-anchor': 'end' }, (scales[pane]!.max - tick / 4 * (scales[pane]!.max - scales[pane]!.min)).toFixed(0)));
+        const label = document.createElement('span'); label.style.top = `${y / 480 * 100}%`;
+        label.textContent = (scales[pane]!.max - tick / 4 * (scales[pane]!.max - scales[pane]!.min)).toFixed(0); axis.append(label);
       }
       for (let tick = 0; tick <= 4; tick += 1) {
         const time = viewport.visibleStartMs + tick / 4 * (viewport.visibleEndMs - viewport.visibleStartMs);
@@ -56,18 +60,19 @@ export function createIdleStabilityPlot() {
     }
     series.forEach((entry, index) => {
       if (hidden.has(entry.label)) return;
-      const range = entry.range; let d = '';
-      if (range.values.length <= 2000) {
-        for (const point of buildRawViewportSeries(range, viewport!.visibleStartMs, viewport!.visibleEndMs)) {
-          d += `${point.breakBefore ? 'M' : 'L'}${xFor(point.timeMs).toFixed(2)},${yFor(point.value, entry.pane).toFixed(2)} `;
-          if (point.breakBefore) d += 'l.1,0 ';
-        }
-      } else {
-        for (const column of buildViewportEnvelope(range, viewport!.visibleStartMs, viewport!.visibleEndMs, PLOT_WIDTH).columns) {
-          const x = LEFT + column.x; d += `M${x},${yFor(column.min, entry.pane).toFixed(2)}L${x + .2},${yFor(column.max, entry.pane).toFixed(2)} `;
-        }
+      const pixelWidth = Math.max(1, Math.round(svg.getBoundingClientRect().width * PLOT_WIDTH / WIDTH));
+      const key = `${viewport!.visibleStartMs}:${viewport!.visibleEndMs}:${pixelWidth}`;
+      let cached = traceCache.get(entry);
+      if (cached?.key !== key) {
+        cached = { key, trace: buildViewportTraceSeries(entry.range, viewport!.visibleStartMs, viewport!.visibleEndMs, pixelWidth) };
+        traceCache.set(entry, cached);
       }
-      const path = svgNode('path', { d, fill: 'none', stroke: entry.color, 'stroke-width': '1.3', 'vector-effect': 'non-scaling-stroke', 'data-idle-trace': String(index), 'data-trace-label': entry.label });
+      let d = '';
+      for (const point of cached.trace.points) {
+        d += `${point.breakBefore ? 'M' : 'L'}${xFor(point.timeMs).toFixed(2)},${yFor(point.value, entry.pane).toFixed(2)} `;
+        if (point.breakBefore) d += 'l.1,0 ';
+      }
+      const path = svgNode('path', { d, fill: 'none', stroke: entry.color, 'stroke-width': '1.3', 'vector-effect': 'non-scaling-stroke', 'data-trace-mode': cached.trace.mode, 'data-idle-trace': String(index), 'data-trace-label': entry.label });
       svg.append(path);
     });
     if (!series.some(entry => entry.pane === 1)) svg.append(svgNode('text', { x: '300', y: '350' }, 'Controller context unavailable · map recorded position channels'));
@@ -118,9 +123,9 @@ export function createIdleStabilityPlot() {
   return {
     element, fit, zoom,
     setActive(next: boolean) { active = next; if (!next) { end(); tooltip.hidden = true; } else draw(); },
-    clear() { series = []; viewport = undefined; svg.replaceChildren(); legend.replaceChildren(); tooltip.hidden = true; },
+    clear() { traceCache.clear(); series = []; viewport = undefined; svg.replaceChildren(); axis.replaceChildren(); legend.replaceChildren(); tooltip.hidden = true; },
     setData(entries: readonly IdlePlotSeries[], startMs: number, endMs: number) {
-      series = entries; const perPane = [0, 1].map(pane => {
+      traceCache.clear(); series = entries; const perPane = [0, 1].map(pane => {
         const bounds = entries.filter(entry => entry.pane === pane).map(entry => buildStableValueScale(entry.range));
         return bounds.reduce((a, b) => ({ min: Math.min(a.min, b.min), max: Math.max(a.max, b.max) }), bounds[0] ?? { min: -1, max: 1 });
       }); scales = perPane; viewport = createFullViewport(startMs, endMs);
@@ -131,6 +136,6 @@ export function createIdleStabilityPlot() {
       }
       draw();
     },
-    dispose() { end(); events.abort(); series = []; viewport = undefined; element.replaceChildren(); },
+    dispose() { end(); events.abort(); traceCache.clear(); series = []; viewport = undefined; element.replaceChildren(); },
   };
 }

@@ -182,10 +182,53 @@ export async function runIdleAnalyzerChecks() {
       assert(commits===1 && f.calls.length===2 && Math.abs(f.calls.at(-1).start-40)<.01 && Math.abs(f.calls.at(-1).end-160)<.01, 'Pointer release duplicated/misrouted range');
     } finally { m.close(); }
   });
+  await check('candidate discovery reuses full evidence, keeps analysis unchanged and adopts through Logger once', async () => {
+    const f = fixture(new Float64Array(121).fill(900)), m = mount(); let commits = 0;
+    f.context.setAnalysisRange = ({startMs,endMs}) => { commits++; f.context = {...f.context,aTimeMs:startMs,bTimeMs:endMs}; m.view.setContext(f.context); return true; };
+    try {
+      m.view.setContext(f.context); m.view.setActive(true); await wait();
+      m.field('discover').click(); await wait();
+      assert(f.calls.length===1 && commits===0 && m.field('scope').value==='full', 'Discovery reread full accepted RPM or changed analysis scope');
+      assert(m.field('candidates').options.length===2 && m.field('scope-note').textContent.includes('1 RPM-only candidates'), 'Missing recorded candidate');
+      change(m.field('candidates'),'0'); await wait();
+      assert(commits===1 && f.calls.length===1 && m.field('scope').value==='ab' && f.context.aTimeMs===0 && f.context.bTimeMs===12000, 'Candidate bypassed Logger or redundantly analyzed identical bounds');
+      m.field('discover').click(); await wait(); assert(f.calls.length===1, 'Repeated discovery reread source');
+      change(m.field('candidate-rpm'),'850'); assert(m.field('candidates').disabled, 'Changed thresholds retained stale candidates');
+      m.field('discover').click(); await wait(); assert(m.field('candidates').disabled && m.field('scope-note').textContent.includes('0 RPM-only'), 'RPM setting did not affect discovery');
+      assert(m.field('samples').textContent==='121','Discovery altered accepted metrics');
+    } finally { m.close(); }
+  });
+  await check('candidate reads reject hidden, replaced and configuration-obsolete completions', async () => {
+    const f = fixture(new Float64Array(121).fill(900)), m = mount();
+    try {
+      m.view.setContext(f.context); m.view.setActive(true); await wait(); change(m.field('scope'),'ab'); await wait();
+      let release; f.context.loadTraces = () => new Promise(resolve => { release = resolve; }); m.view.setContext({...f.context});
+      m.field('discover').click(); await wait();
+      change(m.field('candidate-duration'),'9'); release(f.traces); await wait();
+      assert(m.field('candidates').disabled,'Obsolete discovery completed after setting change');
+      m.field('discover').click(); await wait(); m.view.setActive(false); const html=m.view.element.innerHTML; release(f.traces); await wait();
+      assert(m.view.element.innerHTML===html,'Hidden discovery wrote UI');
+      const next=fixture(new Float64Array(121).fill(1500)); m.view.setContext(next.context); m.view.setActive(true); await wait();
+      assert(m.field('candidates').disabled && m.field('samples').textContent==='121','Source replacement retained old candidates or lost analysis');
+    } finally { m.close(); }
+  });
+  await check('candidate adoption refusal retains the prior analysis and invalid settings do not read', async () => {
+    const f=fixture(new Float64Array(121).fill(900)),m=mount(); f.context.setAnalysisRange=()=>false;
+    try {
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('discover').click();await wait();change(m.field('candidates'),'0');await wait();
+      assert(m.field('scope').value==='full'&&m.field('samples').textContent==='121'&&f.calls.length===1,'Refused Logger range replaced analysis');
+      change(m.field('candidate-rpm'),'');m.field('discover').click();await wait();assert(f.calls.length===1&&m.field('status').textContent.includes('positive'),'Invalid settings read source');
+    } finally {m.close();}
+  });
   await check('320459-sample browser analysis renders bounded SVG evidence without argument-limit failure', async () => {
     const values = new Float64Array(320459).fill(1000), f = fixture(values), m = mount(); try {
       m.view.setContext(f.context); m.view.setActive(true); await wait();
       assert(m.field('samples').textContent.replaceAll(',', '') === '320459' && m.field('rmse').textContent === '0.00', 'Large browser analysis failed');
+      const svg=m.view.element.querySelector('svg'), path=()=>svg.querySelector('[data-idle-trace="0"]');
+      assert(path().dataset.traceMode==='envelope'&&(path().getAttribute('d').match(/M/g)||[]).length===1,'Dense trace lost flat-line continuity');
+      for(let i=0;i<40;i++)svg.dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));
+      assert(path().dataset.traceMode==='raw'&&path().getAttribute('d').includes('L'),'Zoomed trace did not switch to original raw samples');
+      assert(f.calls.length===1,'Graph zoom reread source');m.field('fit').click();
       assert(m.view.element.querySelectorAll('svg path').length === 2 && m.view.element.querySelectorAll('svg *').length < 100, 'Unbounded graph DOM');
     } finally { m.close(); }
   });
@@ -222,5 +265,10 @@ export function runIdleNarrowChecks() {
   assert(root && !root.hidden && innerWidth === 390, 'Expected active native Idle at 390px');
   assert(document.documentElement.scrollWidth <= innerWidth, 'Native Idle expanded application grid beyond viewport');
   assert(root.getBoundingClientRect().right <= innerWidth, 'Native Idle controls escaped narrow viewport');
-  return { passed: 1, checks: ['native Idle and source controls fit the 390px real application grid'] };
+  const frame=root.querySelector('.idle-plot-frame').getBoundingClientRect(),plot=root.querySelector('svg').getBoundingClientRect();
+  for(const tick of root.querySelectorAll('.idle-plot-y-axis span')) {
+    const rect=tick.getBoundingClientRect();assert(rect.left>=frame.left-1&&rect.right<plot.left,'Narrow Y-axis label clipped or overlaps trace');
+  }
+  assert(plot.left-frame.left===40,'Y-axis gutter scaled with viewport instead of native layout');
+  return { passed: 1, checks: ['native Idle controls and uncut Y-axis labels fit 390px after live resize without redraw'] };
 }

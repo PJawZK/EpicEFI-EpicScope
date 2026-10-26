@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Trace fidelity and recorded candidate regions](NATIVE_REGIONS_TRACE_CHECKPOINT.md) adds Logger-style dense/raw trace rendering, a smaller desktop axis margin, and an explicit RPM-only discovery → review → Logger A/B workflow. Full region management and qualification remain deferred.
+
 [Stability layout and reuse checkpoint](NATIVE_STABILITY_PARITY_CHECKPOINT.md) follows the user's comparison with the accepted HTML: a compact native workspace, recorded controller context, canonical target-unit resolution, hover evidence and Logger-authoritative timeline gestures. EpicScope's existing header, theme, navigation and bottom interface remain shared. No standalone application chrome is copied.
 
 [First native Stability vertical slice](NATIVE_STABILITY_CHECKPOINT.md) remains the historical foundation checkpoint. The readiness assessment below describes its pre-implementation baseline; the user's subsequent native-integration instructions superseded its documentation-only boundary. Stop for manual review of this workspace correction before implementing another diagnostic mode.

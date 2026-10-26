@@ -17,7 +17,7 @@ import {
   buildRawViewportSeries,
   buildViewportEnvelope,
   buildViewportEnvelopeFromBlocks,
-  type ViewportEnvelopeColumn,
+  rawRepresentativePoints,
 } from '../../../../core/timeline/viewport-series';
 import { createSourceIntegrityCanvasOverlay } from './source-integrity-canvas-overlay';
 
@@ -183,11 +183,6 @@ export interface GraphViewportController {
   clear(): void;
 }
 
-interface RawRepresentativePoint {
-  readonly timeMs: number;
-  readonly value: number;
-}
-
 interface ActiveTrace {
   readonly channel: ChannelDefinition;
   readonly range: NumericChannelRange;
@@ -201,24 +196,6 @@ interface PendingTrace {
   readonly channel: ChannelDefinition;
   readonly startedMs: number;
   readonly resolve: (active: boolean) => void;
-}
-
-function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly RawRepresentativePoint[] {
-  const candidates: RawRepresentativePoint[] = [
-    { timeMs: column.firstTimeMs, value: column.first },
-    { timeMs: column.minTimeMs, value: column.min },
-    { timeMs: column.maxTimeMs, value: column.max },
-    { timeMs: column.lastTimeMs, value: column.last },
-  ];
-  candidates.sort((left, right) => left.timeMs - right.timeMs);
-
-  const result: RawRepresentativePoint[] = [];
-  for (const candidate of candidates) {
-    const previous = result[result.length - 1];
-    if (previous && previous.timeMs === candidate.timeMs && previous.value === candidate.value) continue;
-    result.push(candidate);
-  }
-  return result;
 }
 
 function nearestValue(range: NumericChannelRange, cursorTimeMs: number): number | undefined {
