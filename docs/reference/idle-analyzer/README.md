@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Fixture/contract closure checkpoint](NATIVE_CONTRACT_CHECKPOINT.md) inventories current coverage, adds canonical parser-to-Stability regressions and freezes remaining mode prerequisites without changing production behavior.
+
 [Stage completion status](NATIVE_STAGE_STATUS.md) tracks the original seven integration stages and remaining closure work.
 
 [Declared region purposes](NATIVE_PURPOSE_CHECKPOINT.md) adds the five reference test intents, conservative mixed-purpose interpretation and purpose-aware Stability guidance without changing measured values or qualification.

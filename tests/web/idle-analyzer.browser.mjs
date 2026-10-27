@@ -1,3 +1,6 @@
+import { MemoryByteSource } from '../../core/parsers/byte-source';
+import { parseMlg } from '../../core/parsers/mlg/mlg-parser';
+import { IDLE_CONTRACT_RECORDS, idleContractMlg } from '../fixtures/idle/mlg-contract';
 import { createIdleAnalyzerView } from '../../apps/web/src/pages/idle-analyzer-view';
 
 const wait = () => new Promise(resolve => setTimeout(resolve, 15));
@@ -30,6 +33,19 @@ function mount() {
 export async function runIdleAnalyzerChecks() {
   const checks = [];
   const check = async (name, run) => { await run(); checks.push(name); };
+  await check('canonical retry/CRC/wrap fixture reaches native Stability without dense reindexing or invented target',async()=>{
+    const bytes=idleContractMlg(IDLE_CONTRACT_RECORDS,true),parsed=await parseMlg(new MemoryByteSource(bytes),{id:'idle-contract',displayName:'generated-idle-contract.mlg',format:'MLG',sizeBytes:bytes.length},{incompleteTail:'retain-complete-records'});
+    const m=mount();let reads=0;
+    try{
+      const context={source:{identity:parsed,revision:0,sampleCount:7,descriptor:parsed.summary.source},sourceTimeRange:parsed.summary.timeRange,channels:parsed.summary.channels,traces:[],savedRanges:[],aTimeMs:undefined,bTimeMs:undefined,loadTraces:async ids=>{reads++;return Promise.all(ids.map(async id=>({channel:parsed.summary.channels.find(c=>c.id===id),complete:true,color:'#abc',range:await parsed.channelData.readChannelRange(id,0,7)})));}};
+      m.view.setContext(context);m.view.setActive(true);await wait();
+      assert(m.field('samples').textContent==='5'&&m.field('sigma').textContent==='130.38'&&m.field('rmse').textContent==='Unavailable','Canonical counts/variance changed or a target was fabricated');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('RPM valid 5, invalid 2, unavailable 0')&&m.field('assessment').textContent.includes('Original source sample indices'),'Canonical exclusions or original-index authority missing');
+      assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
+      m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===1,'Unimplemented modes became active');
+    }finally{m.close();}
+  });
   await check('hidden source updates do not read; activation shows native reference metrics and two graph panes', async () => {
     const f = fixture(), m = mount(); try {
       f.context.channels.unshift({ ...f.context.channels[0], id: 'drop', sourceName: 'IdleDiag Catch Drop RPM', displayName: 'IdleDiag Catch Drop RPM' });
