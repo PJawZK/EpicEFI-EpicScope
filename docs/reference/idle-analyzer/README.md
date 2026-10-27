@@ -7,7 +7,9 @@
 
 ## Current implementation checkpoint
 
-[Base Airflow core foundation](NATIVE_AIRFLOW_CORE_CHECKPOINT.md) adds tested aligned logged-request aggregates. Its native UI remains disabled pending the next integration checkpoint.
+[Native Base Airflow recorded context](NATIVE_AIRFLOW_UI_CHECKPOINT.md) enables the second mode through retained traces, scope and qualification, with per-role coverage and descriptive assessment.
+
+[Base Airflow core foundation](NATIVE_AIRFLOW_CORE_CHECKPOINT.md) adds tested aligned logged-request aggregates. Its initially disabled native UI is now integrated in the later checkpoint above.
 
 [Fixture/contract closure checkpoint](NATIVE_CONTRACT_CHECKPOINT.md) inventories current coverage, adds canonical parser-to-Stability regressions and freezes remaining mode prerequisites without changing production behavior.
 

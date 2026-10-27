@@ -98,7 +98,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       <option value="compare" selected>Range Compare</option>
       <option value="tune-table">Tune Table</option>
       <option value="boost">Boost · Experimental</option>
-      <option value="idle-stability">Idle Analyzer · Stability</option>
+      <option value="idle-stability">Idle Analyzer</option>
       <option value="idle">Idle Control Diagnostics · Experimental</option>
       <option value="ae-map">AE / MAP Predict · Experimental</option>
       <option value="fueling">Fueling · Experimental</option>

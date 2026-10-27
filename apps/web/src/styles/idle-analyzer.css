@@ -142,3 +142,5 @@
 .idle-qualification-body input[type=number] { width: 75px; }
 .idle-qualification-body select { max-width: 225px; }
 .idle-qualification-body p { flex-basis: 100%; margin: 0; line-height: 1.5; color: var(--detail); }
+
+.idle-metrics[hidden] { display: none; }

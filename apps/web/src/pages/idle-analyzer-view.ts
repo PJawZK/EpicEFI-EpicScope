@@ -1,3 +1,5 @@
+import { analyzeIdleAirflow, type IdleAirflowResult } from '../../../../core/analysis/idle-airflow';
+import { idleAirflowValue, presentIdleAirflow } from './idle-airflow-presentation';
 import { summarizeIdlePurposes } from '../../../../core/analysis/idle-region-purpose';
 import '../styles/idle-analyzer.css';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
@@ -37,7 +39,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let generation = 0;
   let pendingKey: string | undefined;
   let pendingSource: object | undefined;
-  let accepted: { source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
+  let mode: 'stability' | 'airflow' = 'stability';
+  let accepted: { airflow?: IdleAirflowResult; contextMapping: Record<ContextRole, string>; source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
   const regionSession = createIdleRegionSession();
   let focusId = 'overview';
   let regionEvidence: { source: object; key: string; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
@@ -58,15 +61,16 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   root.className = 'idle-analyzer-view';
   root.hidden = true;
   root.innerHTML = `
-    <div class="idle-toolbar"><label>Mode <select aria-label="Idle diagnostic mode" data-idle="mode"><option>Stability</option>
-      <option disabled>Base Airflow — not integrated</option><option disabled>RPM PID — not integrated</option><option disabled>DC Valve Tracking — not integrated</option>
+    <div class="idle-toolbar"><label>Mode <select aria-label="Idle diagnostic mode" data-idle="mode"><option value="stability">Stability</option>
+      <option value="airflow">Base Airflow</option><option disabled>RPM PID — not integrated</option><option disabled>DC Valve Tracking — not integrated</option>
       <option disabled>DC Bias / Position PID — not integrated</option><option disabled>Ignition — not integrated</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
       <label data-idle="focus-control" hidden>Graph focus <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
     <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
-    <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><p class="idle-qualification-state" data-idle="qualification-state">Qualification off</p><div class="idle-metrics" aria-label="Stability measurements">
+    <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><p class="idle-qualification-state" data-idle="qualification-state">Qualification off</p><div class="idle-metrics" data-idle="stability-metrics" aria-label="Stability measurements">
       <div><strong data-idle="sigma">—</strong><span>RPM σ · sample</span></div><div><strong data-idle="rmse">—</strong><span>RPM error RMSE</span></div>
       <div><strong data-idle="in-band">—</strong><span>Within ±40 RPM</span></div><div><strong data-idle="samples">—</strong><span>Valid RPM samples</span></div></div>
+      <div class="idle-metrics" data-idle="airflow-metrics" aria-label="Base Airflow logged request measurements" hidden><div><strong data-idle="airflow-base">—</strong><span>Mean base request · %</span></div><div><strong data-idle="airflow-correction">—</strong><span>Mean applied correction · pp</span></div><div><strong data-idle="airflow-final">—</strong><span>Mean final request · %</span></div><div><strong data-idle="airflow-rms">—</strong><span>Applied correction RMS · pp</span></div></div>
       <p class="idle-focus-explanation" data-idle="focus-explanation" hidden></p><div data-idle="plot"></div><div class="idle-plot-tools"><span>Wheel zoom · drag pan · Shift-drag zoom · hover for recorded values</span>
       <button type="button" data-idle="zoom-in" aria-label="Zoom Idle graph in">+</button><button type="button" data-idle="zoom-out" aria-label="Zoom Idle graph out">−</button><button type="button" data-idle="fit">Fit region</button></div>
       <section class="idle-region-evidence"><strong>Recorded operating window</strong><button type="button" data-idle="region-focus"><span data-idle="region-label">Select a region</span><span data-idle="region-evidence">No accepted analysis.</span></button></section></div>
@@ -143,14 +147,14 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const included = regionSession.includedBounds();
       return included.length ? { startMs: included[0]!.startMs, endMs: included.at(-1)!.endMs } : context.sourceTimeRange;
     }
-    if (scopeValue === 'manual') return regionSession.regions.find(region => region.id === manualId);
+    if (scopeValue === 'manual') { const region = regionSession.regions.find(region => region.id === manualId); return region ? { startMs: region.startMs, endMs: region.endMs } : undefined; }
     const scope = analyzerScopeOptions(context).find(option => option.value === scopeValue);
     if (!scope) return undefined;
     return scope.kind === 'full' ? context.sourceTimeRange : analyzerScopeBounds(scope) as { startMs: number; endMs: number };
   };
   const displayBounds = () => {
     const region = regionSession.regions.find(region => region.id === focusId);
-    if (region) return region;
+    if (region) return { startMs: region.startMs, endMs: region.endMs };
     if (focusId === 'logger' && context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs) return { startMs: Math.min(context.aTimeMs, context.bTimeMs), endMs: Math.max(context.aTimeMs, context.bTimeMs) };
     return selectedBounds();
   };
@@ -293,8 +297,24 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const paragraph = document.createElement('p'); paragraph.textContent = text;
     element.append(heading, paragraph); return element;
   };
+  const retainedAirflow = () => {
+    if (!accepted || !active || disposed) return undefined;
+    if (!accepted.airflow) {
+      const bind = (role: ContextRole) => {
+        const trace = accepted!.traces.find(trace => trace.channel.id === accepted!.contextMapping[role]);
+        return trace ? { range: trace.range, unit: idleRoleUnit(trace.channel, role)?.unit ?? '' } : undefined;
+      };
+      const basePosition = bind('basePosition'), closedLoop = bind('closedLoop'), finalPosition = bind('finalPosition');
+      accepted.airflow = analyzeIdleAirflow({ rpm: accepted.rpm.range, sampleIndices: accepted.result.sampleIndices, ...(basePosition ? {basePosition} : {}), ...(closedLoop ? {closedLoop} : {}), ...(finalPosition ? {finalPosition} : {}) });
+    }
+    return accepted.airflow;
+  };
   const renderAssessment = () => {
+    field<HTMLSelectElement>('mode').value = mode;
     for (const button of root.querySelectorAll<HTMLButtonElement>('[data-idle-tab]')) button.setAttribute('aria-pressed', String(button.dataset.idleTab === tab));
+    field('stability-metrics').hidden = mode !== 'stability'; field('airflow-metrics').hidden = mode !== 'airflow';
+    const airflow = mode === 'airflow' ? retainedAirflow() : undefined;
+    for (const [name, metric, value] of [['airflow-base', airflow?.basePosition, 'mean'], ['airflow-correction', airflow?.closedLoop, 'mean'], ['airflow-final', airflow?.finalPosition, 'mean'], ['airflow-rms', airflow?.closedLoop, 'rootMeanSquare']] as const) field(name).textContent = metric ? idleAirflowValue(metric, value) : '—';
     const panel = field('assessment'); panel.replaceChildren();
     if (!accepted) { panel.append(section('Recorded evidence required', 'Choose an RPM channel and a recorded region, then run analysis. Target-dependent metrics remain unavailable without a compatible target channel.')); return; }
     const { analysis, inBandPercent } = accepted.result;
@@ -304,6 +324,21 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     panel.append(section('Declared test purpose', presentation.purpose));
     if (accepted.qualification) panel.append(section('Applied qualification', `${accepted.qualification.description}. ${accepted.qualification.eligible}/${accepted.qualification.input} original records eligible; ${accepted.qualification.rejected} value-rejected, ${accepted.qualification.invalid} invalid, ${accepted.qualification.unavailable} unavailable; ${accepted.qualification.manualBypassed} valid records manually bypassed. Invalid counts may include recovered retry attempts and do not by themselves establish physical data loss.`));
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
+    if (airflow) {
+      const view = presentIdleAirflow(airflow, analysis.complete && (accepted.qualification?.complete ?? true));
+      const next = !analysis.rpm.validSampleCount || ['source', 'coverage', 'known-idle', 'longer-region'].includes(assessment.nextTest) || assessment.findings.includes('purpose-review') ? presentation.next : view.next;
+      const limits = view.limits + ' ' + presentation.limits;
+      if (tab === 'diagnosis') {
+        panel.append(section('Evidence status', view.status), section('Recorded request behavior', view.observed));
+        for (const role of view.roles) panel.append(section(role.label + ' coverage', role.coverage));
+        panel.append(section('Limits of inference', limits), section('Next test', next));
+      } else if (tab === 'evidence') {
+        panel.append(section('Source and unit authority', `${context.source?.descriptor?.displayName ?? 'Source unavailable'}. ${mappingDescription()}. Original indices and exact timestamps are retained; each request uses its own valid aligned denominator.`));
+        for (const role of view.roles) panel.append(section(role.label, `${role.value}; ${role.coverage}`));
+        panel.append(section('RPM context', `${analysis.rpm.validSampleCount} valid RPM samples; sample sigma ${number(analysis.rpm.standardDeviation)} RPM; logged-target RMSE ${number(analysis.tracking?.rmse)} RPM. ${analysis.complete ? 'Complete requested RPM coverage' : 'Partial requested RPM coverage'}. Physical source-integrity warnings remain in Diagnostics.`), section('Limits of inference', limits));
+      } else panel.append(section('Recommended action', next), section('Hold constant', presentation.holdConstant), section('What would support it?', view.supports), section('What would contradict it?', view.contradicts), section('Limits of inference', limits));
+      return;
+    }
     if (tab === 'diagnosis') {
       panel.append(section('Evidence status', presentation.status), section('Observed behavior', presentation.observed));
       for (const finding of presentation.findings) {
@@ -420,7 +455,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (captured.sourceTimeRange && readBounds.startMs <= captured.sourceTimeRange.startMs && readBounds.endMs >= captured.sourceTimeRange.endMs && traces.every(trace => trace.complete || numericRangeCoversTime(trace.range, readBounds.startMs, readBounds.endMs))) regionEvidence = { source: source.identity, key: evidenceKey, traces };
       const qualification = plan.enabled ? { ...qualifyIdleSamples({referenceId:requestedRpm,channels:new Map(traces.map(trace=>[trace.channel.id,{range:trace.range,complete:trace.complete}])),conditions:plan.conditions,scope:regions??[bounds],bypass:plan.bypass}), description:plan.description } : undefined;
       const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), ...(qualification ? {eligibility:qualification.eligibility} : {}), complete:complete && (qualification?.complete??true) });
-      accepted = { source: source.identity, key, result, qualification, evidenceKey, rpm, target, traces };
+      accepted = { contextMapping: requestedContext, source: source.identity, key, result, qualification, evidenceKey, rpm, target, traces };
       const stats = result.analysis;
       field('sigma').textContent = number(stats.rpm.standardDeviation);
       field('rmse').textContent = number(stats.tracking?.rmse);
@@ -479,6 +514,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const listen = (node: HTMLElement, action: () => void, event = 'click') => node.addEventListener(event, () => {
     if (active && !disposed) action();
   }, { signal: events.signal });
+  listen(field('mode'), () => { const value = field<HTMLSelectElement>('mode').value; if (value === 'stability' || value === 'airflow') { mode = value; renderAssessment(); } }, 'change');
   listen(rpmSelect, () => { resetDiscovery(); rpmId = rpmSelect.value; syncMappingNote(); void analyze(); }, 'change');
   for (const role of CONTEXT_ROLES) listen(contextSelects[role], () => { contextIds[role] = contextSelects[role].value; syncMappingNote(); void analyze(); }, 'change');
   listen(field('manage-regions'), () => { renderRegionControls(); manager.open(); });

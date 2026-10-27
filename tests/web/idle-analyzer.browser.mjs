@@ -26,8 +26,15 @@ function fixture(values = [900, 1000, 1100], target = true) {
   };
   return { context, calls, traces };
 }
-function mount() {
-  const view = createIdleAnalyzerView(); view.element.hidden = false;
+function airflowFixture(target=true) {
+  const f=fixture([1000,1000,1000,1000],target);
+  for(const [id,name,values]of[['base','baseIdlePosition',[20,22,24,26]],['correction','idleClosedLoop',[-2,4,6,-4]],['final','currentIdlePosition',[18,26,30,22]]]){
+    const channel={id,sourceName:name,displayName:name,unit:'%',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from(values),validity:new Uint8Array(4).fill(1)}});
+  }
+  return f;
+}
+function mount(observability) {
+  const view = createIdleAnalyzerView(observability); view.element.hidden = false;
   document.body.append(view.element);
   const field = name => view.element.querySelector(`[data-idle="${name}"]`);
   return { view, field, close: () => { view.dispose(); view.element.remove(); } };
@@ -48,7 +55,64 @@ export async function runIdleAnalyzerChecks() {
       assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
-      assert([...m.field('mode').options].filter(o=>!o.disabled).length===1,'Unimplemented modes became active');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===2,'Unexpected diagnostic mode became active');
+    }finally{m.close();}
+  });
+  await check('Base Airflow renders retained context and reuses calculation across modes/tabs without reads',async()=>{
+    const f=airflowFixture(false),m=mount();let gets=0;const trace=f.traces.find(t=>t.channel.id==='correction'),values=trace.range.values;Object.defineProperty(trace.range,'values',{get(){gets++;return values;}});
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();const reads=f.calls.length;
+      change(m.field('mode'),'airflow');const calculated=gets;
+      assert(m.field('airflow-base').textContent==='23.00'&&m.field('airflow-correction').textContent==='1.00'&&m.field('airflow-final').textContent==='24.00'&&m.field('airflow-rms').textContent==='4.24','Airflow reference cards incorrect');
+      assert(m.field('stability-metrics').hidden&&!m.field('airflow-metrics').hidden&&m.field('assessment').textContent.includes('not measured physical airflow'),'Airflow projection or caution missing');
+      for(const tab of ['evidence','next','diagnosis'])m.view.element.querySelector(`[data-idle-tab=${tab}]`).click();change(m.field('mode'),'stability');change(m.field('mode'),'airflow');
+      assert(gets===calculated&&f.calls.length===reads,'Presentation repeated Airflow sample work or source reads');
+      assert(m.field('assessment').textContent.includes('4 valid, 0 invalid, 0 unavailable'),'Role denominators missing');
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(m.field('mode').value==='airflow'&&m.field('airflow-base').textContent==='23.00'&&f.calls.length===reads,'Navigation destroyed retained Airflow context');
+    }finally{m.close();}
+  });
+  await check('Airflow uses qualified scopes and withdraws missing roles/catalog units instead of old values',async()=>{
+    const f=airflowFixture(),m=mount(),channel={id:'clt',sourceName:'coolant',displayName:'Coolant',unit:'deg C',valueType:'number'};
+    f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from([60,80,90,90]),validity:new Uint8Array(4).fill(1)}});
+    const checked=(name,value)=>{m.field(name).checked=value;m.field(name).dispatchEvent(new Event('change',{bubbles:true}));};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'airflow');checked('qual-enabled',true);await wait();
+      assert(m.field('airflow-base').textContent==='24.00'&&m.field('airflow-correction').textContent==='2.00'&&m.field('assessment').textContent.includes('3 valid'),'Qualification did not reach Airflow statistics');
+      change(m.field('qual-temperature'),'200');await wait();assert(m.field('airflow-base').textContent==='Unavailable'&&m.field('assessment').textContent.includes('No records meet'),'Empty qualified scope retained old values');
+      checked('qual-enabled',false);await wait();change(m.field('closedLoop'),'');await wait();assert(m.field('airflow-correction').textContent==='Unavailable'&&m.field('airflow-base').textContent==='23.00','Missing optional role discarded valid context or fabricated zero');
+      m.view.setContext({...f.context,channels:f.context.channels.map(c=>c.id==='base'?{...c,unit:'kPa'}:c)});await wait();assert(m.field('airflow-base').textContent==='Unavailable','Changed unit reused old Airflow results');
+    }finally{m.close();}
+  });
+  await check('Airflow rejects obsolete source completions and defers hidden work',async()=>{
+    const f=airflowFixture(),m=mount();let release;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'airflow');
+      m.view.setContext({...f.context,source:{...f.context.source,revision:1},loadTraces:()=>new Promise(resolve=>{release=resolve;})});await wait();assert(m.field('airflow-base').textContent==='—','Pending replacement retained stale cards');
+      change(m.field('mode'),'stability');change(m.field('mode'),'airflow');m.view.setContext({...f.context,source:{...f.context.source,revision:2}});await wait();release(f.traces.map(t=>t.channel.id==='base'?{...t,range:{...t.range,values:new Float64Array(4).fill(99)}}:t));await wait();assert(m.field('airflow-base').textContent==='23.00','Late source completion replaced newer Airflow');
+      m.view.setActive(false);const reads=f.calls.length;m.view.setContext({...f.context,source:{...f.context.source,revision:3}});change(m.field('mode'),'stability');assert(f.calls.length===reads&&m.field('mode').value==='stability','Hidden work read source');
+      m.view.setActive(true);await wait();assert(m.field('airflow-base').textContent==='23.00','Resumed Airflow did not restore current evidence');
+    }finally{m.close();}
+  });
+  await check('browser-scale Base Airflow mode uses retained source evidence and bounded graph DOM',async()=>{
+    const f=fixture(new Float64Array(320459).fill(1000)),m=mount(),channel={id:'base',sourceName:'baseIdlePosition',displayName:'Base request',unit:'%',valueType:'number'};
+    f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:new Float64Array(320459).fill(20)}});
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'airflow');
+      assert(m.field('airflow-base').textContent==='20.00'&&m.field('assessment').textContent.includes('320459 valid')&&m.field('airflow-correction').textContent==='Unavailable','Large native mode failed role counts or missing evidence');
+      change(m.field('mode'),'stability');change(m.field('mode'),'airflow');assert(f.calls.length===1&&m.view.element.querySelectorAll('svg *').length<150,'Large mode transition reread source or expanded graph DOM');
+    }finally{m.close();}
+  });
+  await check('single-manual purpose metadata cannot restart cached CPU analysis on navigation',async()=>{
+    const events=[],f=airflowFixture(),m=mount({record:event=>{events.push(event);}}),requests=()=>events.filter(event=>event.name==='idle.stability.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('start').value='0';m.field('end').value='.1';m.field('apply-region').click();await wait();change(m.field('mode'),'airflow');
+      m.view.element.querySelector('svg').dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));
+      const paths=()=>[...m.view.element.querySelectorAll('[data-idle-trace]')].map(path=>path.getAttribute('d')).join('|'),viewport=paths();
+      const before=requests(),reads=f.calls.length;m.field('manage-regions').click();change(m.view.element.querySelector('[data-purpose]'),'raised');m.view.element.querySelector('[data-manager=close]').click();
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();
+      assert(requests()===before&&f.calls.length===reads,'Manual metadata repeated cached CPU analysis '+JSON.stringify({before,after:requests(),reads,afterReads:f.calls.length}));
+      assert(m.field('airflow-base').textContent==='21.00'&&m.field('assessment').textContent.includes('Raised-RPM hold'),'Manual purpose or numeric scope was lost');
+      assert(paths()===viewport,'Purpose metadata reset the retained graph viewport');
     }finally{m.close();}
   });
   await check('hidden source updates do not read; activation shows native reference metrics and two graph panes', async () => {

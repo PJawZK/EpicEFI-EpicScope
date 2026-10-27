@@ -1,4 +1,4 @@
-import { setupVeLifecycleFixture } from './ve-analyzer-lifecycle.browser.mjs';
+import { setupVeLifecycleFixture, waitForVePrimaryAnalysis } from './ve-analyzer-lifecycle.browser.mjs';
 import { veDelayEditOwner } from '../../apps/web/src/pages/ve-analyzer-delay-edit-owner';
 import { serializeVeDelayTable } from '../../core/analysis/ve-delay-table-storage';
 const assert = (ok, message) => { if (!ok) throw Error(message); };
@@ -34,7 +34,7 @@ export async function runVeDelayReplacementChecks() {
   for (const failure of ['parse', 'validation', 'read', 'empty']) {
     const s = await fixture();
     try {
-      await s.direct(145); await s.run(); await settle();
+      await s.direct(145); s.run(); await waitForVePrimaryAnalysis(s);
       const primary = s.view.getPrimaryAnalysis(), before = s.owner.snapshot(), revision = s.view.sessionRevision, reads = s.reads();
       assert(primary, 'Primary fixture analysis missing');
       // Keep a private preview open while the replacement is pending/rejected.
@@ -57,7 +57,7 @@ export async function runVeDelayReplacementChecks() {
   {
     const s = await fixture();
     try {
-      await s.direct(145); s.run(); await settle();
+      await s.direct(145); s.run(); await waitForVePrimaryAnalysis(s);
       assert(s.view.getPrimaryAnalysis(), 'Accepted-replacement primary fixture missing');
       s.select(); s.tool('Pin or unpin selected cells').click();
       s.draft(177); const before = s.owner.snapshot(), revision = s.view.sessionRevision, reads = s.reads();
