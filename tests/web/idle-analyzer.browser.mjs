@@ -47,6 +47,12 @@ function pidFixture(count=4){
     const channel={id,sourceName:name,displayName:name,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:count===4?Float64Array.from(values):new Float64Array(count).fill(value)}});
   }return f;
 }
+function biasFixture(count=4){
+  const f=pidFixture(count);
+  for(const [id,name,values,value]of [['inner-feed','etbFeedForward',[10,14,18,22],10],['inner-p','dcIdlePositionStatus_pTerm',[-2,2,-2,2],-2],['inner-i','dcIdlePositionStatus_iTerm',[-3,-1,1,3],3],['inner-d','dcIdlePositionStatus_dTerm',[-4,4,-4,4],4]]){
+    const channel={id,sourceName:name,displayName:name,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:count===4?Float64Array.from(values):new Float64Array(count).fill(value)}});
+  }return f;
+}
 function mount(observability) {
   const view = createIdleAnalyzerView(observability); view.element.hidden = false;
   document.body.append(view.element);
@@ -69,7 +75,7 @@ export async function runIdleAnalyzerChecks() {
       assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
-      assert([...m.field('mode').options].filter(o=>!o.disabled).length===4,'Unexpected diagnostic mode became active');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===5,'Unexpected diagnostic mode became active');
     }finally{m.close();}
   });
   await check('Base Airflow renders retained context and reuses calculation across modes/tabs without reads',async()=>{
@@ -728,6 +734,75 @@ export async function runIdleAnalyzerChecks() {
       m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'pid');await wait();assert(m.field('pid-p').textContent==='3.00'&&m.field('rmse').textContent==='Unavailable','Absent target blocked independent terms or invented RPM error');
       m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('unit unavailable')&&m.field('assessment').textContent.includes('RMSE Unavailable RPM'),'Missing logged output or target authority was fabricated');
     }finally{m.close();}
+  });
+  await check('DC Bias/Position PID loads lazily and reuses retained Valve position evidence across modes and reference changes',async()=>{
+    const f=biasFixture(),events=[],m=mount({record:event=>events.push(event)}),positions=()=>events.filter(e=>e.name==='idle.position.request').length,biasRuns=()=>events.filter(e=>e.name==='idle.bias.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(f.calls.length===1&&!f.calls[0].ids.includes('inner-feed'),'Inactive Bias mode loaded its channels');change(m.field('mode'),'valve');await wait();const first=positions();
+      change(m.field('mode'),'bias');await wait();assert(f.calls.length===3&&f.calls[2].ids.length===4&&positions()===first&&biasRuns()===1,'Bias duplicated position analysis or did not batch missing terms');
+      assert(m.field('bias-i').textContent==='0.00'&&m.field('bias-feed').textContent==='16.00'&&m.field('bias-motor').textContent==='-1.50'&&m.field('bias-tracking').textContent==='3.32','Inner PID/feed-forward reference facts incorrect');
+      assert(m.field('bias-i-label').textContent.includes('unspecified')&&m.view.element.querySelector('[data-trace-label="Signed motor duty"]').dataset.valueAxis==='right','Duty/raw units or independent axis incorrect');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('Tune-derived DC bias')&&m.field('assessment').textContent.includes('Unverified')&&m.field('assessment').textContent.includes('4 valid, 0 invalid, 0 unavailable'),'Tune/actuator authority or role coverage missing');
+      const reads=f.calls.length;change(m.field('motor-reference'),'0');await wait();assert(m.field('bias-tracking').textContent==='3.32'&&positions()===first&&biasRuns()===1,'Unused motor reference invalidated Bias or shared pairing');change(m.field('mode'),'pid');await wait();const afterPid=f.calls.length;change(m.field('mode'),'bias');m.view.element.querySelector('[data-idle-tab=next]').click();m.view.element.querySelector('[data-idle-tab=diagnosis]').click();assert(f.calls.length===afterPid&&positions()===first&&biasRuns()===1,'Mode/tabs repeated accepted Bias work');
+      change(m.field('motor-reference'),'95');change(m.field('mode'),'valve');await wait();assert(m.field('valve-rmse').textContent==='3.32'&&positions()===first&&f.calls.length===afterPid,'Return to Valve recomputed position or reread columns');change(m.field('mode'),'bias');
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(positions()===first&&biasRuns()===1&&f.calls.length===afterPid&&reads===3,'Navigation destroyed retained shared evidence');
+    }finally{m.close();}
+  });
+  await check('Inner PID follows Viewed/combined qualification, detects per-term misalignment, and preserves independent position/motor facts',async()=>{
+    const f=biasFixture(),m=mount();f.traces.find(t=>t.channel.id==='inner-i').range.timeMs=Float64Array.from([0,100,201,300]);
+    for(const [id,name,unit,values]of [['clt','coolant','deg C',[80,80,60,60]],['known-feed','Declared feed-forward','%',[40,40,40,40]]]){const channel={id,sourceName:name,displayName:name,unit,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from(values)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('3 valid, 0 invalid, 1 unavailable'),'Inner timestamp mismatch counted as valid');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];for(const [a,b]of [[0,.1],[.2,.3]]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();}
+      const a=rows()[0].dataset.regionId,b=rows()[1].dataset.regionId;change(m.field('focus'),a);change(m.field('scope'),'viewed');await wait();assert(m.field('bias-i').textContent==='-2.00'&&m.field('bias-feed').textContent==='12.00'&&m.field('bias-tracking').textContent==='2.00','Viewed inner A not bounded');
+      change(m.field('focus'),b);await wait();assert(m.field('bias-i').textContent==='3.00'&&m.field('bias-feed').textContent==='20.00','Viewed inner B retained A or borrowed mismatched I');change(m.field('scope'),'regions');await wait();const combined=m.field('bias-i').textContent;change(m.field('focus'),a);await wait();assert(m.field('bias-i').textContent===combined,'Combined Bias followed graph focus');
+      m.field('qual-enabled').checked=true;m.field('qual-enabled').dispatchEvent(new Event('change',{bubbles:true}));await wait();assert(m.field('bias-i').textContent==='-2.00'&&m.field('bias-feed').textContent==='12.00','Bias ignored accepted qualification');
+      change(m.field('dcPosition'),'');await wait();assert(m.field('bias-tracking').textContent==='Unavailable'&&m.field('bias-feed').textContent==='12.00','Missing feedback became zero tracking or blocked independent feed-forward');change(m.field('dcPosition'),'dc-measured');await wait();assert(m.field('bias-tracking').textContent==='2.00','Restored feedback did not invalidate shared position');
+      change(m.field('dcBiasOutput'),'known-feed');await wait();assert(m.field('bias-feed').textContent==='40.00'&&!m.view.element.querySelector('path[data-trace-label="Inner position I"]')&&m.view.element.querySelector('path[data-trace-label="Signed motor duty"]')&&m.field('assessment').textContent.includes('Missing or mixed term units'),'Mixed raw/duty units overlaid or independent motor lost');
+    }finally{m.close();}
+  });
+  await check('Bias rejects stale mapping/source/hidden completions while inactive outer PID and motor references cannot cancel it',async()=>{
+    const f=biasFixture(),m=mount(),pending=[];const original=f.context.loadTraces;let hold=true;
+    f.context.loadTraces=(ids,a,b)=>ids.includes('inner-feed')&&hold?new Promise(resolve=>pending.push(resolve)):original(ids,a,b);
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');assert(pending.length===1,'Bias not pending');change(m.field('p'),'');change(m.field('motor-reference'),'0');pending[0](f.traces);await wait();assert(m.field('bias-feed').textContent==='16.00'&&m.field('bias-tracking').textContent==='3.32','Inactive settings cancelled Bias/shared position work');
+      m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:1}});await wait();assert(pending.length===2,'Replacement Bias not pending');change(m.field('dcBiasOutput'),'');await wait();pending[1](f.traces);await wait();assert(m.field('bias-feed').textContent==='Unavailable','Obsolete mapping replaced missing feed-forward');
+      change(m.field('dcBiasOutput'),'inner-feed');assert(pending.length===3,'Restored feed-forward not pending');m.view.setActive(false);pending[2](f.traces);await wait();assert(m.field('bias-feed').textContent==='—','Hidden Bias accepted a completion');hold=false;m.view.setActive(true);await wait();assert(m.field('bias-feed').textContent==='16.00','Bias resume failed');
+      hold=true;m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:2}});await wait();m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:3}});await wait();assert(pending.length===5,'Overlapping source loads not held');pending[4](f.traces.map(t=>t.channel.id==='inner-feed'?{...t,range:{...t.range,values:new Float64Array(4).fill(99)}}:t));await wait();pending[3](f.traces);await wait();assert(m.field('bias-feed').textContent==='99.00','Old source overwrote latest feed-forward');
+    }finally{m.close();}
+  });
+  await check('Inner PID remapping retires old columns without repeating position calculations or evicting current Valve roles',async()=>{
+    const f=biasFixture(),events=[],m=mount({record:event=>events.push(event)}),positions=()=>events.filter(e=>e.name==='idle.position.request').length;
+    for(let i=0;i<4;i++){const channel={id:`inner-${i}`,sourceName:`Mapped inner I ${i}`,displayName:`Mapped inner I ${i}`,unit:'%',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:new Float64Array(4).fill(2+i)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();change(m.field('mode'),'bias');await wait();const paired=positions();for(let i=0;i<4;i++){change(m.field('dcI'),`inner-${i}`);await wait();}
+      const reads=f.calls.length;change(m.field('dcI'),'inner-i');await wait();assert(f.calls.length===reads+1&&f.calls.at(-1).ids.join(',')==='inner-i'&&positions()===paired,'Inner columns accumulated or pairing repeated');const before=f.calls.length;change(m.field('mode'),'valve');await wait();assert(f.calls.length===before&&m.field('valve-rmse').textContent==='3.32'&&positions()===paired,'Bias retention evicted/recomputed Valve authority');
+    }finally{m.close();}
+  });
+  await check('320459-sample native Bias shares position/error evidence, keeps bounded DOM and preserves viewport across Valve navigation',async()=>{
+    const f=biasFixture(320459),events=[],m=mount({record:event=>events.push(event)}),positions=()=>events.filter(e=>e.name==='idle.position.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();change(m.field('mode'),'bias');await wait();assert(m.field('bias-i').textContent==='3.00'&&m.field('bias-feed').textContent==='10.00'&&m.field('bias-motor').textContent==='-95.00'&&m.field('bias-tracking').textContent==='2.00'&&positions()===1,'Large Bias facts or shared pairing failed');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('320459 valid')&&m.view.element.querySelectorAll('svg *').length<170,'Large Bias lost counts or bounded DOM');
+      m.view.element.querySelector('svg').dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));const times=()=>[...m.view.element.querySelectorAll('svg text')].map(e=>e.textContent).filter(t=>t.endsWith(' s')).join('|'),viewport=times(),reads=f.calls.length;change(m.field('mode'),'valve');change(m.field('motor-reference'),'100');await wait();change(m.field('mode'),'bias');await wait();assert(positions()===1&&f.calls.length===reads&&times()===viewport,'Large mode/reference navigation repeated position work, reads or viewport reset: '+JSON.stringify({positions:positions(),reads:f.calls.length,expectedReads:reads,viewport,actualViewport:times()}));
+    }finally{m.close();}
+  });
+  await check('Bias keeps missing inner terms/feed-forward/motor/feedback explicitly unavailable without erasing independent evidence',async()=>{
+    const f=biasFixture(),m=mount();f.context.channels=f.context.channels.filter(c=>!['dc-measured','dc-motor','inner-feed'].includes(c.id));f.traces.splice(0,f.traces.length,...f.traces.filter(t=>!['dc-measured','dc-motor','inner-feed'].includes(t.channel.id)));
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();assert(m.field('bias-i').textContent==='0.00'&&m.field('bias-feed').textContent==='Unavailable'&&m.field('bias-feed-label').textContent.includes('unit unavailable')&&m.field('bias-motor').textContent==='Unavailable'&&m.field('bias-tracking').textContent==='Unavailable','Absent roles became healthy zeros or blocked valid inner I');
+      change(m.field('dcI'),'');await wait();assert(m.field('bias-i').textContent==='Unavailable'&&m.field('assessment').textContent.includes('actuator assignment remains unverified'),'Missing I or actuator authority fabricated');
+    }finally{m.close();}
+  });
+  await check('Dedicated DC H-bridge duty wins over unitless PID debug output; absent verified motor remains unavailable',async()=>{
+    for(const actual of [false,true]){
+      const f=biasFixture(),m=mount();delete f.traces.find(t=>t.channel.id==='dc-motor').channel.unit;
+      if(actual){const channel={id:'actual-motor',sourceName:'dcIdleDutyCycle',displayName:'DC idle valve H-bridge duty',unit:'%',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from([-10,10,20,-20])}});}
+      try{
+        m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();
+        assert(m.field('dcOutput').value===(actual?'actual-motor':'')&&m.field('bias-motor').textContent===(actual?'0.00':'Unavailable')&&m.field('bias-tracking').textContent==='3.32','PID debug output was silently promoted to H-bridge percent or independent position lost');
+      }finally{m.close();}
+    }
   });
   return { passed: checks.length, checks };
 }

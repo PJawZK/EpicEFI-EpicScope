@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../core/log-model/log-types';
-import { suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit } from '../apps/web/src/pages/analyzer-channel-roles';
+import { suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit, idlePositionPidRoleUnit } from '../apps/web/src/pages/analyzer-channel-roles';
 
 function channel(sourceName: string, displayName = sourceName): ChannelDefinition {
   return {
@@ -25,7 +25,9 @@ describe('Idle analyzer canonical channel roles', () => {
   it('requires DC position/motor units and never auto-maps an idle request as measured feedback', () => {
     expect(idleRoleUnit(channel('dcIdleTarget'),'dcTarget')?.unit).toBe('%');
     expect(idleRoleUnit(channel('IdlePosition'),'dcPosition')?.authority).toBe('canonical-role');
-    expect(idleRoleUnit(channel('dcIdlePositionStatus_output'),'dcOutput')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('dcIdlePositionStatus_output'),'dcOutput')).toBeUndefined();
+    expect(idleRoleUnit(channel('dcIdleDutyCycle'),'dcOutput')?.unit).toBe('%');
+    expect(idleRoleUnit({...channel('dcIdlePositionStatus_output'),unit:'%'},'dcOutput')?.authority).toBe('source');
     expect(idleRoleUnit({...channel('IdlePosition'),unit:'V'},'dcPosition')).toBeUndefined();
     expect(idleRoleUnit(channel('a fuzzy valve position'),'dcPosition')).toBeUndefined();
     const requests=['currentIdlePosition','baseIdlePosition','idleStepperTargetPosition','rawIdlePositionSensor'].map(name=>({...channel(name),unit:'%'}));
@@ -42,6 +44,17 @@ describe('Idle analyzer canonical channel roles', () => {
     expect(suggestAnalyzerChannel('idle','pidOutput',candidates)?.sourceName).toBe('idleStatus_output');
     expect(suggestAnalyzerChannel('idle','pidOutput',candidates.slice(0,2))).toBeUndefined();
     expect(suggestAnalyzerChannel('idle','pidOutput',[{...channel('idleDcPositionPidOutput'),unit:'%'}])).toBeUndefined();
+  });
+  it('keeps inner position effort units and shared feed-forward assignment explicit',()=>{
+    expect(idlePositionPidRoleUnit(channel('dcIdlePositionStatus_iTerm'),'dcI')).toEqual({unit:'raw',authority:'unspecified'});
+    expect(idlePositionPidRoleUnit({...channel('dcIdlePositionStatus_pTerm'),unit:'%'},'dcP')).toEqual({unit:'%',authority:'source'});
+    expect(idlePositionPidRoleUnit({...channel('dcIdlePositionStatus_dTerm'),unit:'pp'},'dcD')?.unit).toBe('pp');
+    expect(idlePositionPidRoleUnit(channel('idleStatus_iTerm'),'dcI')).toBeUndefined();
+    expect(idlePositionPidRoleUnit({...channel('dcIdlePositionStatus_iTerm'),unit:'V'},'dcI')).toBeUndefined();
+    expect(idlePositionPidRoleUnit(channel('etb1etbFeedForward'),'dcBiasOutput')).toEqual({unit:'raw',authority:'unspecified'});
+    expect(idlePositionPidRoleUnit(channel('etb2etbFeedForward'),'dcBiasOutput')).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','dcOutput',[channel('dcIdlePositionStatus_output'),channel('dcIdleDutyCycle')])?.sourceName).toBe('dcIdleDutyCycle');
+    expect(suggestAnalyzerChannel('idle','dcBiasOutput',[channel('etbFeedForwardTuneProgress'),channel('dcIdleBiasValues')])).toBeUndefined();
   });
   it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
     const rpm = { ...channel('RPM'), id: 'mlg:33' };

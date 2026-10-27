@@ -147,11 +147,11 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   // and exposes that runtime bias/feed-forward value through etbFeedForward while in DC_IdleValve mode.
   'idle:dcTarget': { exact: ['ini:dcIdleTarget', 'dcIdleTarget'], include: [/dc.*idle.*target/i, /idle.*valve.*target/i] },
   'idle:dcPosition': { exact: ['ini:IdlePosition', 'IdlePosition', 'ini:idlePositionSensor', 'idlePositionSensor'], include: [/idle.*position/i, /dc.*idle.*position/i], exclude: [/target/i, /status/i, /term/i, /current|final|base|request|raw|stepper|closed.?loop/i] },
-  'idle:dcBiasOutput': { exact: ['ini:etbFeedForward', 'etbFeedForward'], include: [/etb.*feed.?forward/i, /dc.*idle.*bias/i, /idle.*bias.*(output|value)/i], exclude: [/curve/i, /table/i, /axis/i, /bin/i] },
+  'idle:dcBiasOutput': { exact: ['ini:etbFeedForward', 'etbFeedForward', 'ini:etb1etbFeedForward', 'etb1etbFeedForward'], include: [/etb.*feed.?forward/i, /dc.*idle.*bias/i, /idle.*bias.*(output|value)/i], exclude: [/curve/i, /table/i, /axis/i, /bin/i, /tune|active|failed|phase|score|result|progress|values/i] },
   'idle:dcP': { exact: ['ini:dcIdlePositionStatus_pTerm', 'dcIdlePositionStatus_pTerm'], include: [/dc.*idle.*position.*p.*term/i] },
   'idle:dcI': { exact: ['ini:dcIdlePositionStatus_iTerm', 'dcIdlePositionStatus_iTerm'], include: [/dc.*idle.*position.*i.*term/i] },
   'idle:dcD': { exact: ['ini:dcIdlePositionStatus_dTerm', 'dcIdlePositionStatus_dTerm'], include: [/dc.*idle.*position.*d.*term/i] },
-  'idle:dcOutput': { exact: ['ini:dcIdlePositionStatus_output', 'dcIdlePositionStatus_output'], include: [/dc.*idle.*position.*output/i] },
+  'idle:dcOutput': { exact: ['ini:dcIdleDutyCycle', 'dcIdleDutyCycle', 'DC idle valve H-bridge duty', 'ini:dcIdlePositionStatus_output', 'dcIdlePositionStatus_output'], include: [/dc.*idle.*duty/i, /dc.*idle.*position.*output/i] },
 
   // Generic IAC/stepper/solenoid evidence uses the outer controller's final requested position.
   'idle:valve': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /current.*idle.*position/i] },
@@ -323,6 +323,8 @@ export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' 
   const identity = channelRoleIdentity(channel);
   if (identity.unit) return (rpm ? ['rpm', 'rev/min'].includes(identity.unit) : ['%', 'percent'].includes(identity.unit))
     ? { unit: rpm ? 'RPM' : '%', authority: 'source' } : undefined;
+  // A debug PID output with no engineering unit is not verified H-bridge duty.
+  if(role==='dcOutput' && ['ini:dcIdlePositionStatus_output','dcIdlePositionStatus_output'].some(alias=>identity.exact.includes(alias.toLowerCase()))) return undefined;
   const exact = RULES[`idle:${role}`]?.exact;
   if (!exact?.some(alias => identity.exact.includes(alias.toLowerCase()))) return undefined;
   return { unit: rpm ? 'RPM' : '%', authority: 'canonical-role' };
@@ -335,6 +337,16 @@ export function idlePidRoleUnit(channel: ChannelDefinition, role: 'p' | 'i' | 'd
   const identity=channelRoleIdentity(channel);
   if (identity.unit) return ['%', 'percent', 'pp', 'percentage points'].includes(identity.unit) ? {unit:'pp',authority:'source'} : undefined;
   return RULES[`idle:${role}`]?.exact?.some(alias=>identity.exact.includes(alias.toLowerCase())) ? {unit:'raw',authority:'unspecified'} : undefined;
+}
+
+/** Inner position-loop effort is not valve travel or outer RPM correction. Generic
+ * feed-forward retains unverified actuator assignment; missing units remain raw. */
+export function idlePositionPidRoleUnit(channel: ChannelDefinition, role: 'dcBiasOutput'|'dcP'|'dcI'|'dcD'):
+  {readonly unit:'%'|'pp'|'raw';readonly authority:'source'|'unspecified'}|undefined {
+  if(channel.valueType==='bitfield')return undefined;
+  const identity=channelRoleIdentity(channel);
+  if(identity.unit)return ['%','percent'].includes(identity.unit)?{unit:'%',authority:'source'}:['pp','percentage points'].includes(identity.unit)?{unit:'pp',authority:'source'}:undefined;
+  return RULES[`idle:${role}`]?.exact?.some(alias=>identity.exact.includes(alias.toLowerCase()))?{unit:'raw',authority:'unspecified'}:undefined;
 }
 
 /** Qualification requires declared engineering units and a matching signal identity. */

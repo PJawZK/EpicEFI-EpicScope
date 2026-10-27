@@ -2,7 +2,16 @@ import type { NumericChannelRange } from '../log-model/log-types';
 import { aggregateNumericSamples } from './numeric-aggregation';
 import { summarizeIdleRecordedSignal, validateIdleSelection, type IdleRecordedMetric, type IdleRecordedSignal } from './idle-recorded-signal';
 
-export interface IdleValveTrackingResult {
+export interface IdleValvePositionInput {
+  readonly rpm: NumericChannelRange;
+  readonly sampleIndices: ArrayLike<number>;
+  readonly requested?: IdleRecordedSignal | undefined;
+  readonly measured?: IdleRecordedSignal | undefined;
+  readonly motor?: IdleRecordedSignal | undefined;
+}
+export interface IdleValvePositionResult {
+  /** Captured numeric source/selection; aliases existing immutable columns, not copies. */
+  readonly input: IdleValvePositionInput;
   readonly selectedSampleCount: number;
   readonly requested: IdleRecordedMetric;
   readonly measured: IdleRecordedMetric;
@@ -10,6 +19,8 @@ export interface IdleValveTrackingResult {
   /** Percentage points, measured − requested. Missing/alignment failures are not zero error. */
   readonly tracking: IdleRecordedMetric;
   readonly error: NumericChannelRange | undefined;
+}
+export interface IdleValveTrackingResult extends IdleValvePositionResult {
   readonly motorReferencePercent: number;
   readonly motorAtReferenceCount: number | undefined;
   readonly motorAtReferencePercent: number | undefined;
@@ -17,17 +28,9 @@ export interface IdleValveTrackingResult {
 
 /** Recorded tracking only. Consumes the existing qualified/union selection; no event, cadence,
  * settling, tune/limit inference, interpolation or time weighting. Input arrays remain immutable. */
-export function analyzeIdleValveTracking(input: {
-  readonly rpm: NumericChannelRange;
-  readonly sampleIndices: ArrayLike<number>;
-  readonly requested?: IdleRecordedSignal | undefined;
-  readonly measured?: IdleRecordedSignal | undefined;
-  readonly motor?: IdleRecordedSignal | undefined;
-  readonly motorReferencePercent: number;
-}): IdleValveTrackingResult {
-  const { rpm, sampleIndices: selected, motorReferencePercent } = input;
+export function analyzeIdleValvePosition(input: IdleValvePositionInput): IdleValvePositionResult {
+  const {rpm,sampleIndices:selected}=input;
   validateIdleSelection(selected);
-  if (!Number.isFinite(motorReferencePercent) || motorReferencePercent <= 0 || motorReferencePercent > 100) throw new RangeError('Enter a motor-duty reference above 0 and at most 100%.');
   const requested = summarizeIdleRecordedSignal(rpm, selected, input.requested);
   const measured = summarizeIdleRecordedSignal(rpm, selected, input.measured);
   const motor = summarizeIdleRecordedSignal(rpm, selected, input.motor);
@@ -58,10 +61,19 @@ export function analyzeIdleValveTracking(input: {
     const finite = [statistics.mean, statistics.meanAbsolute, statistics.rootMeanSquare].every(v => v !== undefined && Number.isFinite(v));
     tracking = { status: overflow ? 'nonfinite-metrics' : !statistics.validSampleCount ? 'no-valid-evidence' : finite ? 'available' : 'nonfinite-metrics', unit: 'pp', statistics };
   }
+  return {input:{rpm,sampleIndices:selected,requested:input.requested,measured:input.measured,motor:input.motor},selectedSampleCount:selected.length,requested,measured,motor,tracking,error};
+}
+function validateMotorReference(value: number): void {
+  if (!Number.isFinite(value)||value<=0||value>100) throw new RangeError('Enter a motor-duty reference above 0 and at most 100%.');
+}
+/** Add only the reference count to already accepted position evidence; no second pairing/aggregate pass. */
+export function withIdleMotorReference(position: IdleValvePositionResult, motorReferencePercent: number): IdleValveTrackingResult {
+  validateMotorReference(motorReferencePercent);
+  const {rpm,sampleIndices:selected}=position.input, motor=position.motor;
   let motorAtReferenceCount: number | undefined;
   if ('statistics' in motor && motor.statistics.validSampleCount > 0) {
     motorAtReferenceCount = 0;
-    const range = input.motor!.range;
+    const range = position.input.motor!.range;
     for (let p = 0; p < selected.length; p++) {
       const index = selected[p]!, local = index - rpm.startSampleIndex, other = index - range.startSampleIndex;
       if (local >= 0 && local < rpm.values.length && rpm.validity[local] === 1 && Number.isFinite(rpm.values[local]) && Number.isFinite(rpm.timeMs[local])
@@ -69,6 +81,11 @@ export function analyzeIdleValveTracking(input: {
         && Math.abs(range.values[other]!) >= motorReferencePercent) motorAtReferenceCount++;
     }
   }
-  return { selectedSampleCount: selected.length, requested, measured, motor, tracking, error, motorReferencePercent, motorAtReferenceCount,
-    motorAtReferencePercent: motorAtReferenceCount === undefined || !('statistics' in motor) ? undefined : 100 * motorAtReferenceCount / motor.statistics.validSampleCount };
+  return {...position,motorReferencePercent,motorAtReferenceCount,
+    motorAtReferencePercent:motorAtReferenceCount===undefined||!('statistics' in motor)?undefined:100*motorAtReferenceCount/motor.statistics.validSampleCount};
+}
+/** Backward-compatible standalone entry; native views can reuse the position result. */
+export function analyzeIdleValveTracking(input: IdleValvePositionInput & {readonly motorReferencePercent:number}): IdleValveTrackingResult {
+  validateMotorReference(input.motorReferencePercent);
+  return withIdleMotorReference(analyzeIdleValvePosition(input),input.motorReferencePercent);
 }
