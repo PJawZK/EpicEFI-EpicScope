@@ -2,10 +2,12 @@
 
 **Branch:** `ui/idle-analyzer-html-integration`  
 **Base:** EpicScope `main` at `702c880a29baa28b762ac26f7f7ed55ef01239ef` (2026-10-26)  
-**Current scope:** Incremental native Stability, Base Airflow, DC Valve Tracking, RPM PID and DC Bias / Position PID recorded evidence with source-bound regions; frozen standalone HTML remains the visual/behavioral reference.
+**Current scope:** Incremental native Stability, Base Airflow, DC Valve Tracking, RPM PID, DC Bias / Position PID and Ignition recorded evidence with source-bound regions; frozen standalone HTML remains the visual/behavioral reference.
 **Explicit boundary:** Scoped native TypeScript/CSS integration and focused tests only; no standalone HTML changes, dependencies/framework, release workflows, firmware, ECU writes/Burn or merge to `main`.
 
 ## Current implementation checkpoint
+
+[Ignition — Group E](NATIVE_IGNITION_CHECKPOINT.md) adds independent logged advance, signed idle timing correction and supporting actual lambda, with source/unit/alignment authority and retained mode evidence.
 
 [DC Bias / Position PID — Group D](NATIVE_POSITION_PID_CHECKPOINT.md) adds logged inner terms/feed-forward, reuses retained position calculations with Valve, corrects motor-source authority to prefer dedicated H-bridge duty, and keeps tune/limits/actuator association explicitly gated.
 

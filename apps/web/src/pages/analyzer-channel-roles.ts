@@ -1,3 +1,4 @@
+import { normalizeIdleIgnitionUnit, type IdleIgnitionRole } from '../../../../core/analysis/idle-ignition';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 
 export type AnalyzerRoleDomain =
@@ -159,8 +160,8 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'idle:etbTarget': { exact: ['ini:targetWithIdlePosition', 'targetWithIdlePosition'], include: [/etb.*target.*with.*idle/i, /idle.*etb.*target/i, /etb.*idle.*target/i, /idle.*throttle.*target/i] },
   'idle:etbPosition': { include: [/etb.*position/i, /electronic.*throttle.*position/i, /throttle.*position/i], exclude: [/target/i, /pedal/i] },
   'idle:etbContribution': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
-  'idle:ignitionAdvance': { include: [/idle.*ignition.*advance/i, /idle.*spark.*advance/i, /ignition.*advance/i, /spark.*advance/i] },
-  'idle:ignitionCorrection': { include: [/idle.*ignition.*(correction|trim|delta)/i, /idle.*spark.*(correction|trim|delta)/i] },
+  'idle:ignitionAdvance': { exact:['ini:correctedIgnitionAdvance','correctedIgnitionAdvance','Timing: ignition'], include:[/idle.*ignition.*advance/i,/idle.*spark.*advance/i,/ignition.*advance/i,/spark.*advance/i],exclude:[/base|table|correction|adjust|trim|delta|retard|target|cyl|factor|gain|limit|dwell|cut/i] },
+  'idle:ignitionCorrection': { exact:['ini:timingPidCorrection','timingPidCorrection','Idle: Timing adjustment'],include:[/idle.*ignition.*(correction|trim|delta|adjust)/i,/idle.*spark.*(correction|trim|delta|adjust)/i,/idle.*timing.*(correction|adjust)/i],exclude:[/table|bins|values|factor|gain|offset|limit|target|knock|clt|iat|dfco|launch|blip|total|aggregate/i] },
 
   'ae-map:tps': { include: [/^tps(value)?$/i, /throttle.*position/i, /(^|\b)tps(\b|$)/i] },
   'ae-map:map': { include: [/^map(value)?$/i, /manifold.*pressure/i, /(^|\b)map(\b|$)/i], exclude: [/predict/i, /estimate/i] },
@@ -347,6 +348,22 @@ export function idlePositionPidRoleUnit(channel: ChannelDefinition, role: 'dcBia
   const identity=channelRoleIdentity(channel);
   if(identity.unit)return ['%','percent'].includes(identity.unit)?{unit:'%',authority:'source'}:['pp','percentage points'].includes(identity.unit)?{unit:'pp',authority:'source'}:undefined;
   return RULES[`idle:${role}`]?.exact?.some(alias=>identity.exact.includes(alias.toLowerCase()))?{unit:'raw',authority:'unspecified'}:undefined;
+}
+
+/** Reuse actual-mixture authority; Greek lambda is a unit synonym, not an AFR conversion. */
+export function idleIgnitionRoleUnit(channel:ChannelDefinition,role:IdleIgnitionRole):{readonly unit:'°'|'λ';readonly authority:'source'|'canonical-role'}|undefined{
+  if(channel.valueType==='bitfield')return undefined;
+  const identity=channelRoleIdentity(channel);
+  if(role==='ignitionLambda'&&!isVeActualMixtureChannelEligible(identity.unit==='λ'?{...channel,unit:'lambda'}:channel,'lambda'))return undefined;
+  if(identity.unit){const unit=normalizeIdleIgnitionUnit(identity.unit,role);return unit?{unit,authority:'source'}:undefined;}
+  const exact=role==='ignitionLambda'?['ini:lambdaValue','lambdaValue','ini:realLambdaValue1','realLambdaValue1','ini:smoothedLambdaValue','smoothedLambdaValue','Lambda']:RULES[`idle:${role}`]?.exact;
+  return exact?.some(alias=>identity.exact.includes(alias.toLowerCase()))?{unit:role==='ignitionLambda'?'λ':'°',authority:'canonical-role'}:undefined;
+}
+/** Prefer the existing lambda source owner without changing VE's global unit policies. */
+export function preferredIdleIgnitionLambda(channels:readonly ChannelDefinition[]):ChannelDefinition|undefined{
+  const normalized=channels.map(channel=>channel.unit?.trim().toLowerCase()==='λ'?{...channel,unit:'lambda'}:channel);
+  const chosen=preferredVeActualMixtureChannel(normalized,'lambda');
+  return chosen?channels.find(channel=>channel.id===chosen.id):undefined;
 }
 
 /** Qualification requires declared engineering units and a matching signal identity. */

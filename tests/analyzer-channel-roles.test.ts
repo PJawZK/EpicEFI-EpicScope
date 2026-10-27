@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../core/log-model/log-types';
-import { suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit, idlePositionPidRoleUnit } from '../apps/web/src/pages/analyzer-channel-roles';
+import { suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit, idlePositionPidRoleUnit, idleIgnitionRoleUnit, preferredIdleIgnitionLambda } from '../apps/web/src/pages/analyzer-channel-roles';
 
 function channel(sourceName: string, displayName = sourceName): ChannelDefinition {
   return {
@@ -55,6 +55,23 @@ describe('Idle analyzer canonical channel roles', () => {
     expect(idlePositionPidRoleUnit(channel('etb2etbFeedForward'),'dcBiasOutput')).toBeUndefined();
     expect(suggestAnalyzerChannel('idle','dcOutput',[channel('dcIdlePositionStatus_output'),channel('dcIdleDutyCycle')])?.sourceName).toBe('dcIdleDutyCycle');
     expect(suggestAnalyzerChannel('idle','dcBiasOutput',[channel('etbFeedForwardTuneProgress'),channel('dcIdleBiasValues')])).toBeUndefined();
+  });
+  it('identifies final advance and idle correction independently, with strict degree and actual-lambda authority',()=>{
+    const channels=['baseIgnitionAdvance','ignitionAdvanceCorrections','ignitionAdvanceCyl1','correctedIgnitionAdvance','timingPidCorrection'].map(name=>({...channel(name),unit:'deg'}));
+    expect(suggestAnalyzerChannel('idle','ignitionAdvance',channels)?.sourceName).toBe('correctedIgnitionAdvance');
+    expect(suggestAnalyzerChannel('idle','ignitionAdvance',channels.slice(0,3))).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','ignitionCorrection',channels)?.sourceName).toBe('timingPidCorrection');
+    expect(suggestAnalyzerChannel('idle','ignitionCorrection',[channel('ignitionAdvanceCorrections'),channel('idleTimingPid_pFactor')])).toBeUndefined();
+    expect(idleIgnitionRoleUnit(channel('correctedIgnitionAdvance'),'ignitionAdvance')).toEqual({unit:'°',authority:'canonical-role'});
+    expect(idleIgnitionRoleUnit({...channel('timingPidCorrection'),unit:'ms'},'ignitionCorrection')).toBeUndefined();
+    expect(idleIgnitionRoleUnit(channel('fuzzy spark advance'),'ignitionAdvance')).toBeUndefined();
+    expect(idleIgnitionRoleUnit({...channel('targetLambda'),unit:'lambda'},'ignitionLambda')).toBeUndefined();
+    expect(idleIgnitionRoleUnit({...channel('lambdaValue'),unit:'AFR'},'ignitionLambda')).toBeUndefined();
+    const lambda={...channel('lambdaValue'),id:'mlg:1'},afr={...channel('afrGasolineScale'),unit:'AFR'},greek={...channel('Measured mixture'),unit:'λ'};
+    expect(idleIgnitionRoleUnit(lambda,'ignitionLambda')).toEqual({unit:'λ',authority:'canonical-role'});
+    expect(idleIgnitionRoleUnit(greek,'ignitionLambda')?.authority).toBe('source');
+    expect(preferredIdleIgnitionLambda([afr,greek,lambda])).toBe(lambda);
+    expect(preferredIdleIgnitionLambda([greek])).toBe(greek);
   });
   it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
     const rpm = { ...channel('RPM'), id: 'mlg:33' };

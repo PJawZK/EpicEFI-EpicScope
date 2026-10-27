@@ -1,3 +1,5 @@
+import { analyzeIdleIgnition, type IdleIgnitionResult } from '../../../../core/analysis/idle-ignition';
+import { presentIdleIgnition } from './idle-ignition-presentation';
 import { analyzeIdlePositionPid, type IdlePositionPidResult } from '../../../../core/analysis/idle-position-pid';
 import { presentIdlePositionPid } from './idle-position-pid-presentation';
 import { analyzeIdleRpmPid, type IdleRpmPidResult } from '../../../../core/analysis/idle-rpm-pid';
@@ -10,7 +12,7 @@ import { summarizeIdlePurposes } from '../../../../core/analysis/idle-region-pur
 import '../styles/idle-analyzer.css';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { analyzerScopeOptions, analyzerScopeBounds, retainedAnalyzerScopeValue } from './analyzer-scope';
-import { analyzerChannelOptionLabel, suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit, idlePositionPidRoleUnit, idleQualificationRoleUnit } from './analyzer-channel-roles';
+import { analyzerChannelOptionLabel, suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit, idlePositionPidRoleUnit, idleIgnitionRoleUnit, preferredIdleIgnitionLambda, idleQualificationRoleUnit } from './analyzer-channel-roles';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import { analyzeIdleStability, type IdleStabilityResult } from '../../../../core/analysis/idle-stability';
@@ -34,6 +36,9 @@ const CONTEXT_ROLES = ['basePosition', 'closedLoop', 'finalPosition'] as const;
 const VALVE_ROLES = ['dcTarget', 'dcPosition', 'dcOutput'] as const;
 const PID_ROLES = ['p','i','d','pidOutput'] as const;
 const BIAS_ROLES = ['dcBiasOutput','dcP','dcI','dcD'] as const;
+const IGNITION_ROLES = ['ignitionAdvance','ignitionCorrection','ignitionLambda'] as const;
+type IgnitionRole = typeof IGNITION_ROLES[number];
+const IGNITION_LABELS = {ignitionAdvance:'Logged ignition advance',ignitionCorrection:'Logged signed idle timing correction',ignitionLambda:'Actual lambda'};
 type BiasRole = typeof BIAS_ROLES[number];
 const BIAS_LABELS = {dcBiasOutput:'Logged feed-forward · actuator unverified',dcP:'Inner position P',dcI:'Inner position I',dcD:'Inner position D'};
 type PidRole = typeof PID_ROLES[number];
@@ -54,7 +59,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let generation = 0;
   let pendingKey: string | undefined;
   let pendingSource: object | undefined;
-  let mode: 'stability' | 'airflow' | 'valve' | 'pid' | 'bias' = 'stability';
+  let mode: 'stability' | 'airflow' | 'valve' | 'pid' | 'bias' | 'ignition' = 'stability';
   let controllerRequest = 0, controllerPendingKey: string | undefined, controllerError: string | undefined;
   let valveIds: Record<ValveRole, string> = { dcTarget: '', dcPosition: '', dcOutput: '' };
   // At most one last-loaded mapping per role; clearing a mapping can be undone
@@ -64,7 +69,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let retainedPidIds = {...pidIds};
   let biasIds: Record<BiasRole,string>={dcBiasOutput:'',dcP:'',dcI:'',dcD:''};
   let retainedBiasIds={...biasIds};
-  let accepted: { position?: {key:string;result:IdleValvePositionResult}; bias?: {key:string;result:IdlePositionPidResult;traces:readonly LoggerAnalysisTraceContext[]}; pid?: {key:string;result:IdleRpmPidResult;traces:readonly LoggerAnalysisTraceContext[]}; valve?: { key: string; result: IdleValveTrackingResult; traces: readonly LoggerAnalysisTraceContext[] }; airflow?: IdleAirflowResult; contextMapping: Record<ContextRole, string>; source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
+  let ignitionIds: Record<IgnitionRole,string>={ignitionAdvance:'',ignitionCorrection:'',ignitionLambda:''};
+  let retainedIgnitionIds={...ignitionIds};
+  let accepted: { ignition?: {key:string;result:IdleIgnitionResult;traces:readonly LoggerAnalysisTraceContext[]}; position?: {key:string;result:IdleValvePositionResult}; bias?: {key:string;result:IdlePositionPidResult;traces:readonly LoggerAnalysisTraceContext[]}; pid?: {key:string;result:IdleRpmPidResult;traces:readonly LoggerAnalysisTraceContext[]}; valve?: { key: string; result: IdleValveTrackingResult; traces: readonly LoggerAnalysisTraceContext[] }; airflow?: IdleAirflowResult; contextMapping: Record<ContextRole, string>; source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
   const regionSession = createIdleRegionSession();
   let focusId = 'overview';
   let regionEvidence: { source: object; key: string; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
@@ -87,7 +94,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   root.innerHTML = `
     <div class="idle-toolbar"><label>Mode <select aria-label="Idle diagnostic mode" data-idle="mode"><option value="stability">Stability</option>
       <option value="airflow">Base Airflow</option><option value="pid">RPM PID</option><option value="valve">DC Valve Tracking</option>
-      <option value="bias">DC Bias / Position PID</option><option disabled>Ignition — not integrated</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
+      <option value="bias">DC Bias / Position PID</option><option value="ignition">Ignition</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
       <label data-idle="focus-control" hidden><span data-idle="focus-label">Graph focus</span> <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
     <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
@@ -98,6 +105,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <div class="idle-metrics" data-idle="valve-metrics" aria-label="Recorded DC valve tracking measurements" hidden><div><strong data-idle="valve-rmse">—</strong><span>Position error RMSE · pp</span></div><div><strong data-idle="valve-error">—</strong><span>Mean measured − requested · pp</span></div><div><strong data-idle="valve-motor">—</strong><span>Mean signed motor duty · %</span></div><div><strong data-idle="valve-reference">—</strong><span data-idle="valve-reference-label">Motor reference coverage</span></div></div>
       <div class="idle-metrics" data-idle="pid-metrics" aria-label="Recorded RPM PID measurements" hidden><div><strong data-idle="pid-p">—</strong><span data-idle="pid-p-label">Logged P RMS</span></div><div><strong data-idle="pid-i">—</strong><span data-idle="pid-i-label">Logged I mean</span></div><div><strong data-idle="pid-d">—</strong><span data-idle="pid-d-label">Logged D RMS</span></div><div><strong data-idle="pid-applied">—</strong><span>Applied correction mean · pp</span></div></div>
       <div class="idle-metrics" data-idle="bias-metrics" aria-label="Recorded inner position PID and feed-forward measurements" hidden><div><strong data-idle="bias-i">—</strong><span data-idle="bias-i-label">Inner position I mean</span></div><div><strong data-idle="bias-feed">—</strong><span data-idle="bias-feed-label">Logged feed-forward mean</span></div><div><strong data-idle="bias-motor">—</strong><span>Mean signed motor duty · %</span></div><div><strong data-idle="bias-tracking">—</strong><span>Position error RMSE · pp</span></div></div>
+      <div class="idle-metrics" data-idle="ignition-metrics" aria-label="Recorded ignition and supporting context measurements" hidden><div><strong data-idle="ignition-advance">—</strong><span>Mean logged advance · °</span></div><div><strong data-idle="ignition-correction">—</strong><span>Mean signed idle correction · °</span></div><div><strong data-idle="ignition-rmse">—</strong><span>RPM error RMSE · RPM</span></div><div><strong data-idle="ignition-lambda">—</strong><span>Mean actual lambda · λ</span></div></div>
       <p class="idle-focus-explanation" data-idle="focus-explanation" hidden></p><div data-idle="plot"></div><div class="idle-plot-tools"><span>Wheel zoom · drag pan · Shift-drag zoom · hover for recorded values</span>
       <button type="button" data-idle="zoom-in" aria-label="Zoom Idle graph in">+</button><button type="button" data-idle="zoom-out" aria-label="Zoom Idle graph out">−</button><button type="button" data-idle="fit">Fit region</button></div>
       <section class="idle-region-evidence"><strong>Recorded operating window</strong><button type="button" data-idle="region-focus"><span data-idle="region-label">Select a region</span><span data-idle="region-evidence">No accepted analysis.</span></button></section></div>
@@ -131,6 +139,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <label>Final request <select data-idle="finalPosition" aria-label="Idle final request channel"></select></label>
       <label>RPM P <select data-idle="p" aria-label="Outer RPM P channel"></select></label><label>RPM I <select data-idle="i" aria-label="Outer RPM I channel"></select></label><label>RPM D <select data-idle="d" aria-label="Outer RPM D channel"></select></label><label>Logged PID output <select data-idle="pidOutput" aria-label="Logged outer RPM PID output channel"></select></label>
       <label>Logged feed-forward (actuator unverified) <select data-idle="dcBiasOutput" aria-label="Logged feed-forward channel"></select></label><label>Inner position P <select data-idle="dcP" aria-label="Inner position P channel"></select></label><label>Inner position I <select data-idle="dcI" aria-label="Inner position I channel"></select></label><label>Inner position D <select data-idle="dcD" aria-label="Inner position D channel"></select></label>
+      <label>Logged ignition advance <select data-idle="ignitionAdvance" aria-label="Logged ignition advance channel"></select></label><label>Signed idle timing correction <select data-idle="ignitionCorrection" aria-label="Signed idle timing correction channel"></select></label><label>Actual lambda (optional) <select data-idle="ignitionLambda" aria-label="Actual lambda context channel"></select></label>
       <label>Valve requested <select data-idle="dcTarget" aria-label="DC requested position channel"></select></label><label>Valve measured <select data-idle="dcPosition" aria-label="DC measured position channel"></select></label><label>Signed motor duty <select data-idle="dcOutput" aria-label="DC signed motor duty channel"></select></label>
       <label>Motor |duty| reference <input data-idle="motor-reference" type="number" min="0.01" max="100" step="any" value="95" aria-label="Motor duty reference percent"> % (user reference, not firmware limit)</label>
       <label>Region start (s)<input type="number" step="any" data-idle="start"></label><label>Region end (s)<input type="number" step="any" data-idle="end"></label>
@@ -143,6 +152,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const valveSelects = Object.fromEntries(VALVE_ROLES.map(role => [role, field<HTMLSelectElement>(role)])) as Record<ValveRole, HTMLSelectElement>;
   const pidSelects = Object.fromEntries(PID_ROLES.map(role=>[role,field<HTMLSelectElement>(role)])) as Record<PidRole,HTMLSelectElement>;
   const biasSelects=Object.fromEntries(BIAS_ROLES.map(role=>[role,field<HTMLSelectElement>(role)])) as Record<BiasRole,HTMLSelectElement>;
+  const ignitionSelects=Object.fromEntries(IGNITION_ROLES.map(role=>[role,field<HTMLSelectElement>(role)])) as Record<IgnitionRole,HTMLSelectElement>;
   const scopeSelect = field<HTMLSelectElement>('scope');
   const startInput = field<HTMLInputElement>('start');
   const endInput = field<HTMLInputElement>('end');
@@ -168,10 +178,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     try { field('qualification-state').textContent = qualificationPlan().description; }
     catch(error) { field('qualification-state').textContent = error instanceof Error ? error.message : 'Qualification unavailable'; }
   };
-  const mappingDescription = () => ['rpm', 'target', ...CONTEXT_ROLES, ...VALVE_ROLES, ...PID_ROLES, ...BIAS_ROLES].map(role => {
-      const id = role === 'rpm' ? rpmId : role === 'target' ? targetId : BIAS_ROLES.includes(role as BiasRole) ? biasIds[role as BiasRole] : PID_ROLES.includes(role as PidRole) ? pidIds[role as PidRole] : VALVE_ROLES.includes(role as ValveRole) ? valveIds[role as ValveRole] : contextIds[role as ContextRole];
-      const channel = context.channels.find(item => item.id === id); const unit = channel && (BIAS_ROLES.includes(role as BiasRole) ? idlePositionPidRoleUnit(channel,role as BiasRole) : PID_ROLES.includes(role as PidRole) ? idlePidRoleUnit(channel,role as PidRole) : idleRoleUnit(channel, role as 'rpm' | 'target' | ContextRole | ValveRole));
-      return `${role}: ${channel ? channel.sourceName + ' [' + unit?.unit + '] · ' + (unit?.authority === 'canonical-role' ? 'canonical role; source unit unspecified' : unit?.authority === 'unspecified' ? 'engineering unit unspecified; raw controller values only' : 'recorded/catalog unit') : 'unavailable'}`;
+  const mappingDescription = () => ['rpm', 'target', ...CONTEXT_ROLES, ...VALVE_ROLES, ...PID_ROLES, ...BIAS_ROLES, ...IGNITION_ROLES].map(role => {
+      const id = role === 'rpm' ? rpmId : role === 'target' ? targetId : IGNITION_ROLES.includes(role as IgnitionRole) ? ignitionIds[role as IgnitionRole] : BIAS_ROLES.includes(role as BiasRole) ? biasIds[role as BiasRole] : PID_ROLES.includes(role as PidRole) ? pidIds[role as PidRole] : VALVE_ROLES.includes(role as ValveRole) ? valveIds[role as ValveRole] : contextIds[role as ContextRole];
+      const channel = context.channels.find(item => item.id === id); const unit = channel && (IGNITION_ROLES.includes(role as IgnitionRole) ? idleIgnitionRoleUnit(channel,role as IgnitionRole) : BIAS_ROLES.includes(role as BiasRole) ? idlePositionPidRoleUnit(channel,role as BiasRole) : PID_ROLES.includes(role as PidRole) ? idlePidRoleUnit(channel,role as PidRole) : idleRoleUnit(channel, role as 'rpm' | 'target' | ContextRole | ValveRole));
+      return `${role}: ${channel ? channel.sourceName + ' [' + unit?.unit + (IGNITION_ROLES.includes(role as IgnitionRole)&&channel.unit?'; declared source unit '+channel.unit:'') + '] · ' + (unit?.authority === 'canonical-role' ? 'canonical role; source unit unspecified' : unit?.authority === 'unspecified' ? 'engineering unit unspecified; raw controller values only' : 'recorded/catalog unit') : 'unavailable'}`;
     }).join('; ');
   const syncMappingNote = () => { field('mapping-note').textContent = mappingDescription(); };
   const manager = createIdleRegionManager(events.signal, action => { if (active && !disposed) manageRegion(action); });
@@ -232,7 +242,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   // Only callers that requested/verified whole-source columns publish here. Scoped
   // accepted traces must never be promoted just because their own request completed.
   const retainFullEvidence = (source: object, key: string, traces: readonly LoggerAnalysisTraceContext[]) => {
-    const allowed = new Set([rpmId,targetId,...Object.values(contextIds),...Object.values(qualificationIds),...Object.values(valveIds),...Object.values(retainedValveIds),...Object.values(pidIds),...Object.values(retainedPidIds),...Object.values(biasIds),...Object.values(retainedBiasIds)].filter(Boolean));
+    const allowed = new Set([rpmId,targetId,...Object.values(contextIds),...Object.values(qualificationIds),...Object.values(valveIds),...Object.values(retainedValveIds),...Object.values(pidIds),...Object.values(retainedPidIds),...Object.values(biasIds),...Object.values(retainedBiasIds),...Object.values(ignitionIds),...Object.values(retainedIgnitionIds)].filter(Boolean));
     const all = new Map(regionEvidence?.source === source && regionEvidence.key === key ? regionEvidence.traces.map(trace => [trace.channel.id,trace] as const) : []);
     for (const trace of traces) all.set(trace.channel.id,trace);
     for (const id of all.keys()) if (!allowed.has(id)) all.delete(id);
@@ -246,13 +256,15 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const valve = mode === 'valve' ? accepted.valve : undefined;
     const pid = mode === 'pid' ? accepted.pid : undefined;
     const bias=mode==='bias'?accepted.bias:undefined;
+    const ignition=mode==='ignition'?accepted.ignition:undefined;
+    if(mode==='ignition'&&!ignition){plot.clear();renderedPlot=undefined;return;}
     if(mode==='bias'&&!bias){plot.clear();renderedPlot=undefined;return;}
     if (mode === 'pid' && !pid) { plot.clear(); renderedPlot=undefined; return; }
     if (mode === 'valve' && !valve) { plot.clear(); renderedPlot = undefined; return; }
-    const key = JSON.stringify([bounds, rpmId, targetId, contextIds, mode === 'valve' ? valve?.key : mode === 'pid' ? pid?.key : mode==='bias'?bias?.key:'rpm']);
+    const key = JSON.stringify([bounds, rpmId, targetId, contextIds, mode === 'valve' ? valve?.key : mode === 'pid' ? pid?.key : mode==='bias'?bias?.key:mode==='ignition'?ignition?.key:'rpm']);
     if (renderedPlot?.traces === traces && renderedPlot.key === key) return;
     const entries: IdlePlotSeries[] = [];
-    if (!valve && !bias) for (const [id, label, unit, pane, color] of [[rpmId, 'Engine RPM', 'RPM', 0, '#61b8ed'], [targetId, 'RPM target', 'RPM', 0, '#7bd2b1'], ...(pid ? [] : CONTEXT_ROLES).map((role, index) => [contextIds[role], CONTEXT_LABELS[role], role === 'closedLoop' ? 'pp' : '%', 1, ['#b29af2', '#e8b46d', '#68ccac'][index]])] as const) {
+    if (!valve && !bias) for (const [id, label, unit, pane, color] of [[rpmId, 'Engine RPM', 'RPM', 0, '#61b8ed'], [targetId, 'RPM target', 'RPM', 0, '#7bd2b1'], ...(pid || ignition ? [] : CONTEXT_ROLES).map((role, index) => [contextIds[role], CONTEXT_LABELS[role], role === 'closedLoop' ? 'pp' : '%', 1, ['#b29af2', '#e8b46d', '#68ccac'][index]])] as const) {
       const trace = traces.find(trace => trace.channel.id === id); if (!trace) continue;
       entries.push({ label: String(label), range: sliceNumericRangeByTime(trace.range, bounds.startMs, bounds.endMs), unit: String(unit), pane: pane as 0 | 1, color: String(color) });
     }
@@ -284,8 +296,15 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const motor=bias.traces.find(trace=>trace.channel.id===valveIds.dcOutput);
       if(motor&&bias.result.position.motor.status==='available')entries.push({label:'Signed motor duty',range:sliceNumericRangeByTime(motor.range,bounds.startMs,bounds.endMs),unit:'%',pane:1,axis:'right',color:'#7bd2b1'});
     }
+    if(ignition){
+      for(const [role,color]of [['ignitionAdvance','#e8b46d'],['ignitionCorrection','#b29af2']] as const){
+        const metric=role==='ignitionAdvance'?ignition.result.advance:ignition.result.correction;
+        const trace=ignition.traces.find(trace=>trace.channel.id===ignitionIds[role]);
+        if(trace&&metric.status==='available')entries.push({label:IGNITION_LABELS[role],range:sliceNumericRangeByTime(trace.range,bounds.startMs,bounds.endMs),unit:'°',pane:1,color});
+      }
+    }
     const options = valve ? {titles:['DC VALVE · requested / measured (%)','POSITION ERROR · left (pp) / MOTOR DUTY · right (%)'] as const,ariaLabel:'Recorded requested and measured DC valve position, measured minus requested error, and signed motor duty.'}
-      : pid ? {titles:['RPM CONTROL RESPONSE · actual / target',`LOGGED TERMS · left (${pid.result.termPlotUnit==='raw'?'raw; units unspecified':pid.result.termPlotUnit ?? 'mixed/missing units'}) / APPLIED · right (pp)`] as const,ariaLabel:'Recorded RPM response and independent logged outer RPM PID terms, output and applied correction. Raw units are not inferred percentage points.'} : bias ? {titles:['DC POSITION CONTROL · requested / measured (%)',`INNER TERMS · left (${bias.result.termPlotUnit==='raw'?'raw; units unspecified':bias.result.termPlotUnit?bias.result.termPlotUnit+' duty contribution':'mixed/missing units'}) / MOTOR · right (%)`] as const,ariaLabel:'Recorded requested/measured position and independent logged feed-forward, inner position PID terms and signed motor duty. Tune-derived bias is unavailable.'} : {};
+      : pid ? {titles:['RPM CONTROL RESPONSE · actual / target',`LOGGED TERMS · left (${pid.result.termPlotUnit==='raw'?'raw; units unspecified':pid.result.termPlotUnit ?? 'mixed/missing units'}) / APPLIED · right (pp)`] as const,ariaLabel:'Recorded RPM response and independent logged outer RPM PID terms, output and applied correction. Raw units are not inferred percentage points.'} : bias ? {titles:['DC POSITION CONTROL · requested / measured (%)',`INNER TERMS · left (${bias.result.termPlotUnit==='raw'?'raw; units unspecified':bias.result.termPlotUnit?bias.result.termPlotUnit+' duty contribution':'mixed/missing units'}) / MOTOR · right (%)`] as const,ariaLabel:'Recorded requested/measured position and independent logged feed-forward, inner position PID terms and signed motor duty. Tune-derived bias is unavailable.'} : ignition ? {titles:['RPM RESPONSE · actual / target','IGNITION · absolute advance / signed idle correction (°)'] as const,ariaLabel:'Recorded RPM response, absolute ignition advance and separately logged signed idle timing correction in degrees. No causal torque inference.'} : {};
     plot.setData(entries,bounds.startMs,bounds.endMs,{...options,preserveViewport:true}); renderedPlot={traces,key};
   };
   const renderCoverage = () => {
@@ -409,24 +428,24 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     }
     return accepted.airflow;
   };
-  const invalidateController = (kind: 'valve'|'pid'|'bias', positionChanged=false, referenceOnly=false) => {
+  const invalidateModeEvidence = (kind: 'valve'|'pid'|'bias'|'ignition', positionChanged=false, referenceOnly=false) => {
     const preservePositionPlot=referenceOnly&&kind==='valve'&&!!accepted?.position&&!!renderedPlot;
     if (accepted) { delete accepted[kind]; if(positionChanged){delete accepted.position;delete accepted.bias;} }
     if (regionEvidence) retainFullEvidence(regionEvidence.source,regionEvidence.key,[]);
     syncMappingNote();
     if (mode === kind || positionChanged && mode==='bias') {
       controllerRequest++; controllerPendingKey=undefined; controllerError=undefined;
-      renderAssessment(); if(!preservePositionPlot)renderPlot(); void ensureControllerEvidence(preservePositionPlot);
+      renderAssessment(); if(!preservePositionPlot)renderPlot(); void ensureModeEvidence(preservePositionPlot);
     }
   };
-  // Native controller modes share this existing source/request boundary. Each
+  // Native recorded modes share this existing source/request boundary. Each
   // accepted result keeps its own facts; no second controller/session framework.
-  const ensureControllerEvidence = async (preservePositionPlot=false) => {
-    if (!active || disposed || (mode !== 'valve' && mode !== 'pid' && mode!=='bias') || !accepted) return;
+  const ensureModeEvidence = async (preservePositionPlot=false) => {
+    if (!active || disposed || (mode !== 'valve' && mode !== 'pid' && mode!=='bias' && mode!=='ignition') || !accepted) return;
     const kind=mode, base=accepted, captured=context, source=captured.source;
     if (!source || source.identity !== base.source || !captured.sourceTimeRange) return;
     const reference=kind==='valve'?Number(field<HTMLInputElement>('motor-reference').value.trim()||NaN):undefined;
-    const mapping: Record<string,string>={...(kind==='valve'?valveIds:kind==='bias'?{...valveIds,...biasIds}:pidIds)}, key=JSON.stringify([base.key,kind,mapping,reference]);
+    const mapping: Record<string,string>={...(kind==='valve'?valveIds:kind==='bias'?{...valveIds,...biasIds}:kind==='ignition'?ignitionIds:pidIds)}, key=JSON.stringify([base.key,kind,mapping,reference]);
     if(base[kind]?.key===key){renderPlot();return;}
     if(controllerPendingKey===key)return;
     const request=++controllerRequest, baseGeneration=generation;
@@ -441,7 +460,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const loaded=missing.length?await captured.loadTraces(missing,bounds.startMs,bounds.endMs):[];
       if(!current())return;
       const traces=ids.flatMap(id=>{const trace=loaded.find(trace=>trace.channel.id===id)??cached.find(trace=>trace.channel.id===id&&reusable(trace));return trace?[trace]:[];});
-      const bind=(role:ValveRole|PidRole|BiasRole)=>{const trace=traces.find(trace=>trace.channel.id===mapping[role]);return trace?{range:trace.range,unit:(PID_ROLES.includes(role as PidRole)?idlePidRoleUnit(trace.channel,role as PidRole):BIAS_ROLES.includes(role as BiasRole)?idlePositionPidRoleUnit(trace.channel,role as BiasRole):idleRoleUnit(trace.channel,role as ValveRole))?.unit??''}:undefined;};
+      const bind=(role:ValveRole|PidRole|BiasRole|IgnitionRole)=>{const trace=traces.find(trace=>trace.channel.id===mapping[role]);return trace?{range:trace.range,unit:(IGNITION_ROLES.includes(role as IgnitionRole)?idleIgnitionRoleUnit(trace.channel,role as IgnitionRole):PID_ROLES.includes(role as PidRole)?idlePidRoleUnit(trace.channel,role as PidRole):BIAS_ROLES.includes(role as BiasRole)?idlePositionPidRoleUnit(trace.channel,role as BiasRole):idleRoleUnit(trace.channel,role as ValveRole))?.unit??''}:undefined;};
       owner.event(`idle.${kind}.request`,{samples:base.result.sampleIndices.length});
       if(kind==='valve'||kind==='bias'){
         const positionKey=JSON.stringify([base.key,{dcTarget:mapping.dcTarget,dcPosition:mapping.dcPosition,dcOutput:mapping.dcOutput}]);
@@ -453,6 +472,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
         else base.bias={key,result:analyzeIdlePositionPid({position:base.position.result,feedForward:bind('dcBiasOutput'),p:bind('dcP'),i:bind('dcI'),d:bind('dcD')}),traces};
         for(const role of VALVE_ROLES)if(mapping[role]&&traces.some(trace=>trace.channel.id===mapping[role]))retainedValveIds[role]=mapping[role]!;
         if(kind==='bias')for(const role of BIAS_ROLES)if(mapping[role]&&traces.some(trace=>trace.channel.id===mapping[role]))retainedBiasIds[role]=mapping[role]!;
+      }else if(kind==='ignition'){
+        base.ignition={key,result:analyzeIdleIgnition({rpm:base.rpm.range,sampleIndices:base.result.sampleIndices,advance:bind('ignitionAdvance'),correction:bind('ignitionCorrection'),lambda:bind('ignitionLambda')}),traces};
+        for(const role of IGNITION_ROLES)if(mapping[role]&&traces.some(trace=>trace.channel.id===mapping[role]))retainedIgnitionIds[role]=mapping[role]!;
       }else{
         const trace=base.traces.find(trace=>trace.channel.id===base.contextMapping.closedLoop);
         const applied=trace?{range:trace.range,unit:idleRoleUnit(trace.channel,'closedLoop')?.unit??''}:undefined;
@@ -466,13 +488,16 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       owner.event(`idle.${kind}.accepted`,{samples:kind==='valve'?tracking&&'statistics' in tracking?tracking.statistics.validSampleCount:0:base.result.sampleIndices.length});
     }catch(error){
       if(!current())return;
-      controllerError=error instanceof Error?error.message:'Could not load recorded controller evidence. Retry Run Analysis.';
+      controllerError=error instanceof Error?error.message:'Could not load recorded mode evidence. Retry Run Analysis.';
     }finally{if(current()){controllerPendingKey=undefined;renderAssessment();}}
   };
   const renderAssessment = () => {
     field<HTMLSelectElement>('mode').value = mode;
     for (const button of root.querySelectorAll<HTMLButtonElement>('[data-idle-tab]')) button.setAttribute('aria-pressed', String(button.dataset.idleTab === tab));
-    field('stability-metrics').hidden = mode !== 'stability'; field('airflow-metrics').hidden = mode !== 'airflow'; field('valve-metrics').hidden = mode !== 'valve'; field('pid-metrics').hidden = mode !== 'pid'; field('bias-metrics').hidden=mode!=='bias';
+    field('stability-metrics').hidden = mode !== 'stability'; field('airflow-metrics').hidden = mode !== 'airflow'; field('valve-metrics').hidden = mode !== 'valve'; field('pid-metrics').hidden = mode !== 'pid'; field('bias-metrics').hidden=mode!=='bias'; field('ignition-metrics').hidden=mode!=='ignition';
+    const ignition=mode==='ignition'&&accepted?.ignition?presentIdleIgnition(accepted.ignition.result,accepted.result.analysis.complete&&(accepted.qualification?.complete??true)):undefined;
+    for(const [name,value]of [['ignition-advance',ignition?.advanceMean],['ignition-correction',ignition?.correctionMean],['ignition-lambda',ignition?.lambdaMean]] as const)field(name).textContent=value??'—';
+    field('ignition-rmse').textContent=accepted?number(accepted.result.analysis.tracking?.rmse):'—';
     const bias=mode==='bias'&&accepted?.bias?presentIdlePositionPid(accepted.bias.result,accepted.result.analysis.complete&&(accepted.qualification?.complete??true)):undefined;
     for(const [name,value]of [['bias-i',bias?.iMean],['bias-feed',bias?.feedMean],['bias-motor',bias?.motorMean],['bias-tracking',bias?.trackingRms]] as const)field(name).textContent=value??'—';
     field('bias-i-label').textContent='Inner position I mean'+(bias?` · ${bias.roles[2]!.unit}`:'');
@@ -495,6 +520,17 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if (accepted.qualification) panel.append(section('Applied qualification', `${accepted.qualification.description}. ${accepted.qualification.eligible}/${accepted.qualification.input} original records eligible; ${accepted.qualification.rejected} value-rejected, ${accepted.qualification.invalid} invalid, ${accepted.qualification.unavailable} unavailable; ${accepted.qualification.manualBypassed} valid records manually bypassed. Invalid counts may include recovered retry attempts and do not by themselves establish physical data loss.`));
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
     if (scopeValue === 'viewed') panel.append(section('Analysis scope', analysisScopeLabel() + '. Inclusion checkboxes do not change this selection.'));
+    if(mode==='ignition'){
+      if(!ignition){panel.append(section('Ignition evidence required',controllerError??(controllerPendingKey?'Loading recorded ignition evidence…':'Map compatible recorded degree channels and optional actual lambda.')));return;}
+      const next=assessment.findings.includes('purpose-review')?presentation.next+' '+ignition.next:ignition.next;
+      if(tab==='diagnosis')panel.append(section('Evidence status',ignition.status),section('Recorded ignition behavior',ignition.observed),section('RPM context',`${analysis.rpm.validSampleCount} valid RPM records; logged-target RMSE ${number(analysis.tracking?.rmse)} RPM.`),section('Limits of inference',ignition.limits),section('Next test',next));
+      else if(tab==='evidence'){
+        panel.append(section('Source and unit authority',`${context.source?.descriptor?.displayName??'Source unavailable'}. ${mappingDescription()}. The original source angle signs/reference are retained; no ATDC or radians conversion is applied.`));
+        for(const role of ignition.roles)panel.append(section(role.label,`Mean ${role.mean}, RMS ${role.rms} ${role.unit}; ${role.coverage}`));
+        panel.append(section('RPM context',`${analysis.rpm.validSampleCount} valid RPM records; logged-target RMSE ${number(analysis.tracking?.rmse)} RPM.`),section('Limits of inference',ignition.limits));
+      }else panel.append(section('Recommended action',next),section('Hold constant',presentation.holdConstant),section('What would support it?',ignition.supports),section('What would contradict it?',ignition.contradicts),section('Limits of inference',ignition.limits));
+      return;
+    }
     if(mode==='bias'){
       if(!bias){panel.append(section('Position PID evidence required',controllerError??(controllerPendingKey?'Loading recorded position-controller evidence…':'Map logged inner position terms and feed-forward.')));return;}
       const next=assessment.findings.includes('purpose-review')?presentation.next+' '+bias.next:bias.next;
@@ -575,25 +611,26 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const catalogChanged = !sameChannelOptionCatalog(context.channels, next.channels);
     if (sourceChanged || catalogChanged || context.source?.revision !== next.source?.revision || context.source?.sampleCount !== next.source?.sampleCount) resetDiscovery();
     if (regionSession.bind(next.source?.identity, next.source?.revision, next.sourceTimeRange)) { regionEvidence = undefined; focusId = 'overview'; manager.close(); manager.resetDrafts(); }
-    if (sourceChanged || catalogChanged) { retainedValveIds = {dcTarget:'',dcPosition:'',dcOutput:''}; retainedPidIds={p:'',i:'',d:'',pidOutput:''}; retainedBiasIds={dcBiasOutput:'',dcP:'',dcI:'',dcD:''}; }
+    if (sourceChanged || catalogChanged) { retainedValveIds = {dcTarget:'',dcPosition:'',dcOutput:''}; retainedPidIds={p:'',i:'',d:'',pidOutput:''}; retainedBiasIds={dcBiasOutput:'',dcP:'',dcI:'',dcD:''}; retainedIgnitionIds={ignitionAdvance:'',ignitionCorrection:'',ignitionLambda:''}; }
     if (catalogChanged) regionEvidence = undefined;
     if (sourceChanged) { if (scopeValue !== 'viewed') scopeValue = 'full'; manualId = undefined; }
     else scopeValue = retainedAnalyzerScopeValue(scopeValue, context, next);
     context = next;
     if (sourceChanged || catalogChanged || !rpmSelect.options.length) {
       const initialized = rpmSelect.options.length > 0;
-      const choices = [[rpmSelect, 'rpm', rpmId], [targetSelect, 'target', targetId], ...CONTEXT_ROLES.map(role => [contextSelects[role], role, contextIds[role]] as const), ...VALVE_ROLES.map(role => [valveSelects[role],role,valveIds[role]] as const), ...PID_ROLES.map(role=>[pidSelects[role],role,pidIds[role]] as const), ...BIAS_ROLES.map(role=>[biasSelects[role],role,biasIds[role]] as const)] as const;
+      const choices = [[rpmSelect, 'rpm', rpmId], [targetSelect, 'target', targetId], ...CONTEXT_ROLES.map(role => [contextSelects[role], role, contextIds[role]] as const), ...VALVE_ROLES.map(role => [valveSelects[role],role,valveIds[role]] as const), ...PID_ROLES.map(role=>[pidSelects[role],role,pidIds[role]] as const), ...BIAS_ROLES.map(role=>[biasSelects[role],role,biasIds[role]] as const), ...IGNITION_ROLES.map(role=>[ignitionSelects[role],role,ignitionIds[role]] as const)] as const;
       for (const [select, role, old] of choices) {
-        const unitFor=(channel: typeof context.channels[number])=>BIAS_ROLES.includes(role as BiasRole)?idlePositionPidRoleUnit(channel,role as BiasRole):PID_ROLES.includes(role as PidRole)?idlePidRoleUnit(channel,role as PidRole):idleRoleUnit(channel,role as 'rpm'|'target'|ContextRole|ValveRole);
+        const unitFor=(channel: typeof context.channels[number])=>IGNITION_ROLES.includes(role as IgnitionRole)?idleIgnitionRoleUnit(channel,role as IgnitionRole):BIAS_ROLES.includes(role as BiasRole)?idlePositionPidRoleUnit(channel,role as BiasRole):PID_ROLES.includes(role as PidRole)?idlePidRoleUnit(channel,role as PidRole):idleRoleUnit(channel,role as 'rpm'|'target'|ContextRole|ValveRole);
         const channels = context.channels.filter(channel => unitFor(channel));
         select.replaceChildren(new Option(role === 'rpm' ? 'Select RPM channel' : 'Unavailable / not selected', ''));
         for (const channel of channels) {
           const unit = unitFor(channel)!;
           select.add(new Option(`${analyzerChannelOptionLabel(channel)}${unit.authority === 'canonical-role' ? ` [${unit.unit} · canonical role]` : unit.authority==='unspecified' ? ' [raw · engineering unit unspecified]' : ''}`, channel.id));
         }
-        select.value = !sourceChanged && initialized ? channels.some(channel => channel.id === old) ? old : '' : suggestAnalyzerChannel('idle', role, channels)?.id ?? '';
+        select.value = !sourceChanged && initialized ? channels.some(channel => channel.id === old) ? old : '' : (role==='ignitionLambda'?preferredIdleIgnitionLambda(channels):suggestAnalyzerChannel('idle',role,channels))?.id ?? '';
       }
       contextIds = Object.fromEntries(CONTEXT_ROLES.map(role => [role, contextSelects[role].value])) as Record<ContextRole, string>;
+      ignitionIds=Object.fromEntries(IGNITION_ROLES.map(role=>[role,ignitionSelects[role].value])) as Record<IgnitionRole,string>;
       biasIds=Object.fromEntries(BIAS_ROLES.map(role=>[role,biasSelects[role].value])) as Record<BiasRole,string>;
       pidIds=Object.fromEntries(PID_ROLES.map(role=>[role,pidSelects[role].value])) as Record<PidRole,string>;
       valveIds = Object.fromEntries(VALVE_ROLES.map(role => [role,valveSelects[role].value])) as Record<ValveRole,string>;
@@ -644,7 +681,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const evidenceKey = semanticEvidenceKey();
     const key = JSON.stringify([evidenceKey, bounds, regions, plan.enabled ? [plan.conditions,plan.bypass,plan.description] : false]);
     if (accepted?.source === source.identity && accepted.key === key
-      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); renderCoverage(); renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias') void ensureControllerEvidence(); return; }
+      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); renderCoverage(); renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias' || mode==='ignition') void ensureModeEvidence(); return; }
     if (pendingKey === key && pendingSource === source.identity) return;
     const mayReuseEvidence=needsFullEvidence||accepted?.qualification!==undefined;
     const request = ++generation;
@@ -678,7 +715,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       renderCoverage();
       renderPlot();
       status(qualification && !qualification.eligible && qualification.input ? !qualification.rejected&&(qualification.invalid||qualification.unavailable) ? 'Qualification evidence unavailable or misaligned.' : 'No records match selected qualification conditions.' : regions && !regions.length ? 'No included regions. Graph focus is excluded from analysis.' : stats.rpm.validSampleCount ? complete ? 'Recorded evidence' : 'Partial recorded evidence' : 'No valid RPM evidence');
-      renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias') void ensureControllerEvidence();
+      renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias' || mode==='ignition') void ensureModeEvidence();
       owner.event('idle.stability.accepted', { generation: request, samples: stats.rpm.validSampleCount });
     } catch (error) {
       if (!active || disposed || request !== generation) return;
@@ -728,11 +765,12 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const listen = (node: HTMLElement, action: () => void, event = 'click') => node.addEventListener(event, () => {
     if (active && !disposed) action();
   }, { signal: events.signal });
-  listen(field('mode'), () => { const value = field<HTMLSelectElement>('mode').value; if (value === 'stability' || value === 'airflow' || value === 'valve' || value === 'pid' || value==='bias') { controllerRequest++; controllerPendingKey=undefined; mode = value; renderAssessment(); renderPlot(); if(mode==='valve'||mode==='pid'||mode==='bias')void ensureControllerEvidence(); } }, 'change');
-  for (const role of VALVE_ROLES) listen(valveSelects[role], () => { valveIds[role]=valveSelects[role].value; invalidateController('valve',true); }, 'change');
-  for(const role of BIAS_ROLES)listen(biasSelects[role],()=>{biasIds[role]=biasSelects[role].value;invalidateController('bias');},'change');
-  listen(field('motor-reference'),()=>invalidateController('valve',false,true),'change');
-  for(const role of PID_ROLES)listen(pidSelects[role],()=>{pidIds[role]=pidSelects[role].value;invalidateController('pid');},'change');
+  listen(field('mode'), () => { const value = field<HTMLSelectElement>('mode').value; if (value === 'stability' || value === 'airflow' || value === 'valve' || value === 'pid' || value==='bias' || value==='ignition') { controllerRequest++; controllerPendingKey=undefined; mode = value; renderAssessment(); renderPlot(); if(mode==='valve'||mode==='pid'||mode==='bias'||mode==='ignition')void ensureModeEvidence(); } }, 'change');
+  for (const role of VALVE_ROLES) listen(valveSelects[role], () => { valveIds[role]=valveSelects[role].value; invalidateModeEvidence('valve',true); }, 'change');
+  for(const role of IGNITION_ROLES)listen(ignitionSelects[role],()=>{ignitionIds[role]=ignitionSelects[role].value;invalidateModeEvidence('ignition');},'change');
+  for(const role of BIAS_ROLES)listen(biasSelects[role],()=>{biasIds[role]=biasSelects[role].value;invalidateModeEvidence('bias');},'change');
+  listen(field('motor-reference'),()=>invalidateModeEvidence('valve',false,true),'change');
+  for(const role of PID_ROLES)listen(pidSelects[role],()=>{pidIds[role]=pidSelects[role].value;invalidateModeEvidence('pid');},'change');
   listen(rpmSelect, () => { resetDiscovery(); rpmId = rpmSelect.value; syncMappingNote(); void analyze(); }, 'change');
   for (const role of CONTEXT_ROLES) listen(contextSelects[role], () => { contextIds[role] = contextSelects[role].value; syncMappingNote(); void analyze(); }, 'change');
   listen(field('manage-regions'), () => { renderRegionControls(); manager.open(); });

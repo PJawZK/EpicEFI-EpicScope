@@ -53,6 +53,12 @@ function biasFixture(count=4){
     const channel={id,sourceName:name,displayName:name,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:count===4?Float64Array.from(values):new Float64Array(count).fill(value)}});
   }return f;
 }
+function ignitionFixture(count=4){
+  const f=biasFixture(count);if(count===4)f.traces[0].range.values=Float64Array.from([900,1000,1100,1300]);
+  for(const [id,name,unit,values,value]of [['spark-advance','correctedIgnitionAdvance','deg',[10,14,18,22],16],['spark-correction','timingPidCorrection','deg',[-4,-2,2,4],-2],['actual-lambda','lambdaValue',undefined,[.9,1,1.1,1],1.01]]){
+    const channel={id,sourceName:name,displayName:name,...(unit?{unit}:{}),valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:count===4?Float64Array.from(values):new Float64Array(count).fill(value)}});
+  }return f;
+}
 function mount(observability) {
   const view = createIdleAnalyzerView(observability); view.element.hidden = false;
   document.body.append(view.element);
@@ -75,7 +81,7 @@ export async function runIdleAnalyzerChecks() {
       assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
-      assert([...m.field('mode').options].filter(o=>!o.disabled).length===5,'Unexpected diagnostic mode became active');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===6,'Unexpected diagnostic mode became active');
     }finally{m.close();}
   });
   await check('Base Airflow renders retained context and reuses calculation across modes/tabs without reads',async()=>{
@@ -801,6 +807,64 @@ export async function runIdleAnalyzerChecks() {
       try{
         m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();
         assert(m.field('dcOutput').value===(actual?'actual-motor':'')&&m.field('bias-motor').textContent===(actual?'0.00':'Unavailable')&&m.field('bias-tracking').textContent==='3.32','PID debug output was silently promoted to H-bridge percent or independent position lost');
+      }finally{m.close();}
+    }
+  });
+  await check('Ignition loads only its missing channels, separates absolute/correction/lambda facts and retains them across modes/tabs',async()=>{
+    const f=ignitionFixture(),events=[],m=mount({record:event=>events.push(event)}),runs=()=>events.filter(e=>e.name==='idle.ignition.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(f.calls.length===1&&!f.calls[0].ids.includes('spark-advance'),'Inactive ignition decoded its channels');change(m.field('mode'),'ignition');await wait();assert(f.calls.length===2&&f.calls[1].ids.length===3&&runs()===1,'Ignition did not batch missing roles once');
+      assert(m.field('ignition-advance').textContent==='16.00'&&m.field('ignition-correction').textContent==='0.00'&&m.field('ignition-rmse').textContent==='165.83'&&m.field('ignition-lambda').textContent==='1.000','Ignition reference arithmetic or RPM context incorrect');
+      assert(m.view.element.querySelector('svg').textContent.includes('IGNITION')&&m.view.element.querySelector('[data-trace-label="Logged signed idle timing correction"]'),'Wrong graph source/labels');m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('4 valid, 0 invalid, 0 unavailable')&&m.field('assessment').textContent.includes('No assumption reconstructs final advance'),'Coverage or signal separation missing');
+      change(m.field('mode'),'bias');await wait();const reads=f.calls.length;change(m.field('mode'),'ignition');m.view.element.querySelector('[data-idle-tab=next]').click();m.view.element.querySelector('[data-idle-tab=diagnosis]').click();await wait();assert(f.calls.length===reads&&runs()===1,'Mode/tab transition repeated ignition calculation/read');
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(f.calls.length===reads&&runs()===1&&m.field('ignition-advance').textContent==='16.00','Navigation discarded ignition evidence');
+    }finally{m.close();}
+  });
+  await check('Ignition follows Viewed/combined qualification and independently counts correction timestamp failures',async()=>{
+    const f=ignitionFixture(),m=mount();f.traces.find(t=>t.channel.id==='spark-correction').range.timeMs=Float64Array.from([0,100,201,300]);const channel={id:'clt',sourceName:'coolant',displayName:'Coolant',unit:'deg C',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from([80,80,60,60])}});
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'ignition');await wait();m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('3 valid, 0 invalid, 1 unavailable'),'Unaligned correction counted as valid');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];for(const [a,b]of [[0,.1],[.2,.3]]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();}const a=rows()[0].dataset.regionId,b=rows()[1].dataset.regionId;
+      change(m.field('focus'),a);change(m.field('scope'),'viewed');await wait();assert(m.field('ignition-advance').textContent==='12.00'&&m.field('ignition-correction').textContent==='-3.00'&&m.field('ignition-lambda').textContent==='0.950','Viewed angular A not bounded');change(m.field('focus'),b);await wait();assert(m.field('ignition-advance').textContent==='20.00'&&m.field('ignition-correction').textContent==='4.00'&&m.field('ignition-lambda').textContent==='1.050','Viewed B reused A or borrowed correction times');
+      change(m.field('scope'),'regions');await wait();const advance=m.field('ignition-advance').textContent;change(m.field('focus'),a);await wait();assert(m.field('ignition-advance').textContent===advance,'Combined ignition followed graph focus');m.field('qual-enabled').checked=true;m.field('qual-enabled').dispatchEvent(new Event('change',{bubbles:true}));await wait();assert(m.field('ignition-advance').textContent==='12.00'&&m.field('ignition-correction').textContent==='-3.00'&&m.field('ignition-lambda').textContent==='0.950','Ignition ignored accepted qualification');
+      const reads=f.calls.length;change(m.field('ignitionCorrection'),'');await wait();assert(m.field('ignition-correction').textContent==='Unavailable'&&m.field('ignition-advance').textContent==='12.00','Missing correction became zero or erased advance');change(m.field('ignitionCorrection'),'spark-correction');await wait();assert(f.calls.length===reads&&m.field('ignition-correction').textContent==='-3.00','Restoring last correction reread source');
+    }finally{m.close();}
+  });
+  await check('Ignition actual lambda excludes target/AFR and invalid nonpositive measurements without changing angular scope',async()=>{
+    const f=ignitionFixture(),m=mount();f.traces.find(t=>t.channel.id==='actual-lambda').range.values.set([0,-1,1.1,1]);
+    for(const [id,name,unit]of [['lambda-target','targetLambda','lambda'],['afr','afrGasolineScale','AFR'],['base-angle','baseIgnitionAdvance','deg'],['all-corrections','ignitionAdvanceCorrections','deg']]){const channel={id,sourceName:name,displayName:name,unit,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:new Float64Array(4).fill(99)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(m.field('ignitionAdvance').value==='spark-advance'&&m.field('ignitionCorrection').value==='spark-correction'&&m.field('ignitionLambda').value==='actual-lambda','Wrong automatic source role');assert(![...m.field('ignitionLambda').options].some(o=>o.value==='lambda-target'||o.value==='afr'),'Target/AFR offered as actual lambda');
+      change(m.field('mode'),'ignition');await wait();assert(m.field('ignition-advance').textContent==='16.00'&&m.field('samples').textContent==='4'&&m.field('ignition-lambda').textContent==='1.050','Invalid mixture altered angle scope or was averaged as zero');m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('2 valid, 2 invalid, 0 unavailable'),'Invalid lambda denominator missing');
+      change(m.field('ignitionLambda'),'');await wait();assert(m.field('ignition-lambda').textContent==='Unavailable'&&m.field('ignition-advance').textContent==='16.00','Missing lambda became inferred AFR conversion');
+    }finally{m.close();}
+  });
+  await check('Ignition stale mapping/source/hidden completions cannot override newer evidence; inactive controls do not cancel it',async()=>{
+    const f=ignitionFixture(),m=mount(),pending=[];const original=f.context.loadTraces;let hold=true;f.context.loadTraces=(ids,a,b)=>ids.includes('spark-advance')&&hold?new Promise(resolve=>pending.push(resolve)):original(ids,a,b);
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'ignition');assert(pending.length===1,'Ignition not pending');change(m.field('motor-reference'),'0');change(m.field('dcI'),'');pending[0](f.traces);await wait();assert(m.field('ignition-advance').textContent==='16.00','Inactive controller setting cancelled ignition');
+      m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:1}});await wait();assert(pending.length===2,'Replacement ignition not pending');change(m.field('ignitionAdvance'),'');await wait();pending[1](f.traces);await wait();assert(m.field('ignition-advance').textContent==='Unavailable','Old mapping overwrote missing advance');change(m.field('ignitionAdvance'),'spark-advance');assert(pending.length===3,'Restored advance not pending');m.view.setActive(false);pending[2](f.traces);await wait();assert(m.field('ignition-advance').textContent==='—','Hidden ignition completion published');hold=false;m.view.setActive(true);await wait();assert(m.field('ignition-advance').textContent==='16.00','Ignition resume failed');
+      hold=true;m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:2}});await wait();m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:3}});await wait();assert(pending.length===5,'Two source loads not held');pending[4](f.traces.map(t=>t.channel.id==='spark-advance'?{...t,range:{...t.range,values:new Float64Array(4).fill(99)}}:t));await wait();pending[3](f.traces);await wait();assert(m.field('ignition-advance').textContent==='99.00','Old source replaced latest advance');
+    }finally{m.close();}
+  });
+  await check('Ignition channel remapping remains bounded and does not evict/recalculate accepted shared position evidence',async()=>{
+    const f=ignitionFixture(),events=[],m=mount({record:event=>events.push(event)}),positions=()=>events.filter(e=>e.name==='idle.position.request').length;
+    for(let i=0;i<4;i++){const channel={id:`angle-${i}`,sourceName:`Mapped angle ${i}`,displayName:`Mapped angle ${i}`,unit:'deg',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:new Float64Array(4).fill(2+i)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();change(m.field('mode'),'ignition');await wait();const paired=positions();for(let i=0;i<4;i++){change(m.field('ignitionAdvance'),`angle-${i}`);await wait();}const reads=f.calls.length;change(m.field('ignitionAdvance'),'spark-advance');await wait();assert(f.calls.length===reads+1&&f.calls.at(-1).ids.join(',')==='spark-advance'&&positions()===paired,'Old angular columns accumulated or unrelated position calculation repeated');const before=f.calls.length;change(m.field('mode'),'bias');await wait();assert(f.calls.length===before&&positions()===paired&&m.field('bias-tracking').textContent==='3.32','Ignition remapping evicted position/Bias authority');
+    }finally{m.close();}
+  });
+  await check('320459-sample native ignition keeps aligned counts, bounded graph DOM and retained viewport without repeated source reads',async()=>{
+    const f=ignitionFixture(320459),m=mount();try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();change(m.field('mode'),'ignition');await wait();assert(m.field('ignition-advance').textContent==='16.00'&&m.field('ignition-correction').textContent==='-2.00'&&m.field('ignition-rmse').textContent==='0.00'&&m.field('ignition-lambda').textContent==='1.010','Large ignition reference facts failed');m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('320459 valid')&&m.view.element.querySelectorAll('svg *').length<170,'Large ignition counts or DOM unbounded');
+      m.view.element.querySelector('svg').dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));const times=()=>[...m.view.element.querySelectorAll('svg text')].map(e=>e.textContent).filter(t=>t.endsWith(' s')).join('|'),viewport=times(),reads=f.calls.length;change(m.field('mode'),'bias');change(m.field('mode'),'ignition');await wait();assert(f.calls.length===reads&&times()===viewport,'Large mode navigation reread source or reset viewport');
+    }finally{m.close();}
+  });
+  await check('Ignition missing optional correction/lambda/target and unsupported absolute units never produce healthy defaults',async()=>{
+    for(const unsupported of [false,true]){
+      const f=ignitionFixture(),m=mount();f.context.channels=f.context.channels.filter(c=>!['target','spark-correction','actual-lambda'].includes(c.id));f.traces.splice(0,f.traces.length,...f.traces.filter(t=>!['target','spark-correction','actual-lambda'].includes(t.channel.id)));if(unsupported)f.traces.find(t=>t.channel.id==='spark-advance').channel.unit='ms';
+      try{
+        m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'ignition');await wait();assert(m.field('ignition-advance').textContent===(unsupported?'Unavailable':'16.00')&&m.field('ignition-correction').textContent==='Unavailable'&&m.field('ignition-lambda').textContent==='Unavailable'&&m.field('ignition-rmse').textContent==='Unavailable','Missing role/units/target became false numeric evidence or blocked independent advance');
       }finally{m.close();}
     }
   });
