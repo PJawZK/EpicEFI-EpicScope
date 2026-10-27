@@ -1,5 +1,7 @@
 # Viewed region analysis — read-only implementation plan
 
+Implementation follow-up: [Group A native checkpoint](NATIVE_VIEWED_REGION_CHECKPOINT.md). The text below preserves the pre-implementation plan; current completion and validation are recorded in that checkpoint.
+
 Branch: `ui/idle-analyzer-html-integration`. Inspected implementation: `2621eaec9635ce31869d76b8e39f899015c68aac`. This checkpoint changes documentation only. No production/test changes, new diagnostic mode, broad layout cleanup or push are included.
 
 ## Problem and intended behavior

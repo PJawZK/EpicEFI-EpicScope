@@ -119,3 +119,5 @@ In v3.5.7, open **Compare → Operating conditions** to see independent A/B even
 ## Validation status after the readiness pass
 
 The earlier v3.5.8–10 “pending” notes above are historical checkpoints. The latest v3.5.10 navigation, matching/mismatching B re-import, missing-source refusal and narrow-layout behavior now have bounded Chromium evidence recorded in the new audit. This does not retroactively validate every old snapshot or the unavailable original September recording. The audit explicitly lists remaining source, analytical, accessibility and full-log gates; it also records defects found by the new checks.
+
+- [Native Viewed region checkpoint — Group A](NATIVE_VIEWED_REGION_CHECKPOINT.md) — explicit single-region analysis alongside combined scope; validation, ownership and next boundary.

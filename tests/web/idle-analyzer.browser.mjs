@@ -509,7 +509,84 @@ export async function runIdleAnalyzerChecks() {
       assert(m.field('samples').textContent.replaceAll(',', '')==='320459'&&f.calls.length===1,'Large split duplicated endpoint samples or reread source');
       const parts=d.querySelectorAll('tbody tr');change(parts[0].querySelector('[data-merge-target]'),parts[1].dataset.regionId);parts[0].querySelector('[data-manager=merge]').click();await wait();
       assert(m.field('samples').textContent.replaceAll(',', '')==='320459'&&m.field('rmse').textContent==='0.00'&&f.calls.length===1,'Large merge changed reference metrics');
+      d.querySelector('[data-manager=focus]').click();change(m.field('scope'),'viewed');await wait();assert(m.field('samples').textContent.replaceAll(',', '')==='320459'&&f.calls.length===1&&m.view.element.querySelectorAll('svg *').length<100,'Large Viewed failed reference count, cache or bounded DOM');
     } finally { m.close(); }
+  });
+  await check('Viewed region updates unequal numerical evidence across focus entry points without changing combined inclusion',async()=>{
+    const f=airflowFixture();const values=[900,1000,1100,1300];f.traces[0].range.values=Float64Array.from(values);
+    let requests=0;
+    const n=mount({record(event){if(event.name==='idle.stability.request')requests++;}});
+    try{
+      n.view.setContext(f.context);n.view.setActive(true);await wait();change(n.field('scope'),'viewed');await wait();
+      assert(n.field('samples').textContent==='—'&&!n.field('focus-control').hidden&&n.field('status').textContent.includes('Select a managed region'),'Empty Viewed silently fell back or selector hidden');
+      n.field('manage-regions').click();const d=n.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];
+      const add=(a,b,label)=>{d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-new=label]').value=label;d.querySelector('[data-manager=add]').click();};
+      add(0,.1,'A');add(.2,.3,'B');await wait();assert(n.field('samples').textContent==='—','Adding chose first region silently');
+      const a=rows()[0].dataset.regionId,b=rows()[1].dataset.regionId;
+      rows()[0].querySelector('[data-manager=focus]').click();await wait();
+      assert(n.field('focus-label').textContent==='Viewed region'&&n.field('region-key').textContent.includes('View selects the region for analysis.')&&n.field('samples').textContent==='2'&&n.field('sigma').textContent==='70.71'&&n.field('rmse').textContent==='70.71'&&n.field('in-band').textContent==='50.0%','Viewed A reference case wrong');
+      change(n.field('mode'),'airflow');assert(n.field('airflow-base').textContent.includes('21.00')&&n.field('airflow-correction').textContent.includes('1.00'),'Viewed A Airflow not bounded');
+      change(n.field('focus'),b);await wait();
+      assert(n.field('sigma').textContent==='141.42'&&n.field('rmse').textContent==='223.61'&&n.field('in-band').textContent==='0.0%'&&n.field('airflow-base').textContent.includes('25.00'),'Viewed B evidence stale');
+      const before=requests,reads=f.calls.length;
+      n.view.element.querySelector('svg').dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));
+      const paths=()=>[...n.view.element.querySelectorAll('[data-idle-trace]')].map(p=>p.getAttribute('d')).join('|'),viewport=paths();
+      change(rows()[1].querySelector('[data-purpose]'),'raised');rows()[1].querySelector('[data-edit=label]').value='B renamed';rows()[1].querySelector('[data-manager=edit]').click();await wait();
+      assert(requests===before&&f.calls.length===reads&&paths()===viewport&&n.field('metrics-scope').textContent.includes('B renamed')&&n.field('assessment').textContent.includes('Raised-RPM'),'Presentation edit recomputed, reset viewport or failed label/purpose');
+      const include=rows()[1].querySelector('[data-include]');include.checked=false;include.dispatchEvent(new Event('change',{bubbles:true}));await wait();
+      assert(n.field('samples').textContent==='2'&&requests===before&&!rows()[1].querySelector('[data-include]').checked,'Excluded Viewed altered numeric authority');
+      n.view.element.querySelector(`[data-region-id="${a}"].idle-region-marker`).click();await wait();assert(n.field('rmse').textContent==='70.71','Timeline marker failed Viewed analysis');
+      change(n.field('scope'),'regions');await wait();const combined=requests;change(n.field('focus'),b);await wait();
+      assert(n.field('rmse').textContent==='70.71'&&requests===combined,'Combined graph focus changed numeric scope');
+      change(n.field('scope'),'viewed');await wait();assert(n.field('rmse').textContent==='223.61','Returning Viewed failed excluded selection');
+      rows()[1].querySelector('[data-manager=remove]').click();await wait();assert(n.field('samples').textContent==='—'&&n.field('assessment').textContent.includes('Recorded evidence required'),'Deleted selection retained evidence');
+      change(n.field('focus'),a);await wait();const retained=requests;n.view.setActive(false);n.view.setContext({...f.context});n.view.setActive(true);await wait();assert(n.field('rmse').textContent==='70.71'&&requests===retained,'Navigation discarded retained Viewed evidence');
+      n.view.setContext({...f.context,source:{...f.context.source,identity:{}}});await wait();assert(n.field('scope').value==='viewed'&&n.field('samples').textContent==='—','Replacement source silently analyzed Full Log');
+    }finally{n.close();}
+  });
+  await check('Viewed split/merge changes selected bounds and a Logger command explicitly leaves Viewed',async()=>{
+    const f=fixture([900,1000,1100,1300,1500,1700]),m=mount();let commits=0;
+    f.context.setAnalysisRange=({startMs,endMs})=>{commits++;f.context={...f.context,aTimeMs:startMs,bTimeMs:endMs};m.view.setContext(f.context);return true;};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];
+      d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.5';d.querySelector('[data-manager=add]').click();rows()[0].querySelector('[data-manager=focus]').click();change(m.field('scope'),'viewed');await wait();
+      rows()[0].querySelector('[data-edit=split]').value='.2';rows()[0].querySelector('[data-manager=split]').click();await wait();
+      assert(m.field('samples').textContent==='3'&&m.field('rmse').textContent==='81.65','Selected split kept pre-split evidence');
+      rows()[1].querySelector('[data-manager=focus]').click();await wait();assert(m.field('samples').textContent==='4','Second split focus did not analyze actual bounds');
+      const retainedId=rows()[0].dataset.regionId;change(rows()[0].querySelector('[data-merge-target]'),rows()[1].dataset.regionId);rows()[0].querySelector('[data-manager=merge]').click();await wait();
+      assert(m.field('focus').value===retainedId&&m.field('samples').textContent==='6'&&f.calls.length===1,'Merged focus/evidence/source cache incorrect');
+      d.querySelector('[data-manager=close]').click();const track=m.field('range-track'),r=track.getBoundingClientRect();track.setPointerCapture=()=>{};
+      for(const [type,x]of[['pointerdown',.2],['pointermove',.4],['pointerup',.4]])track.dispatchEvent(new PointerEvent(type,{pointerId:92,button:0,shiftKey:true,bubbles:true,cancelable:true,clientX:r.left+r.width*x,clientY:r.top+8}));
+      await wait();assert(commits===1&&m.field('scope').value==='ab'&&m.field('focus').value==='logger'&&rows().length===1&&m.field('metrics-scope').textContent.includes('Current A/B'),'Viewed drag did not visibly transition to real Logger A/B');
+      change(m.field('scope'),'viewed');change(m.field('focus'),retainedId);change(m.field('candidate-duration'),'.1');m.field('discover').click();await wait();
+      const regionCount=rows().length;change(m.field('candidates'),'0');await wait();
+      assert(commits===2&&m.field('scope').value==='ab'&&m.field('focus').value==='logger'&&f.context.aTimeMs===0&&f.context.bTimeMs===200&&rows().length===regionCount,'Discovery command resized managed region or failed real A/B transition');
+    }finally{m.close();}
+  });
+  await check('Viewed rejects late interval work and hidden completions at the existing generation boundary',async()=>{
+    const f=fixture([900,1000,1100,1300]),m=mount(),pending=[];let deferred=false;
+    f.context.loadTraces=async()=>deferred?new Promise(resolve=>pending.push(resolve)):f.traces;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];
+      for(const [a,b]of[[0,.1],[.2,.3]]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();}
+      const a=rows()[0].dataset.regionId,b=rows()[1].dataset.regionId;change(m.field('scope'),'viewed');
+      deferred=true;const replacement={...f.context,channels:f.context.channels.map(c=>({...c,displayName:c.displayName+' revised'}))};m.view.setContext(replacement);
+      change(m.field('focus'),a);change(m.field('focus'),b);assert(pending.length===2,'Test did not hold two independent requests');
+      pending[1](f.traces);await wait();assert(m.field('rmse').textContent==='223.61','Latest B did not accept');pending[0](f.traces);await wait();assert(m.field('rmse').textContent==='223.61','Late A replaced B');
+      m.view.setContext({...replacement,channels:replacement.channels.map(c=>({...c,displayName:c.displayName+' new'}))});assert(pending.length===3,'Replacement not pending');m.view.setActive(false);pending[2](f.traces);await wait();assert(m.field('samples').textContent==='—','Hidden completion accepted');
+      deferred=false;m.view.setActive(true);await wait();assert(m.field('rmse').textContent==='223.61','Resume failed current Viewed interval');
+    }finally{m.close();}
+  });
+  await check('Viewed applies qualification to candidates and only explicitly bypasses eligible manual bounds',async()=>{
+    const f=fixture(new Float64Array(6).fill(1000)),m=mount();const checked=(name,value)=>{m.field(name).checked=value;m.field(name).dispatchEvent(new Event('change',{bubbles:true}));};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('candidate-duration'),'.1');m.field('discover').click();await wait();
+      const id=[...m.field('focus').options].find(o=>o.value.startsWith('region:'))?.value;assert(id,'Candidate missing');change(m.field('focus'),id);change(m.field('scope'),'viewed');await wait();
+      checked('qual-enabled',true);checked('qual-bypass',true);await wait();assert(m.field('samples').textContent==='—'&&m.field('status').textContent.includes('Qualification unavailable'),'Untouched excluded candidate bypassed missing coolant');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');change(d.querySelector('[data-purpose]'),'idle');d.querySelector('[data-edit=label]').value='Renamed';d.querySelector('[data-manager=edit]').click();await wait();assert(m.field('samples').textContent==='—','Rename or purpose granted bypass');
+      d.querySelector('[data-edit=end]').value='.4';d.querySelector('[data-manager=edit]').click();await wait();assert(m.field('samples').textContent==='5'&&m.field('assessment').textContent.includes('5 valid records manually bypassed')&&!d.querySelector('[data-include]').checked,'Edited excluded candidate not explicitly bypassed');
+      checked('qual-bypass',false);await wait();assert(m.field('samples').textContent==='—','Disabling bypass retained old evidence');
+    }finally{m.close();}
   });
   return { passed: checks.length, checks };
 }

@@ -12,7 +12,7 @@ export interface IdleQualificationSettings {
 }
 /** Compile declared mappings/units and manual policy at the existing view boundary. */
 export function buildIdleQualificationPlan(settings: IdleQualificationSettings, channels: readonly ChannelDefinition[], rpmId: string,
-  scope: { kind: string; manualId: string | undefined; regions: readonly IdleManagedRegion[] }, discovery = false) {
+  scope: { kind: string; manualId: string | undefined; viewedId?: string; regions: readonly IdleManagedRegion[] }, discovery = false) {
   const conditions: NumericQualificationCondition[] = [], ids: string[] = [];
   if (!settings.enabled) return { enabled: false, conditions, ids, bypass: [] as IdleRegionBounds[], description: 'Qualification off. Discovery uses RPM only; analysis uses the selected recorded scope.' };
   if (!Number.isFinite(settings.maximumRpm) || settings.maximumRpm <= 0) throw new Error('Enter a positive qualification RPM ceiling.');
@@ -20,9 +20,10 @@ export function buildIdleQualificationPlan(settings: IdleQualificationSettings, 
   if (settings.requireClosed && (!Number.isFinite(settings.maximumPercent) || settings.maximumPercent < 0 || settings.maximumPercent > 100)) throw new Error('Enter a closed-input limit from 0 to 100%.');
   const included = scope.regions.filter(region => region.included);
   const isManual = idleRegionAllowsBypass;
-  const bypass = !discovery && settings.manualBypass ? mergeIdleRegionBounds(scope.kind === 'manual' ? scope.regions.filter(region => region.id === scope.manualId).map(region => ({startMs:region.startMs,endMs:region.endMs}))
+  const bypass = !discovery && settings.manualBypass ? mergeIdleRegionBounds(scope.kind === 'viewed' ? scope.regions.filter(region => region.id === scope.viewedId && isManual(region)).map(region => ({startMs:region.startMs,endMs:region.endMs}))
+    : scope.kind === 'manual' ? scope.regions.filter(region => region.id === scope.manualId).map(region => ({startMs:region.startMs,endMs:region.endMs}))
     : scope.kind === 'regions' ? included.filter(isManual).map(region => ({startMs:region.startMs,endMs:region.endMs})) : []) : [];
-  const allBypassed = bypass.length > 0 && (scope.kind === 'manual' || (scope.kind === 'regions' && JSON.stringify(mergeIdleRegionBounds(included)) === JSON.stringify(bypass)));
+  const allBypassed = bypass.length > 0 && (scope.kind === 'manual' || scope.kind === 'viewed' || (scope.kind === 'regions' && JSON.stringify(mergeIdleRegionBounds(included)) === JSON.stringify(bypass)));
   conditions.push({channelId:rpmId,operator:'gt',value:0},{channelId:rpmId,operator:'lte',value:settings.maximumRpm});
   const description = [`0 < RPM ≤ ${settings.maximumRpm}`];
   const requireRole = (role: IdleQualificationRole) => {

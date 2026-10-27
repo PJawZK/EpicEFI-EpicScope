@@ -65,7 +65,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <option value="airflow">Base Airflow</option><option disabled>RPM PID — not integrated</option><option disabled>DC Valve Tracking — not integrated</option>
       <option disabled>DC Bias / Position PID — not integrated</option><option disabled>Ignition — not integrated</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
-      <label data-idle="focus-control" hidden>Graph focus <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
+      <label data-idle="focus-control" hidden><span data-idle="focus-label">Graph focus</span> <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
     <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
     <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><p class="idle-qualification-state" data-idle="qualification-state">Qualification off</p><div class="idle-metrics" data-idle="stability-metrics" aria-label="Stability measurements">
       <div><strong data-idle="sigma">—</strong><span>RPM σ · sample</span></div><div><strong data-idle="rmse">—</strong><span>RPM error RMSE</span></div>
@@ -83,7 +83,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
         <span data-idle="range-a" class="idle-range-handle" role="slider" aria-label="Idle range start A in milliseconds" tabindex="0" hidden></span>
         <span data-idle="range-b" class="idle-range-handle" role="slider" aria-label="Idle range end B in milliseconds" tabindex="0" hidden></span></div></section>
     <div class="idle-region-key" data-idle="region-key" hidden>Included · green / Excluded · gray / Viewed · blue outline. View does not change analysis. Shift-drag selects Logger A/B. ↗ Logger opens the viewed interval.</div><div class="idle-actionbar"><label>Auto-detect ≤ <input type="number" min="1" step="50" value="1200" data-idle="candidate-rpm" aria-label="Candidate maximum RPM"> RPM</label><label>Min <input type="number" min="0.1" step="1" value="8" data-idle="candidate-duration" aria-label="Candidate minimum duration in seconds"> s</label>
-      <button type="button" data-idle="discover">Find candidates</button><select data-idle="candidates" aria-label="Review RPM candidate region" disabled><option value="">No discovered candidates</option></select>
+      <button type="button" data-idle="discover">Find candidates</button><select data-idle="candidates" aria-label="Use discovered candidate as Logger A/B" disabled><option value="">No discovered candidates</option></select>
       <span data-idle="scope-note">RPM-only candidates require review; not automatically idle-qualified.</span><span class="idle-readonly">Read only</span><button type="button" data-idle="run">▶ Run Analysis</button></div>
     <details class="idle-qualification" data-idle="qualification-setup"><summary>Recorded qualification conditions</summary><div class="idle-qualification-body">
       <label><input type="checkbox" data-idle="qual-enabled"> Apply selected conditions to discovery and analysis</label>
@@ -125,7 +125,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     maximumRpm:field<HTMLInputElement>('candidate-rpm').value.trim() ? Number(field<HTMLInputElement>('candidate-rpm').value) : NaN,
     manualBypass:field<HTMLInputElement>('qual-bypass').checked,ids:{...qualificationIds},
   });
-  const qualificationPlan = (discovery = false) => buildIdleQualificationPlan(qualificationSettings(),context.channels,rpmId,{kind:scopeValue,manualId,regions:regionSession.regions},discovery);
+  const qualificationPlan = (discovery = false) => buildIdleQualificationPlan(qualificationSettings(),context.channels,rpmId,{kind:scopeValue,manualId,viewedId:focusId,regions:regionSession.regions},discovery);
   const renderQualificationControls = () => {
     const settings = qualificationSettings();
     for (const name of ['qual-warm','qual-closed','qual-bypass']) field<HTMLInputElement>(name).disabled = !settings.enabled;
@@ -147,35 +147,49 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const included = regionSession.includedBounds();
       return included.length ? { startMs: included[0]!.startMs, endMs: included.at(-1)!.endMs } : context.sourceTimeRange;
     }
-    if (scopeValue === 'manual') { const region = regionSession.regions.find(region => region.id === manualId); return region ? { startMs: region.startMs, endMs: region.endMs } : undefined; }
+    if (scopeValue === 'manual' || scopeValue === 'viewed') { const region = regionSession.regions.find(region => region.id === (scopeValue === 'viewed' ? focusId : manualId)); return region ? { startMs: region.startMs, endMs: region.endMs } : undefined; }
     const scope = analyzerScopeOptions(context).find(option => option.value === scopeValue);
     if (!scope) return undefined;
     return scope.kind === 'full' ? context.sourceTimeRange : analyzerScopeBounds(scope) as { startMs: number; endMs: number };
   };
   const displayBounds = () => {
+    if (scopeValue === 'viewed') return selectedBounds();
     const region = regionSession.regions.find(region => region.id === focusId);
     if (region) return { startMs: region.startMs, endMs: region.endMs };
     if (focusId === 'logger' && context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs) return { startMs: Math.min(context.aTimeMs, context.bTimeMs), endMs: Math.max(context.aTimeMs, context.bTimeMs) };
     return selectedBounds();
   };
+  const analysisScopeLabel = () => {
+    if (scopeValue === 'viewed') {
+      const region = regionSession.regions.find(region => region.id === focusId);
+      return region ? `Viewed region: ${region.label} · ${(region.startMs/1000).toFixed(2)}–${(region.endMs/1000).toFixed(2)} s` : 'Viewed region: select a managed region';
+    }
+    if (scopeValue === 'regions') return `Combined included regions (${regionSession.regions.filter(region => region.included).length})`;
+    return scopeValue === 'manual' ? 'Manual region' : analyzerScopeOptions(context).find(option => option.value === scopeValue)?.label ?? 'Unavailable';
+  };
   const renderRegionControls = () => {
     const regions = regionSession.regions;
     if (focusId.startsWith('region:') && !regions.some(region => region.id === focusId)) focusId = 'overview';
     const select = field<HTMLSelectElement>('focus');
-    select.replaceChildren(new Option('Analysis overview', 'overview'));
+    select.replaceChildren(new Option(scopeValue === 'viewed' ? 'Select a managed region' : 'Analysis overview', 'overview'));
+    select.options[0]!.disabled = scopeValue === 'viewed';
     if (context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs) select.add(new Option('Logger A/B', 'logger'));
     if (focusId === 'logger' && ![...select.options].some(option => option.value === 'logger')) focusId = 'overview';
     for (const region of regions) select.add(new Option(`${region.label} · ${region.included ? 'included' : 'excluded'} · ${(region.startMs/1000).toFixed(2)}–${(region.endMs/1000).toFixed(2)} s`, region.id));
+    if (scopeValue === 'viewed') for (const option of select.options) if (option.value === 'logger') option.disabled = true;
     select.value = focusId;
-    field('focus-control').hidden = !regions.length; field('region-key').hidden = !regions.length;
+    field('focus-label').textContent = scopeValue === 'viewed' ? 'Viewed region' : 'Graph focus';
+    field('region-key').textContent = `Included · green / Excluded · gray / Viewed · blue outline. ${scopeValue === 'viewed' ? 'View selects the region for analysis.' : 'View does not change analysis.'} Shift-drag selects Logger A/B. ↗ Logger opens the viewed interval.`;
+    field('focus-control').hidden = !regions.length && scopeValue !== 'viewed'; field('region-key').hidden = !regions.length;
+    loggerButton.disabled = !context.openRangeInLogger || !displayBounds();
     const included = regions.filter(region => region.included).length;
-    const scopeLabel = scopeValue === 'regions' ? `Combined included regions (${included})` : scopeValue === 'manual' ? 'Manual region' : analyzerScopeOptions(context).find(option => option.value === scopeValue)?.label ?? 'Unavailable';
+    const scopeLabel = analysisScopeLabel();
     field('metrics-scope').textContent = `Metrics: ${scopeLabel}`;
-    field('scope-application').textContent = scopeValue === 'regions' ? 'Overlapping samples count once.' : included ? `${included} checked region${included === 1 ? ' is' : 's are'} not applied to these metrics.` : '';
+    field('scope-application').textContent = scopeValue === 'regions' ? 'Overlapping samples count once.' : scopeValue === 'viewed' ? 'Checkboxes apply only to combined analysis.' : included ? `${included} checked region${included === 1 ? ' is' : 's are'} not applied to these metrics.` : '';
     field('apply-included').hidden = scopeValue === 'regions' || !included;
     const viewed = regions.find(region => region.id === focusId);
     const explanation = field('focus-explanation'); explanation.hidden = !regions.length && !qualificationSettings().enabled;
-    explanation.textContent = viewed ? `Graph focus: ${viewed.label} (${viewed.included ? 'included' : 'excluded'}). Metrics remain ${scopeLabel}.`
+    explanation.textContent = scopeValue === 'viewed' ? viewed ? 'Graphs, metrics and assessment use this region. Inclusion checkboxes affect combined analysis only.' : 'Select a managed region to analyze; no Full Log fallback is applied.' : viewed ? `Graph focus: ${viewed.label} (${viewed.included ? 'included' : 'excluded'}). Metrics remain ${scopeLabel}.`
       : focusId === 'logger' ? `Graph focus: Logger A/B. Metrics remain ${scopeLabel}.` : scopeValue === 'regions' ? 'Graph overview spans the included intervals and the gaps between them. Gap samples are excluded from the combined metrics.' : `Graph overview: ${scopeLabel}.`;
     if(qualificationSettings().enabled)explanation.textContent+=' Graphs retain recorded measurements, including samples excluded by conditions.';
     manager.update(regions, focusId, context.sourceTimeRange, scopeLabel, scopeValue === 'regions');
@@ -207,7 +221,14 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     try {
       if (context.source?.descriptor?.format !== 'MLG') throw new Error('Load a recorded MLG before managing regions.');
       if (action.type === 'focus') {
-        focusId = action.id; renderRegionControls(); renderTimeline(); renderPlot(); return;
+        focusId = action.id; renderRegionControls(); renderTimeline();
+        if (scopeValue === 'viewed') {
+          const bounds = selectedBounds();
+          startInput.value = bounds ? String(bounds.startMs / 1000) : '';
+          endInput.value = bounds ? String(bounds.endMs / 1000) : '';
+          void analyze();
+        } else renderPlot();
+        return;
       }
       if ((action.type === 'split' || action.type === 'merge') && scopeValue === 'manual' && (manualId === action.id || action.type === 'merge' && manualId === action.targetId)) throw new Error('Choose Analyze included regions before splitting or merging the active single manual scope. Previous regions retained.');
       if (action.type === 'purpose') { regionSession.setPurpose(action.id, action.purpose); renderRegionControls(); renderAssessment(); manager.message('Declared purpose updated. Interpretation changes; recorded measurements, qualification and graph scope are unchanged.'); return; }
@@ -219,7 +240,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (action.type === 'merge') { const merged = regionSession.merge(action.id, action.targetId); if (focusId === action.targetId) focusId = merged.id; }
       if (action.type === 'analyze') scopeValue = 'regions';
       configure(context); renderPlot(); void analyze(); if (accepted) { renderCoverage(); renderAssessment(); }
-      manager.message(action.type === 'analyze' ? 'Included regions selected. Overlapping samples count once.' : action.type === 'split' || action.type === 'merge' ? 'Region partition changed. Included sample union and manual-bypass policy preserved; shared endpoints count once.' : 'Region change accepted. Included scope updates analysis; View changes only graph focus.');
+      manager.message(action.type === 'analyze' ? 'Included regions selected. Overlapping samples count once.' : action.type === 'split' || action.type === 'merge' ? 'Region partition changed. Included sample union and manual-bypass policy preserved; shared endpoints count once.' : 'Region change accepted. Included scope updates analysis; View changes analysis only in Viewed region scope.');
     } catch (error) { manager.message(error instanceof Error ? error.message : 'Region change rejected.'); }
   };
   const showDiscovery = (message: string, review = false) => {
@@ -281,7 +302,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     try { committed = captured.setAnalysisRange?.({ startMs: a, endMs: b }) ?? false; }
     finally { committingRange = false; }
     if (!committed) { scopeValue = previous; status('Logger could not accept this range. Previous region retained.'); }
-    if (committed && previous === 'regions') focusId = 'logger';
+    if (committed && (previous === 'regions' || previous === 'viewed')) focusId = 'logger';
     configure(context); if (committed) { renderPlot(); void analyze(); }
     return committed;
   };
@@ -318,12 +339,13 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const panel = field('assessment'); panel.replaceChildren();
     if (!accepted) { panel.append(section('Recorded evidence required', 'Choose an RPM channel and a recorded region, then run analysis. Target-dependent metrics remain unavailable without a compatible target channel.')); return; }
     const { analysis, inBandPercent } = accepted.result;
-    const purposes = scopeValue === 'regions' ? regionSession.regions.filter(region => region.included) : scopeValue === 'manual' ? regionSession.regions.filter(region => region.id === manualId) : [];
+    const purposes = scopeValue === 'regions' ? regionSession.regions.filter(region => region.included) : scopeValue === 'manual' || scopeValue === 'viewed' ? regionSession.regions.filter(region => region.id === (scopeValue === 'viewed' ? focusId : manualId)) : [];
     const assessment = assessIdleStability(accepted.result, summarizeIdlePurposes(purposes.map(region => region.purpose)));
     const presentation = presentIdleStabilityAssessment(assessment, accepted.qualification);
     panel.append(section('Declared test purpose', presentation.purpose));
     if (accepted.qualification) panel.append(section('Applied qualification', `${accepted.qualification.description}. ${accepted.qualification.eligible}/${accepted.qualification.input} original records eligible; ${accepted.qualification.rejected} value-rejected, ${accepted.qualification.invalid} invalid, ${accepted.qualification.unavailable} unavailable; ${accepted.qualification.manualBypassed} valid records manually bypassed. Invalid counts may include recovered retry attempts and do not by themselves establish physical data loss.`));
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
+    if (scopeValue === 'viewed') panel.append(section('Analysis scope', analysisScopeLabel() + '. Inclusion checkboxes do not change this selection.'));
     if (airflow) {
       const view = presentIdleAirflow(airflow, analysis.complete && (accepted.qualification?.complete ?? true));
       const next = !analysis.rpm.validSampleCount || ['source', 'coverage', 'known-idle', 'longer-region'].includes(assessment.nextTest) || assessment.findings.includes('purpose-review') ? presentation.next : view.next;
@@ -367,7 +389,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if (sourceChanged || catalogChanged || context.source?.revision !== next.source?.revision || context.source?.sampleCount !== next.source?.sampleCount) resetDiscovery();
     if (regionSession.bind(next.source?.identity, next.source?.revision, next.sourceTimeRange)) { regionEvidence = undefined; focusId = 'overview'; manager.close(); manager.resetDrafts(); }
     if (catalogChanged) regionEvidence = undefined;
-    if (sourceChanged) { scopeValue = 'full'; manualId = undefined; }
+    if (sourceChanged) { if (scopeValue !== 'viewed') scopeValue = 'full'; manualId = undefined; }
     else scopeValue = retainedAnalyzerScopeValue(scopeValue, context, next);
     context = next;
     if (sourceChanged || catalogChanged || !rpmSelect.options.length) {
@@ -395,7 +417,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
         qualificationIds[role]=select.value;
       }
     }
-    const options = [...analyzerScopeOptions(context), { value: 'regions', kind: 'range' as const, label: 'Included regions' }];
+    const options = [...analyzerScopeOptions(context), { value: 'regions', kind: 'range' as const, label: 'Included regions combined' }, { value: 'viewed', kind: 'range' as const, label: 'Viewed region' }];
     if (!options.some(option => option.value === scopeValue) && scopeValue !== 'manual') scopeValue = 'full';
     scopeSelect.replaceChildren(...options.map(option => new Option(option.label, option.value)));
     if (manualId) scopeSelect.add(new Option('Manual region', 'manual'));
@@ -415,7 +437,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const bounds = selectedBounds();
     if (!source || source.descriptor?.format !== 'MLG' || !bounds || !Number.isFinite(bounds.startMs) || !Number.isFinite(bounds.endMs) || bounds.endMs <= bounds.startMs || !rpmId) {
       generation += 1; pendingKey = undefined; clear(); runButton.disabled = false;
-      status('Load a recorded source with RPM units and select a nonzero region.'); return;
+      status(scopeValue === 'viewed' && !bounds ? 'Select a managed region for Viewed region analysis.' : 'Load a recorded source with RPM units and select a nonzero region.'); return;
     }
     const regions = scopeValue === 'regions' ? regionSession.includedBounds() : undefined;
     const managed = regionSession.regions.length > 0;
@@ -430,7 +452,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const evidenceKey = semanticEvidenceKey();
     const key = JSON.stringify([evidenceKey, bounds, regions, plan.enabled ? [plan.conditions,plan.bypass,plan.description] : false]);
     if (accepted?.source === source.identity && accepted.key === key
-      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); return; }
+      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); renderCoverage(); renderAssessment(); return; }
     if (pendingKey === key && pendingSource === source.identity) return;
     const mayReuseEvidence=needsFullEvidence||accepted?.qualification!==undefined;
     const request = ++generation;
@@ -499,7 +521,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const added = regionSession.addCandidates(result.regions);
       if (added) { configure(context); void analyze(); }
       const select = field<HTMLSelectElement>('candidates');
-      select.replaceChildren(new Option(result.totalCount ? 'Review candidate…' : 'No matching candidate intervals', ''));
+      select.replaceChildren(new Option(result.totalCount ? 'Use candidate as Logger A/B…' : 'No matching candidate intervals', ''));
       result.regions.forEach((region, index) => select.add(new Option(`${index + 1}: ${(region.startMs / 1000).toFixed(2)}–${(region.endMs / 1000).toFixed(2)} s`, String(index))));
       select.disabled = !result.regions.length;
       field('scope-note').textContent = `${result.totalCount} ${plan.enabled?'condition-matching':'RPM-only'} candidates${result.totalCount > result.regions.length ? '; first 200 listed' : ''} · 0 < RPM ≤ ${options.maximumRpm} · ≥ ${options.minimumDurationMs / 1000} s · gaps ≤ 250 ms. Review throttle, temperature and loads.${plan.enabled ? ` Conditions: ${plan.description}.` : ''}`;
@@ -518,7 +540,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   listen(rpmSelect, () => { resetDiscovery(); rpmId = rpmSelect.value; syncMappingNote(); void analyze(); }, 'change');
   for (const role of CONTEXT_ROLES) listen(contextSelects[role], () => { contextIds[role] = contextSelects[role].value; syncMappingNote(); void analyze(); }, 'change');
   listen(field('manage-regions'), () => { renderRegionControls(); manager.open(); });
-  listen(field('focus'), () => { focusId = field<HTMLSelectElement>('focus').value; renderRegionControls(); renderTimeline(); renderPlot(); }, 'change');
+  listen(field('focus'), () => manageRegion({ type: 'focus', id: field<HTMLSelectElement>('focus').value }), 'change');
   field('region-markers').addEventListener('pointerdown', event => { if (!event.shiftKey) event.stopPropagation(); }, { signal: events.signal });
   field('region-markers').addEventListener('click', event => {
     const node = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-region-id]') : null;

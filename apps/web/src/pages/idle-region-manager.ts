@@ -16,7 +16,7 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
   const element = document.createElement('dialog'); element.className = 'idle-region-manager';
   element.setAttribute('aria-label', 'Manage Idle regions');
   element.innerHTML = `<header><h2>Manage regions</h2><button type="button" data-manager="close" aria-label="Close region manager">×</button></header>
-    <p>Include regions for combined analysis. View changes only graph focus. RPM candidates require throttle, temperature and load review; new candidates start excluded.</p>
+    <p>Include regions for combined analysis. View updates graphs and analysis in Viewed region scope; in other scopes it changes only graph focus. RPM candidates require throttle, temperature and load review; new candidates start excluded.</p>
     <p data-manager="authority"></p><p>Candidate rows are retained snapshots. Find candidates refreshes current suggestions; existing regions and inclusion choices are preserved.</p>
     <p>Split at a source time inside a region. The shared endpoint counts once in combined analysis. Merge only overlapping/touching regions with the same inclusion, purpose, origin and manual-bypass eligibility; gaps are never filled. Apply draft bounds with Apply before splitting or merging. For an active single manual scope, first choose Analyze included regions.</p>
     <p>Test purpose is declared intent, not verified idle state. It changes interpretation, not sample qualification or measured values. Mixed purposes need separate review.</p>

@@ -61,6 +61,21 @@ describe('Idle recorded-condition qualification',()=>{
   const plan=buildIdleQualificationPlan(missing,channels,'rpm',{kind:'regions',manualId:undefined,regions:s.regions});expect(plan.bypass).toEqual(scope);
   expect(()=>buildIdleQualificationPlan(missing,channels,'rpm',{kind:'regions',manualId:undefined,regions:s.regions},true)).toThrow(/Qualification unavailable/);
  });
+ it('Viewed qualification follows provenance, not inclusion, labels or purpose',()=>{
+  const session=createIdleRegionSession();session.bind({},0,{startMs:0,endMs:500});session.addCandidates([{startMs:0,endMs:500}]);
+  const candidate=session.regions[0]!;
+  const missing={...settings,manualBypass:true,ids:{coolant:'',pedal:'',physicalTps:''}};
+  const scope=()=>({kind:'viewed',manualId:undefined,viewedId:candidate.id,regions:session.regions});
+  expect(()=>buildIdleQualificationPlan(missing,channels,'rpm',scope())).toThrow(/Qualification unavailable/);
+  session.edit(candidate.id,{startMs:0,endMs:500},'Renamed');session.setPurpose(candidate.id,'idle');
+  expect(()=>buildIdleQualificationPlan(missing,channels,'rpm',scope())).toThrow(/Qualification unavailable/);
+  session.edit(candidate.id,{startMs:100,endMs:500},'Edited');
+  expect(buildIdleQualificationPlan(missing,channels,'rpm',scope()).bypass).toEqual([{startMs:100,endMs:500}]);
+  expect(session.regions[0]!.included).toBe(false);
+  expect(()=>buildIdleQualificationPlan({...missing,manualBypass:false},channels,'rpm',scope())).toThrow(/Qualification unavailable/);
+  expect(()=>buildIdleQualificationPlan(missing,channels,'rpm',scope(),true)).toThrow(/Qualification unavailable/);
+  expect(()=>buildIdleQualificationPlan(missing,channels,'rpm',{...scope(),viewedId:'missing'})).toThrow(/Qualification unavailable/);
+ });
  it('does not fall back to full log for an empty requested scope and rejects invalid settings',()=>{
   const plan=buildIdleQualificationPlan(settings,channels,'rpm',{kind:'full',manualId:undefined,regions:[]});
   expect(qualifyIdleSamples({referenceId:'rpm',channels:data(),conditions:plan.conditions,scope:[],bypass:[]}).eligible).toBe(0);
