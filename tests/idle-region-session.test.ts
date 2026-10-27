@@ -55,4 +55,16 @@ describe('source-bound Idle region definitions',()=>{
     const manual=s.add({startMs:100,endMs:300});s.include(manual.id,false);reject(a!.id,manual.id,/origin/);
     expect(idleRegionMergeError(a!,s.regions.find(r=>r.id===c!.id)!)).toMatch(/bypass/);
   });
+  it('retains declared purposes without changing bounds, inclusion, bypass or edit provenance',()=>{
+    const s=createIdleRegionSession();s.bind({},0,extent);s.addCandidates([{startMs:0,endMs:900}]);const before=s.regions[0]!;
+    expect(before.purpose).toBe('custom');s.setPurpose(before.id,'raised');
+    expect(s.regions[0]).toEqual({...before,purpose:'raised'});expect(idleRegionAllowsBypass(s.regions[0]!)).toBe(false);
+    const unchanged=s.regions;s.setPurpose(before.id,'raised');expect(s.regions).toBe(unchanged);
+    expect(()=>s.setPurpose(before.id,'invented')).toThrow();expect(()=>s.setPurpose('missing','idle')).toThrow();expect(s.regions).toBe(unchanged);
+    const parts=s.split(before.id,400);expect(parts.map(p=>p.purpose)).toEqual(['raised','raised']);
+    s.setPurpose(parts[1].id,'recovery');const previous=s.regions;expect(()=>s.merge(parts[0].id,parts[1].id)).toThrow(/purpose/);expect(s.regions).toBe(previous);
+    s.setPurpose(parts[1].id,'raised');expect(s.merge(parts[0].id,parts[1].id).purpose).toBe('raised');
+    expect(s.add({startMs:0,endMs:100},'Entry','entry').purpose).toBe('entry');const prior=s.regions;
+    expect(()=>s.add({startMs:0,endMs:100},'Bad','invented')).toThrow();expect(s.regions).toBe(prior);
+  });
 });

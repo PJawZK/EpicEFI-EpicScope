@@ -1,10 +1,12 @@
+import { IDLE_REGION_PURPOSES } from '../../../../core/analysis/idle-region-purpose';
 import { idleRegionMergeError, type IdleManagedRegion } from './idle-region-session';
 import type { IdleRegionBounds } from '../../../../core/analysis/idle-regions';
 
 export type IdleRegionAction =
   | { type: 'include'; id: string | undefined; included: boolean }
   | { type: 'edit'; id: string; bounds: IdleRegionBounds; label: string }
-  | { type: 'add'; bounds: IdleRegionBounds; label: string }
+  | { type: 'add'; bounds: IdleRegionBounds; label: string; purpose: string }
+  | { type: 'purpose'; id: string; purpose: string }
   | { type: 'split'; id: string; timeMs: number }
   | { type: 'merge'; id: string; targetId: string }
   | { type: 'remove' | 'focus'; id: string }
@@ -16,13 +18,24 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
   element.innerHTML = `<header><h2>Manage regions</h2><button type="button" data-manager="close" aria-label="Close region manager">×</button></header>
     <p>Include regions for combined analysis. View changes only graph focus. RPM candidates require throttle, temperature and load review; new candidates start excluded.</p>
     <p data-manager="authority"></p><p>Candidate rows are retained snapshots. Find candidates refreshes current suggestions; existing regions and inclusion choices are preserved.</p>
-    <p>Split at a source time inside a region. The shared endpoint counts once in combined analysis. Merge only overlapping/touching regions with the same inclusion, origin and manual-bypass eligibility; gaps are never filled. Apply draft bounds with Apply before splitting or merging. For an active single manual scope, first choose Analyze included regions.</p>
+    <p>Split at a source time inside a region. The shared endpoint counts once in combined analysis. Merge only overlapping/touching regions with the same inclusion, purpose, origin and manual-bypass eligibility; gaps are never filled. Apply draft bounds with Apply before splitting or merging. For an active single manual scope, first choose Analyze included regions.</p>
+    <p>Test purpose is declared intent, not verified idle state. It changes interpretation, not sample qualification or measured values. Mixed purposes need separate review.</p>
     <p data-manager="summary"></p><p data-manager="message" role="status" aria-live="polite"></p>
-    <div class="idle-region-table"><table><thead><tr><th>Use</th><th>Region</th><th>Start (s)</th><th>End (s)</th><th>Duration</th><th>Origin</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
-    <section class="idle-region-create"><strong>Add manual interval</strong><label>Name <input data-new="label" value="Manual region" maxlength="100"></label><label>Start (s)<input data-new="start" type="number" step="any"></label><label>End (s)<input data-new="end" type="number" step="any"></label><button type="button" data-manager="add">Add region</button></section>
+    <div class="idle-region-table"><table><thead><tr><th>Use</th><th>Region</th><th>Test purpose</th><th>Start (s)</th><th>End (s)</th><th>Duration</th><th>Origin</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+    <section class="idle-region-create"><strong>Add manual interval</strong><label>Test purpose <select data-new="purpose"></select></label><label>Name <input data-new="label" value="Manual region" maxlength="100"></label><label>Start (s)<input data-new="start" type="number" step="any"></label><label>End (s)<input data-new="end" type="number" step="any"></label><button type="button" data-manager="add">Add region</button></section>
     <footer><button type="button" data-manager="all">Include all</button><button type="button" data-manager="none">Exclude all</button><button type="button" data-manager="analyze">Analyze included regions</button><button type="button" data-manager="close">Done</button></footer>`;
   let previous: readonly IdleManagedRegion[] | undefined;
   const body = element.querySelector('tbody')!;
+  const fillPurposes = (select: HTMLSelectElement) => { for (const [value, label] of Object.entries(IDLE_REGION_PURPOSES)) select.add(new Option(label, value)); };
+  const newPurpose = element.querySelector<HTMLSelectElement>('[data-new=purpose]')!; fillPurposes(newPurpose); newPurpose.value = 'custom';
+  const mergeTargets = (row: HTMLTableRowElement, region: IdleManagedRegion, regions: readonly IdleManagedRegion[]) => {
+    const targets = row.querySelector<HTMLSelectElement>('[data-merge-target]')!, old = targets.value;
+    targets.setAttribute('aria-label', `Merge ${region.label} with`); targets.replaceChildren(new Option('Choose merge target', ''));
+    for (const target of regions) if (target.id !== region.id && !idleRegionMergeError(region, target)) targets.add(new Option(`${target.label} · ${target.startMs / 1000}–${target.endMs / 1000} s`, target.id));
+    targets.disabled = targets.options.length === 1; if (targets.disabled) targets.options[0]!.textContent = 'No compatible merge target';
+    targets.value = [...targets.options].some(option => option.value === old) ? old : '';
+    row.querySelector<HTMLButtonElement>('[data-manager=merge]')!.disabled = !targets.value;
+  };
   const input = (root: ParentNode, name: string, prefix: string) => root.querySelector<HTMLInputElement>(`[data-${prefix}="${name}"]`)!;
   const bounds = (root: ParentNode, prefix: string): IdleRegionBounds => {
     const a = input(root, 'start', prefix).value, b = input(root, 'end', prefix).value;
@@ -33,7 +46,7 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
     if (!button) return;
     const kind = button.dataset.manager;
     if (kind === 'close') { element.close(); return; }
-    if (kind === 'add') { action({ type: 'add', bounds: bounds(element, 'new'), label: input(element, 'label', 'new').value }); return; }
+    if (kind === 'add') { action({ type: 'add', bounds: bounds(element, 'new'), label: input(element, 'label', 'new').value, purpose: element.querySelector<HTMLSelectElement>('[data-new=purpose]')!.value }); return; }
     if (kind === 'analyze') { action({ type: 'analyze' }); return; }
     if (kind === 'all' || kind === 'none') { action({ type: 'include', id: undefined, included: kind === 'all' }); return; }
     const row = button.closest<HTMLTableRowElement>('tr[data-region-id]'); if (!row) return;
@@ -45,11 +58,12 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
   element.addEventListener('change', event => {
     const input = event.target;
     if (input instanceof HTMLInputElement && input.dataset.include !== undefined) action({ type: 'include', id: input.closest<HTMLTableRowElement>('tr')!.dataset.regionId!, included: input.checked });
+    if (input instanceof HTMLSelectElement && input.hasAttribute('data-purpose')) action({ type: 'purpose', id: input.closest<HTMLTableRowElement>('tr')!.dataset.regionId!, purpose: input.value });
     if (input instanceof HTMLSelectElement && input.hasAttribute('data-merge-target')) input.closest('tr')!.querySelector<HTMLButtonElement>('[data-manager=merge]')!.disabled = !input.value;
   }, { signal });
   return {
     element,
-    resetDrafts() { for (const name of ['start', 'end']) input(element, name, 'new').value = ''; input(element, 'label', 'new').value = 'Manual region'; },
+    resetDrafts() { newPurpose.value = 'custom'; for (const name of ['start', 'end']) input(element, name, 'new').value = ''; input(element, 'label', 'new').value = 'Manual region'; },
     open() { if (!element.open) element.showModal(); },
     close() { if (element.open) element.close(); },
     message(text: string) { element.querySelector('[data-manager=message]')!.textContent = text; },
@@ -57,24 +71,31 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
       element.querySelector('[data-manager=authority]')!.textContent = `Current metrics: ${scopeLabel}. ${combined ? 'Checked regions are applied.' : 'Checked regions are not the analysis scope. Press Analyze included regions to apply them.'}`;
       element.querySelector('[data-manager=summary]')!.textContent = `${regions.filter(r => r.included).length}/${regions.length} included · overlaps counted once · up to 200 regions · session only`;
       if (previous !== regions) {
-        previous = regions; body.replaceChildren();
-        for (const region of regions) {
-          const row = document.createElement('tr'); row.dataset.regionId = region.id;
-          row.innerHTML = `<td><input type="checkbox" data-include></td><td><input data-edit="label" maxlength="100"></td><td><input type="number" data-edit="start" step="any"></td><td><input type="number" data-edit="end" step="any"></td><td data-duration></td><td data-origin></td><td><div class="idle-region-actions"><button type="button" data-manager="focus">View</button><button type="button" data-manager="edit">Apply</button><button type="button" data-manager="remove">Delete</button></div><div class="idle-region-actions"><label>Split at (s) <input type="number" data-edit="split" step="any"></label><button type="button" data-manager="split">Split</button></div><div class="idle-region-actions"><select data-merge-target></select><button type="button" data-manager="merge" disabled>Merge</button></div></td>`;
-          const include = row.querySelector<HTMLInputElement>('[data-include]')!; include.checked = region.included; include.setAttribute('aria-label', `Include ${region.label}`);
-          for (const [name, value] of [['label', region.label], ['start', String(region.startMs / 1000)], ['end', String(region.endMs / 1000)]]) {
-            const node = input(row, name!, 'edit'); node.value = value!; node.setAttribute('aria-label', `${region.label} ${name}`);
+        // Purpose edits retain native select nodes/focus and unapplied bounds drafts.
+        const purposeOnly = previous?.length === regions.length && regions.every((region, i) => Object.keys(region).every(key => key === 'purpose' || region[key as keyof IdleManagedRegion] === previous![i]![key as keyof IdleManagedRegion]));
+        previous = regions;
+        if (purposeOnly) {
+          regions.forEach((region, i) => { const row = body.rows[i]!; row.querySelector<HTMLSelectElement>('[data-purpose]')!.value = region.purpose; mergeTargets(row, region, regions); });
+        } else {
+          body.replaceChildren();
+          for (const region of regions) {
+            const row = document.createElement('tr'); row.dataset.regionId = region.id;
+            row.innerHTML = `<td><input type="checkbox" data-include></td><td><input data-edit="label" maxlength="100"></td><td><select data-purpose></select></td><td><input type="number" data-edit="start" step="any"></td><td><input type="number" data-edit="end" step="any"></td><td data-duration></td><td data-origin></td><td><div class="idle-region-actions"><button type="button" data-manager="focus">View</button><button type="button" data-manager="edit">Apply</button><button type="button" data-manager="remove">Delete</button></div><div class="idle-region-actions"><label>Split at (s) <input type="number" data-edit="split" step="any"></label><button type="button" data-manager="split">Split</button></div><div class="idle-region-actions"><select data-merge-target></select><button type="button" data-manager="merge" disabled>Merge</button></div></td>`;
+            const include = row.querySelector<HTMLInputElement>('[data-include]')!; include.checked = region.included; include.setAttribute('aria-label', `Include ${region.label}`);
+            for (const [name, value] of [['label', region.label], ['start', String(region.startMs / 1000)], ['end', String(region.endMs / 1000)]]) {
+              const node = input(row, name!, 'edit'); node.value = value!; node.setAttribute('aria-label', `${region.label} ${name}`);
+            }
+            row.querySelector('[data-duration]')!.textContent = `${((region.endMs - region.startMs) / 1000).toFixed(2)} s`;
+            row.querySelector('[data-origin]')!.textContent = `${region.origin}${region.boundsEdited ? ' · manual bounds' : region.edited ? ' · renamed' : ''}`;
+            const purpose = row.querySelector<HTMLSelectElement>('[data-purpose]')!;
+            purpose.setAttribute('aria-label', `${region.label} test purpose`);
+            fillPurposes(purpose);
+            purpose.value = region.purpose;
+            const split = input(row, 'split', 'edit'); split.value = String((region.startMs / 2 + region.endMs / 2) / 1000); split.min = String(region.startMs / 1000); split.max = String(region.endMs / 1000); split.setAttribute('aria-label', `Split ${region.label} at source seconds`);
+            row.querySelector<HTMLButtonElement>('[data-manager=split]')!.disabled = regions.length >= 200;
+            mergeTargets(row, region, regions);
+            body.append(row);
           }
-          row.querySelector('[data-duration]')!.textContent = `${((region.endMs - region.startMs) / 1000).toFixed(2)} s`;
-          row.querySelector('[data-origin]')!.textContent = `${region.origin}${region.boundsEdited ? ' · manual bounds' : region.edited ? ' · renamed' : ''}`;
-          const split = input(row, 'split', 'edit'); split.value = String((region.startMs / 2 + region.endMs / 2) / 1000); split.min = String(region.startMs / 1000); split.max = String(region.endMs / 1000); split.setAttribute('aria-label', `Split ${region.label} at source seconds`);
-          row.querySelector<HTMLButtonElement>('[data-manager=split]')!.disabled = regions.length >= 200;
-          const targets = row.querySelector<HTMLSelectElement>('[data-merge-target]')!;
-          targets.setAttribute('aria-label', `Merge ${region.label} with`);
-          targets.add(new Option('Choose merge target', ''));
-          for (const target of regions) if (target.id !== region.id && !idleRegionMergeError(region, target)) targets.add(new Option(`${target.label} · ${target.startMs / 1000}–${target.endMs / 1000} s`, target.id));
-          if (targets.options.length === 1) { targets.options[0]!.textContent = 'No compatible merge target'; targets.disabled = true; }
-          body.append(row);
         }
       }
       for (const row of body.querySelectorAll<HTMLTableRowElement>('tr')) row.classList.toggle('is-focused', row.dataset.regionId === focusId);

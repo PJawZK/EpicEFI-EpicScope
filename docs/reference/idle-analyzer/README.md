@@ -7,6 +7,10 @@
 
 ## Current implementation checkpoint
 
+[Stage completion status](NATIVE_STAGE_STATUS.md) tracks the original seven integration stages and remaining closure work.
+
+[Declared region purposes](NATIVE_PURPOSE_CHECKPOINT.md) adds the five reference test intents, conservative mixed-purpose interpretation and purpose-aware Stability guidance without changing measured values or qualification.
+
 [Managed-region split and merge](NATIVE_REGION_PARTITION_CHECKPOINT.md) adds precise source-time partitions and compatible merges without changing the included sample union, qualification policy or source ownership.
 
 [Selected region qualification](NATIVE_QUALIFICATION_CHECKPOINT.md) adds opt-in, unit-verified coolant and closed-input conditions, explicit manual bypass, source-valid evidence and matching discovery. Full firmware idle qualification remains unestablished.

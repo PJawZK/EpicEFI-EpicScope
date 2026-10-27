@@ -3,6 +3,7 @@ import { analyzeIdleStability } from '../../core/analysis/idle-stability';
 import { assessIdleStability } from '../../core/analysis/idle-stability-assessment';
 import { presentIdleStabilityAssessment } from '../../apps/web/src/pages/idle-stability-assessment';
 import type { NumericChannelRange } from '../../core/log-model/log-types';
+import { summarizeIdlePurposes } from '../../core/analysis/idle-region-purpose';
 const range=(values:number[]):NumericChannelRange=>({startSampleIndex:7,values:Float64Array.from(values),timeMs:Float64Array.from(values,(_,i)=>i*100),validity:new Uint8Array(values.length).fill(1)});
 const assess=(rpm:number[],target?:number[],complete=true)=>assessIdleStability(analyzeIdleStability(range(rpm),target?range(target):undefined,{complete}));
 describe('qualified descriptive Stability findings',()=>{
@@ -48,5 +49,24 @@ describe('qualified descriptive Stability findings',()=>{
     const rpm=range([900,900,900,4000,900,900]),target=range([900,900,900,900,900,900]);
     const result=assessIdleStability(analyzeIdleStability(rpm,target,{complete:true,regions:[{startMs:0,endMs:200},{startMs:100,endMs:200},{startMs:400,endMs:500}]}));
     expect(result.facts.validRpm).toBe(5);expect(result.findings).toContain('within-band');expect(result.nextTest).toBe('repeat-baseline');
+  });
+  it('preserves numbers but suppresses steady-idle tracking conclusions for nonsteady and mixed purposes',()=>{
+    const result=analyzeIdleStability(range([2000,2000]),range([900,900]),{complete:true});
+    for(const purpose of ['raised','recovery','entry','mixed'] as const){
+      const assessment=assessIdleStability(result,purpose);expect(assessment.purpose).toBe(purpose);expect(assessment.facts.rmse).toBe(1100);expect(assessment.facts.sigma).toBe(0);
+      expect(assessment.findings).toContain('purpose-review');expect(assessment.findings).not.toContain('mean-offset');expect(assessment.findings).not.toContain('outside-band');expect(assessment.nextTest).toBe('purpose-test');expect(assessment.idleState).toBe('not-established');
+      expect(presentIdleStabilityAssessment(assessment).purpose).toContain('not verified');
+    }
+    expect(presentIdleStabilityAssessment(assessIdleStability(result,'raised')).next).toContain('raised-RPM hold');
+    expect(presentIdleStabilityAssessment(assessIdleStability(result,'recovery')).next).toContain('does not measure recovery time');
+    expect(presentIdleStabilityAssessment(assessIdleStability(result,'entry')).next).toContain('does not measure entry');
+    for(const purpose of ['idle','custom'] as const)expect(assessIdleStability(result,purpose).findings).toContain('mean-offset');
+  });
+  it('keeps source/coverage failures ahead of purpose guidance and never verifies declared idle',()=>{
+    expect(assessIdleStability(analyzeIdleStability(range([]),undefined), 'raised').nextTest).toBe('source');
+    expect(assessIdleStability(analyzeIdleStability(range([2000,2000]),range([900,900]),{complete:false}), 'raised').nextTest).toBe('coverage');
+    const idle=assessIdleStability(analyzeIdleStability(range([900,900]),range([900,900])),'idle');expect(idle.idleState).toBe('not-established');
+    expect(presentIdleStabilityAssessment(idle).purpose).toContain('user-declared');
+    expect(summarizeIdlePurposes([])).toBe('custom');expect(summarizeIdlePurposes(['idle','idle'])).toBe('idle');expect(summarizeIdlePurposes(['idle','custom'])).toBe('mixed');expect(summarizeIdlePurposes(['recovery','raised'])).toBe('mixed');
   });
 });

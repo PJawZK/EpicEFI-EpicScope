@@ -291,6 +291,36 @@ export async function runIdleAnalyzerChecks() {
       m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(rows().length===2&&m.field('samples').textContent==='5'&&f.calls.length===reads,'Navigation lost partition state or reread source');
     }finally{m.close();}
   });
+  await check('declared purposes follow analysis inclusion without changing numbers, drafts, focus nodes or source reads',async()=>{
+    const f=fixture([900,1000,1100,2000,900,1000]),m=mount();
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();
+      const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];
+      for(const [a,b]of[[0,.2],[.4,.5]]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();}
+      d.querySelector('[data-manager=analyze]').click();await wait();const reads=f.calls.length,metrics=()=>['samples','sigma','rmse','in-band'].map(name=>m.field(name).textContent).join('|'),before=metrics();
+      const row=rows()[0],select=row.querySelector('[data-purpose]');row.querySelector('[data-edit=start]').value='.123';select.focus();change(select,'raised');
+      assert(rows()[0]===row&&row.querySelector('[data-purpose]')===select&&document.activeElement===select&&row.querySelector('[data-edit=start]').value==='.123','Purpose edit rebuilt native controls or lost draft/focus');
+      change(rows()[1].querySelector('[data-purpose]'),'raised');
+      assert(metrics()===before&&f.calls.length===reads&&m.field('assessment').textContent.includes('Raised-RPM hold')&&m.field('assessment').textContent.includes('not a steady-idle regulation verdict'),'Raised purpose changed samples or retained steady-idle guidance');
+      assert(!m.view.element.querySelector('[data-idle-finding=outside-band]')&&m.view.element.querySelector('[data-idle-finding=purpose-review]'),'Raised scope retained steady-idle tracking findings');
+      change(select,'idle');assert(m.field('assessment').textContent.includes('Mixed test purposes'),'Mixed purpose union treated as steady idle');
+      const include=rows()[1].querySelector('[data-include]');include.checked=false;include.dispatchEvent(new Event('change',{bubbles:true}));await wait();
+      assert(m.field('assessment').textContent.includes('Steady idle')&&!m.view.element.querySelector('[data-idle-finding=purpose-review]'),'Excluded purpose affected active scope');
+      rows()[1].querySelector('[data-manager=focus]').click();assert(!m.view.element.querySelector('[data-idle-finding=purpose-review]'),'Graph focus replaced scope purpose');
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(rows()[0].querySelector('[data-purpose]').value==='idle'&&rows()[1].querySelector('[data-purpose]').value==='raised'&&f.calls.length===reads,'Navigation lost purposes or reread source');
+      change(m.field('scope'),'full');await wait();assert(m.field('assessment').textContent.includes('Custom investigation')&&!m.view.element.querySelector('[data-idle-finding=purpose-review]'),'Managed purpose leaked into Full Log');
+    }finally{m.close();}
+  });
+  await check('pending evidence completion uses latest declared purpose without a new read',async()=>{
+    const f=fixture(new Float64Array(6).fill(2000)),m=mount(),pending=[];f.context.loadTraces=()=>new Promise(resolve=>pending.push(resolve));
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');
+      d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.5';change(d.querySelector('[data-new=purpose]'),'raised');d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();
+      const reads=pending.length;change(d.querySelector('[data-purpose]'),'recovery');assert(pending.length===reads,'Purpose edit restarted numeric reads');
+      for(const resolve of pending)resolve(f.traces);await wait();
+      assert(m.field('samples').textContent==='6'&&m.field('assessment').textContent.includes('does not measure recovery time')&&!m.view.element.querySelector('[data-idle-finding=mean-offset]'),'Async completion restored obsolete purpose interpretation');
+    }finally{m.close();}
+  });
   await check('managed focus and edits survive navigation; source revision retires definitions and pending union work', async()=>{
     const f=fixture([900,1000,1100,2000,900,1000]),m=mount();
     try{

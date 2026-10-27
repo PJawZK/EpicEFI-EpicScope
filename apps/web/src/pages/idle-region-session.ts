@@ -1,9 +1,11 @@
+import { isIdleRegionPurpose, type IdleRegionPurpose } from '../../../../core/analysis/idle-region-purpose';
 import { mergeIdleRegionBounds, type IdleRegionBounds } from '../../../../core/analysis/idle-regions';
 
 export interface IdleManagedRegion extends IdleRegionBounds {
   readonly id: string;
   readonly label: string;
   readonly included: boolean;
+  readonly purpose: IdleRegionPurpose;
   readonly origin: 'manual' | 'candidate';
   readonly edited: boolean;
   readonly boundsEdited: boolean;
@@ -15,6 +17,7 @@ export function idleRegionMergeError(first: IdleManagedRegion, second: IdleManag
   if (first.id === second.id) return 'Choose a different region to merge.';
   if (first.endMs < second.startMs || second.endMs < first.startMs) return 'Regions must overlap or share an endpoint. A merge cannot add an unselected gap.';
   if (first.included !== second.included) return 'Regions must have the same inclusion state before merging.';
+  if (first.purpose !== second.purpose) return 'Regions must have the same declared test purpose before merging.';
   if (first.origin !== second.origin || idleRegionAllowsBypass(first) !== idleRegionAllowsBypass(second)) return 'Regions must have the same origin and manual-bypass eligibility before merging.';
   return undefined;
 }
@@ -33,23 +36,30 @@ export function createIdleRegionSession() {
       return changed;
     },
     includedBounds() { return mergeIdleRegionBounds(regions.filter(region => region.included)); },
-    add(bounds: IdleRegionBounds, label = 'Manual region') {
+    add(bounds: IdleRegionBounds, label = 'Manual region', purpose = 'custom') {
+      if (!isIdleRegionPurpose(purpose)) throw new Error('Choose a supported test purpose. Previous regions retained.');
       if (!valid(bounds)) throw new Error('Enter start < end inside the current recording. Previous regions retained.');
       if (regions.length >= 200) throw new Error('Region limit reached (200). Remove a region before adding another.');
-      const region: IdleManagedRegion = { ...bounds, id: `region:${++nextId}`, label: label.trim().slice(0, 100) || 'Manual region', included: true, origin: 'manual', edited: false, boundsEdited: false };
+      const region: IdleManagedRegion = { ...bounds, id: `region:${++nextId}`, label: label.trim().slice(0, 100) || 'Manual region', included: true, origin: 'manual', purpose, edited: false, boundsEdited: false };
       regions = [...regions, region]; return region;
     },
     addCandidates(bounds: readonly IdleRegionBounds[]) {
       let added = 0;
       for (const candidate of bounds) {
         if (!valid(candidate) || regions.some(region => region.startMs === candidate.startMs && region.endMs === candidate.endMs) || regions.length >= 200) continue;
-        regions = [...regions, { startMs: candidate.startMs, endMs: candidate.endMs, id: `region:${++nextId}`, label: `RPM candidate ${nextId}`, included: false, origin: 'candidate', edited: false, boundsEdited: false }]; added++;
+        regions = [...regions, { startMs: candidate.startMs, endMs: candidate.endMs, id: `region:${++nextId}`, label: `RPM candidate ${nextId}`, included: false, origin: 'candidate', purpose: 'custom', edited: false, boundsEdited: false }]; added++;
       }
       return added;
     },
     edit(id: string, bounds: IdleRegionBounds, label: string) {
       if (!valid(bounds)) throw new Error('Enter start < end inside the current recording. Previous regions retained.');
       regions = regions.map(region => region.id === id ? { ...region, startMs: bounds.startMs, endMs: bounds.endMs, label: label.trim().slice(0, 100) || region.label, edited: true, boundsEdited: region.boundsEdited || region.startMs !== bounds.startMs || region.endMs !== bounds.endMs } : region);
+    },
+    setPurpose(id: string, purpose: string) {
+      if (!isIdleRegionPurpose(purpose)) throw new Error('Choose a supported test purpose. Previous regions retained.');
+      const current = regions.find(region => region.id === id);
+      if (!current) throw new Error('Region no longer exists. Previous regions retained.');
+      if (current.purpose !== purpose) regions = regions.map(region => region.id === id ? { ...region, purpose } : region);
     },
     split(id: string, timeMs: number) {
       const index = regions.findIndex(region => region.id === id), region = regions[index];

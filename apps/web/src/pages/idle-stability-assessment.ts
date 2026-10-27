@@ -1,9 +1,20 @@
+import { idleScopePurposeLabel } from '../../../../core/analysis/idle-region-purpose';
 import type { IdleStabilityAssessment, IdleStabilityFinding, IdleStabilityNextTest } from '../../../../core/analysis/idle-stability-assessment';
 const n = (value: number | undefined, decimals = 2) => value === undefined || !Number.isFinite(value) ? 'Unavailable' : value.toFixed(decimals);
 /** Copy projects typed retained findings; rendered text is never analysis authority. */
 export function presentIdleStabilityAssessment(assessment: IdleStabilityAssessment, qualification?: { input: number; eligible: number; manualBypassed: number; rejected: number; invalid: number; unavailable: number }) {
+  const purpose = assessment.purpose;
+  const purposeAdvice = {
+    raised: 'Repeat a documented raised-RPM hold at matched commanded speed, temperature and loads. Compare hold variability; logged idle-target error is descriptive, not a steady-idle regulation verdict.',
+    recovery: 'Select a bounded, documented load disturbance with recorded pre-event and follow-up evidence. This Stability view does not measure recovery time or declare an event recovered.',
+    entry: 'Select a documented transition into idle with pre-entry and post-entry evidence. Separate the transition from an established steady interval; this view does not measure entry or settling time.',
+    mixed: 'Separate different test purposes into independently analyzed scopes before interpreting idle tracking. The combined metrics still describe the deduplicated recorded union.',
+    idle: 'Repeat the declared steady-idle interval under matched measured conditions.',
+    custom: 'Document the intended operating test before interpreting its measurements.',
+  }[purpose];
   const f = assessment.facts, band = `±${n(f.band, 0)} RPM`;
   const descriptions: Record<IdleStabilityFinding, readonly [string, string]> = {
+    'purpose-review': ['Purpose-specific interpretation required', `${idleScopePurposeLabel(purpose)} is declared intent. RPM variation and logged-target errors remain descriptive measurements; steady-idle tracking findings are not applied to this scope. No purpose label verifies controller state or changes eligibility.`],
     'invalid-metrics': ['Derived measurements unavailable', 'Some derived measurements are nonfinite despite valid source samples. Verify channel units and recorded magnitudes; no stability judgement is available.'],
     'no-rpm': ['No usable RPM evidence', 'No valid RPM samples remain in the analysis scope. No stability or tracking conclusion is available.'],
     'few-rpm': ['Insufficient variability evidence', 'Only one valid RPM sample is available. Sample standard deviation needs at least two; one matching point does not establish steady idle.'],
@@ -19,6 +30,7 @@ export function presentIdleStabilityAssessment(assessment: IdleStabilityAssessme
     'within-band': ['All observed pairs within reference band', `All ${f.paired} valid pairs are within ${band}. This reference-band observation is not a universal pass criterion or evidence of correct tuning.`],
   };
   const tests: Record<IdleStabilityNextTest, readonly [string, string, string]> = {
+    'purpose-test': [purposeAdvice, 'Comparable repeats document the declared test, source validity, target and operating conditions.', 'The apparent difference depends on mixed test purposes, missing measurements or uncontrolled loads.'],
     source: ['Verify the RPM mapping and include a recorded running-engine interval, then run analysis.', 'Valid original RPM samples and declared coverage are available.', 'Source, validity or region selection remains unavailable.'],
     'longer-region': ['Select a longer known idle interval with repeated valid RPM measurements.', 'Repeated measurements support a sample variability estimate.', 'Only isolated points or invalid measurements remain.'],
     'known-idle': ['Separate verified engine-off/start-stop portions from a known running-idle interval and verify unexpected nonpositive values against the mapping/source before interpreting stability.', 'A repeated running interval excludes stopped-engine samples under matched conditions.', 'The selected interval still contains stops, starts or unrecorded operating changes.'],
@@ -38,6 +50,7 @@ export function presentIdleStabilityAssessment(assessment: IdleStabilityAssessme
     status: invalidQualification ? 'Qualification evidence unavailable' : noMatches ? 'No condition-matching evidence' : assessment.status === 'recorded-region' ? 'Recorded-region evidence' : assessment.status === 'scope-review' ? 'Operating scope needs review' : assessment.status === 'limited' ? 'Limited recorded evidence' : 'Evidence unavailable',
     observed: `${f.validRpm} valid RPM samples; minimum ${n(f.minimumRpm)} RPM; sample σ ${n(f.sigma)} RPM. Target RMSE ${n(f.rmse)} RPM; signed mean error ${n(f.meanError)} RPM.`,
     findings: assessment.findings.map(code => ({ code, title: descriptions[code][0], text: descriptions[code][1] })),
+    purpose: `${idleScopePurposeLabel(purpose)} · user-declared, not verified operating state. ${purpose === 'custom' ? 'No specific test purpose is established.' : purposeAdvice}`,
     limits: qualification ? `Only the selected recorded conditions were applied; ${qualification.manualBypassed} valid records manually bypassed them. Bypassed conditions are not verified. Firmware idle-controller activation, stationary vehicle state and matched loads are not established. Physical TPS is not pedal intent. Reference thresholds are not firmware limits or tuning instructions.` : 'Warm-engine, closed-throttle idle and matched mechanical/electrical loads are not established by this view. Physical throttle position alone does not prove pedal intent. The reference band is not a firmware limit. These observations do not identify a causal fault, controller timing, oscillation frequency or a validated tuning instruction.',
     next, supports, contradicts,
     holdConstant: 'Logged RPM target, coolant temperature, electrical/mechanical loads, controller state, recording quality and tune version. No tune or ECU state is changed.',

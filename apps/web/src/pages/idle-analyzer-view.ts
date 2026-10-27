@@ -1,3 +1,4 @@
+import { summarizeIdlePurposes } from '../../../../core/analysis/idle-region-purpose';
 import '../styles/idle-analyzer.css';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { analyzerScopeOptions, analyzerScopeBounds, retainedAnalyzerScopeValue } from './analyzer-scope';
@@ -36,7 +37,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let generation = 0;
   let pendingKey: string | undefined;
   let pendingSource: object | undefined;
-  let accepted: { source: object; key: string; result: IdleStabilityResult; assessment: ReturnType<typeof assessIdleStability>; presentation: ReturnType<typeof presentIdleStabilityAssessment>; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
+  let accepted: { source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
   const regionSession = createIdleRegionSession();
   let focusId = 'overview';
   let regionEvidence: { source: object; key: string; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
@@ -205,7 +206,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
         focusId = action.id; renderRegionControls(); renderTimeline(); renderPlot(); return;
       }
       if ((action.type === 'split' || action.type === 'merge') && scopeValue === 'manual' && (manualId === action.id || action.type === 'merge' && manualId === action.targetId)) throw new Error('Choose Analyze included regions before splitting or merging the active single manual scope. Previous regions retained.');
-      if (action.type === 'add') regionSession.add(action.bounds, action.label);
+      if (action.type === 'purpose') { regionSession.setPurpose(action.id, action.purpose); renderRegionControls(); renderAssessment(); manager.message('Declared purpose updated. Interpretation changes; recorded measurements, qualification and graph scope are unchanged.'); return; }
+      if (action.type === 'add') regionSession.add(action.bounds, action.label, action.purpose);
       if (action.type === 'edit') regionSession.edit(action.id, action.bounds, action.label);
       if (action.type === 'include') regionSession.include(action.id, action.included);
       if (action.type === 'remove') regionSession.remove(action.id);
@@ -296,7 +298,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const panel = field('assessment'); panel.replaceChildren();
     if (!accepted) { panel.append(section('Recorded evidence required', 'Choose an RPM channel and a recorded region, then run analysis. Target-dependent metrics remain unavailable without a compatible target channel.')); return; }
     const { analysis, inBandPercent } = accepted.result;
-    const { assessment, presentation } = accepted;
+    const purposes = scopeValue === 'regions' ? regionSession.regions.filter(region => region.included) : scopeValue === 'manual' ? regionSession.regions.filter(region => region.id === manualId) : [];
+    const assessment = assessIdleStability(accepted.result, summarizeIdlePurposes(purposes.map(region => region.purpose)));
+    const presentation = presentIdleStabilityAssessment(assessment, accepted.qualification);
+    panel.append(section('Declared test purpose', presentation.purpose));
     if (accepted.qualification) panel.append(section('Applied qualification', `${accepted.qualification.description}. ${accepted.qualification.eligible}/${accepted.qualification.input} original records eligible; ${accepted.qualification.rejected} value-rejected, ${accepted.qualification.invalid} invalid, ${accepted.qualification.unavailable} unavailable; ${accepted.qualification.manualBypassed} valid records manually bypassed. Invalid counts may include recovered retry attempts and do not by themselves establish physical data loss.`));
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
     if (tab === 'diagnosis') {
@@ -415,8 +420,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (captured.sourceTimeRange && readBounds.startMs <= captured.sourceTimeRange.startMs && readBounds.endMs >= captured.sourceTimeRange.endMs && traces.every(trace => trace.complete || numericRangeCoversTime(trace.range, readBounds.startMs, readBounds.endMs))) regionEvidence = { source: source.identity, key: evidenceKey, traces };
       const qualification = plan.enabled ? { ...qualifyIdleSamples({referenceId:requestedRpm,channels:new Map(traces.map(trace=>[trace.channel.id,{range:trace.range,complete:trace.complete}])),conditions:plan.conditions,scope:regions??[bounds],bypass:plan.bypass}), description:plan.description } : undefined;
       const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), ...(qualification ? {eligibility:qualification.eligibility} : {}), complete:complete && (qualification?.complete??true) });
-      const assessment = assessIdleStability(result);
-      accepted = { source: source.identity, key, result, assessment, presentation: presentIdleStabilityAssessment(assessment, qualification), qualification, evidenceKey, rpm, target, traces };
+      accepted = { source: source.identity, key, result, qualification, evidenceKey, rpm, target, traces };
       const stats = result.analysis;
       field('sigma').textContent = number(stats.rpm.standardDeviation);
       field('rmse').textContent = number(stats.tracking?.rmse);

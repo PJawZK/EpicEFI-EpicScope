@@ -1,7 +1,8 @@
+import { idlePurposeNeedsReview, type IdleScopePurpose } from './idle-region-purpose';
 import type { IdleStabilityResult } from './idle-stability';
 
-export type IdleStabilityFinding = 'invalid-metrics' | 'no-rpm' | 'few-rpm' | 'partial-coverage' | 'rejected-samples' | 'nonpositive-rpm' | 'missing-target' | 'few-pairs' | 'unpaired-rpm' | 'target-span' | 'mean-offset' | 'outside-band' | 'within-band';
-export type IdleStabilityNextTest = 'source' | 'longer-region' | 'known-idle' | 'target-mapping' | 'coverage' | 'matched-target' | 'tracking-offset' | 'repeat-excursions' | 'repeat-baseline';
+export type IdleStabilityFinding = 'invalid-metrics' | 'no-rpm' | 'few-rpm' | 'partial-coverage' | 'rejected-samples' | 'nonpositive-rpm' | 'missing-target' | 'few-pairs' | 'unpaired-rpm' | 'target-span' | 'mean-offset' | 'outside-band' | 'within-band' | 'purpose-review';
+export type IdleStabilityNextTest = 'source' | 'longer-region' | 'known-idle' | 'target-mapping' | 'coverage' | 'matched-target' | 'tracking-offset' | 'repeat-excursions' | 'repeat-baseline' | 'purpose-test';
 export interface IdleStabilityAssessment {
   readonly status: 'unavailable' | 'limited' | 'scope-review' | 'recorded-region';
   readonly findings: readonly IdleStabilityFinding[];
@@ -15,10 +16,11 @@ export interface IdleStabilityAssessment {
   };
   /** Descriptive eligibility only; source/tune/load/temperature cannot be inferred from RPM. */
   readonly idleState: 'not-established';
+  readonly purpose: IdleScopePurpose;
 }
 
 /** O(1) projection from accepted aggregates. Never reads/scans recorded arrays or fits tuning parameters. */
-export function assessIdleStability(result: IdleStabilityResult): IdleStabilityAssessment {
+export function assessIdleStability(result: IdleStabilityResult, purpose: IdleScopePurpose = 'custom'): IdleStabilityAssessment {
   const { rpm, target, tracking, complete } = result.analysis;
   const facts = {
     selected: rpm.inputSampleCount, validRpm: rpm.validSampleCount, invalidRpm: rpm.invalidSampleCount, unavailableRpm: rpm.unavailableSampleCount,
@@ -28,7 +30,7 @@ export function assessIdleStability(result: IdleStabilityResult): IdleStabilityA
     band: result.settledBandRpm, inBandPercent: result.inBandPercent,
   };
   const findings: IdleStabilityFinding[] = [];
-  if (!facts.validRpm) return { status: 'unavailable', findings: ['no-rpm'], nextTest: 'source', facts, idleState: 'not-established' };
+  if (!facts.validRpm) return { status: 'unavailable', findings: ['no-rpm'], nextTest: 'source', facts, idleState: 'not-established', purpose };
   if (facts.validRpm < 2) findings.push('few-rpm');
   if ((facts.validRpm >= 2 && !Number.isFinite(facts.sigma)) || (facts.paired >= 2 && (!Number.isFinite(facts.rmse) || !Number.isFinite(facts.meanError) || !Number.isFinite(facts.inBandPercent)))) findings.push('invalid-metrics');
   if (!complete) findings.push('partial-coverage');
@@ -40,16 +42,19 @@ export function assessIdleStability(result: IdleStabilityResult): IdleStabilityA
     if (facts.paired < facts.validRpm) findings.push('unpaired-rpm');
     // Explicit reference-band comparison, not a universal target-change limit.
     if (facts.targetMin !== undefined && facts.targetMax !== undefined && facts.targetMax - facts.targetMin > 2 * facts.band) findings.push('target-span');
-    if (facts.paired >= 2 && !findings.includes('invalid-metrics')) {
+    if (facts.paired >= 2 && !findings.includes('invalid-metrics') && !idlePurposeNeedsReview(purpose)) {
       if (facts.meanError !== undefined && Math.abs(facts.meanError) > facts.band) findings.push('mean-offset');
       if (facts.inBandPercent !== undefined) findings.push(facts.inBandPercent < 100 ? 'outside-band' : 'within-band');
     }
   }
+  if (idlePurposeNeedsReview(purpose)) findings.push('purpose-review');
   const has = (code: IdleStabilityFinding) => findings.includes(code);
   const limited = has('invalid-metrics') || has('few-rpm') || has('partial-coverage') || facts.unavailableRpm > 0 || facts.unavailablePairs > 0 || has('missing-target') || has('few-pairs') || has('unpaired-rpm');
-  const scopeReview = has('nonpositive-rpm') || has('target-span');
+  const scopeReview = has('nonpositive-rpm') || has('target-span') || has('purpose-review');
+  const coverageIssue = has('partial-coverage') || facts.unavailableRpm > 0 || facts.unavailablePairs > 0 || has('unpaired-rpm');
   const nextTest: IdleStabilityNextTest = has('invalid-metrics') ? 'source' : has('few-rpm') ? 'longer-region' : has('nonpositive-rpm') ? 'known-idle'
-    : has('missing-target') || has('few-pairs') ? 'target-mapping' : has('partial-coverage') || facts.unavailableRpm > 0 || facts.unavailablePairs > 0 || has('unpaired-rpm') ? 'coverage'
+    : has('purpose-review') ? (coverageIssue ? 'coverage' : 'purpose-test')
+    : has('missing-target') || has('few-pairs') ? 'target-mapping' : coverageIssue ? 'coverage'
     : has('target-span') ? 'matched-target' : has('mean-offset') ? 'tracking-offset' : has('outside-band') ? 'repeat-excursions' : 'repeat-baseline';
-  return { status: has('invalid-metrics') ? 'limited' : scopeReview ? 'scope-review' : limited ? 'limited' : 'recorded-region', findings, nextTest, facts, idleState: 'not-established' };
+  return { status: has('invalid-metrics') ? 'limited' : scopeReview ? 'scope-review' : limited ? 'limited' : 'recorded-region', findings, nextTest, facts, idleState: 'not-established', purpose };
 }
