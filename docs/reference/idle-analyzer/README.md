@@ -2,10 +2,12 @@
 
 **Branch:** `ui/idle-analyzer-html-integration`  
 **Base:** EpicScope `main` at `702c880a29baa28b762ac26f7f7ed55ef01239ef` (2026-10-26)  
-**Current scope:** Incremental native Stability, Base Airflow and DC Valve Tracking with source-bound regions; frozen standalone HTML remains the visual/behavioral reference.
+**Current scope:** Incremental native Stability, Base Airflow, DC Valve Tracking and RPM PID recorded evidence with source-bound regions; frozen standalone HTML remains the visual/behavioral reference.
 **Explicit boundary:** Scoped native TypeScript/CSS integration and focused tests only; no standalone HTML changes, dependencies/framework, release workflows, firmware, ECU writes/Burn or merge to `main`.
 
 ## Current implementation checkpoint
+
+[RPM PID — Group C](NATIVE_RPM_PID_CHECKPOINT.md) adds independent logged P/I/D/output and applied correction, strict raw-vs-engineering units, shared controller loading, and explicit unavailable limit/attenuation gates.
 
 [DC Valve Tracking — Group B](NATIVE_VALVE_TRACKING_CHECKPOINT.md) adds aligned measured−requested position evidence, independent signed motor-duty coverage, lazy source reads and distinct graph axes.
 

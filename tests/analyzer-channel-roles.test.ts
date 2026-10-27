@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../core/log-model/log-types';
-import { suggestAnalyzerChannel, idleRoleUnit } from '../apps/web/src/pages/analyzer-channel-roles';
+import { suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit } from '../apps/web/src/pages/analyzer-channel-roles';
 
 function channel(sourceName: string, displayName = sourceName): ChannelDefinition {
   return {
@@ -31,6 +31,17 @@ describe('Idle analyzer canonical channel roles', () => {
     const requests=['currentIdlePosition','baseIdlePosition','idleStepperTargetPosition','rawIdlePositionSensor'].map(name=>({...channel(name),unit:'%'}));
     expect(suggestAnalyzerChannel('idle','dcPosition',requests)).toBeUndefined();
     expect(suggestAnalyzerChannel('idle','dcPosition',[...requests,{...channel('idlePositionSensor'),unit:'%'}])?.sourceName).toBe('idlePositionSensor');
+  });
+  it('keeps unitless canonical outer PID fields raw and separates DC/applied output roles',()=>{
+    expect(idlePidRoleUnit(channel('idleStatus_pTerm'),'p')).toEqual({unit:'raw',authority:'unspecified'});
+    expect(idlePidRoleUnit({...channel('idleStatus_iTerm'),unit:'pp'},'i')).toEqual({unit:'pp',authority:'source'});
+    expect(idlePidRoleUnit({...channel('idleStatus_dTerm'),unit:'V'},'d')).toBeUndefined();
+    expect(idlePidRoleUnit(channel('fuzzy idle proportional'),'p')).toBeUndefined();
+    expect(idlePidRoleUnit(channel('dcIdlePositionStatus_pTerm'),'p')).toBeUndefined();
+    const candidates=[channel('dcIdlePositionStatus_output'),channel('idleClosedLoop'),channel('idleStatus_output')];
+    expect(suggestAnalyzerChannel('idle','pidOutput',candidates)?.sourceName).toBe('idleStatus_output');
+    expect(suggestAnalyzerChannel('idle','pidOutput',candidates.slice(0,2))).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','pidOutput',[{...channel('idleDcPositionPidOutput'),unit:'%'}])).toBeUndefined();
   });
   it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
     const rpm = { ...channel('RPM'), id: 'mlg:33' };

@@ -4,8 +4,8 @@ import { aggregateNumericSamples, type NumericAggregationResult } from './numeri
 /** Source-bound scalar evidence: exact original index/time and valid RPM provenance. */
 export interface IdleRecordedSignal { readonly range: NumericChannelRange; readonly unit: string; }
 export type IdleRecordedMetric =
-  | { readonly status: 'missing' | 'incompatible-unit'; readonly unit: '%' | 'pp'; readonly reason: string }
-  | { readonly status: 'available' | 'no-valid-evidence' | 'nonfinite-metrics'; readonly unit: '%' | 'pp'; readonly statistics: NumericAggregationResult };
+  | { readonly status: 'missing' | 'incompatible-unit'; readonly unit: '%' | 'pp' | 'raw'; readonly reason: string }
+  | { readonly status: 'available' | 'no-valid-evidence' | 'nonfinite-metrics'; readonly unit: '%' | 'pp' | 'raw'; readonly statistics: NumericAggregationResult };
 export function validateIdleSelection(selected: ArrayLike<number>): void {
   if (!Number.isSafeInteger(selected.length) || selected.length < 0) throw new RangeError('Invalid Idle recorded analysis selection length.');
   let previous = -1;
@@ -15,11 +15,13 @@ export function validateIdleSelection(selected: ArrayLike<number>): void {
     previous = index;
   }
 }
-export function summarizeIdleRecordedSignal(rpm: NumericChannelRange, selected: ArrayLike<number>, signal: IdleRecordedSignal | undefined, correction = false): IdleRecordedMetric {
-  const unit = correction ? 'pp' : '%';
+/** Raw units require an explicit controller-role contract, never merely an empty source unit. */
+export function summarizeIdleRecordedSignal(rpm: NumericChannelRange, selected: ArrayLike<number>, signal: IdleRecordedSignal | undefined, correction = false, allowRawControllerUnits = false): IdleRecordedMetric {
+  const raw = allowRawControllerUnits && signal?.unit.trim().toLowerCase() === 'raw';
+  const unit = raw ? 'raw' : correction ? 'pp' : '%';
   if (!signal) return { status: 'missing', unit, reason: 'Logged channel not supplied.' };
   const declared = signal.unit.trim().toLowerCase();
-  if (!['%', 'percent', ...(correction ? ['pp', 'percentage points'] : [])].includes(declared)) return { status: 'incompatible-unit', unit, reason: 'Explicit position-percent or correction-percentage-point authority is required.' };
+  if (!raw && !['%', 'percent', ...(correction ? ['pp', 'percentage points'] : [])].includes(declared)) return { status: 'incompatible-unit', unit, reason: 'Explicit position-percent or correction-percentage-point authority is required.' };
   const { range } = signal;
   let validity = range.validity;
   let indices: ArrayLike<number> = selected;

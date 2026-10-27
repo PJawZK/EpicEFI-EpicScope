@@ -141,6 +141,7 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   'idle:p': { exact: ['ini:idleStatus_pTerm', 'idleStatus_pTerm'], include: [/idle.*p.*term/i, /pid.*p.*idle/i, /idle.*proportional/i], exclude: [/dc.*idle.*position/i] },
   'idle:i': { exact: ['ini:idleStatus_iTerm', 'idleStatus_iTerm'], include: [/idle.*i.*term/i, /pid.*i.*idle/i, /idle.*integral/i], exclude: [/dc.*idle.*position/i] },
   'idle:d': { exact: ['ini:idleStatus_dTerm', 'idleStatus_dTerm'], include: [/idle.*d.*term/i, /pid.*d.*idle/i, /idle.*derivative/i], exclude: [/dc.*idle.*position/i] },
+  'idle:pidOutput': { exact: ['ini:idleStatus_output', 'idleStatus_output'], include: [/^idle.*pid.*output$/i, /^idleStatus_output$/i], exclude: [/dc|position|applied|closed.?loop/i] },
 
   // Feedback DC idle-valve position controller. The firmware evaluates dcIdleBias* at dcIdleTarget
   // and exposes that runtime bias/feed-forward value through etbFeedForward while in DC_IdleValve mode.
@@ -325,6 +326,15 @@ export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' 
   const exact = RULES[`idle:${role}`]?.exact;
   if (!exact?.some(alias => identity.exact.includes(alias.toLowerCase()))) return undefined;
   return { unit: rpm ? 'RPM' : '%', authority: 'canonical-role' };
+}
+
+/** A unitless canonical PID field is a raw number, never inferred position-percent authority. */
+export function idlePidRoleUnit(channel: ChannelDefinition, role: 'p' | 'i' | 'd' | 'pidOutput'):
+  { readonly unit: 'pp' | 'raw'; readonly authority: 'source' | 'unspecified' } | undefined {
+  if (channel.valueType === 'bitfield') return undefined;
+  const identity=channelRoleIdentity(channel);
+  if (identity.unit) return ['%', 'percent', 'pp', 'percentage points'].includes(identity.unit) ? {unit:'pp',authority:'source'} : undefined;
+  return RULES[`idle:${role}`]?.exact?.some(alias=>identity.exact.includes(alias.toLowerCase())) ? {unit:'raw',authority:'unspecified'} : undefined;
 }
 
 /** Qualification requires declared engineering units and a matching signal identity. */

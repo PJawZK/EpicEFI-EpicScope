@@ -41,6 +41,12 @@ function valveFixture(count=4) {
   }
   return f;
 }
+function pidFixture(count=4){
+  const f=valveFixture(count);f.traces.find(t=>t.channel.id==='correction').range.values=count===4?Float64Array.from([0,1,2,3]):new Float64Array(count).fill(5);
+  for(const [id,name,values,value]of [['pid-p','idleStatus_pTerm',[-3,3,-3,3],-3],['pid-i','idleStatus_iTerm',[1,2,3,4],2],['pid-d','idleStatus_dTerm',[-4,4,-4,4],4],['pid-output','idleStatus_output',[30,30,5,5],30]]){
+    const channel={id,sourceName:name,displayName:name,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:count===4?Float64Array.from(values):new Float64Array(count).fill(value)}});
+  }return f;
+}
 function mount(observability) {
   const view = createIdleAnalyzerView(observability); view.element.hidden = false;
   document.body.append(view.element);
@@ -63,7 +69,7 @@ export async function runIdleAnalyzerChecks() {
       assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
-      assert([...m.field('mode').options].filter(o=>!o.disabled).length===3,'Unexpected diagnostic mode became active');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===4,'Unexpected diagnostic mode became active');
     }finally{m.close();}
   });
   await check('Base Airflow renders retained context and reuses calculation across modes/tabs without reads',async()=>{
@@ -661,6 +667,66 @@ export async function runIdleAnalyzerChecks() {
       const before=f.calls.length;change(m.field('dcPosition'),'dc-measured');await wait();
       assert(f.calls.length===before+1&&f.calls.at(-1).ids.join(',')==='dc-measured'&&m.field('valve-rmse').textContent==='3.32','Retired feedback columns accumulated or current motor/request columns were lost');
       const reads=f.calls.length;change(m.field('dcPosition'),'');await wait();change(m.field('dcPosition'),'dc-measured');await wait();assert(f.calls.length===reads,'Clearing/restoring the last role lost its bounded retained column');
+    }finally{m.close();}
+  });
+  await check('RPM PID lazily loads outer terms and reuses raw/output/applied evidence without assuming their sum',async()=>{
+    const f=pidFixture(),events=[],m=mount({record:event=>events.push(event)}),requests=()=>events.filter(e=>e.name==='idle.pid.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(f.calls.length===1&&!f.calls[0].ids.includes('pid-p'),'Inactive PID mode decoded its channels');
+      change(m.field('mode'),'pid');await wait();assert(f.calls.length===2&&f.calls[1].ids.length===4&&requests()===1,'PID did not batch missing roles once');
+      assert(m.field('pid-p').textContent==='3.00'&&m.field('pid-i').textContent==='2.50'&&m.field('pid-d').textContent==='4.00'&&m.field('pid-applied').textContent==='1.50','PID reference arithmetic incorrect');
+      assert(m.field('pid-p-label').textContent.includes('unspecified')&&m.field('assessment').textContent.includes('not assumed to equal P + I + D'),'Raw units or output stage were fabricated');
+      assert(m.view.element.querySelector('[data-trace-label="Applied correction"]').dataset.valueAxis==='right'&&m.view.element.querySelector('svg').textContent.includes('raw; units unspecified'),'Raw and applied curves share a misleading engineering scale');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('17.50')&&m.field('assessment').textContent.includes('4 valid, 0 invalid, 0 unavailable'),'Output or independent coverage missing');
+      change(m.field('mode'),'valve');await wait();const reads=f.calls.length;change(m.field('mode'),'airflow');change(m.field('mode'),'pid');m.view.element.querySelector('[data-idle-tab=next]').click();m.view.element.querySelector('[data-idle-tab=diagnosis]').click();await wait();
+      assert(requests()===1&&f.calls.length===reads&&m.field('pid-p').textContent==='3.00','Mode/tab transitions repeated PID calculation/read');
+      const before=requests();m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(requests()===before&&f.calls.length===reads,'Unchanged navigation invalidated PID');
+      change(m.field('p'),'');await wait();assert(m.field('pid-p').textContent==='Unavailable'&&m.field('pid-p-label').textContent.includes('unit unavailable')&&m.field('pid-i').textContent==='2.50','Missing P became zero or blocked independent I');change(m.field('p'),'pid-p');await wait();assert(m.field('pid-p').textContent==='3.00'&&f.calls.length===reads,'Restoring last P mapping reread source');
+    }finally{m.close();}
+  });
+  await check('RPM PID uses Viewed/combined qualification and keeps mixed engineering units out of a shared axis',async()=>{
+    const f=pidFixture(),m=mount();f.traces.find(t=>t.channel.id==='pid-p').range.timeMs=Float64Array.from([0,100,201,300]);
+    for(const [id,name,unit,values]of[['clt','coolant','deg C',[80,80,60,60]],['known-p','Known P','pp',[2,2,2,2]]]){const channel={id,sourceName:name,displayName:name,unit,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from(values)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'pid');await wait();m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('3 valid, 0 invalid, 1 unavailable'),'PID timestamp mismatch counted as aligned');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];for(const [a,b]of[[0,.1],[.2,.3]]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();}
+      const a=rows()[0].dataset.regionId,b=rows()[1].dataset.regionId;change(m.field('focus'),a);change(m.field('scope'),'viewed');await wait();assert(m.field('pid-i').textContent==='1.50'&&m.field('pid-applied').textContent==='0.50','Viewed PID A not bounded');
+      change(m.field('focus'),b);await wait();assert(m.field('pid-i').textContent==='3.50'&&m.field('pid-applied').textContent==='2.50','Viewed PID B retained A');change(m.field('scope'),'regions');await wait();const mean=m.field('pid-i').textContent;change(m.field('focus'),a);await wait();assert(m.field('pid-i').textContent===mean,'Combined PID followed graph focus');
+      m.field('qual-enabled').checked=true;m.field('qual-enabled').dispatchEvent(new Event('change',{bubbles:true}));await wait();assert(m.field('pid-i').textContent==='1.50','PID ignored accepted qualification');
+      change(m.field('p'),'known-p');await wait();assert(m.field('pid-p').textContent==='2.00'&&!m.view.element.querySelector('path[data-trace-label="Logged RPM I"]'),'Mixed units overlaid or independent metric lost');
+      assert(m.field('assessment').textContent.includes('Missing or mixed term units')&&m.view.element.querySelector('[data-trace-label="Applied correction"]'),'Mixed-unit graph reason or independent applied trace missing');
+    }finally{m.close();}
+  });
+  await check('RPM PID rejects obsolete mapping/source/hidden work; inactive Valve settings cannot cancel it',async()=>{
+    const f=pidFixture(),m=mount(),pending=[];const original=f.context.loadTraces;let hold=true;
+    f.context.loadTraces=(ids,a,b)=>ids.includes('pid-p')&&hold?new Promise(resolve=>pending.push(resolve)):original(ids,a,b);
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'pid');assert(pending.length===1,'PID not pending');change(m.field('motor-reference'),'0');pending[0](f.traces);await wait();assert(m.field('pid-p').textContent==='3.00','Inactive Valve setting cancelled PID evidence');
+      const next={...f.context,source:{...f.context.source,identity:{},revision:1}};m.view.setContext(next);await wait();assert(pending.length===2,'Replacement PID not pending');change(m.field('p'),'');await wait();pending[1](f.traces);await wait();assert(m.field('pid-p').textContent==='Unavailable','Old mapping replaced missing P');
+      change(m.field('p'),'pid-p');assert(pending.length===3,'New P read not pending');m.view.setActive(false);pending[2](f.traces);await wait();assert(m.field('pid-p').textContent==='—','Hidden PID completion published');hold=false;m.view.setActive(true);await wait();assert(m.field('pid-p').textContent==='3.00','PID resume failed');
+      hold=true;m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:2}});await wait();assert(pending.length===4,'Old-source test not pending');m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:3}});await wait();assert(pending.length===5,'New source not independently pending');
+      pending[4](f.traces.map(t=>t.channel.id==='pid-p'?{...t,range:{...t.range,values:new Float64Array(4).fill(9)}}:t));await wait();pending[3](f.traces);await wait();assert(m.field('pid-p').textContent==='9.00','Obsolete source replaced accepted PID');
+    }finally{m.close();}
+  });
+  await check('RPM PID columns stay bounded across repeated remapping without losing current Valve roles',async()=>{
+    const f=pidFixture(),m=mount();for(let i=0;i<4;i++){const channel={id:`p-${i}`,sourceName:`Mapped P ${i}`,displayName:`Mapped P ${i}`,unit:'pp',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:new Float64Array(4).fill(2)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();change(m.field('mode'),'pid');await wait();for(let i=0;i<4;i++){change(m.field('p'),`p-${i}`);await wait();}
+      const reads=f.calls.length;change(m.field('p'),'pid-p');await wait();assert(f.calls.length===reads+1&&f.calls.at(-1).ids.join(',')==='pid-p','Retired PID columns accumulated or current role columns lost');const before=f.calls.length;change(m.field('mode'),'valve');await wait();assert(f.calls.length===before&&m.field('valve-rmse').textContent==='3.32','PID retention evicted current Valve facts');
+    }finally{m.close();}
+  });
+  await check('320459-sample native RPM PID preserves raw units, bounded graph DOM and retained viewport',async()=>{
+    const f=pidFixture(320459),m=mount();try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'pid');await wait();assert(m.field('pid-p').textContent==='3.00'&&m.field('pid-i').textContent==='2.00'&&m.field('pid-d').textContent==='4.00'&&m.field('pid-applied').textContent==='5.00','Large PID reference facts failed');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('320459 valid')&&m.view.element.querySelectorAll('svg *').length<170,'Large PID lost source counts or bounded DOM');
+      m.view.element.querySelector('svg').dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));const times=()=>[...m.view.element.querySelectorAll('svg text')].map(e=>e.textContent).filter(t=>t.endsWith(' s')).join('|'),viewport=times();change(m.field('mode'),'stability');change(m.field('mode'),'pid');await wait();assert(f.calls.length===2&&times()===viewport,'PID mode transition reread source or reset viewport');
+    }finally{m.close();}
+  });
+  await check('RPM PID remains descriptive without a logged RPM target and never invents missing terms/output',async()=>{
+    const f=pidFixture(),m=mount();f.context.channels=f.context.channels.filter(c=>c.id!=='target'&&c.id!=='pid-output');f.traces.splice(0,f.traces.length,...f.traces.filter(t=>t.channel.id!=='target'&&t.channel.id!=='pid-output'));
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'pid');await wait();assert(m.field('pid-p').textContent==='3.00'&&m.field('rmse').textContent==='Unavailable','Absent target blocked independent terms or invented RPM error');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('unit unavailable')&&m.field('assessment').textContent.includes('RMSE Unavailable RPM'),'Missing logged output or target authority was fabricated');
     }finally{m.close();}
   });
   return { passed: checks.length, checks };
