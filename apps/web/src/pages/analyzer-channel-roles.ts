@@ -128,6 +128,9 @@ export function updateVeActualMixtureOptions(control: HTMLSelectElement, channel
 // Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
 // Canonical runtime channels are preferred where EpicEFI has an established name; fuzzy matching is fallback only.
 const RULES: Readonly<Record<string, RoleRule>> = {
+  'idle:coolant': { exact: ['ini:coolant', 'coolant', 'CLT', 'Coolant temperature'], include: [/coolant/i, /^clt$/i], exclude: [/intake|aux|mcu|target|error|limit|correction/i] },
+  'idle:pedal': { exact: ['ini:throttlePedalPosition', 'throttlePedalPosition', 'Accelerator pedal position'], include: [/pedal.*position/i, /accelerator.*pedal/i], exclude: [/brake|intent|target|adc|voltage|raw|switch|status|error|limit/i] },
+  'idle:physicalTps': { exact: ['ini:TPSValue', 'TPSValue', 'TPS', 'Throttle position'], include: [/^tps(value)?$/i, /throttle.*position/i], exclude: [/pedal|intent|target|request|command|base|final|correction|idle|adc|voltage|raw|switch|status|error|limit/i] },
   'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue', 'RPM', 'Engine RPM'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i], exclude: [/target|error|drop|delta|diag|limit/i] },
   'idle:target': { exact: ['ini:idleTarget', 'idleTarget', 'Idle: Target RPM'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i], exclude: [/base|error|stepper|position/i] },
 
@@ -322,4 +325,20 @@ export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' 
   const exact = RULES[`idle:${role}`]?.exact;
   if (!exact?.some(alias => identity.exact.includes(alias.toLowerCase()))) return undefined;
   return { unit: rpm ? 'RPM' : '%', authority: 'canonical-role' };
+}
+
+/** Qualification requires declared engineering units and a matching signal identity. */
+export function idleQualificationRoleUnit(channel: ChannelDefinition, role: 'coolant' | 'pedal' | 'physicalTps'):
+  { readonly unit: '°C' | '°F' | '%' } | undefined {
+  if (channel.valueType === 'bitfield') return undefined;
+  const identity = channelRoleIdentity(channel), rule = RULES[`idle:${role}`]!;
+  if (rule.exclude?.some(pattern => pattern.test(identity.normalized))) return undefined;
+  if (!rule.exact?.some(alias => identity.exact.includes(alias.toLowerCase())) && !rule.include.some(pattern => pattern.test(identity.normalized))) return undefined;
+  const unit = identity.unit.replace(/[°\s]/g, '');
+  if (role === 'coolant') {
+    if (['c','degc','celsius'].includes(unit)) return { unit: '°C' };
+    if (['f','degf','fahrenheit'].includes(unit)) return { unit: '°F' };
+    return undefined;
+  }
+  return ['%','percent'].includes(unit) ? { unit: '%' } : undefined;
 }

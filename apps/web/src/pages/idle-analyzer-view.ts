@@ -1,7 +1,7 @@
 import '../styles/idle-analyzer.css';
 import type { LoggerAnalysisContext, LoggerAnalysisTraceContext } from './logger-page';
 import { analyzerScopeOptions, analyzerScopeBounds, retainedAnalyzerScopeValue } from './analyzer-scope';
-import { analyzerChannelOptionLabel, suggestAnalyzerChannel, idleRoleUnit } from './analyzer-channel-roles';
+import { analyzerChannelOptionLabel, suggestAnalyzerChannel, idleRoleUnit, idleQualificationRoleUnit } from './analyzer-channel-roles';
 import { sameChannelOptionCatalog } from './channel-option-label';
 import { numericRangeCoversTime } from '../../../../core/analysis/range-statistics';
 import { analyzeIdleStability, type IdleStabilityResult } from '../../../../core/analysis/idle-stability';
@@ -11,6 +11,8 @@ import { createIdleRegionManager, type IdleRegionAction } from './idle-region-ma
 import { sliceNumericRangeByTime } from '../../../../core/timeline/viewport-series';
 import { assessIdleStability } from '../../../../core/analysis/idle-stability-assessment';
 import { presentIdleStabilityAssessment } from './idle-stability-assessment';
+import { buildIdleQualificationPlan, type IdleQualificationSettings, type IdleQualificationRole } from './idle-qualification-plan';
+import { qualifyIdleSamples, type IdleQualificationResult } from '../../../../core/analysis/idle-qualification';
 import { createIdleStabilityPlot, type IdlePlotSeries } from './idle-stability-plot';
 import { installAnalyzerRangeInteraction } from './analyzer-range-interaction';
 import { createOwnerEvidence } from '../observability/producers/owner';
@@ -34,7 +36,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let generation = 0;
   let pendingKey: string | undefined;
   let pendingSource: object | undefined;
-  let accepted: { source: object; key: string; result: IdleStabilityResult; assessment: ReturnType<typeof assessIdleStability>; presentation: ReturnType<typeof presentIdleStabilityAssessment>; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
+  let accepted: { source: object; key: string; result: IdleStabilityResult; assessment: ReturnType<typeof assessIdleStability>; presentation: ReturnType<typeof presentIdleStabilityAssessment>; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
   const regionSession = createIdleRegionSession();
   let focusId = 'overview';
   let regionEvidence: { source: object; key: string; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
@@ -42,6 +44,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let rpmId = '';
   let targetId = '';
   let contextIds: Record<ContextRole, string> = { basePosition: '', closedLoop: '', finalPosition: '' };
+  let qualificationIds: Record<IdleQualificationRole,string> = {coolant:'',pedal:'',physicalTps:''};
+  const qualificationRoles = ['coolant','pedal','physicalTps'] as const;
   let committingRange = false;
   let scopeValue = 'full';
   let manualId: string | undefined;
@@ -57,9 +61,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <option disabled>Base Airflow — not integrated</option><option disabled>RPM PID — not integrated</option><option disabled>DC Valve Tracking — not integrated</option>
       <option disabled>DC Bias / Position PID — not integrated</option><option disabled>Ignition — not integrated</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
-      <label data-idle="focus-control" hidden>Graph focus <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
+      <label data-idle="focus-control" hidden>Graph focus <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
     <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
-    <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><div class="idle-metrics" aria-label="Stability measurements">
+    <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><p class="idle-qualification-state" data-idle="qualification-state">Qualification off</p><div class="idle-metrics" aria-label="Stability measurements">
       <div><strong data-idle="sigma">—</strong><span>RPM σ · sample</span></div><div><strong data-idle="rmse">—</strong><span>RPM error RMSE</span></div>
       <div><strong data-idle="in-band">—</strong><span>Within ±40 RPM</span></div><div><strong data-idle="samples">—</strong><span>Valid RPM samples</span></div></div>
       <p class="idle-focus-explanation" data-idle="focus-explanation" hidden></p><div data-idle="plot"></div><div class="idle-plot-tools"><span>Wheel zoom · drag pan · Shift-drag zoom · hover for recorded values</span>
@@ -76,6 +80,17 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     <div class="idle-region-key" data-idle="region-key" hidden>Included · green / Excluded · gray / Viewed · blue outline. View does not change analysis. Shift-drag selects Logger A/B. ↗ Logger opens the viewed interval.</div><div class="idle-actionbar"><label>Auto-detect ≤ <input type="number" min="1" step="50" value="1200" data-idle="candidate-rpm" aria-label="Candidate maximum RPM"> RPM</label><label>Min <input type="number" min="0.1" step="1" value="8" data-idle="candidate-duration" aria-label="Candidate minimum duration in seconds"> s</label>
       <button type="button" data-idle="discover">Find candidates</button><select data-idle="candidates" aria-label="Review RPM candidate region" disabled><option value="">No discovered candidates</option></select>
       <span data-idle="scope-note">RPM-only candidates require review; not automatically idle-qualified.</span><span class="idle-readonly">Read only</span><button type="button" data-idle="run">▶ Run Analysis</button></div>
+    <details class="idle-qualification" data-idle="qualification-setup"><summary>Recorded qualification conditions</summary><div class="idle-qualification-body">
+      <label><input type="checkbox" data-idle="qual-enabled"> Apply selected conditions to discovery and analysis</label>
+      <label><input type="checkbox" data-idle="qual-warm" checked> Require coolant ≥</label><input type="number" data-idle="qual-temperature" aria-label="Minimum coolant °C" value="70" step="any"> °C
+      <label>Coolant <select data-idle="qual-coolant" aria-label="Qualification coolant channel"></select></label>
+      <label><input type="checkbox" data-idle="qual-closed"> Require closed-input condition</label>
+      <select data-idle="qual-input" aria-label="Closed-input meaning"><option value="pedal">Driver pedal position (released reference)</option><option value="physicalTps">Physical TPS position limit only</option></select>
+      <input type="number" min="0" max="100" step="any" value="3" data-idle="qual-percent" aria-label="Closed-input maximum percent"> %
+      <label>Pedal <select data-idle="qual-pedal" aria-label="Qualification driver pedal channel"></select></label><label>Physical TPS <select data-idle="qual-physicalTps" aria-label="Qualification physical TPS channel"></select></label>
+      <label><input type="checkbox" data-idle="qual-bypass"> Manual/edited-bounds regions bypass conditions</label>
+      <p>Enabled conditions include the RPM ceiling shown below. Defaults are references, not firmware limits. Physical TPS never proves pedal intent. Discovery never bypasses conditions. Minimum duration affects discovery only. Renaming never enables bypass. Bypass never bypasses source validity; Full Log and Logger scopes still use conditions. Graphs retain recorded samples, including excluded measurements. Firmware idle-controller and stationary/load state are not established.</p>
+    </div></details>
     <details class="idle-setup" data-idle="setup"><summary>Channels and manual region</summary><div class="idle-setup-body">
       <span data-idle="source">Load a recorded MLG through Open Log.</span><label>RPM <select data-idle="rpm" aria-label="Idle RPM channel"></select></label>
       <label>Idle target <select data-idle="target" aria-label="Idle target channel"></select></label>
@@ -97,6 +112,23 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const plot = createIdleStabilityPlot();
   field('plot').append(plot.element);
   const status = (text: string) => { field('status').textContent = text; };
+  const qualificationSettings = (): IdleQualificationSettings => ({
+    enabled:field<HTMLInputElement>('qual-enabled').checked,requireWarm:field<HTMLInputElement>('qual-warm').checked,
+    requireClosed:field<HTMLInputElement>('qual-closed').checked,closedSource:field<HTMLSelectElement>('qual-input').value as 'pedal'|'physicalTps',
+    minimumCelsius:field<HTMLInputElement>('qual-temperature').value.trim() ? Number(field<HTMLInputElement>('qual-temperature').value) : NaN,
+    maximumPercent:field<HTMLInputElement>('qual-percent').value.trim() ? Number(field<HTMLInputElement>('qual-percent').value) : NaN,
+    maximumRpm:field<HTMLInputElement>('candidate-rpm').value.trim() ? Number(field<HTMLInputElement>('candidate-rpm').value) : NaN,
+    manualBypass:field<HTMLInputElement>('qual-bypass').checked,ids:{...qualificationIds},
+  });
+  const qualificationPlan = (discovery = false) => buildIdleQualificationPlan(qualificationSettings(),context.channels,rpmId,{kind:scopeValue,manualId,regions:regionSession.regions},discovery);
+  const renderQualificationControls = () => {
+    const settings = qualificationSettings();
+    for (const name of ['qual-warm','qual-closed','qual-bypass']) field<HTMLInputElement>(name).disabled = !settings.enabled;
+    field<HTMLInputElement>('qual-temperature').disabled = !settings.enabled || !settings.requireWarm;
+    for (const name of ['qual-input','qual-percent']) field<HTMLInputElement>(name).disabled = !settings.enabled || !settings.requireClosed;
+    try { field('qualification-state').textContent = qualificationPlan().description; }
+    catch(error) { field('qualification-state').textContent = error instanceof Error ? error.message : 'Qualification unavailable'; }
+  };
   const mappingDescription = () => ['rpm', 'target', ...CONTEXT_ROLES].map(role => {
       const id = role === 'rpm' ? rpmId : role === 'target' ? targetId : contextIds[role as ContextRole];
       const channel = context.channels.find(item => item.id === id); const unit = channel && idleRoleUnit(channel, role as 'rpm' | 'target' | ContextRole);
@@ -137,17 +169,18 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     field('scope-application').textContent = scopeValue === 'regions' ? 'Overlapping samples count once.' : included ? `${included} checked region${included === 1 ? ' is' : 's are'} not applied to these metrics.` : '';
     field('apply-included').hidden = scopeValue === 'regions' || !included;
     const viewed = regions.find(region => region.id === focusId);
-    const explanation = field('focus-explanation'); explanation.hidden = !regions.length;
+    const explanation = field('focus-explanation'); explanation.hidden = !regions.length && !qualificationSettings().enabled;
     explanation.textContent = viewed ? `Graph focus: ${viewed.label} (${viewed.included ? 'included' : 'excluded'}). Metrics remain ${scopeLabel}.`
       : focusId === 'logger' ? `Graph focus: Logger A/B. Metrics remain ${scopeLabel}.` : scopeValue === 'regions' ? 'Graph overview spans the included intervals and the gaps between them. Gap samples are excluded from the combined metrics.' : `Graph overview: ${scopeLabel}.`;
+    if(qualificationSettings().enabled)explanation.textContent+=' Graphs retain recorded measurements, including samples excluded by conditions.';
     manager.update(regions, focusId, context.sourceTimeRange, scopeLabel, scopeValue === 'regions');
   };
-  const semanticEvidenceKey = () => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.source?.descriptor, context.channels, rpmId, targetId, contextIds]);
+  const semanticEvidenceKey = (qualificationChannels: readonly string[] = []) => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.source?.descriptor, context.channels, rpmId, targetId, contextIds, qualificationChannels]);
   const renderPlot = () => {
     if (!active || !accepted) return;
     const bounds = displayBounds(); if (!bounds) return;
     const retained = regionEvidence;
-    const traces = regionSession.regions.length && retained && retained.source === context.source?.identity && retained.key === semanticEvidenceKey() ? retained.traces : accepted.traces;
+    const traces = regionSession.regions.length && retained && retained.source === context.source?.identity && retained.key === accepted.evidenceKey ? retained.traces : accepted.traces;
     const key = JSON.stringify([bounds, rpmId, targetId, contextIds]);
     if (renderedPlot?.traces === traces && renderedPlot.key === key) return;
     const entries: IdlePlotSeries[] = [];
@@ -198,7 +231,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     return rpm.value.trim() && duration.value.trim() && Number.isFinite(maximumRpm) && maximumRpm > 0 && Number.isFinite(minimumDurationMs) && minimumDurationMs > 0
       ? { maximumRpm, minimumDurationMs, maximumGapMs: 250 } : undefined;
   };
-  const discoveryKey = (options: IdleCandidateOptions) => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.channels, rpmId, options]);
+  const discoveryKey = (options: IdleCandidateOptions) => {const plan=qualificationPlan(true);return JSON.stringify([context.source?.revision,context.source?.sampleCount,context.channels,rpmId,options,plan.enabled?[plan.conditions,plan.description]:false]);};
   const renderTimeline = () => {
     const extent = context.sourceTimeRange, bounds = selectedBounds();
     const track = field('range-track'), band = field('scope-band'), edit = field('edit-band');
@@ -261,6 +294,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if (!accepted) { panel.append(section('Recorded evidence required', 'Choose an RPM channel and a recorded region, then run analysis. Target-dependent metrics remain unavailable without a compatible target channel.')); return; }
     const { analysis, inBandPercent } = accepted.result;
     const { assessment, presentation } = accepted;
+    if (accepted.qualification) panel.append(section('Applied qualification', `${accepted.qualification.description}. ${accepted.qualification.eligible}/${accepted.qualification.input} original records eligible; ${accepted.qualification.rejected} value-rejected, ${accepted.qualification.invalid} invalid, ${accepted.qualification.unavailable} unavailable; ${accepted.qualification.manualBypassed} valid records manually bypassed. Invalid counts may include recovered retry attempts and do not by themselves establish physical data loss.`));
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
     if (tab === 'diagnosis') {
       panel.append(section('Evidence status', presentation.status), section('Observed behavior', presentation.observed));
@@ -309,6 +343,15 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       rpmId = rpmSelect.value; targetId = targetSelect.value;
     }
     if (manualId && !regionSession.regions.some(region => region.id === manualId)) { manualId = undefined; if (scopeValue === 'manual') scopeValue = 'regions'; }
+    if (sourceChanged || catalogChanged || !field<HTMLSelectElement>('qual-coolant').options.length) {
+      for (const role of qualificationRoles) {
+        const select=field<HTMLSelectElement>(`qual-${role}`),old=qualificationIds[role];
+        const channels=context.channels.filter(channel=>idleQualificationRoleUnit(channel,role));
+        select.replaceChildren(new Option('Unavailable / not selected',''),...channels.map(channel=>new Option(analyzerChannelOptionLabel(channel),channel.id)));
+        select.value=!sourceChanged ? channels.some(channel=>channel.id===old) ? old : '' : suggestAnalyzerChannel('idle',role,channels)?.id ?? '';
+        qualificationIds[role]=select.value;
+      }
+    }
     const options = [...analyzerScopeOptions(context), { value: 'regions', kind: 'range' as const, label: 'Included regions' }];
     if (!options.some(option => option.value === scopeValue) && scopeValue !== 'manual') scopeValue = 'full';
     scopeSelect.replaceChildren(...options.map(option => new Option(option.label, option.value)));
@@ -320,7 +363,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const descriptor = context.source?.descriptor;
     field('source').textContent = descriptor ? `${descriptor.displayName} · ${descriptor.format} · ${context.source!.sampleCount.toLocaleString()} indexed records` : 'Load a recorded MLG through Open Log (source metadata unavailable).';
     loggerButton.disabled = !context.openRangeInLogger || !bounds;
-    syncMappingNote();
+    syncMappingNote(); renderQualificationControls();
     renderRegionControls(); renderTimeline();
   };
   const analyze = async () => {
@@ -337,11 +380,16 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       generation += 1; pendingKey = undefined; clear(); runButton.disabled = false; field('samples').textContent = '0';
       status('No included regions. Add regions or review discovered candidates.'); return;
     }
+    let plan: ReturnType<typeof qualificationPlan>;
+    try { plan = qualificationPlan(); }
+    catch(error) { generation++; pendingKey=undefined; clear();runButton.disabled=false;status(error instanceof Error?error.message:'Qualification unavailable');return; }
+    const needsFullEvidence=managed||plan.enabled;
     const evidenceKey = semanticEvidenceKey();
-    const key = JSON.stringify([evidenceKey, bounds, regions]);
+    const key = JSON.stringify([evidenceKey, bounds, regions, plan.enabled ? [plan.conditions,plan.bypass,plan.description] : false]);
     if (accepted?.source === source.identity && accepted.key === key
-      && (!managed || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); return; }
+      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); return; }
     if (pendingKey === key && pendingSource === source.identity) return;
+    const mayReuseEvidence=needsFullEvidence||accepted?.qualification!==undefined;
     const request = ++generation;
     const captured = context;
     const requestedRpm = rpmId;
@@ -350,9 +398,11 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     pendingKey = key; pendingSource = source.identity; clear(); status('Loading recorded evidence…'); runButton.disabled = true;
     owner.event('idle.stability.request', { generation: request, startMs: bounds.startMs, endMs: bounds.endMs });
     try {
-      const readBounds = managed ? captured.sourceTimeRange! : bounds;
-      const retained = managed && regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey ? regionEvidence.traces : undefined;
-      const traces = retained ?? await captured.loadTraces([...new Set([requestedRpm, requestedTarget, ...Object.values(requestedContext)].filter(Boolean))], readBounds.startMs, readBounds.endMs);
+      const readBounds = needsFullEvidence ? captured.sourceTimeRange! : bounds;
+      const requestedIds = [...new Set([requestedRpm,requestedTarget,...Object.values(requestedContext),...plan.ids].filter(Boolean))];
+      const retained = mayReuseEvidence && regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey
+        && requestedIds.every(id=>regionEvidence!.traces.some(trace=>trace.channel.id===id&&(trace.complete||numericRangeCoversTime(trace.range,readBounds.startMs,readBounds.endMs)))) ? regionEvidence.traces : undefined;
+      const traces = retained ?? await captured.loadTraces(requestedIds, readBounds.startMs, readBounds.endMs);
       if (!active || disposed || request !== generation) return;
       const rpm = traces.find(trace => trace.channel.id === requestedRpm);
       const target = traces.find(trace => trace.channel.id === requestedTarget);
@@ -360,9 +410,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (requestedTarget && !target) throw new Error('Selected target data unavailable. Retry or explicitly choose no target.');
       const complete = [rpm, ...(target ? [target] : [])].every(trace => trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs));
       if (captured.sourceTimeRange && readBounds.startMs <= captured.sourceTimeRange.startMs && readBounds.endMs >= captured.sourceTimeRange.endMs && traces.every(trace => trace.complete || numericRangeCoversTime(trace.range, readBounds.startMs, readBounds.endMs))) regionEvidence = { source: source.identity, key: evidenceKey, traces };
-      const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), complete });
+      const qualification = plan.enabled ? { ...qualifyIdleSamples({referenceId:requestedRpm,channels:new Map(traces.map(trace=>[trace.channel.id,{range:trace.range,complete:trace.complete}])),conditions:plan.conditions,scope:regions??[bounds],bypass:plan.bypass}), description:plan.description } : undefined;
+      const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), ...(qualification ? {eligibility:qualification.eligibility} : {}), complete:complete && (qualification?.complete??true) });
       const assessment = assessIdleStability(result);
-      accepted = { source: source.identity, key, result, assessment, presentation: presentIdleStabilityAssessment(assessment), rpm, target, traces };
+      accepted = { source: source.identity, key, result, assessment, presentation: presentIdleStabilityAssessment(assessment, qualification), qualification, evidenceKey, rpm, target, traces };
       const stats = result.analysis;
       field('sigma').textContent = number(stats.rpm.standardDeviation);
       field('rmse').textContent = number(stats.tracking?.rmse);
@@ -370,7 +421,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       field('samples').textContent = stats.rpm.validSampleCount.toLocaleString();
       renderCoverage();
       renderPlot();
-      status(regions && !regions.length ? 'No included regions. Graph focus is excluded from analysis.' : stats.rpm.validSampleCount ? complete ? 'Recorded evidence' : 'Partial recorded evidence' : 'No valid RPM evidence');
+      status(qualification && !qualification.eligible && qualification.input ? !qualification.rejected&&(qualification.invalid||qualification.unavailable) ? 'Qualification evidence unavailable or misaligned.' : 'No records match selected qualification conditions.' : regions && !regions.length ? 'No included regions. Graph focus is excluded from analysis.' : stats.rpm.validSampleCount ? complete ? 'Recorded evidence' : 'Partial recorded evidence' : 'No valid RPM evidence');
       renderAssessment();
       owner.event('idle.stability.accepted', { generation: request, samples: stats.rpm.validSampleCount });
     } catch (error) {
@@ -385,17 +436,23 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const options = candidateOptions(), source = context.source, bounds = context.sourceTimeRange;
     if (!options) { showDiscovery('Enter a positive RPM ceiling and minimum duration.'); return; }
     if (!source || source.descriptor?.format !== 'MLG' || !bounds || !rpmId) { showDiscovery('Load recorded RPM evidence before discovering candidates.'); return; }
+    let plan:ReturnType<typeof qualificationPlan>;
+    try {plan=qualificationPlan(true);}catch(error){showDiscovery(error instanceof Error?error.message:'Qualification unavailable');return;}
     const key = discoveryKey(options);
-    if (discovery?.source === source.identity && discovery.key === key) { showDiscovery(discovery.result.totalCount ? `${discovery.result.totalCount} current RPM candidate${discovery.result.totalCount === 1 ? '' : 's'}. Review inclusion in Manage regions; existing choices are retained.` : 'No candidates match the current settings. Try a higher RPM ceiling or shorter minimum duration; managed regions are retained.', discovery.result.totalCount > 0); return; }
+    if (discovery?.source === source.identity && discovery.key === key) { showDiscovery(discovery.result.totalCount ? `${discovery.result.totalCount} current ${plan.enabled?'condition-matching':'RPM'} candidate${discovery.result.totalCount === 1 ? '' : 's'}. Review inclusion in Manage regions; existing choices are retained.` : 'No candidates match the current settings. Try a higher RPM ceiling or shorter minimum duration; managed regions are retained.', discovery.result.totalCount > 0); return; }
     const captured = context, requestedRpm = rpmId, request = ++discoveryGeneration;
-    discoveryPending = true; field<HTMLButtonElement>('discover').disabled = true; showDiscovery('Finding RPM-only candidate intervals…');
+    discoveryPending = true; field<HTMLButtonElement>('discover').disabled = true; showDiscovery(plan.enabled?'Finding condition-matching candidate intervals…':'Finding RPM-only candidate intervals…');
     try {
-      // Reuse accepted full-source RPM evidence when available; otherwise one captured read.
-      const trace = scopeValue === 'full' && accepted?.source === source.identity ? accepted.rpm
-        : (await captured.loadTraces([requestedRpm], bounds.startMs, bounds.endMs)).find(item => item.channel.id === requestedRpm);
+      const requested=[rpmId,...plan.ids],retained=regionEvidence?.source===source.identity?regionEvidence.traces:undefined;
+      const reusable=retained && requested.every(id=>retained.some(trace=>trace.channel.id===id&&(trace.complete||numericRangeCoversTime(trace.range,bounds.startMs,bounds.endMs))));
+      const traces=reusable?retained:await captured.loadTraces([...new Set(requested)],bounds.startMs,bounds.endMs);
       if (!active || disposed || request !== discoveryGeneration) return;
+      const trace=traces.find(trace=>trace.channel.id===requestedRpm);
       if (!trace || !(trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs))) throw new Error('Full-source RPM coverage is required for discovery. Existing analysis retained.');
-      const result = discoverIdleCandidates(trace.range, options);
+      const qualification=plan.enabled?qualifyIdleSamples({referenceId:requestedRpm,channels:new Map(traces.map(trace=>[trace.channel.id,{range:trace.range,complete:trace.complete}])),conditions:plan.conditions,scope:[bounds],bypass:[]}):undefined;
+      if(qualification&&!qualification.complete)throw new Error('Discovery requires complete aligned qualification-channel coverage. No RPM-only fallback was applied.');
+      if(qualification&&qualification.input>0&&!qualification.eligible&&!qualification.rejected&&(qualification.invalid||qualification.unavailable))throw new Error('Qualification evidence unavailable or misaligned. Check required channels and source integrity; no RPM-only fallback was applied.');
+      const result = discoverIdleCandidates(trace.range, { ...options,...(qualification?{eligibility:qualification.eligibility}:{}) });
       discovery = { source: source.identity, key, result };
       const added = regionSession.addCandidates(result.regions);
       if (added) { configure(context); void analyze(); }
@@ -403,8 +460,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       select.replaceChildren(new Option(result.totalCount ? 'Review candidate…' : 'No matching candidate intervals', ''));
       result.regions.forEach((region, index) => select.add(new Option(`${index + 1}: ${(region.startMs / 1000).toFixed(2)}–${(region.endMs / 1000).toFixed(2)} s`, String(index))));
       select.disabled = !result.regions.length;
-      field('scope-note').textContent = `${result.totalCount} RPM-only candidates${result.totalCount > result.regions.length ? '; first 200 listed' : ''} · 0 < RPM ≤ ${options.maximumRpm} · ≥ ${options.minimumDurationMs / 1000} s · gaps ≤ 250 ms. Review throttle, temperature and loads.`;
-      showDiscovery(result.totalCount ? `${result.totalCount} RPM candidate${result.totalCount === 1 ? '' : 's'} found${result.totalCount > result.regions.length ? '; first 200 listed' : ''}. ${added} new excluded region${added === 1 ? '' : 's'} added for review; existing inclusion choices are retained.`
+      field('scope-note').textContent = `${result.totalCount} ${plan.enabled?'condition-matching':'RPM-only'} candidates${result.totalCount > result.regions.length ? '; first 200 listed' : ''} · 0 < RPM ≤ ${options.maximumRpm} · ≥ ${options.minimumDurationMs / 1000} s · gaps ≤ 250 ms. Review throttle, temperature and loads.${plan.enabled ? ` Conditions: ${plan.description}.` : ''}`;
+      showDiscovery(result.totalCount ? `${result.totalCount} ${plan.enabled?'condition-matching':'RPM'} candidate${result.totalCount === 1 ? '' : 's'} found${result.totalCount > result.regions.length ? '; first 200 listed' : ''}. ${added} new excluded region${added === 1 ? '' : 's'} added for review; existing inclusion choices are retained.`
         : 'No candidates match these settings. Try a higher RPM ceiling or shorter minimum duration. Existing managed regions are unchanged.', result.totalCount > 0);
     } catch (error) {
       if (active && !disposed && request === discoveryGeneration) showDiscovery(error instanceof Error ? error.message : 'Candidate discovery failed; existing analysis retained.');
@@ -424,17 +481,24 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const node = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-region-id]') : null;
     if (active && !disposed && node && !(event as MouseEvent).shiftKey) manageRegion({ type: 'focus', id: node.dataset.regionId! });
   }, { signal: events.signal });
+  const qualificationChanged = (affectsDiscovery=true) => { generation++;pendingKey=undefined;if(affectsDiscovery)resetDiscovery(true);renderQualificationControls();renderRegionControls();void analyze(); };
+  listen(field('qualification-settings'),()=>{const opening=!field<HTMLDetailsElement>('qualification-setup').open;field<HTMLDetailsElement>('qualification-setup').open=opening;if(opening)field<HTMLDetailsElement>('setup').open=false;});
+  listen(field('qual-enabled'),qualificationChanged,'change');
+  for(const name of ['qual-warm','qual-closed','qual-input','qual-temperature','qual-percent'])listen(field(name),()=>{if(qualificationSettings().enabled)qualificationChanged();},'change');
+  listen(field('qual-bypass'),()=>{if(qualificationSettings().enabled)qualificationChanged(false);},'change');
+  for(const role of qualificationRoles)listen(field(`qual-${role}`),()=>{qualificationIds[role]=field<HTMLSelectElement>(`qual-${role}`).value;const settings=qualificationSettings();if(settings.enabled&&(role==='coolant'?settings.requireWarm:settings.requireClosed&&settings.closedSource===role))qualificationChanged();else renderQualificationControls();},'change');
   listen(field('apply-included'), () => manageRegion({ type: 'analyze' }));
   listen(field('review-candidates'), () => { renderRegionControls(); manager.open(); });
   listen(field('discover'), () => { void discover(); });
-  for (const name of ['candidate-rpm', 'candidate-duration']) listen(field(name), () => resetDiscovery(true), 'change');
+  for (const name of ['candidate-rpm', 'candidate-duration']) listen(field(name), () => {if(name==='candidate-rpm'&&qualificationSettings().enabled)qualificationChanged();else resetDiscovery(true);}, 'change');
   listen(field('candidates'), () => {
     const select = field<HTMLSelectElement>('candidates'), options = candidateOptions();
-    if (!select.value || !options || discovery?.source !== context.source?.identity || discovery?.key !== discoveryKey(options)) return;
+    let currentKey:string;try{if(!options)return;currentKey=discoveryKey(options);}catch{return;}
+    if (!select.value || discovery?.source !== context.source?.identity || discovery?.key !== currentKey) return;
     const region = discovery.result.regions[Number(select.value)];
     if (region && !commitRange(context, region.startMs, region.endMs)) select.value = '';
   }, 'change');
-  listen(field('settings'), () => { field<HTMLDetailsElement>('setup').open = !field<HTMLDetailsElement>('setup').open; });
+  listen(field('settings'), () => { const opening=!field<HTMLDetailsElement>('setup').open;field<HTMLDetailsElement>('setup').open=opening;if(opening)field<HTMLDetailsElement>('qualification-setup').open=false; });
   listen(field('region-focus'), plot.fit);
   listen(field('zoom-in'), () => plot.zoom(.8));
   listen(field('zoom-out'), () => plot.zoom(1.25));

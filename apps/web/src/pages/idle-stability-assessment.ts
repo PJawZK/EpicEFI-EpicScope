@@ -1,7 +1,7 @@
 import type { IdleStabilityAssessment, IdleStabilityFinding, IdleStabilityNextTest } from '../../../../core/analysis/idle-stability-assessment';
 const n = (value: number | undefined, decimals = 2) => value === undefined || !Number.isFinite(value) ? 'Unavailable' : value.toFixed(decimals);
 /** Copy projects typed retained findings; rendered text is never analysis authority. */
-export function presentIdleStabilityAssessment(assessment: IdleStabilityAssessment) {
+export function presentIdleStabilityAssessment(assessment: IdleStabilityAssessment, qualification?: { input: number; eligible: number; manualBypassed: number; rejected: number; invalid: number; unavailable: number }) {
   const f = assessment.facts, band = `±${n(f.band, 0)} RPM`;
   const descriptions: Record<IdleStabilityFinding, readonly [string, string]> = {
     'invalid-metrics': ['Derived measurements unavailable', 'Some derived measurements are nonfinite despite valid source samples. Verify channel units and recorded magnitudes; no stability judgement is available.'],
@@ -29,12 +29,16 @@ export function presentIdleStabilityAssessment(assessment: IdleStabilityAssessme
     'repeat-excursions': ['Repeat equal-duration known idle intervals at matched target, temperature and electrical/mechanical loads; record intentional load changes.', 'Similar excursions recur with sufficient paired evidence and documented operating conditions.', 'The excursions follow different targets, loads, starts/stops or missing measurements.'],
     'repeat-baseline': ['Retain this recording as a descriptive baseline and verify repeatability under matched conditions before considering a tuning experiment.', 'Comparable independent intervals reproduce the band coverage without worse disturbance response.', 'A comparable repeat shows excursions or conditions were not actually matched.'],
   };
-  const [next, supports, contradicts] = tests[assessment.nextTest];
+  let [next, supports, contradicts] = tests[assessment.nextTest];
+  const noMatches = qualification && qualification.input > 0 && qualification.eligible === 0;
+  const invalidQualification = noMatches && !qualification.rejected && (qualification.invalid > 0 || qualification.unavailable > 0);
+  if(noMatches) {next='No records meet the selected qualification conditions. Review the thresholds, selected channels and operating interval; managed regions are retained.';supports='Recorded samples with valid aligned required channels meet the chosen conditions.';contradicts='The selected region remains outside the requested conditions or required measurements are missing.';}
+  if(invalidQualification){next='Required qualification measurements are invalid, unavailable or misaligned. Verify mappings, timestamps and source-integrity diagnostics before interpreting conditions.';}
   return {
-    status: assessment.status === 'recorded-region' ? 'Recorded-region evidence' : assessment.status === 'scope-review' ? 'Operating scope needs review' : assessment.status === 'limited' ? 'Limited recorded evidence' : 'Evidence unavailable',
+    status: invalidQualification ? 'Qualification evidence unavailable' : noMatches ? 'No condition-matching evidence' : assessment.status === 'recorded-region' ? 'Recorded-region evidence' : assessment.status === 'scope-review' ? 'Operating scope needs review' : assessment.status === 'limited' ? 'Limited recorded evidence' : 'Evidence unavailable',
     observed: `${f.validRpm} valid RPM samples; minimum ${n(f.minimumRpm)} RPM; sample σ ${n(f.sigma)} RPM. Target RMSE ${n(f.rmse)} RPM; signed mean error ${n(f.meanError)} RPM.`,
     findings: assessment.findings.map(code => ({ code, title: descriptions[code][0], text: descriptions[code][1] })),
-    limits: 'Warm-engine, closed-throttle idle and matched mechanical/electrical loads are not established by this view. Physical throttle position alone does not prove pedal intent. The reference band is not a firmware limit. These observations do not identify a causal fault, controller timing, oscillation frequency or a validated tuning instruction.',
+    limits: qualification ? `Only the selected recorded conditions were applied; ${qualification.manualBypassed} valid records manually bypassed them. Bypassed conditions are not verified. Firmware idle-controller activation, stationary vehicle state and matched loads are not established. Physical TPS is not pedal intent. Reference thresholds are not firmware limits or tuning instructions.` : 'Warm-engine, closed-throttle idle and matched mechanical/electrical loads are not established by this view. Physical throttle position alone does not prove pedal intent. The reference band is not a firmware limit. These observations do not identify a causal fault, controller timing, oscillation frequency or a validated tuning instruction.',
     next, supports, contradicts,
     holdConstant: 'Logged RPM target, coolant temperature, electrical/mechanical loads, controller state, recording quality and tune version. No tune or ECU state is changed.',
   };

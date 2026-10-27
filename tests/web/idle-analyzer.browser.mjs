@@ -206,11 +206,11 @@ export async function runIdleAnalyzerChecks() {
     const f = fixture(new Float64Array(121).fill(900)), m = mount();
     try {
       m.view.setContext(f.context); m.view.setActive(true); await wait(); change(m.field('scope'),'ab'); await wait();
-      let release; f.context.loadTraces = () => new Promise(resolve => { release = resolve; }); m.view.setContext({...f.context});
+      const releases=[]; f.context={...f.context,source:{...f.context.source,revision:1},loadTraces:()=>new Promise(resolve=>{releases.push(resolve);})};m.view.setContext(f.context);
       m.field('discover').click(); await wait();
-      change(m.field('candidate-duration'),'9'); release(f.traces); await wait();
+      change(m.field('candidate-duration'),'9'); releases.at(-1)(f.traces); await wait();
       assert(m.field('candidates').disabled,'Obsolete discovery completed after setting change');
-      m.field('discover').click(); await wait(); m.view.setActive(false); const html=m.view.element.innerHTML; release(f.traces); await wait();
+      m.field('discover').click(); await wait(); m.view.setActive(false); const html=m.view.element.innerHTML; for(const release of releases)release(f.traces); await wait();
       assert(m.view.element.innerHTML===html,'Hidden discovery wrote UI');
       const next=fixture(new Float64Array(121).fill(1500)); m.view.setContext(next.context); m.view.setActive(true); await wait();
       assert(m.field('candidates').disabled && m.field('samples').textContent==='121','Source replacement retained old candidates or lost analysis');
@@ -302,6 +302,43 @@ export async function runIdleAnalyzerChecks() {
     for(const [values,target,code,expected]of[[[1000,1000,1000],true,'within-band','Retain this recording'],[[1000,1000,1000],false,'missing-target','Verify the logged target'],[[0,1000,1000],true,'nonpositive-rpm','Separate verified engine-off']]){
       const f=fixture(values,target),m=mount();try{m.view.setContext(f.context);m.view.setActive(true);await wait();assert(m.view.element.querySelector(`[data-idle-finding="${code}"]`),'Missing finding '+code);m.view.element.querySelector('[data-idle-tab=next]').click();assert(m.field('assessment').textContent.includes(expected),'Wrong next test '+code);if(code==='within-band'){change(m.field('target'),'');await wait();m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('target: unavailable')&&m.field('mapping-note').textContent.includes('target: unavailable')&&!m.field('assessment').textContent.includes('Unavailable%'),'Evidence/setup retained stale target metadata or invalid unavailable percentage');}}finally{m.close();}
     }
+  });
+  await check('qualification controls change membership, keep pedal/TPS distinct and reuse raw columns for thresholds',async()=>{
+    const f=fixture(new Float64Array(6).fill(1000)),m=mount();
+    for(const [id,name,unit,values]of[['clt','coolant','deg C',[60,70,80,90,90,90]],['pedal','throttlePedalPosition','%',[0,0,4,2,0,0]],['tps','TPSValue','%',[0,0,0,10,5,0]]]){
+      const channel={id,sourceName:name,displayName:name,unit,valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{startSampleIndex:10,values:Float64Array.from(values),timeMs:Float64Array.from(values,(_,i)=>i*100),validity:new Uint8Array(6).fill(1)}});
+    }
+    const checked=(name,value)=>{m.field(name).checked=value;m.field(name).dispatchEvent(new Event('change',{bubbles:true}));};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(m.field('samples').textContent==='6'&&m.field('qual-warm').disabled,'Off policy changed baseline');m.field('settings').click();m.field('qualification-settings').click();assert(m.field('qualification-setup').open&&!m.field('setup').open,'Setup sections compressed graph together');m.field('settings').click();assert(m.field('setup').open&&!m.field('qualification-setup').open,'Channel setup failed to close qualification disclosure');
+      checked('qual-enabled',true);await wait();assert(m.field('samples').textContent==='5'&&f.calls.length===2&&f.calls.at(-1).ids.includes('clt'),'Warm condition not applied in one captured batch');
+      change(m.field('qual-temperature'),'85');await wait();assert(m.field('samples').textContent==='3'&&f.calls.length===2,'Warm threshold unused or reread source');
+      checked('qual-closed',true);await wait();assert(m.field('samples').textContent==='3'&&f.calls.length===3&&f.calls.at(-1).ids.includes('pedal'),'Pedal condition not loaded explicitly');
+      change(m.field('qual-percent'),'1');await wait();assert(m.field('samples').textContent==='2'&&f.calls.length===3,'Pedal limit unused or reread source');
+      change(m.field('qual-input'),'physicalTps');await wait();assert(m.field('samples').textContent==='1'&&f.calls.length===4,'Physical TPS substituted for pedal or ignored');
+      change(m.field('qual-percent'),'6');await wait();assert(m.field('samples').textContent==='2'&&f.calls.length===4,'Physical threshold failed');
+      checked('qual-warm',false);await wait();assert(m.field('samples').textContent==='5'&&f.calls.length===4,'Removing warm condition failed or reread a cached subset');
+      change(m.field('qual-coolant'),'');m.view.setContext({...f.context});await wait();assert(m.field('samples').textContent==='5'&&f.calls.length===4,'Inactive mapping invalidated active evidence');
+      checked('qual-enabled',false);await wait();assert(m.field('samples').textContent==='6'&&f.calls.length===4,'Off did not restore baseline from retained data');
+    }finally{m.close();}
+  });
+  await check('qualification missing-channel and manual-bypass policies are explicit with no discovery fallback',async()=>{
+    const f=fixture(new Float64Array(6).fill(1000)),m=mount();const checked=(name,value)=>{m.field(name).checked=value;m.field(name).dispatchEvent(new Event('change',{bubbles:true}));};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();checked('qual-enabled',true);await wait();assert(m.field('samples').textContent==='—'&&m.field('status').textContent.includes('Qualification unavailable')&&f.calls.length===1,'Missing coolant fell back to unqualified analysis');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.5';d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();await wait();
+      assert(m.field('samples').textContent==='—','Manual regions silently bypassed missing conditions by default');
+      checked('qual-bypass',true);await wait();assert(m.field('samples').textContent==='6'&&m.field('assessment').textContent.includes('6 valid records manually bypassed'),'Explicit manual bypass failed or claimed conditions were verified');
+      m.field('discover').click();await wait();assert(m.field('discovery-message').textContent.includes('Qualification unavailable'),'Discovery used a manual bypass or RPM-only fallback');
+      d.querySelector('[data-manager=close]').click();change(m.field('scope'),'full');await wait();assert(m.field('samples').textContent==='—','Full log silently bypassed missing conditions');
+    }finally{m.close();}
+  });
+  await check('obsolete qualification completions cannot overwrite a later disabled policy',async()=>{
+    const f=fixture(new Float64Array(6).fill(1000)),m=mount(),pending=[];
+    const channel={id:'clt',sourceName:'coolant',displayName:'coolant',unit:'°C',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{startSampleIndex:10,values:new Float64Array(6).fill(80),timeMs:Float64Array.from({length:6},(_,i)=>i*100),validity:new Uint8Array(6).fill(1)}});
+    const original=f.context.loadTraces;f.context.loadTraces=(ids,a,b)=>ids.includes('clt')?new Promise(resolve=>{pending.push(resolve);}):original(ids,a,b);
+    const checked=(name,value)=>{m.field(name).checked=value;m.field(name).dispatchEvent(new Event('change',{bubbles:true}));};
+    try{m.view.setContext(f.context);m.view.setActive(true);await wait();checked('qual-enabled',true);await wait();change(m.field('qual-temperature'),'200');await wait();checked('qual-enabled',false);await wait();assert(m.field('samples').textContent==='6','Disabling policy failed');for(const release of pending)release(f.traces);await wait();assert(m.field('samples').textContent==='6'&&m.field('qualification-state').textContent.includes('Qualification off')&&!m.field('run').disabled,'Late qualification replaced newer state');}finally{m.close();}
   });
   await check('320459-sample browser analysis renders bounded SVG evidence without argument-limit failure', async () => {
     const values = new Float64Array(320459).fill(1000), f = fixture(values), m = mount(); try {

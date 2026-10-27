@@ -1,5 +1,5 @@
 import type { NumericChannelRange } from '../log-model/log-types';
-import { mergeIdleRegionBounds, type IdleRegionBounds } from './idle-regions';
+import { mergeIdleRegionBounds, idleTimeInRegions, type IdleRegionBounds } from './idle-regions';
 import { analyzeIdle, type IdleAnalysisResult } from './specialized-analyzers';
 
 export interface IdleStabilityResult {
@@ -17,7 +17,7 @@ export interface IdleStabilityResult {
 export function analyzeIdleStability(
   rpm: NumericChannelRange,
   target: NumericChannelRange | undefined,
-  options: { startMs?: number; endMs?: number; regions?: readonly IdleRegionBounds[]; settledBandRpm?: number; complete?: boolean } = {},
+  options: { startMs?: number; endMs?: number; regions?: readonly IdleRegionBounds[]; eligibility?: Uint8Array; settledBandRpm?: number; complete?: boolean } = {},
 ): IdleStabilityResult {
   const lower = options.startMs ?? Number.NEGATIVE_INFINITY;
   const upper = options.endMs ?? Number.POSITIVE_INFINITY;
@@ -28,12 +28,7 @@ export function analyzeIdleStability(
     throw new RangeError('Invalid stability scope or settled band.');
   }
   const regions = options.regions === undefined ? undefined : mergeIdleRegionBounds(options.regions);
-  const includes = (time: number) => {
-    if (!regions) return true;
-    let low = 0, high = regions.length;
-    while (low < high) { const mid = (low + high) >>> 1; if (regions[mid]!.startMs <= time) low = mid + 1; else high = mid; }
-    return low > 0 && time <= regions[low - 1]!.endMs;
-  };
+  if (options.eligibility && options.eligibility.length !== rpm.values.length) throw new RangeError('Idle eligibility must match the original RPM grid.');
   const indices: number[] = [];
   const values = target ? new Float64Array(rpm.values.length).fill(Number.NaN) : undefined;
   const validity = target ? new Uint8Array(rpm.values.length) : undefined;
@@ -45,7 +40,7 @@ export function analyzeIdleStability(
   let endMs: number | undefined;
   for (let local = 0; local < rpm.values.length; local += 1) {
     const time = rpm.timeMs[local];
-    if (time === undefined || !Number.isFinite(time) || time < lower || time > upper || !includes(time)) continue;
+    if (time === undefined || !Number.isFinite(time) || time < lower || time > upper || (regions && !idleTimeInRegions(time, regions)) || (options.eligibility && options.eligibility[local] !== 1)) continue;
     const index = rpm.startSampleIndex + local;
     indices.push(index);
     startMs = startMs === undefined ? time : Math.min(startMs, time);

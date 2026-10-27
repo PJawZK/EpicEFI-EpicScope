@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Selected region qualification](NATIVE_QUALIFICATION_CHECKPOINT.md) adds opt-in, unit-verified coolant and closed-input conditions, explicit manual bypass, source-valid evidence and matching discovery. Full firmware idle qualification remains unestablished.
+
 [Descriptive Stability findings and next tests](NATIVE_STABILITY_FINDINGS_CHECKPOINT.md) projects accepted measurements into evidence-dependent observations, limitations and repeatable next-test guidance. Warm/closed-throttle idle qualification and tuning changes are not inferred.
 
 [Scope authority and discovery feedback](NATIVE_SCOPE_FEEDBACK_CHECKPOINT.md) follows native action-based investigation: explicit metric scope/apply action, graph-focus explanation and visible, truthful candidate outcomes without changing union mathematics.

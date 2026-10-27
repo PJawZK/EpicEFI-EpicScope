@@ -60,7 +60,7 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
             const node = input(row, name!, 'edit'); node.value = value!; node.setAttribute('aria-label', `${region.label} ${name}`);
           }
           row.querySelector('[data-duration]')!.textContent = `${((region.endMs - region.startMs) / 1000).toFixed(2)} s`;
-          row.querySelector('[data-origin]')!.textContent = `${region.origin}${region.edited ? ' · edited' : ''}`;
+          row.querySelector('[data-origin]')!.textContent = `${region.origin}${region.boundsEdited ? ' · manual bounds' : region.edited ? ' · renamed' : ''}`;
           body.append(row);
         }
       }

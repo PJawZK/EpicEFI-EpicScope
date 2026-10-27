@@ -130,3 +130,12 @@
 
 .idle-analysis-authority strong, .idle-analysis-authority > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .idle-region-manager p { overflow-wrap: anywhere; }
+.idle-qualification-state { margin: 0; color: var(--detail); line-height: 1.4; overflow-wrap: anywhere; flex-shrink: 0; }
+.idle-qualification { border: 1px solid var(--line); border-radius: var(--radius); flex-shrink: 0; }
+.idle-qualification:not([open]) { display: none; }
+.idle-qualification summary { padding: 5px 8px; cursor: pointer; }
+.idle-qualification-body { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 7px; max-height: 220px; overflow: auto; }
+.idle-qualification-body label { display: flex; align-items: center; gap: 5px; }
+.idle-qualification-body input[type=number] { width: 75px; }
+.idle-qualification-body select { max-width: 225px; }
+.idle-qualification-body p { flex-basis: 100%; margin: 0; line-height: 1.5; color: var(--detail); }

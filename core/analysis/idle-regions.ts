@@ -12,6 +12,7 @@ export interface IdleCandidateOptions {
   readonly maximumRpm: number;
   readonly minimumDurationMs: number;
   readonly maximumGapMs: number;
+  readonly eligibility?: Uint8Array;
 }
 
 /** RPM-only candidate windows, not inferred idle state or a tuning verdict.
@@ -23,6 +24,7 @@ export function discoverIdleCandidates(rpm: NumericChannelRange, options: IdleCa
   const { maximumRpm, minimumDurationMs, maximumGapMs } = options;
   if (!Number.isFinite(maximumRpm) || maximumRpm <= 0 || !Number.isFinite(minimumDurationMs) || minimumDurationMs <= 0
     || !Number.isFinite(maximumGapMs) || maximumGapMs <= 0) throw new RangeError('Invalid Idle candidate settings.');
+  if (options.eligibility && options.eligibility.length !== rpm.values.length) throw new RangeError('Idle discovery eligibility must match the original RPM grid.');
   const regions: IdleCandidateRegion[] = [];
   let current: IdleCandidateRegion | undefined;
   let invalidTime: number | undefined;
@@ -41,6 +43,7 @@ export function discoverIdleCandidates(rpm: NumericChannelRange, options: IdleCa
     if (invalidTime !== undefined && invalidTime !== time) { finish(); invalidTime = undefined; }
     if (rpm.validity[local] !== 1 || value === undefined || !Number.isFinite(value)) { invalidTime = time; continue; }
     invalidTime = undefined;
+    if (options.eligibility && options.eligibility[local] !== 1) { finish(); continue; }
     if (!matchesNumericQualification(value, 'gt', 0) || !matchesNumericQualification(value, 'lte', maximumRpm)) { finish(); continue; }
     if (current && (time < current.endMs || time - current.endMs > maximumGapMs)) finish();
     const index = rpm.startSampleIndex + local;
@@ -65,4 +68,10 @@ export function mergeIdleRegionBounds(regions: readonly IdleRegionBounds[]): Idl
     else merged.push(region);
   }
   return merged;
+}
+
+export function idleTimeInRegions(timeMs: number, regions: readonly IdleRegionBounds[]): boolean {
+  let low = 0, high = regions.length;
+  while (low < high) { const mid = (low + high) >>> 1; if (regions[mid]!.startMs <= timeMs) low = mid + 1; else high = mid; }
+  return low > 0 && timeMs <= regions[low - 1]!.endMs;
 }
