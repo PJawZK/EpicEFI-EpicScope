@@ -1,3 +1,5 @@
+import { analyzeIdleAirflow } from '../../core/analysis/idle-airflow';
+import { analyzeIdleStability } from '../../core/analysis/idle-stability';
 import { MemoryByteSource } from '../../core/parsers/byte-source';
 import { parseMlg } from '../../core/parsers/mlg/mlg-parser';
 import { IDLE_CONTRACT_RECORDS, idleContractMlg } from '../fixtures/idle/mlg-contract';
@@ -41,6 +43,9 @@ export async function runIdleAnalyzerChecks() {
       m.view.setContext(context);m.view.setActive(true);await wait();
       assert(m.field('samples').textContent==='5'&&m.field('sigma').textContent==='130.38'&&m.field('rmse').textContent==='Unavailable','Canonical counts/variance changed or a target was fabricated');
       m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('RPM valid 5, invalid 2, unavailable 0')&&m.field('assessment').textContent.includes('Original source sample indices'),'Canonical exclusions or original-index authority missing');
+      const rpm=await parsed.channelData.readChannelRange('mlg:0',0,7),scope=analyzeIdleStability(rpm,undefined);
+      const airflow=analyzeIdleAirflow({rpm,sampleIndices:scope.sampleIndices,basePosition:{range:{...rpm,values:new Float64Array(7).fill(20),validity:new Uint8Array(7).fill(1)},unit:'%'},closedLoop:{range:{...rpm,values:new Float64Array(7).fill(-2),validity:new Uint8Array(7).fill(1)},unit:'pp'}});
+      assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
       assert([...m.field('mode').options].filter(o=>!o.disabled).length===1,'Unimplemented modes became active');
@@ -425,6 +430,8 @@ export async function runIdleAnalyzerChecks() {
   await check('320459-sample browser analysis renders bounded SVG evidence without argument-limit failure', async () => {
     const values = new Float64Array(320459).fill(1000), f = fixture(values), m = mount(); try {
       m.view.setContext(f.context); m.view.setActive(true); await wait();
+      const rpm=f.traces[0].range,airflow=analyzeIdleAirflow({rpm,sampleIndices:Uint32Array.from({length:values.length},(_,i)=>rpm.startSampleIndex+i),basePosition:{range:{...rpm,values:new Float64Array(values.length).fill(20)},unit:'%'}});
+      assert(airflow.basePosition.statistics.validSampleCount===320459&&airflow.basePosition.statistics.mean===20&&airflow.closedLoop.status==='missing','Browser-scale Airflow foundation failed');
       assert(m.field('samples').textContent.replaceAll(',', '') === '320459' && m.field('rmse').textContent === '0.00', 'Large browser analysis failed');
       const svg=m.view.element.querySelector('svg'), path=()=>svg.querySelector('[data-idle-trace="0"]');
       assert(path().dataset.traceMode==='envelope'&&(path().getAttribute('d').match(/M/g)||[]).length===1,'Dense trace lost flat-line continuity');

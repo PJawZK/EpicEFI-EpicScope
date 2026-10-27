@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Base Airflow core foundation](NATIVE_AIRFLOW_CORE_CHECKPOINT.md) adds tested aligned logged-request aggregates. Its native UI remains disabled pending the next integration checkpoint.
+
 [Fixture/contract closure checkpoint](NATIVE_CONTRACT_CHECKPOINT.md) inventories current coverage, adds canonical parser-to-Stability regressions and freezes remaining mode prerequisites without changing production behavior.
 
 [Stage completion status](NATIVE_STAGE_STATUS.md) tracks the original seven integration stages and remaining closure work.
