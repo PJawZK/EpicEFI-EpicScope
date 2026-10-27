@@ -145,7 +145,7 @@ const RULES: Readonly<Record<string, RoleRule>> = {
   // Feedback DC idle-valve position controller. The firmware evaluates dcIdleBias* at dcIdleTarget
   // and exposes that runtime bias/feed-forward value through etbFeedForward while in DC_IdleValve mode.
   'idle:dcTarget': { exact: ['ini:dcIdleTarget', 'dcIdleTarget'], include: [/dc.*idle.*target/i, /idle.*valve.*target/i] },
-  'idle:dcPosition': { exact: ['ini:IdlePosition', 'IdlePosition'], include: [/idle.*position/i, /dc.*idle.*position/i], exclude: [/target/i, /status/i, /term/i] },
+  'idle:dcPosition': { exact: ['ini:IdlePosition', 'IdlePosition', 'ini:idlePositionSensor', 'idlePositionSensor'], include: [/idle.*position/i, /dc.*idle.*position/i], exclude: [/target/i, /status/i, /term/i, /current|final|base|request|raw|stepper|closed.?loop/i] },
   'idle:dcBiasOutput': { exact: ['ini:etbFeedForward', 'etbFeedForward'], include: [/etb.*feed.?forward/i, /dc.*idle.*bias/i, /idle.*bias.*(output|value)/i], exclude: [/curve/i, /table/i, /axis/i, /bin/i] },
   'idle:dcP': { exact: ['ini:dcIdlePositionStatus_pTerm', 'dcIdlePositionStatus_pTerm'], include: [/dc.*idle.*position.*p.*term/i] },
   'idle:dcI': { exact: ['ini:dcIdlePositionStatus_iTerm', 'dcIdlePositionStatus_iTerm'], include: [/dc.*idle.*position.*i.*term/i] },
@@ -315,7 +315,7 @@ export function suggestAnalyzerChannel(
 }
 
 /** Missing source units may use a verified canonical Idle role, never a fuzzy label or conflicting unit. */
-export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' | 'basePosition' | 'closedLoop' | 'finalPosition'):
+export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' | 'basePosition' | 'closedLoop' | 'finalPosition' | 'dcTarget' | 'dcPosition' | 'dcOutput'):
   { readonly unit: 'RPM' | '%'; readonly authority: 'source' | 'canonical-role' } | undefined {
   if (channel.valueType === 'bitfield') return undefined;
   const rpm = role === 'rpm' || role === 'target';

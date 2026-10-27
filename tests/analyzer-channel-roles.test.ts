@@ -22,6 +22,16 @@ describe('Idle analyzer canonical channel roles', () => {
     expect(idleRoleUnit({ ...channel('idleTarget'), unit: 'kPa' }, 'target')).toBeUndefined();
     expect(idleRoleUnit({ ...channel('RPM'), unit: 'RPM' }, 'rpm')?.authority).toBe('source');
   });
+  it('requires DC position/motor units and never auto-maps an idle request as measured feedback', () => {
+    expect(idleRoleUnit(channel('dcIdleTarget'),'dcTarget')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('IdlePosition'),'dcPosition')?.authority).toBe('canonical-role');
+    expect(idleRoleUnit(channel('dcIdlePositionStatus_output'),'dcOutput')?.unit).toBe('%');
+    expect(idleRoleUnit({...channel('IdlePosition'),unit:'V'},'dcPosition')).toBeUndefined();
+    expect(idleRoleUnit(channel('a fuzzy valve position'),'dcPosition')).toBeUndefined();
+    const requests=['currentIdlePosition','baseIdlePosition','idleStepperTargetPosition','rawIdlePositionSensor'].map(name=>({...channel(name),unit:'%'}));
+    expect(suggestAnalyzerChannel('idle','dcPosition',requests)).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','dcPosition',[...requests,{...channel('idlePositionSensor'),unit:'%'}])?.sourceName).toBe('idlePositionSensor');
+  });
   it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
     const rpm = { ...channel('RPM'), id: 'mlg:33' };
     const target = { ...channel('Idle: Target RPM'), id: 'mlg:2273' };

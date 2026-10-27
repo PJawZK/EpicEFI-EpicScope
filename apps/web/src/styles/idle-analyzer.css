@@ -144,3 +144,8 @@
 .idle-qualification-body p { flex-basis: 100%; margin: 0; line-height: 1.5; color: var(--detail); }
 
 .idle-metrics[hidden] { display: none; }
+
+/* DC tracking keeps position error and signed motor duty on distinct labelled scales. */
+.idle-plot-y-axis-right { left: auto; right: 0; }
+.idle-plot-y-axis-right span { left: 0; right: auto; }
+.idle-plot-frame.has-right-axis .idle-stability-plot { width: calc(100% - 80px); margin-right: 40px; }

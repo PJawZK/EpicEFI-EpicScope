@@ -33,6 +33,14 @@ function airflowFixture(target=true) {
   }
   return f;
 }
+function valveFixture(count=4) {
+  const f=airflowFixture();
+  if(count!==4){for(const trace of f.traces)trace.range={startSampleIndex:10,timeMs:Float64Array.from({length:count},(_,i)=>i*10),validity:new Uint8Array(count).fill(1),values:new Float64Array(count).fill(trace.channel.id==='rpm'||trace.channel.id==='target'?1000:20)};f.context.source.sampleCount=count;f.context.sourceTimeRange.endMs=(count-1)*10;}
+  for(const [id,name,values,value]of[['dc-request','dcIdleTarget',[10,20,30,40],20],['dc-measured','IdlePosition',[12,18,36,40],22],['dc-motor','dcIdlePositionStatus_output',[-95,95,94,-100],-95]]){
+    const channel={id,sourceName:name,displayName:name,unit:'%',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:count===4?Float64Array.from(values):new Float64Array(count).fill(value)}});
+  }
+  return f;
+}
 function mount(observability) {
   const view = createIdleAnalyzerView(observability); view.element.hidden = false;
   document.body.append(view.element);
@@ -55,7 +63,7 @@ export async function runIdleAnalyzerChecks() {
       assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
-      assert([...m.field('mode').options].filter(o=>!o.disabled).length===2,'Unexpected diagnostic mode became active');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===3,'Unexpected diagnostic mode became active');
     }finally{m.close();}
   });
   await check('Base Airflow renders retained context and reuses calculation across modes/tabs without reads',async()=>{
@@ -586,6 +594,73 @@ export async function runIdleAnalyzerChecks() {
       m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');change(d.querySelector('[data-purpose]'),'idle');d.querySelector('[data-edit=label]').value='Renamed';d.querySelector('[data-manager=edit]').click();await wait();assert(m.field('samples').textContent==='—','Rename or purpose granted bypass');
       d.querySelector('[data-edit=end]').value='.4';d.querySelector('[data-manager=edit]').click();await wait();assert(m.field('samples').textContent==='5'&&m.field('assessment').textContent.includes('5 valid records manually bypassed')&&!d.querySelector('[data-include]').checked,'Edited excluded candidate not explicitly bypassed');
       checked('qual-bypass',false);await wait();assert(m.field('samples').textContent==='—','Disabling bypass retained old evidence');
+    }finally{m.close();}
+  });
+  await check('DC Valve Tracking loads lazily, shows signed paired evidence and reuses calculations across modes/tabs',async()=>{
+    const f=valveFixture(),events=[],m=mount({record:event=>events.push(event)}),requests=()=>events.filter(e=>e.name==='idle.valve.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(f.calls.length===1&&!f.calls[0].ids.includes('dc-request'),'Inactive valve mode decoded its channels');
+      change(m.field('mode'),'valve');await wait();assert(f.calls.length===2&&f.calls[1].ids.length===3&&requests()===1,'Valve did not load missing channels once');
+      assert(m.field('valve-rmse').textContent==='3.32'&&m.field('valve-error').textContent==='1.50'&&m.field('valve-motor').textContent==='-1.50'&&m.field('valve-reference').textContent==='75.0%','Wrong measured-minus-requested or signed motor reference facts');
+      assert(m.view.element.querySelector('svg').textContent.includes('DC VALVE')&&m.view.element.querySelector('[data-trace-label="Error · measured − requested"]'),'Valve graphs retained RPM labels or missing error trace');
+      assert(m.view.element.querySelector('[data-trace-label="Signed motor duty"]').dataset.valueAxis==='right'&&m.view.element.querySelector('.idle-plot-y-axis-right').children.length===5,'Motor and position error share an unlabelled scale');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('4 valid, 0 invalid, 0 unavailable')&&m.field('assessment').textContent.includes('not a firmware saturation limit'),'Evidence coverage/reference qualification missing');
+      change(m.field('mode'),'stability');change(m.field('mode'),'airflow');change(m.field('mode'),'valve');m.view.element.querySelector('[data-idle-tab=next]').click();m.view.element.querySelector('[data-idle-tab=diagnosis]').click();assert(requests()===1&&f.calls.length===2,'Mode/tab transitions repeated valve analysis or reads');
+      change(m.field('motor-reference'),'100');await wait();assert(m.field('valve-reference').textContent==='25.0%'&&m.field('valve-rmse').textContent==='3.32'&&f.calls.length===2,'Motor reference ineffective, changed tracking or reread data');
+      change(m.field('motor-reference'),'0');await wait();assert(m.field('valve-rmse').textContent==='—'&&m.field('assessment').textContent.includes('above 0'),'Invalid threshold left stale healthy metrics');change(m.field('motor-reference'),'95');await wait();
+      const before=requests();m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(requests()===before&&f.calls.length===2&&m.field('valve-rmse').textContent==='3.32','Navigation destroyed retained valve authority');
+      change(m.field('dcPosition'),'');await wait();assert(m.field('valve-rmse').textContent==='Unavailable'&&m.field('valve-motor').textContent==='-1.50'&&m.field('assessment').textContent.includes('Map compatible'),'Missing feedback fabricated perfect tracking or lost independent motor evidence');
+      change(m.field('dcPosition'),'dc-measured');await wait();assert(m.field('valve-rmse').textContent==='3.32'&&f.calls.length===2,'Restored mapping reread retained columns');
+    }finally{m.close();}
+  });
+  await check('Valve Viewed/combined scope, qualification and misalignment share accepted original source selection',async()=>{
+    const f=valveFixture(),m=mount();f.traces.find(t=>t.channel.id==='dc-measured').range.timeMs=Float64Array.from([0,100,201,300]);
+    const channel={id:'clt',sourceName:'coolant',displayName:'Coolant',unit:'deg C',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from([80,80,60,60])}});
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('3 valid, 0 invalid, 1 unavailable'),'Timestamp mismatch counted as valid tracking');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];
+      for(const [a,b,label]of[[0,.1,'A'],[.2,.3,'B']]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-new=label]').value=label;d.querySelector('[data-manager=add]').click();}
+      const a=rows()[0].dataset.regionId,b=rows()[1].dataset.regionId;change(m.field('focus'),a);change(m.field('scope'),'viewed');await wait();assert(m.field('valve-rmse').textContent==='2.00'&&m.field('valve-reference').textContent==='100.0%','Viewed valve A not bounded');
+      change(m.field('focus'),b);await wait();assert(m.field('valve-rmse').textContent==='0.00'&&m.field('valve-reference').textContent==='50.0%'&&m.field('assessment').textContent.includes('1 valid, 0 invalid, 1 unavailable'),'Viewed B reused A or hid unavailable pairing');
+      change(m.field('scope'),'regions');await wait();const combined=m.field('valve-rmse').textContent;change(m.field('focus'),a);await wait();assert(m.field('valve-rmse').textContent===combined,'Combined valve numbers followed graph focus');
+      m.field('qual-enabled').checked=true;m.field('qual-enabled').dispatchEvent(new Event('change',{bubbles:true}));await wait();assert(m.field('valve-rmse').textContent==='2.00'&&m.field('valve-reference').textContent==='100.0%','Valve bypassed accepted coolant qualification');
+    }finally{m.close();}
+  });
+  await check('Valve stale reads cannot complete into a newer mapping, source or inactive view',async()=>{
+    const f=valveFixture(),m=mount(),pending=[];const original=f.context.loadTraces;let hold=true;
+    f.context.loadTraces=(ids,a,b)=>ids.includes('dc-measured')&&hold?new Promise(resolve=>pending.push(resolve)):original(ids,a,b);
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');assert(pending.length===1,'Valve read not pending');change(m.field('dcPosition'),'');await wait();const current=m.field('valve-rmse').textContent;pending[0](f.traces);await wait();assert(m.field('valve-rmse').textContent===current&&current==='Unavailable','Old mapping completed into newer evidence');
+      change(m.field('dcPosition'),'dc-measured');assert(pending.length===2,'New feedback read not pending');change(m.field('mode'),'stability');pending[1](f.traces);await wait();assert(m.field('mode').value==='stability'&&m.field('valve-rmse').textContent==='—','Inactive valve completion published');
+      change(m.field('mode'),'valve');assert(pending.length===3,'Returning mode did not request current evidence');m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:1}});await wait();assert(pending.length===4,'Replacement valve source not independently requested');hold=false;pending[3](f.traces.map(t=>t.channel.id==='dc-measured'?{...t,range:{...t.range,values:Float64Array.from([10,20,30,40])}}:t));await wait();assert(m.field('valve-rmse').textContent==='0.00','New source failed acceptance');pending[2](f.traces);await wait();assert(m.field('valve-rmse').textContent==='0.00','Old source overwrote current tracking');
+      hold=true;m.view.setContext({...f.context,source:{...f.context.source,identity:{},revision:2}});await wait();assert(pending.length===5,'Hidden-owner test did not hold a read');m.view.setActive(false);pending[4](f.traces);await wait();assert(m.field('valve-rmse').textContent==='—','Hidden owner published valve completion');hold=false;m.view.setActive(true);await wait();assert(m.field('valve-rmse').textContent==='3.32','Resuming owner did not load current valve evidence');
+    }finally{m.close();}
+  });
+  await check('320459-sample native Valve mode retains bounded graph DOM and source columns',async()=>{
+    const f=valveFixture(320459),m=mount();try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();assert(m.field('valve-rmse').textContent==='2.00'&&m.field('valve-error').textContent==='2.00'&&m.field('valve-reference').textContent==='100.0%','Large valve reference facts failed');
+      m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('320459 valid')&&m.view.element.querySelectorAll('svg *').length<150,'Large evidence count or DOM unbounded');m.view.element.querySelector('svg').dispatchEvent(new KeyboardEvent('keydown',{key:'+',bubbles:true}));const axisTimes=()=>[...m.view.element.querySelectorAll('svg text')].map(e=>e.textContent).filter(t=>t.endsWith(' s')).join('|'),viewport=axisTimes();change(m.field('mode'),'stability');change(m.field('mode'),'valve');await wait();assert(f.calls.length===2&&axisTimes()===viewport,'Large mode revisit reread source or reset viewport');
+    }finally{m.close();}
+  });
+  await check('Valve full-column retention never promotes partial RPM context or drops independent cached columns',async()=>{
+    const f=valveFixture(),m=mount(),original=f.context.loadTraces;let first=true;
+    f.context.loadTraces=async(ids,a,b)=>{if(first){first=false;f.calls.push({ids,start:a,end:b});return f.traces.filter(t=>ids.includes(t.channel.id)).map(t=>({...t,complete:false,range:{...t.range,values:t.range.values.slice(0,2),timeMs:t.range.timeMs.slice(0,2),validity:t.range.validity.slice(0,2)}}));}return original(ids,a,b);};
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();assert(m.field('samples').textContent==='2','Partial fixture did not start partial');change(m.field('mode'),'valve');await wait();
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.3';d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();await wait();
+      assert(m.field('samples').textContent==='4'&&m.field('valve-rmse').textContent==='3.32','Partial RPM columns were promoted to authoritative full source');
+      assert(f.calls.length===3&&f.calls[2].ids.includes('rpm')&&!f.calls[2].ids.includes('dc-measured'),'Base refresh lost retained valve columns or failed to obtain complete RPM');
+    }finally{m.close();}
+  });
+  await check('Valve channel remapping does not retain every previously selected full-log column',async()=>{
+    const f=valveFixture(),m=mount();
+    for(let i=0;i<4;i++){const channel={id:`feedback-${i}`,sourceName:`Alternate feedback ${i}`,displayName:`Alternate feedback ${i}`,unit:'%',valueType:'number'};f.context.channels.push(channel);f.traces.push({channel,complete:true,color:'#abc',range:{...f.traces[0].range,values:new Float64Array(4).fill(20+i)}});}
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();
+      for(let i=0;i<4;i++){change(m.field('dcPosition'),`feedback-${i}`);await wait();}
+      const before=f.calls.length;change(m.field('dcPosition'),'dc-measured');await wait();
+      assert(f.calls.length===before+1&&f.calls.at(-1).ids.join(',')==='dc-measured'&&m.field('valve-rmse').textContent==='3.32','Retired feedback columns accumulated or current motor/request columns were lost');
+      const reads=f.calls.length;change(m.field('dcPosition'),'');await wait();change(m.field('dcPosition'),'dc-measured');await wait();assert(f.calls.length===reads,'Clearing/restoring the last role lost its bounded retained column');
     }finally{m.close();}
   });
   return { passed: checks.length, checks };

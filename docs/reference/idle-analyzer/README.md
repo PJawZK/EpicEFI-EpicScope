@@ -2,12 +2,14 @@
 
 **Branch:** `ui/idle-analyzer-html-integration`  
 **Base:** EpicScope `main` at `702c880a29baa28b762ac26f7f7ed55ef01239ef` (2026-10-26)  
-**Current scope:** First native recorded-data Stability slice, authorized after the completed readiness assessment; frozen standalone HTML remains the visual/behavioral reference.
+**Current scope:** Incremental native Stability, Base Airflow and DC Valve Tracking with source-bound regions; frozen standalone HTML remains the visual/behavioral reference.
 **Explicit boundary:** Scoped native TypeScript/CSS integration and focused tests only; no standalone HTML changes, dependencies/framework, release workflows, firmware, ECU writes/Burn or merge to `main`.
 
 ## Current implementation checkpoint
 
-[Viewed region implementation plan](VIEWED_REGION_IMPLEMENTATION_PLAN.md) records the read-only scope/qualification/validation plan and deferred user requirements. It is not implemented.
+[DC Valve Tracking — Group B](NATIVE_VALVE_TRACKING_CHECKPOINT.md) adds aligned measured−requested position evidence, independent signed motor-duty coverage, lazy source reads and distinct graph axes.
+
+[Viewed region implementation plan](VIEWED_REGION_IMPLEMENTATION_PLAN.md) records the read-only scope/qualification/validation plan and deferred user requirements. Its native implementation is recorded in [Group A](NATIVE_VIEWED_REGION_CHECKPOINT.md).
 
 [Regression gate investigation](NATIVE_REGRESSION_GATE_CHECKPOINT.md) records the blocked-run investigation and shared-interaction fixture isolation/cleanup correction.
 

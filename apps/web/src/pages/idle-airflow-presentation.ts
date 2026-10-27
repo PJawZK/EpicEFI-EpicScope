@@ -1,11 +1,11 @@
-import type { IdleAirflowMetric, IdleAirflowResult } from '../../../../core/analysis/idle-airflow';
-const n = (value: number | undefined) => value !== undefined && Number.isFinite(value) ? value.toFixed(2) : 'Unavailable';
-export const idleAirflowValue = (metric: IdleAirflowMetric, field: 'mean' | 'rootMeanSquare' = 'mean') => metric.status === 'available' ? n(metric.statistics[field]) : 'Unavailable';
+import type { IdleAirflowResult } from '../../../../core/analysis/idle-airflow';
+import { idleRecordedValue as idleAirflowValue, idleRecordedCoverage } from './idle-recorded-presentation';
+export { idleAirflowValue };
 /** Constant-size projection of retained request statistics. Never reads recorded arrays. */
 export function presentIdleAirflow(result: IdleAirflowResult, complete: boolean) {
   const roles = ([['Base request', result.basePosition], ['Applied correction', result.closedLoop], ['Final request', result.finalPosition]] as const).map(([label, metric]) => ({
     label, value: `${idleAirflowValue(metric)} ${metric.unit}`,
-    coverage: 'statistics' in metric ? `${metric.statistics.validSampleCount} valid, ${metric.statistics.invalidSampleCount} invalid, ${metric.statistics.unavailableSampleCount} unavailable of ${metric.statistics.inputSampleCount} selected original records; ${metric.status}.` : `${metric.status}: ${metric.reason}`,
+    coverage: idleRecordedCoverage(metric),
   }));
   const metrics = [result.basePosition, result.closedLoop, result.finalPosition];
   const missing = metrics.some(metric => metric.status === 'missing' || metric.status === 'incompatible-unit');
