@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Viewed region implementation plan](VIEWED_REGION_IMPLEMENTATION_PLAN.md) records the read-only scope/qualification/validation plan and deferred user requirements. It is not implemented.
+
 [Regression gate investigation](NATIVE_REGRESSION_GATE_CHECKPOINT.md) records the blocked-run investigation and shared-interaction fixture isolation/cleanup correction.
 
 [Native Base Airflow recorded context](NATIVE_AIRFLOW_UI_CHECKPOINT.md) enables the second mode through retained traces, scope and qualification, with per-role coverage and descriptive assessment.
