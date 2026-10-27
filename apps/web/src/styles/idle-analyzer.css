@@ -113,6 +113,9 @@
 .idle-region-table input[data-edit=label] { width: 150px; }
 .idle-region-table tr.is-focused { background: var(--accent-soft); }
 .idle-region-table td:last-child { white-space: nowrap; }
+.idle-region-actions { display: flex; align-items: center; gap: 5px; margin-block: 3px; }
+.idle-region-actions label { display: flex; align-items: center; gap: 5px; }
+.idle-region-actions select { width: 205px; }
 .idle-region-create input[type=number] { width: 100px; }
 .idle-region-create label { display: flex; gap: 4px; align-items: center; }
 .idle-region-create { padding-top: 8px; border-top: 1px solid var(--line); }

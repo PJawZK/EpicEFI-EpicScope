@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Managed-region split and merge](NATIVE_REGION_PARTITION_CHECKPOINT.md) adds precise source-time partitions and compatible merges without changing the included sample union, qualification policy or source ownership.
+
 [Selected region qualification](NATIVE_QUALIFICATION_CHECKPOINT.md) adds opt-in, unit-verified coolant and closed-input conditions, explicit manual bypass, source-valid evidence and matching discovery. Full firmware idle qualification remains unestablished.
 
 [Descriptive Stability findings and next tests](NATIVE_STABILITY_FINDINGS_CHECKPOINT.md) projects accepted measurements into evidence-dependent observations, limitations and repeatable next-test guidance. Warm/closed-throttle idle qualification and tuning changes are not inferred.

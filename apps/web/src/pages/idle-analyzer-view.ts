@@ -204,13 +204,16 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (action.type === 'focus') {
         focusId = action.id; renderRegionControls(); renderTimeline(); renderPlot(); return;
       }
+      if ((action.type === 'split' || action.type === 'merge') && scopeValue === 'manual' && (manualId === action.id || action.type === 'merge' && manualId === action.targetId)) throw new Error('Choose Analyze included regions before splitting or merging the active single manual scope. Previous regions retained.');
       if (action.type === 'add') regionSession.add(action.bounds, action.label);
       if (action.type === 'edit') regionSession.edit(action.id, action.bounds, action.label);
       if (action.type === 'include') regionSession.include(action.id, action.included);
       if (action.type === 'remove') regionSession.remove(action.id);
+      if (action.type === 'split') regionSession.split(action.id, action.timeMs);
+      if (action.type === 'merge') { const merged = regionSession.merge(action.id, action.targetId); if (focusId === action.targetId) focusId = merged.id; }
       if (action.type === 'analyze') scopeValue = 'regions';
       configure(context); renderPlot(); void analyze(); if (accepted) { renderCoverage(); renderAssessment(); }
-      manager.message(action.type === 'analyze' ? 'Included regions selected. Overlapping samples count once.' : 'Region change accepted. Included scope updates analysis; View changes only graph focus.');
+      manager.message(action.type === 'analyze' ? 'Included regions selected. Overlapping samples count once.' : action.type === 'split' || action.type === 'merge' ? 'Region partition changed. Included sample union and manual-bypass policy preserved; shared endpoints count once.' : 'Region change accepted. Included scope updates analysis; View changes only graph focus.');
     } catch (error) { manager.message(error instanceof Error ? error.message : 'Region change rejected.'); }
   };
   const showDiscovery = (message: string, review = false) => {

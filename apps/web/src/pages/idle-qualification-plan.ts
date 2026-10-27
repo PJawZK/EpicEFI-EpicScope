@@ -3,7 +3,7 @@ import type { NumericQualificationCondition } from '../../../../core/analysis/sa
 import { idleCoolantThreshold } from '../../../../core/analysis/idle-qualification';
 import { mergeIdleRegionBounds, type IdleRegionBounds } from '../../../../core/analysis/idle-regions';
 import { idleQualificationRoleUnit } from './analyzer-channel-roles';
-import type { IdleManagedRegion } from './idle-region-session';
+import { idleRegionAllowsBypass, type IdleManagedRegion } from './idle-region-session';
 export type IdleQualificationRole = 'coolant' | 'pedal' | 'physicalTps';
 export interface IdleQualificationSettings {
   enabled: boolean; requireWarm: boolean; requireClosed: boolean; closedSource: 'pedal' | 'physicalTps';
@@ -19,7 +19,7 @@ export function buildIdleQualificationPlan(settings: IdleQualificationSettings, 
   if (settings.requireWarm && (!Number.isFinite(settings.minimumCelsius) || settings.minimumCelsius < -273.15)) throw new Error('Enter a finite coolant threshold in °C (at least −273.15).');
   if (settings.requireClosed && (!Number.isFinite(settings.maximumPercent) || settings.maximumPercent < 0 || settings.maximumPercent > 100)) throw new Error('Enter a closed-input limit from 0 to 100%.');
   const included = scope.regions.filter(region => region.included);
-  const isManual = (region: IdleManagedRegion) => region.origin === 'manual' || region.boundsEdited;
+  const isManual = idleRegionAllowsBypass;
   const bypass = !discovery && settings.manualBypass ? mergeIdleRegionBounds(scope.kind === 'manual' ? scope.regions.filter(region => region.id === scope.manualId).map(region => ({startMs:region.startMs,endMs:region.endMs}))
     : scope.kind === 'regions' ? included.filter(isManual).map(region => ({startMs:region.startMs,endMs:region.endMs})) : []) : [];
   const allBypassed = bypass.length > 0 && (scope.kind === 'manual' || (scope.kind === 'regions' && JSON.stringify(mergeIdleRegionBounds(included)) === JSON.stringify(bypass)));

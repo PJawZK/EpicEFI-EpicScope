@@ -58,6 +58,9 @@ export async function runIdleAnalyzerChecks() {
       assert(m.field('samples').textContent === '2' && m.view.element.querySelectorAll('.idle-region-manager tbody tr').length === 1 && f.calls.length === 1, 'Manual bounds not applied');
       m.field('start').value = '-1'; m.field('apply-region').click(); await wait();
       assert(m.field('samples').textContent === '2' && f.calls.length === 1 && m.field('status').textContent.includes('Previous region retained'), 'Invalid region replaced accepted state');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');
+      d.querySelector('[data-edit=split]').value='.15';d.querySelector('[data-manager=split]').click();
+      assert(d.querySelectorAll('tbody tr').length===1&&m.field('samples').textContent==='2'&&d.querySelector('[data-manager=message]').textContent.includes('Analyze included regions'),'Split silently changed single-region analysis scope');
     } finally { m.close(); }
   });
   await check('Logger A/B and saved ranges are real scope choices and preserve semantics across reordering', async () => {
@@ -259,6 +262,35 @@ export async function runIdleAnalyzerChecks() {
       first.querySelector('[data-edit=start]').value='.1';first.querySelector('[data-manager=edit]').click();await wait();assert(m.field('samples').textContent==='4','Accepted edit did not update union');
     }finally{m.close();}
   });
+  await check('split and merge preserve recorded union, excluded gaps, qualification policy and retained evidence',async()=>{
+    const f=fixture([900,1000,1100,2000,900,1000]),m=mount();
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();
+      const d=m.view.element.querySelector('.idle-region-manager'),rows=()=>[...d.querySelectorAll('tbody tr')];
+      const add=(a,b)=>{d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();};
+      add(0,.2);add(.4,.5);d.querySelector('[data-manager=analyze]').click();await wait();
+      const original=[m.field('sigma').textContent,m.field('rmse').textContent],reads=f.calls.length;
+      assert(m.field('samples').textContent==='5','Fixture scope incorrect');
+      const firstId=rows()[0].dataset.regionId;
+      rows()[0].querySelector('[data-edit=split]').value='0';rows()[0].querySelector('[data-manager=split]').click();
+      assert(rows().length===2&&d.querySelector('[data-manager=message]').textContent.includes('strictly inside'),'Invalid split mutated definitions');
+      rows()[0].querySelector('[data-edit=split]').value='.1';rows()[0].querySelector('[data-manager=split]').click();await wait();
+      assert(rows().length===3&&rows()[0].dataset.regionId===firstId&&m.field('samples').textContent==='5'&&JSON.stringify([m.field('sigma').textContent,m.field('rmse').textContent])===JSON.stringify(original),'Split changed measured union or retained identity');
+      assert(m.field('region-evidence').textContent.startsWith('3 included regions')&&f.calls.length===reads,'Split left stale scope metadata or reread source');
+      const targets=rows()[0].querySelector('[data-merge-target]');
+      assert(targets.options.length===2&&targets.options[1].value===rows()[1].dataset.regionId,'Merge allowed a gapped target');
+      rows()[1].querySelector('[data-manager=focus]').click();change(targets,rows()[1].dataset.regionId);rows()[0].querySelector('[data-manager=merge]').click();await wait();
+      assert(rows().length===2&&m.field('focus').value===firstId&&m.field('samples').textContent==='5','Merge lost focus or changed union');
+      assert(rows()[0].querySelector('[data-merge-target]').disabled&&m.field('region-evidence').textContent.startsWith('2 included regions'),'Gapped merge enabled or stale metadata');
+      const excluded=rows()[1].querySelector('[data-include]');excluded.checked=false;excluded.dispatchEvent(new Event('change',{bubbles:true}));await wait();
+      rows()[1].querySelector('[data-edit=split]').value='.45';rows()[1].querySelector('[data-manager=split]').click();await wait();
+      assert(rows().length===3&&!rows()[1].querySelector('[data-include]').checked&&!rows()[2].querySelector('[data-include]').checked&&m.field('samples').textContent==='3','Split activated excluded data');
+      change(rows()[1].querySelector('[data-merge-target]'),rows()[2].dataset.regionId);rows()[1].querySelector('[data-manager=merge]').click();await wait();
+      assert(rows().length===2&&m.field('samples').textContent==='3'&&f.calls.length===reads,'Excluded merge changed evidence or performed IO');
+      d.querySelector('[data-manager=all]').click();await wait();assert(m.field('samples').textContent==='5','Partition roundtrip lost original recorded coverage');
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(rows().length===2&&m.field('samples').textContent==='5'&&f.calls.length===reads,'Navigation lost partition state or reread source');
+    }finally{m.close();}
+  });
   await check('managed focus and edits survive navigation; source revision retires definitions and pending union work', async()=>{
     const f=fixture([900,1000,1100,2000,900,1000]),m=mount();
     try{
@@ -329,6 +361,10 @@ export async function runIdleAnalyzerChecks() {
       m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value='.5';d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();await wait();
       assert(m.field('samples').textContent==='—','Manual regions silently bypassed missing conditions by default');
       checked('qual-bypass',true);await wait();assert(m.field('samples').textContent==='6'&&m.field('assessment').textContent.includes('6 valid records manually bypassed'),'Explicit manual bypass failed or claimed conditions were verified');
+      d.querySelector('[data-edit=split]').value='.25';d.querySelector('[data-manager=split]').click();await wait();
+      assert(d.querySelectorAll('tbody tr').length===2&&m.field('samples').textContent==='6'&&m.field('assessment').textContent.includes('6 valid records manually bypassed'),'Split changed explicit bypass coverage');
+      const partRows=d.querySelectorAll('tbody tr');change(partRows[0].querySelector('[data-merge-target]'),partRows[1].dataset.regionId);partRows[0].querySelector('[data-manager=merge]').click();await wait();
+      assert(d.querySelectorAll('tbody tr').length===1&&m.field('samples').textContent==='6','Merge changed qualified manual coverage');
       m.field('discover').click();await wait();assert(m.field('discovery-message').textContent.includes('Qualification unavailable'),'Discovery used a manual bypass or RPM-only fallback');
       d.querySelector('[data-manager=close]').click();change(m.field('scope'),'full');await wait();assert(m.field('samples').textContent==='—','Full log silently bypassed missing conditions');
     }finally{m.close();}
@@ -350,6 +386,12 @@ export async function runIdleAnalyzerChecks() {
       assert(path().dataset.traceMode==='raw'&&path().getAttribute('d').includes('L'),'Zoomed trace did not switch to original raw samples');
       assert(f.calls.length===1,'Graph zoom reread source');m.field('fit').click();
       assert(m.view.element.querySelectorAll('svg path').length === 2 && m.view.element.querySelectorAll('svg *').length < 100, 'Unbounded graph DOM');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');
+      d.querySelector('[data-new=start]').value='0';d.querySelector('[data-new=end]').value=String(f.context.sourceTimeRange.endMs/1000);d.querySelector('[data-manager=add]').click();d.querySelector('[data-manager=analyze]').click();await wait();
+      d.querySelector('[data-edit=split]').value='16022.9';d.querySelector('[data-manager=split]').click();await wait();
+      assert(m.field('samples').textContent.replaceAll(',', '')==='320459'&&f.calls.length===1,'Large split duplicated endpoint samples or reread source');
+      const parts=d.querySelectorAll('tbody tr');change(parts[0].querySelector('[data-merge-target]'),parts[1].dataset.regionId);parts[0].querySelector('[data-manager=merge]').click();await wait();
+      assert(m.field('samples').textContent.replaceAll(',', '')==='320459'&&m.field('rmse').textContent==='0.00'&&f.calls.length===1,'Large merge changed reference metrics');
     } finally { m.close(); }
   });
   return { passed: checks.length, checks };
