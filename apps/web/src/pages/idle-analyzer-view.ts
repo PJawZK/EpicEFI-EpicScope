@@ -9,6 +9,8 @@ import { discoverIdleCandidates, type IdleCandidateOptions, type IdleRegionBound
 import { createIdleRegionSession } from './idle-region-session';
 import { createIdleRegionManager, type IdleRegionAction } from './idle-region-manager';
 import { sliceNumericRangeByTime } from '../../../../core/timeline/viewport-series';
+import { assessIdleStability } from '../../../../core/analysis/idle-stability-assessment';
+import { presentIdleStabilityAssessment } from './idle-stability-assessment';
 import { createIdleStabilityPlot, type IdlePlotSeries } from './idle-stability-plot';
 import { installAnalyzerRangeInteraction } from './analyzer-range-interaction';
 import { createOwnerEvidence } from '../observability/producers/owner';
@@ -32,7 +34,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let generation = 0;
   let pendingKey: string | undefined;
   let pendingSource: object | undefined;
-  let accepted: { source: object; key: string; result: IdleStabilityResult; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
+  let accepted: { source: object; key: string; result: IdleStabilityResult; assessment: ReturnType<typeof assessIdleStability>; presentation: ReturnType<typeof presentIdleStabilityAssessment>; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
   const regionSession = createIdleRegionSession();
   let focusId = 'overview';
   let regionEvidence: { source: object; key: string; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
@@ -95,6 +97,12 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const plot = createIdleStabilityPlot();
   field('plot').append(plot.element);
   const status = (text: string) => { field('status').textContent = text; };
+  const mappingDescription = () => ['rpm', 'target', ...CONTEXT_ROLES].map(role => {
+      const id = role === 'rpm' ? rpmId : role === 'target' ? targetId : contextIds[role as ContextRole];
+      const channel = context.channels.find(item => item.id === id); const unit = channel && idleRoleUnit(channel, role as 'rpm' | 'target' | ContextRole);
+      return `${role}: ${channel ? channel.sourceName + ' [' + unit?.unit + '] · ' + (unit?.authority === 'canonical-role' ? 'canonical role; source unit unspecified' : 'recorded/catalog unit') : 'unavailable'}`;
+    }).join('; ');
+  const syncMappingNote = () => { field('mapping-note').textContent = mappingDescription(); };
   const manager = createIdleRegionManager(events.signal, action => { if (active && !disposed) manageRegion(action); });
   root.append(manager.element);
   const selectedBounds = (): IdleRegionBounds | undefined => {
@@ -252,18 +260,22 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const panel = field('assessment'); panel.replaceChildren();
     if (!accepted) { panel.append(section('Recorded evidence required', 'Choose an RPM channel and a recorded region, then run analysis. Target-dependent metrics remain unavailable without a compatible target channel.')); return; }
     const { analysis, inBandPercent } = accepted.result;
+    const { assessment, presentation } = accepted;
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
-    if (tab === 'diagnosis') panel.append(
-      section('Observed behavior', `${analysis.rpm.validSampleCount} valid RPM samples; sample standard deviation ${number(analysis.rpm.standardDeviation)} RPM. Target error RMSE ${number(analysis.tracking?.rmse)} RPM.`),
-      section('Possible explanation', 'RPM variability describes the selected recording. It does not isolate airflow, ignition, fueling, actuator response or changing mechanical load.'),
-      section('Limits of inference', 'This region is selected, not automatically idle-qualified. No gain recommendation, controller timing or causal tuning improvement is inferred.'),
-      section('Next test', 'Select a known stable idle region and repeat with matched target RPM, coolant temperature, electrical and mechanical loads.'));
+    if (tab === 'diagnosis') {
+      panel.append(section('Evidence status', presentation.status), section('Observed behavior', presentation.observed));
+      for (const finding of presentation.findings) {
+        const item = section(finding.title, finding.text); item.dataset.idleFinding = finding.code; panel.append(item);
+      }
+      panel.append(section('Limits of inference', presentation.limits), section('Next test', presentation.next));
+    }
     else if (tab === 'evidence') panel.append(
       section('Source and channels', `${context.source?.descriptor?.displayName ?? 'Source metadata unavailable'} · RPM: ${accepted.rpm.channel.sourceName} [${idleRoleUnit(accepted.rpm.channel, 'rpm')?.unit ?? 'unavailable'}] · Target: ${accepted.target?.channel.sourceName ?? 'unavailable'}. Original source sample indices are retained.`),
       section('Measurement coverage', `RPM valid ${analysis.rpm.validSampleCount}, invalid ${analysis.rpm.invalidSampleCount}, unavailable ${analysis.rpm.unavailableSampleCount}. Paired RPM/target valid ${analysis.tracking?.sampleCount ?? 0}, invalid ${analysis.tracking?.invalidSampleCount ?? 0}, unavailable ${analysis.tracking?.unavailableSampleCount ?? 0}.`),
-      section('Unit authority', field('mapping-note').textContent ?? ''),
-      section('Definitions', `σ uses n−1, consistent with production Range Statistics. Error is actual−target RPM. In-band ±40 RPM: ${number(inBandPercent)}%. Each valid pair has equal weight; gaps are not evidence of settled idle.`));
-    else panel.append(section('Recommended recording', 'Record repeated steady idle at comparable temperature and load, keeping the RPM target and tune version unchanged. Capture the entire region and record intentional load changes.'), section('What would support a change?', 'Repeatable like-for-like measurements with verified source/tune association. The present read-only stability view does not establish a tuning instruction.'));
+      section('Evidence eligibility', `${presentation.status}. Findings: ${presentation.findings.map(finding => finding.title).join('; ') || 'none'}. Warm/closed-throttle idle state: not established. Target range uses ${assessment.facts.validTarget} target-valid samples; paired metrics use ${assessment.facts.paired} aligned valid pairs.`),
+      section('Unit authority', mappingDescription()),
+      section('Definitions', `σ uses n−1, consistent with production Range Statistics. Error is actual−target RPM. In-band ±40 RPM: ${inBandPercent === undefined ? 'Unavailable' : number(inBandPercent) + '%' }. Each valid pair has equal weight; gaps are not evidence of settled idle.`));
+    else panel.append(section('Recommended action', presentation.next), section('Hold constant', presentation.holdConstant), section('What would support it?', presentation.supports), section('What would contradict it?', presentation.contradicts), section('Limits of inference', presentation.limits));
   };
   const clear = () => {
     accepted = undefined; renderedPlot = undefined; plot.clear();
@@ -308,11 +320,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const descriptor = context.source?.descriptor;
     field('source').textContent = descriptor ? `${descriptor.displayName} · ${descriptor.format} · ${context.source!.sampleCount.toLocaleString()} indexed records` : 'Load a recorded MLG through Open Log (source metadata unavailable).';
     loggerButton.disabled = !context.openRangeInLogger || !bounds;
-    field('mapping-note').textContent = ['rpm', 'target', ...CONTEXT_ROLES].map(role => {
-      const id = role === 'rpm' ? rpmId : role === 'target' ? targetId : contextIds[role as ContextRole];
-      const channel = context.channels.find(item => item.id === id); const unit = channel && idleRoleUnit(channel, role as 'rpm' | 'target' | ContextRole);
-      return `${role}: ${channel ? channel.sourceName + ' [' + unit?.unit + '] · ' + (unit?.authority === 'canonical-role' ? 'canonical role; source unit unspecified' : 'recorded/catalog unit') : 'unavailable'}`;
-    }).join('; ');
+    syncMappingNote();
     renderRegionControls(); renderTimeline();
   };
   const analyze = async () => {
@@ -353,7 +361,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const complete = [rpm, ...(target ? [target] : [])].every(trace => trace.complete || numericRangeCoversTime(trace.range, bounds.startMs, bounds.endMs));
       if (captured.sourceTimeRange && readBounds.startMs <= captured.sourceTimeRange.startMs && readBounds.endMs >= captured.sourceTimeRange.endMs && traces.every(trace => trace.complete || numericRangeCoversTime(trace.range, readBounds.startMs, readBounds.endMs))) regionEvidence = { source: source.identity, key: evidenceKey, traces };
       const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), complete });
-      accepted = { source: source.identity, key, result, rpm, target, traces };
+      const assessment = assessIdleStability(result);
+      accepted = { source: source.identity, key, result, assessment, presentation: presentIdleStabilityAssessment(assessment), rpm, target, traces };
       const stats = result.analysis;
       field('sigma').textContent = number(stats.rpm.standardDeviation);
       field('rmse').textContent = number(stats.tracking?.rmse);
@@ -406,8 +415,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const listen = (node: HTMLElement, action: () => void, event = 'click') => node.addEventListener(event, () => {
     if (active && !disposed) action();
   }, { signal: events.signal });
-  listen(rpmSelect, () => { resetDiscovery(); rpmId = rpmSelect.value; void analyze(); }, 'change');
-  for (const role of CONTEXT_ROLES) listen(contextSelects[role], () => { contextIds[role] = contextSelects[role].value; void analyze(); }, 'change');
+  listen(rpmSelect, () => { resetDiscovery(); rpmId = rpmSelect.value; syncMappingNote(); void analyze(); }, 'change');
+  for (const role of CONTEXT_ROLES) listen(contextSelects[role], () => { contextIds[role] = contextSelects[role].value; syncMappingNote(); void analyze(); }, 'change');
   listen(field('manage-regions'), () => { renderRegionControls(); manager.open(); });
   listen(field('focus'), () => { focusId = field<HTMLSelectElement>('focus').value; renderRegionControls(); renderTimeline(); renderPlot(); }, 'change');
   field('region-markers').addEventListener('pointerdown', event => { if (!event.shiftKey) event.stopPropagation(); }, { signal: events.signal });
@@ -429,7 +438,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   listen(field('region-focus'), plot.fit);
   listen(field('zoom-in'), () => plot.zoom(.8));
   listen(field('zoom-out'), () => plot.zoom(1.25));
-  listen(targetSelect, () => { targetId = targetSelect.value; void analyze(); }, 'change');
+  listen(targetSelect, () => { targetId = targetSelect.value; syncMappingNote(); void analyze(); }, 'change');
   listen(scopeSelect, () => { scopeValue = scopeSelect.value; const bounds = selectedBounds(); startInput.value = bounds ? String(bounds.startMs / 1000) : ''; endInput.value = bounds ? String(bounds.endMs / 1000) : ''; renderRegionControls(); renderTimeline(); renderPlot(); void analyze(); }, 'change');
   listen(field('apply-region'), () => {
     const startMs = Number(startInput.value) * 1000;

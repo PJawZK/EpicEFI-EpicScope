@@ -282,6 +282,27 @@ export async function runIdleAnalyzerChecks() {
       for(const release of releases.slice(0,-1))release(f.traces);await wait();assert(m.field('samples').textContent==='0'&&m.field('status').textContent.includes('No included'),'Obsolete union overwrote newer selection');
     }finally{m.close();}
   });
+  await check('Stability findings and next tests follow accepted numeric evidence, not graph focus',async()=>{
+    const f=fixture([900,900,900,1100,1100,1100]),m=mount();
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();
+      assert(m.view.element.querySelector('[data-idle-finding="outside-band"]'),'Missing measured excursion finding');
+      assert(m.field('assessment').textContent.includes('Warm-engine, closed-throttle idle')&&m.field('assessment').textContent.includes('not established'),'Invented idle qualification');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');
+      for(const [a,b,label]of[[0,.2,'Below target'],[.3,.5,'Above target']]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-new=label]').value=label;d.querySelector('[data-manager=add]').click();}
+      d.querySelector('[data-manager=analyze]').click();await wait();const mixed=m.field('assessment').textContent;
+      d.querySelector('[data-manager=focus]').click();assert(m.field('assessment').textContent===mixed&&f.calls.length===1,'Focus recomputed/replaced combined assessment');
+      const include=d.querySelectorAll('[data-include]')[1];include.checked=false;include.dispatchEvent(new Event('change',{bubbles:true}));await wait();
+      assert(m.view.element.querySelector('[data-idle-finding="mean-offset"]')&&m.field('assessment').textContent.includes('below target'),'Changed included evidence did not update signed-offset finding');
+      d.querySelector('[data-manager=close]').click();m.view.element.querySelector('[data-idle-tab=next]').click();assert(m.field('assessment').textContent.includes('similarly signed offset')&&m.field('assessment').textContent.includes('What would contradict it?'),'Next-test guidance remained generic');
+      m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(f.calls.length===1&&m.field('assessment').textContent.includes('similarly signed offset'),'Navigation discarded accepted guidance or reread source');
+    }finally{m.close();}
+  });
+  await check('missing target, stopped engine and paired reference-band evidence produce distinct guidance',async()=>{
+    for(const [values,target,code,expected]of[[[1000,1000,1000],true,'within-band','Retain this recording'],[[1000,1000,1000],false,'missing-target','Verify the logged target'],[[0,1000,1000],true,'nonpositive-rpm','Separate verified engine-off']]){
+      const f=fixture(values,target),m=mount();try{m.view.setContext(f.context);m.view.setActive(true);await wait();assert(m.view.element.querySelector(`[data-idle-finding="${code}"]`),'Missing finding '+code);m.view.element.querySelector('[data-idle-tab=next]').click();assert(m.field('assessment').textContent.includes(expected),'Wrong next test '+code);if(code==='within-band'){change(m.field('target'),'');await wait();m.view.element.querySelector('[data-idle-tab=evidence]').click();assert(m.field('assessment').textContent.includes('target: unavailable')&&m.field('mapping-note').textContent.includes('target: unavailable')&&!m.field('assessment').textContent.includes('Unavailable%'),'Evidence/setup retained stale target metadata or invalid unavailable percentage');}}finally{m.close();}
+    }
+  });
   await check('320459-sample browser analysis renders bounded SVG evidence without argument-limit failure', async () => {
     const values = new Float64Array(320459).fill(1000), f = fixture(values), m = mount(); try {
       m.view.setContext(f.context); m.view.setActive(true); await wait();

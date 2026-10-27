@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Descriptive Stability findings and next tests](NATIVE_STABILITY_FINDINGS_CHECKPOINT.md) projects accepted measurements into evidence-dependent observations, limitations and repeatable next-test guidance. Warm/closed-throttle idle qualification and tuning changes are not inferred.
+
 [Scope authority and discovery feedback](NATIVE_SCOPE_FEEDBACK_CHECKPOINT.md) follows native action-based investigation: explicit metric scope/apply action, graph-focus explanation and visible, truthful candidate outcomes without changing union mathematics.
 
 [Native region manager and combined analysis](NATIVE_REGION_MANAGER_CHECKPOINT.md) adds editable inclusion/exclusion, independent graph focus, source-time region markers and deduplicated union analysis, using existing Logger/source owners.
