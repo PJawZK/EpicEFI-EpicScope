@@ -2,7 +2,7 @@
 
 Branch: `ui/idle-analyzer-html-integration`. Parent: `43588f40c6353f6437ae5bffd0674e7ab9dd5ea0`. Scope: one native mode integration using the tested Base Airflow core. Stop for review; no push, merge, additional diagnostic mode, tune editing or ECU writing.
 
-**Integration-wide validation is incomplete:** the full browser run timed out in the existing VE section. Targeted native/Idle gates pass, but the whole application is not declared validated. See the validation gate below.
+**Historical validation block:** this checkpoint initially stopped on the full-browser VE-section failures documented below. The subsequent [regression gate investigation](NATIVE_REGRESSION_GATE_CHECKPOINT.md) records a complete 1,545-check pass. Manual/hardware acceptance remains open; the original interpolation timeout is not claimed permanently explained or fixed.
 
 ## Working native behavior
 
@@ -69,4 +69,4 @@ Artifacts: `/workspace/epicscope-idle-airflow-ui/` and adjacent named logs. The 
 
 [Stage status](NATIVE_STAGE_STATUS.md) now records two working native recorded-data modes. Base Airflow's request-context slice is integrated; it is not complete calibration parity. The native selector reuses existing percentage/canonical-role unit authority; other firmware-specific request representations remain unavailable until explicitly supported. There are no tune tables, raw PID/controller-limit judgements, inner valve tracking, recovery events, independent B, persistence or test plans added here.
 
-Stage 1 remains partial overall; Stability/Base Airflow contracts have executable coverage. Stage 2 remains complete for the current primary-source foundation, extended here at the same owner. Stage 3 and 4 remain partial, stage 5 not started, stage 6 partial and stage 7 open. Full 1 GB hardware acceptance and unavailable original prototype/tune provenance remain unresolved. Stop for manual review and budget reassessment. Resolve/replay the full regression timeout before marking validation complete or beginning another capability; do not merge.
+Stage 1 remains partial overall; Stability/Base Airflow contracts have executable coverage. Stage 2 remains complete for the current primary-source foundation, extended here at the same owner. Stage 3 and 4 remain partial, stage 5 not started, stage 6 partial and stage 7 open. Full 1 GB hardware acceptance and unavailable original prototype/tune provenance remain unresolved. Stop for manual review and budget reassessment. The subsequent regression checkpoint records the full gate passing; manual acceptance and hardware validation still remain before merge consideration.

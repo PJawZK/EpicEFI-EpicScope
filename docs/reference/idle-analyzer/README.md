@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Regression gate investigation](NATIVE_REGRESSION_GATE_CHECKPOINT.md) records the blocked-run investigation and shared-interaction fixture isolation/cleanup correction.
+
 [Native Base Airflow recorded context](NATIVE_AIRFLOW_UI_CHECKPOINT.md) enables the second mode through retained traces, scope and qualification, with per-role coverage and descriptive assessment.
 
 [Base Airflow core foundation](NATIVE_AIRFLOW_CORE_CHECKPOINT.md) adds tested aligned logged-request aggregates. Its initially disabled native UI is now integrated in the later checkpoint above.
