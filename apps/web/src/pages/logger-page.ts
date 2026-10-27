@@ -166,6 +166,8 @@ export interface LoggerAnalysisTraceContext {
 }
 
 export interface LoggerAnalysisContext {
+  /** Canonical source-bound continuity metadata; display text is never analytical authority. */
+  readonly sourceIntegrity?: readonly SourceIntegrityMarker[];
   /** Stable source lifetime plus changes to its sample/validity data, independent of navigation. */
   readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number; readonly descriptor?: LogSourceIdentity };
   readonly traces: readonly LoggerAnalysisTraceContext[];
@@ -2494,7 +2496,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       traces,
       channels,
       loadTraces,
-      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision, ...(descriptor ? { descriptor } : {}) } } : {}),
+      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision, ...(descriptor ? { descriptor } : {}) }, sourceIntegrity: integrityMarkers } : {}),
       ...(sourceTimeRange ? { sourceTimeRange } : {}),
       setAnalysisRange: ({ startMs, endMs }) => {
         if (!source || source !== channelDataSource || sourceRevision !== analysisDataRevision || source.sampleCount !== sampleExtent || !sourceTimeRange

@@ -1,3 +1,5 @@
+import { idleRecordedCoverage } from './idle-recorded-presentation';
+import { analyzeIdleRecovery, validateIdleRecoverySettings, type IdleRecoveryResult } from '../../../../core/analysis/idle-recovery';
 import { analyzeIdleIgnition, type IdleIgnitionResult } from '../../../../core/analysis/idle-ignition';
 import { presentIdleIgnition } from './idle-ignition-presentation';
 import { analyzeIdlePositionPid, type IdlePositionPidResult } from '../../../../core/analysis/idle-position-pid';
@@ -59,7 +61,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let generation = 0;
   let pendingKey: string | undefined;
   let pendingSource: object | undefined;
-  let mode: 'stability' | 'airflow' | 'valve' | 'pid' | 'bias' | 'ignition' = 'stability';
+  let mode: 'stability' | 'airflow' | 'valve' | 'pid' | 'bias' | 'ignition' | 'recovery' = 'stability';
   let controllerRequest = 0, controllerPendingKey: string | undefined, controllerError: string | undefined;
   let valveIds: Record<ValveRole, string> = { dcTarget: '', dcPosition: '', dcOutput: '' };
   // At most one last-loaded mapping per role; clearing a mapping can be undone
@@ -71,7 +73,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   let retainedBiasIds={...biasIds};
   let ignitionIds: Record<IgnitionRole,string>={ignitionAdvance:'',ignitionCorrection:'',ignitionLambda:''};
   let retainedIgnitionIds={...ignitionIds};
-  let accepted: { ignition?: {key:string;result:IdleIgnitionResult;traces:readonly LoggerAnalysisTraceContext[]}; position?: {key:string;result:IdleValvePositionResult}; bias?: {key:string;result:IdlePositionPidResult;traces:readonly LoggerAnalysisTraceContext[]}; pid?: {key:string;result:IdleRpmPidResult;traces:readonly LoggerAnalysisTraceContext[]}; valve?: { key: string; result: IdleValveTrackingResult; traces: readonly LoggerAnalysisTraceContext[] }; airflow?: IdleAirflowResult; contextMapping: Record<ContextRole, string>; source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
+  let recoveryEventIndex=0, recoveryEventFocus=false;
+  let accepted: { recoveryEvents?: {key:string;result:IdleRecoveryResult}; recovery?: {key:string;result:IdleRecoveryResult;position:IdleValvePositionResult;traces:readonly LoggerAnalysisTraceContext[]}; regions: readonly IdleRegionBounds[]; ignition?: {key:string;result:IdleIgnitionResult;traces:readonly LoggerAnalysisTraceContext[]}; position?: {key:string;result:IdleValvePositionResult}; bias?: {key:string;result:IdlePositionPidResult;traces:readonly LoggerAnalysisTraceContext[]}; pid?: {key:string;result:IdleRpmPidResult;traces:readonly LoggerAnalysisTraceContext[]}; valve?: { key: string; result: IdleValveTrackingResult; traces: readonly LoggerAnalysisTraceContext[] }; airflow?: IdleAirflowResult; contextMapping: Record<ContextRole, string>; source: object; key: string; result: IdleStabilityResult; qualification: (IdleQualificationResult & { description: string }) | undefined; evidenceKey: string; rpm: LoggerAnalysisTraceContext; target: LoggerAnalysisTraceContext | undefined; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
   const regionSession = createIdleRegionSession();
   let focusId = 'overview';
   let regionEvidence: { source: object; key: string; traces: readonly LoggerAnalysisTraceContext[] } | undefined;
@@ -94,9 +97,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   root.innerHTML = `
     <div class="idle-toolbar"><label>Mode <select aria-label="Idle diagnostic mode" data-idle="mode"><option value="stability">Stability</option>
       <option value="airflow">Base Airflow</option><option value="pid">RPM PID</option><option value="valve">DC Valve Tracking</option>
-      <option value="bias">DC Bias / Position PID</option><option value="ignition">Ignition</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
+      <option value="bias">DC Bias / Position PID</option><option value="ignition">Ignition</option><option value="recovery">Load Recovery</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
-      <label data-idle="focus-control" hidden><span data-idle="focus-label">Graph focus</span> <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
+      <label data-idle="focus-control" hidden><span data-idle="focus-label">Graph focus</span> <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="recovery-references" hidden>Recovery references</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
     <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
     <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><p class="idle-qualification-state" data-idle="qualification-state">Qualification off</p><div class="idle-metrics" data-idle="stability-metrics" aria-label="Stability measurements">
       <div><strong data-idle="sigma">—</strong><span>RPM σ · sample</span></div><div><strong data-idle="rmse">—</strong><span>RPM error RMSE</span></div>
@@ -106,6 +109,8 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <div class="idle-metrics" data-idle="pid-metrics" aria-label="Recorded RPM PID measurements" hidden><div><strong data-idle="pid-p">—</strong><span data-idle="pid-p-label">Logged P RMS</span></div><div><strong data-idle="pid-i">—</strong><span data-idle="pid-i-label">Logged I mean</span></div><div><strong data-idle="pid-d">—</strong><span data-idle="pid-d-label">Logged D RMS</span></div><div><strong data-idle="pid-applied">—</strong><span>Applied correction mean · pp</span></div></div>
       <div class="idle-metrics" data-idle="bias-metrics" aria-label="Recorded inner position PID and feed-forward measurements" hidden><div><strong data-idle="bias-i">—</strong><span data-idle="bias-i-label">Inner position I mean</span></div><div><strong data-idle="bias-feed">—</strong><span data-idle="bias-feed-label">Logged feed-forward mean</span></div><div><strong data-idle="bias-motor">—</strong><span>Mean signed motor duty · %</span></div><div><strong data-idle="bias-tracking">—</strong><span>Position error RMSE · pp</span></div></div>
       <div class="idle-metrics" data-idle="ignition-metrics" aria-label="Recorded ignition and supporting context measurements" hidden><div><strong data-idle="ignition-advance">—</strong><span>Mean logged advance · °</span></div><div><strong data-idle="ignition-correction">—</strong><span>Mean signed idle correction · °</span></div><div><strong data-idle="ignition-rmse">—</strong><span>RPM error RMSE · RPM</span></div><div><strong data-idle="ignition-lambda">—</strong><span>Mean actual lambda · λ</span></div></div>
+      <div class="idle-metrics" data-idle="recovery-metrics" hidden><div><strong data-idle="recovery-count">—</strong><span>Recorded sag events</span></div><div><strong data-idle="recovery-low">—</strong><span>Lowest RPM</span></div><div><strong data-idle="recovery-worst">—</strong><span>Worst |actual−target| · RPM</span></div><div><strong data-idle="recovery-tracking">—</strong><span>Valve tracking RMSE · pp</span></div></div>
+      <div data-idle="recovery-events" class="idle-plot-tools" hidden><span data-idle="recovery-summary"></span><label>Event <input type="number" min="1" step="1" value="1" data-idle="recovery-event" aria-label="Recovery event number"></label><button type="button" data-idle="recovery-view">View event</button><button type="button" data-idle="recovery-all">View region</button><span data-idle="recovery-view-note">Event view changes graphs only; metrics use the selected analysis scope.</span></div>
       <p class="idle-focus-explanation" data-idle="focus-explanation" hidden></p><div data-idle="plot"></div><div class="idle-plot-tools"><span>Wheel zoom · drag pan · Shift-drag zoom · hover for recorded values</span>
       <button type="button" data-idle="zoom-in" aria-label="Zoom Idle graph in">+</button><button type="button" data-idle="zoom-out" aria-label="Zoom Idle graph out">−</button><button type="button" data-idle="fit">Fit region</button></div>
       <section class="idle-region-evidence"><strong>Recorded operating window</strong><button type="button" data-idle="region-focus"><span data-idle="region-label">Select a region</span><span data-idle="region-evidence">No accepted analysis.</span></button></section></div>
@@ -131,6 +136,9 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <label><input type="checkbox" data-idle="qual-bypass"> Manual/edited-bounds regions bypass conditions</label>
       <p>Enabled conditions include the RPM ceiling shown below. Defaults are references, not firmware limits. Physical TPS never proves pedal intent. Discovery never bypasses conditions. Minimum duration affects discovery only. Renaming never enables bypass. Bypass never bypasses source validity; Full Log and Logger scopes still use conditions. Graphs retain recorded samples, including excluded measurements. Firmware idle-controller and stationary/load state are not established.</p>
     </div></details>
+    <details class="idle-setup" data-idle="recovery-settings" hidden><summary>Recovery references</summary><div class="idle-setup-body">
+      <label>Sag threshold (RPM)<input type="number" data-idle="recovery-sag" value="100" min="0" step="any"></label><label>Settled band ± RPM<input type="number" data-idle="recovery-band" value="40" min="0" step="any"></label><label>Settling dwell (ms)<input type="number" data-idle="recovery-dwell" value="500" min="0" step="any"></label><label>Maximum observation gap (ms)<input type="number" data-idle="recovery-gap" value="150" min="0" step="any"></label>
+      <p>User references, not firmware limits. Recovery is onset to first in-band observation of a confirmed sampled dwell. Invalid data, scope boundaries, time discontinuities and physical-loss markers break runs. Incomplete events remain censored. A recorded sag does not prove an external load.</p></div></details>
     <details class="idle-setup" data-idle="setup"><summary>Channels and manual region</summary><div class="idle-setup-body">
       <span data-idle="source">Load a recorded MLG through Open Log.</span><label>RPM <select data-idle="rpm" aria-label="Idle RPM channel"></select></label>
       <label>Idle target <select data-idle="target" aria-label="Idle target channel"></select></label>
@@ -238,7 +246,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if(qualificationSettings().enabled)explanation.textContent+=' Graphs retain recorded measurements, including samples excluded by conditions.';
     manager.update(regions, focusId, context.sourceTimeRange, scopeLabel, scopeValue === 'regions');
   };
-  const semanticEvidenceKey = (qualificationChannels: readonly string[] = []) => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.source?.descriptor, context.channels, rpmId, targetId, contextIds, qualificationChannels]);
+  const semanticEvidenceKey = (qualificationChannels: readonly string[] = []) => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.source?.descriptor, context.sourceIntegrity?.filter(marker=>marker.breaksContinuity).map(marker=>marker.timeMs), context.channels, rpmId, targetId, contextIds, qualificationChannels]);
   // Only callers that requested/verified whole-source columns publish here. Scoped
   // accepted traces must never be promoted just because their own request completed.
   const retainFullEvidence = (source: object, key: string, traces: readonly LoggerAnalysisTraceContext[]) => {
@@ -250,7 +258,11 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   };
   const renderPlot = () => {
     if (!active || !accepted) return;
-    const bounds = displayBounds(); if (!bounds) return;
+    let bounds = displayBounds(); if (!bounds) return;
+    const recovery=mode==='recovery'?accepted.recovery:undefined;
+    if(mode==='recovery'&&!recovery){plot.clear();renderedPlot=undefined;return;}
+    const event=recovery?.result.events[recoveryEventIndex];
+    if(event&&recoveryEventFocus){const sourceBounds=context.sourceTimeRange??bounds;bounds={startMs:Math.max(sourceBounds.startMs,event.onsetMs-500),endMs:Math.min(sourceBounds.endMs,event.endMs+500)};}
     const retained = regionEvidence;
     const traces = regionSession.regions.length && retained && retained.source === context.source?.identity && retained.key === accepted.evidenceKey ? retained.traces : accepted.traces;
     const valve = mode === 'valve' ? accepted.valve : undefined;
@@ -261,10 +273,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if(mode==='bias'&&!bias){plot.clear();renderedPlot=undefined;return;}
     if (mode === 'pid' && !pid) { plot.clear(); renderedPlot=undefined; return; }
     if (mode === 'valve' && !valve) { plot.clear(); renderedPlot = undefined; return; }
-    const key = JSON.stringify([bounds, rpmId, targetId, contextIds, mode === 'valve' ? valve?.key : mode === 'pid' ? pid?.key : mode==='bias'?bias?.key:mode==='ignition'?ignition?.key:'rpm']);
+    const key = JSON.stringify([bounds, rpmId, targetId, contextIds, mode === 'valve' ? valve?.key : mode === 'pid' ? pid?.key : mode==='bias'?bias?.key:mode==='ignition'?ignition?.key:mode==='recovery'?recovery?.key:'rpm']);
     if (renderedPlot?.traces === traces && renderedPlot.key === key) return;
     const entries: IdlePlotSeries[] = [];
-    if (!valve && !bias) for (const [id, label, unit, pane, color] of [[rpmId, 'Engine RPM', 'RPM', 0, '#61b8ed'], [targetId, 'RPM target', 'RPM', 0, '#7bd2b1'], ...(pid || ignition ? [] : CONTEXT_ROLES).map((role, index) => [contextIds[role], CONTEXT_LABELS[role], role === 'closedLoop' ? 'pp' : '%', 1, ['#b29af2', '#e8b46d', '#68ccac'][index]])] as const) {
+    if (!valve && !bias) for (const [id, label, unit, pane, color] of [[rpmId, 'Engine RPM', 'RPM', 0, '#61b8ed'], [targetId, 'RPM target', 'RPM', 0, '#7bd2b1'], ...(pid || ignition || recovery ? [] : CONTEXT_ROLES).map((role, index) => [contextIds[role], CONTEXT_LABELS[role], role === 'closedLoop' ? 'pp' : '%', 1, ['#b29af2', '#e8b46d', '#68ccac'][index]])] as const) {
       const trace = traces.find(trace => trace.channel.id === id); if (!trace) continue;
       entries.push({ label: String(label), range: sliceNumericRangeByTime(trace.range, bounds.startMs, bounds.endMs), unit: String(unit), pane: pane as 0 | 1, color: String(color) });
     }
@@ -303,7 +315,12 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
         if(trace&&metric.status==='available')entries.push({label:IGNITION_LABELS[role],range:sliceNumericRangeByTime(trace.range,bounds.startMs,bounds.endMs),unit:'°',pane:1,color});
       }
     }
-    const options = valve ? {titles:['DC VALVE · requested / measured (%)','POSITION ERROR · left (pp) / MOTOR DUTY · right (%)'] as const,ariaLabel:'Recorded requested and measured DC valve position, measured minus requested error, and signed motor duty.'}
+    if(recovery)for(const [role,color]of [['dcTarget','#e8b46d'],['dcPosition','#7bd2b1'],['dcOutput','#b29af2']] as const){
+      const trace=recovery.traces.find(trace=>trace.channel.id===valveIds[role]);
+      const metric=role==='dcTarget'?recovery.position.requested:role==='dcPosition'?recovery.position.measured:recovery.position.motor;
+      if(trace&&metric.status==='available')entries.push({label:VALVE_LABELS[role],range:sliceNumericRangeByTime(trace.range,bounds.startMs,bounds.endMs),unit:'%',pane:1,color,...(role==='dcOutput'?{axis:'right' as const}:{})});
+    }
+    const options = recovery ? {titles:['RPM SAG AND RECOVERY · actual / target','DC VALVE RESPONSE · left (%) / MOTOR DUTY · right (%)'] as const,ariaLabel:'Recorded RPM response, requested/measured valve position and separate signed motor-duty axis. Event recovery requires confirmed sampled dwell.'} : valve ? {titles:['DC VALVE · requested / measured (%)','POSITION ERROR · left (pp) / MOTOR DUTY · right (%)'] as const,ariaLabel:'Recorded requested and measured DC valve position, measured minus requested error, and signed motor duty.'}
       : pid ? {titles:['RPM CONTROL RESPONSE · actual / target',`LOGGED TERMS · left (${pid.result.termPlotUnit==='raw'?'raw; units unspecified':pid.result.termPlotUnit ?? 'mixed/missing units'}) / APPLIED · right (pp)`] as const,ariaLabel:'Recorded RPM response and independent logged outer RPM PID terms, output and applied correction. Raw units are not inferred percentage points.'} : bias ? {titles:['DC POSITION CONTROL · requested / measured (%)',`INNER TERMS · left (${bias.result.termPlotUnit==='raw'?'raw; units unspecified':bias.result.termPlotUnit?bias.result.termPlotUnit+' duty contribution':'mixed/missing units'}) / MOTOR · right (%)`] as const,ariaLabel:'Recorded requested/measured position and independent logged feed-forward, inner position PID terms and signed motor duty. Tune-derived bias is unavailable.'} : ignition ? {titles:['RPM RESPONSE · actual / target','IGNITION · absolute advance / signed idle correction (°)'] as const,ariaLabel:'Recorded RPM response, absolute ignition advance and separately logged signed idle timing correction in degrees. No causal torque inference.'} : {};
     plot.setData(entries,bounds.startMs,bounds.endMs,{...options,preserveViewport:true}); renderedPlot={traces,key};
   };
@@ -430,10 +447,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   };
   const invalidateModeEvidence = (kind: 'valve'|'pid'|'bias'|'ignition', positionChanged=false, referenceOnly=false) => {
     const preservePositionPlot=referenceOnly&&kind==='valve'&&!!accepted?.position&&!!renderedPlot;
-    if (accepted) { delete accepted[kind]; if(positionChanged){delete accepted.position;delete accepted.bias;} }
+    if (accepted) { delete accepted[kind]; if(positionChanged){delete accepted.position;delete accepted.bias;delete accepted.recovery;} }
     if (regionEvidence) retainFullEvidence(regionEvidence.source,regionEvidence.key,[]);
     syncMappingNote();
-    if (mode === kind || positionChanged && mode==='bias') {
+    if (mode === kind || positionChanged && (mode==='bias'||mode==='recovery')) {
       controllerRequest++; controllerPendingKey=undefined; controllerError=undefined;
       renderAssessment(); if(!preservePositionPlot)renderPlot(); void ensureModeEvidence(preservePositionPlot);
     }
@@ -441,17 +458,19 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   // Native recorded modes share this existing source/request boundary. Each
   // accepted result keeps its own facts; no second controller/session framework.
   const ensureModeEvidence = async (preservePositionPlot=false) => {
-    if (!active || disposed || (mode !== 'valve' && mode !== 'pid' && mode!=='bias' && mode!=='ignition') || !accepted) return;
+    if (!active || disposed || (mode !== 'valve' && mode !== 'pid' && mode!=='bias' && mode!=='ignition' && mode!=='recovery') || !accepted) return;
     const kind=mode, base=accepted, captured=context, source=captured.source;
     if (!source || source.identity !== base.source || !captured.sourceTimeRange) return;
     const reference=kind==='valve'?Number(field<HTMLInputElement>('motor-reference').value.trim()||NaN):undefined;
-    const mapping: Record<string,string>={...(kind==='valve'?valveIds:kind==='bias'?{...valveIds,...biasIds}:kind==='ignition'?ignitionIds:pidIds)}, key=JSON.stringify([base.key,kind,mapping,reference]);
+    const recoverySettings=kind==='recovery'?{sagRpm:Number(field<HTMLInputElement>('recovery-sag').value.trim()||NaN),bandRpm:Number(field<HTMLInputElement>('recovery-band').value.trim()||NaN),dwellMs:Number(field<HTMLInputElement>('recovery-dwell').value.trim()||NaN),maxGapMs:Number(field<HTMLInputElement>('recovery-gap').value.trim()||NaN)}:undefined;
+    const mapping: Record<string,string>={...(kind==='valve'||kind==='recovery'?valveIds:kind==='bias'?{...valveIds,...biasIds}:kind==='ignition'?ignitionIds:pidIds)}, key=JSON.stringify([base.key,kind,mapping,reference,recoverySettings]);
     if(base[kind]?.key===key){renderPlot();return;}
     if(controllerPendingKey===key)return;
     const request=++controllerRequest, baseGeneration=generation;
     const current=()=>active&&!disposed&&mode===kind&&accepted===base&&generation===baseGeneration&&controllerRequest===request;
     controllerPendingKey=key;controllerError=undefined;delete base[kind];renderAssessment();if(!preservePositionPlot)renderPlot();
     try {
+      if(recoverySettings)validateIdleRecoverySettings(recoverySettings);
       if(kind==='valve'&&(reference===undefined||!Number.isFinite(reference)||reference<=0||reference>100))throw new Error('Enter a motor-duty reference above 0 and at most 100%.');
       const ids=[...new Set(Object.values(mapping).filter(Boolean))], bounds=captured.sourceTimeRange;
       const cached=regionEvidence?.source===base.source&&regionEvidence.key===base.evidenceKey?regionEvidence.traces:[];
@@ -462,13 +481,18 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const traces=ids.flatMap(id=>{const trace=loaded.find(trace=>trace.channel.id===id)??cached.find(trace=>trace.channel.id===id&&reusable(trace));return trace?[trace]:[];});
       const bind=(role:ValveRole|PidRole|BiasRole|IgnitionRole)=>{const trace=traces.find(trace=>trace.channel.id===mapping[role]);return trace?{range:trace.range,unit:(IGNITION_ROLES.includes(role as IgnitionRole)?idleIgnitionRoleUnit(trace.channel,role as IgnitionRole):PID_ROLES.includes(role as PidRole)?idlePidRoleUnit(trace.channel,role as PidRole):BIAS_ROLES.includes(role as BiasRole)?idlePositionPidRoleUnit(trace.channel,role as BiasRole):idleRoleUnit(trace.channel,role as ValveRole))?.unit??''}:undefined;};
       owner.event(`idle.${kind}.request`,{samples:base.result.sampleIndices.length});
-      if(kind==='valve'||kind==='bias'){
+      if(kind==='valve'||kind==='bias'||kind==='recovery'){
         const positionKey=JSON.stringify([base.key,{dcTarget:mapping.dcTarget,dcPosition:mapping.dcPosition,dcOutput:mapping.dcOutput}]);
         if(base.position?.key!==positionKey){
           owner.event('idle.position.request',{samples:base.result.sampleIndices.length});
           base.position={key:positionKey,result:analyzeIdleValvePosition({rpm:base.rpm.range,sampleIndices:base.result.sampleIndices,requested:bind('dcTarget'),measured:bind('dcPosition'),motor:bind('dcOutput')})};
         }
         if(kind==='valve')base.valve={key,result:withIdleMotorReference(base.position.result,reference!),traces};
+        else if(kind==='recovery'){
+          const eventKey=JSON.stringify([base.key,recoverySettings]);
+          if(base.recoveryEvents?.key!==eventKey){owner.event('idle.recovery.events.request',{samples:base.result.sampleIndices.length});base.recoveryEvents={key:eventKey,result:analyzeIdleRecovery({rpm:base.rpm.range,target:base.target?.range,sampleIndices:base.result.sampleIndices,regions:base.regions,settings:recoverySettings!,integrity:captured.sourceIntegrity})};recoveryEventIndex=0;recoveryEventFocus=false;}
+          base.recovery={key,result:base.recoveryEvents.result,position:base.position.result,traces};
+        }
         else base.bias={key,result:analyzeIdlePositionPid({position:base.position.result,feedForward:bind('dcBiasOutput'),p:bind('dcP'),i:bind('dcI'),d:bind('dcD')}),traces};
         for(const role of VALVE_ROLES)if(mapping[role]&&traces.some(trace=>trace.channel.id===mapping[role]))retainedValveIds[role]=mapping[role]!;
         if(kind==='bias')for(const role of BIAS_ROLES)if(mapping[role]&&traces.some(trace=>trace.channel.id===mapping[role]))retainedBiasIds[role]=mapping[role]!;
@@ -494,6 +518,14 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const renderAssessment = () => {
     field<HTMLSelectElement>('mode').value = mode;
     for (const button of root.querySelectorAll<HTMLButtonElement>('[data-idle-tab]')) button.setAttribute('aria-pressed', String(button.dataset.idleTab === tab));
+    field('recovery-references').hidden=mode!=='recovery';field('recovery-metrics').hidden=mode!=='recovery';field('recovery-settings').hidden=mode!=='recovery';field('recovery-events').hidden=mode!=='recovery';
+    const recovery=mode==='recovery'?accepted?.recovery?.result:undefined;
+    const event=recovery?.events[recoveryEventIndex];
+    field('recovery-count').textContent=recovery?.status==='recorded'?String(recovery.events.length):'Unavailable';
+    for(const [name,value]of [['recovery-low',accepted?.result.analysis.rpm.min],['recovery-worst',accepted?.result.analysis.tracking?Math.max(Math.abs(accepted.result.analysis.tracking.maxNegativeError??NaN),Math.abs(accepted.result.analysis.tracking.maxPositiveError??NaN)):undefined]] as const)field(name).textContent=number(value);
+    field('recovery-tracking').textContent=mode==='recovery'&&accepted?.recovery?idleAirflowValue(accepted.recovery.position.tracking,'rootMeanSquare'):'—';
+    field('recovery-summary').textContent=recovery?`${recovery.recoveredCount} confirmed · ${recovery.censoredCount} censored · ${recovery.validPairs} valid aligned pairs`:controllerError??'Recovery evidence required';
+    field<HTMLInputElement>('recovery-event').max=String(recovery?.events.length??0);field<HTMLInputElement>('recovery-event').value=String(recoveryEventIndex+1);field<HTMLInputElement>('recovery-event').disabled=!recovery?.events.length;field<HTMLButtonElement>('recovery-view').disabled=!event;
     field('stability-metrics').hidden = mode !== 'stability'; field('airflow-metrics').hidden = mode !== 'airflow'; field('valve-metrics').hidden = mode !== 'valve'; field('pid-metrics').hidden = mode !== 'pid'; field('bias-metrics').hidden=mode!=='bias'; field('ignition-metrics').hidden=mode!=='ignition';
     const ignition=mode==='ignition'&&accepted?.ignition?presentIdleIgnition(accepted.ignition.result,accepted.result.analysis.complete&&(accepted.qualification?.complete??true)):undefined;
     for(const [name,value]of [['ignition-advance',ignition?.advanceMean],['ignition-correction',ignition?.correctionMean],['ignition-lambda',ignition?.lambdaMean]] as const)field(name).textContent=value??'—';
@@ -520,6 +552,20 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if (accepted.qualification) panel.append(section('Applied qualification', `${accepted.qualification.description}. ${accepted.qualification.eligible}/${accepted.qualification.input} original records eligible; ${accepted.qualification.rejected} value-rejected, ${accepted.qualification.invalid} invalid, ${accepted.qualification.unavailable} unavailable; ${accepted.qualification.manualBypassed} valid records manually bypassed. Invalid counts may include recovered retry attempts and do not by themselves establish physical data loss.`));
     if (scopeValue === 'regions') panel.append(section('Analysis scope', `${regionSession.regions.filter(region => region.included).length} included regions; overlapping recorded samples count once. Graph focus can show an excluded interval and does not affect these measurements.`));
     if (scopeValue === 'viewed') panel.append(section('Analysis scope', analysisScopeLabel() + '. Inclusion checkboxes do not change this selection.'));
+    if(mode==='recovery'){
+      if(!recovery){panel.append(section('Recovery evidence required',controllerError??'Run analysis with compatible recorded RPM and idle target.'));return;}
+      const limits='Sampled dwell is not proof of continuous unobserved settling. No load cause, ECU controller cadence, gain or tuning improvement is inferred. Invalid attempts (including retries without verified replacement identity) conservatively break runs. Events at boundaries are censored; no recovery outside the accepted scope is borrowed. Graphs may retain unqualified recorded context.';
+      const policy=`Sag ≥ ${recovery.settings.sagRpm} RPM below target; band ±${recovery.settings.bandRpm} RPM; dwell ${recovery.settings.dwellMs} ms; maximum gap ${recovery.settings.maxGapMs} ms. References are user-selected, not firmware limits.`;
+      panel.append(section('Recovery evidence',recovery.status==='missing-target'?'Target unavailable; event detection is unavailable, not zero events.':`${recovery.events.length} sag events; ${recovery.recoveredCount} confirmed, ${recovery.censoredCount} censored. ${recovery.validPairs} valid aligned pairs; ${recovery.invalidPairs} invalid/unavailable pairs. ${analysis.complete?'Complete':'Partial'} requested coverage.`));
+      if(tab!=='next'){
+        panel.append(section('Detection and settling references',policy));
+        if(event)panel.append(section(`Event ${recoveryEventIndex+1} · original sample ${event.id}`,`Onset ${(event.onsetMs/1000).toFixed(3)} s; last below threshold ${(event.lastBelowMs/1000).toFixed(3)} s; minimum ${number(event.minimumRpm)} RPM; deepest actual−target ${number(event.minimumErrorRpm)} RPM. ${event.status==='recovered'?`Recovery ${number(event.recoveryMs)} ms from onset; first settled observation ${(event.settlingMs!/1000).toFixed(3)} s; confirmed at ${(event.confirmationMs!/1000).toFixed(3)} s.`:`Censored (${event.reason}); recovery unavailable.`}`));
+        else if(recovery.status==='recorded')panel.append(section('No detected sag','No threshold crossing in valid selected observations; this does not establish healthy idle or absence of an unrecorded event.'));
+        if(tab==='evidence')for(const [label,metric]of [['Requested valve',accepted.recovery!.position.requested],['Measured valve',accepted.recovery!.position.measured],['Signed motor duty',accepted.recovery!.position.motor],['Measured−requested tracking',accepted.recovery!.position.tracking]] as const)panel.append(section(label,idleRecordedCoverage(metric)));
+        if(tab==='evidence')panel.append(section('Source authority',`${context.source?.descriptor?.displayName??'Source unavailable'}. ${mappingDescription()}. Overlapping selected regions count once. Canonical source-integrity markers break runs; display text is not analytical authority.`));
+      }else panel.append(section('Recommended action','Inspect the selected event against recorded RPM/target and load context. Repeat matched temperature and loads. Review censored events and missing coverage before comparing recovery.'),section('Hold constant',presentation.holdConstant));
+      panel.append(section('Limits of inference',limits));return;
+    }
     if(mode==='ignition'){
       if(!ignition){panel.append(section('Ignition evidence required',controllerError??(controllerPendingKey?'Loading recorded ignition evidence…':'Map compatible recorded degree channels and optional actual lambda.')));return;}
       const next=assessment.findings.includes('purpose-review')?presentation.next+' '+ignition.next:ignition.next;
@@ -681,7 +727,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const evidenceKey = semanticEvidenceKey();
     const key = JSON.stringify([evidenceKey, bounds, regions, plan.enabled ? [plan.conditions,plan.bypass,plan.description] : false]);
     if (accepted?.source === source.identity && accepted.key === key
-      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); renderCoverage(); renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias' || mode==='ignition') void ensureModeEvidence(); return; }
+      && (!needsFullEvidence || (regionEvidence?.source === source.identity && regionEvidence.key === evidenceKey))) { if (managed) renderPlot(); renderCoverage(); renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias' || mode==='ignition' || mode==='recovery') void ensureModeEvidence(); return; }
     if (pendingKey === key && pendingSource === source.identity) return;
     const mayReuseEvidence=needsFullEvidence||accepted?.qualification!==undefined;
     const request = ++generation;
@@ -706,7 +752,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       if (captured.sourceTimeRange && readBounds.startMs <= captured.sourceTimeRange.startMs && readBounds.endMs >= captured.sourceTimeRange.endMs && traces.every(trace => trace.complete || numericRangeCoversTime(trace.range, readBounds.startMs, readBounds.endMs))) retainFullEvidence(source.identity, evidenceKey, traces);
       const qualification = plan.enabled ? { ...qualifyIdleSamples({referenceId:requestedRpm,channels:new Map(traces.map(trace=>[trace.channel.id,{range:trace.range,complete:trace.complete}])),conditions:plan.conditions,scope:regions??[bounds],bypass:plan.bypass}), description:plan.description } : undefined;
       const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), ...(qualification ? {eligibility:qualification.eligibility} : {}), complete:complete && (qualification?.complete??true) });
-      accepted = { contextMapping: requestedContext, source: source.identity, key, result, qualification, evidenceKey, rpm, target, traces };
+      accepted = { regions:regions??[bounds], contextMapping: requestedContext, source: source.identity, key, result, qualification, evidenceKey, rpm, target, traces };
       const stats = result.analysis;
       field('sigma').textContent = number(stats.rpm.standardDeviation);
       field('rmse').textContent = number(stats.tracking?.rmse);
@@ -715,7 +761,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       renderCoverage();
       renderPlot();
       status(qualification && !qualification.eligible && qualification.input ? !qualification.rejected&&(qualification.invalid||qualification.unavailable) ? 'Qualification evidence unavailable or misaligned.' : 'No records match selected qualification conditions.' : regions && !regions.length ? 'No included regions. Graph focus is excluded from analysis.' : stats.rpm.validSampleCount ? complete ? 'Recorded evidence' : 'Partial recorded evidence' : 'No valid RPM evidence');
-      renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias' || mode==='ignition') void ensureModeEvidence();
+      renderAssessment(); if (mode === 'valve' || mode === 'pid' || mode==='bias' || mode==='ignition' || mode==='recovery') void ensureModeEvidence();
       owner.event('idle.stability.accepted', { generation: request, samples: stats.rpm.validSampleCount });
     } catch (error) {
       if (!active || disposed || request !== generation) return;
@@ -765,7 +811,15 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const listen = (node: HTMLElement, action: () => void, event = 'click') => node.addEventListener(event, () => {
     if (active && !disposed) action();
   }, { signal: events.signal });
-  listen(field('mode'), () => { const value = field<HTMLSelectElement>('mode').value; if (value === 'stability' || value === 'airflow' || value === 'valve' || value === 'pid' || value==='bias' || value==='ignition') { controllerRequest++; controllerPendingKey=undefined; mode = value; renderAssessment(); renderPlot(); if(mode==='valve'||mode==='pid'||mode==='bias'||mode==='ignition')void ensureModeEvidence(); } }, 'change');
+  for(const name of ['sag','band','dwell','gap'])listen(field(`recovery-${name}`),()=>{
+    controllerError=undefined;
+    if(mode==='recovery'){renderAssessment();renderPlot();void ensureModeEvidence();}
+  },'change');
+  listen(field('recovery-event'),()=>{const value=Number(field<HTMLInputElement>('recovery-event').value);if(Number.isInteger(value)&&value>=1&&value<=(accepted?.recovery?.result.events.length??0)){recoveryEventIndex=value-1;renderAssessment();if(recoveryEventFocus)renderPlot();}},'change');
+  listen(field('recovery-references'),()=>{field<HTMLDetailsElement>('recovery-settings').open=!field<HTMLDetailsElement>('recovery-settings').open;});
+  listen(field('recovery-view'),()=>{recoveryEventFocus=true;renderPlot();});
+  listen(field('recovery-all'),()=>{recoveryEventFocus=false;renderPlot();});
+  listen(field('mode'), () => { const value = field<HTMLSelectElement>('mode').value; if (value === 'stability' || value === 'airflow' || value === 'valve' || value === 'pid' || value==='bias' || value==='ignition'||value==='recovery') { controllerRequest++; controllerPendingKey=undefined; mode = value; renderAssessment(); renderPlot(); if(mode==='valve'||mode==='pid'||mode==='bias'||mode==='ignition' || mode==='recovery')void ensureModeEvidence(); } }, 'change');
   for (const role of VALVE_ROLES) listen(valveSelects[role], () => { valveIds[role]=valveSelects[role].value; invalidateModeEvidence('valve',true); }, 'change');
   for(const role of IGNITION_ROLES)listen(ignitionSelects[role],()=>{ignitionIds[role]=ignitionSelects[role].value;invalidateModeEvidence('ignition');},'change');
   for(const role of BIAS_ROLES)listen(biasSelects[role],()=>{biasIds[role]=biasSelects[role].value;invalidateModeEvidence('bias');},'change');

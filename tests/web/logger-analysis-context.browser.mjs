@@ -55,6 +55,7 @@ export async function runLoggerAnalysisContextChecks() {
   try {
     const a = fixture('A'), b = fixture('B');
     set(a);
+    logger.setDiagnostics([{code:'delivery',severity:'warning',message:'display wording',recoverable:true,timeMs:250,sourceIntegrity:{kind:'delivery-loss',breaksContinuity:true}}],a.summary.source);
     const old = logger.getAnalysisContext();
     assert(old.source.descriptor?.displayName === 'A' && old.source.descriptor.id === a.summary.source.id, 'Source descriptor was not captured with source lifetime');
     logger.element.hidden = true;
@@ -70,6 +71,8 @@ export async function runLoggerAnalysisContextChecks() {
     assert(old.source.descriptor.displayName === 'A' && logger.getAnalysisContext().source.descriptor.displayName === 'B', 'Source descriptor rebound across replacement');
     assert(!old.setAnalysisRange({ startMs: 100, endMs: 200 }) && logger.getAnalysisContext().aTimeMs === undefined, 'Stale range command changed replacement source');
     checks.push('Old source-bound selection cannot write A/B into replacement Logger source');
+    assert(old.sourceIntegrity?.length===1&&old.sourceIntegrity[0].timeMs===250&&old.sourceIntegrity[0].breaksContinuity&&logger.getAnalysisContext().sourceIntegrity?.length===0,'Canonical continuity metadata rebound across replacement');
+    checks.push('analysis context captures canonical continuity markers with the original source, independent of display wording');
     const before = b.calls.length;
     const loaded = await old.loadTraces(['rpm']);
     assert(old.source.identity === a.source && loaded[0]?.range.values[0] === 100 && loaded[0].channel === a.channels[0] && b.calls.length === before, 'Retained context used replacement source or metadata');

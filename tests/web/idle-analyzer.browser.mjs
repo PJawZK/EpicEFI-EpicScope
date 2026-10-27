@@ -81,7 +81,7 @@ export async function runIdleAnalyzerChecks() {
       assert(airflow.status==='limited'&&airflow.basePosition.statistics.validSampleCount===5&&airflow.basePosition.statistics.invalidSampleCount===2&&airflow.closedLoop.statistics.mean===-2&&airflow.finalPosition.status==='missing','Airflow context lost canonical validity or fabricated an optional signal');
       assert(parsed.recordIndex.offsets.length===7&&parsed.summary.diagnostics.some(d=>d.code==='mlg-incomplete-tail'),'Physical tail was indexed or its diagnostic lost');
       m.view.setActive(false);m.view.setContext({...context});m.view.setActive(true);await wait();assert(reads===1&&m.field('samples').textContent==='5','Unchanged canonical context destroyed retained evidence');
-      assert([...m.field('mode').options].filter(o=>!o.disabled).length===6,'Unexpected diagnostic mode became active');
+      assert([...m.field('mode').options].filter(o=>!o.disabled).length===7,'Unexpected diagnostic mode became active');
     }finally{m.close();}
   });
   await check('Base Airflow renders retained context and reuses calculation across modes/tabs without reads',async()=>{
@@ -868,6 +868,41 @@ export async function runIdleAnalyzerChecks() {
       }finally{m.close();}
     }
   });
+  await check('Recovery reuses shared Valve/Bias position authority, matches final HTML cards/traces, and preserves event work on actuator remapping',async()=>{
+    const f=valveFixture(),events=[],m=mount({record:e=>events.push(e)}),positions=()=>events.filter(e=>e.name==='idle.position.request').length,eventRuns=()=>events.filter(e=>e.name==='idle.recovery.events.request').length;f.traces[0].range.values[0]=900;
+    try{m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'valve');await wait();const reads=f.calls.length,p=positions();change(m.field('mode'),'recovery');await wait();assert(positions()===p&&f.calls.length===reads,'Recovery repeated shared position/reads');assert(m.field('recovery-worst').textContent==='100.00'&&m.field('recovery-tracking').textContent==='3.32'&&m.view.element.querySelector('[data-trace-label="Valve requested"]')&&m.view.element.querySelector('[data-trace-label="Signed motor duty"]'),'Final HTML Recovery metrics/actuator traces missing');
+      const e=eventRuns();change(m.field('dcOutput'),'');await wait();assert(eventRuns()===e&&m.field('recovery-tracking').textContent==='3.32','Motor remap rescanned events or erased valid position tracking');change(m.field('dcOutput'),'dc-motor');await wait();change(m.field('recovery-dwell'),'200');await wait();assert(eventRuns()===e+1&&positions()===p+2,'Reference update repeated position calculation or failed event invalidation');
+      m.view.setActive(false);change(m.field('recovery-band'),'20');const hidden=eventRuns();await wait();assert(eventRuns()===hidden,'Hidden Recovery calculated');m.view.setActive(true);await wait();assert(eventRuns()===hidden+1,'Active Recovery did not apply deferred reference');
+    }finally{m.close();}
+  });
+  await check('Recovery computes onset/dwell evidence lazily and retains facts through tabs, modes, zoom and navigation without reads',async()=>{
+    const f=fixture([1000,850,880,1000,1000,1000,1000,1000,1000]),events=[],m=mount({record:e=>events.push(e)}),runs=()=>events.filter(e=>e.name==='idle.recovery.request').length;
+    try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();const reads=f.calls.length;assert(runs()===0,'Hidden recovery calculated');change(m.field('mode'),'recovery');await wait();assert(m.field('recovery-count').textContent==='1'&&m.field('recovery-summary').textContent.includes('1 confirmed')&&m.field('assessment').textContent.includes('Recovery 200.00 ms from onset'),'Onset/dwell reference failed');m.field('recovery-references').click();assert(m.field('recovery-settings').open&&m.field('recovery-settings').getBoundingClientRect().height>0,'Recovery references inaccessible');m.field('recovery-references').click();const count=runs();
+      for(const tab of ['evidence','next','diagnosis'])m.view.element.querySelector(`[data-idle-tab=${tab}]`).click();m.field('recovery-view').click();m.field('recovery-all').click();change(m.field('mode'),'stability');change(m.field('mode'),'recovery');m.view.setActive(false);m.view.setContext({...f.context});m.view.setActive(true);await wait();assert(runs()===count&&f.calls.length===reads,'Presentation/navigation repeated recovery or reread source');
+      change(m.field('recovery-dwell'),'500');assert(runs()===count,'Unchanged reference recalculated');change(m.field('recovery-dwell'),'600');assert(runs()===count+1&&m.field('recovery-summary').textContent.includes('1 censored'),'Dwell change failed to invalidate');change(m.field('recovery-gap'),'0');assert(m.field('assessment').textContent.includes('maximum gap > 0')&&!m.view.element.querySelector('svg path'),'Invalid settings retained old graph/evidence');
+    }finally{m.close();}
+  });
+  await check('Recovery missing target is unavailable; invalid attempts and canonical physical-loss markers censor events',async()=>{
+    for(const kind of ['missing','invalid','integrity']){const f=fixture([1000,850,880,1000,1000,1000,1000,1000,1000],kind!=='missing'),m=mount();if(kind==='invalid')f.traces[0].range.validity[4]=0;if(kind==='integrity')f.context.sourceIntegrity=[{timeMs:350,kind:'delivery-loss',breaksContinuity:true,count:1,message:'display text is irrelevant'}];try{m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'recovery');assert(kind==='missing'?m.field('recovery-count').textContent==='Unavailable':m.field('recovery-summary').textContent.includes('1 censored'),'Missing/invalid/integrity became healthy evidence');}finally{m.close();}}
+  });
+  await check('Recovery follows Viewed scope and deduplicated included union, without borrowing settling beyond the interval',async()=>{
+    const f=fixture([1000,850,880,1000,1000,1000,1000,1000,1000]),m=mount();const coolant={id:'clt',sourceName:'coolant',displayName:'Coolant',unit:'deg C',valueType:'number'};f.context.channels.push(coolant);f.traces.push({channel:coolant,complete:true,color:'#abc',range:{...f.traces[0].range,values:Float64Array.from([80,80,80,80,60,80,80,80,80])}});try{
+      m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'recovery');change(m.field('scope'),'ab');await wait();assert(m.field('recovery-summary').textContent.includes('1 censored'),'Logger A/B borrowed later settling');change(m.field('scope'),'full');await wait();assert(m.field('recovery-summary').textContent.includes('1 confirmed'),'Full scope failed to restore evidence');
+      m.field('manage-regions').click();const d=m.view.element.querySelector('.idle-region-manager');for(const [a,b]of [[0,.8],[.1,.8]]){d.querySelector('[data-new=start]').value=String(a);d.querySelector('[data-new=end]').value=String(b);d.querySelector('[data-manager=add]').click();}const rows=[...d.querySelectorAll('tbody tr')],first=rows[0].dataset.regionId;change(m.field('scope'),'regions');await wait();assert(m.field('recovery-count').textContent==='1'&&m.field('recovery-summary').textContent.includes('9 valid aligned pairs'),'Overlapping scope duplicated event/pairs');change(m.field('focus'),first);const facts=m.field('recovery-summary').textContent;m.field('recovery-view').click();assert(m.field('recovery-summary').textContent===facts,'Event view changed analysis');change(m.field('scope'),'viewed');await wait();assert(m.field('recovery-count').textContent==='1','Viewed scope failed');
+      change(m.field('qual-coolant'),'clt');m.field('qual-enabled').checked=true;m.field('qual-enabled').dispatchEvent(new Event('change',{bubbles:true}));await wait();assert(m.field('recovery-summary').textContent.includes('1 censored'),'Qualification recovery outcome: '+m.field('recovery-summary').textContent+' | '+m.field('status').textContent+' | '+m.field('assessment').textContent);
+    }finally{m.close();}
+  });
+  await check('Recovery rejects delayed retired source completions and updates canonical integrity semantics',async()=>{
+    const f=fixture([1000,850,880,1000,1000,1000,1000,1000,1000]),m=mount(),pending=[];const load=f.context.loadTraces;f.context.loadTraces=async(...args)=>new Promise(resolve=>pending.push(()=>load(...args).then(resolve)));try{
+      m.view.setContext(f.context);m.view.setActive(true);change(m.field('mode'),'recovery');await wait();const replacement=fixture([1000,1000,1000]);m.view.setContext(replacement.context);await wait();for(const done of pending)done();await wait();assert(m.field('recovery-count').textContent==='0','Old source published recovery');
+      m.view.setContext({...f.context,loadTraces:load});await wait();assert(m.field('recovery-summary').textContent.includes('1 confirmed'),'New source evidence failed');m.view.setContext({...f.context,loadTraces:load,sourceIntegrity:[{timeMs:350,kind:'delivery-loss',breaksContinuity:true,count:1,message:'x'}]});await wait();assert(m.field('recovery-summary').textContent.includes('1 censored'),'Changed continuity metadata reused stale recovery');const reads=f.calls.length;m.view.setContext({...f.context,loadTraces:load,sourceIntegrity:[{timeMs:350,kind:'delivery-loss',breaksContinuity:true,count:1,message:'different display wording'}]});await wait();assert(f.calls.length===reads,'Diagnostic display wording invalidated semantic evidence');
+    }finally{m.close();}
+  });
+  await check('Recovery >320k records and many events retain bounded DOM and constant-size selected event detail',async()=>{
+    const n=320459,f=fixture(),m=mount();for(const trace of f.traces)trace.range={startSampleIndex:10,timeMs:Float64Array.from({length:n},(_,i)=>i*100),values:Float64Array.from({length:n},(_,i)=>trace.channel.id==='rpm'&&i%8===0?850:1000),validity:new Uint8Array(n).fill(1)};f.context.source.sampleCount=n;f.context.sourceTimeRange.endMs=(n-1)*100;
+    try{m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'recovery');assert(m.field('recovery-count').textContent===String(Math.ceil(n/8))&&m.view.element.querySelectorAll('svg *').length<170,'Large recovery counts or graph failed');change(m.field('recovery-event'),String(Math.ceil(n/8)));assert(m.field('assessment').textContent.includes('Censored'),'Last event inaccessible');m.field('recovery-view').click();assert(m.view.element.querySelectorAll('svg *').length<170,'Event focus built unbounded DOM');}finally{m.close();}
+  });
   return { passed: checks.length, checks };
 }
 
@@ -906,5 +941,8 @@ export function runIdleNarrowChecks() {
     const rect=tick.getBoundingClientRect();assert(rect.left>=frame.left-1&&rect.right<plot.left,'Narrow Y-axis label clipped or overlaps trace');
   }
   assert(plot.left-frame.left===40,'Y-axis gutter scaled with viewport instead of native layout');
-  return { passed: 1, checks: ['native Idle controls and uncut Y-axis labels fit 390px after live resize without redraw'] };
+  change(root.querySelector('[data-idle=mode]'),'recovery');
+  const note=root.querySelector('[data-idle=recovery-view-note]').getBoundingClientRect();
+  assert(note.width>=250&&document.documentElement.scrollWidth<=innerWidth,'Recovery event controls squeeze explanations into thin columns or overflow');
+  return { passed: 2, checks: ['native Idle controls and uncut Y-axis labels fit 390px after live resize without redraw','Recovery event controls wrap with a readable full-width explanation at 390px'] };
 }
