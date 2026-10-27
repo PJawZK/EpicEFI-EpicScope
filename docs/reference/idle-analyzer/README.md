@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Scope authority and discovery feedback](NATIVE_SCOPE_FEEDBACK_CHECKPOINT.md) follows native action-based investigation: explicit metric scope/apply action, graph-focus explanation and visible, truthful candidate outcomes without changing union mathematics.
+
 [Native region manager and combined analysis](NATIVE_REGION_MANAGER_CHECKPOINT.md) adds editable inclusion/exclusion, independent graph focus, source-time region markers and deduplicated union analysis, using existing Logger/source owners.
 
 [Trace fidelity and recorded candidate regions](NATIVE_REGIONS_TRACE_CHECKPOINT.md) adds Logger-style dense/raw trace rendering, a smaller desktop axis margin, and an explicit RPM-only discovery → review → Logger A/B workflow. Full region management and qualification remain deferred.

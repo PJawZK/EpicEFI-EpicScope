@@ -13,6 +13,7 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
   element.setAttribute('aria-label', 'Manage Idle regions');
   element.innerHTML = `<header><h2>Manage regions</h2><button type="button" data-manager="close" aria-label="Close region manager">×</button></header>
     <p>Include regions for combined analysis. View changes only graph focus. RPM candidates require throttle, temperature and load review; new candidates start excluded.</p>
+    <p data-manager="authority"></p><p>Candidate rows are retained snapshots. Find candidates refreshes current suggestions; existing regions and inclusion choices are preserved.</p>
     <p data-manager="summary"></p><p data-manager="message" role="status" aria-live="polite"></p>
     <div class="idle-region-table"><table><thead><tr><th>Use</th><th>Region</th><th>Start (s)</th><th>End (s)</th><th>Duration</th><th>Origin</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
     <section class="idle-region-create"><strong>Add manual interval</strong><label>Name <input data-new="label" value="Manual region" maxlength="100"></label><label>Start (s)<input data-new="start" type="number" step="any"></label><label>End (s)<input data-new="end" type="number" step="any"></label><button type="button" data-manager="add">Add region</button></section>
@@ -46,7 +47,8 @@ export function createIdleRegionManager(signal: AbortSignal, action: (action: Id
     open() { if (!element.open) element.showModal(); },
     close() { if (element.open) element.close(); },
     message(text: string) { element.querySelector('[data-manager=message]')!.textContent = text; },
-    update(regions: readonly IdleManagedRegion[], focusId: string, extent: IdleRegionBounds | undefined) {
+    update(regions: readonly IdleManagedRegion[], focusId: string, extent: IdleRegionBounds | undefined, scopeLabel: string, combined: boolean) {
+      element.querySelector('[data-manager=authority]')!.textContent = `Current metrics: ${scopeLabel}. ${combined ? 'Checked regions are applied.' : 'Checked regions are not the analysis scope. Press Analyze included regions to apply them.'}`;
       element.querySelector('[data-manager=summary]')!.textContent = `${regions.filter(r => r.included).length}/${regions.length} included · overlaps counted once · up to 200 regions · session only`;
       if (previous !== regions) {
         previous = regions; body.replaceChildren();

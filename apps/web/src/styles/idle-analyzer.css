@@ -117,3 +117,16 @@
 .idle-region-create label { display: flex; gap: 4px; align-items: center; }
 .idle-region-create { padding-top: 8px; border-top: 1px solid var(--line); }
 @media (max-width: 540px) { .idle-region-manager { padding: 8px; } .idle-toolbar [data-idle=focus] { max-width: 220px; } }
+
+.idle-analysis-authority, .idle-discovery-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+.idle-analysis-authority { padding: 4px 0; color: var(--headline); }
+.idle-analysis-authority > span { color: var(--warn); }
+.idle-analysis-authority button, .idle-discovery-feedback button { background: var(--accent-soft); font-weight: 700; }
+.idle-discovery-feedback { border: 1px solid var(--accent); border-radius: var(--radius); padding: 7px; background: var(--panel); }
+.idle-discovery-feedback > span { flex: 1; min-width: 180px; line-height: 1.5; }
+.idle-focus-explanation { margin: 0; color: var(--detail); font-size: 11px; line-height: 1.4; }
+.idle-discovery-feedback[hidden], .idle-analysis-authority button[hidden], .idle-discovery-feedback button[hidden], .idle-focus-explanation[hidden] { display: none; }
+.idle-region-manager [data-manager=authority] { color: var(--warn); font-weight: 600; }
+
+.idle-analysis-authority strong, .idle-analysis-authority > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.idle-region-manager p { overflow-wrap: anywhere; }

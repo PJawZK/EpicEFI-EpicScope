@@ -190,11 +190,15 @@ export async function runIdleAnalyzerChecks() {
       m.field('discover').click(); await wait();
       assert(f.calls.length===1 && commits===0 && m.field('scope').value==='full', 'Discovery reread full accepted RPM or changed analysis scope');
       assert(m.field('candidates').options.length===2 && m.field('scope-note').textContent.includes('1 RPM-only candidates'), 'Missing recorded candidate');
+      assert(!m.field('discovery-feedback').hidden&&!m.field('review-candidates').hidden&&m.field('discovery-message').textContent.includes('1 RPM candidate found')&&m.field('status').textContent==='Recorded evidence','Discovery result hidden or overwrote analytical status');
+      m.field('review-candidates').click();assert(m.view.element.querySelector('.idle-region-manager').open,'Review action did not reveal candidate rows');m.view.element.querySelector('[data-manager=close]').click();
       change(m.field('candidates'),'0'); await wait();
       assert(commits===1 && f.calls.length===1 && m.field('scope').value==='ab' && f.context.aTimeMs===0 && f.context.bTimeMs===12000, 'Candidate bypassed Logger or redundantly analyzed identical bounds');
       m.field('discover').click(); await wait(); assert(f.calls.length===1, 'Repeated discovery reread source');
       change(m.field('candidate-rpm'),'850'); assert(m.field('candidates').disabled, 'Changed thresholds retained stale candidates');
       m.field('discover').click(); await wait(); assert(m.field('candidates').disabled && m.field('scope-note').textContent.includes('0 RPM-only'), 'RPM setting did not affect discovery');
+      assert(m.field('discovery-message').textContent.includes('No candidates match')&&m.field('review-candidates').hidden&&m.field('status').textContent==='Recorded evidence','Zero-match feedback misrepresented new regions or analytical state');
+      assert(m.view.element.querySelectorAll('.idle-region-manager tbody tr').length===1,'Zero matches removed retained managed snapshots');
       assert(m.field('samples').textContent==='121','Discovery altered accepted metrics');
     } finally { m.close(); }
   });
@@ -217,7 +221,7 @@ export async function runIdleAnalyzerChecks() {
     try {
       m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('discover').click();await wait();change(m.field('candidates'),'0');await wait();
       assert(m.field('scope').value==='full'&&m.field('samples').textContent==='121'&&f.calls.length===1,'Refused Logger range replaced analysis');
-      change(m.field('candidate-rpm'),'');m.field('discover').click();await wait();assert(f.calls.length===1&&m.field('status').textContent.includes('positive'),'Invalid settings read source');
+      change(m.field('candidate-rpm'),'');m.field('discover').click();await wait();assert(f.calls.length===1&&m.field('discovery-message').textContent.includes('positive'),'Invalid settings read source');
     } finally {m.close();}
   });
   await check('region manager unions overlaps, separates excluded graph focus and uses retained source evidence', async()=>{
@@ -228,7 +232,10 @@ export async function runIdleAnalyzerChecks() {
       m.view.setContext(f.context);m.view.setActive(true);await wait();m.field('manage-regions').click();
       const dialog=m.view.element.querySelector('.idle-region-manager'),button=name=>dialog.querySelector(`[data-manager="${name}"]`);
       const add=(a,b,label)=>{dialog.querySelector('[data-new=start]').value=String(a);dialog.querySelector('[data-new=end]').value=String(b);dialog.querySelector('[data-new=label]').value=label;button('add').click();};
-      add(0,.2,'First');add(.1,.2,'Overlap');add(.4,.5,'Last');button('analyze').click();await wait();
+      add(0,.2,'First');add(.1,.2,'Overlap');add(.4,.5,'Last');
+      assert(m.field('metrics-scope').textContent==='Metrics: Full Log'&&m.field('scope-application').textContent.includes('not applied')&&dialog.querySelector('[data-manager=authority]').textContent.includes('not the analysis scope'),'Checked regions looked active before explicit apply');
+      button('close').click();m.field('apply-included').click();m.field('manage-regions').click();await wait();
+      assert(m.field('metrics-scope').textContent.includes('Combined included regions (3)')&&m.field('apply-included').hidden&&m.field('focus-explanation').textContent.includes('Gap samples are excluded'),'Combined scope or overview gap explanation missing');
       assert(m.field('scope').value==='regions'&&m.field('samples').textContent==='5'&&m.field('rmse').textContent==='77.46','Union included gap or counted overlap twice');
       assert(f.calls.length===1,'Union reread full retained source');
       const rows=()=>[...dialog.querySelectorAll('tbody tr')];
@@ -239,6 +246,7 @@ export async function runIdleAnalyzerChecks() {
       await wait();assert(m.field('samples').textContent==='2','Exclusions not applied');
       rows()[0].querySelector('[data-manager=focus]').click();
       assert(m.field('samples').textContent==='2'&&f.calls.length===1&&m.field('region-label').textContent.includes('First (excluded)'),'Viewing excluded region changed analysis');
+      assert(m.field('focus-explanation').textContent.includes('First (excluded)')&&m.field('metrics-scope').textContent.includes('(1)'),'Graph focus confused with combined metric authority');
       assert(m.view.element.querySelectorAll('.idle-region-marker.is-excluded').length===2&&m.view.element.querySelector('.idle-region-marker.is-focused'),'Missing included/excluded/focus presentation');
       button('close').click();m.field('logger').click();assert(navigation.startMs===0&&navigation.endMs===200,'Logger handoff used union instead of viewed region');
       const track=m.field('range-track'),rect=track.getBoundingClientRect();track.setPointerCapture=()=>{};

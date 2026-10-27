@@ -55,11 +55,12 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <option disabled>Base Airflow — not integrated</option><option disabled>RPM PID — not integrated</option><option disabled>DC Valve Tracking — not integrated</option>
       <option disabled>DC Bias / Position PID — not integrated</option><option disabled>Ignition — not integrated</option><option disabled>Load Recovery — not integrated</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
-      <label data-idle="focus-control" hidden>View <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
-    <div class="idle-workspace"><div class="idle-main"><div class="idle-metrics" aria-label="Stability measurements">
+      <label data-idle="focus-control" hidden>Graph focus <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
+    <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
+    <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><div class="idle-metrics" aria-label="Stability measurements">
       <div><strong data-idle="sigma">—</strong><span>RPM σ · sample</span></div><div><strong data-idle="rmse">—</strong><span>RPM error RMSE</span></div>
       <div><strong data-idle="in-band">—</strong><span>Within ±40 RPM</span></div><div><strong data-idle="samples">—</strong><span>Valid RPM samples</span></div></div>
-      <div data-idle="plot"></div><div class="idle-plot-tools"><span>Wheel zoom · drag pan · Shift-drag zoom · hover for recorded values</span>
+      <p class="idle-focus-explanation" data-idle="focus-explanation" hidden></p><div data-idle="plot"></div><div class="idle-plot-tools"><span>Wheel zoom · drag pan · Shift-drag zoom · hover for recorded values</span>
       <button type="button" data-idle="zoom-in" aria-label="Zoom Idle graph in">+</button><button type="button" data-idle="zoom-out" aria-label="Zoom Idle graph out">−</button><button type="button" data-idle="fit">Fit region</button></div>
       <section class="idle-region-evidence"><strong>Recorded operating window</strong><button type="button" data-idle="region-focus"><span data-idle="region-label">Select a region</span><span data-idle="region-evidence">No accepted analysis.</span></button></section></div>
       <aside class="idle-assessment"><header><strong>Diagnostic assessment</strong><span data-idle="status" role="status" aria-live="polite">Load a recording.</span></header>
@@ -122,7 +123,16 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     for (const region of regions) select.add(new Option(`${region.label} · ${region.included ? 'included' : 'excluded'} · ${(region.startMs/1000).toFixed(2)}–${(region.endMs/1000).toFixed(2)} s`, region.id));
     select.value = focusId;
     field('focus-control').hidden = !regions.length; field('region-key').hidden = !regions.length;
-    manager.update(regions, focusId, context.sourceTimeRange);
+    const included = regions.filter(region => region.included).length;
+    const scopeLabel = scopeValue === 'regions' ? `Combined included regions (${included})` : scopeValue === 'manual' ? 'Manual region' : analyzerScopeOptions(context).find(option => option.value === scopeValue)?.label ?? 'Unavailable';
+    field('metrics-scope').textContent = `Metrics: ${scopeLabel}`;
+    field('scope-application').textContent = scopeValue === 'regions' ? 'Overlapping samples count once.' : included ? `${included} checked region${included === 1 ? ' is' : 's are'} not applied to these metrics.` : '';
+    field('apply-included').hidden = scopeValue === 'regions' || !included;
+    const viewed = regions.find(region => region.id === focusId);
+    const explanation = field('focus-explanation'); explanation.hidden = !regions.length;
+    explanation.textContent = viewed ? `Graph focus: ${viewed.label} (${viewed.included ? 'included' : 'excluded'}). Metrics remain ${scopeLabel}.`
+      : focusId === 'logger' ? `Graph focus: Logger A/B. Metrics remain ${scopeLabel}.` : scopeValue === 'regions' ? 'Graph overview spans the included intervals and the gaps between them. Gap samples are excluded from the combined metrics.' : `Graph overview: ${scopeLabel}.`;
+    manager.update(regions, focusId, context.sourceTimeRange, scopeLabel, scopeValue === 'regions');
   };
   const semanticEvidenceKey = () => JSON.stringify([context.source?.revision, context.source?.sampleCount, context.source?.descriptor, context.channels, rpmId, targetId, contextIds]);
   const renderPlot = () => {
@@ -162,8 +172,13 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       manager.message(action.type === 'analyze' ? 'Included regions selected. Overlapping samples count once.' : 'Region change accepted. Included scope updates analysis; View changes only graph focus.');
     } catch (error) { manager.message(error instanceof Error ? error.message : 'Region change rejected.'); }
   };
-  const resetDiscovery = () => {
+  const showDiscovery = (message: string, review = false) => {
+    field('discovery-feedback').hidden = false; field('discovery-message').textContent = message; field('review-candidates').hidden = !review;
+  };
+  const resetDiscovery = (settingsChanged = false) => {
     discoveryGeneration += 1; discoveryPending = false; discovery = undefined;
+    field('discovery-feedback').hidden = true; field('review-candidates').hidden = true;
+    if (settingsChanged) showDiscovery('Discovery settings changed. Find candidates to refresh suggestions; existing managed regions are retained.');
     field<HTMLButtonElement>('discover').disabled = false;
     field<HTMLSelectElement>('candidates').replaceChildren(new Option('No discovered candidates', ''));
     field<HTMLSelectElement>('candidates').disabled = true;
@@ -359,12 +374,12 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const discover = async () => {
     if (!active || disposed || discoveryPending) return;
     const options = candidateOptions(), source = context.source, bounds = context.sourceTimeRange;
-    if (!options) { status('Enter a positive RPM ceiling and minimum duration.'); return; }
-    if (!source || source.descriptor?.format !== 'MLG' || !bounds || !rpmId) { status('Load recorded RPM evidence before discovering candidates.'); return; }
+    if (!options) { showDiscovery('Enter a positive RPM ceiling and minimum duration.'); return; }
+    if (!source || source.descriptor?.format !== 'MLG' || !bounds || !rpmId) { showDiscovery('Load recorded RPM evidence before discovering candidates.'); return; }
     const key = discoveryKey(options);
-    if (discovery?.source === source.identity && discovery.key === key) { status('Candidate list is current; review a recorded interval.'); return; }
+    if (discovery?.source === source.identity && discovery.key === key) { showDiscovery(discovery.result.totalCount ? `${discovery.result.totalCount} current RPM candidate${discovery.result.totalCount === 1 ? '' : 's'}. Review inclusion in Manage regions; existing choices are retained.` : 'No candidates match the current settings. Try a higher RPM ceiling or shorter minimum duration; managed regions are retained.', discovery.result.totalCount > 0); return; }
     const captured = context, requestedRpm = rpmId, request = ++discoveryGeneration;
-    discoveryPending = true; field<HTMLButtonElement>('discover').disabled = true; status('Finding RPM-only candidate intervals…');
+    discoveryPending = true; field<HTMLButtonElement>('discover').disabled = true; showDiscovery('Finding RPM-only candidate intervals…');
     try {
       // Reuse accepted full-source RPM evidence when available; otherwise one captured read.
       const trace = scopeValue === 'full' && accepted?.source === source.identity ? accepted.rpm
@@ -380,9 +395,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       result.regions.forEach((region, index) => select.add(new Option(`${index + 1}: ${(region.startMs / 1000).toFixed(2)}–${(region.endMs / 1000).toFixed(2)} s`, String(index))));
       select.disabled = !result.regions.length;
       field('scope-note').textContent = `${result.totalCount} RPM-only candidates${result.totalCount > result.regions.length ? '; first 200 listed' : ''} · 0 < RPM ≤ ${options.maximumRpm} · ≥ ${options.minimumDurationMs / 1000} s · gaps ≤ 250 ms. Review throttle, temperature and loads.`;
-      status('Candidate discovery complete; new regions are excluded pending review.');
+      showDiscovery(result.totalCount ? `${result.totalCount} RPM candidate${result.totalCount === 1 ? '' : 's'} found${result.totalCount > result.regions.length ? '; first 200 listed' : ''}. ${added} new excluded region${added === 1 ? '' : 's'} added for review; existing inclusion choices are retained.`
+        : 'No candidates match these settings. Try a higher RPM ceiling or shorter minimum duration. Existing managed regions are unchanged.', result.totalCount > 0);
     } catch (error) {
-      if (active && !disposed && request === discoveryGeneration) status(error instanceof Error ? error.message : 'Candidate discovery failed; existing analysis retained.');
+      if (active && !disposed && request === discoveryGeneration) showDiscovery(error instanceof Error ? error.message : 'Candidate discovery failed; existing analysis retained.');
     } finally {
       if (request === discoveryGeneration) { discoveryPending = false; field<HTMLButtonElement>('discover').disabled = false; }
     }
@@ -399,8 +415,10 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     const node = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-region-id]') : null;
     if (active && !disposed && node && !(event as MouseEvent).shiftKey) manageRegion({ type: 'focus', id: node.dataset.regionId! });
   }, { signal: events.signal });
+  listen(field('apply-included'), () => manageRegion({ type: 'analyze' }));
+  listen(field('review-candidates'), () => { renderRegionControls(); manager.open(); });
   listen(field('discover'), () => { void discover(); });
-  for (const name of ['candidate-rpm', 'candidate-duration']) listen(field(name), resetDiscovery, 'change');
+  for (const name of ['candidate-rpm', 'candidate-duration']) listen(field(name), () => resetDiscovery(true), 'change');
   listen(field('candidates'), () => {
     const select = field<HTMLSelectElement>('candidates'), options = candidateOptions();
     if (!select.value || !options || discovery?.source !== context.source?.identity || discovery?.key !== discoveryKey(options)) return;
