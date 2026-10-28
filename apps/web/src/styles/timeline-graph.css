@@ -13,7 +13,8 @@
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 220px;
+  /* The pane owns its available height; a taller canvas is clipped, not scaled. */
+  min-height: 0;
   background: #081722;
   cursor: grab;
   touch-action: none;

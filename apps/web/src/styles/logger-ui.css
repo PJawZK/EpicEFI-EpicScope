@@ -691,7 +691,9 @@
   position: absolute;
   z-index: 1;
   min-width: 190px;
-  min-height: 120px;
+  /* Honor normalized layout geometry at short viewport heights.
+     Pointer resizing retains its 120px minimum in the existing layout owner. */
+  min-height: 0;
 }
 
 .graph-workspace--freeform .graph-window--active {
