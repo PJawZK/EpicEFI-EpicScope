@@ -198,7 +198,11 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const manager = createIdleRegionManager(events.signal, action => { if (active && !disposed) manageRegion(action); });
   root.append(manager.element);
   const tuneContext=createIdleTuneContextView(events.signal,()=>owner.event('idle.tune.projected'));root.append(tuneContext.element);
-  const comparisonSource=createIdleComparisonSourceView(events.signal);root.append(comparisonSource.element);
+  const comparisonSource=createIdleComparisonSourceView(events.signal,()=>accepted&&accepted.source===context.source?.identity?{
+    result:accepted.result,sourceName:context.source?.descriptor?.displayName??'Primary',regions:accepted.regions,
+    rpmChannel:accepted.rpm.channel.sourceName,targetChannel:accepted.target?.channel.sourceName,
+    qualification:accepted.qualification?'qualified':'off',qualificationDescription:accepted.qualification?.description??'Qualification off; accepted primary scope',
+  }:undefined);root.append(comparisonSource.element);
   const selectedBounds = (): IdleRegionBounds | undefined => {
     if (scopeValue === 'regions') {
       const included = regionSession.includedBounds();
@@ -651,7 +655,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   };
   const clear = () => {
     controllerRequest++; controllerPendingKey = undefined; controllerError = undefined;
-    accepted = undefined; renderedPlot = undefined; plot.clear();
+    accepted = undefined; comparisonSource.refreshPrimary(); renderedPlot = undefined; plot.clear();
     for (const key of ['sigma', 'rmse', 'in-band', 'samples']) field(key).textContent = '—';
     field('region-evidence').textContent = 'No accepted analysis for this source and region.';
     renderAssessment();
@@ -760,6 +764,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       const qualification = plan.enabled ? { ...qualifyIdleSamples({referenceId:requestedRpm,channels:new Map(traces.map(trace=>[trace.channel.id,{range:trace.range,complete:trace.complete}])),conditions:plan.conditions,scope:regions??[bounds],bypass:plan.bypass}), description:plan.description } : undefined;
       const result = analyzeIdleStability(rpm.range, target?.range, { ...bounds, ...(regions ? { regions } : {}), ...(qualification ? {eligibility:qualification.eligibility} : {}), complete:complete && (qualification?.complete??true) });
       accepted = { regions:regions??[bounds], contextMapping: requestedContext, source: source.identity, key, result, qualification, evidenceKey, rpm, target, traces };
+      comparisonSource.refreshPrimary();
       const stats = result.analysis;
       field('sigma').textContent = number(stats.rpm.standardDeviation);
       field('rmse').textContent = number(stats.tracking?.rmse);

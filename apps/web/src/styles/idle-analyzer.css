@@ -169,3 +169,6 @@
 .idle-b-axis > span { position: absolute; top: 2px; bottom: 2px; background: #e8b46d88; border: 1px solid #e8b46d; }
 .idle-comparison-source select { max-width: 240px; }
 @media (max-width: 600px) { .idle-comparison-source select { max-width: 205px; } }
+.idle-comparison-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.idle-comparison-table caption { text-align: left; padding: 8px 0; overflow-wrap: anywhere; }
+.idle-comparison-table th, .idle-comparison-table td { padding: 6px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
