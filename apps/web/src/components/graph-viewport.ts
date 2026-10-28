@@ -171,7 +171,9 @@ export interface GraphViewportController {
   clearHoverInspection():void;
   onHoverTime(listener:(timeMs:number|undefined)=>void):void;
   setCursorTime(timeMs: number): void;
-  setViewport(viewport: TimelineViewport | undefined): void;
+  setViewport(viewport: TimelineViewport | undefined, cursorTimeMs?:number): void;
+  onSeekTime(listener:(timeMs:number)=>void):void;
+  cancelNavigationGesture():void;
   setAnalysisRange(aTimeMs: number | undefined, bTimeMs: number | undefined): void;
   onZoom(listener: (factor: number, anchorMs: number) => void): void;
   onPan(listener: (deltaMs: number) => void): void;
@@ -237,6 +239,8 @@ export function createGraphViewport(): GraphViewportController {
     readonly envelope: ReturnType<typeof buildViewportEnvelope>;
   }>();
   let cursorTimeMs = 0;
+  let seekListener:((timeMs:number)=>void)|undefined;
+  let cancelNavigationGesture:(()=>void)|undefined;
   let aTimeMs: number | undefined;
   let bTimeMs: number | undefined;
   let zoomListener: ((factor: number, anchorMs: number) => void) | undefined;
@@ -416,13 +420,14 @@ export function createGraphViewport(): GraphViewportController {
     const rect = canvas.getBoundingClientRect();
     // Preserve semantic range state while hidden; the existing ResizeObserver
     // draws it when shown instead of scanning cached traces into a 1px canvas.
-    if (rect.width <= 0 || rect.height <= 0) {hoverInspection.clear();return;}
+    if (rect.width <= 0 || rect.height <= 0) {cancelNavigationGesture?.();hoverInspection.clear();return;}
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.round(rect.width));
     const height = Math.max(1, Math.round(rect.height));
     const targetWidth = Math.max(1, Math.round(width * dpr));
     const targetHeight = Math.max(1, Math.round(height * dpr));
     if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      cancelNavigationGesture?.();
       hoverInspection.clear();
       canvas.width = targetWidth;
       canvas.height = targetHeight;
@@ -763,6 +768,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   canvas.addEventListener('wheel', (event) => {
+    cancelNavigationGesture?.();
     if (!viewport || !zoomListener) return;
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -775,32 +781,29 @@ export function createGraphViewport(): GraphViewportController {
   }, { passive: false });
 
   canvas.addEventListener('pointerdown', (event) => {
-    if (!viewport || !panListener || event.button !== 0) return;
-    event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
-    root.classList.add('graph-viewport--panning');
-    let lastX = event.clientX;
-
-    const move = (moveEvent: PointerEvent): void => {
-      if (!viewport) return;
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const deltaX = moveEvent.clientX - lastX;
-      lastX = moveEvent.clientX;
-      const span = viewport.visibleEndMs - viewport.visibleStartMs;
-      markViewportInteraction();
-      panListener?.(-(deltaX / rect.width) * span);
+    if(!viewport||(!panListener&&!seekListener)||event.button!==0)return;
+    cancelNavigationGesture?.();event.preventDefault();canvas.setPointerCapture(event.pointerId);
+    const startX=event.clientX,startY=event.clientY;let lastX=startX,dragged=false;
+    const finish=()=>{
+      if(cancelNavigationGesture!==finish)return;
+      cancelNavigationGesture=undefined;root.classList.remove('graph-viewport--panning');
+      canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',cancel);canvas.removeEventListener('lostpointercapture',cancel);
+      if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);
     };
-    const end = (endEvent: PointerEvent): void => {
-      if (canvas.hasPointerCapture(endEvent.pointerId)) canvas.releasePointerCapture(endEvent.pointerId);
-      root.classList.remove('graph-viewport--panning');
-      canvas.removeEventListener('pointermove', move);
-      canvas.removeEventListener('pointerup', end);
-      canvas.removeEventListener('pointercancel', end);
+    const move=(next:PointerEvent)=>{
+      if(next.pointerId!==event.pointerId||!viewport)return;
+      if(!dragged&&Math.hypot(next.clientX-startX,next.clientY-startY)<4)return;
+      dragged=true;root.classList.add('graph-viewport--panning');const rect=canvas.getBoundingClientRect();if(rect.width<=0)return;
+      const deltaX=next.clientX-lastX;lastX=next.clientX;markViewportInteraction();panListener?.(-deltaX/rect.width*(viewport.visibleEndMs-viewport.visibleStartMs));
     };
-    canvas.addEventListener('pointermove', move);
-    canvas.addEventListener('pointerup', end);
-    canvas.addEventListener('pointercancel', end);
+    const up=(next:PointerEvent)=>{
+      if(next.pointerId!==event.pointerId)return;
+      const click=!dragged&&Math.hypot(next.clientX-startX,next.clientY-startY)<4;finish();
+      if(click&&viewport){const rect=canvas.getBoundingClientRect();if(rect.width>12){const ratio=Math.max(0,Math.min(1,(next.clientX-rect.left-6)/(rect.width-12)));seekListener?.(viewport.visibleStartMs+ratio*(viewport.visibleEndMs-viewport.visibleStartMs));}}
+    };
+    const cancel=(next:PointerEvent)=>{if(next.pointerId===event.pointerId)finish();};
+    cancelNavigationGesture=finish;
+    canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',cancel);canvas.addEventListener('lostpointercapture',cancel);
   });
 
   const emitPendingChannels = (): void => {
@@ -1396,6 +1399,7 @@ export function createGraphViewport(): GraphViewportController {
   ): void => {
     sourceIntegrityOverlay.setMarkers([]);
     hoverInspection.clear();
+    cancelNavigationGesture?.();
     channelsById.clear();
     for (const channel of nextChannels) {
       if (!channelsById.has(channel.id)) channelsById.set(channel.id, channel);
@@ -1670,6 +1674,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const clearChannels = (options: { readonly render?: boolean } = {}): void => {
+    cancelNavigationGesture?.();
     hoverInspection.clear();
     cancelPending();
     viewportRefreshGeneration += 1;
@@ -1698,9 +1703,10 @@ export function createGraphViewport(): GraphViewportController {
     draw();
   };
 
-  const setViewport = (nextViewport: TimelineViewport | undefined): void => {
+  const setViewport = (nextViewport: TimelineViewport | undefined, nextCursorTime?:number): void => {
     hoverInspection.clear();
     viewport = nextViewport;
+    if(nextCursorTime!==undefined&&timeRange){cursorTimeMs=Math.max(timeRange.startMs,Math.min(timeRange.endMs,nextCursorTime));emitCursorValues();renderReadout();}
     const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
     if (logicalThreads <= 3) {
       for (const [channelId, trace] of activeTraces) {
@@ -1742,6 +1748,7 @@ export function createGraphViewport(): GraphViewportController {
     sourceIntegrityOverlay.setMarkers([]);
     cancelPending();
     hoverInspection.clear();
+    cancelNavigationGesture?.();
     channelsById.clear();
     channelData = undefined;
     timeRange = undefined;
@@ -1773,6 +1780,8 @@ export function createGraphViewport(): GraphViewportController {
       sourceIntegrityDisposed = true;
       sourceIntegrityOverlay.dispose();
     },
+    onSeekTime:listener=>{seekListener=listener;},
+    cancelNavigationGesture:()=>cancelNavigationGesture?.(),
     setHoverTime:hoverInspection.setTime,
     clearHoverInspection:hoverInspection.clear,
     onHoverTime:hoverInspection.onHover,

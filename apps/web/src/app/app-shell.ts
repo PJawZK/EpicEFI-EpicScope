@@ -1143,7 +1143,7 @@ export function mountAppShell(root: HTMLElement): void {
     const loggerActive = mode === 'logger';
     const analyzerActive = mode === 'analyzer';
     const histogramActive = mode === 'histogram';
-    if(!loggerActive)loggerPage.clearHoverInspection();
+    if(!loggerActive){loggerPage.clearHoverInspection();loggerPage.cancelNavigationGesture();}
     loggerPage.element.hidden = !loggerActive;
     if (loggerActive) loggerPage.refreshAnalysisRangeStatistics();
     analyzerPage.setActive(false);

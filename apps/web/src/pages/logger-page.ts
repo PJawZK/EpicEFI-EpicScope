@@ -14,6 +14,7 @@ import type {
 } from '../../../../core/log-model/log-types';
 import { extendLiveViewport } from '../../../../core/timeline/live-follow';
 import {
+  cursorAfterViewportPan,
   centerViewportOn,
   createFullViewport,
   fitViewport,
@@ -198,6 +199,7 @@ export interface LoggerAnalysisContext {
 }
 
 export interface LoggerPageController {
+  cancelNavigationGesture():void;
   clearHoverInspection():void;
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
@@ -1134,12 +1136,14 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   const syncViewport = (
     nextViewport: TimelineViewport | undefined,
     historyMode: 'none' | 'record' | 'coalesce' = 'none',
+    selectedTime?:number,
   ): void => {
     viewport = nextViewport;
+    if(selectedTime!==undefined){previousCursorTimeMs=selectedTime;if(timeline.getCursorTime()!==selectedTime)timeline.setCursorTime(selectedTime);}
     timeline.setViewport(nextViewport);
-    paneRuntimes.forEach((runtime) => runtime.graph.setViewport(nextViewport));
+    paneRuntimes.forEach((runtime) => runtime.graph.setViewport(nextViewport,selectedTime));
     const workspace = activeWorkspace();
-    if (workspace) workspace.viewport = nextViewport ? { ...nextViewport } : undefined;
+    if (workspace){workspace.viewport = nextViewport ? { ...nextViewport } : undefined;if(selectedTime!==undefined)workspace.cursorTimeMs=selectedTime;}
     if (nextViewport && historyMode !== 'none') recordViewportHistory(nextViewport, historyMode === 'coalesce');
     else refreshViewHistoryState();
   };
@@ -1196,7 +1200,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
 
     if (!viewportEquals(viewport, next)) {
       const historyMode = intent.type === 'pan' || intent.type === 'resize' ? 'coalesce' : 'record';
-      syncViewport(next, historyMode);
+      syncViewport(next, historyMode,intent.type==='pan'&&intent.carryCursor?cursorAfterViewportPan(viewport,next,timeline.getCursorTime()):undefined);
     }
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
@@ -1911,13 +1915,14 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     });
 
     runtime.graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
-    runtime.graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
+    runtime.graph.onSeekTime(time=>timeline.seekTime(time));
+    runtime.graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs,carryCursor:true }));
   });
 
   timeline.onCursorChange((timeMs) => {
     if (viewport) {
       const nextViewport = followCursor(viewport, previousCursorTimeMs, timeMs);
-      if (!viewportEquals(viewport, nextViewport)) syncViewport(nextViewport);
+      if (!viewportEquals(viewport, nextViewport)){syncViewport(nextViewport,'none',timeMs);return;}
     }
     previousCursorTimeMs = timeMs;
     paneRuntimes.forEach((runtime) => runtime.graph.setCursorTime(timeMs));
@@ -2623,6 +2628,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     onAnalyzeRange: (listener) => { timeline.onAnalyzeRequest(() => listener()); },
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
+    cancelNavigationGesture:()=>paneRuntimes.forEach(pane=>pane.graph.cancelNavigationGesture()),
     clearHoverInspection:()=>paneRuntimes.forEach(pane=>pane.graph.setHoverTime(undefined)),
     getAnalysisContext,
     getAnalysisSourceState: () => ({ identity: channelDataSource, revision: analysisDataRevision, sampleCount: channelDataSource?.sampleCount ?? 0, aTimeMs: analysisStartMs, bTimeMs: analysisEndMs }),

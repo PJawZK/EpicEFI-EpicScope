@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cursorAfterViewportPan,
   centerViewportOn,
   createFullViewport,
   fitViewport,
@@ -61,3 +62,14 @@ describe('timeline viewport state', () => {
     expect(viewportSpan(zoomed)).toBe(500);
   });
 });
+
+ it('carries cursor by actual clamped pan while preserving visible position and avoiding jumps at blocked bounds',()=>{
+  const v={fullStartMs:0,fullEndMs:10000,visibleStartMs:2000,visibleEndMs:4000};
+  expect(cursorAfterViewportPan(v,panViewport(v,1000),2500)).toBe(3500);
+  expect(cursorAfterViewportPan(v,panViewport(v,-9000),2500)).toBe(500);
+  expect(cursorAfterViewportPan(v,panViewport(v,9000),2500)).toBe(8500);
+  expect(cursorAfterViewportPan(v,panViewport(v,1000),0)).toBe(4000);
+  const full=createFullViewport(0,10000);expect(cursorAfterViewportPan(full,panViewport(full,1000),2500)).toBe(2500);
+  const edge={...v,visibleStartMs:0,visibleEndMs:2000};expect(cursorAfterViewportPan(edge,panViewport(edge,-1000),500)).toBe(500);
+  expect(()=>cursorAfterViewportPan(v,panViewport(v,1),NaN)).toThrow(RangeError);
+ });
