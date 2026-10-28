@@ -1,3 +1,5 @@
+import type { TuneModel } from '../../../../core/tune/tune-model';
+import { createIdleTuneContextView } from './idle-tune-context-view';
 import { idleRecordedCoverage } from './idle-recorded-presentation';
 import { analyzeIdleRecovery, validateIdleRecoverySettings, type IdleRecoveryResult } from '../../../../core/analysis/idle-recovery';
 import { analyzeIdleIgnition, type IdleIgnitionResult } from '../../../../core/analysis/idle-ignition';
@@ -99,7 +101,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
       <option value="airflow">Base Airflow</option><option value="pid">RPM PID</option><option value="valve">DC Valve Tracking</option>
       <option value="bias">DC Bias / Position PID</option><option value="ignition">Ignition</option><option value="recovery">Load Recovery</option><option disabled>Compare — not integrated</option></select></label>
       <label>Analysis scope <select data-idle="scope" aria-label="Idle analysis scope"></select></label>
-      <label data-idle="focus-control" hidden><span data-idle="focus-label">Graph focus</span> <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="recovery-references" hidden>Recovery references</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
+      <label data-idle="focus-control" hidden><span data-idle="focus-label">Graph focus</span> <select data-idle="focus" aria-label="Viewed Idle region"></select></label><span class="idle-toolbar-spacer"></span><button type="button" data-idle="tune-tables">Tune tables</button><button type="button" data-idle="manage-regions">Manage regions</button><button type="button" data-idle="qualification-settings">Qualification</button><button type="button" data-idle="recovery-references" hidden>Recovery references</button><button type="button" data-idle="settings">Channels / region</button><button type="button" data-idle="logger">↗ Logger</button></div>
     <div class="idle-discovery-feedback" data-idle="discovery-feedback" hidden role="status" aria-live="polite"><span data-idle="discovery-message"></span><button type="button" data-idle="review-candidates" hidden>Review candidates</button></div>
     <div class="idle-workspace"><div class="idle-main"><div class="idle-analysis-authority"><strong data-idle="metrics-scope">Metrics: Full Log</strong><span data-idle="scope-application"></span><button type="button" data-idle="apply-included" hidden>Analyze included regions</button></div><p class="idle-qualification-state" data-idle="qualification-state">Qualification off</p><div class="idle-metrics" data-idle="stability-metrics" aria-label="Stability measurements">
       <div><strong data-idle="sigma">—</strong><span>RPM σ · sample</span></div><div><strong data-idle="rmse">—</strong><span>RPM error RMSE</span></div>
@@ -194,6 +196,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
   const syncMappingNote = () => { field('mapping-note').textContent = mappingDescription(); };
   const manager = createIdleRegionManager(events.signal, action => { if (active && !disposed) manageRegion(action); });
   root.append(manager.element);
+  const tuneContext=createIdleTuneContextView(events.signal,()=>owner.event('idle.tune.projected'));root.append(tuneContext.element);
   const selectedBounds = (): IdleRegionBounds | undefined => {
     if (scopeValue === 'regions') {
       const included = regionSession.includedBounds();
@@ -662,6 +665,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if (sourceChanged) { if (scopeValue !== 'viewed') scopeValue = 'full'; manualId = undefined; }
     else scopeValue = retainedAnalyzerScopeValue(scopeValue, context, next);
     context = next;
+    tuneContext.setRecording(next.source?.descriptor?.displayName??'No recording');
     if (sourceChanged || catalogChanged || !rpmSelect.options.length) {
       const initialized = rpmSelect.options.length > 0;
       const choices = [[rpmSelect, 'rpm', rpmId], [targetSelect, 'target', targetId], ...CONTEXT_ROLES.map(role => [contextSelects[role], role, contextIds[role]] as const), ...VALVE_ROLES.map(role => [valveSelects[role],role,valveIds[role]] as const), ...PID_ROLES.map(role=>[pidSelects[role],role,pidIds[role]] as const), ...BIAS_ROLES.map(role=>[biasSelects[role],role,biasIds[role]] as const), ...IGNITION_ROLES.map(role=>[ignitionSelects[role],role,ignitionIds[role]] as const)] as const;
@@ -816,6 +820,7 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     if(mode==='recovery'){renderAssessment();renderPlot();void ensureModeEvidence();}
   },'change');
   listen(field('recovery-event'),()=>{const value=Number(field<HTMLInputElement>('recovery-event').value);if(Number.isInteger(value)&&value>=1&&value<=(accepted?.recovery?.result.events.length??0)){recoveryEventIndex=value-1;renderAssessment();if(recoveryEventFocus)renderPlot();}},'change');
+  listen(field('tune-tables'),()=>tuneContext.open(mode==='pid'?'rpmPid':mode==='bias'||mode==='valve'?'bias':mode==='ignition'?'spark':'base'));
   listen(field('recovery-references'),()=>{field<HTMLDetailsElement>('recovery-settings').open=!field<HTMLDetailsElement>('recovery-settings').open;});
   listen(field('recovery-view'),()=>{recoveryEventFocus=true;renderPlot();});
   listen(field('recovery-all'),()=>{recoveryEventFocus=false;renderPlot();});
@@ -879,17 +884,18 @@ export function createIdleAnalyzerView(observability?: ObservabilityRecorder) {
     element: root,
     setActive(next: boolean) {
       if (disposed || active === next) return;
-      active = next; plot.setActive(next);
+      active = next; plot.setActive(next);tuneContext.setActive(next);
       if (!next) { controllerRequest++; controllerPendingKey=undefined; manager.close(); rangeInteraction.cancel(); generation += 1; discoveryGeneration += 1; discoveryPending = false; field<HTMLButtonElement>('discover').disabled = false; pendingKey = undefined; return; }
       if (pendingContext) { const nextContext = pendingContext; pendingContext = undefined; configure(nextContext); }
       void analyze();
     },
+    setTuneModel(model:TuneModel|undefined,sourceName?:string){if(!disposed)tuneContext.setTuneModel(model,sourceName);},
     setContext(next: LoggerAnalysisContext) {
       if (disposed) return;
       if (!active) { pendingContext = next; return; }
       configure(next); if (!committingRange) void analyze();
     },
     refresh() { void analyze(); },
-    dispose() { disposed = true; active = false; generation += 1; discoveryGeneration += 1; discovery = undefined; regionEvidence = undefined; manager.close(); accepted = undefined; pendingContext = undefined; rangeInteraction.cancel(); events.abort(); plot.dispose(); },
+    dispose() { tuneContext.dispose();disposed = true; active = false; generation += 1; discoveryGeneration += 1; discovery = undefined; regionEvidence = undefined; manager.close(); accepted = undefined; pendingContext = undefined; rangeInteraction.cancel(); events.abort(); plot.dispose(); },
   };
 }

@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Related tune/settings context — Group G](NATIVE_TUNE_CONTEXT_CHECKPOINT.md) adds a read-only native viewer, exact geometry/ambiguity rules and shared reference lookups without invalidating recorded evidence. Runtime tune attribution stays explicitly gated. [Parity inventory](NATIVE_PARITY_INVENTORY.md) records remaining HTML capabilities and adaptations.
+
 [Load Recovery — Group F](NATIVE_RECOVERY_CHECKPOINT.md) adds source-aligned onset/dwell events, explicit censoring, canonical continuity boundaries and bounded event navigation through existing native owners.
 
 [Ignition — Group E](NATIVE_IGNITION_CHECKPOINT.md) adds independent logged advance, signed idle timing correction and supporting actual lambda, with source/unit/alignment authority and retained mode evidence.

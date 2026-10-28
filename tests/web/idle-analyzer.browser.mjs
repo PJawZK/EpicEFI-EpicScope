@@ -1,3 +1,5 @@
+import {parseMsq} from '../../core/parsers/msq/msq-parser';
+import {normalizeMsqTune} from '../../core/tune/tune-model';
 import { analyzeIdleAirflow } from '../../core/analysis/idle-airflow';
 import { analyzeIdleStability } from '../../core/analysis/idle-stability';
 import { MemoryByteSource } from '../../core/parsers/byte-source';
@@ -903,6 +905,22 @@ export async function runIdleAnalyzerChecks() {
     const n=320459,f=fixture(),m=mount();for(const trace of f.traces)trace.range={startSampleIndex:10,timeMs:Float64Array.from({length:n},(_,i)=>i*100),values:Float64Array.from({length:n},(_,i)=>trace.channel.id==='rpm'&&i%8===0?850:1000),validity:new Uint8Array(n).fill(1)};f.context.source.sampleCount=n;f.context.sourceTimeRange.endMs=(n-1)*100;
     try{m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'recovery');assert(m.field('recovery-count').textContent===String(Math.ceil(n/8))&&m.view.element.querySelectorAll('svg *').length<170,'Large recovery counts or graph failed');change(m.field('recovery-event'),String(Math.ceil(n/8)));assert(m.field('assessment').textContent.includes('Censored'),'Last event inaccessible');m.field('recovery-view').click();assert(m.view.element.querySelectorAll('svg *').length<170,'Event focus built unbounded DOM');}finally{m.close();}
   });
+  await check('Idle related tune is lazy, read-only and independent of retained recorded analysis with exact reference lookup',async()=>{
+    const f=biasFixture(),events=[],m=mount({record:e=>events.push(e)}),projections=()=>events.filter(e=>e.name==='idle.tune.projected').length;
+    const tune=normalizeMsqTune(parseMsq('<msq><versionInfo signature="reference-only"/><page number="0"><constant name="dcIdleBiasBins" rows="3" cols="1" units="target idle position">10 18 30</constant><constant name="dcIdleBiasValues" rows="3" cols="1" units="DC idle duty bias">-20 35 30</constant></page></msq>')),before=JSON.stringify(tune.entries);
+    try{m.view.setTuneModel(tune,'reference.msq');m.view.setContext(f.context);m.view.setActive(true);await wait();change(m.field('mode'),'bias');await wait();assert(projections()===0,'Closed tune context projected');const reads=f.calls.length,counters=events.filter(e=>e.name.endsWith('.request')).length,metrics=m.field('bias-i').textContent;
+      m.field('tune-tables').click();const dialog=m.view.element.querySelector('.idle-tune-dialog'),field=name=>dialog.querySelector(`[data-idle-tune=${name}]`);assert(projections()===1&&field('panel').value==='bias'&&field('identity').textContent.includes('reference.msq')&&field('authority').textContent.includes('unverified'),'Related context/default/authority missing');field('x').value='20';field('x').dispatchEvent(new Event('input',{bubbles:true}));assert(field('lookup').textContent.startsWith('34.167'),'Independent reference interpolation incorrect');const button=dialog.querySelector('[data-idle-tune-row="0"][data-idle-tune-col="1"]');button.textContent='99999';button.click();assert(field('cell').textContent.includes('value 35 ')&&!field('cell').textContent.includes('99999'),'Rendered text became tune authority');assert(JSON.stringify(tune.entries)===before&&!dialog.querySelector('[contenteditable]'),'Read-only table mutated tune');
+      m.view.setTuneModel(tune,'renamed.msq');m.view.setContext({...f.context});await wait();assert(projections()===1&&field('lookup').textContent.startsWith('34.167')&&field('identity').textContent.includes('renamed.msq'),'Rename/unchanged context rebuilt tune reference');field('close').click();m.field('tune-tables').click();assert(projections()===1&&f.calls.length===reads&&events.filter(e=>e.name.endsWith('.request')).length===counters&&m.field('bias-i').textContent===metrics,'Tune viewing repeated log calculations/reads or changed metrics');
+      m.view.setTuneModel(undefined);assert(!dialog.querySelector('[data-idle-tune-row]')&&field('entries').textContent.includes('missing')&&m.field('bias-i').textContent===metrics,'Tune unload retained stale table or erased recorded facts');
+    }finally{m.close();}
+  });
+  await check('Idle tune replacement defers hidden projection and withdraws duplicate/bad geometry without repairing it',async()=>{
+    const f=fixture(),events=[],m=mount({record:e=>events.push(e)}),projections=()=>events.filter(e=>e.name==='idle.tune.projected').length;
+    const valid=normalizeMsqTune(parseMsq('<msq><page><constant name="dcIdleBiasBins" rows="2" cols="1">0 100</constant><constant name="dcIdleBiasValues" rows="2" cols="1">-40 40</constant></page></msq>'));
+    try{m.view.setContext(f.context);m.view.setActive(true);await wait();m.view.setTuneModel(valid,'one.msq');m.field('tune-tables').click();const d=m.view.element.querySelector('.idle-tune-dialog'),p=d.querySelector('[data-idle-tune=panel]');change(p,'bias');const initial=projections();m.view.setActive(false);const html=d.innerHTML;m.view.setTuneModel({...valid,entries:[...valid.entries,{...valid.entries[0],pageNumber:2}]},'duplicate.msq');assert(d.innerHTML===html&&projections()===initial&&!d.open,'Hidden tune update rebuilt/opened dialog');m.view.setActive(true);await wait();m.field('tune-tables').click();change(p,'bias');assert(projections()===initial+1&&!d.querySelector('[data-idle-tune-row]')&&d.querySelector('[data-idle-tune=entries]').textContent.includes('ambiguous'),'Duplicate page selected a last-name-wins curve');
+      m.view.setTuneModel({...valid,entries:[{...valid.entries[0],numericValues:[100,0]},valid.entries[1]]},'descending.msq');assert(!d.querySelector('[data-idle-tune-row]')&&d.querySelector('[data-idle-tune=geometry]').textContent.includes('strictly increasing'),'Bad axes silently sorted');
+    }finally{m.close();}
+  });
   return { passed: checks.length, checks };
 }
 
@@ -944,5 +962,6 @@ export function runIdleNarrowChecks() {
   change(root.querySelector('[data-idle=mode]'),'recovery');
   const note=root.querySelector('[data-idle=recovery-view-note]').getBoundingClientRect();
   assert(note.width>=250&&document.documentElement.scrollWidth<=innerWidth,'Recovery event controls squeeze explanations into thin columns or overflow');
-  return { passed: 2, checks: ['native Idle controls and uncut Y-axis labels fit 390px after live resize without redraw','Recovery event controls wrap with a readable full-width explanation at 390px'] };
+  root.querySelector('[data-idle=tune-tables]').click();const dialog=root.querySelector('.idle-tune-dialog');assert(dialog.open&&dialog.getBoundingClientRect().left>=0&&dialog.getBoundingClientRect().right<=innerWidth&&document.documentElement.scrollWidth<=innerWidth,'Idle related tune dialog escaped 390px');dialog.close();
+  return { passed: 3, checks: ['native Idle controls and uncut Y-axis labels fit 390px after live resize without redraw','Recovery event controls wrap with a readable full-width explanation at 390px','Related tune context opens inside the 390px shared shell'] };
 }

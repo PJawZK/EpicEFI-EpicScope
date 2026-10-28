@@ -157,3 +157,10 @@
   .idle-plot-tools[data-idle=recovery-events] { flex-wrap: wrap; }
   .idle-plot-tools[data-idle=recovery-events] > span { flex-basis: 100%; }
 }
+
+.idle-tune-dialog > label, .idle-tune-lookup, .idle-tune-lookup label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.idle-tune-lookup input { width: 95px; }
+.idle-tune-lookup [hidden] { display: none; }
+.idle-tune-dialog [data-idle-tune=identity], .idle-tune-entries { overflow-wrap: anywhere; }
+.idle-tune-dialog .idle-region-table button { min-width: 45px; }
+.idle-tune-entries { max-height: 230px; overflow: auto; }

@@ -430,7 +430,8 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       if (!tuneOnly) veAnalyzerView.setContext(context);
       veAnalyzerView.setActive(true);
     } else if (currentView === 'idle-stability') {
-      idleView.setContext(context);
+      idleView.setTuneModel(tuneModel,tuneSourceName);
+      if (!tuneOnly) idleView.setContext(context);
       idleView.setActive(true);
     } else {
       specializedView.setDomain(currentView);
@@ -528,7 +529,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       if (model === tuneModel && sourceName === tuneSourceName) return;
       tuneModel = model; tuneSourceName = sourceName;
       suppressNextRefresh();
-      if (active && (currentView === 'tune-table' || currentView === 'ignition' || currentView === 've')) routeActiveView(true, true);
+      if (active && (currentView === 'tune-table' || currentView === 'ignition' || currentView === 've' || currentView==='idle-stability')) routeActiveView(true, true);
     },
     openRangeCompareScope: (scopeValue) => {
       setView('compare', false);
