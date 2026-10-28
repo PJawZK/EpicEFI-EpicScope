@@ -7,6 +7,8 @@
 
 ## Current implementation checkpoint
 
+[Independent recording B — Stage5 foundation](NATIVE_INDEPENDENT_B_CHECKPOINT.md) adds transactional canonical import, independent range/channel selection and Stability preview without replacing Logger. It also isolates B cache lifetimes after a reproduced metadata-collision regression. Comparative calculations/verdicts remain disabled.
+
 [Related tune/settings context — Group G](NATIVE_TUNE_CONTEXT_CHECKPOINT.md) adds a read-only native viewer, exact geometry/ambiguity rules and shared reference lookups without invalidating recorded evidence. Runtime tune attribution stays explicitly gated. [Parity inventory](NATIVE_PARITY_INVENTORY.md) records remaining HTML capabilities and adaptations.
 
 [Load Recovery — Group F](NATIVE_RECOVERY_CHECKPOINT.md) adds source-aligned onset/dwell events, explicit censoring, canonical continuity boundaries and bounded event navigation through existing native owners.

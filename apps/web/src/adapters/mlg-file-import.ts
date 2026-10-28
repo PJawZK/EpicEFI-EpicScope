@@ -1,3 +1,4 @@
+import type {LogSourceIdentity} from '../../../../core/log-model/log-types';
 import { parseMlg, type ParsedMlgLog } from '../../../../core/parsers/mlg/mlg-parser';
 import { BlobByteSource, type BlobByteSourceStats } from './blob-byte-source';
 import { createPersistentColumnCacheDataSource } from './persistent-channel-cache';
@@ -7,11 +8,11 @@ export interface ImportedMlgFile extends ParsedMlgLog {
   readonly importTotalMs: number;
 }
 
-export async function importMlgFile(file: File): Promise<ImportedMlgFile> {
+export async function importMlgFile(file: File, sourceIdentity?: LogSourceIdentity): Promise<ImportedMlgFile> {
   const now = (): number => globalThis.performance?.now() ?? Date.now();
   const started = now();
   const source = new BlobByteSource(file);
-  const parsed = await parseMlg(source, {
+  const parsed = await parseMlg(source, sourceIdentity ?? {
     id: `file:${file.name}:${file.size}:${file.lastModified}`,
     displayName: file.name,
     format: 'MLG',

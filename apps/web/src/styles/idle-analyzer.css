@@ -164,3 +164,8 @@
 .idle-tune-dialog [data-idle-tune=identity], .idle-tune-entries { overflow-wrap: anywhere; }
 .idle-tune-dialog .idle-region-table button { min-width: 45px; }
 .idle-tune-entries { max-height: 230px; overflow: auto; }
+
+.idle-b-axis { position: relative; height: 16px; border: 1px solid var(--line); background: var(--panel); }
+.idle-b-axis > span { position: absolute; top: 2px; bottom: 2px; background: #e8b46d88; border: 1px solid #e8b46d; }
+.idle-comparison-source select { max-width: 240px; }
+@media (max-width: 600px) { .idle-comparison-source select { max-width: 205px; } }
