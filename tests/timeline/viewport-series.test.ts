@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks, nearestNumericSample } from '../../core/timeline/viewport-series';
+import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks, nearestNumericSample, nearestNumericSamplePosition } from '../../core/timeline/viewport-series';
 
 it('shared cursor returns original sample identity, never an interpolated or invalid value', () => {
   const range = { startSampleIndex: 10, timeMs: Float64Array.from([100, 200, 300]), values: Float64Array.from([900, 999, 1100]), validity: Uint8Array.from([1, 0, 1]) };
@@ -205,3 +205,10 @@ describe('buildViewportEnvelope', () => {
     expect(points.map((point) => point.breakBefore)).toEqual([true, false, false, true, false]);
   });
 });
+
+ it('hover position preserves invalid original observations and remains logarithmic beyond320k records',()=>{
+  const range={startSampleIndex:10,timeMs:Float64Array.from([100,200,300]),values:Float64Array.from([900,999,1100]),validity:Uint8Array.from([1,0,1])};
+  expect(nearestNumericSamplePosition(range,200)).toEqual({sampleIndex:11,timeMs:200});expect(nearestNumericSample(range,200)).toBeUndefined();expect(nearestNumericSamplePosition(range,150)).toEqual({sampleIndex:10,timeMs:100});expect(nearestNumericSamplePosition(range,99)).toBeUndefined();
+  const n=320459;let reads=0;const times=new Proxy(Float64Array.from({length:n},(_,i)=>i*10),{get(target,key){if(typeof key==='string'&&/^\d+$/.test(key))reads++;return Reflect.get(target,key,target);}});
+  expect(nearestNumericSamplePosition({...range,timeMs:times},1_600_001)).toEqual({sampleIndex:160010,timeMs:1600000});expect(reads).toBeLessThan(64);
+ });

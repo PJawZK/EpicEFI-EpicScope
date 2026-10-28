@@ -38,6 +38,8 @@ export async function runAcceptance({ call, evaluate, file, wait, fixture, modul
  await step('INI',async()=>{await file('input[accept=".ini,text/plain"]',fixture('navigation.ini'));await wait('document.querySelector(".load-ini").dataset.loadState==="success"');});
  await step('MSQ',async()=>{await file('input[accept^=".msq"]',fixture('audit.msq'));await wait('document.querySelector(".load-msq").dataset.loadState==="success"');});
  await step('MLG',async()=>{await file('input[accept^=".mlg"]',fixture('navigation.mlg'));await wait(mode === 'staged' ? 'document.querySelector(".parser-status").textContent.includes("CRC validated")' : 'document.querySelector(".open-log").dataset.loadState==="success"');});
+ await record('logger-hover.json', await evaluate(`(async()=>{const m=await import('${moduleBase}logger-hover.browser.mjs');return m.runLoggerHoverChecks();})()`,60000));
+ await record('logger-hover-shell.json', await evaluate(`(async()=>{const m=await import('${moduleBase}logger-hover.browser.mjs');return m.runLoggerHoverShellChecks();})()`,60000));
  await record('logger-layout.json', await evaluate(`(async()=>{const m=await import('${moduleBase}logger-layout.browser.mjs');return m.runLoggerLayoutChecks();})()`,60000));
  await record('idle-shell.json', await evaluate(`(async()=>{const m=await import('${moduleBase}idle-analyzer.browser.mjs');return m.runIdleShellChecks();})()`,60000));
  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });

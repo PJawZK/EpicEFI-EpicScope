@@ -1,3 +1,4 @@
+import {createGraphHoverInspection} from './graph-hover-inspection';
 import type { SourceIntegrityMarker } from '../app/source-integrity-markers';
 import type {
   ChannelDefinition,
@@ -166,6 +167,9 @@ export interface GraphViewportController {
   clearChannels(options?: { readonly render?: boolean }): void;
   getOverviewTraces(): readonly GraphOverviewTrace[];
   getChannelStatistics(channelId: string): GraphChannelStatistics | undefined;
+  setHoverTime(timeMs:number|undefined):void;
+  clearHoverInspection():void;
+  onHoverTime(listener:(timeMs:number|undefined)=>void):void;
   setCursorTime(timeMs: number): void;
   setViewport(viewport: TimelineViewport | undefined): void;
   setAnalysisRange(aTimeMs: number | undefined, bTimeMs: number | undefined): void;
@@ -310,6 +314,8 @@ export function createGraphViewport(): GraphViewportController {
     }, 3200);
   };
 
+  const hoverInspection=createGraphHoverInspection(root,canvas,()=>({viewport,traces:[...activeTraces.values()]}));
+
   const sourceIntegrityOverlay = createSourceIntegrityCanvasOverlay(canvas, showToast);
   let sourceIntegrityDisposed = false;
 
@@ -410,13 +416,14 @@ export function createGraphViewport(): GraphViewportController {
     const rect = canvas.getBoundingClientRect();
     // Preserve semantic range state while hidden; the existing ResizeObserver
     // draws it when shown instead of scanning cached traces into a 1px canvas.
-    if (rect.width <= 0 || rect.height <= 0) return;
+    if (rect.width <= 0 || rect.height <= 0) {hoverInspection.clear();return;}
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.round(rect.width));
     const height = Math.max(1, Math.round(rect.height));
     const targetWidth = Math.max(1, Math.round(width * dpr));
     const targetHeight = Math.max(1, Math.round(height * dpr));
     if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      hoverInspection.clear();
       canvas.width = targetWidth;
       canvas.height = targetHeight;
     }
@@ -897,6 +904,7 @@ export function createGraphViewport(): GraphViewportController {
         const applyStart = now();
         const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
         usedColors.add(color);
+        hoverInspection.clear();
         activeTraces.set(channelId, {
           channel: pending.channel,
           range,
@@ -1048,6 +1056,7 @@ export function createGraphViewport(): GraphViewportController {
         const fullStatistics = range.fullStatistics ?? summarizeNumericRange(range);
         statisticsMs += now() - statisticsStart;
         const applyStart = now();
+        hoverInspection.clear();
         activeTraces.set(channelId, {
           ...latest,
           range,
@@ -1244,6 +1253,7 @@ export function createGraphViewport(): GraphViewportController {
           const fullStatistics = summarizeNumericRange(merged);
           const scale = stableScaleFromStatistics(fullStatistics);
           const scaleMs = now() - scaleStart;
+          hoverInspection.clear();
           activeTraces.set(channelId, {
             ...latest,
             range: merged,
@@ -1333,6 +1343,7 @@ export function createGraphViewport(): GraphViewportController {
       const scaleMs = now() - scaleStart;
       const usedColors = new Set([...activeTraces.values()].map((trace) => trace.color));
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
+      hoverInspection.clear();
       activeTraces.set(channelId, {
         channel: pending.channel,
         range,
@@ -1384,6 +1395,7 @@ export function createGraphViewport(): GraphViewportController {
     nextTimeRange: LogTimeRange | undefined,
   ): void => {
     sourceIntegrityOverlay.setMarkers([]);
+    hoverInspection.clear();
     channelsById.clear();
     for (const channel of nextChannels) {
       if (!channelsById.has(channel.id)) channelsById.set(channel.id, channel);
@@ -1399,6 +1411,7 @@ export function createGraphViewport(): GraphViewportController {
           visibleEndMs: nextTimeRange.endMs,
         }
       : undefined;
+    hoverInspection.clear();
     cancelPending();
     viewportRefreshGeneration += 1;
     if (viewportRefreshTimer !== undefined) {
@@ -1432,6 +1445,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const refreshGrowingSource = async (nextTimeRange: LogTimeRange | undefined): Promise<void> => {
+    hoverInspection.clear();
     timeRange = nextTimeRange;
     const dataSource = channelData;
     if (!dataSource || activeTraces.size === 0) {
@@ -1454,6 +1468,7 @@ export function createGraphViewport(): GraphViewportController {
       if (!appended || !latest || latest !== trace) return;
       const merged = mergeContiguousRanges(trace.range, appended);
       const fullStatistics = summarizeNumericRange(merged);
+      hoverInspection.clear();
       activeTraces.set(channelId, {
         ...trace,
         range: merged,
@@ -1471,6 +1486,7 @@ export function createGraphViewport(): GraphViewportController {
   const activatePreloadedChannels = (
     ranges: ReadonlyMap<string, NumericChannelRange>,
   ): GraphPreloadedActivationResult => {
+    if(ranges.size)hoverInspection.clear();
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const totalStarted = now();
     if (ranges.size === 0) {
@@ -1510,6 +1526,7 @@ export function createGraphViewport(): GraphViewportController {
       const registrationStarted = now();
       const color = TRACE_COLORS.find((candidate) => !usedColors.has(candidate)) ?? TRACE_COLORS[0];
       usedColors.add(color);
+      hoverInspection.clear();
       activeTraces.set(channelId, {
         channel,
         range,
@@ -1560,6 +1577,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const toggleChannel = async (channelId: string): Promise<boolean> => {
+    hoverInspection.clear();
     const queued = pendingTraces.get(channelId);
     if (queued) {
       pendingTraces.delete(channelId);
@@ -1570,6 +1588,7 @@ export function createGraphViewport(): GraphViewportController {
     if (loadingTraceIds.has(channelId)) return false;
     const existing = activeTraces.get(channelId);
     if (existing) {
+      hoverInspection.clear();
       activeTraces.delete(channelId);
       envelopeCache.delete(channelId);
       overlay.hidden = activeTraces.size > 0 || assignedChannels.length > 0;
@@ -1627,6 +1646,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const deactivateChannel = (channelId: string): void => {
+    hoverInspection.clear();
     suppressedTraceIds.add(channelId);
     const queued = pendingTraces.get(channelId);
     if (queued) {
@@ -1634,6 +1654,7 @@ export function createGraphViewport(): GraphViewportController {
       queued.resolve(false);
       emitPendingChannels();
     }
+    hoverInspection.clear();
     activeTraces.delete(channelId);
     envelopeCache.delete(channelId);
     const materializationTimer = materializationTimers.get(channelId);
@@ -1649,6 +1670,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const clearChannels = (options: { readonly render?: boolean } = {}): void => {
+    hoverInspection.clear();
     cancelPending();
     viewportRefreshGeneration += 1;
     if (viewportRefreshTimer !== undefined) {
@@ -1677,6 +1699,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const setViewport = (nextViewport: TimelineViewport | undefined): void => {
+    hoverInspection.clear();
     viewport = nextViewport;
     const logicalThreads = Math.max(1, globalThis.navigator?.hardwareConcurrency ?? 1);
     if (logicalThreads <= 3) {
@@ -1689,6 +1712,7 @@ export function createGraphViewport(): GraphViewportController {
   };
 
   const refreshValidity = (): void => {
+    hoverInspection.clear();
     precomputedEnvelopeBlocksEnabled = false;
     envelopeCache.clear();
     const dataSource = channelData;
@@ -1701,6 +1725,7 @@ export function createGraphViewport(): GraphViewportController {
         continue;
       }
       const fullStatistics = summarizeNumericRange(trace.range);
+      hoverInspection.clear();
       activeTraces.set(channelId, {
         ...trace,
         fullStatistics,
@@ -1716,6 +1741,7 @@ export function createGraphViewport(): GraphViewportController {
   const clear = (): void => {
     sourceIntegrityOverlay.setMarkers([]);
     cancelPending();
+    hoverInspection.clear();
     channelsById.clear();
     channelData = undefined;
     timeRange = undefined;
@@ -1747,6 +1773,9 @@ export function createGraphViewport(): GraphViewportController {
       sourceIntegrityDisposed = true;
       sourceIntegrityOverlay.dispose();
     },
+    setHoverTime:hoverInspection.setTime,
+    clearHoverInspection:hoverInspection.clear,
+    onHoverTime:hoverInspection.onHover,
     setLog,
     toggleChannel,
     deactivateChannel,
@@ -1827,6 +1856,7 @@ export function createGraphViewport(): GraphViewportController {
       draw();
     },
     setDisplayMode: (mode) => {
+      if(mode!==displayMode)hoverInspection.clear();
       if (displayMode === mode) return;
       displayMode = mode;
       root.classList.toggle('graph-viewport--stacked', mode === 'stacked');

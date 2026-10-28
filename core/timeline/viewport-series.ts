@@ -385,7 +385,8 @@ export function buildRawViewportSeries(
 
 
 /** Recorded cursor lookup shared by Logger and Analyzer; never interpolates invalid samples. */
-export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number; value: number } | undefined {
+/** Nearest original observation, including invalid records; never skip to a healthier neighbor. */
+export function nearestNumericSamplePosition(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number } | undefined {
   if (!Number.isFinite(cursorTimeMs)) return undefined;
   if (range.timeMs.length === 0) return undefined;
   const firstTime = range.timeMs[0];
@@ -409,13 +410,16 @@ export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: n
     if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
   }
 
-  if (range.validity[index] !== 1) return undefined;
-  const value = range.values[index];
-  const timeMs = range.timeMs[index];
-  return value !== undefined && Number.isFinite(value) && timeMs !== undefined && Number.isFinite(timeMs)
-    ? { sampleIndex: range.startSampleIndex + index, timeMs, value } : undefined;
+  const timeMs=range.timeMs[index];
+  return timeMs!==undefined&&Number.isFinite(timeMs)?{sampleIndex:range.startSampleIndex+index,timeMs}:undefined;
 }
 
+export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number; value: number } | undefined {
+  const position=nearestNumericSamplePosition(range,cursorTimeMs);
+  if(!position)return undefined;
+  const index=position.sampleIndex-range.startSampleIndex,value=range.values[index];
+  return range.validity[index]===1&&value!==undefined&&Number.isFinite(value)?{...position,value}:undefined;
+}
 
 /** Actual first/extrema/last samples in time order, shared with Logger rendering. */
 export function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly { timeMs: number; value: number }[] {

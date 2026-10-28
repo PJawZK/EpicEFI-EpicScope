@@ -423,3 +423,8 @@
   background: rgba(66, 165, 245, 0.12);
   color: #d9edf7;
 }
+
+.graph-hover-line { position: absolute; top: 6px; bottom: 6px; border-left: 1px dashed #9ec1d4; pointer-events: none; z-index: 12; }
+.graph-hover-line[hidden] { display: none; }
+.graph-hover-popup { position: fixed; inset: auto; margin: 0; width: max-content; max-width: min(340px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: hidden; padding: 9px 11px; border: 1px solid #385064; border-radius: 5px; background: #081722; color: #dce8ef; font: 11px/1.5 sans-serif; pointer-events: none; overflow-wrap: anywhere; }
+.graph-hover-popup strong { display: block; margin-bottom: 4px; }

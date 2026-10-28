@@ -198,6 +198,7 @@ export interface LoggerAnalysisContext {
 }
 
 export interface LoggerPageController {
+  clearHoverInspection():void;
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
   readonly headerTools: HTMLElement;
@@ -1020,6 +1021,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   };
 
   const renderGraphLayout = (): void => {
+    paneRuntimes.forEach(pane=>pane.graph.setHoverTime(undefined));
     const workspace = activeWorkspace();
     if (!workspace) return;
 
@@ -1896,6 +1898,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
     });
 
+    runtime.graph.onHoverTime(time=>{for(const pane of paneRuntimes)pane.graph.setHoverTime(!pane.windowElement.hidden&&!pane.windowElement.classList.contains('graph-window--minimized')?time:undefined);});
+
     runtime.graph.onCursorValues((values) => {
       if (runtime.id !== activeWorkspace()?.activePaneId) return;
       const displayValues = values.flatMap((item) => {
@@ -2619,6 +2623,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     onAnalyzeRange: (listener) => { timeline.onAnalyzeRequest(() => listener()); },
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
+    clearHoverInspection:()=>paneRuntimes.forEach(pane=>pane.graph.setHoverTime(undefined)),
     getAnalysisContext,
     getAnalysisSourceState: () => ({ identity: channelDataSource, revision: analysisDataRevision, sampleCount: channelDataSource?.sampleCount ?? 0, aTimeMs: analysisStartMs, bTimeMs: analysisEndMs }),
     focusAnalysisTimes,
