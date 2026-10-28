@@ -160,3 +160,14 @@ export function viewportEquals(left: TimelineViewport, right: TimelineViewport):
     && left.visibleStartMs === right.visibleStartMs
     && left.visibleEndMs === right.visibleEndMs;
 }
+
+/** Carry selected time by actual (clamped) viewport movement, preserving its screen position.
+ * If selection was outside the old view, bring it to the new center. A blocked pan is a no-op. */
+export function cursorAfterViewportPan(previous:TimelineViewport,next:TimelineViewport,cursorMs:number):number {
+  finite(cursorMs,'cursorMs');
+  const delta=next.visibleStartMs-previous.visibleStartMs;
+  if(delta===0)return cursorMs;
+  const selected=cursorMs>=previous.visibleStartMs&&cursorMs<=previous.visibleEndMs
+    ?cursorMs+delta:(next.visibleStartMs+next.visibleEndMs)/2;
+  return Math.max(next.fullStartMs,Math.min(next.fullEndMs,selected));
+}

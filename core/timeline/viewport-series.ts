@@ -383,3 +383,74 @@ export function buildRawViewportSeries(
   return points;
 }
 
+
+/** Recorded cursor lookup shared by Logger and Analyzer; never interpolates invalid samples. */
+/** Nearest original observation, including invalid records; never skip to a healthier neighbor. */
+export function nearestNumericSamplePosition(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number } | undefined {
+  if (!Number.isFinite(cursorTimeMs)) return undefined;
+  if (range.timeMs.length === 0) return undefined;
+  const firstTime = range.timeMs[0];
+  const lastTime = range.timeMs[range.timeMs.length - 1];
+  if (firstTime === undefined || lastTime === undefined || cursorTimeMs < firstTime || cursorTimeMs > lastTime) {
+    return undefined;
+  }
+  let low = 0;
+  let high = range.timeMs.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const value = range.timeMs[mid] ?? 0;
+    if (value < cursorTimeMs) low = mid + 1;
+    else high = mid;
+  }
+
+  let index = low;
+  if (index > 0) {
+    const current = range.timeMs[index] ?? Number.POSITIVE_INFINITY;
+    const previous = range.timeMs[index - 1] ?? Number.NEGATIVE_INFINITY;
+    if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
+  }
+
+  const timeMs=range.timeMs[index];
+  return timeMs!==undefined&&Number.isFinite(timeMs)?{sampleIndex:range.startSampleIndex+index,timeMs}:undefined;
+}
+
+export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number; value: number } | undefined {
+  const position=nearestNumericSamplePosition(range,cursorTimeMs);
+  if(!position)return undefined;
+  const index=position.sampleIndex-range.startSampleIndex,value=range.values[index];
+  return range.validity[index]===1&&value!==undefined&&Number.isFinite(value)?{...position,value}:undefined;
+}
+
+/** Actual first/extrema/last samples in time order, shared with Logger rendering. */
+export function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly { timeMs: number; value: number }[] {
+  const candidates = [
+    { timeMs: column.firstTimeMs, value: column.first },
+    { timeMs: column.minTimeMs, value: column.min },
+    { timeMs: column.maxTimeMs, value: column.max },
+    { timeMs: column.lastTimeMs, value: column.last },
+  ].sort((left, right) => left.timeMs - right.timeMs);
+  return candidates.filter((point, index) => index === 0 || point.timeMs !== candidates[index - 1]!.timeMs || point.value !== candidates[index - 1]!.value);
+}
+
+/** Logger density policy: raw visible samples when sparse; ordered extrema when dense. */
+export function buildViewportTraceSeries(range: NumericChannelRange, startMs: number, endMs: number, pixelWidth: number): {
+  readonly mode: 'raw' | 'envelope'; readonly points: readonly RawViewportPoint[];
+} {
+  const envelope = buildViewportEnvelope(range, startMs, endMs, pixelWidth);
+  if (envelope.validSampleCount <= pixelWidth * 2) return { mode: 'raw', points: buildRawViewportSeries(range, startMs, endMs) };
+  const points: RawViewportPoint[] = [];
+  let previousX: number | undefined;
+  for (const column of envelope.columns) {
+    const representatives = rawRepresentativePoints(column);
+    representatives.forEach((point, index) => points.push({ ...point, breakBefore: index === 0 && (previousX === undefined || column.x - previousX > 2) }));
+    previousX = column.x;
+  }
+  return { mode: 'envelope', points };
+}
+
+/** Zero-copy time slice for presentation; original sample indices and validity retained. */
+export function sliceNumericRangeByTime(range: NumericChannelRange, startMs: number, endMs: number): NumericChannelRange {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) throw new RangeError('Invalid recorded presentation bounds.');
+  const start = lowerBound(range.timeMs, startMs), end = upperBound(range.timeMs, endMs);
+  return { startSampleIndex: range.startSampleIndex + start, timeMs: range.timeMs.subarray(start, end), values: range.values.subarray(start, end), validity: range.validity.subarray(start, end) };
+}

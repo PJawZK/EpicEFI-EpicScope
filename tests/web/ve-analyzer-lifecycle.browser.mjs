@@ -599,4 +599,4 @@ export async function runVeAnalyzerLifecycleChecks() {
   return { passed: passed.length, checks: passed };
 }
 
-export { setup as setupVeLifecycleFixture };
+export { setup as setupVeLifecycleFixture, completed as waitForVePrimaryAnalysis };

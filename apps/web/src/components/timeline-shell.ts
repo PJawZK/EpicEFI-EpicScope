@@ -6,7 +6,7 @@ import type { TimelineWorkspaceState } from '../state/workspace-state';
 export type TimelineViewportIntent =
   | { readonly type: 'fit' }
   | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number; readonly centerCursor?: boolean }
-  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean; readonly carryCursor?:boolean }
   | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'range'; readonly startMs: number; readonly endMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'history-back' }
@@ -37,6 +37,8 @@ export interface TimelineShellController {
   refreshOverview(): void;
   refreshValidity(): void;
   setViewport(viewport: TimelineViewport | undefined): void;
+  /** User seek through the existing cursor owner; follows current transport policy. */
+  seekTime(timeMs:number):void;
   setCursorTime(timeMs: number): void;
   getCursorTime(): number;
   togglePlayback(): void;
@@ -937,6 +939,7 @@ export function createTimelineShell(): TimelineShellController {
       renderOverview();
     },
     setViewport,
+    seekTime: (timeMs)=>updateCursor(timeMs),
     setCursorTime: (timeMs) => updateCursor(timeMs, false),
     getCursorTime: () => cursorTimeMs,
     togglePlayback,

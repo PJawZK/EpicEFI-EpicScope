@@ -117,6 +117,8 @@ export interface IdleAnalysisResult {
 }
 
 export interface IdleAnalysisOptions extends SpecializedAnalysisScope {
+  /** Stability-only callers do not request sag/recovery work or its semantics. */
+  readonly includeSagEvents?: boolean;
   readonly sagThresholdRpm?: number;
   readonly settledBandRpm?: number;
 }
@@ -136,7 +138,7 @@ export function analyzeIdle(inputs: {
   const settledBand = options.settledBandRpm ?? 40;
   if (sagThreshold <= 0 || settledBand < 0) throw new RangeError('Idle sag/settled thresholds must be non-negative and sag threshold must be > 0.');
   const sagEvents: IdleSagEvent[] = [];
-  if (inputs.target) {
+  if (inputs.target && options.includeSagEvents !== false) {
     let start: number | undefined;
     let minError = 0;
     for (let position = 0; position < indices.length; position += 1) {

@@ -1,3 +1,4 @@
+import { installAnalyzerRangeInteraction } from './analyzer-range-interaction';
 import { closeVeAnalyzerSetupDisclosures } from './ve-analyzer-v50-setup-disclosure';
 import type { LoggerAnalysisContext } from './logger-page';
 import { analyzerScopeBounds, selectedAnalyzerScope } from './analyzer-scope';
@@ -189,82 +190,20 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     openScope.disabled = !context.openRangeInLogger;
   };
 
-  // The gesture owns preview geometry only. Logger accepts a single commit and
-  // republishes its context before the existing scope selector is changed.
-  type RangeGesture = { pointerId: number; context: LoggerAnalysisContext; origin: number; a: number; b: number; mode: 'new' | 'a' | 'b' | 'move' };
-  let rangeGesture: RangeGesture | undefined;
-  const gestureBounds = (gesture: RangeGesture, time: number): readonly [number, number] => {
-    if (gesture.mode === 'a') return [time, gesture.b];
-    if (gesture.mode === 'move') {
-      const extent = gesture.context.sourceTimeRange!;
-      const delta = Math.max(extent.startMs - gesture.a, Math.min(extent.endMs - gesture.b, time - gesture.origin));
-      return [gesture.a + delta, gesture.b + delta];
-    }
-    return [gesture.a, time];
-  };
-  const cancelRangeGesture = (): void => {
-    const gesture = rangeGesture; rangeGesture = undefined;
-    if (!gesture) return;
-    if (rangeTrack.hasPointerCapture(gesture.pointerId)) rangeTrack.releasePointerCapture(gesture.pointerId);
-    if (active && !disposed && currentContext) renderScope(currentContext);
-  };
-  const rangeTime = (clientX: number): number | undefined => {
-    const extent = currentContext?.sourceTimeRange, rect = rangeTrack.getBoundingClientRect();
-    if (!extent || !Number.isFinite(extent.startMs) || !Number.isFinite(extent.endMs) || rect.width <= 0 || !(extent.endMs > extent.startMs)) return undefined;
-    return extent.startMs + Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (extent.endMs - extent.startMs);
-  };
-  const selectAcceptedRange = (context: LoggerAnalysisContext, a: number, b: number): void => {
-    if (!active || disposed || !Number.isFinite(a) || !Number.isFinite(b) || a === b) return;
-    if (!context.setAnalysisRange?.({ startMs: Math.min(a, b), endMs: Math.max(a, b) })) return;
-    const select = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
-    if (select && select.value !== 'ab' && [...select.options].some(option => option.value === 'ab')) {
-      select.value = 'ab'; select.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    if (currentContext) renderScope(currentContext);
-  };
-  rangeTrack.addEventListener('pointerdown', event => {
-    const context = currentContext, time = rangeTime(event.clientX);
-    if (!active || disposed || rangeGesture || event.button !== 0 || !context?.setAnalysisRange || time === undefined) return;
-    event.preventDefault();
-    const handle = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-ve-range-handle]')?.dataset.veRangeHandle : undefined;
-    const hasRange = context.aTimeMs !== undefined && context.bTimeMs !== undefined && context.aTimeMs !== context.bTimeMs;
-    const editingAb = root.querySelector<HTMLSelectElement>('select[data-role="scope"]')?.value === 'ab';
-    const mode = event.shiftKey || !editingAb ? 'new' : handle === 'a' || handle === 'b' ? handle : hasRange && event.target === editRange ? 'move' : 'new';
-    rangeGesture = { pointerId: event.pointerId, context, origin: time,
-      a: mode === 'new' ? time : mode === 'move' ? Math.min(context.aTimeMs!, context.bTimeMs!) : context.aTimeMs!,
-      b: mode === 'new' ? time : mode === 'move' ? Math.max(context.aTimeMs!, context.bTimeMs!) : context.bTimeMs!, mode };
-    if (mode === 'a' || mode === 'b') (mode === 'a' ? markerA : markerB).focus({ preventScroll: true });
-    rangeTrack.setPointerCapture(event.pointerId);
-  }, { signal: events.signal });
-  rangeTrack.addEventListener('pointermove', event => {
-    const gesture = rangeGesture, time = rangeTime(event.clientX), extent = gesture?.context.sourceTimeRange;
-    if (!gesture || gesture.pointerId !== event.pointerId || time === undefined || !extent) return;
-    const [a, b] = gestureBounds(gesture, time);
-    const span = extent.endMs - extent.startMs;
-    editRange.hidden = false; editRange.style.left = `${(Math.min(a, b) - extent.startMs) / span * 100}%`; editRange.style.width = `${Math.abs(b - a) / span * 100}%`;
-    for (const [node, value] of [[markerA, a], [markerB, b]] as const) { node.hidden = false; node.style.left = `${(value - extent.startMs) / span * 100}%`; }
-  }, { signal: events.signal });
-  rangeTrack.addEventListener('pointerup', event => {
-    const gesture = rangeGesture, time = rangeTime(event.clientX);
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const [a, b] = time === undefined ? [gesture.a, gesture.b] : gestureBounds(gesture, time);
-    cancelRangeGesture();
-    if (time !== undefined && currentContext === gesture.context) selectAcceptedRange(gesture.context, a, b);
-  }, { signal: events.signal });
-  for (const event of ['pointercancel', 'lostpointercapture'] as const) rangeTrack.addEventListener(event, cancelRangeGesture, { signal: events.signal });
-  rangeTrack.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { event.preventDefault(); cancelRangeGesture(); return; }
-    const context = currentContext, extent = context?.sourceTimeRange;
-    const handle = event.target instanceof HTMLElement ? event.target.dataset.veRangeHandle : undefined;
-    if (!active || disposed || !context?.setAnalysisRange || !extent || !handle || context.aTimeMs === undefined || context.bTimeMs === undefined || rangeTrack.getAttribute('aria-disabled') === 'true') return;
-    const step = Math.max(1, (extent.endMs - extent.startMs) / (event.shiftKey ? 1000 : 100));
-    const current = handle === 'a' ? context.aTimeMs : context.bTimeMs;
-    const value = event.key === 'Home' ? extent.startMs : event.key === 'End' ? extent.endMs : event.key === 'ArrowLeft' ? current - step : event.key === 'ArrowRight' ? current + step : undefined;
-    if (value === undefined) return;
-    event.preventDefault(); cancelRangeGesture();
-    const bounded = Math.max(extent.startMs, Math.min(extent.endMs, value));
-    selectAcceptedRange(context, handle === 'a' ? bounded : context.aTimeMs, handle === 'b' ? bounded : context.bTimeMs);
-  }, { signal: events.signal });
+  const rangeInteraction = installAnalyzerRangeInteraction({
+    track: rangeTrack, band: editRange, start: markerA, end: markerB, signal: events.signal,
+    getState: () => active && !disposed && currentContext ? { context: currentContext, editing: root.querySelector<HTMLSelectElement>('select[data-role="scope"]')?.value === 'ab' } : undefined,
+    render: () => { if (active && !disposed && currentContext) renderScope(currentContext); },
+    commit: (context, a, b) => {
+      if (!context.setAnalysisRange?.({ startMs: a, endMs: b })) return;
+      const select = root.querySelector<HTMLSelectElement>('select[data-role="scope"]');
+      if (select && select.value !== 'ab' && [...select.options].some(option => option.value === 'ab')) {
+        select.value = 'ab'; select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (currentContext) renderScope(currentContext);
+    },
+  });
+  const cancelRangeGesture = rangeInteraction.cancel;
 
   openScope.addEventListener('click', () => {
     if (disposed || !active) return;
@@ -526,7 +465,7 @@ export function installVeAnalyzerV50Presentation(inner: VeAnalyzerViewController
     onReadinessChange(listener) { return inner.onReadinessChange(listener); },
     setContext(context: LoggerAnalysisContext) {
       if (disposed) return false;
-      if (rangeGesture && rangeGesture.context !== context) cancelRangeGesture();
+      rangeInteraction.contextChanged(context);
       const changed = inner.setContext(context);
       currentContext = context;
       if (active) renderScope(context);

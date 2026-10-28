@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChannelDefinition } from '../core/log-model/log-types';
-import { suggestAnalyzerChannel } from '../apps/web/src/pages/analyzer-channel-roles';
+import { suggestAnalyzerChannel, idleRoleUnit, idlePidRoleUnit, idlePositionPidRoleUnit, idleIgnitionRoleUnit, preferredIdleIgnitionLambda } from '../apps/web/src/pages/analyzer-channel-roles';
 
 function channel(sourceName: string, displayName = sourceName): ChannelDefinition {
   return {
@@ -12,6 +12,75 @@ function channel(sourceName: string, displayName = sourceName): ChannelDefinitio
 }
 
 describe('Idle analyzer canonical channel roles', () => {
+  it('declares missing units only for canonical roles and refuses contradictory or fuzzy units', () => {
+    expect(idleRoleUnit(channel('idleTarget'), 'target')).toEqual({ unit: 'RPM', authority: 'canonical-role' });
+    expect(idleRoleUnit(channel('Idle: Target RPM'), 'target')?.authority).toBe('canonical-role');
+    expect(idleRoleUnit(channel('baseIdlePosition'), 'basePosition')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('Closed loop'), 'closedLoop')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('Idle: Position'), 'finalPosition')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('strange idle target guess'), 'target')).toBeUndefined();
+    expect(idleRoleUnit({ ...channel('idleTarget'), unit: 'kPa' }, 'target')).toBeUndefined();
+    expect(idleRoleUnit({ ...channel('RPM'), unit: 'RPM' }, 'rpm')?.authority).toBe('source');
+  });
+  it('requires DC position/motor units and never auto-maps an idle request as measured feedback', () => {
+    expect(idleRoleUnit(channel('dcIdleTarget'),'dcTarget')?.unit).toBe('%');
+    expect(idleRoleUnit(channel('IdlePosition'),'dcPosition')?.authority).toBe('canonical-role');
+    expect(idleRoleUnit(channel('dcIdlePositionStatus_output'),'dcOutput')).toBeUndefined();
+    expect(idleRoleUnit(channel('dcIdleDutyCycle'),'dcOutput')?.unit).toBe('%');
+    expect(idleRoleUnit({...channel('dcIdlePositionStatus_output'),unit:'%'},'dcOutput')?.authority).toBe('source');
+    expect(idleRoleUnit({...channel('IdlePosition'),unit:'V'},'dcPosition')).toBeUndefined();
+    expect(idleRoleUnit(channel('a fuzzy valve position'),'dcPosition')).toBeUndefined();
+    const requests=['currentIdlePosition','baseIdlePosition','idleStepperTargetPosition','rawIdlePositionSensor'].map(name=>({...channel(name),unit:'%'}));
+    expect(suggestAnalyzerChannel('idle','dcPosition',requests)).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','dcPosition',[...requests,{...channel('idlePositionSensor'),unit:'%'}])?.sourceName).toBe('idlePositionSensor');
+  });
+  it('keeps unitless canonical outer PID fields raw and separates DC/applied output roles',()=>{
+    expect(idlePidRoleUnit(channel('idleStatus_pTerm'),'p')).toEqual({unit:'raw',authority:'unspecified'});
+    expect(idlePidRoleUnit({...channel('idleStatus_iTerm'),unit:'pp'},'i')).toEqual({unit:'pp',authority:'source'});
+    expect(idlePidRoleUnit({...channel('idleStatus_dTerm'),unit:'V'},'d')).toBeUndefined();
+    expect(idlePidRoleUnit(channel('fuzzy idle proportional'),'p')).toBeUndefined();
+    expect(idlePidRoleUnit(channel('dcIdlePositionStatus_pTerm'),'p')).toBeUndefined();
+    const candidates=[channel('dcIdlePositionStatus_output'),channel('idleClosedLoop'),channel('idleStatus_output')];
+    expect(suggestAnalyzerChannel('idle','pidOutput',candidates)?.sourceName).toBe('idleStatus_output');
+    expect(suggestAnalyzerChannel('idle','pidOutput',candidates.slice(0,2))).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','pidOutput',[{...channel('idleDcPositionPidOutput'),unit:'%'}])).toBeUndefined();
+  });
+  it('keeps inner position effort units and shared feed-forward assignment explicit',()=>{
+    expect(idlePositionPidRoleUnit(channel('dcIdlePositionStatus_iTerm'),'dcI')).toEqual({unit:'raw',authority:'unspecified'});
+    expect(idlePositionPidRoleUnit({...channel('dcIdlePositionStatus_pTerm'),unit:'%'},'dcP')).toEqual({unit:'%',authority:'source'});
+    expect(idlePositionPidRoleUnit({...channel('dcIdlePositionStatus_dTerm'),unit:'pp'},'dcD')?.unit).toBe('pp');
+    expect(idlePositionPidRoleUnit(channel('idleStatus_iTerm'),'dcI')).toBeUndefined();
+    expect(idlePositionPidRoleUnit({...channel('dcIdlePositionStatus_iTerm'),unit:'V'},'dcI')).toBeUndefined();
+    expect(idlePositionPidRoleUnit(channel('etb1etbFeedForward'),'dcBiasOutput')).toEqual({unit:'raw',authority:'unspecified'});
+    expect(idlePositionPidRoleUnit(channel('etb2etbFeedForward'),'dcBiasOutput')).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','dcOutput',[channel('dcIdlePositionStatus_output'),channel('dcIdleDutyCycle')])?.sourceName).toBe('dcIdleDutyCycle');
+    expect(suggestAnalyzerChannel('idle','dcBiasOutput',[channel('etbFeedForwardTuneProgress'),channel('dcIdleBiasValues')])).toBeUndefined();
+  });
+  it('identifies final advance and idle correction independently, with strict degree and actual-lambda authority',()=>{
+    const channels=['baseIgnitionAdvance','ignitionAdvanceCorrections','ignitionAdvanceCyl1','correctedIgnitionAdvance','timingPidCorrection'].map(name=>({...channel(name),unit:'deg'}));
+    expect(suggestAnalyzerChannel('idle','ignitionAdvance',channels)?.sourceName).toBe('correctedIgnitionAdvance');
+    expect(suggestAnalyzerChannel('idle','ignitionAdvance',channels.slice(0,3))).toBeUndefined();
+    expect(suggestAnalyzerChannel('idle','ignitionCorrection',channels)?.sourceName).toBe('timingPidCorrection');
+    expect(suggestAnalyzerChannel('idle','ignitionCorrection',[channel('ignitionAdvanceCorrections'),channel('idleTimingPid_pFactor')])).toBeUndefined();
+    expect(idleIgnitionRoleUnit(channel('correctedIgnitionAdvance'),'ignitionAdvance')).toEqual({unit:'°',authority:'canonical-role'});
+    expect(idleIgnitionRoleUnit({...channel('timingPidCorrection'),unit:'ms'},'ignitionCorrection')).toBeUndefined();
+    expect(idleIgnitionRoleUnit(channel('fuzzy spark advance'),'ignitionAdvance')).toBeUndefined();
+    expect(idleIgnitionRoleUnit({...channel('targetLambda'),unit:'lambda'},'ignitionLambda')).toBeUndefined();
+    expect(idleIgnitionRoleUnit({...channel('lambdaValue'),unit:'AFR'},'ignitionLambda')).toBeUndefined();
+    const lambda={...channel('lambdaValue'),id:'mlg:1'},afr={...channel('afrGasolineScale'),unit:'AFR'},greek={...channel('Measured mixture'),unit:'λ'};
+    expect(idleIgnitionRoleUnit(lambda,'ignitionLambda')).toEqual({unit:'λ',authority:'canonical-role'});
+    expect(idleIgnitionRoleUnit(greek,'ignitionLambda')?.authority).toBe('source');
+    expect(preferredIdleIgnitionLambda([afr,greek,lambda])).toBe(lambda);
+    expect(preferredIdleIgnitionLambda([greek])).toBe(greek);
+  });
+  it('prefers recorded RPM/target labels over diagnostic drop, base and error channels', () => {
+    const rpm = { ...channel('RPM'), id: 'mlg:33' };
+    const target = { ...channel('Idle: Target RPM'), id: 'mlg:2273' };
+    const candidates = [channel('IdleDiag Catch Drop RPM'), channel('Idle: Target RPM base'), channel('Idle: Target ERROR'), rpm, target];
+    expect(suggestAnalyzerChannel('idle', 'rpm', candidates)).toBe(rpm);
+    expect(suggestAnalyzerChannel('idle', 'target', candidates)).toBe(target);
+    expect(suggestAnalyzerChannel('idle', 'rpm', candidates.slice(0, 3))).toBeUndefined();
+  });
   const channels = [
     channel('idleStatus_pTerm', 'Idle: P Term'),
     channel('idleStatus_iTerm', 'Idle: I Term'),

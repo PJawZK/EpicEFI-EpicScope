@@ -1,0 +1,171 @@
+/* Idle owns only this workspace. EpicScope's application header/status/menu remain unchanged. */
+.analyzer-page--idle-stability { min-width: 0; display: flex; flex-direction: column; padding: 5px 7px; overflow: hidden; }
+.analyzer-page--idle-stability > .analyzer-head { display: none; }
+.idle-analyzer-view { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 5px; color: var(--text); background: transparent; font-size: 11px; }
+.idle-analyzer-view[hidden] { display: none; }
+.idle-analyzer-view button, .idle-analyzer-view input, .idle-analyzer-view select { color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 5px 8px; min-width: 0; font: inherit; }
+.idle-analyzer-view button { cursor: pointer; }
+.idle-analyzer-view button:disabled { cursor: default; opacity: .55; }
+.idle-analyzer-view :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.idle-toolbar, .idle-actionbar, .idle-plot-tools, .idle-timeline-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.idle-toolbar, .idle-actionbar, .idle-timeline { padding: 5px 7px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.idle-toolbar { flex-shrink: 0; }
+.idle-toolbar label, .idle-setup label { display: flex; align-items: center; gap: 5px; }
+.idle-toolbar select { max-width: 260px; }
+.idle-toolbar-spacer, .idle-plot-tools > span, .idle-actionbar > span:first-child { flex: 1; }
+.idle-readonly { color: var(--muted); font-size: 10px; }
+.idle-workspace { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 3.5fr) minmax(270px, 1fr); gap: 6px; }
+.idle-main, .idle-assessment { min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 7px; background: var(--panel); }
+.idle-main { display: flex; flex-direction: column; gap: 5px; }
+.idle-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; flex-shrink: 0; }
+.idle-metrics > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; padding: 7px 9px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.idle-metrics strong { font-size: 16px; overflow-wrap: anywhere; }
+.idle-metrics span { color: var(--detail); font-size: 10px; }
+.idle-main > [data-idle=plot] { min-height: 0; flex: 1 1 0; }
+.idle-plot-surface { height: 100%; display: flex; flex-direction: column; position: relative; min-height: 0; }
+.idle-plot-frame { flex: 1 1 0; min-height: 0; position: relative; }
+.idle-plot-y-axis { position: absolute; inset: 0 auto 0 0; width: 32px; color: var(--detail); font-size: 11px; pointer-events: none; }
+.idle-plot-y-axis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.idle-stability-plot { display: block; width: calc(100% - 40px); margin-left: 40px; height: 100%; min-height: 0; background: transparent; touch-action: none; user-select: none; }
+.idle-stability-plot text { fill: var(--detail); font: 11px system-ui, sans-serif; }
+.idle-plot-legend { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 7px; padding: 4px; }
+.idle-plot-legend button { border: 0; padding: 0 3px; background: transparent; font-size: 10px; }
+.idle-plot-legend button::before { content: '━ '; }
+.idle-plot-legend button[aria-pressed=false] { opacity: .4; text-decoration: line-through; }
+.idle-plot-tooltip { position: absolute; z-index: 3; width: 225px; padding: 8px; border: 1px solid var(--line); background: var(--bg); pointer-events: none; border-radius: var(--radius); font-size: 11px; line-height: 1.6; }
+.idle-plot-tooltip strong { display: block; color: var(--headline); }
+.idle-plot-tools { flex-shrink: 0; font-size: 10px; color: var(--muted); }
+.idle-region-evidence { flex-shrink: 0; border-top: 1px solid var(--line-soft); padding-top: 5px; }
+.idle-region-evidence > strong { display: block; font-size: 11px; margin-bottom: 4px; }
+.idle-region-evidence button { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; max-width: 100%; text-align: left; }
+.idle-region-evidence [data-idle=region-evidence] { color: var(--detail); font-size: 10px; }
+.idle-assessment { display: flex; flex-direction: column; }
+.idle-assessment header { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+.idle-assessment [role=status] { color: var(--warn); font-size: 10px; }
+.idle-assessment nav { display: flex; flex-shrink: 0; gap: 4px; margin: 14px 0 5px; }
+.idle-assessment nav button { flex: 1; }
+.idle-assessment nav button[aria-pressed=true] { background: var(--accent-soft); }
+.idle-assessment [data-idle=assessment] { overflow: auto; min-height: 0; }
+.idle-assessment h3 { color: var(--detail); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 6px; }
+.idle-assessment h3::before { content: '▏'; color: var(--accent); }
+.idle-assessment p { line-height: 1.65; overflow-wrap: anywhere; margin: 0 0 8px; }
+.idle-timeline { flex-shrink: 0; }
+.idle-timeline-meta { justify-content: space-between; font-size: 10px; margin-bottom: 5px; }
+.idle-timeline-meta span { color: var(--detail); }
+.idle-range-track { position: relative; height: 22px; border: 1px solid var(--line); background: var(--bg); touch-action: none; cursor: crosshair; }
+.idle-range-track[aria-disabled=true] { cursor: default; }
+.idle-range-band { position: absolute; top: 2px; bottom: 2px; background: var(--accent-soft); border: 1px solid var(--accent); pointer-events: none; }
+.idle-range-band[data-kind=saved] { background: #443b63; border-color: #9b89c5; }
+.idle-range-edit { background: #694f25; border-color: var(--warn); pointer-events: auto; cursor: grab; }
+.idle-range-handle { position: absolute; top: 0; bottom: 0; width: 8px; margin-left: -4px; background: var(--warn); cursor: ew-resize; }
+.idle-actionbar { flex-shrink: 0; }
+.idle-actionbar > span:first-child { color: var(--detail); font-size: 10px; }
+.idle-actionbar [data-idle=run] { background: var(--accent-soft); font-weight: 700; }
+.idle-setup { flex-shrink: 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.idle-setup:not([open]) { display: none; }
+.idle-setup summary { padding: 5px 8px; cursor: pointer; }
+.idle-setup-body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px; max-height: 190px; overflow: auto; }
+.idle-setup select { max-width: 240px; }
+.idle-setup input { width: 95px; }
+.idle-setup [data-idle=source], .idle-setup [data-idle=mapping-note] { flex-basis: 100%; color: var(--detail); overflow-wrap: anywhere; margin: 0; }
+@media (max-width: 900px) {
+  .analyzer-page--idle-stability { overflow: auto; }
+  .idle-analyzer-view { flex: 1 0 auto; }
+  .idle-workspace { flex: none; grid-template-columns: minmax(0, 1fr); }
+  .idle-main > [data-idle=plot] { flex: none; height: 420px; }
+  .idle-assessment { min-height: 300px; }
+}
+@media (max-width: 540px) {
+  .idle-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .idle-toolbar label { max-width: 100%; }
+  .idle-toolbar select { max-width: 230px; }
+  .idle-stability-plot text { font-size: 22px; }
+  .idle-main > [data-idle=plot] { height: 310px; }
+  .idle-setup label { flex-wrap: wrap; max-width: 100%; }
+  .idle-setup select { max-width: 205px; }
+}
+
+.idle-actionbar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.idle-actionbar input { width: 62px; }
+.idle-actionbar [data-idle=candidates] { max-width: 220px; }
+
+.idle-region-key { color: var(--detail); font-size: 10px; }
+.idle-region-key[hidden], .idle-toolbar label[hidden] { display: none; }
+.idle-region-markers { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.idle-region-markers .idle-region-marker { position: absolute; top: 3px; bottom: 3px; min-width: 2px; padding: 0; border-radius: 0; pointer-events: auto; }
+.idle-region-marker.is-included { background: #337c66aa; border: 1px solid #7bd2b1; }
+.idle-region-marker.is-excluded { background: #52616a88; border: 1px dashed #87949d; }
+.idle-region-marker.is-focused { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 3; }
+.idle-region-markers > span { pointer-events: none !important; background: transparent; }
+.idle-range-handle { z-index: 4; }
+.idle-region-manager { color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); width: min(1100px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: 85vh; padding: 12px; font-size: 12px; }
+.idle-region-manager[open] { display: flex; flex-direction: column; gap: 8px; }
+.idle-region-manager::backdrop { background: #0009; }
+.idle-region-manager header, .idle-region-manager footer, .idle-region-create { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.idle-region-manager header { justify-content: space-between; }
+.idle-region-manager h2 { font-size: 16px; margin: 0; }
+.idle-region-manager p { margin: 0; line-height: 1.5; }
+.idle-region-manager [role=status] { color: var(--warn); }
+.idle-region-table { overflow: auto; min-height: 60px; }
+.idle-region-table table { width: 100%; border-collapse: collapse; min-width: 800px; }
+.idle-region-table td, .idle-region-table th { padding: 5px; text-align: left; border-bottom: 1px solid var(--line); }
+.idle-region-table input[type=number] { width: 95px; }
+.idle-region-table input[data-edit=label] { width: 150px; }
+.idle-region-table tr.is-focused { background: var(--accent-soft); }
+.idle-region-table td:last-child { white-space: nowrap; }
+.idle-region-actions { display: flex; align-items: center; gap: 5px; margin-block: 3px; }
+.idle-region-actions label { display: flex; align-items: center; gap: 5px; }
+.idle-region-actions select { width: 205px; }
+.idle-region-create input[type=number] { width: 100px; }
+.idle-region-create label { display: flex; gap: 4px; align-items: center; }
+.idle-region-create { padding-top: 8px; border-top: 1px solid var(--line); }
+@media (max-width: 540px) { .idle-region-manager { padding: 8px; } .idle-toolbar [data-idle=focus] { max-width: 220px; } }
+
+.idle-analysis-authority, .idle-discovery-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+.idle-analysis-authority { padding: 4px 0; color: var(--headline); }
+.idle-analysis-authority > span { color: var(--warn); }
+.idle-analysis-authority button, .idle-discovery-feedback button { background: var(--accent-soft); font-weight: 700; }
+.idle-discovery-feedback { border: 1px solid var(--accent); border-radius: var(--radius); padding: 7px; background: var(--panel); }
+.idle-discovery-feedback > span { flex: 1; min-width: 180px; line-height: 1.5; }
+.idle-focus-explanation { margin: 0; color: var(--detail); font-size: 11px; line-height: 1.4; }
+.idle-discovery-feedback[hidden], .idle-analysis-authority button[hidden], .idle-discovery-feedback button[hidden], .idle-focus-explanation[hidden] { display: none; }
+.idle-region-manager [data-manager=authority] { color: var(--warn); font-weight: 600; }
+
+.idle-analysis-authority strong, .idle-analysis-authority > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.idle-region-manager p { overflow-wrap: anywhere; }
+.idle-qualification-state { margin: 0; color: var(--detail); line-height: 1.4; overflow-wrap: anywhere; flex-shrink: 0; }
+.idle-qualification { border: 1px solid var(--line); border-radius: var(--radius); flex-shrink: 0; }
+.idle-qualification:not([open]) { display: none; }
+.idle-qualification summary { padding: 5px 8px; cursor: pointer; }
+.idle-qualification-body { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 7px; max-height: 220px; overflow: auto; }
+.idle-qualification-body label { display: flex; align-items: center; gap: 5px; }
+.idle-qualification-body input[type=number] { width: 75px; }
+.idle-qualification-body select { max-width: 225px; }
+.idle-qualification-body p { flex-basis: 100%; margin: 0; line-height: 1.5; color: var(--detail); }
+
+.idle-metrics[hidden] { display: none; }
+
+/* DC tracking keeps position error and signed motor duty on distinct labelled scales. */
+.idle-plot-y-axis-right { left: auto; right: 0; }
+.idle-plot-y-axis-right span { left: 0; right: auto; }
+.idle-plot-frame.has-right-axis .idle-stability-plot { width: calc(100% - 80px); margin-right: 40px; }
+
+/* Mode-specific controls must honor semantic visibility despite flex layout. */
+.idle-setup[hidden], .idle-plot-tools[hidden] { display: none; }
+
+@media (max-width: 600px) {
+  .idle-plot-tools[data-idle=recovery-events] { flex-wrap: wrap; }
+  .idle-plot-tools[data-idle=recovery-events] > span { flex-basis: 100%; }
+}
+
+.idle-tune-dialog > label, .idle-tune-lookup, .idle-tune-lookup label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.idle-tune-lookup input { width: 95px; }
+.idle-tune-lookup [hidden] { display: none; }
+.idle-tune-dialog [data-idle-tune=identity], .idle-tune-entries { overflow-wrap: anywhere; }
+.idle-tune-dialog .idle-region-table button { min-width: 45px; }
+.idle-tune-entries { max-height: 230px; overflow: auto; }
+
+.idle-b-axis { position: relative; height: 16px; border: 1px solid var(--line); background: var(--panel); }
+.idle-b-axis > span { position: absolute; top: 2px; bottom: 2px; background: #e8b46d88; border: 1px solid #e8b46d; }
+.idle-comparison-source select { max-width: 240px; }
+@media (max-width: 600px) { .idle-comparison-source select { max-width: 205px; } }

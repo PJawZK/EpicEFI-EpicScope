@@ -18,6 +18,7 @@ import { createBoostAnalyzerView } from './boost-analyzer-view';
 import { createIgnitionAnalyzerView } from './ignition-analyzer-view';
 import { createFuelInjectorAnalyzerView } from './fuel-injector-analyzer-view';
 import { createVeAnalyzerView } from './ve-analyzer-view';
+import { createIdleAnalyzerView } from './idle-analyzer-view';
 import {
   createSpecializedAnalyzerSuiteView,
   type SpecializedAnalyzerDomain,
@@ -72,7 +73,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   let renderGeneration = 0;
   let suppressImmediateRefresh = false;
   let contextUpdateGeneration = 0;
-  type AnalyzerView = 'compare' | 'tune-table' | 'boost' | 've' | SpecializedAnalyzerDomain;
+  type AnalyzerView = 'compare' | 'tune-table' | 'boost' | 've' | 'idle-stability' | SpecializedAnalyzerDomain;
   let currentView: AnalyzerView = 'compare';
   let active = true;
   let disposed = false;
@@ -86,7 +87,8 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   const fuelInjectorView = createFuelInjectorAnalyzerView(observability);
   const veAnalyzerView = createVeAnalyzerView(observability);
   const specializedView = createSpecializedAnalyzerSuiteView(observability);
-  const domainViews = [tuneTableView, boostView, ignitionView, fuelInjectorView, veAnalyzerView, specializedView];
+  const idleView = createIdleAnalyzerView(observability);
+  const domainViews = [tuneTableView, boostView, ignitionView, fuelInjectorView, veAnalyzerView, specializedView, idleView];
   for (const view of domainViews) view.setActive(false);
 
   const headerControl = document.createElement('label');
@@ -96,7 +98,8 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       <option value="compare" selected>Range Compare</option>
       <option value="tune-table">Tune Table</option>
       <option value="boost">Boost · Experimental</option>
-      <option value="idle">Idle · Experimental</option>
+      <option value="idle-stability">Idle Analyzer</option>
+      <option value="idle">Idle Control Diagnostics · Experimental</option>
       <option value="ae-map">AE / MAP Predict · Experimental</option>
       <option value="fueling">Fueling · Experimental</option>
       <option value="ve">VE Analyzer · Experimental</option>
@@ -168,7 +171,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   `;
   decorateCompareHelp(root);
 
-  root.append(tuneTableView.element, boostView.element, ignitionView.element, fuelInjectorView.element, veAnalyzerView.element, specializedView.element);
+  root.append(tuneTableView.element, boostView.element, ignitionView.element, fuelInjectorView.element, veAnalyzerView.element, specializedView.element, idleView.element);
 
   const channelSelect = root.querySelector<HTMLSelectElement>('.analyzer-channel');
   const leftSelect = root.querySelector<HTMLSelectElement>('.analyzer-left-range');
@@ -401,7 +404,8 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       : currentView === 'boost' ? boostView
       : currentView === 'ignition' ? ignitionView
       : currentView === 'fuel-injector' ? fuelInjectorView
-      : currentView === 've' ? veAnalyzerView : specializedView;
+      : currentView === 've' ? veAnalyzerView
+      : currentView === 'idle-stability' ? idleView : specializedView;
     for (const view of domainViews) if (!active || view !== selected) view.setActive(false);
     if (!active) return;
     if (currentView === 'compare') {
@@ -425,6 +429,10 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       veAnalyzerView.setTuneModel(tuneModel, tuneSourceName);
       if (!tuneOnly) veAnalyzerView.setContext(context);
       veAnalyzerView.setActive(true);
+    } else if (currentView === 'idle-stability') {
+      idleView.setTuneModel(tuneModel,tuneSourceName);
+      if (!tuneOnly) idleView.setContext(context);
+      idleView.setActive(true);
     } else {
       specializedView.setDomain(currentView);
       specializedView.setContext(context);
@@ -437,6 +445,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
     if (currentView !== view) observability?.record({ recordKind: 'event', subsystem: 'navigation', component: 'analyzer', name: 'navigation.domain.changed', origin, activeView: view, visibility: active ? 'active' : 'hidden', metadata: { previous: currentView, next: view } });
     if (currentView !== view) for (const domain of domainViews) domain.setActive(false);
     currentView = view;
+    root.classList.toggle('analyzer-page--idle-stability', view === 'idle-stability');
     const compareActive = view === 'compare';
     const specializedActive = view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 'trigger-sync';
     compareControls.hidden = !compareActive;
@@ -446,6 +455,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
     fuelInjectorView.element.hidden = view !== 'fuel-injector';
     veAnalyzerView.element.hidden = view !== 've';
     specializedView.element.hidden = !specializedActive;
+    idleView.element.hidden = view !== 'idle-stability';
     viewSelect.value = view;
     if (compareActive) {
       heading.textContent = 'Range comparison';
@@ -454,6 +464,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       empty.hidden = true;
       content.hidden = true;
       if (specializedActive) [heading.textContent, description.textContent] = specializedTitles[view as SpecializedAnalyzerDomain];
+      else if (view === 'idle-stability') { heading.textContent = 'Idle Analyzer'; description.textContent = 'Read-only stability evidence from canonical recorded data and selected Logger regions.'; }
       else if (view === 'tune-table') { heading.textContent = 'Tune table correlation'; description.textContent = 'Map decoded operating points and observed values into an explicitly selected MSQ table.'; }
       else if (view === 'boost') { heading.textContent = 'Boost analysis'; description.textContent = 'Analyze boost tracking, spool and steady-state behavior using any channels available in the loaded log.'; }
       else if (view === 've') { heading.textContent = 'VE Analyzer'; description.textContent = 'Validate VE-table geometry, semantic fueling inputs and scope before building evidence-backed VE recommendations.'; }
@@ -483,7 +494,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
   refreshButton.addEventListener('click', () => { fillQualificationSelect(qualificationSelect.value); void render(); });
   viewSelect.addEventListener('change', (event) => {
     const view = viewSelect.value;
-    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 've' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view, true, event.isTrusted ? 'user' : 'programmatic');
+    if (view === 'compare' || view === 'tune-table' || view === 'boost' || view === 'idle-stability' || view === 'idle' || view === 'ae-map' || view === 'fueling' || view === 've' || view === 'ignition' || view === 'fuel-injector' || view === 'trigger-sync') setView(view, true, event.isTrusted ? 'user' : 'programmatic');
   });
 
   return {
@@ -503,6 +514,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       renderGeneration += 1; contextUpdateGeneration += 1;
       for (const view of domainViews) view.setActive(false);
       veAnalyzerView.dispose();
+      idleView.dispose();
     },
     setActive(next) {
       if (disposed) return;
@@ -517,7 +529,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       if (model === tuneModel && sourceName === tuneSourceName) return;
       tuneModel = model; tuneSourceName = sourceName;
       suppressNextRefresh();
-      if (active && (currentView === 'tune-table' || currentView === 'ignition' || currentView === 've')) routeActiveView(true, true);
+      if (active && (currentView === 'tune-table' || currentView === 'ignition' || currentView === 've' || currentView==='idle-stability')) routeActiveView(true, true);
     },
     openRangeCompareScope: (scopeValue) => {
       setView('compare', false);
@@ -539,6 +551,7 @@ export function createAnalyzerPage(observability?: ObservabilityRecorder): Analy
       else if (currentView === 'ignition') ignitionView.refresh();
       else if (currentView === 'fuel-injector') fuelInjectorView.refresh();
       else if (currentView === 've') veAnalyzerView.refresh();
+      else if (currentView === 'idle-stability') idleView.refresh();
       else specializedView.refresh();
     },
   };
