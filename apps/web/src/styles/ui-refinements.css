@@ -520,3 +520,5 @@
 .specialized-analyzer-table td {
   font-size: calc(9px * var(--epicscope-font-analyzer-scale));
 }
+
+.logger-layout-actions .logger-layout-starters { grid-column: 1 / -1; }

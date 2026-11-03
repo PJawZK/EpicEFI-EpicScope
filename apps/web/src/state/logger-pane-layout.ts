@@ -11,6 +11,8 @@ export interface GraphPaneState {
   channelIds: string[];
 }
 
+export const DEFAULT_FREEFORM_ARRANGEMENT = 'rows' as const;
+
 export type FreeformArrange = 'mosaic' | 'columns' | 'rows' | 'cascade' | 'custom';
 
 export function paneCountForLayout(layout: GraphWorkspaceLayout): number {
@@ -27,20 +29,20 @@ export function freeformArrangement(name: FreeformArrange): Record<string, Graph
 
   if (name === 'columns') {
     return {
-      'pane-1': rect(0, 0, .57, .32),
-      'pane-2': rect(0, .34, .57, .32),
-      'pane-3': rect(0, .68, .57, .32),
-      'pane-4': rect(.59, 0, .41, .49),
-      'pane-5': rect(.59, .51, .41, .49),
+      'pane-1': rect(0, 0, .58, 1/3),
+      'pane-2': rect(0, 1/3, .58, 1/3),
+      'pane-3': rect(0, 2/3, .58, 1/3),
+      'pane-4': rect(.58, 0, .42, .5),
+      'pane-5': rect(.58, .5, .42, .5),
     };
   }
   if (name === 'rows') {
     return {
-      'pane-1': rect(0, 0, 1, .19),
-      'pane-2': rect(0, .2025, 1, .19),
-      'pane-3': rect(0, .405, 1, .19),
-      'pane-4': rect(0, .6075, 1, .19),
-      'pane-5': rect(0, .81, 1, .19),
+      'pane-1': rect(0, 0, 1, .2),
+      'pane-2': rect(0, .2, 1, .2),
+      'pane-3': rect(0, .4, 1, .2),
+      'pane-4': rect(0, .6, 1, .2),
+      'pane-5': rect(0, .8, 1, .2),
     };
   }
   if (name === 'cascade') {
@@ -54,10 +56,10 @@ export function freeformArrangement(name: FreeformArrange): Record<string, Graph
   }
   return {
     'pane-1': rect(0, 0, .58, .56),
-    'pane-2': rect(.59, 0, .41, .275),
-    'pane-3': rect(.59, .285, .41, .275),
-    'pane-4': rect(0, .57, .49, .43),
-    'pane-5': rect(.50, .57, .50, .43),
+    'pane-2': rect(.58, 0, .42, .28),
+    'pane-3': rect(.58, .28, .42, .28),
+    'pane-4': rect(0, .56, .5, .44),
+    'pane-5': rect(.5, .56, .5, .44),
   };
 }
 
@@ -79,4 +81,10 @@ export function normalizePaneStates(
     normalized[0]!.channelIds = [...legacyChannelIds];
   }
   return normalized;
+}
+
+/** Keep preferred manual minima when they fit, but never resize outside the remaining workspace. */
+export function clampPaneResize(requested:number,available:number,preferredMinimum:number):number {
+  const limit=Math.max(1,available);
+  return Math.max(Math.min(preferredMinimum,limit),Math.min(limit,requested));
 }

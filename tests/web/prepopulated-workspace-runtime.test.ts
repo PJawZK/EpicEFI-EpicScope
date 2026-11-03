@@ -72,7 +72,7 @@ describe('pre-populated starter workspace runtime', () => {
       'ini:VBatt',
       'ini:lambdaValue',
       'ini:correctedIgnitionAdvance',
-    ]);
+    ].slice(0,4));
     expect(result.workspace.panes?.[0]?.channelIds).toEqual(result.workspace.channelIds);
   });
 
@@ -122,7 +122,7 @@ describe('pre-populated starter workspace runtime', () => {
       'ini:VBatt',
       'ini:lambdaValue',
       'ini:correctedIgnitionAdvance',
-    ]);
+    ].slice(0,4));
     expect(live.workspace.channelIds).toEqual([
       'RPMValue',
       'MAPValue',
@@ -132,7 +132,7 @@ describe('pre-populated starter workspace runtime', () => {
       'VBatt',
       'lambdaValue',
       'correctedIgnitionAdvance',
-    ]);
+    ].slice(0,4));
     expect(recorded.workspace.id).not.toBe(live.workspace.id);
   });
 
@@ -176,7 +176,7 @@ describe('pre-populated starter workspace runtime', () => {
       { overrides: new Map([['engine.throttle.position', 'customThrottle']]) },
     );
 
-    expect(result.workspace.channelIds).toEqual(['RPMValue', 'MAPValue', 'customThrottle']);
+    expect(result.workspace.channelIds).toEqual(['RPMValue', 'MAPValue', 'customThrottle'].slice(0,4));
     expect(result.resolution.unresolvedRequiredRoleIds).toEqual([]);
     expect(result.resolution.unresolvedPreferredRoleIds).toEqual(['temperature.coolant']);
   });

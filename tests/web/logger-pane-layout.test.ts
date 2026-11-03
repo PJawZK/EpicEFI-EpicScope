@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createEmptyPaneStates,
+  clampPaneResize,
   freeformArrangement,
   normalizePaneStates,
   paneCountForLayout,
@@ -42,10 +43,18 @@ describe('logger pane layout state', () => {
     expect(normalized.slice(1).every((pane) => pane.channelIds.length === 0)).toBe(true);
   });
 
-  it('preserves the established freeform layout presets', () => {
+  it('keeps manual resize minima inside narrow or short remaining workspace bounds',()=>{
+    expect(clampPaneResize(160,170,190)).toBe(170);
+    expect(clampPaneResize(300,170,190)).toBe(170);
+    expect(clampPaneResize(1,400,190)).toBe(190);
+    expect(clampPaneResize(250,400,190)).toBe(250);
+    expect(clampPaneResize(120,80,120)).toBe(80);
+  });
+
+  it('fills preset cells while retaining cascade and custom geometry', () => {
     expect(freeformArrangement('mosaic')['pane-1']).toEqual({ x: 0, y: 0, width: .58, height: .56 });
-    expect(freeformArrangement('columns')['pane-4']).toEqual({ x: .59, y: 0, width: .41, height: .49 });
-    expect(freeformArrangement('rows')['pane-5']).toEqual({ x: 0, y: .81, width: 1, height: .19 });
+    expect(freeformArrangement('columns')['pane-4']).toEqual({ x: .58, y: 0, width: .42, height: .5 });
+    expect(freeformArrangement('rows')['pane-5']).toEqual({ x: 0, y: .8, width: 1, height: .2 });
     expect(freeformArrangement('cascade')['pane-5']).toEqual({ x: .32, y: .32, width: .68, height: .58 });
     expect(freeformArrangement('custom')).toEqual(freeformArrangement('mosaic'));
   });
