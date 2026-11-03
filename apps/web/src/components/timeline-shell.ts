@@ -1,3 +1,4 @@
+import {sourceIntegrityDisplayClusters,type SourceIntegrityMarker} from '../app/source-integrity-markers';
 import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
 import { buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../../../core/timeline/viewport-series';
@@ -34,6 +35,7 @@ export interface TimelineShellController {
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
   extendTimeRange(timeRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
+  setSourceIntegrity(markers:readonly SourceIntegrityMarker[]):void;
   refreshOverview(): void;
   refreshValidity(): void;
   setViewport(viewport: TimelineViewport | undefined): void;
@@ -237,6 +239,7 @@ export function createTimelineShell(): TimelineShellController {
     deleteRangeButton.disabled = true;
   };
 
+  let integrityMarkers:readonly SourceIntegrityMarker[]=[];
   const renderOverview = (): void => {
     const rect = overview.getBoundingClientRect();
     // The existing resize owner redraws on reveal; hidden annotations must not
@@ -307,6 +310,9 @@ export function createTimelineShell(): TimelineShellController {
     }
     context.restore();
 
+    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
+      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=marker.kind==='corrupt-record'?'#ef6c75':'#eab95b';context.fillRect(x,0,2,Math.min(8,height));
+    }
     const envelopeWidth = Math.max(1, width);
     if (!overviewTracesVisible) return;
     for (const trace of overviewTraces) {
@@ -933,6 +939,7 @@ export function createTimelineShell(): TimelineShellController {
     setTimeRange,
     extendTimeRange,
     setOverviewContent,
+    setSourceIntegrity:(next)=>{if(integrityMarkers===next)return;integrityMarkers=next;renderOverview();},
     refreshOverview: renderOverview,
     refreshValidity: () => {
       precomputedEnvelopeBlocksEnabled = false;

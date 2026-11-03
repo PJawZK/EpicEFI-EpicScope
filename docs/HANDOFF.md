@@ -8,6 +8,10 @@ Updated 2026-11-03 (development continuation added; production baseline below re
 
 Documentation-only maintenance must not alter application source, package dependencies, build/deploy workflows, tests, data, storage, parsing or ECU behavior. Keep known gaps as evidence/policy questions, not unverified bug claims. Historic branches and checkpoint instructions are not continuation authority.
 
+## Active MLG integrity audit — 2026-11-03
+
+Continue from [the integrity audit and marker policy](MLG_INTEGRITY_AUDIT_2026-11-03.md). The original `2026-11-01_11.57.38.mlg` is unavailable; its particular gaps are **not verified**. The separately identified October25 full-record ledger and real-browser replay support preliminary mixed-retry classification, same-time trace continuity and marker/overview presentation corrections. Original bytes/indices/validity remain unchanged. Three checksum-valid timestamp regressions and a reproducible nonmonotonic binary-lookup omission remain a source-index review gate. Stop for review; do not merge or claim original-recording acceptance. Idle and VE numerical behavior remain outside this task.
+
 ## Active development continuation — 2026-11-03
 
 On `ui/idle-analyzer-html-integration`, the [Logger layout/starter checkpoint](LOGGER_LAYOUT_STARTERS_CHECKPOINT.md) records the current bounded task: six source-resolved starter groups, four-channel defaults, preserved saved/eight-channel workspaces, shared centered/corner presentation, rows-first new Freeform layouts and bounded narrow resizing. This is a **local branch checkpoint**, not a change to the production baseline below. Stop for manual UI acceptance; no main merge or automatic Idle continuation. Existing saved assignments opt in through **Layout → Reset starter channels**. Idle stage status remains as documented in [the native stage index](reference/idle-analyzer/NATIVE_STAGE_STATUS.md).

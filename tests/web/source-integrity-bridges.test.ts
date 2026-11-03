@@ -7,8 +7,8 @@ describe('draw-local ordered integrity bridges', () => {
   it('uses strictly earlier/later trusted endpoints across duplicates and nonfinite values', () => {
     const lookup = createOrderedBridgeLookup(range([0, 10, 10, 20, 30], [1, 2, 99, NaN, 4], [1, 1, 0, 1, 1]));
     expect(lookup(0)).toBeUndefined();
-    expect(lookup(10)).toEqual({ before: { timeMs: 0, value: 1 }, after: { timeMs: 30, value: 4 } });
-    expect(lookup(10)).toEqual({ before: { timeMs: 0, value: 1 }, after: { timeMs: 30, value: 4 } });
+    expect(lookup(10)).toBeUndefined();
+    expect(lookup(10)).toBeUndefined();
     expect(lookup(20)).toEqual({ before: { timeMs: 10, value: 2 }, after: { timeMs: 30, value: 4 } });
     expect(lookup(30)).toBeUndefined();
   });
@@ -31,8 +31,8 @@ describe('draw-local ordered integrity bridges', () => {
       },
     });
     const lookup = createOrderedBridgeLookup({ startSampleIndex: 0, timeMs: Float64Array.from({ length: count }, (_, i) => i), values, validity: new Uint8Array(count).fill(1) });
-    expect(lookup(1)?.after.timeMs).toBe(2);
-    expect(lookup(count - 2)?.before.timeMs).toBe(count - 3);
+    expect(lookup(1)).toBeUndefined();
+    expect(lookup(count - 2)).toBeUndefined();
     expect(reads).toBeLessThanOrEqual(20);
   });
 });

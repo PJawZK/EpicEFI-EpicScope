@@ -558,6 +558,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     if (channelDataSource) {
       for (const runtime of paneRuntimes) runtime.graph.setSourceIntegrity(channelDataSource, integrityMarkers);
     }
+    timeline.setSourceIntegrity(integrityMarkers);
     parserContext = { ...parserContext, sourceRevision: analysisDataRevision };
     diagnostics.setDiagnostics(value);
   };
@@ -2621,6 +2622,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       integritySource = undefined;
       integrityDiagnostics = undefined;
       integrityMarkers = [];
+      timeline.setSourceIntegrity(integrityMarkers);
       for (const runtime of paneRuntimes) runtime.graph.disposeSourceIntegrity();
     },
     getParserDiagnosticsReport: () => diagnostics.reportText(),

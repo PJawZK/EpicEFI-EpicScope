@@ -1,3 +1,4 @@
+import {sourceIntegrityDisplayClusters} from '../app/source-integrity-markers';
 import { createOrderedBridgeLookup } from './source-integrity-bridges';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { SourceIntegrityMarker } from '../app/source-integrity-markers';
@@ -54,12 +55,14 @@ function formatElapsedTime(timeMs: number): string {
 
 function markerExplanation(marker: SourceIntegrityMarker): string {
   const at = formatElapsedTime(marker.timeMs);
+
+  if(marker.clusteredEventCount!==undefined)return `Source integrity at ${at}: ${marker.message} Pixel clustering does not establish a shared cause.`;
   if (marker.kind === 'corrupt-record') {
     const count = marker.count > 1 ? `${marker.count} CRC-invalid source records` : 'CRC-invalid source record';
-    return `Imported log data issue at ${at} · ${count}. The dotted bridge spans data EpicScope cannot trust; the solid trace resumes at the next trusted sample.`;
+    return `Imported log data issue at ${at} · ${count}. A dotted bridge, when shown, spans untrusted measurements, not a proven loss duration. Source diagnostic: ${marker.message}`;
   }
   if (marker.kind === 'timestamp-gap') {
-    return `Imported log data issue at ${at} · timestamp/data gap. The dotted bridge marks the interval where source data is missing.`;
+    return `Imported log data issue at ${at} · recording-time discontinuity; cause unknown. This diagnostic does not establish packet loss or an exact missing-record count.`;
   }
   if (marker.kind === 'delivery-loss') {
     return `Recorded source data issue at ${at} · delivery loss. The dotted bridge marks the interval where source data is missing.`;
@@ -167,15 +170,15 @@ export function createSourceIntegrityCanvasOverlay(
       if (
         disposed
         || span <= 0
-        || span > MAX_RENDERED_VIEWPORT_SPAN_MS
         || markers.length === 0
         || layout.traces.length === 0
       ) {
         return;
       }
 
-      const start = markerLowerBound(markers, layout.visibleStartMs);
-      if (start >= markers.length || markers[start]!.timeMs > layout.visibleEndMs) return;
+      const visibleMarkers=sourceIntegrityDisplayClusters(markers,layout.visibleStartMs,layout.visibleEndMs,layout.width);
+      const start = markerLowerBound(visibleMarkers, layout.visibleStartMs);
+      if (start >= visibleMarkers.length || visibleMarkers[start]!.timeMs > layout.visibleEndMs) return;
       const lookups = layout.traces.map(trace => ({ trace, lookup: createOrderedBridgeLookup(trace.range) }));
 
       const nextTargets: MarkerHitTarget[] = [];
@@ -184,24 +187,17 @@ export function createSourceIntegrityCanvasOverlay(
       context.textAlign = 'center';
       context.textBaseline = 'middle';
 
-      for (let index = start; index < markers.length; index += 1) {
-        const marker = markers[index]!;
+      for (let index = start; index < visibleMarkers.length; index += 1) {
+        const marker = visibleMarkers[index]!;
         if (marker.timeMs > layout.visibleEndMs) break;
         if (!marker.breaksContinuity) continue;
         const bridges = [];
-        for (const { trace, lookup } of lookups) {
+        for (const { trace, lookup } of span<=MAX_RENDERED_VIEWPORT_SPAN_MS ? lookups : []) {
           const bridge = lookup(marker.timeMs);
           if (bridge) bridges.push({ trace, bridge });
         }
 
-        let markerX = layout.xForTime(marker.timeMs);
-        if (bridges.length > 0) {
-          const first = bridges[0]!;
-          markerX = (
-            layout.xForTime(first.bridge.before.timeMs)
-            + layout.xForTime(first.bridge.after.timeMs)
-          ) / 2;
-        }
+        const markerX = layout.xForTime(marker.timeMs);
         if (markerX < layout.inset || markerX > layout.width - layout.inset) continue;
 
         for (const { trace, bridge } of bridges) {
@@ -233,7 +229,7 @@ export function createSourceIntegrityCanvasOverlay(
           Math.max(layout.inset + ICON_RADIUS_PX, layout.height / 2),
         );
         context.fillStyle = 'rgba(22, 28, 33, 0.96)';
-        context.strokeStyle = 'rgba(239, 108, 117, 0.98)';
+        context.strokeStyle = marker.kind==='corrupt-record'?'rgba(239, 108, 117, 0.98)':'rgba(234,185,91,.98)';
         context.lineWidth = 1.5;
         context.beginPath();
         context.arc(markerX, markerY, ICON_RADIUS_PX, 0, Math.PI * 2);

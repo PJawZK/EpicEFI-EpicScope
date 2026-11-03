@@ -364,7 +364,11 @@ export function buildRawViewportSeries(
       pendingInvalidTime = undefined;
     }
     if (!usable) {
-      if (timeMs !== undefined && Number.isFinite(timeMs)) pendingInvalidTime = timeMs;
+      if (timeMs !== undefined && Number.isFinite(timeMs)) {
+        // A later corrupt attempt at an already represented timestamp cannot erase
+        // that trusted measurement or manufacture a trace break at the next sample.
+        if(timeMs!==previousValidTime)pendingInvalidTime = timeMs;
+      }
       else forceBreak = true;
       continue;
     }

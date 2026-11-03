@@ -159,7 +159,7 @@ describe('buildViewportEnvelope', () => {
 
   it.each([
     { name: 'unrecovered group before a recovered group', times: [0, 10, 20, 20, 30], values: [1, 2, 3, 4, 5], valid: [1, 0, 0, 1, 1], breaks: [true, true, false] },
-    { name: 'invalid suffix after a valid same-time sample', times: [0, 10, 10, 20], values: [1, 2, 3, 4], valid: [1, 1, 0, 1], breaks: [true, false, true] },
+    { name: 'invalid suffix cannot erase an already valid same-time measurement', times: [0, 10, 10, 20], values: [1, 2, 3, 4], valid: [1, 1, 0, 1], breaks: [true, false, false] },
     { name: 'nonfinite values followed by same-time recovery', times: [0, 10, 10, 20], values: [1, NaN, 3, 4], valid: [1, 1, 1, 1], breaks: [true, false, false] },
     { name: 'multiple valid same-time samples and later recovery', times: [0, 10, 10, 10, 10, 20], values: [1, 2, 3, 4, 5, 6], valid: [1, 1, 0, 1, 1, 1], breaks: [true, false, false, false, false] },
   ])('preserves gap semantics for $name', ({ times, values, valid, breaks }) => {

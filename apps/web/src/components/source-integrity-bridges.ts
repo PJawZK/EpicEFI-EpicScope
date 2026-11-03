@@ -37,6 +37,7 @@ export function createOrderedBridgeLookup(range: NumericChannelRange): (timeMs: 
     let after: BridgeEndpoint | undefined;
     while (afterIndex < range.timeMs.length) {
       const candidate = endpoint(range, afterIndex);
+      if(candidate?.timeMs===markerTimeMs)return undefined;
       if (candidate && candidate.timeMs > markerTimeMs) { after = candidate; break; }
       afterIndex += 1;
     }
