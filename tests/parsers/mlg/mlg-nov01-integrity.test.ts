@@ -2,9 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { MemoryByteSource } from '../../../core/parsers/byte-source';
 import { auditMlgIntegrity } from '../../../core/parsers/mlg/mlg-integrity-audit';
 import { parseMlg } from '../../../core/parsers/mlg/mlg-parser';
-import { buildRawViewportSeries } from '../../../core/timeline/viewport-series';
+import {
+  buildRawViewportSeries,
+  buildViewportEnvelope,
+  buildEnvelopeBlockSummary,
+  buildViewportEnvelopeFromBlocks,
+} from '../../../core/timeline/viewport-series';
 import { idleContractMlg } from '../../fixtures/idle/mlg-contract';
 import { createScalarHeaderFixture } from '../../logs/mlg-fixture-builder';
+import { summarizeNumericRange } from '../../../core/analysis/range-statistics';
+import { aggregateNumericSamples } from '../../../core/analysis/numeric-aggregation';
+import { buildNumericHistogram } from '../../../core/analysis/histogram';
 
 // Independently generated test bytes, based on observed November 1 event shapes.
 // These are not extracts of the user's recording or new causal classifications.
@@ -94,5 +102,16 @@ describe('November 1 source/render evidence boundaries', () => {
     const trace = buildRawViewportSeries(ranges[1]!, 0, 50);
     expect(trace).toHaveLength(2);
     expect(trace.map(p => p.breakBefore)).toEqual([true, true]);
+    // CRC-valid NaNs are unusable measurements even though the source-wide
+    // compatibility mask stays valid. Every measurement consumer must exclude them.
+    expect(summarizeNumericRange(ranges[1]!)).toMatchObject({ validCount: 2, invalidCount: 4, mean: 1 });
+    expect(aggregateNumericSamples(ranges[1]!)).toMatchObject({ validSampleCount: 2, invalidSampleCount: 4, unavailableSampleCount: 0, mean: 1 });
+    expect(buildNumericHistogram(ranges[1]!)).toMatchObject({ validSampleCount: 2, invalidSampleCount: 4, binnedSampleCount: 2 });
+    const envelope = buildViewportEnvelope(ranges[1]!, 0, 50, 100);
+    expect(envelope).toMatchObject({ validSampleCount: 2, invalidSampleCount: 4 });
+    const blocks = buildEnvelopeBlockSummary(ranges[1]!.values, ranges[1]!.timeMs, ranges[1]!.validity);
+    expect(buildViewportEnvelopeFromBlocks(ranges[1]!, blocks, 0, 50, 100)).toEqual(envelope);
+    expect(parsed.summary.diagnostics.filter(d => d.code === 'mlg-crc-mismatch')).toHaveLength(1);
+    expect([...parsed.recordIndex.crcValid]).toEqual([1, 1, 0, 1, 1, 1]);
   });
 });

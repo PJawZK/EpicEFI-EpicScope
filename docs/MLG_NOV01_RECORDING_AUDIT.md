@@ -164,3 +164,7 @@ The prior checkpoint's broader browser suite is historical evidence, not a new f
 External evidence root: `/workspace/epicscope-nov01-integrity/`. Contains `RECONSTRUCTION.json`, complete `original/ledger.json` and `diagnostics.json`, `correlation.json`, catalog, correlation harness, browser harness/results/screenshots, validation logs and the supplied manifest/script. Raw recording and transport archives remain external and are **not committed**. The downloadable evidence package excludes the private original/transport bytes. The original remains available locally at `input/2026-11-01_11.57.38.mlg`.
 
 **Stop here for review.** Any subsequent runtime fix should be a separate bounded change with explicit classification tests and manual browser acceptance. No push, main merge or Idle development was performed by this continuation.
+
+## Follow-up: Hybrid availability and fallback status
+
+The [focused Hybrid-channel investigation](MLG_NOV01_HYBRID_AVAILABILITY_AUDIT.md) continues from `8574f85f1eca22090886d2334046044501a32257`. All six have exactly identical NaN masks correlated with recorded Hybrid validity/cache invalidation and legacy correction selection. The reproduced fallback CRC-summary omission is corrected at the shared app-shell presentation owner; source/CRC/retry semantics are unchanged. Channel-specific availability indication remains a reviewed proposal, not installed UI. The findings and no-runtime-change statements above describe the earlier checkpoint.
