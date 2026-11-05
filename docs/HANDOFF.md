@@ -1,12 +1,16 @@
 # EpicScope — current handoff
 
-Updated 2026-11-03 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
+Updated 2026-11-05 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
 
 ## Authority and change safety
 
 **The code at current `main` takes priority over documentation**, including this file, older source-code branches, proposals, reference HTML, and local/unpublished reports. Verify the actual implementation before interpreting a feature as present or absent. When documents disagree with code, record the discrepancy and update documentation; do **not** modify working runtime code merely to conform to stale documentation. A proposed code correction requires independent reproduction, justification and explicit scope.
 
 Documentation-only maintenance must not alter application source, package dependencies, build/deploy workflows, tests, data, storage, parsing or ECU behavior. Keep known gaps as evidence/policy questions, not unverified bug claims. Historic branches and checkpoint instructions are not continuation authority.
+
+## Active Logger trace/navigation presentation — 2026-11-05
+
+The [Logger trace/navigation checkpoint](LOGGER_TRACE_NAVIGATION_CHECKPOINT.md) records the bounded follow-up from `91b5ef31ed758b5dcf249734c78ffe627483a521`: replace pixel-distance trace breaks with recorded continuity, use bounded source-local cadence instead of visible-window cadence, and reserve stable Cursor/Visible/elapsed readout widths so changing time values do not move controls. Existing graph cache retains continuity flags; CRC/retry/source validity and numerical behavior are unchanged. Real-browser geometry/canvas checks and production November-file replay preserve genuine CRC, cadence and Hybrid NaN gaps. Review the checkpoint's partial-range/subpixel limitations and validate the user's exact EpicScope channel/zoom case. No push/main merge; Idle work remains paused.
 
 ## Active MLG integrity audit — 2026-11-03
 

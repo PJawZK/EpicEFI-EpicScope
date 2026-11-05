@@ -168,3 +168,7 @@ External evidence root: `/workspace/epicscope-nov01-integrity/`. Contains `RECON
 ## Follow-up: Hybrid availability and fallback status
 
 The [focused Hybrid-channel investigation](MLG_NOV01_HYBRID_AVAILABILITY_AUDIT.md) continues from `8574f85f1eca22090886d2334046044501a32257`. All six have exactly identical NaN masks correlated with recorded Hybrid validity/cache invalidation and legacy correction selection. The reproduced fallback CRC-summary omission is corrected at the shared app-shell presentation owner; source/CRC/retry semantics are unchanged. Channel-specific availability indication remains a reviewed proposal, not installed UI. The findings and no-runtime-change statements above describe the earlier checkpoint.
+
+## Visual continuity follow-up — 2026-11-05
+
+The [Logger trace/navigation checkpoint](LOGGER_TRACE_NAVIGATION_CHECKPOINT.md) replaces the earlier pixel-distance/visible-window-cadence rendering rules with recorded boundary continuity and bounded source-local cadence. The source ledger, recorded NaN evidence and CRC/retry classifications above are unchanged; the earlier table of viewport-dependent raw breaks is historical presentation evidence.

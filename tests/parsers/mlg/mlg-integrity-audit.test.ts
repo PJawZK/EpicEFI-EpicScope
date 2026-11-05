@@ -31,9 +31,9 @@ describe('read-only complete-record MLG integrity audit',()=>{
   const range=await parsed.channelData.readChannelRange(channel.id,0,3),audit=auditMlgIntegrity(parsed.recordIndex,parsed.summary.diagnostics,4,{channels:new Map([[channel.sourceName,range]])});
   expect([...parsed.recordIndex.crcValid]).toEqual([1,1,1]);expect(audit.observedCounts['channel-invalid']).toBe(1);expect(audit.observedCounts['unrecovered-corrupt-record']).toBeUndefined();
  });
- it('does not promote a pixel-reduced sparse interval into source corruption',()=>{
+ it('keeps a sub-50ms valid spacing interval continuous without inventing source corruption',()=>{
   const n=3205,range={startSampleIndex:0,timeMs:Float64Array.from({length:n},(_,i)=>i*.01+(i>=1600?40:0)),values:new Float64Array(n).fill(1),validity:new Uint8Array(n).fill(1)};
-  const presentation=buildViewportTraceSeries(range,0,range.timeMs[n-1]!,800);expect(presentation.mode).toBe('envelope');expect(presentation.points.filter(p=>p.breakBefore).length).toBeGreaterThan(1);
+  const presentation=buildViewportTraceSeries(range,0,range.timeMs[n-1]!,800);expect(presentation.mode).toBe('envelope');expect(presentation.points.filter(p=>p.breakBefore)).toHaveLength(1);
   expect(auditMlgIntegrity({timeMs:range.timeMs,offsets:Float64Array.from({length:n},(_,i)=>100+i*7),counters:Uint8Array.from({length:n},(_,i)=>i%256),crcValid:range.validity},[],2).events).toEqual([]);
  });
  it('does not invent anomalies in >320k continuous valid records',()=>{

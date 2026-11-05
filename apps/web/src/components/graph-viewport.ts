@@ -18,6 +18,7 @@ import {
   buildRawViewportSeries,
   buildViewportEnvelope,
   buildViewportEnvelopeFromBlocks,
+  buildViewportEnvelopeBreaks,
   rawRepresentativePoints,
 } from '../../../../core/timeline/viewport-series';
 import { createSourceIntegrityCanvasOverlay } from './source-integrity-canvas-overlay';
@@ -237,6 +238,7 @@ export function createGraphViewport(): GraphViewportController {
     readonly visibleEndMs: number;
     readonly pixelWidth: number;
     readonly envelope: ReturnType<typeof buildViewportEnvelope>;
+    readonly breaks: readonly boolean[];
   }>();
   let cursorTimeMs = 0;
   let seekListener:((timeMs:number)=>void)|undefined;
@@ -571,12 +573,16 @@ export function createGraphViewport(): GraphViewportController {
             }
             return built;
           })();
+      const envelopeBreaks = cachedEnvelope?.envelope === envelope
+        ? cachedEnvelope.breaks
+        : buildViewportEnvelopeBreaks(trace.range, envelope);
       if (cachedEnvelope?.envelope !== envelope) {
         envelopeCache.set(channelId, {
           visibleStartMs,
           visibleEndMs,
           pixelWidth,
           envelope,
+          breaks: envelopeBreaks,
         });
       }
       const axisSpan = Math.max(1e-9, trace.scale.max - trace.scale.min);
@@ -605,10 +611,16 @@ export function createGraphViewport(): GraphViewportController {
       context.lineWidth = 1.1;
       context.lineJoin = 'miter';
       context.lineCap = 'butt';
+      // Actual neighboring samples can bracket a viewport with no sample inside.
+      // Clip their drawn segment; do not alter scoped statistics or cursor values.
+      context.save();
+      context.beginPath();
+      context.rect(inset, traceTop, plotWidth, traceHeight);
+      context.clip();
 
       const useRawSeries = envelope.validSampleCount <= pixelWidth * 2;
       if (useRawSeries) {
-        const points = buildRawViewportSeries(trace.range, visibleStartMs, visibleEndMs);
+        const points = buildRawViewportSeries(trace.range, visibleStartMs, visibleEndMs, true);
         context.beginPath();
         let hasTrace = false;
         for (const point of points) {
@@ -632,7 +644,6 @@ export function createGraphViewport(): GraphViewportController {
         }
       } else {
         context.beginPath();
-        let previousBucketX: number | undefined;
         let hasTrace = false;
         const isolatedPoints: { readonly x: number; readonly y: number }[] = [];
 
@@ -647,7 +658,7 @@ export function createGraphViewport(): GraphViewportController {
           const gapFromPrevious = previousColumn ? column.x - previousColumn.x : Number.POSITIVE_INFINITY;
           const gapToNext = nextColumn ? nextColumn.x - column.x : Number.POSITIVE_INFINITY;
           const isolatedBucket = gapFromPrevious > 2 && gapToNext > 2;
-          const breakBeforeBucket = previousBucketX === undefined || column.x - previousBucketX > 2;
+          const breakBeforeBucket = envelopeBreaks[columnIndex]!;
 
           for (let index = 0; index < points.length; index += 1) {
             const point = points[index];
@@ -669,7 +680,6 @@ export function createGraphViewport(): GraphViewportController {
               y: yForValue(column.first),
             });
           }
-          previousBucketX = column.x;
         }
         if (hasTrace) context.stroke();
 
@@ -680,6 +690,7 @@ export function createGraphViewport(): GraphViewportController {
           }
         }
       }
+      context.restore();
     }
 
     const overlayPhaseStarted = measureEnvelopeBuild

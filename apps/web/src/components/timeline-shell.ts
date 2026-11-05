@@ -489,6 +489,7 @@ export function createTimelineShell(): TimelineShellController {
     precomputedEnvelopeBlocksEnabled = true;
     fullStartMs = nextRange?.startMs ?? 0;
     fullEndMs = nextRange?.endMs ?? 0;
+    timeline.style.setProperty('--timeline-duration-width', `${Math.max(9, formatDuration(fullEndMs - fullStartMs).length)}ch`);
     overviewTraces = [];
     sourceMarkers = [];
     userMarkers = [];
@@ -533,6 +534,10 @@ export function createTimelineShell(): TimelineShellController {
   const extendTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void => {
     fullStartMs = nextRange?.startMs ?? fullStartMs;
     fullEndMs = nextRange?.endMs ?? fullEndMs;
+    const durationWidth = `${Math.max(9, formatDuration(fullEndMs - fullStartMs).length)}ch`;
+    if (timeline.style.getPropertyValue('--timeline-duration-width') !== durationWidth) {
+      timeline.style.setProperty('--timeline-duration-width', durationWidth);
+    }
     sourceMarkers = markers;
     cursorTimeMs = Math.min(fullEndMs, Math.max(fullStartMs, cursorTimeMs));
     overviewText.textContent = nextRange

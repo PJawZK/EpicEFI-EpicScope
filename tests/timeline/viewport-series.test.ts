@@ -1,5 +1,65 @@
 import { describe, expect, it } from 'vitest';
-import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks, nearestNumericSample, nearestNumericSamplePosition } from '../../core/timeline/viewport-series';
+import { buildEnvelopeBlockSummary, buildRawViewportSeries, buildViewportEnvelope, buildViewportEnvelopeFromBlocks, buildViewportEnvelopeBreaks, buildViewportTraceSeries, nearestNumericSample, nearestNumericSamplePosition } from '../../core/timeline/viewport-series';
+
+describe('zoom-independent trace continuity', () => {
+  it('opts into actual boundary neighbors only for drawing, without changing scoped samples', () => {
+    const range = { startSampleIndex: 0, timeMs: Float64Array.from([0, 10, 20]), values: Float64Array.from([900, 901, 902]), validity: new Uint8Array(3).fill(1) };
+    expect(buildRawViewportSeries(range, 12, 18)).toEqual([]);
+    expect(buildRawViewportSeries(range, 12, 18, true)).toEqual([
+      { timeMs: 10, value: 901, breakBefore: true },
+      { timeMs: 20, value: 902, breakBefore: false },
+    ]);
+    range.values[1] = NaN;
+    expect(buildRawViewportSeries(range, 12, 18, true)).toEqual([{ timeMs: 20, value: 902, breakBefore: true }]);
+    expect(buildViewportEnvelope(range, 12, 18, 100).validSampleCount).toBe(0);
+    expect(nearestNumericSample(range, 14)).toBeUndefined();
+  });
+  it('does not turn empty pixel columns between valid observations into missing data', () => {
+    const times = [...Array.from({ length: 400 }, (_, i) => i / 100), 20, 40];
+    const range = { startSampleIndex: 0, timeMs: Float64Array.from(times), values: Float64Array.from(times, t => t), validity: new Uint8Array(times.length).fill(1) };
+    const dense = buildViewportTraceSeries(range, 0, 40, 100);
+    expect(dense.mode).toBe('envelope');
+    expect(dense.points.filter(p => p.breakBefore)).toHaveLength(1);
+    range.values[399] = NaN;
+    expect(buildViewportTraceSeries(range, 0, 40, 100).points.find(p => p.timeMs === 20)?.breakBefore).toBe(true);
+  });
+
+  it('uses source-local cadence for the same spacing event in overlapping viewports', () => {
+    const times = [...Array.from({ length: 20 }, (_, i) => i * 10), 290, 300, 310];
+    const range = { startSampleIndex: 0, timeMs: Float64Array.from(times), values: new Float64Array(times.length).fill(1), validity: new Uint8Array(times.length).fill(1) };
+    for (const [start, end] of [[0, 310], [185, 295], [180, 305]]) {
+      expect(buildRawViewportSeries(range, start!, end!).find(p => p.timeMs === 290)?.breakBefore).toBe(true);
+    }
+  });
+
+  it.each([
+    { suffix: [5, 10, 10, 20, 40], valid: [0, 0, 1, 1, 1], breakAtTen: true },
+    { suffix: [10, 10, 20, 40], valid: [0, 1, 1, 1], breakAtTen: false },
+    { suffix: [10, 10, 20, 40], valid: [1, 0, 1, 1], breakAtTen: false },
+  ])('dense continuity retains same-time retry semantics: $valid', ({ suffix, valid, breakAtTen }) => {
+    const times = [...Array.from({ length: 400 }, (_, i) => i / 100), ...suffix];
+    const validity = new Uint8Array(times.length).fill(1); validity.set(valid, 400);
+    const range = { startSampleIndex: 0, timeMs: Float64Array.from(times), values: new Float64Array(times.length).fill(900), validity };
+    const series = buildViewportTraceSeries(range, 0, 40, 100);
+    expect(series.mode).toBe('envelope');
+    expect(series.points.find(p => p.timeMs === 10)?.breakBefore).toBe(breakAtTen);
+    expect(series.points.find(p => p.timeMs === 20)?.breakBefore).toBe(false);
+  });
+
+  it('checks retained envelope continuity without a full-log pass beyond 320k samples', () => {
+    const count = 320_005, width = 800;
+    const range = { startSampleIndex: 0, timeMs: Float64Array.from({ length: count }, (_, i) => i * 10), values: new Float64Array(count).fill(1), validity: new Uint8Array(count).fill(1) };
+    const envelope = buildViewportEnvelope(range, 0, (count - 1) * 10, width);
+    let reads = 0;
+    const times = new Proxy(range.timeMs, { get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+      return Reflect.get(target, key, target);
+    } });
+    const breaks = buildViewportEnvelopeBreaks({ ...range, timeMs: times }, envelope);
+    expect(breaks.filter(Boolean)).toHaveLength(1);
+    expect(reads).toBeLessThan(width * 64);
+  });
+});
 
 it('shared cursor returns original sample identity, never an interpolated or invalid value', () => {
   const range = { startSampleIndex: 10, timeMs: Float64Array.from([100, 200, 300]), values: Float64Array.from([900, 999, 1100]), validity: Uint8Array.from([1, 0, 1]) };
