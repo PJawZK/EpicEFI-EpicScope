@@ -1143,6 +1143,7 @@ export function mountAppShell(root: HTMLElement): void {
     const loggerActive = mode === 'logger';
     const analyzerActive = mode === 'analyzer';
     const histogramActive = mode === 'histogram';
+    if(!loggerActive){loggerPage.clearHoverInspection();loggerPage.cancelNavigationGesture();}
     loggerPage.element.hidden = !loggerActive;
     if (loggerActive) loggerPage.refreshAnalysisRangeStatistics();
     analyzerPage.setActive(false);
@@ -1801,6 +1802,30 @@ export function mountAppShell(root: HTMLElement): void {
     return [...sourceIds];
   };
 
+  // Both completed import paths have canonical CRC diagnostics. Keep their
+  // presentation identical; only the staged path has a separate validating state.
+  const setValidatedMlgLoadStatus = (
+    sourceName: string,
+    version: number,
+    recordCount: number,
+    diagnostics: ImportedLogSummary['diagnostics'],
+  ): void => {
+    const unrecoveredCrcCount = diagnostics.filter(d => d.code === 'mlg-crc-mismatch').length;
+    const crcStatus = unrecoveredCrcCount > 0
+      ? `CRC checked · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
+      : 'CRC validated';
+    const tailStatus = mlgTailStatus(diagnostics);
+    setSourceLoadState(
+      openButton,
+      hasWarningOrError(diagnostics) ? 'issue' : 'success',
+      `${sourceName} · ${crcStatus} · ${recordCount.toLocaleString()} records${tailStatus}`,
+    );
+    appStatus.textContent = (unrecoveredCrcCount > 0
+      ? `Ready · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
+      : 'Ready') + tailStatus;
+    parserStatus.textContent = `MLG v${version} · ${recordCount.toLocaleString()} records · ${crcStatus} · local only${tailStatus}`;
+  };
+
   const recordFullLoad = (
     file: File,
     parsed: Awaited<ReturnType<typeof importMlgFile>>,
@@ -1878,13 +1903,12 @@ export function mountAppShell(root: HTMLElement): void {
     });
 
     loadedLog.textContent = parsed.summary.source.displayName;
-    setSourceLoadState(
-      openButton,
-      hasWarningOrError(parsed.summary.diagnostics) ? 'issue' : 'success',
-      `${parsed.summary.source.displayName} · ${parsed.recordIndex.offsets.length.toLocaleString()} records${mlgTailStatus(parsed.summary.diagnostics)}`,
+    setValidatedMlgLoadStatus(
+      parsed.summary.source.displayName,
+      parsed.header.version,
+      parsed.recordIndex.offsets.length,
+      parsed.summary.diagnostics,
     );
-    appStatus.textContent = `Ready${mlgTailStatus(parsed.summary.diagnostics)}`;
-    parserStatus.textContent = `MLG v${parsed.header.version} · ${parsed.recordIndex.offsets.length.toLocaleString()} records · local only${mlgTailStatus(parsed.summary.diagnostics)}`;
   };
 
   const importOnMainThread = async (file: File, operation?: Operation): Promise<void> => {
@@ -2115,22 +2139,12 @@ export function mountAppShell(root: HTMLElement): void {
                 sidecarTotalBytes: validated.sidecar.manifest.totalBytes,
               } : {}),
             });
-            const unrecoveredCrcCount = validated.diagnostics.filter(
-              (diagnostic) => diagnostic.code === 'mlg-crc-mismatch',
-            ).length;
-            const crcStatus = unrecoveredCrcCount > 0
-              ? `CRC checked · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
-              : 'CRC validated';
-            setSourceLoadState(
-              openButton,
-              hasWarningOrError(validated.diagnostics) ? 'issue' : 'success',
-              `${indexed.summary.source.displayName} · ${crcStatus} · ${indexed.recordIndex.offsets.length.toLocaleString()} records${mlgTailStatus(validated.diagnostics)}`,
+            setValidatedMlgLoadStatus(
+              indexed.summary.source.displayName,
+              indexed.header.version,
+              indexed.recordIndex.offsets.length,
+              validated.diagnostics,
             );
-            appStatus.textContent = unrecoveredCrcCount > 0
-              ? `Ready · ${unrecoveredCrcCount.toLocaleString()} unrecovered CRC record${unrecoveredCrcCount === 1 ? '' : 's'}`
-              : 'Ready';
-            appStatus.textContent += mlgTailStatus(validated.diagnostics);
-            parserStatus.textContent = `MLG v${indexed.header.version} · ${indexed.recordIndex.offsets.length.toLocaleString()} records · ${crcStatus} · local only${mlgTailStatus(validated.diagnostics)}`;
             finishSourceLoad(loadOperation, 'success');
             activeStagedImport = undefined;
           })

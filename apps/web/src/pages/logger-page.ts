@@ -14,6 +14,7 @@ import type {
 } from '../../../../core/log-model/log-types';
 import { extendLiveViewport } from '../../../../core/timeline/live-follow';
 import {
+  cursorAfterViewportPan,
   centerViewportOn,
   createFullViewport,
   fitViewport,
@@ -49,6 +50,8 @@ import type {
 } from '../state/workspace-state';
 import {
   GRAPH_PANE_IDS,
+  DEFAULT_FREEFORM_ARRANGEMENT,
+  clampPaneResize,
   createEmptyPaneStates,
   freeformArrangement,
   normalizePaneStates,
@@ -59,12 +62,11 @@ import {
 import {
   availableStarterWorkspaceTemplates,
   GENERIC_STARTER_WORKSPACE_TEMPLATES,
-  resolveStarterWorkspaceTemplate,
   starterWorkspaceTemplate,
   SINGLE_RESOLVER_TEST_WORKSPACE,
   type StarterWorkspaceTemplate,
 } from '../state/built-in-workspace-templates';
-import { legacyBuiltInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';
+import { resolveLoggerStarterPaneGroups, materializeStarterWorkspace, legacyBuiltInWorkspaceRuntimeId } from '../state/prepopulated-workspace-runtime';
 import { loggerWorkspaceEditingAvailable } from '../state/logger-workspace-capabilities';
 
 const MAX_ACTIVE_WEB_TRACES = 8;
@@ -166,8 +168,10 @@ export interface LoggerAnalysisTraceContext {
 }
 
 export interface LoggerAnalysisContext {
+  /** Canonical source-bound continuity metadata; display text is never analytical authority. */
+  readonly sourceIntegrity?: readonly SourceIntegrityMarker[];
   /** Stable source lifetime plus changes to its sample/validity data, independent of navigation. */
-  readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number };
+  readonly source?: { readonly identity: object; readonly sampleCount: number; readonly revision: number; readonly descriptor?: LogSourceIdentity };
   readonly traces: readonly LoggerAnalysisTraceContext[];
   readonly channels: readonly ChannelDefinition[];
   /** Bound to this context's source, available catalog and sample extent; no implicit rebinding on replacement. */
@@ -196,6 +200,8 @@ export interface LoggerAnalysisContext {
 }
 
 export interface LoggerPageController {
+  cancelNavigationGesture():void;
+  clearHoverInspection():void;
   readonly element: HTMLElement;
   readonly graphSelector: HTMLElement;
   readonly headerTools: HTMLElement;
@@ -490,10 +496,10 @@ function createInitialWorkspace(
     layout,
     activePaneId: 'pane-1',
     panes: createEmptyPaneStates(),
-    paneGeometry: freeformArrangement('mosaic'),
+    paneGeometry: freeformArrangement(DEFAULT_FREEFORM_ARRANGEMENT),
     minimizedPaneIds: [],
     maximizedPaneId: undefined,
-    freeformArrange: 'mosaic',
+    freeformArrange: DEFAULT_FREEFORM_ARRANGEMENT,
     viewport: undefined,
     cursorTimeMs: 0,
     viewHistory: [],
@@ -552,6 +558,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     if (channelDataSource) {
       for (const runtime of paneRuntimes) runtime.graph.setSourceIntegrity(channelDataSource, integrityMarkers);
     }
+    timeline.setSourceIntegrity(integrityMarkers);
     parserContext = { ...parserContext, sourceRevision: analysisDataRevision };
     diagnostics.setDiagnostics(value);
   };
@@ -587,9 +594,9 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   arrangeSelect.title = 'Arrange freeform graph windows';
   arrangeSelect.setAttribute('aria-label', 'Arrange freeform graph windows');
   arrangeSelect.innerHTML = `
+    <option value="rows">Horizontal rows</option>
     <option value="mosaic">Mosaic</option>
     <option value="columns">Columns</option>
-    <option value="rows">Rows</option>
     <option value="cascade">Cascade</option>
     <option value="custom" disabled>Custom</option>
   `;
@@ -606,6 +613,10 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   resetLayoutButton.className = 'graph-pane-action';
   resetLayoutButton.textContent = 'Reset layout';
   resetLayoutButton.title = 'Reset this workspace layout and freeform window positions';
+
+  const resetChannelsButton=document.createElement('button');
+  resetChannelsButton.type='button';resetChannelsButton.className='graph-pane-action graph-reset-starters';
+  resetChannelsButton.textContent='Reset starter channels';resetChannelsButton.title='Replace all pane assignments in this workspace with up to four available starter channels per pane';
 
   const shortcutWrap = document.createElement('div');
   shortcutWrap.className = 'logger-shortcut-wrap';
@@ -646,6 +657,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     arrangeSelect,
     clearPaneButton,
     resetLayoutButton,
+    resetChannelsButton,
   );
 
   const setShortcutPopoverOpen = (open: boolean): void => {
@@ -883,10 +895,11 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const seededHistoryIndex = seed?.viewHistoryIndex ?? -1;
     const seededCursorTimeMs = seed?.cursorTimeMs ?? timeline.getCursorTime();
 
+    const layoutDefaults=resolveLoggerStarterPaneGroups(channels);
     workspaces = GENERIC_STARTER_WORKSPACE_TEMPLATES.map((template, index) => {
       const workspace = createInitialWorkspace(`graph-${index + 1}`, template.name, template.layout);
-      const resolution = resolveStarterWorkspaceTemplate(template, channels);
-      for (const resolvedPane of resolution.panes) {
+      const starter = materializeStarterWorkspace(template, channels, workspace.id,{},undefined,layoutDefaults).workspace;
+      for (const resolvedPane of starter.panes ?? []) {
         const pane = workspace.panes.find((candidate) => candidate.id === resolvedPane.id);
         if (pane) pane.channelIds = [...resolvedPane.channelIds];
       }
@@ -907,9 +920,9 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     template: StarterWorkspaceTemplate,
     workspaceId: string,
   ): GraphWorkspaceState => {
-    const resolution = resolveStarterWorkspaceTemplate(template, [...channelDefinitions.values()]);
+    const starter = materializeStarterWorkspace(template, [...channelDefinitions.values()], workspaceId).workspace;
     const panes = createEmptyPaneStates();
-    for (const resolvedPane of resolution.panes) {
+    for (const resolvedPane of starter.panes ?? []) {
       const pane = panes.find((candidate) => candidate.id === resolvedPane.id);
       if (pane) pane.channelIds = [...resolvedPane.channelIds];
     }
@@ -919,10 +932,10 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       layout: template.layout,
       activePaneId: panes[0]?.id ?? 'pane-1',
       panes,
-      paneGeometry: freeformArrangement('mosaic'),
+      paneGeometry: freeformArrangement(DEFAULT_FREEFORM_ARRANGEMENT),
       minimizedPaneIds: [],
       maximizedPaneId: undefined,
-      freeformArrange: 'mosaic',
+      freeformArrange: DEFAULT_FREEFORM_ARRANGEMENT,
       viewport: viewport ? { ...viewport } : undefined,
       cursorTimeMs: timeline.getCursorTime(),
       viewHistory: viewport ? [{ ...viewport }] : [],
@@ -1018,6 +1031,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   };
 
   const renderGraphLayout = (): void => {
+    paneRuntimes.forEach(pane=>pane.graph.setHoverTime(undefined));
     const workspace = activeWorkspace();
     if (!workspace) return;
 
@@ -1025,6 +1039,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const activeIndex = workspace.panes.findIndex((pane) => pane.id === workspace.activePaneId);
     if (activeIndex < 0 || activeIndex >= visibleCount) workspace.activePaneId = workspace.panes[0]?.id ?? 'pane-1';
 
+    resetChannelsButton.disabled = channelDefinitions.size === 0;
     layoutSelect.value = workspace.layout;
     arrangeSelect.hidden = workspace.layout !== 'freeform';
     arrangeSelect.value = workspace.freeformArrange;
@@ -1064,7 +1079,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       runtime.maximizeButton.title = maximized ? 'Restore graph window' : 'Maximize graph window';
 
       if (workspace.layout === 'freeform' && inLayout) {
-        const geometry = workspace.paneGeometry[runtime.id] ?? freeformArrangement('mosaic')[runtime.id];
+        const geometry = workspace.paneGeometry[runtime.id] ?? freeformArrangement(workspace.freeformArrange)[runtime.id];
         if (!geometry) {
           runtime.windowElement.style.removeProperty('left');
           runtime.windowElement.style.removeProperty('top');
@@ -1130,12 +1145,14 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   const syncViewport = (
     nextViewport: TimelineViewport | undefined,
     historyMode: 'none' | 'record' | 'coalesce' = 'none',
+    selectedTime?:number,
   ): void => {
     viewport = nextViewport;
+    if(selectedTime!==undefined){previousCursorTimeMs=selectedTime;if(timeline.getCursorTime()!==selectedTime)timeline.setCursorTime(selectedTime);}
     timeline.setViewport(nextViewport);
-    paneRuntimes.forEach((runtime) => runtime.graph.setViewport(nextViewport));
+    paneRuntimes.forEach((runtime) => runtime.graph.setViewport(nextViewport,selectedTime));
     const workspace = activeWorkspace();
-    if (workspace) workspace.viewport = nextViewport ? { ...nextViewport } : undefined;
+    if (workspace){workspace.viewport = nextViewport ? { ...nextViewport } : undefined;if(selectedTime!==undefined)workspace.cursorTimeMs=selectedTime;}
     if (nextViewport && historyMode !== 'none') recordViewportHistory(nextViewport, historyMode === 'coalesce');
     else refreshViewHistoryState();
   };
@@ -1192,7 +1209,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
 
     if (!viewportEquals(viewport, next)) {
       const historyMode = intent.type === 'pan' || intent.type === 'resize' ? 'coalesce' : 'record';
-      syncViewport(next, historyMode);
+      syncViewport(next, historyMode,intent.type==='pan'&&intent.carryCursor?cursorAfterViewportPan(viewport,next,timeline.getCursorTime()):undefined);
     }
     if (intent.type !== 'fit' && intent.centerCursor) centerCursorInViewport(next);
   };
@@ -1286,13 +1303,20 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     if (!workspace) return;
     workspace.layout = 'single';
     workspace.activePaneId = 'pane-1';
-    workspace.paneGeometry = freeformArrangement('mosaic');
+    workspace.paneGeometry = freeformArrangement(DEFAULT_FREEFORM_ARRANGEMENT);
     workspace.minimizedPaneIds = [];
     workspace.maximizedPaneId = undefined;
-    workspace.freeformArrange = 'mosaic';
+    workspace.freeformArrange = DEFAULT_FREEFORM_ARRANGEMENT;
     renderGraphLayout();
     syncActivePaneContext();
     emitWorkspaceMutation();
+  });
+
+  resetChannelsButton.addEventListener('click',()=>{
+    const workspace=activeWorkspace();if(!workspace||channelDefinitions.size===0)return;
+    const starter=materializeStarterWorkspace(SINGLE_RESOLVER_TEST_WORKSPACE,[...channelDefinitions.values()],workspace.id).workspace;
+    workspace.panes=normalizePaneStates(starter.panes,starter.channelIds);
+    void restoreWorkspace(workspace.id,true).then(emitWorkspaceMutation);
   });
 
   const snapWithin = (value: number, candidates: readonly number[], threshold = 10): number => {
@@ -1460,8 +1484,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       const hostRect = graphHost.getBoundingClientRect();
       const hostWidth = Math.max(1, hostRect.width);
       const hostHeight = Math.max(1, hostRect.height);
-      let width = Math.max(190, Math.min(hostWidth - resizeDrag.left, resizeDrag.startWidth + event.clientX - resizeDrag.startX));
-      let height = Math.max(120, Math.min(hostHeight - resizeDrag.top, resizeDrag.startHeight + event.clientY - resizeDrag.startY));
+      let width = clampPaneResize(resizeDrag.startWidth + event.clientX - resizeDrag.startX,hostWidth - resizeDrag.left,190);
+      let height = clampPaneResize(resizeDrag.startHeight + event.clientY - resizeDrag.startY,hostHeight - resizeDrag.top,120);
 
       const rightCandidates = [hostWidth];
       const bottomCandidates = [hostHeight];
@@ -1473,8 +1497,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       }
       width = snapWithin(resizeDrag.left + width, rightCandidates) - resizeDrag.left;
       height = snapWithin(resizeDrag.top + height, bottomCandidates) - resizeDrag.top;
-      width = Math.max(190, Math.min(hostWidth - resizeDrag.left, width));
-      height = Math.max(120, Math.min(hostHeight - resizeDrag.top, height));
+      width = clampPaneResize(width,hostWidth - resizeDrag.left,190);
+      height = clampPaneResize(height,hostHeight - resizeDrag.top,120);
 
       workspace.paneGeometry[runtime.id] = {
         x: resizeDrag.left / hostWidth,
@@ -1894,6 +1918,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
     });
 
+    runtime.graph.onHoverTime(time=>{for(const pane of paneRuntimes)pane.graph.setHoverTime(!pane.windowElement.hidden&&!pane.windowElement.classList.contains('graph-window--minimized')?time:undefined);});
+
     runtime.graph.onCursorValues((values) => {
       if (runtime.id !== activeWorkspace()?.activePaneId) return;
       const displayValues = values.flatMap((item) => {
@@ -1905,13 +1931,14 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     });
 
     runtime.graph.onZoom((factor, anchorMs) => applyViewportIntent({ type: 'zoom', factor, anchorMs }));
-    runtime.graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs }));
+    runtime.graph.onSeekTime(time=>timeline.seekTime(time));
+    runtime.graph.onPan((deltaMs) => applyViewportIntent({ type: 'pan', deltaMs,carryCursor:true }));
   });
 
   timeline.onCursorChange((timeMs) => {
     if (viewport) {
       const nextViewport = followCursor(viewport, previousCursorTimeMs, timeMs);
-      if (!viewportEquals(viewport, nextViewport)) syncViewport(nextViewport);
+      if (!viewportEquals(viewport, nextViewport)){syncViewport(nextViewport,'none',timeMs);return;}
     }
     previousCursorTimeMs = timeMs;
     paneRuntimes.forEach((runtime) => runtime.graph.setCursorTime(timeMs));
@@ -2009,10 +2036,10 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
           layout: 'single',
           activePaneId: 'pane-1',
           panes: createEmptyPaneStates(),
-          paneGeometry: freeformArrangement('mosaic'),
+          paneGeometry: freeformArrangement(DEFAULT_FREEFORM_ARRANGEMENT),
           minimizedPaneIds: [],
           maximizedPaneId: undefined,
-          freeformArrange: 'mosaic',
+          freeformArrange: DEFAULT_FREEFORM_ARRANGEMENT,
           viewport: viewport ? { ...viewport } : undefined,
           cursorTimeMs: timeline.getCursorTime(),
           viewHistory: viewport ? [{ ...viewport }] : [],
@@ -2336,7 +2363,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
           layout,
           activePaneId,
           panes,
-          paneGeometry: workspace.paneGeometry ? structuredClone(workspace.paneGeometry) : freeformArrangement('mosaic'),
+          paneGeometry: workspace.paneGeometry ? structuredClone(workspace.paneGeometry) : freeformArrangement(workspace.freeformArrange ?? 'mosaic'),
           minimizedPaneIds: [...(workspace.minimizedPaneIds ?? [])]
             .filter((id) => GRAPH_PANE_IDS.includes(id as typeof GRAPH_PANE_IDS[number])),
           maximizedPaneId: workspace.maximizedPaneId,
@@ -2401,6 +2428,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const source = channelDataSource;
     const sampleExtent = source?.sampleCount ?? 0;
     const sourceRevision = analysisDataRevision;
+    const descriptor = integritySource ? { ...integritySource } : undefined;
     const sourceTimeRange = analysisSourceTimeRange ? { startMs: analysisSourceTimeRange.startMs, endMs: analysisSourceTimeRange.endMs } : undefined;
     const channels = analysisChannels();
     const definitions = new Map(channels.map((channel) => [channel.id, channel]));
@@ -2493,7 +2521,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       traces,
       channels,
       loadTraces,
-      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision } } : {}),
+      ...(source ? { source: { identity: source, sampleCount: sampleExtent, revision: sourceRevision, ...(descriptor ? { descriptor } : {}) }, sourceIntegrity: integrityMarkers } : {}),
       ...(sourceTimeRange ? { sourceTimeRange } : {}),
       setAnalysisRange: ({ startMs, endMs }) => {
         if (!source || source !== channelDataSource || sourceRevision !== analysisDataRevision || source.sampleCount !== sampleExtent || !sourceTimeRange
@@ -2594,6 +2622,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       integritySource = undefined;
       integrityDiagnostics = undefined;
       integrityMarkers = [];
+      timeline.setSourceIntegrity(integrityMarkers);
       for (const runtime of paneRuntimes) runtime.graph.disposeSourceIntegrity();
     },
     getParserDiagnosticsReport: () => diagnostics.reportText(),
@@ -2616,6 +2645,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     onAnalyzeRange: (listener) => { timeline.onAnalyzeRequest(() => listener()); },
     getWorkspaceState,
     getRuntimeDiagnosticSnapshot,
+    cancelNavigationGesture:()=>paneRuntimes.forEach(pane=>pane.graph.cancelNavigationGesture()),
+    clearHoverInspection:()=>paneRuntimes.forEach(pane=>pane.graph.setHoverTime(undefined)),
     getAnalysisContext,
     getAnalysisSourceState: () => ({ identity: channelDataSource, revision: analysisDataRevision, sampleCount: channelDataSource?.sampleCount ?? 0, aTimeMs: analysisStartMs, bTimeMs: analysisEndMs }),
     focusAnalysisTimes,

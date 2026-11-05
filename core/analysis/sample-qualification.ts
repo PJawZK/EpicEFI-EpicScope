@@ -35,6 +35,10 @@ export interface NumericQualificationRequest {
   readonly conditions: readonly NumericQualificationCondition[];
   /** Optional independent time scope, such as the current A/B selection. */
   readonly timeRange?: NumericQualificationTimeRange;
+  /** Optional original reference indices, supplied once by a scope owner (unique indices). */
+  readonly sampleIndices?: ArrayLike<number>;
+  /** Require condition measurements to share the reference sample timestamp. Opt-in for existing consumers. */
+  readonly requireTimeAlignment?: boolean;
 }
 
 export interface NumericGroupedQualificationRequest {
@@ -44,6 +48,10 @@ export interface NumericGroupedQualificationRequest {
   readonly groupLogic: NumericQualificationLogic;
   readonly groups: readonly NumericQualificationGroup[];
   readonly timeRange?: NumericQualificationTimeRange;
+  /** Optional original reference indices, supplied once by a scope owner (unique indices). */
+  readonly sampleIndices?: ArrayLike<number>;
+  /** Require condition measurements to share the reference sample timestamp. Opt-in for existing consumers. */
+  readonly requireTimeAlignment?: boolean;
 }
 
 export interface NumericQualificationResult {
@@ -117,6 +125,7 @@ function evaluateCondition(
   condition: NumericQualificationCondition,
   channels: ReadonlyMap<string, NumericQualificationChannelRange>,
   sampleIndex: number,
+  referenceTimeMs?: number,
 ): Evaluation {
   const channel = channels.get(condition.channelId);
   if (!channel) return 'unavailable';
@@ -130,6 +139,7 @@ function evaluateCondition(
     || !Number.isFinite(value)
     || conditionTimeMs === undefined
     || !Number.isFinite(conditionTimeMs)
+    || (referenceTimeMs !== undefined && conditionTimeMs !== referenceTimeMs)
   ) return 'invalid';
   return matchesNumericQualification(value, condition.operator, condition.value) ? 'true' : 'false';
 }
@@ -161,13 +171,17 @@ export function qualifyNumericSampleGroups(request: NumericGroupedQualificationR
     reference.range.validity.length,
   );
 
-  for (let referenceIndex = 0; referenceIndex < referenceSampleCount; referenceIndex += 1) {
+  const count = request.sampleIndices?.length ?? referenceSampleCount;
+  for (let position = 0; position < count; position += 1) {
+    const supplied = request.sampleIndices?.[position];
+    const referenceIndex = request.sampleIndices ? (supplied ?? NaN) - reference.range.startSampleIndex : position;
+    if (!Number.isSafeInteger(referenceIndex) || referenceIndex < 0 || referenceIndex >= referenceSampleCount) { inputSampleCount++; unavailableSampleCount++; continue; }
     const timeMs = reference.range.timeMs[referenceIndex];
     if (timeMs === undefined || !Number.isFinite(timeMs) || timeMs < lowerMs || timeMs > upperMs) continue;
     inputSampleCount += 1;
     const sampleIndex = reference.range.startSampleIndex + referenceIndex;
     const groupResults = groups.map((group) => combineEvaluations(
-      group.conditions.map((condition) => evaluateCondition(condition, request.channels, sampleIndex)),
+      group.conditions.map((condition) => evaluateCondition(condition, request.channels, sampleIndex, request.requireTimeAlignment ? timeMs : undefined)),
       group.logic,
     ));
     const result = combineEvaluations(groupResults, request.groupLogic);
@@ -204,5 +218,7 @@ export function qualifyNumericSamples(request: NumericQualificationRequest): Num
     groupLogic: 'and',
     groups: [{ logic: 'and', conditions: request.conditions }],
     ...(request.timeRange ? { timeRange: request.timeRange } : {}),
+    ...(request.sampleIndices ? { sampleIndices: request.sampleIndices } : {}),
+    ...(request.requireTimeAlignment ? { requireTimeAlignment: true } : {}),
   });
 }

@@ -1,3 +1,4 @@
+import {sourceIntegrityDisplayClusters,type SourceIntegrityMarker} from '../app/source-integrity-markers';
 import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
 import { buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../../../core/timeline/viewport-series';
@@ -6,7 +7,7 @@ import type { TimelineWorkspaceState } from '../state/workspace-state';
 export type TimelineViewportIntent =
   | { readonly type: 'fit' }
   | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number; readonly centerCursor?: boolean }
-  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean; readonly carryCursor?:boolean }
   | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'range'; readonly startMs: number; readonly endMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'history-back' }
@@ -34,9 +35,12 @@ export interface TimelineShellController {
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
   extendTimeRange(timeRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
+  setSourceIntegrity(markers:readonly SourceIntegrityMarker[]):void;
   refreshOverview(): void;
   refreshValidity(): void;
   setViewport(viewport: TimelineViewport | undefined): void;
+  /** User seek through the existing cursor owner; follows current transport policy. */
+  seekTime(timeMs:number):void;
   setCursorTime(timeMs: number): void;
   getCursorTime(): number;
   togglePlayback(): void;
@@ -235,6 +239,7 @@ export function createTimelineShell(): TimelineShellController {
     deleteRangeButton.disabled = true;
   };
 
+  let integrityMarkers:readonly SourceIntegrityMarker[]=[];
   const renderOverview = (): void => {
     const rect = overview.getBoundingClientRect();
     // The existing resize owner redraws on reveal; hidden annotations must not
@@ -305,6 +310,9 @@ export function createTimelineShell(): TimelineShellController {
     }
     context.restore();
 
+    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
+      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=marker.kind==='corrupt-record'?'#ef6c75':'#eab95b';context.fillRect(x,0,2,Math.min(8,height));
+    }
     const envelopeWidth = Math.max(1, width);
     if (!overviewTracesVisible) return;
     for (const trace of overviewTraces) {
@@ -481,6 +489,7 @@ export function createTimelineShell(): TimelineShellController {
     precomputedEnvelopeBlocksEnabled = true;
     fullStartMs = nextRange?.startMs ?? 0;
     fullEndMs = nextRange?.endMs ?? 0;
+    timeline.style.setProperty('--timeline-duration-width', `${Math.max(9, formatDuration(fullEndMs - fullStartMs).length)}ch`);
     overviewTraces = [];
     sourceMarkers = [];
     userMarkers = [];
@@ -525,6 +534,10 @@ export function createTimelineShell(): TimelineShellController {
   const extendTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void => {
     fullStartMs = nextRange?.startMs ?? fullStartMs;
     fullEndMs = nextRange?.endMs ?? fullEndMs;
+    const durationWidth = `${Math.max(9, formatDuration(fullEndMs - fullStartMs).length)}ch`;
+    if (timeline.style.getPropertyValue('--timeline-duration-width') !== durationWidth) {
+      timeline.style.setProperty('--timeline-duration-width', durationWidth);
+    }
     sourceMarkers = markers;
     cursorTimeMs = Math.min(fullEndMs, Math.max(fullStartMs, cursorTimeMs));
     overviewText.textContent = nextRange
@@ -931,12 +944,14 @@ export function createTimelineShell(): TimelineShellController {
     setTimeRange,
     extendTimeRange,
     setOverviewContent,
+    setSourceIntegrity:(next)=>{if(integrityMarkers===next)return;integrityMarkers=next;renderOverview();},
     refreshOverview: renderOverview,
     refreshValidity: () => {
       precomputedEnvelopeBlocksEnabled = false;
       renderOverview();
     },
     setViewport,
+    seekTime: (timeMs)=>updateCursor(timeMs),
     setCursorTime: (timeMs) => updateCursor(timeMs, false),
     getCursorTime: () => cursorTimeMs,
     togglePlayback,

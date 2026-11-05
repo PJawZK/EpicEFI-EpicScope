@@ -109,20 +109,23 @@ export function classifyMlgRetryDiagnostics(
     if (runLength > 1) {
       const invalidIndices: number[] = [];
       let allValid = true;
+      let lastValidIndex = -1;
       for (let index = runStart; index < runEnd; index += 1) {
         if (crcValid[index] !== 1) {
           allValid = false;
           invalidIndices.push(index);
-        }
+        } else lastValidIndex=index;
       }
 
-      const finalValid = crcValid[runEnd - 1] === 1;
-      if (invalidIndices.length > 0 && finalValid) {
+      // Recovery belongs to each attempt: a trailing corrupt attempt must not erase
+      // an earlier valid replacement, nor be incorrectly recovered by that earlier record.
+      if (invalidIndices.some(index=>index<lastValidIndex)) {
         for (let index = runStart; index < runEnd; index += 1) {
           const offset = recordIndex.offsets[index];
           if (offset !== undefined) retryCounterOffsets.add(offset + 1);
         }
         for (const index of invalidIndices) {
+          if(index>=lastValidIndex)continue;
           const offset = recordIndex.offsets[index];
           if (offset === undefined) continue;
           recoveredInvalidIndices.add(index);

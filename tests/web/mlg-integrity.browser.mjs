@@ -1,3 +1,5 @@
+import {auditMlgIntegrity} from '../../core/parsers/mlg/mlg-integrity-audit';
+import {idleContractMlg} from '../fixtures/idle/mlg-contract';
 import { MlgFormatError } from '../../core/parsers/mlg/mlg-errors';
 import { getAppObservabilitySnapshot } from '../../apps/web/src/app/app-shell';
 import { annotateMlgSourceIntegrityDiagnostics } from '../../core/parsers/mlg/mlg-integrity';
@@ -41,6 +43,11 @@ export async function runMlgIntegrityChecks() {
     assert(JSON.stringify([...indexed.recordIndex.crcValid]) === JSON.stringify([...fallback.recordIndex.crcValid]), 'Annotation changed source validity across import paths');
     checks.push('actual staged/fallback CRC diagnostics, source times and validity are identical');
   } else checks.push('actual fallback CRC diagnostics retain source times and retry/corruption semantics with Worker disabled');
+  const mixedRecords=[{counter:0,timestamp:0,rpm:900},{counter:1,timestamp:1000,rpm:901},{counter:2,timestamp:2000,rpm:902},{counter:3,timestamp:32000,rpm:903,valid:false},{counter:3,timestamp:32000,rpm:903},{counter:3,timestamp:32000,rpm:903,valid:false},{counter:7,timestamp:32000,rpm:904},{counter:8,timestamp:31000,rpm:905},{counter:9,timestamp:65000,rpm:906},{counter:10,timestamp:10,rpm:907}];
+  const mixedFile=new File([idleContractMlg(mixedRecords)],'mixed-source-anomalies.mlg'),mixed=await importMlgFile(mixedFile),rawTimestamps=Uint16Array.from(mixedRecords,r=>r.timestamp),audit=auditMlgIntegrity(mixed.recordIndex,mixed.summary.diagnostics,mixed.header.recordLength,{rawTimestamps});
+  assert(audit.observedCounts['recovered-retry']===1&&audit.observedCounts['unrecovered-corrupt-record']===1&&audit.observedCounts['timestamp-regression']===1&&audit.observedCounts['recording-time-discontinuity']>0&&audit.observedCounts['timestamp-wrap-or-reset']===1,'Mixed fixture misclassified source observations');
+  if(typeof Worker!=='undefined'){const staged=importMlgFileStaged(mixedFile),indexed=await staged.indexed;staged.startValidation();const validated=await staged.validated;const other=auditMlgIntegrity(indexed.recordIndex,validated.diagnostics,mixed.header.recordLength,{rawTimestamps});assert(JSON.stringify(other)===JSON.stringify(audit),'Mixed CRC/retry/timestamp/counter audit differs across worker/fallback');}
+  checks.push('independent mixed CRC/retry/duplicate/regression/wrap/spacing fixture preserves identical canonical audit evidence across import paths');
   const partialBytes=new Uint8Array(bytes.length+4);partialBytes.set(bytes);partialBytes.set([0,14,0,104],bytes.length);
   const partialFile=new File([partialBytes],'incomplete-tail.mlg',{lastModified:789}),partial=await importMlgFile(partialFile);
   const tail=partial.summary.diagnostics.find(d=>d.code==='mlg-incomplete-tail');
@@ -72,6 +79,9 @@ async function runMlgShellTailChecks(file){
  const root=document.querySelector('#app'),input=root.querySelector('input[accept^=".mlg"]'),button=root.querySelector('.open-log'),checks=[];
  const load=async candidate=>{const transfer=new DataTransfer();transfer.items.add(candidate);if(Object.hasOwn(input,'files'))delete input.files;input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));const end=performance.now()+20000;while(button.disabled||button.dataset.loadState==='loading'){assert(performance.now()<end,'MLG shell import did not settle');await new Promise(r=>setTimeout(r,10));}};
  await load(file);assert(root.querySelector('.app-status').textContent.includes('incomplete tail excluded')&&button.title.includes('incomplete tail excluded')&&!root.querySelector('.app-status').textContent.includes('Import failed'),'Shell hides incomplete-tail warning or rejected usable prefix');checks.push('Actual shell keeps incomplete-tail warning visible after final validation');
+ assert(button.title.includes('CRC checked · 1 unrecovered CRC record ·')&&root.querySelector('.parser-status').textContent.includes('CRC checked · 1 unrecovered CRC record')&&root.querySelector('.app-status').textContent.includes('Ready · 1 unrecovered CRC record'),'Validated shell status omits or miscounts unrecovered CRC attempts');checks.push('Validated shell title/parser/Ready status report the same unrecovered CRC count in staged and fallback imports');
+ const recoveredOnly=new File([idleContractMlg([{counter:0,timestamp:0,rpm:900},{counter:1,timestamp:1000,rpm:901,valid:false},{counter:1,timestamp:1000,rpm:901},{counter:2,timestamp:2000,rpm:902}])],'recovered-only.mlg');
+ await load(recoveredOnly);assert(button.title.includes('CRC validated')&&root.querySelector('.parser-status').textContent.includes('CRC validated')&&!button.title.includes('unrecovered CRC')&&root.querySelector('.app-status').textContent==='Ready','Recovered-only import incorrectly reports unrecovered CRC loss');checks.push('Recovered-only imports remain CRC validated without inflating the unrecovered count');
  if(typeof Worker!=='undefined'){
   const before=getAppObservabilitySnapshot(root).records.at(-1)?.sequence??0;await load(new File([new Uint8Array(24)],'known-invalid-magic.mlg'));
   const records=getAppObservabilitySnapshot(root).records.filter(r=>r.sequence>before);

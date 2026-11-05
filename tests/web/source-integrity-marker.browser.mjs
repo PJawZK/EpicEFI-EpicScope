@@ -1,3 +1,4 @@
+import {createTimelineShell} from '../../apps/web/src/components/timeline-shell';
 // Real-browser check for the canvas source-integrity bridge and click explanation.
 import { buildRawViewportSeries } from '../../core/timeline/viewport-series';
 import { createGraphViewport } from '../../apps/web/src/components/graph-viewport';
@@ -131,6 +132,11 @@ export async function runSourceIntegrityMarkerChecks() {
     await new Promise((resolve) => requestAnimationFrame(() => resolve()));
     assert(dottedSegments.length === 0, 'Integrity bridge remained rendered when zoomed beyond marker visibility range');
     checks.push('dotted trace bridges are suppressed when zoomed too far out to remain useful');
+    canvas.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:rect.left+6+500/180000*(rect.width-12),clientY:rect.top+rect.height/2}));assert(!notice.hidden&&notice.textContent.includes('Synthetic CRC failure'),'Full-log view hid the canonical source icon or its diagnostic');checks.push('full-log view retains source-anchored inspectable icons while suppressing long dotted bridges');
+    graph.dismissSourceIntegrityNotice(document.body);
+    const timeline=createTimelineShell();timeline.element.style.width='800px';document.body.append(timeline.element);await new Promise(r=>requestAnimationFrame(r));
+    try{timeline.setTimeRange({startMs:0,endMs:180000,durationMs:180000},101);timeline.setSourceIntegrity(markers);const overview=timeline.element.querySelector('canvas'),pixel=overview.getContext('2d').getImageData(Math.floor(500/180000*overview.width),1,1,1).data;assert(pixel[0]>200&&pixel[1]<160,'Overview lost the shared source-integrity projection');timeline.setSourceIntegrity([]);const cleared=overview.getContext('2d').getImageData(Math.floor(500/180000*overview.width),1,1,1).data;assert(cleared[3]===0,'Overview retained an obsolete integrity mark');checks.push('overview uses the same source projection and clears source-replaced evidence');}finally{timeline.element.remove();}
+
 
     graph.setViewport(full);
     const unrelated = createParserDiagnosticsIndicator();

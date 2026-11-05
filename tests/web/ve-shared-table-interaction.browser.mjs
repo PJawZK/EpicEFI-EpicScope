@@ -1,3 +1,4 @@
+import { loadVeTableToolPreferences, resetVeTableToolPreferences, saveVeTableToolPreferences } from '../../apps/web/src/state/ve-table-tool-preferences';
 import { veProposalEditOwner } from '../../apps/web/src/pages/ve-analyzer-proposal-edit-owner';
 import { createVeAnalyzerView } from '../../apps/web/src/pages/ve-analyzer-view';
 import { parseMsq } from '../../core/parsers/msq/msq-parser';
@@ -61,7 +62,11 @@ function installDelayFile(input, value) {
 }
 
 export async function runVeSharedTableInteractionChecks() {
-  const checks = [];
+  const checks = [], preferences = loadVeTableToolPreferences('delay');
+  const storageKeys = ['epicscope.veAnalyzer.tableTools.v1', 'epicscope.veAnalyzer.resultView', 'epicscope.veAnalyzer.tableLayout'];
+  const savedStorage = storageKeys.map(key => localStorage.getItem(key));
+  resetVeTableToolPreferences('delay');
+  localStorage.setItem(storageKeys[1], 'proposal'); localStorage.setItem(storageKeys[2], 'single');
   const view = createVeAnalyzerView();
   const root = view.element;
   root.hidden = false;
@@ -303,15 +308,18 @@ export async function runVeSharedTableInteractionChecks() {
     const reverseStart = values()[2];
     const reverseRevision = view.sessionRevision;
     cells()[2].setPointerCapture = () => {};
-    pointer(cells()[2], 'pointerdown');
+    const reverseCell = cells()[2], reverseAt = performance.now();
+    pointer(reverseCell, 'pointerdown');
     await new Promise((resolve) => setTimeout(resolve, 120));
+    const beforeShift = {preview:reverseCell.textContent,connected:reverseCell.isConnected,elapsed:performance.now()-reverseAt};
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 320));
+    const afterShift = {preview:reverseCell.textContent,connected:reverseCell.isConnected,elapsed:performance.now()-reverseAt};
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
     pointer(document, 'pointerup');
     await settle();
     assert(values()[2] < reverseStart && view.sessionRevision === reverseRevision + 1,
-      'Stationary held Brush did not reverse direction when Shift changed without pointer motion');
+      'Stationary held Brush did not reverse direction when Shift changed without pointer motion '+JSON.stringify({reverseStart,beforeShift,afterShift,final:values()[2],revisionDelta:view.sessionRevision-reverseRevision}));
     checks.push('held Brush reacts to Shift reversal even while the pointer remains stationary');
 
     button(root, 'Continuous brush editing').click();
@@ -394,10 +402,12 @@ export async function runVeSharedTableInteractionChecks() {
       }
       assert(reads === 0, 'Brush preview/edit loaded traces instead of using retained values');
       checks.push('32x32 proposal/delay Brush previews preserve live markers and retained authority; cancel restores and release commits once');
-    } finally { large.setActive(false); host.remove(); }
+    } finally { large.dispose(); host.remove(); }
 
     return { passed: checks.length, checks };
   } finally {
-    root.remove();
+    view.dispose(); root.remove();
+    saveVeTableToolPreferences('delay', preferences);
+    storageKeys.forEach((key, i) => savedStorage[i] === null ? localStorage.removeItem(key) : localStorage.setItem(key, savedStorage[i]));
   }
 }

@@ -1,12 +1,24 @@
 # EpicScope — current handoff
 
-Updated 2026-10-26. This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
+Updated 2026-11-05 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
 
 ## Authority and change safety
 
 **The code at current `main` takes priority over documentation**, including this file, older source-code branches, proposals, reference HTML, and local/unpublished reports. Verify the actual implementation before interpreting a feature as present or absent. When documents disagree with code, record the discrepancy and update documentation; do **not** modify working runtime code merely to conform to stale documentation. A proposed code correction requires independent reproduction, justification and explicit scope.
 
 Documentation-only maintenance must not alter application source, package dependencies, build/deploy workflows, tests, data, storage, parsing or ECU behavior. Keep known gaps as evidence/policy questions, not unverified bug claims. Historic branches and checkpoint instructions are not continuation authority.
+
+## Active Logger trace/navigation presentation — 2026-11-05
+
+The [Logger trace/navigation checkpoint](LOGGER_TRACE_NAVIGATION_CHECKPOINT.md) records the bounded follow-up from `91b5ef31ed758b5dcf249734c78ffe627483a521`: replace pixel-distance trace breaks with recorded continuity, use bounded source-local cadence instead of visible-window cadence, and reserve stable Cursor/Visible/elapsed readout widths so changing time values do not move controls. Existing graph cache retains continuity flags; CRC/retry/source validity and numerical behavior are unchanged. Real-browser geometry/canvas checks and production November-file replay preserve genuine CRC, cadence and Hybrid NaN gaps. Review the checkpoint's partial-range/subpixel limitations and validate the user's exact EpicScope channel/zoom case. No push/main merge; Idle work remains paused.
+
+## Active MLG integrity audit — 2026-11-03
+
+The [focused Hybrid-channel investigation](MLG_NOV01_HYBRID_AVAILABILITY_AUDIT.md) continues from `8574f85f1eca22090886d2334046044501a32257`. The six Hybrid channels have identical seven-run NaN masks: 88,981 nonfinite CRC-valid / 4,535 finite / 243 CRC-excluded attempts each. NaNs match Hybrid validity/cache flags being zero exactly; selected/candidate corrections equal the finite legacy correction throughout. The dominant observed interval is 83,623.95–1,431,168.19 ms, indices 5,379–92,560. Raw stored F32 `7fc00000` is confirmed; matching firmware/reason enums are unavailable, so exact upstream cause remains unproven. The reproduced fallback missing-CRC-count status is corrected through the existing app-shell owner shared with staged completion; parsing, source validity, CRC/retry, numerical and marker behavior are unchanged. Per-channel availability UI remains a proposal for review. See the [reconstruction/source-wide audit](MLG_NOV01_RECORDING_AUDIT.md) for original-file identity. The separate October timestamp-regression/binary-lookup issue is not this recording's demonstrated cause. Idle/VE work stays paused; stop for review, no main merge.
+
+## Active development continuation — 2026-11-03
+
+On `ui/idle-analyzer-html-integration`, the [Logger layout/starter checkpoint](LOGGER_LAYOUT_STARTERS_CHECKPOINT.md) records the current bounded task: six source-resolved starter groups, four-channel defaults, preserved saved/eight-channel workspaces, shared centered/corner presentation, rows-first new Freeform layouts and bounded narrow resizing. This is a **local branch checkpoint**, not a change to the production baseline below. Stop for manual UI acceptance; no main merge or automatic Idle continuation. Existing saved assignments opt in through **Layout → Reset starter channels**. Idle stage status remains as documented in [the native stage index](reference/idle-analyzer/NATIVE_STAGE_STATUS.md).
 
 ## Production baseline
 
