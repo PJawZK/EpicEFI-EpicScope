@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../../log-model/time-query-index';
 import type {
   ImportedLogSummary,
   LogSourceIdentity,
@@ -41,8 +42,9 @@ function buildTimeRange(timeMs: Float64Array): LogTimeRange | undefined {
   if (timeMs.length === 0) {
     return undefined;
   }
-  const startMs = timeMs[0] ?? 0;
-  const endMs = timeMs[timeMs.length - 1] ?? startMs;
+  const index = getTimeQueryIndex(timeMs);
+  if (!Number.isFinite(index.min)) return undefined;
+  const startMs = index.min, endMs = index.max;
   return {
     startMs,
     endMs,

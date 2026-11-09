@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../log-model/time-query-index';
 import type { NumericChannelRange } from '../log-model/log-types';
 
 export interface NumericRangeStatistics {
@@ -25,7 +26,7 @@ export function summarizeNumericRange(
 
   for (let index = 0; index < range.values.length; index += 1) {
     const timeMs = range.timeMs[index];
-    if (timeMs === undefined || timeMs < lowerMs || timeMs > upperMs) continue;
+    if (timeMs === undefined || !Number.isFinite(timeMs) || timeMs < lowerMs || timeMs > upperMs) continue;
     const value = range.values[index];
     if (range.validity[index] !== 1 || value === undefined || !Number.isFinite(value)) {
       invalidCount += 1;
@@ -59,8 +60,9 @@ export function numericRangeCoversTime(
   if (range.timeMs.length === 0) return false;
   const lowerMs = Math.min(startMs, endMs);
   const upperMs = Math.max(startMs, endMs);
-  const firstTimeMs = range.timeMs[0];
-  const lastTimeMs = range.timeMs[range.timeMs.length - 1];
+  const index = getTimeQueryIndex(range.timeMs);
+  const firstTimeMs = index.min;
+  const lastTimeMs = index.max;
   return firstTimeMs !== undefined
     && lastTimeMs !== undefined
     && firstTimeMs <= lowerMs

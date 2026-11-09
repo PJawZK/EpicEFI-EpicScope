@@ -17,6 +17,11 @@ function range(
 }
 
 describe('analyzeBoost', () => {
+  it('does not complete target spool across a backward step above the initial event time',()=>{
+    const measuredPressure=range(0,[10,25,60,110,185]),targetPressure=range(0,[200,200,200,200,200]);
+    measuredPressure.timeMs.set([0,100,50,150,250]);targetPressure.timeMs.set(measuredPressure.timeMs);
+    expect(analyzeBoost({measuredPressure,targetPressure},{spool:{startPressure:15,minimumTargetPressure:180,completionFraction:.9}}).spoolEvents).toEqual([]);
+  });
   it('reports measured/target tracking error and optional wastegate duty aggregates', () => {
     const result = analyzeBoost({
       measuredPressure: range(0, [100, 150, 205, 210]),

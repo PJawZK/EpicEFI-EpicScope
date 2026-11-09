@@ -1,6 +1,6 @@
 # EpicScope — current handoff
 
-Updated 2026-11-05 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
+Updated 2026-11-09 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
 
 ## Authority and change safety
 
@@ -8,7 +8,13 @@ Updated 2026-11-05 (development continuation added; production baseline below re
 
 Documentation-only maintenance must not alter application source, package dependencies, build/deploy workflows, tests, data, storage, parsing or ECU behavior. Keep known gaps as evidence/policy questions, not unverified bug claims. Historic branches and checkpoint instructions are not continuation authority.
 
+## Active nonmonotonic timestamp correctness — 2026-11-09
+
+The [nonmonotonic query checkpoint](NONMONOTONIC_TIMESTAMP_QUERY_CHECKPOINT.md) completes the audited correction from `f02a5b4b38e016953ac94b94c6c89f8db9515fb4`. Original October regressions 40,913 / 41,685 / 91,924 reproduced missing narrow-region samples and now return exact source-order membership. Cached source-run queries plus a many-run auxiliary lookup permutation preserve canonical arrays and prevent repeated full timestamp scans. Source fetch/slice APIs return covers, not compacted/renumbered samples. Cursor ties choose earliest original identity; temporal interpolation uses an explicit original run anchor; unsafe legacy cross-run temporal events report unavailable instead of guessing. AFR/Boost histories stop/reset at backwards boundaries. Accepted Logger layout/zoom/pan behavior passes regressions and native replay. See the report for numerical changes, memory/performance, broad-cover I/O limits and manual acceptance requirements. No push/main merge; Idle development remains paused.
+
 ## Active Logger trace/navigation presentation — 2026-11-05
+
+Checkpoint `f02a5b4b38e016953ac94b94c6c89f8db9515fb4` was pushed and passed manual user acceptance before the November 9 query task. That accepted visual/navigation baseline is preserved; the new review gate concerns timestamp-query correctness.
 
 The [Logger trace/navigation checkpoint](LOGGER_TRACE_NAVIGATION_CHECKPOINT.md) records the bounded follow-up from `91b5ef31ed758b5dcf249734c78ffe627483a521`: replace pixel-distance trace breaks with recorded continuity, use bounded source-local cadence instead of visible-window cadence, and reserve stable Cursor/Visible/elapsed readout widths so changing time values do not move controls. Existing graph cache retains continuity flags; CRC/retry/source validity and numerical behavior are unchanged. Real-browser geometry/canvas checks and production November-file replay preserve genuine CRC, cadence and Hybrid NaN gaps. Review the checkpoint's partial-range/subpixel limitations and validate the user's exact EpicScope channel/zoom case. No push/main merge; Idle work remains paused.
 

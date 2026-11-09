@@ -94,6 +94,7 @@ export interface NumericChannelEnvelopeBlocks {
 
 export interface NumericChannelRange {
   readonly startSampleIndex: number;
+  /** Immutable after publication; replace the array for a new timestamp generation. */
   readonly timeMs: Float64Array;
   readonly values: Float64Array;
   /** Compatibility projection: 1 = usable valid sample, 0 = non-valid sample. */
@@ -133,6 +134,9 @@ export interface NumericChannelDataSource {
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
   readonly managesPersistentColumns?: boolean;
+  /** Contiguous original-index fetch cover, optionally including neighboring
+   * context. Nonmonotonic covers can contain records outside the requested time
+   * window: consumers must apply exact time membership without renumbering. */
   sampleRangeForTime?(
     startMs: number,
     endMs: number,

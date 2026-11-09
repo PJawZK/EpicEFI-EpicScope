@@ -703,7 +703,10 @@ function findSpoolEvents(samples: readonly TrackingSample[], rawConfig: BoostSpo
     rpm: sample.rpm,
   });
 
+  let previous: TrackingSample | undefined;
   for (const sample of samples) {
+    if (previous && (sample.timeMs <= previous.timeMs || sample.sampleIndex !== previous.sampleIndex + 1)) reset();
+    previous = sample;
     if (!start) {
       if (sample.target >= config.minimumTargetPressure && sample.measured <= config.startPressure) {
         start = sample;

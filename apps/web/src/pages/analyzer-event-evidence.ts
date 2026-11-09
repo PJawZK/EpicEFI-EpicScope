@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../../../../core/log-model/time-query-index';
 import '../app/font-size-settings';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 
@@ -8,6 +9,7 @@ export interface AnalyzerEvidenceSeries {
 }
 
 export interface AnalyzerEvidenceEvent {
+  readonly startSampleIndex?: number;
   readonly startTimeMs: number;
   readonly endTimeMs: number;
 }
@@ -55,28 +57,11 @@ function sortedPercentile(values: readonly number[], p: number): number | undefi
   return a + (b - a) * (position - lower);
 }
 
-function valueAt(range: NumericChannelRange, timeMs: number): number | undefined {
-  const times = range.timeMs;
-  if (!times.length) return undefined;
-  let lo = 0;
-  let hi = times.length - 1;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    const value = times[mid];
-    if (value === undefined || value < timeMs) lo = mid + 1;
-    else hi = mid;
-  }
-  const candidates = [lo, Math.max(0, lo - 1)];
-  let best: number | undefined;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const index of candidates) {
-    const t = times[index];
-    const value = range.values[index];
-    if (t === undefined || value === undefined || range.validity[index] !== 1 || !Number.isFinite(value)) continue;
-    const distance = Math.abs(t - timeMs);
-    if (distance < bestDistance) { best = value; bestDistance = distance; }
-  }
-  return best;
+function valueAt(range: NumericChannelRange, timeMs: number, sourceSampleIndex?: number): number | undefined {
+  const query = getTimeQueryIndex(range.timeMs);
+  if (!query.monotonic && sourceSampleIndex === undefined) return undefined;
+  const index = query.nearest(timeMs, sourceSampleIndex === undefined ? undefined : sourceSampleIndex - range.startSampleIndex);
+  return index !== undefined && range.validity[index] === 1 && Number.isFinite(range.values[index]) ? range.values[index] : undefined;
 }
 
 function extent(points: readonly SamplePoint[]): { min: number; max: number } | undefined {
@@ -272,7 +257,7 @@ function drawPane(
       const relativeMs = -beforeMs + (bin / (bins - 1)) * total;
       const values: number[] = [];
       for (const event of events) {
-        const value = valueAt(entry.range, event.startTimeMs + relativeMs);
+        const value = valueAt(entry.range, event.startTimeMs + relativeMs, event.startSampleIndex);
         if (value !== undefined) values.push(value);
       }
       // This bin owns its values. Sort once for all three interpolated quantiles.

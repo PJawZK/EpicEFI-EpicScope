@@ -45,6 +45,16 @@ describe('VE delay-table aligned evidence', () => {
   const fixture = (count: number) => ({ actualMixture: constantRange(14, count), rpm: constantRange(1000, count),
     load: constantRange(40, count), target, veRpmBins: [1000, 2000], veLoadBins: [40, 80], delayTable: delayTable(100) });
 
+  it('retains original run boundaries when variable delay masks a backward observation clock', async () => {
+    const input=fixture(5),times=Float64Array.from([0,100,200,150,250]);
+    for(const r of [input.actualMixture,input.rpm,input.load])r.timeMs.set(times);
+    input.rpm.values.set([1000,1000,1000,2000,2000]);
+    const table={...input.delayTable,cells:input.delayTable.cells.map(c=>c.col===1?{...c,workingMs:0,recommendedMs:0}:c)};
+    const result=buildVeEvidenceMapWithDelayTable({...input,delayTable:table},{minimumStableDurationMs:150,maximumRpmRatePerSecond:1e9,maximumLoadRatePerSecond:1e9});
+    expect(result.contributingSampleCount).toBe(0);
+    expect(await buildVeEvidenceMapWithDelayTableAsync({...input,delayTable:table},{minimumStableDurationMs:150,maximumRpmRatePerSecond:1e9,maximumLoadRatePerSecond:1e9})).toEqual(result);
+  });
+
   it('counts duplicate selected failures without counting unselected or originally invalid observations', () => {
     const input = fixture(3); input.actualMixture.validity[1] = 0;
     const result = buildVeEvidenceMapWithDelayTable({ ...input, sampleIndices: [0, 0, 1, 2, 99, NaN, 2.5] }, { minimumStableDurationMs: 0 });

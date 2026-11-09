@@ -1,7 +1,10 @@
+import { getTimeQueryIndex } from '../log-model/time-query-index';
 import type { NumericChannelEnvelopeBlocks, NumericChannelRange } from '../log-model/log-types';
 
 export interface ViewportEnvelopeColumn {
   readonly x: number;
+  /** Present only when the source has multiple monotonic runs. */
+  readonly sourceRun?: number;
   readonly first: number;
   readonly firstTimeMs: number;
   readonly min: number;
@@ -122,6 +125,8 @@ export function buildViewportEnvelopeFromBlocks(
     return buildViewportEnvelope(range, startMs, endMs, pixelWidth);
   }
 
+  if (!getTimeQueryIndex(range.timeMs).monotonic) return buildViewportEnvelope(range, startMs, endMs, pixelWidth);
+
   const span = Math.max(1e-9, endMs - startMs);
   const buckets: Array<BucketState | undefined> = new Array(pixelWidth);
   let valueMin = Number.POSITIVE_INFINITY;
@@ -218,11 +223,26 @@ export function buildViewportEnvelopeFromBlocks(
   };
 }
 
-export function buildViewportEnvelope(
+export function buildViewportEnvelope(range: NumericChannelRange, startMs: number, endMs: number, pixelWidth: number): ViewportEnvelope {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs || !Number.isSafeInteger(pixelWidth) || pixelWidth <= 0) throw new RangeError('Invalid viewport bounds/width');
+  const index = getTimeQueryIndex(range.timeMs), spans = index.spans(startMs, endMs);
+  const columns: ViewportEnvelopeColumn[] = []; let validSampleCount = 0, invalidSampleCount = 0, valueMin = Infinity, valueMax = -Infinity;
+  for (const span of spans) {
+    const envelope = buildMonotonicEnvelope(range, startMs, endMs, pixelWidth, span.start, span.end);
+    for (const column of envelope.columns) columns.push(index.monotonic ? column : { ...column, sourceRun: span.run });
+    validSampleCount += envelope.validSampleCount; invalidSampleCount += envelope.invalidSampleCount;
+    if (envelope.validSampleCount) { valueMin = Math.min(valueMin, envelope.valueMin); valueMax = Math.max(valueMax, envelope.valueMax); }
+  }
+  return { columns, validSampleCount, invalidSampleCount, valueMin: validSampleCount ? valueMin : 0, valueMax: validSampleCount ? valueMax : 0 };
+}
+
+function buildMonotonicEnvelope(
   range: NumericChannelRange,
   startMs: number,
   endMs: number,
   pixelWidth: number,
+  startIndex: number,
+  endIndex: number,
 ): ViewportEnvelope {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
     throw new RangeError(`Invalid viewport range ${startMs}..${endMs}.`);
@@ -238,8 +258,6 @@ export function buildViewportEnvelope(
   let validSampleCount = 0;
   let invalidSampleCount = 0;
 
-  const startIndex = lowerBound(range.timeMs, startMs);
-  const endIndex = upperBound(range.timeMs, endMs);
 
   for (let index = startIndex; index < endIndex; index += 1) {
     const timeMs = range.timeMs[index];
@@ -311,15 +329,16 @@ function median(values: readonly number[]): number {
 function hasCadenceGap(range: NumericChannelRange, index: number, previousTime: number): boolean {
   const gap = range.timeMs[index]! - previousTime;
   if (gap <= 50) return false;
+  const query = getTimeQueryIndex(range.timeMs), runId = query.runAt(index), run = runId === undefined ? undefined : query.runs[runId];
   const intervals: number[] = [];
-  for (let i = index - 1; i > Math.max(0, index - 130); i--) {
+  for (let i = index - 1; i > Math.max(run?.start ?? 0, index - 130); i--) {
     const delta = range.timeMs[i]! - range.timeMs[i - 1]!;
     if (Number.isFinite(delta) && delta > 0) intervals.push(delta);
   }
   // At the beginning of a loaded range, use available following context. With
   // no reference cadence, two observations alone cannot establish an outlier.
   if (intervals.length === 0) {
-    for (let i = index + 1; i < Math.min(range.timeMs.length, index + 130); i++) {
+    for (let i = index + 1; i < Math.min(run?.end ?? range.timeMs.length, index + 130); i++) {
       const delta = range.timeMs[i]! - range.timeMs[i - 1]!;
       if (Number.isFinite(delta) && delta > 0) intervals.push(delta);
     }
@@ -333,9 +352,10 @@ function hasCadenceGap(range: NumericChannelRange, index: number, previousTime: 
 export function buildViewportEnvelopeBreaks(range: NumericChannelRange, envelope: ViewportEnvelope): readonly boolean[] {
   return envelope.columns.map((column, index) => {
     const previous = envelope.columns[index - 1];
-    if (!previous) return true;
-    const start = upperBound(range.timeMs, previous.lastTimeMs);
-    const end = lowerBound(range.timeMs, column.firstTimeMs);
+    if (!previous || previous.sourceRun !== column.sourceRun) return true;
+    const timeIndex = getTimeQueryIndex(range.timeMs), run = timeIndex.runs[column.sourceRun ?? 0]!;
+    const start = timeIndex.bound(previous.lastTimeMs, run.start, run.end, true);
+    const end = timeIndex.bound(column.firstTimeMs, run.start, run.end);
     for (let i = start; i < end; i++) {
       if (range.validity[i] !== 1 || !Number.isFinite(range.values[i]) || !Number.isFinite(range.timeMs[i])) return true;
     }
@@ -364,14 +384,15 @@ export function buildRawViewportSeries(
     throw new RangeError(`Invalid viewport range ${startMs}..${endMs}.`);
   }
 
-  const startIndex = Math.max(0, lowerBound(range.timeMs, startMs) - (includeBoundaryNeighbors ? 1 : 0));
-  const endIndex = Math.min(range.timeMs.length, upperBound(range.timeMs, endMs) + (includeBoundaryNeighbors ? 1 : 0));
+  const spans = getTimeQueryIndex(range.timeMs).spans(startMs, endMs, includeBoundaryNeighbors);
   const points: RawViewportPoint[] = [];
   let forceBreak = true;
   let previousValidTime: number | undefined;
   let pendingInvalidTime: number | undefined;
 
-  for (let index = startIndex; index < endIndex; index += 1) {
+  for (const span of spans) {
+  forceBreak = true; previousValidTime = undefined; pendingInvalidTime = undefined;
+  for (let index = span.start; index < span.end; index += 1) {
     const timeMs = range.timeMs[index];
     const value = range.values[index];
     const usable = timeMs !== undefined
@@ -407,6 +428,8 @@ export function buildRawViewportSeries(
     previousValidTime = timeMs;
   }
 
+  }
+
   return points;
 }
 
@@ -414,31 +437,8 @@ export function buildRawViewportSeries(
 /** Recorded cursor lookup shared by Logger and Analyzer; never interpolates invalid samples. */
 /** Nearest original observation, including invalid records; never skip to a healthier neighbor. */
 export function nearestNumericSamplePosition(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number } | undefined {
-  if (!Number.isFinite(cursorTimeMs)) return undefined;
-  if (range.timeMs.length === 0) return undefined;
-  const firstTime = range.timeMs[0];
-  const lastTime = range.timeMs[range.timeMs.length - 1];
-  if (firstTime === undefined || lastTime === undefined || cursorTimeMs < firstTime || cursorTimeMs > lastTime) {
-    return undefined;
-  }
-  let low = 0;
-  let high = range.timeMs.length - 1;
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2);
-    const value = range.timeMs[mid] ?? 0;
-    if (value < cursorTimeMs) low = mid + 1;
-    else high = mid;
-  }
-
-  let index = low;
-  if (index > 0) {
-    const current = range.timeMs[index] ?? Number.POSITIVE_INFINITY;
-    const previous = range.timeMs[index - 1] ?? Number.NEGATIVE_INFINITY;
-    if (Math.abs(previous - cursorTimeMs) <= Math.abs(current - cursorTimeMs)) index -= 1;
-  }
-
-  const timeMs=range.timeMs[index];
-  return timeMs!==undefined&&Number.isFinite(timeMs)?{sampleIndex:range.startSampleIndex+index,timeMs}:undefined;
+  const index = getTimeQueryIndex(range.timeMs).nearest(cursorTimeMs);
+  return index === undefined ? undefined : { sampleIndex: range.startSampleIndex + index, timeMs: range.timeMs[index]! };
 }
 
 export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number; value: number } | undefined {
@@ -474,9 +474,11 @@ export function buildViewportTraceSeries(range: NumericChannelRange, startMs: nu
   return { mode: 'envelope', points };
 }
 
-/** Zero-copy time slice for presentation; original sample indices and validity retained. */
+/** Zero-copy contiguous source cover. Nonmonotonic covers may include out-of-scope
+ * records between matches; presentation applies exact indexed time membership. */
 export function sliceNumericRangeByTime(range: NumericChannelRange, startMs: number, endMs: number): NumericChannelRange {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) throw new RangeError('Invalid recorded presentation bounds.');
-  const start = lowerBound(range.timeMs, startMs), end = upperBound(range.timeMs, endMs);
+  const cover = getTimeQueryIndex(range.timeMs).cover(startMs, endMs);
+  const start = cover.startSampleIndex, end = start + cover.sampleCount;
   return { startSampleIndex: range.startSampleIndex + start, timeMs: range.timeMs.subarray(start, end), values: range.values.subarray(start, end), validity: range.validity.subarray(start, end) };
 }

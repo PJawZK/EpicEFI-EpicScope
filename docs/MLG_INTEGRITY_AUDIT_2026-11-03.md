@@ -176,3 +176,7 @@ Real production replay waits for **graph channel activation**, not merely import
 Existing checksum/retry retention, cache/storage behavior, typed worker-format-error routing, strict scanner default, explicit usable-prefix recovery and original-index exclusion must **not** be disabled to make plots cleaner. No comprehensive original-recording acceptance, universal responsiveness claim or resolution of all timestamp issues is asserted.
 
 Commit on the existing branch, stop for review; no main merge or automatic follow-on work.
+
+## Nonmonotonic query correction — 2026-11-09
+
+The [source-query checkpoint](NONMONOTONIC_TIMESTAMP_QUERY_CHECKPOINT.md) reproduces and corrects the original-index lookup concern above. The unresolved wording in this historical audit describes its original checkpoint. Canonical arrays, CRC/retry classifications and file bytes remain unchanged; query membership and bounded temporal authority now have explicit policies, numerical comparisons and validation.

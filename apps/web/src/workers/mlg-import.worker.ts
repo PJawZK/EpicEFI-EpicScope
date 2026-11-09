@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../../../../core/log-model/time-query-index';
 import { MlgFormatError } from '../../../../core/parsers/mlg/mlg-errors';
 import type { LogTimeRange, ParserDiagnostic } from '../../../../core/log-model/log-types';
 import { parseMlgHeader } from '../../../../core/parsers/mlg/mlg-header';
@@ -109,8 +110,9 @@ let validationStartRequested = false;
 
 function timeRange(timeMs: Float64Array): LogTimeRange | undefined {
   if (timeMs.length === 0) return undefined;
-  const startMs = timeMs[0] ?? 0;
-  const endMs = timeMs[timeMs.length - 1] ?? startMs;
+  const index = getTimeQueryIndex(timeMs);
+  if (!Number.isFinite(index.min)) return undefined;
+  const startMs = index.min, endMs = index.max;
   return {
     startMs,
     endMs,

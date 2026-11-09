@@ -32,6 +32,12 @@ function isolatedEvents(delays: readonly number[], sampleCount = delays.length *
 const timingConfig = { commandDeltaThreshold: 1, afrResponseThreshold: 0.5, searchWindowMs: 100, minimumEventSpacingMs: 0 };
 
 describe('AFR response-delay analyzer', () => {
+  it('does not discover an AFR response across an original backward timestamp boundary', () => {
+    const fuelCommand=range([1,1,3,3,3,3]),actualAfr=range([14.7,14.7,14.7,14.7,14.0,13.8]);
+    fuelCommand.timeMs.set([0,100,200,150,250,350]);actualAfr.timeMs.set(fuelCommand.timeMs);
+    const result=analyzeAfrDelay({fuelCommand,actualAfr},{commandDeltaThreshold:1,afrResponseThreshold:.2,searchWindowMs:500});
+    expect(result.usableEventCount).toBe(0);expect(result.rejectedGapCount).toBe(1);
+  });
   it('estimates onset delay from isolated fuel-command transitions', () => {
     const result = analyzeAfrDelay({
       fuelCommand: range([1, 1, 3, 3, 3, 3, 1, 1, 1]),

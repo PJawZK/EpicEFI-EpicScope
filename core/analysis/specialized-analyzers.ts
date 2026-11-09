@@ -1,3 +1,4 @@
+import { requireSingleMonotonicRun } from '../log-model/time-query-index';
 import { aggregateNumericSamples, type NumericAggregationResult } from './numeric-aggregation';
 import type { NumericChannelRange } from '../log-model/log-types';
 
@@ -134,6 +135,7 @@ export function analyzeIdle(inputs: {
   readonly dTerm?: NumericChannelRange;
 }, options: IdleAnalysisOptions = {}): IdleAnalysisResult {
   const indices = selectedIndices(inputs.rpm, options);
+  if (inputs.target && options.includeSagEvents !== false) requireSingleMonotonicRun(inputs.rpm.timeMs, inputs.rpm.startSampleIndex, indices);
   const sagThreshold = options.sagThresholdRpm ?? 100;
   const settledBand = options.settledBandRpm ?? 40;
   if (sagThreshold <= 0 || settledBand < 0) throw new RangeError('Idle sag/settled thresholds must be non-negative and sag threshold must be > 0.');
@@ -227,6 +229,7 @@ export function analyzeAeMapPredict(inputs: {
   readonly afr?: NumericChannelRange;
 }, options: AeMapPredictOptions = {}): AeMapPredictResult {
   const indices = selectedIndices(inputs.tps, options);
+  requireSingleMonotonicRun(inputs.tps.timeMs, inputs.tps.startSampleIndex, indices);
   const threshold = options.tpsDeltaThreshold ?? 2;
   const windowMs = options.eventWindowMs ?? 500;
   if (threshold <= 0 || windowMs < 0) throw new RangeError('AE TPS threshold must be > 0 and event window must be >= 0.');
@@ -352,6 +355,7 @@ export function analyzeIgnition(inputs: {
   readonly knock?: NumericChannelRange;
 }, options: IgnitionAnalysisOptions = {}): IgnitionAnalysisResult {
   const indices = selectedIndices(inputs.advance, options);
+  if (inputs.knock) requireSingleMonotonicRun(inputs.advance.timeMs, inputs.advance.startSampleIndex, indices);
   const threshold = options.knockThreshold ?? 0;
   const events: KnockEvent[] = [];
   if (inputs.knock) {
@@ -406,6 +410,7 @@ export interface ThresholdEvent extends TimedEvent {
 }
 
 function thresholdEvents(range: NumericChannelRange, indices: readonly number[], predicate: (value: number) => boolean, extreme: (a: number, b: number) => number): ThresholdEvent[] {
+  requireSingleMonotonicRun(range.timeMs, range.startSampleIndex, indices);
   const events: ThresholdEvent[] = [];
   let first: SampleValue | undefined;
   let last: SampleValue | undefined;

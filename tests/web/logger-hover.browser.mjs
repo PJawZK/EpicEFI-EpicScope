@@ -1,3 +1,4 @@
+import {getTimeQueryIndex} from '../../core/log-model/time-query-index';
 import {createGraphHoverInspection} from '../../apps/web/src/components/graph-hover-inspection';
 import {createGraphViewport} from '../../apps/web/src/components/graph-viewport';
 const assert=(value,message)=>{if(!value)throw Error(message);};
@@ -23,6 +24,7 @@ export async function runLoggerHoverChecks(){
  const surface=document.createElement('div'),largeCanvas=document.createElement('canvas');surface.style.cssText='position:fixed;left:0;top:0;width:900px;height:100px';surface.append(largeCanvas);document.body.append(surface);
  let timeReads=0,valueReads=0;const n=320459,times=new Proxy(Float64Array.from({length:n},(_,i)=>i*10),{get(target,key){if(typeof key==='string'&&/^\d+$/.test(key))timeReads++;return Reflect.get(target,key,target);}}),values=new Proxy(new Float64Array(n).fill(1000),{get(target,key){if(typeof key==='string'&&/^\d+$/.test(key))valueReads++;return Reflect.get(target,key,target);}});
  const validity=new Uint8Array(n).fill(1);
+ getTimeQueryIndex(times);timeReads=0;
  const inspection=createGraphHoverInspection(surface,largeCanvas,()=>({viewport:{fullStartMs:0,fullEndMs:(n-1)*10,visibleStartMs:0,visibleEndMs:(n-1)*10},traces:[{channel:channels[0],range:{startSampleIndex:0,timeMs:times,values,validity},color:'#abc'}]}));
  try{const r=largeCanvas.getBoundingClientRect();for(let i=0;i<500;i++)largeCanvas.dispatchEvent(new PointerEvent('pointermove',{pointerType:'mouse',clientX:r.left+r.width*.5,clientY:r.top+20}));await wait();assert(timeReads<128&&valueReads<=2,'Large hover burst scanned arrays or processed every pointer event');assert(surface.querySelector('.graph-hover-popup').textContent.includes('1000.00 RPM'),'Large hover value absent');checks.push('>320k retained samples and500 pointer events use logarithmic lookup and one coalesced bounded value projection');}finally{inspection.clear();surface.remove();}
  return {passed:checks.length,checks};
