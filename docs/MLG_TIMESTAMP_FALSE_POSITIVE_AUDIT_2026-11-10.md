@@ -90,3 +90,7 @@ Manual review must assess both the remaining clock ambiguities and warning prese
 - Committed reproduction tools and ledgers are under `docs/reference/mlg-timestamp-audit-2026-11-10/`; full validation logs, native replay results/screenshots and benchmarks remain under `/workspace/epicscope-independent-timestamp-audit/`.
 
 The remaining independent-reader/specification reconciliation is an explicit limitation, not a completed verification. Further timestamp reconstruction changes require that evidence and their own failing-before/downstream coverage. Stopped for manual review; no push or main merge.
+
+## Later research reference
+
+The [TS-Optim original-reader bridge](TS_OPTIM_MLG_READER_RESEARCH.md) now supplies SHA-pinned static reader behavior. It supersedes the earlier lack of access to independent reader implementation evidence, without claiming an original GUI/runtime replay or changing the historical validation above. Stored `Time` preservation versus header-only canonical time is the next source-authority investigation.

@@ -78,3 +78,7 @@ This establishes reconciliation for all identified full-source default-channel b
 - `git diff --check` passed. Existing large-record and bounded-lookup CPU/browser regressions passed. No process-wide heap/RSS claim is made.
 
 Committed locally on the existing development branch; no push or main merge as part of this task. Manual acceptance is pending.
+
+## Later research reference
+
+The [TS-Optim original-reader bridge](TS_OPTIM_MLG_READER_RESEARCH.md) now supplies SHA-pinned static reader behavior. It supersedes the earlier lack of access to independent reader implementation evidence, without claiming an original GUI/runtime replay or changing the historical validation above. Stored `Time` preservation versus header-only canonical time is the next source-authority investigation.
