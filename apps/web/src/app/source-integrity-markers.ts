@@ -13,8 +13,11 @@ export interface SourceIntegrityMarker {
   readonly clusteredEventCount?:number;
   readonly lastTimeMs?:number;
   readonly evidence?:SourceContinuityEvidence;
+  readonly canonicalTimeMs?:number;
 }
 
+// Source-owned interval summaries are prepared once. No channel/sample scan on pan.
+const unavailableIntervals=new WeakMap<readonly SourceIntegrityMarker[],readonly {marker:SourceIntegrityMarker;start:number;end:number;prefixEnd:number}[]>();
 export function sourceIntegrityMarkersFromDiagnostics(
   diagnostics: readonly ParserDiagnostic[],
 ): readonly SourceIntegrityMarker[] {
@@ -45,7 +48,14 @@ export function sourceIntegrityMarkersFromDiagnostics(
     });
   }
 
-  return [...grouped.values()].sort((left, right) => left.timeMs - right.timeMs);
+  const markers=[...grouped.values()].sort((left,right)=>left.timeMs-right.timeMs);
+  const intervals=markers.flatMap(marker=>{
+    const e=marker.evidence;
+    if(!e||(marker.kind!=='corrupt-record'&&marker.kind!=='channel-unavailable'))return [];
+    return [{marker,start:e.traceStartMs??Math.min(e.fromTimeMs,e.toTimeMs),end:e.traceEndMs??Math.max(e.fromTimeMs,e.toTimeMs),prefixEnd:0}];
+  }).sort((a,b)=>a.start-b.start);
+  let max=-Infinity;for(const interval of intervals){max=Math.max(max,interval.end);interval.prefixEnd=max;}
+  unavailableIntervals.set(markers,intervals);return markers;
 }
 
 /** Index each immutable canonical projection once; redraw cost is bounded by pixels,
@@ -56,6 +66,14 @@ function lower(items:readonly SourceIntegrityMarker[],time:number,inclusive=fals
 }
 export function sourceIntegrityDisplayClusters(markers:readonly SourceIntegrityMarker[],startMs:number,endMs:number,width:number):readonly SourceIntegrityMarker[] {
  if(endMs<=startMs||width<=0)return [];
+ const intervals=unavailableIntervals.get(markers),crossing:SourceIntegrityMarker[]=[];
+ if(intervals?.length){
+  let lo=0,hi=intervals.length;while(lo<hi){const m=(lo+hi)>>>1;if(intervals[m]!.start<=endMs)lo=m+1;else hi=m;}
+  for(let i=lo-1;i>=0&&intervals[i]!.prefixEnd>=startMs;i--){const entry=intervals[i]!,m=entry.marker;if(entry.end<startMs||(m.timeMs>=startMs&&m.timeMs<=endMs))continue;
+   crossing.push({...m,timeMs:Math.max(startMs,Math.min(endMs,m.timeMs)),canonicalTimeMs:m.timeMs,message:`${m.message} Display anchor clipped to this viewport; original event anchor ${m.timeMs} ms.`});
+  }
+ }
+ if(crossing.length){const selected=markers.slice(lower(markers,startMs),lower(markers,endMs,true));return sourceIntegrityDisplayClusters([...selected,...crossing].sort((a,b)=>a.timeMs-b.timeMs),startMs,endMs,width);}
  const first=lower(markers,startMs),end=lower(markers,endMs,true);
  // Narrow first inspection must not prepare an entire offscreen marker index.
  if(end-first<=Math.max(1,Math.ceil(width/20))){const visible:SourceIntegrityMarker[]=[];for(let i=first;i<end;i++){const m=markers[i]!;if(m.breaksContinuity||m.kind==='channel-unavailable')visible.push(m);}return visible;}

@@ -22,7 +22,7 @@ export function projectMlgContinuityDiagnostics(index:MlgRecordIndex,diagnostics
   const regression=b<a;if(!regression&&!(cadence.medianMs!==undefined&&b-a>Math.max(50,5*cadence.medianMs)))continue;
   const interiorRecords=query.count(a,b,true);
   const e=evidence(i-1,i,regression?'clock-regression':'cadence-outlier',{interiorRecords});
-  events.push({code:regression?'mlg-source-time-regression':'mlg-source-time-spacing',severity:regression?'warning':'info',recoverable:true,timeMs:regression?a:b,offset:index.offsets[i]!,sourceIntegrity:{kind:regression?'timestamp-gap':'cadence-observation',breaksContinuity:regression,evidence:e},message:continuityEvidenceText(e)});
+  events.push({code:regression?'mlg-source-time-regression':'mlg-source-time-spacing',severity:regression?'warning':'info',recoverable:true,timeMs:b,offset:index.offsets[i]!,sourceIntegrity:{kind:regression?'timestamp-gap':'cadence-observation',breaksContinuity:regression,evidence:e},message:continuityEvidenceText(e)});
  }
  const decorated=diagnostics.map(d=>{
   if(d.code!=='mlg-crc-mismatch'||!d.sourceIntegrity||d.offset===undefined)return d;
@@ -38,8 +38,8 @@ export function projectMlgContinuityDiagnostics(index:MlgRecordIndex,diagnostics
  * and one-time channel caching. CRC exclusions never become blue channel events. */
 export function projectChannelUnavailable(range:NumericChannelRange,channelId:string,channelName:string):readonly ParserDiagnostic[] {
  const events:ParserDiagnostic[]=[];let start=-1,last=-1,count=0;
- const finish=()=>{if(start>=0&&last>start&&range.timeMs[last]!-range.timeMs[start]!>=50){const cadence=precedingTimeCadence(range.timeMs,start),a=range.timeMs[start]!,b=range.timeMs[last]!;
-  const e:SourceContinuityEvidence={classification:'channel-unavailable',fromRecordIndex:range.startSampleIndex+start,toRecordIndex:range.startSampleIndex+last,fromTimeMs:a,toTimeMs:b,deltaMs:b-a,durationMs:b-a,...(cadence.medianMs===undefined?{}:{cadenceBeforeMs:cadence.medianMs}),cadenceSampleCount:cadence.count,relatedCrcRecords:[],channelId,channelName,sampleCount:count};
+ const finish=()=>{if(start>=0&&last>=start){const cadence=precedingTimeCadence(range.timeMs,start),a=range.timeMs[start]!,b=range.timeMs[last]!;
+  const e:SourceContinuityEvidence={classification:'channel-unavailable',fromRecordIndex:range.startSampleIndex+start,toRecordIndex:range.startSampleIndex+last,fromTimeMs:a,toTimeMs:b,deltaMs:b-a,durationMs:b-a,...(cadence.medianMs===undefined?{}:{cadenceBeforeMs:cadence.medianMs}),cadenceSampleCount:cadence.count,relatedCrcRecords:[],channelId,channelName,sampleCount:count,traceStartMs:start>0&&range.validity[start-1]===1&&range.timeMs[start-1]!<=a?range.timeMs[start-1]!:a,traceEndMs:last+1<range.timeMs.length&&range.validity[last+1]===1&&range.timeMs[last+1]!>=b?range.timeMs[last+1]!:b};
   events.push({code:'mlg-channel-unavailable',severity:'info',recoverable:true,timeMs:a,sourceIntegrity:{kind:'channel-unavailable',breaksContinuity:false,evidence:e},message:continuityEvidenceText(e)});
  }start=-1;last=-1;count=0;};
  for(let i=0;i<range.values.length;i++){

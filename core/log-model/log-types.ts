@@ -45,6 +45,9 @@ export interface SourceContinuityEvidence {
   readonly channelId?: string;
   readonly channelName?: string;
   readonly sampleCount?: number;
+  /** Display-only line-interruption bounds; not a measured unavailable duration. */
+  readonly traceStartMs?: number;
+  readonly traceEndMs?: number;
 }
 
 export interface SourceIntegrityDiagnosticMetadata {

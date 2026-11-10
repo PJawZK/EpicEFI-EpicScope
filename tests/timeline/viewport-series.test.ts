@@ -25,11 +25,11 @@ describe('zoom-independent trace continuity', () => {
     expect(buildViewportTraceSeries(range, 0, 40, 100).points.find(p => p.timeMs === 20)?.breakBefore).toBe(true);
   });
 
-  it('uses source-local cadence for the same spacing event in overlapping viewports', () => {
+  it('does not infer a missing measurement from spacing alone in overlapping viewports', () => {
     const times = [...Array.from({ length: 20 }, (_, i) => i * 10), 290, 300, 310];
     const range = { startSampleIndex: 0, timeMs: Float64Array.from(times), values: new Float64Array(times.length).fill(1), validity: new Uint8Array(times.length).fill(1) };
     for (const [start, end] of [[0, 310], [185, 295], [180, 305]]) {
-      expect(buildRawViewportSeries(range, start!, end!).find(p => p.timeMs === 290)?.breakBefore).toBe(true);
+      expect(buildRawViewportSeries(range, start!, end!).find(p => p.timeMs === 290)?.breakBefore).toBe(false);
     }
   });
 
@@ -256,7 +256,7 @@ describe('buildViewportEnvelope', () => {
     ]);
   });
 
-  it('breaks a raw high-zoom trace across an abnormal timestamp gap', () => {
+  it('connects valid raw observations when spacing alone was called abnormal', () => {
     const points = buildRawViewportSeries({
       startSampleIndex: 0,
       timeMs: new Float64Array([0, 10, 20, 200, 210]),
@@ -264,7 +264,7 @@ describe('buildViewportEnvelope', () => {
       validity: new Uint8Array([1, 1, 1, 1, 1]),
     }, 0, 210);
 
-    expect(points.map((point) => point.breakBefore)).toEqual([true, false, false, true, false]);
+    expect(points.map((point) => point.breakBefore)).toEqual([true, false, false, false, false]);
   });
 });
 
@@ -275,3 +275,13 @@ describe('buildViewportEnvelope', () => {
   getTimeQueryIndex(times); reads=0;
   expect(nearestNumericSamplePosition({...range,timeMs:times},1_600_001)).toEqual({sampleIndex:160010,timeMs:1600000});expect(reads).toBeLessThan(64);
  });
+
+it('CHDL 408→409 does not turn threshold-only spacing into an unexplained shared gap',()=>{
+ const times=Float64Array.from([...Array.from({length:409},(_,i)=>14523.28-(408-i)*10.56),14583.26]);
+ for(const value of [900,102,4.7,12.68]){
+  const range={startSampleIndex:0,timeMs:times,values:new Float64Array(times.length).fill(value),validity:new Uint8Array(times.length).fill(1)};
+  expect(buildRawViewportSeries(range,14490,14610).find(p=>p.timeMs===14583.26)?.breakBefore).toBe(false);
+  const envelope=buildViewportEnvelope(range,times[0]!,14583.26,20);
+  expect(buildViewportEnvelopeBreaks(range,envelope).slice(1).every(b=>!b)).toBe(true);
+ }
+});

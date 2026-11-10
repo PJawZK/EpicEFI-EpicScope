@@ -61,3 +61,9 @@ describe('source-marker presentation clustering',()=>{
   expect(sourceIntegrityDisplayClusters([a,b],0,1000,100).map(m=>m.kind)).toEqual(['corrupt-record','timestamp-gap']);
  });
 });
+
+it('keeps a source-backed unavailable interval inspectable when its event anchor is outside a narrow viewport',()=>{
+ const evidence={classification:'crc-exclusion' as const,fromRecordIndex:18,toRecordIndex:20,fromTimeMs:2598.22,toTimeMs:3171.1,durationMs:572.88,deltaMs:572.88,cadenceSampleCount:5,relatedCrcRecords:[19]};
+ const markers=sourceIntegrityMarkersFromDiagnostics([{code:'mlg-crc-mismatch',severity:'warning',recoverable:true,message:'record 19 excluded',timeMs:2889.53,sourceIntegrity:{kind:'corrupt-record',breaksContinuity:true,evidence}}]);
+ const visible=sourceIntegrityDisplayClusters(markers,2700,2800,800);expect(visible).toHaveLength(1);expect(visible[0]?.timeMs).toBe(2800);expect(visible[0]?.message).toContain('2889.53');expect(markers[0]?.timeMs).toBe(2889.53);
+});

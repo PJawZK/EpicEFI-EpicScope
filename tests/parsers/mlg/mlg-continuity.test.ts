@@ -5,9 +5,9 @@ import {MemoryByteSource} from '../../../core/parsers/byte-source';
 import {buildRawViewportSeries,buildViewportTraceSeries} from '../../../core/timeline/viewport-series';
 async function fixture(){const bytes=chdlClockFixture();return parseMlg(new MemoryByteSource(bytes),{id:'chdl-clock',displayName:'independent-clock.mlg',format:'MLG',sizeBytes:bytes.length});}
 describe('CHDL original clock interruption',()=>{
- it('projects the observed regression at its prior endpoint without repairing source time or blaming CRC',async()=>{
+ it('projects the observed regression at its new-run endpoint without repairing source time or blaming CRC',async()=>{
   const parsed=await fixture(),event=parsed.summary.diagnostics.find(d=>d.code==='mlg-source-time-regression');
-  expect(event).toMatchObject({timeMs:6857.53,severity:'warning',sourceIntegrity:{kind:'timestamp-gap',breaksContinuity:true}});
+  expect(event).toMatchObject({timeMs:6535.27,severity:'warning',sourceIntegrity:{kind:'timestamp-gap',breaksContinuity:true}});
   expect(parsed.recordIndex.timeMs[24]).toBe(6535.27);expect([...parsed.recordIndex.crcValid].every(x=>x===1)).toBe(true);
  });
  it('does not infer a missing first interval from a later faster cadence after the source clock regresses',async()=>{
@@ -69,4 +69,15 @@ it('retains a heuristic spacing observation without promoting it to a graphical 
  expect(event).toMatchObject({severity:'info',sourceIntegrity:{kind:'cadence-observation',breaksContinuity:false,evidence:{classification:'cadence-outlier',deltaMs:210}}});
  expect(sourceIntegrityMarkersFromDiagnostics(events)).toHaveLength(1);
  expect(sourceIntegrityDisplayClusters(sourceIntegrityMarkersFromDiagnostics(events),0,400,800)).toEqual([]);
+});
+
+it('anchors a clock ambiguity at the original new-run boundary that breaks the graph',async()=>{
+ const parsed=await fixture(),event=parsed.summary.diagnostics.find(d=>d.code==='mlg-source-time-regression');
+ expect(event?.timeMs).toBe(parsed.recordIndex.timeMs[event!.sourceIntegrity!.evidence!.toRecordIndex]);
+});
+
+it('explains an isolated channel NaN and records display bounds separately from unavailable observations',()=>{
+ const range={startSampleIndex:0,timeMs:Float64Array.from([0,10,20]),values:Float64Array.from([1,NaN,2]),validity:Uint8Array.from([1,1,1])};
+ const events=projectChannelUnavailable(range,'rpm','RPM');expect(events).toHaveLength(1);expect(events[0]?.sourceIntegrity?.evidence).toMatchObject({fromRecordIndex:1,toRecordIndex:1,fromTimeMs:10,toTimeMs:10,durationMs:0,sampleCount:1,traceStartMs:0,traceEndMs:20});
+ expect(sourceIntegrityDisplayClusters(sourceIntegrityMarkersFromDiagnostics(events),12,15,800)).toHaveLength(1);
 });

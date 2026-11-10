@@ -55,7 +55,7 @@ function formatElapsedTime(timeMs: number): string {
 }
 
 export function markerExplanation(marker: SourceIntegrityMarker): string {
-  const at = formatElapsedTime(marker.timeMs);
+  const at = formatElapsedTime(marker.canonicalTimeMs??marker.timeMs);
 
   if(marker.clusteredEventCount!==undefined)return `Source integrity at ${at}: ${marker.message} Pixel clustering does not establish a shared cause.`;
   if (marker.kind === 'corrupt-record') {

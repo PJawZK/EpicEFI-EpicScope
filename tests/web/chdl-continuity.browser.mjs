@@ -10,16 +10,16 @@ const assert=(v,m)=>{if(!v)throw Error(m);};
 const frame=()=>new Promise(r=>requestAnimationFrame(r));
 export async function runChdlContinuityChecks(){
  const checks=[],bytes=chdlClockFixture(),parsed=await parseMlg(new MemoryByteSource(bytes),{id:'clock-browser',format:'MLG',displayName:'clock.mlg',sizeBytes:bytes.length});
- const marker=sourceIntegrityMarkersFromDiagnostics(parsed.summary.diagnostics).find(m=>m.timeMs===6857.53),graph=createGraphViewport(),timeline=createTimelineShell();
+ const marker=sourceIntegrityMarkersFromDiagnostics(parsed.summary.diagnostics).find(m=>m.timeMs===6535.27),graph=createGraphViewport(),timeline=createTimelineShell();
  graph.element.style.cssText='position:fixed;left:0;top:80px;width:800px;height:280px;z-index:99999';timeline.element.style.width='800px';document.body.append(graph.element,timeline.element);
  try{
   const channel=parsed.summary.channels[0],range=await parsed.channelData.readChannelRange(channel.id,0,parsed.channelData.sampleCount);
   assert(buildRawViewportSeries(range,6000,7500).find(p=>p.timeMs===6947.06)?.breakBefore===false,'CHDL first new-run interval remains falsely broken');
   assert(Math.abs(marker?.evidence?.deltaMs+322.26)<1e-6&&marker.kind==='timestamp-gap','Missing observed canonical clock evidence');checks.push('real-header transition preserves valid samples and removes future-cadence false gap');
   graph.setLog(parsed.summary.channels,parsed.channelData,parsed.summary.timeRange);await graph.toggleChannel(channel.id);graph.setSourceIntegrity(parsed.channelData,[marker]);graph.setViewport({fullStartMs:0,fullEndMs:9000,visibleStartMs:6000,visibleEndMs:7500});await frame();
-  const c=graph.element.querySelector('canvas'),r=c.getBoundingClientRect();c.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:r.left+6+(6857.53-6000)/1500*(r.width-12),clientY:r.top+r.height/2-22}));
+  const c=graph.element.querySelector('canvas'),r=c.getBoundingClientRect();c.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:r.left+6+(6535.27-6000)/1500*(r.width-12),clientY:r.top+r.height/2-22}));
   const notice=graph.element.querySelector('.graph-toast');assert(!notice.hidden&&notice.textContent.includes('original records 23 → 24')&&notice.textContent.includes('322.26')&&notice.textContent.includes('Related CRC records: none'),'Amber graph notice lost provenance');checks.push('amber click shows source indices, exact clock interval, cadence and CRC relation');
-  timeline.setTimeRange({startMs:0,endMs:9000,durationMs:9000},range.values.length);timeline.setSourceIntegrity([marker]);await frame();const overview=timeline.element.querySelector('.timeline-overview'),o=overview.getBoundingClientRect();overview.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:o.left+6857.53/9000*o.width,clientY:o.top+2}));
+  timeline.setTimeRange({startMs:0,endMs:9000,durationMs:9000},range.values.length);timeline.setSourceIntegrity([marker]);await frame();const overview=timeline.element.querySelector('.timeline-overview'),o=overview.getBoundingClientRect();overview.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:o.left+6535.27/9000*o.width,clientY:o.top+2}));
   assert(!timeline.element.querySelector('.timeline-integrity-detail').hidden&&timeline.element.querySelector('.timeline-integrity-detail').textContent.includes('original records 23 → 24'),'Overview marker lacks observed evidence');checks.push('overview click exposes the same canonical evidence');
  }finally{graph.clear();graph.disposeSourceIntegrity();graph.element.remove();timeline.element.remove();}
  const logger=createLoggerPage();logger.element.style.cssText='position:fixed;left:0;top:80px;width:800px;height:500px;z-index:99999';document.body.append(logger.element);let reads=0;

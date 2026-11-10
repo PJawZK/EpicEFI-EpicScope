@@ -1,4 +1,3 @@
-import { observedSpacingOutlier } from '../log-model/time-continuity';
 import { getTimeQueryIndex } from '../log-model/time-query-index';
 import type { NumericChannelEnvelopeBlocks, NumericChannelRange } from '../log-model/log-types';
 
@@ -318,11 +317,6 @@ export interface RawViewportPoint {
   readonly breakBefore: boolean;
 }
 
-/** Shared source observation rule; never learns an earlier cadence from future data. */
-function hasCadenceGap(range: NumericChannelRange, index: number, previousTime: number): boolean {
-  return observedSpacingOutlier(range.timeMs, index, previousTime);
-}
-
 /** Empty pixel columns are not source evidence. Check the original observations
  * between adjacent envelope columns, preserving same-time retry replacements.
  * Cached by the existing graph envelope owner; never scans an entire log. */
@@ -336,7 +330,7 @@ export function buildViewportEnvelopeBreaks(range: NumericChannelRange, envelope
     for (let i = start; i < end; i++) {
       if (range.validity[i] !== 1 || !Number.isFinite(range.values[i]) || !Number.isFinite(range.timeMs[i])) return true;
     }
-    return hasCadenceGap(range, end, previous.lastTimeMs);
+    return false;
   });
 }
 
@@ -346,8 +340,8 @@ export function buildViewportEnvelopeBreaks(range: NumericChannelRange, envelope
  * the default remains strictly scoped and never introduces interpolated samples.
  *
  * Lines are broken only when source validity is interrupted without a valid
- * same-timestamp replacement, or when timestamp spacing is substantially
- * larger than the normal cadence in bounded source-local context. Recovered logger retry
+ * same-timestamp replacement, or at an original backward-time run boundary.
+ * Spacing alone is not proof of absent source measurements. Recovered logger retry
  * attempts are retained as invalid source evidence but do not fabricate a
  * presentation gap when the valid replacement is present immediately after.
  */
@@ -399,7 +393,7 @@ export function buildRawViewportSeries(
     points.push({
       timeMs,
       value,
-      breakBefore: forceBreak || previousValidTime === undefined || hasCadenceGap(range, index, previousValidTime),
+      breakBefore: forceBreak || previousValidTime === undefined,
     });
     forceBreak = false;
     previousValidTime = timeMs;

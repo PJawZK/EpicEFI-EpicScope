@@ -40,7 +40,7 @@ describe('November 1 source/render evidence boundaries', () => {
     expect(audit.observedCounts['timestamp-regression']).toBeUndefined();
     expect(audit.observedCounts['timestamp-wrap-or-reset']).toBe(1);
     const range = await parsed.channelData.readChannelRange(parsed.summary.channels[0]!.id, 0, 21);
-    expect(buildRawViewportSeries(range, times[0]!, times[20]!).filter(p => p.breakBefore)).toHaveLength(2);
+    expect(buildRawViewportSeries(range, times[0]!, times[20]!).filter(p => p.breakBefore)).toHaveLength(1);
     expect(audit.events.at(-1)?.observations.join(' ')).toContain('unknown cause');
   });
 

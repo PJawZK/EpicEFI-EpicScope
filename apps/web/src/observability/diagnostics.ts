@@ -85,6 +85,6 @@ export function operationRows(records: readonly ObservabilityRecord[]): readonly
 }
 
 function captureContinuityEvidence(e:SourceContinuityEvidence):SourceContinuityEvidence {
- return Object.freeze({classification:e.classification,fromRecordIndex:e.fromRecordIndex,toRecordIndex:e.toRecordIndex,fromTimeMs:e.fromTimeMs,toTimeMs:e.toTimeMs,durationMs:e.durationMs,deltaMs:e.deltaMs,cadenceSampleCount:e.cadenceSampleCount,relatedCrcRecords:Object.freeze([...e.relatedCrcRecords]),
+ return Object.freeze({classification:e.classification,...(e.traceStartMs===undefined?{}:{traceStartMs:e.traceStartMs}),...(e.traceEndMs===undefined?{}:{traceEndMs:e.traceEndMs}),fromRecordIndex:e.fromRecordIndex,toRecordIndex:e.toRecordIndex,fromTimeMs:e.fromTimeMs,toTimeMs:e.toTimeMs,durationMs:e.durationMs,deltaMs:e.deltaMs,cadenceSampleCount:e.cadenceSampleCount,relatedCrcRecords:Object.freeze([...e.relatedCrcRecords]),
  ...(e.fromOffset===undefined?{}:{fromOffset:e.fromOffset}),...(e.toOffset===undefined?{}:{toOffset:e.toOffset}),...(e.cadenceBeforeMs===undefined?{}:{cadenceBeforeMs:e.cadenceBeforeMs}),...(e.interiorRecords===undefined?{}:{interiorRecords:e.interiorRecords}),...(e.channelId===undefined?{}:{channelId:e.channelId}),...(e.channelName===undefined?{}:{channelName:e.channelName}),...(e.sampleCount===undefined?{}:{sampleCount:e.sampleCount})});
 }
