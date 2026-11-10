@@ -1,0 +1,32 @@
+{
+  "researchBase": "198b82f1d98d08165579a88481f4d1ca01de14da",
+  "sourceFiles": [
+    {
+      "name": "2026-10-21_07.35.29_CHDL.mlg",
+      "sha256": "806ef8db10af7a4014072dd110c03cc5e9cb035f321571427756040d636f17fe"
+    },
+    {
+      "name": "2026-10-25_15.20.05.mlg",
+      "sha256": "de56d1d03458d2cde755ab903fc34e62f864c8962fe6d0e4d17df8d0c2961a13"
+    },
+    {
+      "name": "2026-11-01_11.57.38.mlg",
+      "sha256": "4282efddcd4386e5abc94002caa198aba02c76824ce6e71343d79db524867481"
+    }
+  ],
+  "sourceMode": "read only; new research timestamp arrays; no runtime edits",
+  "simulationSettings": {
+    "recordedTimeUnits": "seconds",
+    "normalization": "first CRC-eligible finite observed Time",
+    "idleMaxRpm": 1200,
+    "idleMinDurationMs": 8000,
+    "idleMaxGapMs": 250,
+    "genericRpmLookupDelayMs": 100,
+    "modelClockEligibility": "original CRC mask"
+  },
+  "limitations": [
+    "No complete VE proposal or PID calculation comparison",
+    "No observed missing/nonfinite trusted Time in these three files",
+    "Design fallback cases are not an implemented selector"
+  ]
+}

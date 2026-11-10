@@ -1,0 +1,519 @@
+{
+  "name": "chdl",
+  "records": 69566,
+  "originIndex": 0,
+  "originSeconds": 0.6819999814033508,
+  "descriptor": {
+    "kind": "scalar",
+    "index": 0,
+    "offset": 24,
+    "type": 7,
+    "name": "Time",
+    "units": "s",
+    "displayStyle": 0,
+    "widthBytes": 4,
+    "category": "",
+    "scale": 1,
+    "transform": 0,
+    "digits": 3
+  },
+  "recordedAll": {
+    "regressions": 0,
+    "equalPairs": 13087,
+    "positivePairs": 56478,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 780886.9697451591,
+    "minStep": 0,
+    "maxStep": 667.9999828338623,
+    "maxPlateauRecords": 3
+  },
+  "recordedTrusted": {
+    "regressions": 0,
+    "equalPairs": 13078,
+    "positivePairs": 56477,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 780886.9697451591,
+    "minStep": 0,
+    "maxStep": 667.9999828338623,
+    "maxPlateauRecords": 3
+  },
+  "headerAll": {
+    "regressions": 18,
+    "equalPairs": 12,
+    "positivePairs": 69535,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 769102.13,
+    "minStep": -327.09999999999945,
+    "maxStep": 501.78999999999996,
+    "maxPlateauRecords": 2
+  },
+  "headerTrusted": {
+    "regressions": 18,
+    "equalPairs": 3,
+    "positivePairs": 69534,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 769102.13,
+    "minStep": -327.09999999999945,
+    "maxStep": 572.8799999999997,
+    "maxPlateauRecords": 2
+  },
+  "crcExcludedTime": {
+    "finite": 10,
+    "nonfinite": 0
+  },
+  "negativeStored": 0,
+  "maxAbsClockOffsetMs": 11823.811117229463,
+  "adjacentDeltaDifferenceOver50ms": 27,
+  "rawFalling": 1191,
+  "rawEqual": 12,
+  "regressionCases": [
+    {
+      "from": 1,
+      "to": 2,
+      "offset": 1003348,
+      "headerFromMs": 459.12,
+      "headerToMs": 217.15,
+      "storedFromSeconds": 1.152999997138977,
+      "storedToSeconds": 1.5609999895095825,
+      "recordedStepMs": 407.99999237060547,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "offset": 1010213,
+      "headerFromMs": 217.15,
+      "headerToMs": 54.67,
+      "storedFromSeconds": 1.5609999895095825,
+      "storedToSeconds": 2.0329999923706055,
+      "recordedStepMs": 472.00000286102295,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "offset": 1017078,
+      "headerFromMs": 54.67,
+      "headerToMs": 31.61,
+      "storedFromSeconds": 2.0329999923706055,
+      "storedToSeconds": 2.7009999752044678,
+      "recordedStepMs": 667.9999828338623,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 5,
+      "to": 6,
+      "offset": 1030808,
+      "headerFromMs": 533.4,
+      "headerToMs": 352.73,
+      "storedFromSeconds": 3.180999994277954,
+      "storedToSeconds": 3.6579999923706055,
+      "recordedStepMs": 476.99999809265137,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 6,
+      "to": 7,
+      "offset": 1037673,
+      "headerFromMs": 352.73,
+      "headerToMs": 55.5,
+      "storedFromSeconds": 3.6579999923706055,
+      "storedToSeconds": 4.019999980926514,
+      "recordedStepMs": 361.9999885559082,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 8,
+      "to": 9,
+      "offset": 1051403,
+      "headerFromMs": 370.23,
+      "headerToMs": 46.800000000000004,
+      "storedFromSeconds": 4.339000225067139,
+      "storedToSeconds": 4.666999816894531,
+      "recordedStepMs": 327.9995918273926,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 13,
+      "to": 14,
+      "offset": 1085728,
+      "headerFromMs": 1372.27,
+      "headerToMs": 1268.22,
+      "storedFromSeconds": 6.01200008392334,
+      "storedToSeconds": 6.556000232696533,
+      "recordedStepMs": 544.0001487731934,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 22,
+      "to": 23,
+      "offset": 1147513,
+      "headerFromMs": 3837.61,
+      "headerToMs": 3633.42,
+      "storedFromSeconds": 9.114999771118164,
+      "storedToSeconds": 9.583000183105469,
+      "recordedStepMs": 468.0004119873047,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 27,
+      "to": 28,
+      "offset": 1181838,
+      "headerFromMs": 4932.79,
+      "headerToMs": 4686.38,
+      "storedFromSeconds": 10.855999946594238,
+      "storedToSeconds": 11.269000053405762,
+      "recordedStepMs": 413.00010681152344,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 29,
+      "to": 30,
+      "offset": 1195568,
+      "headerFromMs": 5027.04,
+      "headerToMs": 4701.52,
+      "storedFromSeconds": 11.630999565124512,
+      "storedToSeconds": 11.949000358581543,
+      "recordedStepMs": 318.00079345703125,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 31,
+      "to": 32,
+      "offset": 1209298,
+      "headerFromMs": 5096.28,
+      "headerToMs": 4830.21,
+      "storedFromSeconds": 12.345000267028809,
+      "storedToSeconds": 12.746000289916992,
+      "recordedStepMs": 401.0000228881836,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 32,
+      "to": 33,
+      "offset": 1216163,
+      "headerFromMs": 4830.21,
+      "headerToMs": 4570.05,
+      "storedFromSeconds": 12.746000289916992,
+      "storedToSeconds": 13.142999649047852,
+      "recordedStepMs": 396.9993591308594,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 34,
+      "to": 35,
+      "offset": 1229893,
+      "headerFromMs": 4953.41,
+      "headerToMs": 4723.2300000000005,
+      "storedFromSeconds": 13.503999710083008,
+      "storedToSeconds": 13.937999725341797,
+      "recordedStepMs": 434.00001525878906,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 38,
+      "to": 39,
+      "offset": 1257353,
+      "headerFromMs": 5601.07,
+      "headerToMs": 5273.97,
+      "storedFromSeconds": 14.812000274658203,
+      "storedToSeconds": 15.145000457763672,
+      "recordedStepMs": 333.00018310546875,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 40,
+      "to": 41,
+      "offset": 1271083,
+      "headerFromMs": 5732.1900000000005,
+      "headerToMs": 5545.08,
+      "storedFromSeconds": 15.588000297546387,
+      "storedToSeconds": 16.05500030517578,
+      "recordedStepMs": 467.00000762939453,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 41,
+      "to": 42,
+      "offset": 1277948,
+      "headerFromMs": 5545.08,
+      "headerToMs": 5359.83,
+      "storedFromSeconds": 16.05500030517578,
+      "storedToSeconds": 16.538999557495117,
+      "recordedStepMs": 483.99925231933594,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 45,
+      "to": 46,
+      "offset": 1305408,
+      "headerFromMs": 6338.16,
+      "headerToMs": 6052.02,
+      "storedFromSeconds": 17.530000686645508,
+      "storedToSeconds": 17.891000747680664,
+      "recordedStepMs": 361.00006103515625,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 49,
+      "to": 50,
+      "offset": 1332868,
+      "headerFromMs": 6857.53,
+      "headerToMs": 6535.27,
+      "storedFromSeconds": 18.702999114990234,
+      "storedToSeconds": 19.024999618530273,
+      "recordedStepMs": 322.00050354003906,
+      "crcBefore": 1,
+      "crcAfter": 1
+    }
+  ],
+  "windows": [
+    {
+      "startMs": 0,
+      "endMs": 10000,
+      "headerCount": 62,
+      "recordedCount": 26,
+      "commonCount": 26,
+      "symmetricDifference": 36,
+      "headerRpmMean": 0,
+      "recordedRpmMean": 0
+    },
+    {
+      "startMs": 14000,
+      "endMs": 15000,
+      "headerCount": 77,
+      "recordedCount": 3,
+      "commonCount": 0,
+      "symmetricDifference": 80,
+      "headerRpmMean": 0,
+      "recordedRpmMean": 0
+    },
+    {
+      "startMs": 500000,
+      "endMs": 510000,
+      "headerCount": 924,
+      "recordedCount": 942,
+      "commonCount": 0,
+      "symmetricDifference": 1866,
+      "headerRpmMean": 2046.926406926407,
+      "recordedRpmMean": 1550.4384288747347
+    },
+    {
+      "startMs": 759102.13,
+      "endMs": 769102.13,
+      "headerCount": 914,
+      "recordedCount": 931,
+      "commonCount": 0,
+      "symmetricDifference": 1845,
+      "headerRpmMean": 482.6695842450766,
+      "recordedRpmMean": 795.0515574650913
+    }
+  ],
+  "retryOriginalIdentity": {
+    "recovered": 9,
+    "unrecovered": 1,
+    "retryLike": 3
+  },
+  "retryNaivelyUsingRecordedTime": {
+    "recovered": 9,
+    "unrecovered": 1,
+    "retryLike": 1
+  },
+  "headerMetrics": {
+    "fullLogRpm": {
+      "validCount": 69556,
+      "invalidCount": 10,
+      "min": 0,
+      "max": 4269,
+      "mean": 1290.6359336362054,
+      "standardDeviation": 539.5388067723482
+    },
+    "idleDiscovery": {
+      "count": 8,
+      "regions": [
+        {
+          "startMs": 15023.66,
+          "endMs": 69985.83,
+          "startSampleIndex": 442,
+          "endSampleIndex": 4970,
+          "validSampleCount": 4528
+        },
+        {
+          "startMs": 71302.71,
+          "endMs": 146990.94,
+          "startSampleIndex": 5090,
+          "endSampleIndex": 11933,
+          "validSampleCount": 6842
+        },
+        {
+          "startMs": 147811.75,
+          "endMs": 157535.34,
+          "startSampleIndex": 11937,
+          "endSampleIndex": 12817,
+          "validSampleCount": 881
+        },
+        {
+          "startMs": 157649.96,
+          "endMs": 172732.30000000002,
+          "startSampleIndex": 12828,
+          "endSampleIndex": 14219,
+          "validSampleCount": 1391
+        },
+        {
+          "startMs": 337484.4,
+          "endMs": 473585.32,
+          "startSampleIndex": 29398,
+          "endSampleIndex": 42092,
+          "validSampleCount": 12694
+        },
+        {
+          "startMs": 583830.01,
+          "endMs": 593259.11,
+          "startSampleIndex": 52385,
+          "endSampleIndex": 53258,
+          "validSampleCount": 874
+        },
+        {
+          "startMs": 690030.83,
+          "endMs": 699318.38,
+          "startSampleIndex": 62287,
+          "endSampleIndex": 63152,
+          "validSampleCount": 866
+        },
+        {
+          "startMs": 701386.41,
+          "endMs": 765145.26,
+          "startSampleIndex": 63334,
+          "endSampleIndex": 69219,
+          "validSampleCount": 5886
+        }
+      ]
+    },
+    "generic100msRpmLookup": {
+      "valid": 69520,
+      "missing": 36
+    },
+    "strictPositiveSegments": {
+      "segments": 32,
+      "maxSamples": 17197,
+      "maxDurationMs": 184181.36
+    }
+  },
+  "recordedMetrics": {
+    "fullLogRpm": {
+      "validCount": 69556,
+      "invalidCount": 10,
+      "min": 0,
+      "max": 4269,
+      "mean": 1290.6359336362054,
+      "standardDeviation": 539.5388067723482
+    },
+    "idleDiscovery": {
+      "count": 8,
+      "regions": [
+        {
+          "startMs": 26846.99934720993,
+          "endMs": 81798.00337553024,
+          "startSampleIndex": 442,
+          "endSampleIndex": 4970,
+          "validSampleCount": 4528
+        },
+        {
+          "startMs": 83123.99977445602,
+          "endMs": 158827.9945254326,
+          "startSampleIndex": 5090,
+          "endSampleIndex": 11934,
+          "validSampleCount": 6843
+        },
+        {
+          "startMs": 159642.99696683884,
+          "endMs": 169355.0025820732,
+          "startSampleIndex": 11939,
+          "endSampleIndex": 12817,
+          "validSampleCount": 879
+        },
+        {
+          "startMs": 169470.99989652634,
+          "endMs": 184551.00172758102,
+          "startSampleIndex": 12828,
+          "endSampleIndex": 14219,
+          "validSampleCount": 1391
+        },
+        {
+          "startMs": 349291.99904203415,
+          "endMs": 485392.0051455498,
+          "startSampleIndex": 29398,
+          "endSampleIndex": 42092,
+          "validSampleCount": 12694
+        },
+        {
+          "startMs": 595635.0166201591,
+          "endMs": 605072.0283389091,
+          "startSampleIndex": 52385,
+          "endSampleIndex": 53258,
+          "validSampleCount": 874
+        },
+        {
+          "startMs": 701841.9868350029,
+          "endMs": 711117.9878115654,
+          "startSampleIndex": 62287,
+          "endSampleIndex": 63152,
+          "validSampleCount": 866
+        },
+        {
+          "startMs": 713187.0185732841,
+          "endMs": 776953.9863467216,
+          "startSampleIndex": 63334,
+          "endSampleIndex": 69219,
+          "validSampleCount": 5886
+        }
+      ]
+    },
+    "generic100msRpmLookup": {
+      "valid": 69537,
+      "missing": 19
+    },
+    "strictPositiveSegments": {
+      "segments": 13089,
+      "maxSamples": 58,
+      "maxDurationMs": 14272.99976348877
+    }
+  },
+  "exploratoryTimeAnchoredHeader": {
+    "stats": {
+      "regressions": 0,
+      "equalPairs": 3,
+      "positivePairs": 69552,
+      "nonfinite": 0,
+      "min": 0,
+      "max": 780898.6100000043,
+      "minStep": 0,
+      "maxStep": 632.3000000000002,
+      "maxPlateauRecords": 2
+    },
+    "unsafeSteps": [],
+    "scope": "Nearest wrap using recorded-Time delta and trusted raw-header pairs. Diagnostic experiment, not proposed automatic repair."
+  },
+  "extraTimeArrayBytes": 556528
+}
