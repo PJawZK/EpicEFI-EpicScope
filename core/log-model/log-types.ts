@@ -24,11 +24,32 @@ export type SourceIntegrityKind =
   | 'recovered-retry'
   | 'corrupt-record'
   | 'timestamp-gap'
-  | 'delivery-loss';
+  | 'delivery-loss'
+  | 'channel-unavailable';
+
+export interface SourceContinuityEvidence {
+  readonly classification: 'clock-regression' | 'cadence-outlier' | 'channel-unavailable' | 'crc-exclusion';
+  readonly fromRecordIndex: number;
+  readonly toRecordIndex: number;
+  readonly fromTimeMs: number;
+  readonly toTimeMs: number;
+  readonly durationMs: number;
+  readonly deltaMs: number;
+  readonly fromOffset?: number;
+  readonly toOffset?: number;
+  readonly cadenceBeforeMs?: number;
+  readonly cadenceSampleCount: number;
+  readonly relatedCrcRecords: readonly number[];
+  readonly interiorRecords?: number;
+  readonly channelId?: string;
+  readonly channelName?: string;
+  readonly sampleCount?: number;
+}
 
 export interface SourceIntegrityDiagnosticMetadata {
   readonly kind: SourceIntegrityKind;
   readonly breaksContinuity: boolean;
+  readonly evidence?: SourceContinuityEvidence;
 }
 
 export interface ParserDiagnostic {

@@ -1,12 +1,16 @@
 # EpicScope — current handoff
 
-Updated 2026-11-09 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
+Updated 2026-11-10 (development continuation added; production baseline below remains historical). This is the **current continuation index**, not an independent runtime specification. Full prior handoff content was preserved in [the October archive](handoffs/ARCHIVE_THROUGH_2026-10-26.md).
 
 ## Authority and change safety
 
 **The code at current `main` takes priority over documentation**, including this file, older source-code branches, proposals, reference HTML, and local/unpublished reports. Verify the actual implementation before interpreting a feature as present or absent. When documents disagree with code, record the discrepancy and update documentation; do **not** modify working runtime code merely to conform to stale documentation. A proposed code correction requires independent reproduction, justification and explicit scope.
 
 Documentation-only maintenance must not alter application source, package dependencies, build/deploy workflows, tests, data, storage, parsing or ECU behavior. Keep known gaps as evidence/policy questions, not unverified bug claims. Historic branches and checkpoint instructions are not continuation authority.
+
+## Active CHDL Logger gap — 2026-11-10
+
+The [CHDL gap checkpoint](CHDL_LOGGER_GAP_CHECKPOINT.md) continues from `0f040a84cdf88b115bbe72d4442de372ac7bb12b`. The complete 69,566-record upload reproduces a false raw-rendering break after the canonical 49→50 clock regression. Rendering now uses preceding source-run cadence only. Canonical timestamps, finite RPM/MAP/TPS/CLT observations, source-index membership and CRC/retry behavior remain unchanged. One post-CRC source projection supplies amber clock/spacing evidence; existing red integrity remains separate; already-loaded CRC-valid channel NaN runs can receive blue channel-specific information. See the checkpoint for raw clock-wrap ambiguity, physical source evidence, validation and manual acceptance. No merge; Idle work remains paused.
 
 ## Active nonmonotonic timestamp correctness — 2026-11-09
 

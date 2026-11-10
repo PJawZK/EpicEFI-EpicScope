@@ -28,6 +28,11 @@ describe('unified Diagnostics projections', () => {
   expect(c.parserDiagnostics[0]).toEqual(expected);
   expect(JSON.parse(JSON.stringify(structuredDiagnostics(c))).parserDiagnostics).toEqual([expected]);
  });
+ it('retains continuity provenance without retaining arbitrary source objects',()=>{
+  const evidence={classification:'clock-regression' as const,fromRecordIndex:49,toRecordIndex:50,fromTimeMs:6857.53,toTimeMs:6535.27,deltaMs:-322.26,durationMs:322.26,cadenceSampleCount:48,relatedCrcRecords:[8],rawPayload:[123]};
+  const capture=createDiagnosticsCapture({...diagnosticFixture(),parserDiagnostics:[{code:'clock',severity:'warning',message:'Observed clock',recoverable:true,timeMs:6857.53,sourceIntegrity:{kind:'timestamp-gap',breaksContinuity:true,evidence}}]});
+  const retained=capture.parserDiagnostics[0]!.sourceIntegrity!.evidence!;expect(retained).not.toHaveProperty('rawPayload');expect(retained.relatedCrcRecords).toEqual([8]);expect(Object.isFrozen(retained)).toBe(true);evidence.relatedCrcRecords.push(9);expect(retained.relatedCrcRecords).toEqual([8]);
+ });
  it('keeps absent optional integrity fields absent and preserves corruption semantics', () => {
   const plain = { code: 'legacy', severity: 'info' as const, message: 'Legacy', recoverable: true };
   const corrupt = { ...plain, timeMs: 250, sourceIntegrity: { kind: 'corrupt-record' as const, breaksContinuity: true } };

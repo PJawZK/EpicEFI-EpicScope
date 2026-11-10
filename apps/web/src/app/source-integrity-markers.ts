@@ -1,5 +1,6 @@
 import type {
   ParserDiagnostic,
+  SourceContinuityEvidence,
   SourceIntegrityKind,
 } from '../../../../core/log-model/log-types';
 
@@ -11,6 +12,7 @@ export interface SourceIntegrityMarker {
   readonly message: string;
   readonly clusteredEventCount?:number;
   readonly lastTimeMs?:number;
+  readonly evidence?:SourceContinuityEvidence;
 }
 
 export function sourceIntegrityMarkersFromDiagnostics(
@@ -23,7 +25,7 @@ export function sourceIntegrityMarkersFromDiagnostics(
     const timeMs = diagnostic.timeMs;
     if (!metadata || timeMs === undefined || !Number.isFinite(timeMs)) continue;
 
-    const key = `${metadata.kind}:${timeMs}`;
+    const key = `${metadata.kind}:${metadata.evidence?.classification ?? ""}:${metadata.evidence?.channelId ?? ""}:${timeMs}`;
     const existing = grouped.get(key);
     if (existing) {
       grouped.set(key, {
@@ -39,24 +41,39 @@ export function sourceIntegrityMarkersFromDiagnostics(
       breaksContinuity: metadata.breaksContinuity,
       count: 1,
       message: diagnostic.message,
+      ...(metadata.evidence ? {evidence:metadata.evidence} : {}),
     });
   }
 
   return [...grouped.values()].sort((left, right) => left.timeMs - right.timeMs);
 }
 
-/** Pixel clustering is presentation only: never reclassifies source evidence or claims one cause. */
-export function sourceIntegrityDisplayClusters(markers:readonly SourceIntegrityMarker[],startMs:number,endMs:number,width:number):readonly SourceIntegrityMarker[] {
-  if(endMs<=startMs||width<=0)return [];
-  let low=0,high=markers.length;
-  while(low<high){const mid=(low+high)>>>1;if(markers[mid]!.timeMs<startMs)low=mid+1;else high=mid;}
-  const bins=new Map<string,{first:SourceIntegrityMarker;last:number;events:number;records:number}>();
-  const binCount=Math.max(1,Math.ceil(width/20));
-  for(let i=low;i<markers.length;i++){
-    const marker=markers[i]!;if(marker.timeMs>endMs)break;if(!marker.breaksContinuity)continue;
-    const bin=Math.min(binCount-1,Math.floor((marker.timeMs-startMs)/(endMs-startMs)*binCount)),key=`${marker.kind}:${bin}`,existing=bins.get(key);
-    if(existing){existing.last=marker.timeMs;existing.events++;existing.records+=marker.count;}
-    else bins.set(key,{first:marker,last:marker.timeMs,events:1,records:marker.count});
-  }
-  return [...bins.values()].map(b=>b.events===1?b.first:{...b.first,count:b.records,clusteredEventCount:b.events,lastTimeMs:b.last,message:`${b.events} source diagnostic groups clustered from ${b.first.timeMs} to ${b.last} ms (${b.records} diagnostic occurrences). Zoom in for individual source events. First: ${b.first.message}`});
+/** Index each immutable canonical projection once; redraw cost is bounded by pixels,
+ * not the number of events in a full-log viewport. Prefix counts preserve occurrences. */
+const displayIndexes=new WeakMap<readonly SourceIntegrityMarker[],readonly {items:readonly SourceIntegrityMarker[];prefix:readonly number[]}[]>();
+function lower(items:readonly SourceIntegrityMarker[],time:number,inclusive=false):number {
+ let lo=0,hi=items.length;while(lo<hi){const m=(lo+hi)>>>1;if(items[m]!.timeMs<time||(inclusive&&items[m]!.timeMs===time))lo=m+1;else hi=m;}return lo;
 }
+export function sourceIntegrityDisplayClusters(markers:readonly SourceIntegrityMarker[],startMs:number,endMs:number,width:number):readonly SourceIntegrityMarker[] {
+ if(endMs<=startMs||width<=0)return [];
+ const first=lower(markers,startMs),end=lower(markers,endMs,true);
+ // Narrow first inspection must not prepare an entire offscreen marker index.
+ if(end-first<=Math.max(1,Math.ceil(width/20))){const visible:SourceIntegrityMarker[]=[];for(let i=first;i<end;i++){const m=markers[i]!;if(m.breaksContinuity||m.kind==='channel-unavailable')visible.push(m);}return visible;}
+ let groups=displayIndexes.get(markers);
+ if(!groups){
+  const byKind=new Map<string,SourceIntegrityMarker[]>();
+  for(const m of markers){if(!m.breaksContinuity&&m.kind!=='channel-unavailable')continue;const key=m.kind==='channel-unavailable'?`${m.kind}:${m.evidence?.channelId??''}`:m.kind;const items=byKind.get(key)??[];items.push(m);byKind.set(key,items);}
+  groups=[...byKind.values()].map(items=>{const prefix=[0];for(const m of items)prefix.push(prefix[prefix.length-1]!+m.count);return {items,prefix};});
+  displayIndexes.set(markers,groups);
+ }
+ const result:SourceIntegrityMarker[]=[],bins=Math.max(1,Math.ceil(width/20));
+ for(const {items,prefix} of groups)for(let bin=0;bin<bins;bin++){
+  const a=startMs+(endMs-startMs)*bin/bins,b=startMs+(endMs-startMs)*(bin+1)/bins;
+  const lo=lower(items,a),hi=lower(items,b,bin===bins-1);if(hi<=lo)continue;
+  const first=items[lo]!,last=items[hi-1]!,events=hi-lo,records=prefix[hi]!-prefix[lo]!;
+  result.push(events===1?first:{...first,count:records,clusteredEventCount:events,lastTimeMs:last.timeMs,message:`${events} source diagnostic groups clustered from ${first.timeMs} to ${last.timeMs} ms (${records} diagnostic occurrences). Zoom in for individual source events. First: ${first.message} Last: ${last.message}`});
+ }
+ return result.sort((a,b)=>a.timeMs-b.timeMs);
+}
+
+export function sourceIntegrityMarkerColor(marker:SourceIntegrityMarker):string { return marker.kind==='corrupt-record'?'#ef6c75':marker.kind==='channel-unavailable'?'#58a6ff':'#eab95b'; }

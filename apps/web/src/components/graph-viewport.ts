@@ -472,6 +472,7 @@ export function createGraphViewport(): GraphViewportController {
 
     const traceEntries = [...activeTraces.entries()];
     const integrityTraces: Array<{
+      readonly channelId?:string;
       readonly range: NumericChannelRange;
       readonly color: string;
       readonly valueMin: number;
@@ -599,6 +600,7 @@ export function createGraphViewport(): GraphViewportController {
         return traceTop + traceHeight - normalized * traceHeight;
       };
       integrityTraces.push({
+        channelId,
         range: trace.range,
         color: trace.color,
         valueMin: trace.scale.min,

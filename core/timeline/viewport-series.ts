@@ -1,3 +1,4 @@
+import { observedSpacingOutlier } from '../log-model/time-continuity';
 import { getTimeQueryIndex } from '../log-model/time-query-index';
 import type { NumericChannelEnvelopeBlocks, NumericChannelRange } from '../log-model/log-types';
 
@@ -317,33 +318,9 @@ export interface RawViewportPoint {
   readonly breakBefore: boolean;
 }
 
-function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) return sorted[middle] ?? 0;
-  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
-}
-
-/** A bounded source-local reference, independent of the current zoom/pan bounds. */
+/** Shared source observation rule; never learns an earlier cadence from future data. */
 function hasCadenceGap(range: NumericChannelRange, index: number, previousTime: number): boolean {
-  const gap = range.timeMs[index]! - previousTime;
-  if (gap <= 50) return false;
-  const query = getTimeQueryIndex(range.timeMs), runId = query.runAt(index), run = runId === undefined ? undefined : query.runs[runId];
-  const intervals: number[] = [];
-  for (let i = index - 1; i > Math.max(run?.start ?? 0, index - 130); i--) {
-    const delta = range.timeMs[i]! - range.timeMs[i - 1]!;
-    if (Number.isFinite(delta) && delta > 0) intervals.push(delta);
-  }
-  // At the beginning of a loaded range, use available following context. With
-  // no reference cadence, two observations alone cannot establish an outlier.
-  if (intervals.length === 0) {
-    for (let i = index + 1; i < Math.min(run?.end ?? range.timeMs.length, index + 130); i++) {
-      const delta = range.timeMs[i]! - range.timeMs[i - 1]!;
-      if (Number.isFinite(delta) && delta > 0) intervals.push(delta);
-    }
-  }
-  return intervals.length > 0 && gap > Math.max(50, median(intervals) * 5);
+  return observedSpacingOutlier(range.timeMs, index, previousTime);
 }
 
 /** Empty pixel columns are not source evidence. Check the original observations

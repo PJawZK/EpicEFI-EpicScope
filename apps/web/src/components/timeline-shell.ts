@@ -1,4 +1,5 @@
-import {sourceIntegrityDisplayClusters,type SourceIntegrityMarker} from '../app/source-integrity-markers';
+import {markerExplanation} from './source-integrity-canvas-overlay';
+import {sourceIntegrityDisplayClusters,sourceIntegrityMarkerColor,type SourceIntegrityMarker} from '../app/source-integrity-markers';
 import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
 import { buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../../../core/timeline/viewport-series';
@@ -310,11 +311,13 @@ export function createTimelineShell(): TimelineShellController {
     }
     context.restore();
 
-    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
-      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=marker.kind==='corrupt-record'?'#ef6c75':'#eab95b';context.fillRect(x,0,2,Math.min(8,height));
-    }
     const envelopeWidth = Math.max(1, width);
-    if (!overviewTracesVisible) return;
+    if (!overviewTracesVisible) {
+    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
+      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=sourceIntegrityMarkerColor(marker);context.fillRect(x,0,2,Math.min(8,height));
+    }
+      return;
+    }
     for (const trace of overviewTraces) {
       const envelope = precomputedEnvelopeBlocksEnabled && trace.range.fullEnvelopeBlocks
         ? buildViewportEnvelopeFromBlocks(
@@ -376,6 +379,9 @@ export function createTimelineShell(): TimelineShellController {
         context.fillRect(column.x - 0.5, yFor(column.first) - 0.5, 1.5, 1.5);
       }
       context.restore();
+    }
+    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
+      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=sourceIntegrityMarkerColor(marker);context.fillRect(x,0,2,Math.min(8,height));
     }
   };
 
@@ -681,6 +687,20 @@ export function createTimelineShell(): TimelineShellController {
   };
 
   progress.addEventListener('pointerdown', (event) => beginCursorDrag(event, progress, progress));
+  const continuityNotice=document.createElement('div');
+  continuityNotice.className='timeline-integrity-detail';continuityNotice.hidden=true;
+  continuityNotice.setAttribute('role','status');
+  const continuityText=document.createElement('span'),continuityClose=document.createElement('button');
+  continuityClose.type='button';continuityClose.textContent='Close source evidence';
+  continuityClose.addEventListener('click',()=>{continuityNotice.hidden=true;});
+  continuityNotice.append(continuityText,continuityClose);timeline.append(continuityNotice);
+  overview.addEventListener('click',event=>{
+    const rect=overview.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+    if(y>12 || fullEndMs<=fullStartMs)return;
+    const markers=sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,rect.width);
+    const hit=markers.find(m=>Math.abs((m.timeMs-fullStartMs)/(fullEndMs-fullStartMs)*rect.width-x)<=6);
+    if(hit){continuityText.textContent=markerExplanation(hit);continuityNotice.hidden=false;}
+  });
   overview.addEventListener('pointerdown', (event) => beginCursorDrag(event, overview, overview));
   overviewCursor.addEventListener('pointerdown', (event) => beginCursorDrag(event, overviewCursor, overview));
   focusWindow.addEventListener('pointerdown', beginViewportDrag);
@@ -944,7 +964,7 @@ export function createTimelineShell(): TimelineShellController {
     setTimeRange,
     extendTimeRange,
     setOverviewContent,
-    setSourceIntegrity:(next)=>{if(integrityMarkers===next)return;integrityMarkers=next;renderOverview();},
+    setSourceIntegrity:(next)=>{if(integrityMarkers===next)return;integrityMarkers=next;continuityNotice.hidden=true;renderOverview();},
     refreshOverview: renderOverview,
     refreshValidity: () => {
       precomputedEnvelopeBlocksEnabled = false;

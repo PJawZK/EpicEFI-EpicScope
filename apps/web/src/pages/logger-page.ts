@@ -1,3 +1,4 @@
+import {projectChannelUnavailable} from '../../../../core/parsers/mlg/mlg-continuity';
 import { sourceIntegrityMarkersFromDiagnostics, type SourceIntegrityMarker } from '../app/source-integrity-markers';
 import { createOwnerEvidence } from '../observability/producers/owner';
 import type { ObservabilityRecorder } from '../observability/recorder';
@@ -549,10 +550,14 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
   let integrityDisposed = false;
   let integrityDiagnostics: readonly ParserDiagnostic[] | undefined;
   let integrityMarkers: readonly SourceIntegrityMarker[] = [];
+  const availabilityDiagnostics=new Map<string,readonly ParserDiagnostic[]>();
+  let combinedIntegrityDiagnostics:readonly ParserDiagnostic[]=[];
   const publishDiagnostics = (value: readonly ParserDiagnostic[], expectedSource?: LogSourceIdentity): void => {
     if (integrityDisposed || (expectedSource !== undefined && expectedSource !== integritySource)) return;
     if (value !== integrityDiagnostics) {
       integrityDiagnostics = value;
+      availabilityDiagnostics.clear();
+      combinedIntegrityDiagnostics=value;
       integrityMarkers = sourceIntegrityMarkersFromDiagnostics(value);
     }
     if (channelDataSource) {
@@ -560,7 +565,22 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     }
     timeline.setSourceIntegrity(integrityMarkers);
     parserContext = { ...parserContext, sourceRevision: analysisDataRevision };
-    diagnostics.setDiagnostics(value);
+    diagnostics.setDiagnostics(combinedIntegrityDiagnostics);
+    collectAvailability();
+  };
+  const collectAvailability=():void=>{
+    if(integritySource?.format!=='MLG' || !integrityDiagnostics || !channelDataSource || integrityDiagnostics.some(d=>d.code==='mlg-crc-validation-pending'||d.code==='mlg-crc-validation-failed'))return;
+    let changed=false;
+    for(const runtime of paneRuntimes) for(const trace of runtime.graph.getOverviewTraces()){
+      if(availabilityDiagnostics.has(trace.channelId)||trace.range.startSampleIndex!==0||trace.range.values.length!==channelDataSource.sampleCount)continue;
+      const events=projectChannelUnavailable(trace.range,trace.channelId,trace.channelName);
+      availabilityDiagnostics.set(trace.channelId,events);changed ||= events.length>0;
+    }
+    if(!changed)return;
+    combinedIntegrityDiagnostics=[...integrityDiagnostics,...[...availabilityDiagnostics.values()].flat()];
+    integrityMarkers=sourceIntegrityMarkersFromDiagnostics(combinedIntegrityDiagnostics);
+    for(const runtime of paneRuntimes)runtime.graph.setSourceIntegrity(channelDataSource,integrityMarkers);
+    timeline.setSourceIntegrity(integrityMarkers);diagnostics.setDiagnostics(combinedIntegrityDiagnostics);
   };
   let logMarkers: readonly LogMarker[] = [];
   let channelPerformanceListener: ((performance: LoggerChannelPerformance) => void) | undefined;
@@ -1694,6 +1714,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
 
     const activationAwaitStarted = now();
     await Promise.all(loads);
+    collectAvailability();
     const activationAwaitMs = now() - activationAwaitStarted;
     const activationMs = now() - activationStarted;
     if (generation !== workspaceGeneration || activeWorkspaceId !== target.id) return;
@@ -1915,6 +1936,7 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
         runtime.activeChannelIds.clear();
         return;
       }
+      collectAvailability();
       window.setTimeout(() => reconcileAssignedPaneChannels(runtime), 0);
     });
 
@@ -2158,6 +2180,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
     const now = (): number => globalThis.performance?.now() ?? Date.now();
     const totalStarted = now();
     const workspaceStarted = now();
+    availabilityDiagnostics.clear();
+    integrityDiagnostics=undefined;
     integritySource = summary.source;
     analysisSourceTimeRange = summary.timeRange ? { ...summary.timeRange } : undefined;
     workspaceGeneration += 1;
@@ -2618,6 +2642,8 @@ export function createLoggerPage(parserEvidence?: { readonly recorder: Observabi
       for (const runtime of paneRuntimes) runtime.graph.dismissSourceIntegrityNotice(target);
     },
     disposeSourceIntegrity: () => {
+      availabilityDiagnostics.clear();
+      combinedIntegrityDiagnostics=[];
       integrityDisposed = true;
       integritySource = undefined;
       integrityDiagnostics = undefined;

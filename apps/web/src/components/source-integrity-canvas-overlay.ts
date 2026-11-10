@@ -1,4 +1,4 @@
-import {sourceIntegrityDisplayClusters} from '../app/source-integrity-markers';
+import {sourceIntegrityDisplayClusters,sourceIntegrityMarkerColor} from '../app/source-integrity-markers';
 import { createOrderedBridgeLookup } from './source-integrity-bridges';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { SourceIntegrityMarker } from '../app/source-integrity-markers';
@@ -9,6 +9,7 @@ const ICON_RADIUS_PX = 8;
 const BRIDGE_DASH = [3, 4] as const;
 
 export interface SourceIntegrityOverlayTrace {
+  readonly channelId?:string;
   readonly range: NumericChannelRange;
   readonly color: string;
   readonly valueMin: number;
@@ -53,7 +54,7 @@ function formatElapsedTime(timeMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
 }
 
-function markerExplanation(marker: SourceIntegrityMarker): string {
+export function markerExplanation(marker: SourceIntegrityMarker): string {
   const at = formatElapsedTime(marker.timeMs);
 
   if(marker.clusteredEventCount!==undefined)return `Source integrity at ${at}: ${marker.message} Pixel clustering does not establish a shared cause.`;
@@ -62,8 +63,9 @@ function markerExplanation(marker: SourceIntegrityMarker): string {
     return `Imported log data issue at ${at} · ${count}. A dotted bridge, when shown, spans untrusted measurements, not a proven loss duration. Source diagnostic: ${marker.message}`;
   }
   if (marker.kind === 'timestamp-gap') {
-    return `Imported log data issue at ${at} · recording-time discontinuity; cause unknown. This diagnostic does not establish packet loss or an exact missing-record count.`;
+    return `Imported log data issue at ${at} · recording-time discontinuity; cause unknown. This diagnostic does not establish packet loss or an exact missing-record count. ${marker.message}`;
   }
+  if (marker.kind === 'channel-unavailable') return `Channel availability at ${at}: ${marker.message}`;
   if (marker.kind === 'delivery-loss') {
     return `Recorded source data issue at ${at} · delivery loss. The dotted bridge marks the interval where source data is missing.`;
   }
@@ -190,9 +192,10 @@ export function createSourceIntegrityCanvasOverlay(
       for (let index = start; index < visibleMarkers.length; index += 1) {
         const marker = visibleMarkers[index]!;
         if (marker.timeMs > layout.visibleEndMs) break;
-        if (!marker.breaksContinuity) continue;
+        if (!marker.breaksContinuity && marker.kind!=="channel-unavailable") continue;
+        if(marker.kind==="channel-unavailable" && !layout.traces.some(t=>t.channelId===marker.evidence?.channelId))continue;
         const bridges = [];
-        for (const { trace, lookup } of span<=MAX_RENDERED_VIEWPORT_SPAN_MS ? lookups : []) {
+        for (const { trace, lookup } of span<=MAX_RENDERED_VIEWPORT_SPAN_MS && (marker.kind==="corrupt-record" || marker.kind==="delivery-loss") ? lookups : []) {
           const bridge = lookup(marker.timeMs);
           if (bridge) bridges.push({ trace, bridge });
         }
@@ -226,10 +229,10 @@ export function createSourceIntegrityCanvasOverlay(
 
         const markerY = Math.min(
           layout.height - layout.inset - ICON_RADIUS_PX,
-          Math.max(layout.inset + ICON_RADIUS_PX, layout.height / 2),
+          Math.max(layout.inset + ICON_RADIUS_PX, layout.height / 2 + (marker.kind==='timestamp-gap'?-22:marker.kind==='channel-unavailable'?22:0)),
         );
         context.fillStyle = 'rgba(22, 28, 33, 0.96)';
-        context.strokeStyle = marker.kind==='corrupt-record'?'rgba(239, 108, 117, 0.98)':'rgba(234,185,91,.98)';
+        context.strokeStyle = sourceIntegrityMarkerColor(marker);
         context.lineWidth = 1.5;
         context.beginPath();
         context.arc(markerX, markerY, ICON_RADIUS_PX, 0, Math.PI * 2);
@@ -237,7 +240,7 @@ export function createSourceIntegrityCanvasOverlay(
         context.stroke();
 
         context.fillStyle = 'rgba(255, 221, 224, 0.98)';
-        context.fillText('!', markerX, markerY + 0.5);
+        context.fillText(marker.kind==='channel-unavailable'?'i':'!', markerX, markerY + 0.5);
         nextTargets.push({ x: markerX, y: markerY, marker });
       }
 

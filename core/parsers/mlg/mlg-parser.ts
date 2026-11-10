@@ -1,3 +1,4 @@
+import { projectMlgContinuityDiagnostics } from './mlg-continuity';
 import { getTimeQueryIndex } from '../../log-model/time-query-index';
 import type {
   ImportedLogSummary,
@@ -78,11 +79,11 @@ export async function parseMlg(
     headerResult.fields,
     scanResult.records,
   );
-  const diagnostics = annotateMlgSourceIntegrityDiagnostics(
+  const diagnostics = projectMlgContinuityDiagnostics(scanResult.records, annotateMlgSourceIntegrityDiagnostics(
     scanResult.records,
     scanResult.diagnostics,
     headerResult.header.recordLength,
-  );
+  ), headerResult.header.recordLength);
   const finalizeMs = now() - finalizeStart;
 
   return {

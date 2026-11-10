@@ -1,3 +1,4 @@
+import { projectMlgContinuityDiagnostics } from '../../../../core/parsers/mlg/mlg-continuity';
 import { MlgFormatError, isMlgFormatErrorCode } from '../../../../core/parsers/mlg/mlg-errors';
 import { MlgNumericChannelDataSource } from '../../../../core/parsers/mlg/mlg-channel-data';
 import { annotateMlgSourceIntegrityDiagnostics } from '../../../../core/parsers/mlg/mlg-integrity';
@@ -114,11 +115,11 @@ export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPri
       validationSettled = true;
       resolveValidated({
         ...message.payload,
-        diagnostics: annotateMlgSourceIntegrityDiagnostics(
+        diagnostics: projectMlgContinuityDiagnostics(indexedPayload.recordIndex, annotateMlgSourceIntegrityDiagnostics(
           indexedPayload.recordIndex,
           message.payload.diagnostics,
           indexedPayload.header.recordLength,
-        ),
+        ), indexedPayload.header.recordLength),
       });
       terminate();
       return;

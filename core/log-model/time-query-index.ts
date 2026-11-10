@@ -54,6 +54,14 @@ export class TimeQueryIndex {
     const spans:TimeSpan[]=[];
     this.runs.forEach((r,run)=>{if(this.times[r.end-1]!<lo||this.times[r.start]!>hi)return;let start=this.bound(lo,r.start,r.end),end=this.bound(hi,r.start,r.end,true);if(neighbors){start=Math.max(r.start,start-1);end=Math.min(r.end,end+1);}if(start<end)spans.push({start,end,run});});return spans;
   }
+  /** Membership count without allocating/copying selected indices. Used for source
+   * continuity evidence, never as authorization for time-ordered calculations. */
+  count(startMs:number,endMs:number,strict=false):number {
+    const lo=Math.min(startMs,endMs),hi=Math.max(startMs,endMs);
+    if(Number.isNaN(lo)||Number.isNaN(hi))throw new RangeError('Invalid time query');
+    if(this.permutation)return Math.max(0,this.orderBound(hi,!strict)-this.orderBound(lo,strict));
+    let count=0;for(const r of this.runs)count+=Math.max(0,this.bound(hi,r.start,r.end,!strict)-this.bound(lo,r.start,r.end,strict));return count;
+  }
   cover(startMs:number,endMs:number,neighbors=false):{startSampleIndex:number;sampleCount:number} {
     const spans=this.spans(startMs,endMs,neighbors);if(!spans.length)return {startSampleIndex:0,sampleCount:0};let start=Infinity,end=0;for(const s of spans){start=Math.min(start,s.start);end=Math.max(end,s.end);}return {startSampleIndex:start,sampleCount:end-start};
   }
