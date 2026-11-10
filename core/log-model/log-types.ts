@@ -24,6 +24,7 @@ export type SourceIntegrityKind =
   | 'recovered-retry'
   | 'corrupt-record'
   | 'timestamp-gap'
+  | 'cadence-observation'
   | 'delivery-loss'
   | 'channel-unavailable';
 

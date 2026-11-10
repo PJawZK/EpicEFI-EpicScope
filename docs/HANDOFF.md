@@ -8,6 +8,10 @@ Updated 2026-11-10 (development continuation added; production baseline below re
 
 Documentation-only maintenance must not alter application source, package dependencies, build/deploy workflows, tests, data, storage, parsing or ECU behavior. Keep known gaps as evidence/policy questions, not unverified bug claims. Historic branches and checkpoint instructions are not continuation authority.
 
+## Active independent timestamp/false-positive audit — 2026-11-10
+
+The [independent follow-up](MLG_TIMESTAMP_FALSE_POSITIVE_AUDIT_2026-11-10.md) supersedes treating heuristic cadence candidates as graphical source-discontinuity warnings. All three full recordings received raw header/payload-checksum and counter/retry checks, plus 9,000 event-neighborhood rendering/membership cases. Committed compressed ledgers preserve baseline findings. Clock reconstruction remains ambiguous: no independent reader/specification authority was available, and timestamps were not rewritten. The targeted correction retains cadence candidates as informational Diagnostics observations at the existing source owner; CRC/clock markers, numerical analysis and rendering are preserved. Latest CHDL presentation remains unaccepted; stop for manual review, no main merge. See the report for evidence-dependency limits and pending established-reader comparison.
+
 ## Active CHDL Logger gap — 2026-11-10
 
 The [CHDL gap checkpoint](CHDL_LOGGER_GAP_CHECKPOINT.md) continues from `0f040a84cdf88b115bbe72d4442de372ac7bb12b`. The complete 69,566-record upload reproduces a false raw-rendering break after the canonical 49→50 clock regression. Rendering now uses preceding source-run cadence only. Canonical timestamps, finite RPM/MAP/TPS/CLT observations, source-index membership and CRC/retry behavior remain unchanged. One post-CRC source projection supplies amber clock/spacing evidence; existing red integrity remains separate; already-loaded CRC-valid channel NaN runs can receive blue channel-specific information. See the checkpoint for raw clock-wrap ambiguity, physical source evidence, validation and manual acceptance. No merge; Idle work remains paused.

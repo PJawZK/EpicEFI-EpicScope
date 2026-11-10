@@ -62,3 +62,11 @@ it('incremental source cadence matches random access across duplicates, nonfinit
  const times=Float64Array.from({length:1000},(_,i)=>i===200?NaN:i>600?i-400:i<300?i*100:i*10),next=createTimeCadenceCursor(times);
  for(let i=1;i<times.length;i++)expect(next(i)).toEqual(precedingTimeCadence(times,i));
 });
+
+it('retains a heuristic spacing observation without promoting it to a graphical source-discontinuity warning',()=>{
+ const events=projectMlgContinuityDiagnostics(indexed([0,10,20,30,40,50,60,70,80,90,300]),[],4);
+ const event=events.find(d=>d.code==='mlg-source-time-spacing');
+ expect(event).toMatchObject({severity:'info',sourceIntegrity:{kind:'cadence-observation',breaksContinuity:false,evidence:{classification:'cadence-outlier',deltaMs:210}}});
+ expect(sourceIntegrityMarkersFromDiagnostics(events)).toHaveLength(1);
+ expect(sourceIntegrityDisplayClusters(sourceIntegrityMarkersFromDiagnostics(events),0,400,800)).toEqual([]);
+});

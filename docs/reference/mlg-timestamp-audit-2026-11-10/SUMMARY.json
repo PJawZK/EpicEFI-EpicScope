@@ -1,0 +1,38 @@
+[
+  {
+    "source": "chdl",
+    "records": 69566,
+    "crcMismatches": 10,
+    "recovered": 9,
+    "unrecovered": 1,
+    "canonicalRegressions": 18,
+    "spacingCandidates": 8,
+    "renderCases": 380,
+    "canonicalEndMs": 769102.13,
+    "allFallingWrapEndCandidateMs": 780898.61
+  },
+  {
+    "source": "oct25",
+    "records": 159022,
+    "crcMismatches": 729,
+    "recovered": 701,
+    "unrecovered": 28,
+    "canonicalRegressions": 3,
+    "spacingCandidates": 31,
+    "renderCases": 6592,
+    "canonicalEndMs": 2272475.84,
+    "allFallingWrapEndCandidateMs": 2274441.92
+  },
+  {
+    "source": "nov01",
+    "records": 93759,
+    "crcMismatches": 243,
+    "recovered": 240,
+    "unrecovered": 3,
+    "canonicalRegressions": 0,
+    "spacingCandidates": 6,
+    "renderCases": 2028,
+    "canonicalEndMs": 1449624.35,
+    "allFallingWrapEndCandidateMs": 1449624.35
+  }
+]

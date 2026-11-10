@@ -22,7 +22,7 @@ export function projectMlgContinuityDiagnostics(index:MlgRecordIndex,diagnostics
   const regression=b<a;if(!regression&&!(cadence.medianMs!==undefined&&b-a>Math.max(50,5*cadence.medianMs)))continue;
   const interiorRecords=query.count(a,b,true);
   const e=evidence(i-1,i,regression?'clock-regression':'cadence-outlier',{interiorRecords});
-  events.push({code:regression?'mlg-source-time-regression':'mlg-source-time-spacing',severity:'warning',recoverable:true,timeMs:regression?a:b,offset:index.offsets[i]!,sourceIntegrity:{kind:'timestamp-gap',breaksContinuity:true,evidence:e},message:continuityEvidenceText(e)});
+  events.push({code:regression?'mlg-source-time-regression':'mlg-source-time-spacing',severity:regression?'warning':'info',recoverable:true,timeMs:regression?a:b,offset:index.offsets[i]!,sourceIntegrity:{kind:regression?'timestamp-gap':'cadence-observation',breaksContinuity:regression,evidence:e},message:continuityEvidenceText(e)});
  }
  const decorated=diagnostics.map(d=>{
   if(d.code!=='mlg-crc-mismatch'||!d.sourceIntegrity||d.offset===undefined)return d;
