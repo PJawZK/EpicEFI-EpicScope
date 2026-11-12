@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../log-model/time-query-index';
 import { veAnalysisAxisIssue } from './ve-axis-validation';
 import { VE_ANALYSIS_BATCH_SIZE, finishVeAnalysis, sortVeAnalysisValues, type VeAnalysisSteps } from './ve-analysis-work';
 import type { NumericChannelRange } from '../log-model/log-types';
@@ -15,6 +16,9 @@ export interface VeTableGeometry {
 
 export interface VeEvidenceInputs {
   readonly actualMixture: NumericChannelRange;
+  /** Original observation-clock geometry before delay alignment, with the same
+   * array origin/length. A derived engine clock must not hide source boundaries. */
+  readonly originalObservationTimeMs?: Float64Array;
   readonly rpm: NumericChannelRange;
   readonly load: NumericChannelRange;
   readonly target: VeTableGeometry;
@@ -100,28 +104,17 @@ function value(range: NumericChannelRange, sampleIndex: number): { value: number
   return { value: result, timeMs };
 }
 
-export function interpolateNumericRangeAtTime(range: NumericChannelRange, timeMs: number): number | undefined {
-  if (!Number.isFinite(timeMs) || range.timeMs.length === 0) return undefined;
-  const first = range.timeMs[0];
-  const last = range.timeMs[range.timeMs.length - 1];
-  if (first === undefined || last === undefined || timeMs < first || timeMs > last) return undefined;
-  let low = 0;
-  let high = range.timeMs.length - 1;
-  while (high - low > 1) {
-    const mid = (low + high) >>> 1;
-    if (timeMs < range.timeMs[mid]!) high = mid;
-    else low = mid;
-  }
-  if (range.timeMs[low] === timeMs) return range.validity[low] === 1 && Number.isFinite(range.values[low]) ? range.values[low] : undefined;
-  if (range.timeMs[high] === timeMs) return range.validity[high] === 1 && Number.isFinite(range.values[high]) ? range.values[high] : undefined;
-  if (range.validity[low] !== 1 || range.validity[high] !== 1) return undefined;
-  const lowTime = range.timeMs[low]!;
-  const highTime = range.timeMs[high]!;
-  const lowValue = range.values[low]!;
-  const highValue = range.values[high]!;
-  if (!(highTime > lowTime) || !Number.isFinite(lowValue) || !Number.isFinite(highValue)) return undefined;
-  const fraction = (timeMs - lowTime) / (highTime - lowTime);
-  return lowValue + (highValue - lowValue) * fraction;
+/** Delay lookup stays inside the original observation's run. Ambiguous histories
+ * without an original-index anchor are not temporal interpolation authority. */
+export function interpolateNumericRangeAtTime(range: NumericChannelRange, timeMs: number, sourceSampleIndex?: number): number | undefined {
+  const bracket = getTimeQueryIndex(range.timeMs).bracket(timeMs, sourceSampleIndex === undefined ? undefined : sourceSampleIndex - range.startSampleIndex);
+  if (!bracket) return undefined;
+  const [low, high] = bracket;
+  if (range.validity[low] !== 1 || range.validity[high] !== 1 || !Number.isFinite(range.values[low]) || !Number.isFinite(range.values[high])) return undefined;
+  if (low === high) return range.values[low];
+  const lowTime = range.timeMs[low]!, highTime = range.timeMs[high]!;
+  if (!(highTime > lowTime)) return undefined;
+  return range.values[low]! + (range.values[high]! - range.values[low]!) * (timeMs - lowTime) / (highTime - lowTime);
 }
 
 function axisBracket(value: number, bins: readonly number[]): { low: number; high: number; fraction: number } | undefined {
@@ -235,6 +228,8 @@ export function buildVeEvidenceMap(inputs: VeEvidenceInputs, config: VeEvidenceC
 }
 
 export function* buildVeEvidenceMapSteps(inputs: VeEvidenceInputs, config: VeEvidenceConfig = {}, cooperative = false): VeAnalysisSteps<VeEvidenceMapResult> {
+  if (inputs.originalObservationTimeMs && inputs.originalObservationTimeMs.length !== inputs.actualMixture.timeMs.length) throw new RangeError('Original observation clock must match the aligned array geometry.');
+  const observationTimeIndex = getTimeQueryIndex(inputs.originalObservationTimeMs ?? inputs.actualMixture.timeMs);
   for (const [name, axis] of [['VE RPM', inputs.veRpmBins], ['VE load', inputs.veLoadBins], ['Target RPM', inputs.target.rpmBins], ['Target load', inputs.target.loadBins]] as const) {
     const issue = veAnalysisAxisIssue(axis);
     if (issue) throw new RangeError(`${name}: ${issue}`);
@@ -292,8 +287,8 @@ export function* buildVeEvidenceMapSteps(inputs: VeEvidenceInputs, config: VeEvi
     const actual = value(inputs.actualMixture, sampleIndex);
     if (!actual || !(actual.value > 0)) { yield* finish(); invalidSampleCount += 1; continue; }
     const engineTimeMs = actual.timeMs - delayMs;
-    const rpmValue = delayMs === 0 ? value(inputs.rpm, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs);
-    const loadValue = delayMs === 0 ? value(inputs.load, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.load, engineTimeMs);
+    const rpmValue = delayMs === 0 ? value(inputs.rpm, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs, sampleIndex);
+    const loadValue = delayMs === 0 ? value(inputs.load, sampleIndex)?.value : interpolateNumericRangeAtTime(inputs.load, engineTimeMs, sampleIndex);
     if (rpmValue === undefined || loadValue === undefined) { yield* finish(); delayUnavailableSampleCount += 1; continue; }
     if (rpmValue < minRpm || rpmValue > maxRpm || loadValue < minLoad || loadValue > maxLoad) { yield* finish(); rangeRejectedSampleCount += 1; continue; }
     const target = interpolateVeTable(inputs.target, rpmValue, loadValue);
@@ -303,7 +298,7 @@ export function* buildVeEvidenceMapSteps(inputs: VeEvidenceInputs, config: VeEvi
     if (compensateFuelCorrection) {
       const correctionPercent = delayMs === 0
         ? value(inputs.fuelCorrectionPercent!, sampleIndex)?.value
-        : interpolateNumericRangeAtTime(inputs.fuelCorrectionPercent!, engineTimeMs);
+        : interpolateNumericRangeAtTime(inputs.fuelCorrectionPercent!, engineTimeMs, sampleIndex);
       if (correctionPercent === undefined) { yield* finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
       fuelCorrectionFactor = 1 + correctionPercent / 100;
       if (!(fuelCorrectionFactor > 0) || !Number.isFinite(fuelCorrectionFactor)) { yield* finish(); fuelCorrectionUnavailableSampleCount += 1; continue; }
@@ -312,7 +307,9 @@ export function* buildVeEvidenceMapSteps(inputs: VeEvidenceInputs, config: VeEvi
 
     const current: Sample = { sampleIndex, timeMs: engineTimeMs, actual: actual.value, rpm: rpmValue, load: loadValue, target, fuelCorrectionFactor };
     aligned.push(current);
-    if (position === 0 || sampleIndex !== indices[position - 1]! + 1 || (segment.length && !(current.timeMs > segment[segment.length - 1]!.timeMs))) yield* finish();
+    if (position === 0 || sampleIndex !== indices[position - 1]! + 1
+      || observationTimeIndex.runAt(sampleIndex - inputs.actualMixture.startSampleIndex) !== observationTimeIndex.runAt(indices[position - 1]! - inputs.actualMixture.startSampleIndex)
+      || (segment.length && !(current.timeMs > segment[segment.length - 1]!.timeMs))) yield* finish();
     segment.push(current);
   }
   yield* finish();

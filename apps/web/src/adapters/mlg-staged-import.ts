@@ -1,7 +1,8 @@
+import { projectMlgContinuityDiagnostics } from '../../../../core/parsers/mlg/mlg-continuity';
 import { MlgFormatError, isMlgFormatErrorCode } from '../../../../core/parsers/mlg/mlg-errors';
 import { MlgNumericChannelDataSource } from '../../../../core/parsers/mlg/mlg-channel-data';
 import { annotateMlgSourceIntegrityDiagnostics } from '../../../../core/parsers/mlg/mlg-integrity';
-import type { NumericChannelDataSource } from '../../../../core/log-model/log-types';
+import type { LogSourceIdentity, NumericChannelDataSource } from '../../../../core/log-model/log-types';
 import { BlobByteSource } from './blob-byte-source';
 import { MlgColumnSidecarDataSource } from './mlg-column-sidecar';
 import { createPersistentColumnCacheDataSource } from './persistent-channel-cache';
@@ -29,7 +30,7 @@ export function supportsStagedMlgWorker(): boolean {
   return typeof Worker !== 'undefined';
 }
 
-export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPriorityCaptureSelector[] = []): StagedMlgImportHandle {
+export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPriorityCaptureSelector[] = [], sourceIdentity?: LogSourceIdentity): StagedMlgImportHandle {
   const worker = new Worker(
     new URL('../workers/mlg-import.worker.ts', import.meta.url),
     { type: 'module' },
@@ -114,11 +115,11 @@ export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPri
       validationSettled = true;
       resolveValidated({
         ...message.payload,
-        diagnostics: annotateMlgSourceIntegrityDiagnostics(
+        diagnostics: projectMlgContinuityDiagnostics(indexedPayload.recordIndex, annotateMlgSourceIntegrityDiagnostics(
           indexedPayload.recordIndex,
           message.payload.diagnostics,
           indexedPayload.header.recordLength,
-        ),
+        ), indexedPayload.header.recordLength),
       });
       terminate();
       return;
@@ -157,7 +158,7 @@ export function importMlgFileStaged(file: File, priorityCapture: readonly MlgPri
   worker.postMessage({
     type: 'import',
     file,
-    sourceIdentity: {
+    sourceIdentity: sourceIdentity ?? {
       id: `file:${file.name}:${file.size}:${file.lastModified}`,
       displayName: file.name,
       format: 'MLG',

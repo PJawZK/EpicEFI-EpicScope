@@ -82,8 +82,9 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
       continue;
     }
 
-    const observedRpm = interpolateNumericRangeAtTime(inputs.rpm, mixtureTimeMs);
-    const observedLoad = interpolateNumericRangeAtTime(inputs.load, mixtureTimeMs);
+    const sourceIndex = inputs.actualMixture.startSampleIndex + local;
+    const observedRpm = interpolateNumericRangeAtTime(inputs.rpm, mixtureTimeMs, sourceIndex);
+    const observedLoad = interpolateNumericRangeAtTime(inputs.load, mixtureTimeMs, sourceIndex);
     if (observedRpm === undefined || observedLoad === undefined) {
       unavailable(local);
       continue;
@@ -96,8 +97,8 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
     }
 
     let engineTimeMs = mixtureTimeMs - delayMs;
-    let rpm = interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs);
-    let load = interpolateNumericRangeAtTime(inputs.load, engineTimeMs);
+    let rpm = interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs, sourceIndex);
+    let load = interpolateNumericRangeAtTime(inputs.load, engineTimeMs, sourceIndex);
     if (rpm === undefined || load === undefined) {
       unavailable(local);
       continue;
@@ -112,8 +113,8 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
     if (Math.abs(refinedDelayMs - delayMs) > 0.5) {
       delayMs = refinedDelayMs;
       engineTimeMs = mixtureTimeMs - delayMs;
-      rpm = interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs);
-      load = interpolateNumericRangeAtTime(inputs.load, engineTimeMs);
+      rpm = interpolateNumericRangeAtTime(inputs.rpm, engineTimeMs, sourceIndex);
+      load = interpolateNumericRangeAtTime(inputs.load, engineTimeMs, sourceIndex);
       if (rpm === undefined || load === undefined) {
         unavailable(local);
         continue;
@@ -134,7 +135,7 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
     loadValidity[local] = 1;
 
     if (inputs.fuelCorrectionPercent && correctionValues && correctionValidity) {
-      const correction = interpolateNumericRangeAtTime(inputs.fuelCorrectionPercent, engineTimeMs);
+      const correction = interpolateNumericRangeAtTime(inputs.fuelCorrectionPercent, engineTimeMs, sourceIndex);
       if (correction !== undefined) {
         correctionValues[local] = correction;
         correctionValidity[local] = 1;
@@ -165,6 +166,7 @@ function* buildVeDelayAlignedEvidenceSteps(inputs: VeDelayAlignedEvidenceInputs,
 
   const base = yield* buildVeEvidenceMapSteps({
     actualMixture,
+    originalObservationTimeMs: inputs.actualMixture.timeMs,
     rpm,
     load,
     target: inputs.target,

@@ -1,3 +1,4 @@
+import { normalizeIdleIgnitionUnit, type IdleIgnitionRole } from '../../../../core/analysis/idle-ignition';
 import type { ChannelDefinition } from '../../../../core/log-model/log-types';
 
 export type AnalyzerRoleDomain =
@@ -128,35 +129,39 @@ export function updateVeActualMixtureOptions(control: HTMLSelectElement, channel
 // Suggestions are deliberately best-effort only: the UI always leaves the mapping visible and user-overridable.
 // Canonical runtime channels are preferred where EpicEFI has an established name; fuzzy matching is fallback only.
 const RULES: Readonly<Record<string, RoleRule>> = {
-  'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i] },
-  'idle:target': { exact: ['ini:idleTarget', 'idleTarget'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i] },
+  'idle:coolant': { exact: ['ini:coolant', 'coolant', 'CLT', 'Coolant temperature'], include: [/coolant/i, /^clt$/i], exclude: [/intake|aux|mcu|target|error|limit|correction/i] },
+  'idle:pedal': { exact: ['ini:throttlePedalPosition', 'throttlePedalPosition', 'Accelerator pedal position'], include: [/pedal.*position/i, /accelerator.*pedal/i], exclude: [/brake|intent|target|adc|voltage|raw|switch|status|error|limit/i] },
+  'idle:physicalTps': { exact: ['ini:TPSValue', 'TPSValue', 'TPS', 'Throttle position'], include: [/^tps(value)?$/i, /throttle.*position/i], exclude: [/pedal|intent|target|request|command|base|final|correction|idle|adc|voltage|raw|switch|status|error|limit/i] },
+  'idle:rpm': { exact: ['ini:RPMValue', 'RPMValue', 'RPM', 'Engine RPM'], include: [/^rpm(value)?$/i, /(^|\b)rpm(\b|$)/i], exclude: [/target|error|drop|delta|diag|limit/i] },
+  'idle:target': { exact: ['ini:idleTarget', 'idleTarget', 'Idle: Target RPM'], include: [/idle.*target/i, /target.*idle/i, /idle.*rpm.*target/i], exclude: [/base|error|stepper|position/i] },
 
   // Outer idle RPM controller. These values decide the requested idle-air position.
-  'idle:basePosition': { exact: ['ini:baseIdlePosition', 'baseIdlePosition'], include: [/base.*idle.*position/i, /idle.*base.*value/i] },
-  'idle:closedLoop': { exact: ['ini:idleClosedLoop', 'idleClosedLoop'], include: [/idle.*closed.*loop/i], exclude: [/active/i, /state/i] },
-  'idle:finalPosition': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/current.*idle.*position/i, /idle.*final.*position/i] },
+  'idle:basePosition': { exact: ['ini:baseIdlePosition', 'baseIdlePosition', 'idle: base value'], include: [/base.*idle.*position/i, /idle.*base.*value/i] },
+  'idle:closedLoop': { exact: ['ini:idleClosedLoop', 'idleClosedLoop', 'Closed loop'], include: [/idle.*closed.*loop/i], exclude: [/active/i, /state/i] },
+  'idle:finalPosition': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/current.*idle.*position/i, /idle.*final.*position/i] },
   'idle:p': { exact: ['ini:idleStatus_pTerm', 'idleStatus_pTerm'], include: [/idle.*p.*term/i, /pid.*p.*idle/i, /idle.*proportional/i], exclude: [/dc.*idle.*position/i] },
   'idle:i': { exact: ['ini:idleStatus_iTerm', 'idleStatus_iTerm'], include: [/idle.*i.*term/i, /pid.*i.*idle/i, /idle.*integral/i], exclude: [/dc.*idle.*position/i] },
   'idle:d': { exact: ['ini:idleStatus_dTerm', 'idleStatus_dTerm'], include: [/idle.*d.*term/i, /pid.*d.*idle/i, /idle.*derivative/i], exclude: [/dc.*idle.*position/i] },
+  'idle:pidOutput': { exact: ['ini:idleStatus_output', 'idleStatus_output'], include: [/^idle.*pid.*output$/i, /^idleStatus_output$/i], exclude: [/dc|position|applied|closed.?loop/i] },
 
   // Feedback DC idle-valve position controller. The firmware evaluates dcIdleBias* at dcIdleTarget
   // and exposes that runtime bias/feed-forward value through etbFeedForward while in DC_IdleValve mode.
   'idle:dcTarget': { exact: ['ini:dcIdleTarget', 'dcIdleTarget'], include: [/dc.*idle.*target/i, /idle.*valve.*target/i] },
-  'idle:dcPosition': { exact: ['ini:IdlePosition', 'IdlePosition'], include: [/idle.*position/i, /dc.*idle.*position/i], exclude: [/target/i, /status/i, /term/i] },
-  'idle:dcBiasOutput': { exact: ['ini:etbFeedForward', 'etbFeedForward'], include: [/etb.*feed.?forward/i, /dc.*idle.*bias/i, /idle.*bias.*(output|value)/i], exclude: [/curve/i, /table/i, /axis/i, /bin/i] },
+  'idle:dcPosition': { exact: ['ini:IdlePosition', 'IdlePosition', 'ini:idlePositionSensor', 'idlePositionSensor'], include: [/idle.*position/i, /dc.*idle.*position/i], exclude: [/target/i, /status/i, /term/i, /current|final|base|request|raw|stepper|closed.?loop/i] },
+  'idle:dcBiasOutput': { exact: ['ini:etbFeedForward', 'etbFeedForward', 'ini:etb1etbFeedForward', 'etb1etbFeedForward'], include: [/etb.*feed.?forward/i, /dc.*idle.*bias/i, /idle.*bias.*(output|value)/i], exclude: [/curve/i, /table/i, /axis/i, /bin/i, /tune|active|failed|phase|score|result|progress|values/i] },
   'idle:dcP': { exact: ['ini:dcIdlePositionStatus_pTerm', 'dcIdlePositionStatus_pTerm'], include: [/dc.*idle.*position.*p.*term/i] },
   'idle:dcI': { exact: ['ini:dcIdlePositionStatus_iTerm', 'dcIdlePositionStatus_iTerm'], include: [/dc.*idle.*position.*i.*term/i] },
   'idle:dcD': { exact: ['ini:dcIdlePositionStatus_dTerm', 'dcIdlePositionStatus_dTerm'], include: [/dc.*idle.*position.*d.*term/i] },
-  'idle:dcOutput': { exact: ['ini:dcIdlePositionStatus_output', 'dcIdlePositionStatus_output'], include: [/dc.*idle.*position.*output/i] },
+  'idle:dcOutput': { exact: ['ini:dcIdleDutyCycle', 'dcIdleDutyCycle', 'DC idle valve H-bridge duty', 'ini:dcIdlePositionStatus_output', 'dcIdlePositionStatus_output'], include: [/dc.*idle.*duty/i, /dc.*idle.*position.*output/i] },
 
   // Generic IAC/stepper/solenoid evidence uses the outer controller's final requested position.
-  'idle:valve': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /current.*idle.*position/i] },
+  'idle:valve': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/idle.*(valve|iac).*duty/i, /(valve|iac).*idle.*duty/i, /current.*idle.*position/i] },
 
   'idle:etbTarget': { exact: ['ini:targetWithIdlePosition', 'targetWithIdlePosition'], include: [/etb.*target.*with.*idle/i, /idle.*etb.*target/i, /etb.*idle.*target/i, /idle.*throttle.*target/i] },
   'idle:etbPosition': { include: [/etb.*position/i, /electronic.*throttle.*position/i, /throttle.*position/i], exclude: [/target/i, /pedal/i] },
-  'idle:etbContribution': { exact: ['ini:currentIdlePosition', 'currentIdlePosition'], include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
-  'idle:ignitionAdvance': { include: [/idle.*ignition.*advance/i, /idle.*spark.*advance/i, /ignition.*advance/i, /spark.*advance/i] },
-  'idle:ignitionCorrection': { include: [/idle.*ignition.*(correction|trim|delta)/i, /idle.*spark.*(correction|trim|delta)/i] },
+  'idle:etbContribution': { exact: ['ini:currentIdlePosition', 'currentIdlePosition', 'Idle: Position'], include: [/idle.*etb.*(output|contribution|correction)/i, /etb.*idle.*(output|contribution|correction)/i] },
+  'idle:ignitionAdvance': { exact:['ini:correctedIgnitionAdvance','correctedIgnitionAdvance','Timing: ignition'], include:[/idle.*ignition.*advance/i,/idle.*spark.*advance/i,/ignition.*advance/i,/spark.*advance/i],exclude:[/base|table|correction|adjust|trim|delta|retard|target|cyl|factor|gain|limit|dwell|cut/i] },
+  'idle:ignitionCorrection': { exact:['ini:timingPidCorrection','timingPidCorrection','Idle: Timing adjustment'],include:[/idle.*ignition.*(correction|trim|delta|adjust)/i,/idle.*spark.*(correction|trim|delta|adjust)/i,/idle.*timing.*(correction|adjust)/i],exclude:[/table|bins|values|factor|gain|offset|limit|target|knock|clt|iat|dfco|launch|blip|total|aggregate/i] },
 
   'ae-map:tps': { include: [/^tps(value)?$/i, /throttle.*position/i, /(^|\b)tps(\b|$)/i] },
   'ae-map:map': { include: [/^map(value)?$/i, /manifold.*pressure/i, /(^|\b)map(\b|$)/i], exclude: [/predict/i, /estimate/i] },
@@ -309,4 +314,70 @@ export function suggestAnalyzerChannel(
     }
   }
   return Number.isFinite(selectedScore) ? selected : undefined;
+}
+
+/** Missing source units may use a verified canonical Idle role, never a fuzzy label or conflicting unit. */
+export function idleRoleUnit(channel: ChannelDefinition, role: 'rpm' | 'target' | 'basePosition' | 'closedLoop' | 'finalPosition' | 'dcTarget' | 'dcPosition' | 'dcOutput'):
+  { readonly unit: 'RPM' | '%'; readonly authority: 'source' | 'canonical-role' } | undefined {
+  if (channel.valueType === 'bitfield') return undefined;
+  const rpm = role === 'rpm' || role === 'target';
+  const identity = channelRoleIdentity(channel);
+  if (identity.unit) return (rpm ? ['rpm', 'rev/min'].includes(identity.unit) : ['%', 'percent'].includes(identity.unit))
+    ? { unit: rpm ? 'RPM' : '%', authority: 'source' } : undefined;
+  // A debug PID output with no engineering unit is not verified H-bridge duty.
+  if(role==='dcOutput' && ['ini:dcIdlePositionStatus_output','dcIdlePositionStatus_output'].some(alias=>identity.exact.includes(alias.toLowerCase()))) return undefined;
+  const exact = RULES[`idle:${role}`]?.exact;
+  if (!exact?.some(alias => identity.exact.includes(alias.toLowerCase()))) return undefined;
+  return { unit: rpm ? 'RPM' : '%', authority: 'canonical-role' };
+}
+
+/** A unitless canonical PID field is a raw number, never inferred position-percent authority. */
+export function idlePidRoleUnit(channel: ChannelDefinition, role: 'p' | 'i' | 'd' | 'pidOutput'):
+  { readonly unit: 'pp' | 'raw'; readonly authority: 'source' | 'unspecified' } | undefined {
+  if (channel.valueType === 'bitfield') return undefined;
+  const identity=channelRoleIdentity(channel);
+  if (identity.unit) return ['%', 'percent', 'pp', 'percentage points'].includes(identity.unit) ? {unit:'pp',authority:'source'} : undefined;
+  return RULES[`idle:${role}`]?.exact?.some(alias=>identity.exact.includes(alias.toLowerCase())) ? {unit:'raw',authority:'unspecified'} : undefined;
+}
+
+/** Inner position-loop effort is not valve travel or outer RPM correction. Generic
+ * feed-forward retains unverified actuator assignment; missing units remain raw. */
+export function idlePositionPidRoleUnit(channel: ChannelDefinition, role: 'dcBiasOutput'|'dcP'|'dcI'|'dcD'):
+  {readonly unit:'%'|'pp'|'raw';readonly authority:'source'|'unspecified'}|undefined {
+  if(channel.valueType==='bitfield')return undefined;
+  const identity=channelRoleIdentity(channel);
+  if(identity.unit)return ['%','percent'].includes(identity.unit)?{unit:'%',authority:'source'}:['pp','percentage points'].includes(identity.unit)?{unit:'pp',authority:'source'}:undefined;
+  return RULES[`idle:${role}`]?.exact?.some(alias=>identity.exact.includes(alias.toLowerCase()))?{unit:'raw',authority:'unspecified'}:undefined;
+}
+
+/** Reuse actual-mixture authority; Greek lambda is a unit synonym, not an AFR conversion. */
+export function idleIgnitionRoleUnit(channel:ChannelDefinition,role:IdleIgnitionRole):{readonly unit:'°'|'λ';readonly authority:'source'|'canonical-role'}|undefined{
+  if(channel.valueType==='bitfield')return undefined;
+  const identity=channelRoleIdentity(channel);
+  if(role==='ignitionLambda'&&!isVeActualMixtureChannelEligible(identity.unit==='λ'?{...channel,unit:'lambda'}:channel,'lambda'))return undefined;
+  if(identity.unit){const unit=normalizeIdleIgnitionUnit(identity.unit,role);return unit?{unit,authority:'source'}:undefined;}
+  const exact=role==='ignitionLambda'?['ini:lambdaValue','lambdaValue','ini:realLambdaValue1','realLambdaValue1','ini:smoothedLambdaValue','smoothedLambdaValue','Lambda']:RULES[`idle:${role}`]?.exact;
+  return exact?.some(alias=>identity.exact.includes(alias.toLowerCase()))?{unit:role==='ignitionLambda'?'λ':'°',authority:'canonical-role'}:undefined;
+}
+/** Prefer the existing lambda source owner without changing VE's global unit policies. */
+export function preferredIdleIgnitionLambda(channels:readonly ChannelDefinition[]):ChannelDefinition|undefined{
+  const normalized=channels.map(channel=>channel.unit?.trim().toLowerCase()==='λ'?{...channel,unit:'lambda'}:channel);
+  const chosen=preferredVeActualMixtureChannel(normalized,'lambda');
+  return chosen?channels.find(channel=>channel.id===chosen.id):undefined;
+}
+
+/** Qualification requires declared engineering units and a matching signal identity. */
+export function idleQualificationRoleUnit(channel: ChannelDefinition, role: 'coolant' | 'pedal' | 'physicalTps'):
+  { readonly unit: '°C' | '°F' | '%' } | undefined {
+  if (channel.valueType === 'bitfield') return undefined;
+  const identity = channelRoleIdentity(channel), rule = RULES[`idle:${role}`]!;
+  if (rule.exclude?.some(pattern => pattern.test(identity.normalized))) return undefined;
+  if (!rule.exact?.some(alias => identity.exact.includes(alias.toLowerCase())) && !rule.include.some(pattern => pattern.test(identity.normalized))) return undefined;
+  const unit = identity.unit.replace(/[°\s]/g, '');
+  if (role === 'coolant') {
+    if (['c','degc','celsius'].includes(unit)) return { unit: '°C' };
+    if (['f','degf','fahrenheit'].includes(unit)) return { unit: '°F' };
+    return undefined;
+  }
+  return ['%','percent'].includes(unit) ? { unit: '%' } : undefined;
 }

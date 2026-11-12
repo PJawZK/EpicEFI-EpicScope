@@ -19,6 +19,13 @@ function range(values: readonly number[], validity?: readonly number[], startSam
 }
 
 describe('remaining Phase 4 analyzer cores', () => {
+  it('does not authorize legacy temporal events across selected backward-time runs',()=>{
+    const rpm=range([800,600,600,800]),target=range([800,800,800,800]);
+    rpm.timeMs.set([0,100,50,150]);target.timeMs.set(rpm.timeMs);
+    expect(()=>analyzeIdle({rpm,target})).toThrow(/monotonic source segment/i);
+    expect(analyzeIdle({rpm,target},{includeSagEvents:false}).rpm.validSampleCount).toBe(4);
+    expect(()=>analyzeAeMapPredict({tps:rpm})).toThrow(/monotonic source segment/i);
+  });
   it('Idle reports tracking, PID-related aggregates and sag/recovery events', () => {
     const result = analyzeIdle({
       rpm: range([800, 790, 650, 620, 760, 805]),

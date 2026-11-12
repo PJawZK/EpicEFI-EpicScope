@@ -1,0 +1,292 @@
+{
+  "defaultChannelBreaksPerChannel": 19,
+  "allExplained": true,
+  "remainingBreaks": [
+    {
+      "from": 1,
+      "to": 2,
+      "fromMs": 459.12,
+      "toMs": 217.15,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 217.15
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "fromMs": 217.15,
+      "toMs": 54.67,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 54.67
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "fromMs": 54.67,
+      "toMs": 31.61,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 31.61
+    },
+    {
+      "from": 5,
+      "to": 6,
+      "fromMs": 533.4,
+      "toMs": 352.73,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 352.73
+    },
+    {
+      "from": 6,
+      "to": 7,
+      "fromMs": 352.73,
+      "toMs": 55.5,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 55.5
+    },
+    {
+      "from": 8,
+      "to": 9,
+      "fromMs": 370.23,
+      "toMs": 46.800000000000004,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 46.800000000000004
+    },
+    {
+      "from": 13,
+      "to": 14,
+      "fromMs": 1372.27,
+      "toMs": 1268.22,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 1268.22
+    },
+    {
+      "from": 18,
+      "to": 20,
+      "fromMs": 2598.2200000000003,
+      "toMs": 3171.1,
+      "classification": "CRC exclusion",
+      "canonicalMarkerMs": 2889.53
+    },
+    {
+      "from": 22,
+      "to": 23,
+      "fromMs": 3837.61,
+      "toMs": 3633.42,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 3633.42
+    },
+    {
+      "from": 27,
+      "to": 28,
+      "fromMs": 4932.79,
+      "toMs": 4686.38,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 4686.38
+    },
+    {
+      "from": 29,
+      "to": 30,
+      "fromMs": 5027.04,
+      "toMs": 4701.52,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 4701.52
+    },
+    {
+      "from": 31,
+      "to": 32,
+      "fromMs": 5096.28,
+      "toMs": 4830.21,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 4830.21
+    },
+    {
+      "from": 32,
+      "to": 33,
+      "fromMs": 4830.21,
+      "toMs": 4570.05,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 4570.05
+    },
+    {
+      "from": 34,
+      "to": 35,
+      "fromMs": 4953.41,
+      "toMs": 4723.2300000000005,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 4723.2300000000005
+    },
+    {
+      "from": 38,
+      "to": 39,
+      "fromMs": 5601.07,
+      "toMs": 5273.97,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 5273.97
+    },
+    {
+      "from": 40,
+      "to": 41,
+      "fromMs": 5732.1900000000005,
+      "toMs": 5545.08,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 5545.08
+    },
+    {
+      "from": 41,
+      "to": 42,
+      "fromMs": 5545.08,
+      "toMs": 5359.83,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 5359.83
+    },
+    {
+      "from": 45,
+      "to": 46,
+      "fromMs": 6338.16,
+      "toMs": 6052.02,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 6052.02
+    },
+    {
+      "from": 49,
+      "to": 50,
+      "fromMs": 6857.53,
+      "toMs": 6535.27,
+      "classification": "timestamp ambiguity",
+      "canonicalMarkerMs": 6535.27
+    }
+  ],
+  "allChannels": [
+    {
+      "name": "RPM",
+      "breakCount": 19
+    },
+    {
+      "name": "CLT",
+      "breakCount": 19
+    },
+    {
+      "name": "TPS",
+      "breakCount": 19
+    },
+    {
+      "name": "MAP",
+      "breakCount": 19
+    },
+    {
+      "name": "Time",
+      "breakCount": 19
+    },
+    {
+      "name": "SD: Present",
+      "breakCount": 19
+    },
+    {
+      "name": "SD: Logging",
+      "breakCount": 19
+    },
+    {
+      "name": "triggerScopeReady",
+      "breakCount": 19
+    }
+  ],
+  "removedHeuristicBreaks": [
+    {
+      "from": 408,
+      "to": 409,
+      "fromMs": 14523.28,
+      "toMs": 14583.26
+    },
+    {
+      "from": 5067,
+      "to": 5068,
+      "fromMs": 71027.59,
+      "toMs": 71079.07
+    },
+    {
+      "from": 11933,
+      "to": 11934,
+      "fromMs": 146990.94,
+      "toMs": 147261.38
+    },
+    {
+      "from": 11934,
+      "to": 11935,
+      "fromMs": 147261.38,
+      "toMs": 147486.94
+    },
+    {
+      "from": 11936,
+      "to": 11937,
+      "fromMs": 147502.37,
+      "toMs": 147811.75
+    },
+    {
+      "from": 32375,
+      "to": 32376,
+      "fromMs": 369534.3,
+      "toMs": 369588.61
+    },
+    {
+      "from": 63869,
+      "to": 63870,
+      "fromMs": 707372.16,
+      "toMs": 707451.06
+    },
+    {
+      "from": 67107,
+      "to": 67108,
+      "fromMs": 742459.79,
+      "toMs": 742540.39
+    }
+  ],
+  "focusSourceRecords": [
+    {
+      "index": 408,
+      "offset": 3790538,
+      "timeMs": 14523.28,
+      "rawTick": 18245,
+      "counter": 200,
+      "crcValid": 1,
+      "values": {
+        "RPM": 0,
+        "CLT": 12.679999716579914,
+        "TPS": 4.789999892935157,
+        "MAP": 101.96999772079289,
+        "Time": 27.016000747680664,
+        "SD: Present": 0,
+        "SD: Logging": 0,
+        "triggerScopeReady": 0
+      }
+    },
+    {
+      "index": 409,
+      "offset": 3797403,
+      "timeMs": 14583.26,
+      "rawTick": 24243,
+      "counter": 204,
+      "crcValid": 1,
+      "values": {
+        "RPM": 0,
+        "CLT": 12.679999716579914,
+        "TPS": 4.779999893158674,
+        "MAP": 101.4499977324158,
+        "Time": 27.075000762939453,
+        "SD: Present": 0,
+        "SD: Logging": 0,
+        "triggerScopeReady": 0
+      }
+    }
+  ],
+  "beforeBreaksPerDefaultChannel": 27,
+  "validPointCounts": {
+    "RPM": 69556,
+    "CLT": 69556,
+    "TPS": 69556,
+    "MAP": 69556,
+    "Time": 69556,
+    "SD: Present": 69556,
+    "SD: Logging": 69556,
+    "triggerScopeReady": 69556
+  },
+  "baseline": "f3ea5ab8c551db730c539be0470febe823dc791d"
+}

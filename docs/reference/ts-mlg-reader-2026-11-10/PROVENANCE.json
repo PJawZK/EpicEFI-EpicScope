@@ -1,0 +1,28 @@
+{
+  "originalJarSha256": "3ebafb867fef3722816e768879501845904f81bc5e13249c77d170e9adf61cf8",
+  "classSha256": {
+    "MegaLogViewer": "9c9c2dcf5d4fca3c1ed02541bf2b15401246ff6fa57c1a3f017559b17cfae3b3",
+    "ao.cd": "10cac72e6c84cdd93da6844c797b2bc876d6d9498d40133975a88c187283cd1d",
+    "ao.aX": "c7257f52954052e94d80a9c9974504c791e1304b3deb1cc64d4e532f4a52501a",
+    "g.b": "c07578398ad888c0649bb1e76b968161e6b95b0ff1e53532abc3e08db1d36c77",
+    "W.W": "a3c54586112379483ff3016b729adb478ab420caf506cea53012db4c7be15175",
+    "W.X": "2761fd2ef821d2e2e48285239c3f635839d3cf7e236ac7ab293be3c5f5cfdcdf",
+    "h.b": "8a3f7e63291684b9ee20f45d306b9a2cd1ad089ffd1bfc9789ba1990706b05e8",
+    "h.c": "9f1fe3faccb00c5813badc7d1925a08f87ba7d32b38d26285a3243a34c4d77b0",
+    "h.d": "ffb239f58fa0c0b8bdebe0b736a5da2464eb4f91759748c0e1856a92b9438391",
+    "ak.ao": "f0a7c2df6bb88e963df645f7fec420a20aae76a2f7f60d3b4fa795f423217465",
+    "ak.aq": "345baaa805691ae8557e7f3d6566e227e3c5db7fea6cdce628e56b9c2a6c7172",
+    "ak.ar": "c3d1856b5dc375b930d3c0e0daadba612009d5cb610564b9fde8fc22905121ad",
+    "bH.c": "bfb97ee5990eb8a0ea3751d9e55ba1c1a3cc9c135f1ba5844bbaa90f3c27c899"
+  },
+  "checksPassed": 7,
+  "scope": "Pinned disassembly identities and selected instruction predicates; semantic findings require the accompanying report. No vendor runtime execution.",
+  "tsOptimRepository": "PJawZK/TS-Optim",
+  "tsOptimBranch": "setup/epicwolf-rea-foundation",
+  "tsOptimCheckout": "972e5e6a8dda2c24e24ff39e57ca5e2d322315ce",
+  "originalArchiveSha256": "4f4781a6ff90127ef36672cc43d3edc78c4f61ef682dca38a02f9e17e652517f",
+  "epicScopeResearchBase": "473c6fa199a43039271fcda8702b3fd98e10adf2",
+  "jdkVersion": "21.0.12.1",
+  "vendorExecution": false,
+  "vendorBinariesRedistributed": false
+}

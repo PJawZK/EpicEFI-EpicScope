@@ -856,7 +856,7 @@ export function createSpecializedAnalyzerSuiteView(observability?: Observability
           ...(aeActive ? [{ label: 'TPS AE active', range: aeActive.range }] : []),
           ...(decelActive ? [{ label: 'TPS Decel active', range: decelActive.range }] : []),
         ] : [];
-        const delayEvidenceEvents = delay?.events.map((event) => ({ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs })) ?? [];
+        const delayEvidenceEvents = delay?.events.map((event) => ({ startSampleIndex: event.commandSampleIndex, startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs })) ?? [];
         showAlignedEvidence('Fueling · observed mixture response-delay evidence', delaySeries, delayEvidenceEvents, 200, delayWindow);
         const hasCutContext = Boolean(dfco || fuelCutReason || aeActive || decelActive);
         const dfcoStatus = !dfco
@@ -919,7 +919,7 @@ export function createSpecializedAnalyzerSuiteView(observability?: Observability
             const event = delay.events[index];
             if (!event) return;
             field('evidence-note').textContent = `Event ${index + 1} · onset ${event.onsetDelayMs.toFixed(0)} ms · command Δ ${numberText(event.commandDelta)} · t=0 command change`;
-            renderAlignedAnalyzerEvidence(evidenceCanvas, delaySeries, [{ startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs }], 200, delayWindow);
+            renderAlignedAnalyzerEvidence(evidenceCanvas, delaySeries, [{ startSampleIndex: event.commandSampleIndex, startTimeMs: event.commandTimeMs, endTimeMs: event.responseTimeMs }], 200, delayWindow);
           });
         } else if (delay) {
           renderTable('Mixture delay evidence', ['Metric', 'Value'], [

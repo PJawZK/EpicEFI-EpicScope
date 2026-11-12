@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../../../../core/log-model/time-query-index';
 import type { NumericChannelRange } from '../../../../core/log-model/log-types';
 
 interface BridgeEndpoint { readonly timeMs: number; readonly value: number }
@@ -24,6 +25,22 @@ function endpoint(range: NumericChannelRange, index: number): BridgeEndpoint | u
  * Binary jumps skip distant valid spans; disjoint backward windows and a forward
  * cursor prevent markers in one invalid run from repeatedly scanning that run. */
 export function createOrderedBridgeLookup(range: NumericChannelRange): (timeMs: number) => IntegrityBridge | undefined {
+  const index = getTimeQueryIndex(range.timeMs);
+  if (!index.monotonic) {
+    const byRun = new Map<number, (timeMs:number)=>IntegrityBridge|undefined>();
+    return time => {
+      const spans = index.spans(time, time, true);
+      // Time-only marker metadata cannot choose between overlapping histories.
+      if (spans.length !== 1) return undefined;
+      const id = spans[0]!.run, run = index.runs[id]!;
+      let lookup = byRun.get(id);
+      if (!lookup) {
+        lookup = createOrderedBridgeLookup({ startSampleIndex: range.startSampleIndex + run.start, timeMs: range.timeMs.subarray(run.start,run.end), values: range.values.subarray(run.start,run.end), validity: range.validity.subarray(run.start,run.end) });
+        byRun.set(id,lookup);
+      }
+      return lookup(time);
+    };
+  }
   let beforeLimit = 0, afterIndex = 0;
   let before: BridgeEndpoint | undefined;
   return markerTimeMs => {
@@ -37,6 +54,7 @@ export function createOrderedBridgeLookup(range: NumericChannelRange): (timeMs: 
     let after: BridgeEndpoint | undefined;
     while (afterIndex < range.timeMs.length) {
       const candidate = endpoint(range, afterIndex);
+      if(candidate?.timeMs===markerTimeMs)return undefined;
       if (candidate && candidate.timeMs > markerTimeMs) { after = candidate; break; }
       afterIndex += 1;
     }

@@ -6,6 +6,7 @@ function createLoggerLayoutMenu(root: HTMLElement): void {
 
   const paneActions = [...tools.querySelectorAll<HTMLButtonElement>('.graph-pane-action')];
   const clearButton = paneActions.find((button) => /remove all channels/i.test(button.title) || /clear pane/i.test(button.textContent ?? ''));
+  const starterResetButton=tools.querySelector<HTMLButtonElement>('.graph-reset-starters');
   const resetButton = paneActions.find((button) => /reset this workspace layout/i.test(button.title) || /reset layout/i.test(button.textContent ?? ''));
 
   const wrap = document.createElement('div');
@@ -17,37 +18,42 @@ function createLoggerLayoutMenu(root: HTMLElement): void {
     <div class="logger-layout-menu" role="menu" hidden>
       <section class="logger-layout-section">
         <header>Workspace layout</header>
-        <button type="button" class="logger-layout-choice" data-layout-value="single"><span class="layout-radio"></span><span>Single graph</span></button>
-        <button type="button" class="logger-layout-choice" data-layout-value="grid4"><span class="layout-radio"></span><span>2 × 2 · 4 graphs</span></button>
-        <button type="button" class="logger-layout-choice" data-layout-value="grid5"><span class="layout-radio"></span><span>2 × 3 · 5 graphs</span></button>
-        <button type="button" class="logger-layout-choice" data-layout-value="grid6"><span class="layout-radio"></span><span>3 × 2 · 6 graphs</span></button>
-        <button type="button" class="logger-layout-choice" data-layout-value="freeform"><span class="layout-radio"></span><span>Freeform · 5 graphs</span></button>
       </section>
       <section class="logger-layout-section logger-arrange-section">
         <header>Freeform quick arrange</header>
-        <button type="button" class="logger-arrange-choice" data-arrange-value="mosaic">Mosaic</button>
-        <button type="button" class="logger-arrange-choice" data-arrange-value="columns">Two columns</button>
-        <button type="button" class="logger-arrange-choice" data-arrange-value="rows">Horizontal rows</button>
-        <button type="button" class="logger-arrange-choice" data-arrange-value="cascade">Cascade</button>
       </section>
       <footer class="logger-layout-actions">
         <button type="button" class="logger-layout-reset"><span aria-hidden="true">↺</span><span>Reset</span></button>
-        <button type="button" class="logger-layout-clear"><span aria-hidden="true">⌫</span><span>Clear</span></button>
+        <button type="button" class="logger-layout-clear"><span aria-hidden="true">⌫</span><span>Clear pane</span></button>
+        <button type="button" class="logger-layout-starters">Reset starter channels</button>
       </footer>
     </div>
   `;
 
+  const layoutSection=wrap.querySelector('.logger-layout-section')!;
+  for(const option of layoutSelect.options){
+    const button=document.createElement('button');button.type='button';button.className='logger-layout-choice';button.dataset.layoutValue=option.value;
+    const radio=document.createElement('span');radio.className='layout-radio';const label=document.createElement('span');label.textContent=option.textContent;button.append(radio,label);layoutSection.append(button);
+  }
+  const arrangeSection=wrap.querySelector('.logger-arrange-section')!;
+  for(const option of arrangeSelect.options){
+    if(option.disabled)continue;
+    const button=document.createElement('button');button.type='button';button.className='logger-arrange-choice';button.dataset.arrangeValue=option.value;button.textContent=option.textContent;arrangeSection.append(button);
+  }
   layoutSelect.before(wrap);
   layoutSelect.classList.add('ui-refinement-source-control');
   arrangeSelect.classList.add('ui-refinement-source-control');
   clearButton?.classList.add('ui-refinement-source-control');
   resetButton?.classList.add('ui-refinement-source-control');
+  starterResetButton?.classList.add('ui-refinement-source-control');
 
   const trigger = wrap.querySelector<HTMLButtonElement>('.logger-layout-menu-button');
   const menu = wrap.querySelector<HTMLElement>('.logger-layout-menu');
   const layoutChoices = [...wrap.querySelectorAll<HTMLButtonElement>('[data-layout-value]')];
   const arrangeChoices = [...wrap.querySelectorAll<HTMLButtonElement>('[data-arrange-value]')];
   const resetProxy = wrap.querySelector<HTMLButtonElement>('.logger-layout-reset');
+  const starterResetProxy=wrap.querySelector<HTMLButtonElement>('.logger-layout-starters');
+  starterResetProxy?.addEventListener('click',()=>starterResetButton?.click());
   const clearProxy = wrap.querySelector<HTMLButtonElement>('.logger-layout-clear');
   if (!trigger || !menu || !resetProxy || !clearProxy) return;
 
@@ -62,6 +68,7 @@ function createLoggerLayoutMenu(root: HTMLElement): void {
       choice.disabled = !freeform;
       choice.classList.toggle('logger-arrange-choice--active', freeform && choice.dataset.arrangeValue === arrangeSelect.value);
     }
+    if(starterResetProxy)starterResetProxy.disabled=starterResetButton?.disabled??true;
     clearProxy.disabled = clearButton?.disabled ?? true;
     resetProxy.disabled = resetButton?.disabled ?? true;
   };

@@ -639,11 +639,6 @@
   height: 100%;
 }
 
-.graph-workspace {
-  padding-top: 4px;
-}
-
-
 .graph-layout-select,
 .graph-arrange-select {
   height: 28px;
@@ -659,7 +654,8 @@
 
 .graph-workspace {
   display: grid;
-  gap: 4px;
+  padding: 0;
+  gap: 1px;
   min-width: 0;
   min-height: 0;
 }
@@ -690,8 +686,10 @@
 .graph-workspace--freeform .graph-window {
   position: absolute;
   z-index: 1;
-  min-width: 190px;
-  min-height: 120px;
+  min-width: 0;
+  /* Honor normalized layout geometry at short viewport heights.
+     Pointer resizing retains its 120px minimum in the existing layout owner. */
+  min-height: 0;
 }
 
 .graph-workspace--freeform .graph-window--active {
@@ -778,11 +776,11 @@
 
 .graph-pane-header {
   position: absolute;
-  top: 4px;
+  top: 2px;
   left: 50%;
   z-index: 14;
   min-width: 0;
-  max-width: min(72%, 220px);
+  max-width: min(140px, calc(100% - 4px));
   min-height: 19px;
   display: inline-flex;
   align-items: center;
@@ -834,16 +832,6 @@
   height: 100%;
 }
 
-.graph-workspace--freeform .graph-pane-header {
-  left: 5px;
-  transform: none;
-  max-width: calc(100% - 10px);
-}
-
-.graph-workspace--freeform .graph-corner-readout--names,
-.graph-workspace--freeform .graph-corner-readout--now {
-  top: 30px;
-}
 
 .graph-workspace:not(.graph-workspace--single) .graph-corner-readout {
   font-size:8px;
@@ -851,7 +839,7 @@
 
 .graph-workspace:not(.graph-workspace--single) .graph-corner-readout--now,
 .graph-workspace:not(.graph-workspace--single) .graph-corner-readout--max {
-  min-width: 70px;
+  min-width: 0;
 }
 
 /* Collapsed timeline retains only the interactive overview/focus strip. */
@@ -1314,3 +1302,26 @@
 .status-bar .parser-indicator--warning.utility-action-button { border-color:#80652c!important; background:#2a220e!important; }
 .status-bar .parser-indicator--error.utility-action-button { border-color:#87424a!important; background:#2b1418!important; }
 .status-bar .parser-indicator--info.utility-action-button { border-color:#35677f!important; background:#102735!important; }
+
+/* Shared pane geometry/presentation across fixed layouts and Freeform. */
+.graph-window { container: logger-pane / size; border-radius: 0; }
+.graph-workspace--grid5 > .graph-window:nth-child(5) { grid-column: span 2; }
+.graph-corner-readout {
+  min-width: 0; max-width: calc(50% - 6px); max-height: calc(50% - 4px);
+  overflow: auto; scrollbar-width: thin; pointer-events: auto;
+  grid-auto-rows: max-content; align-content: start;
+}
+.graph-corner-readout--names { top: 2px; left: 2px; max-width: calc(50% - 76px); }
+.graph-corner-readout--now { top: 2px; right: 2px; min-width: 0; max-width: calc(50% - 76px); }
+.graph-corner-readout--min { bottom: 2px; left: 2px; }
+.graph-corner-readout--max { bottom: 2px; right: 2px; min-width: 0; padding-right: 14px; }
+.graph-corner-item > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container logger-pane (width < 320px) {
+  .graph-corner-readout { max-height: calc(50% - 14px); }
+  .graph-corner-readout--names, .graph-corner-readout--now { top: 24px; max-width: calc(50% - 4px); }
+}
+@container logger-pane (width < 140px) {
+  .graph-pane-header { gap: 1px; padding: 1px 2px; }
+  .graph-pane-drag-grip { display: none; }
+  .graph-pane-window-controls { gap: 1px; margin-left: 0; }
+}

@@ -1,0 +1,47 @@
+{
+  "scope": "Independent arithmetic checks of statically reviewed rules; not vendor execution or end-to-end reader emulation.",
+  "cases": [
+    {
+      "name": "ordinary advance",
+      "previous": 100,
+      "current": 200,
+      "readerStepMs": 1,
+      "epicStepMs": 1
+    },
+    {
+      "name": "ordinary 16-bit rollover",
+      "previous": 65530,
+      "current": 4,
+      "readerStepMs": 0.1,
+      "epicStepMs": 0.1
+    },
+    {
+      "name": "CHDL raw 49 to 50",
+      "previous": 38102,
+      "current": 5876,
+      "readerStepMs": 333.1,
+      "epicStepMs": -322.26
+    },
+    {
+      "name": "equal raw clock",
+      "previous": 100,
+      "current": 100,
+      "readerStepMs": 655.36,
+      "epicStepMs": 0
+    },
+    {
+      "name": "exact half modulus decrease",
+      "previous": 40000,
+      "current": 7232,
+      "readerStepMs": 327.68,
+      "epicStepMs": -327.68
+    },
+    {
+      "name": "large forward step",
+      "previous": 1,
+      "current": 40001,
+      "readerStepMs": 400,
+      "epicStepMs": 400
+    }
+  ]
+}

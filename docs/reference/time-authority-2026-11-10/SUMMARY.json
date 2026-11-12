@@ -1,0 +1,119 @@
+[
+  {
+    "name": "chdl",
+    "records": 69566,
+    "oldLastMs": 769102.13,
+    "proposedLastMs": 780886.9697451591,
+    "originSeconds": 0.6819999814033508,
+    "backwardHeader": 18,
+    "backwardRecorded": 0,
+    "duplicatesHeader": 3,
+    "duplicatesRecorded": 13078,
+    "crcExcludedTime": {
+      "finite": 10,
+      "nonfinite": 0
+    },
+    "retryOriginal": {
+      "recovered": 9,
+      "unrecovered": 1,
+      "retryLike": 3
+    },
+    "retryNaive": {
+      "recovered": 9,
+      "unrecovered": 1,
+      "retryLike": 1
+    },
+    "idleBefore": 8,
+    "idleAfter": 8,
+    "strictSegmentsBefore": {
+      "segments": 32,
+      "maxSamples": 17197,
+      "maxDurationMs": 184181.36
+    },
+    "strictSegmentsAfter": {
+      "segments": 13089,
+      "maxSamples": 58,
+      "maxDurationMs": 14272.99976348877
+    },
+    "fullRpmStatsIdentical": true,
+    "fusionUnsafe": 0
+  },
+  {
+    "name": "oct25",
+    "records": 159022,
+    "oldLastMs": 2272475.84,
+    "proposedLastMs": 2274393.06640625,
+    "originSeconds": 0,
+    "backwardHeader": 3,
+    "backwardRecorded": 0,
+    "duplicatesHeader": 95,
+    "duplicatesRecorded": 28887,
+    "crcExcludedTime": {
+      "finite": 729,
+      "nonfinite": 0
+    },
+    "retryOriginal": {
+      "recovered": 701,
+      "unrecovered": 28,
+      "retryLike": 93
+    },
+    "retryNaive": {
+      "recovered": 701,
+      "unrecovered": 28,
+      "retryLike": 74
+    },
+    "idleBefore": 32,
+    "idleAfter": 30,
+    "strictSegmentsBefore": {
+      "segments": 802,
+      "maxSamples": 1387,
+      "maxDurationMs": 21578.73999999999
+    },
+    "strictSegmentsAfter": {
+      "segments": 29590,
+      "maxSamples": 65,
+      "maxDurationMs": 1196.044921875
+    },
+    "fullRpmStatsIdentical": true,
+    "fusionUnsafe": 3
+  },
+  {
+    "name": "nov01",
+    "records": 93759,
+    "oldLastMs": 1449624.35,
+    "proposedLastMs": 1449581.0546875,
+    "originSeconds": 0,
+    "backwardHeader": 0,
+    "backwardRecorded": 0,
+    "duplicatesHeader": 8,
+    "duplicatesRecorded": 15597,
+    "crcExcludedTime": {
+      "finite": 243,
+      "nonfinite": 0
+    },
+    "retryOriginal": {
+      "recovered": 240,
+      "unrecovered": 3,
+      "retryLike": 8
+    },
+    "retryNaive": {
+      "recovered": 240,
+      "unrecovered": 3,
+      "retryLike": 4
+    },
+    "idleBefore": 3,
+    "idleAfter": 3,
+    "strictSegmentsBefore": {
+      "segments": 249,
+      "maxSamples": 1989,
+      "maxDurationMs": 30287.609999999986
+    },
+    "strictSegmentsAfter": {
+      "segments": 15838,
+      "maxSamples": 76,
+      "maxDurationMs": 1032.04345703125
+    },
+    "fullRpmStatsIdentical": true,
+    "fusionUnsafe": 0
+  }
+]

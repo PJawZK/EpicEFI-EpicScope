@@ -1,7 +1,10 @@
+import { getTimeQueryIndex } from '../log-model/time-query-index';
 import type { NumericChannelEnvelopeBlocks, NumericChannelRange } from '../log-model/log-types';
 
 export interface ViewportEnvelopeColumn {
   readonly x: number;
+  /** Present only when the source has multiple monotonic runs. */
+  readonly sourceRun?: number;
   readonly first: number;
   readonly firstTimeMs: number;
   readonly min: number;
@@ -122,6 +125,8 @@ export function buildViewportEnvelopeFromBlocks(
     return buildViewportEnvelope(range, startMs, endMs, pixelWidth);
   }
 
+  if (!getTimeQueryIndex(range.timeMs).monotonic) return buildViewportEnvelope(range, startMs, endMs, pixelWidth);
+
   const span = Math.max(1e-9, endMs - startMs);
   const buckets: Array<BucketState | undefined> = new Array(pixelWidth);
   let valueMin = Number.POSITIVE_INFINITY;
@@ -218,11 +223,26 @@ export function buildViewportEnvelopeFromBlocks(
   };
 }
 
-export function buildViewportEnvelope(
+export function buildViewportEnvelope(range: NumericChannelRange, startMs: number, endMs: number, pixelWidth: number): ViewportEnvelope {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs || !Number.isSafeInteger(pixelWidth) || pixelWidth <= 0) throw new RangeError('Invalid viewport bounds/width');
+  const index = getTimeQueryIndex(range.timeMs), spans = index.spans(startMs, endMs);
+  const columns: ViewportEnvelopeColumn[] = []; let validSampleCount = 0, invalidSampleCount = 0, valueMin = Infinity, valueMax = -Infinity;
+  for (const span of spans) {
+    const envelope = buildMonotonicEnvelope(range, startMs, endMs, pixelWidth, span.start, span.end);
+    for (const column of envelope.columns) columns.push(index.monotonic ? column : { ...column, sourceRun: span.run });
+    validSampleCount += envelope.validSampleCount; invalidSampleCount += envelope.invalidSampleCount;
+    if (envelope.validSampleCount) { valueMin = Math.min(valueMin, envelope.valueMin); valueMax = Math.max(valueMax, envelope.valueMax); }
+  }
+  return { columns, validSampleCount, invalidSampleCount, valueMin: validSampleCount ? valueMin : 0, valueMax: validSampleCount ? valueMax : 0 };
+}
+
+function buildMonotonicEnvelope(
   range: NumericChannelRange,
   startMs: number,
   endMs: number,
   pixelWidth: number,
+  startIndex: number,
+  endIndex: number,
 ): ViewportEnvelope {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
     throw new RangeError(`Invalid viewport range ${startMs}..${endMs}.`);
@@ -238,8 +258,6 @@ export function buildViewportEnvelope(
   let validSampleCount = 0;
   let invalidSampleCount = 0;
 
-  const startIndex = lowerBound(range.timeMs, startMs);
-  const endIndex = upperBound(range.timeMs, endMs);
 
   for (let index = startIndex; index < endIndex; index += 1) {
     const timeMs = range.timeMs[index];
@@ -299,20 +317,31 @@ export interface RawViewportPoint {
   readonly breakBefore: boolean;
 }
 
-function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) return sorted[middle] ?? 0;
-  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+/** Empty pixel columns are not source evidence. Check the original observations
+ * between adjacent envelope columns, preserving same-time retry replacements.
+ * Cached by the existing graph envelope owner; never scans an entire log. */
+export function buildViewportEnvelopeBreaks(range: NumericChannelRange, envelope: ViewportEnvelope): readonly boolean[] {
+  return envelope.columns.map((column, index) => {
+    const previous = envelope.columns[index - 1];
+    if (!previous || previous.sourceRun !== column.sourceRun) return true;
+    const timeIndex = getTimeQueryIndex(range.timeMs), run = timeIndex.runs[column.sourceRun ?? 0]!;
+    const start = timeIndex.bound(previous.lastTimeMs, run.start, run.end, true);
+    const end = timeIndex.bound(column.firstTimeMs, run.start, run.end);
+    for (let i = start; i < end; i++) {
+      if (range.validity[i] !== 1 || !Number.isFinite(range.values[i]) || !Number.isFinite(range.timeMs[i])) return true;
+    }
+    return false;
+  });
 }
 
 /**
  * Returns the actual valid samples inside a viewport in source order.
+ * Rendering may opt into the immediate original boundary neighbors for clipping;
+ * the default remains strictly scoped and never introduces interpolated samples.
  *
  * Lines are broken only when source validity is interrupted without a valid
- * same-timestamp replacement, or when timestamp spacing is substantially
- * larger than the normal cadence in the visible range. Recovered logger retry
+ * same-timestamp replacement, or at an original backward-time run boundary.
+ * Spacing alone is not proof of absent source measurements. Recovered logger retry
  * attempts are retained as invalid source evidence but do not fabricate a
  * presentation gap when the valid replacement is present immediately after.
  */
@@ -320,34 +349,21 @@ export function buildRawViewportSeries(
   range: NumericChannelRange,
   startMs: number,
   endMs: number,
+  includeBoundaryNeighbors = false,
 ): readonly RawViewportPoint[] {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
     throw new RangeError(`Invalid viewport range ${startMs}..${endMs}.`);
   }
 
-  const startIndex = lowerBound(range.timeMs, startMs);
-  const endIndex = upperBound(range.timeMs, endMs);
-  const cadenceSamples: number[] = [];
-  let previousTime: number | undefined;
-
-  for (let index = startIndex; index < endIndex; index += 1) {
-    const timeMs = range.timeMs[index];
-    if (timeMs === undefined || !Number.isFinite(timeMs)) continue;
-    if (previousTime !== undefined) {
-      const delta = timeMs - previousTime;
-      if (delta > 0 && Number.isFinite(delta)) cadenceSamples.push(delta);
-    }
-    previousTime = timeMs;
-  }
-
-  const normalCadenceMs = median(cadenceSamples);
-  const gapThresholdMs = Math.max(50, normalCadenceMs * 5);
+  const spans = getTimeQueryIndex(range.timeMs).spans(startMs, endMs, includeBoundaryNeighbors);
   const points: RawViewportPoint[] = [];
   let forceBreak = true;
   let previousValidTime: number | undefined;
   let pendingInvalidTime: number | undefined;
 
-  for (let index = startIndex; index < endIndex; index += 1) {
+  for (const span of spans) {
+  forceBreak = true; previousValidTime = undefined; pendingInvalidTime = undefined;
+  for (let index = span.start; index < span.end; index += 1) {
     const timeMs = range.timeMs[index];
     const value = range.values[index];
     const usable = timeMs !== undefined
@@ -364,22 +380,76 @@ export function buildRawViewportSeries(
       pendingInvalidTime = undefined;
     }
     if (!usable) {
-      if (timeMs !== undefined && Number.isFinite(timeMs)) pendingInvalidTime = timeMs;
+      if (timeMs !== undefined && Number.isFinite(timeMs)) {
+        // A later corrupt attempt at an already represented timestamp cannot erase
+        // that trusted measurement or manufacture a trace break at the next sample.
+        if(timeMs!==previousValidTime)pendingInvalidTime = timeMs;
+      }
       else forceBreak = true;
       continue;
     }
     pendingInvalidTime = undefined;
 
-    const timeGap = previousValidTime === undefined ? 0 : timeMs - previousValidTime;
     points.push({
       timeMs,
       value,
-      breakBefore: forceBreak || previousValidTime === undefined || timeGap > gapThresholdMs,
+      breakBefore: forceBreak || previousValidTime === undefined,
     });
     forceBreak = false;
     previousValidTime = timeMs;
   }
 
+  }
+
   return points;
 }
 
+
+/** Recorded cursor lookup shared by Logger and Analyzer; never interpolates invalid samples. */
+/** Nearest original observation, including invalid records; never skip to a healthier neighbor. */
+export function nearestNumericSamplePosition(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number } | undefined {
+  const index = getTimeQueryIndex(range.timeMs).nearest(cursorTimeMs);
+  return index === undefined ? undefined : { sampleIndex: range.startSampleIndex + index, timeMs: range.timeMs[index]! };
+}
+
+export function nearestNumericSample(range: NumericChannelRange, cursorTimeMs: number): { sampleIndex: number; timeMs: number; value: number } | undefined {
+  const position=nearestNumericSamplePosition(range,cursorTimeMs);
+  if(!position)return undefined;
+  const index=position.sampleIndex-range.startSampleIndex,value=range.values[index];
+  return range.validity[index]===1&&value!==undefined&&Number.isFinite(value)?{...position,value}:undefined;
+}
+
+/** Actual first/extrema/last samples in time order, shared with Logger rendering. */
+export function rawRepresentativePoints(column: ViewportEnvelopeColumn): readonly { timeMs: number; value: number }[] {
+  const candidates = [
+    { timeMs: column.firstTimeMs, value: column.first },
+    { timeMs: column.minTimeMs, value: column.min },
+    { timeMs: column.maxTimeMs, value: column.max },
+    { timeMs: column.lastTimeMs, value: column.last },
+  ].sort((left, right) => left.timeMs - right.timeMs);
+  return candidates.filter((point, index) => index === 0 || point.timeMs !== candidates[index - 1]!.timeMs || point.value !== candidates[index - 1]!.value);
+}
+
+/** Logger density policy: raw visible samples when sparse; ordered extrema when dense. */
+export function buildViewportTraceSeries(range: NumericChannelRange, startMs: number, endMs: number, pixelWidth: number): {
+  readonly mode: 'raw' | 'envelope'; readonly points: readonly RawViewportPoint[];
+} {
+  const envelope = buildViewportEnvelope(range, startMs, endMs, pixelWidth);
+  if (envelope.validSampleCount <= pixelWidth * 2) return { mode: 'raw', points: buildRawViewportSeries(range, startMs, endMs) };
+  const points: RawViewportPoint[] = [];
+  const breaks = buildViewportEnvelopeBreaks(range, envelope);
+  for (const [columnIndex, column] of envelope.columns.entries()) {
+    const representatives = rawRepresentativePoints(column);
+    representatives.forEach((point, index) => points.push({ ...point, breakBefore: index === 0 && breaks[columnIndex]! }));
+  }
+  return { mode: 'envelope', points };
+}
+
+/** Zero-copy contiguous source cover. Nonmonotonic covers may include out-of-scope
+ * records between matches; presentation applies exact indexed time membership. */
+export function sliceNumericRangeByTime(range: NumericChannelRange, startMs: number, endMs: number): NumericChannelRange {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) throw new RangeError('Invalid recorded presentation bounds.');
+  const cover = getTimeQueryIndex(range.timeMs).cover(startMs, endMs);
+  const start = cover.startSampleIndex, end = start + cover.sampleCount;
+  return { startSampleIndex: range.startSampleIndex + start, timeMs: range.timeMs.subarray(start, end), values: range.values.subarray(start, end), validity: range.validity.subarray(start, end) };
+}

@@ -1,0 +1,41 @@
+[
+  {
+    "name": "chdl",
+    "records": 69566,
+    "scanMode": "fixed",
+    "originalHeaderStillPublished": true,
+    "exactWireTickCount": 69566,
+    "admittedCandidateEndMs": 780886.9697451591,
+    "admissionCpuMs": 10.47350199999994,
+    "admissionExtraReads": 0,
+    "wireRecovery": 9,
+    "wireRetryLike": 3,
+    "canonicalCandidateRetryLike": 3
+  },
+  {
+    "name": "oct25",
+    "records": 159022,
+    "scanMode": "general",
+    "originalHeaderStillPublished": true,
+    "exactWireTickCount": 159022,
+    "admittedCandidateEndMs": 2274393.06640625,
+    "admissionCpuMs": 17.992349000000104,
+    "admissionExtraReads": 0,
+    "wireRecovery": 701,
+    "wireRetryLike": 93,
+    "canonicalCandidateRetryLike": 93
+  },
+  {
+    "name": "nov01",
+    "records": 93759,
+    "scanMode": "fixed",
+    "originalHeaderStillPublished": true,
+    "exactWireTickCount": 93759,
+    "admittedCandidateEndMs": 1449581.0546875,
+    "admissionCpuMs": 13.708856000000196,
+    "admissionExtraReads": 0,
+    "wireRecovery": 240,
+    "wireRetryLike": 8,
+    "canonicalCandidateRetryLike": 8
+  }
+]

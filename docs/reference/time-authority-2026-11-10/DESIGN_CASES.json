@@ -1,0 +1,104 @@
+{
+  "duplicateLookup": {
+    "times": [
+      100,
+      100,
+      110
+    ],
+    "validity": [
+      0,
+      1,
+      1
+    ],
+    "target": 100,
+    "anchor": 2,
+    "currentResult": "unavailable",
+    "validSameTimeRecord": 1,
+    "implication": "first equal-time record is CRC-excluded; analysis must resolve eligible duplicate groups without changing source arrays"
+  },
+  "fallbackCases": [
+    {
+      "name": "normal duplicate clock",
+      "times": [
+        1,
+        1,
+        1.01
+      ],
+      "mask": [
+        1,
+        1,
+        1
+      ],
+      "decision": "recorded-time candidate"
+    },
+    {
+      "name": "missing trusted time",
+      "times": [
+        1,
+        null,
+        2
+      ],
+      "mask": [
+        1,
+        1,
+        1
+      ],
+      "decision": "whole-source header fallback"
+    },
+    {
+      "name": "bad CRC time ignored",
+      "times": [
+        1,
+        null,
+        2
+      ],
+      "mask": [
+        1,
+        0,
+        1
+      ],
+      "decision": "recorded-time candidate, excluded coordinate requires independent time eligibility"
+    },
+    {
+      "name": "constant clock",
+      "times": [
+        1,
+        1,
+        1
+      ],
+      "mask": [
+        1,
+        1,
+        1
+      ],
+      "decision": "whole-source header fallback"
+    },
+    {
+      "name": "backwards trusted clock",
+      "times": [
+        1,
+        2,
+        1
+      ],
+      "mask": [
+        1,
+        1,
+        1
+      ],
+      "decision": "whole-source header fallback, retain reset evidence"
+    },
+    {
+      "name": "no trusted anchor",
+      "times": [
+        1,
+        2
+      ],
+      "mask": [
+        0,
+        0
+      ],
+      "decision": "no analysis time authority"
+    }
+  ],
+  "scope": "Research design cases and observed existing consumer behavior; not implemented source selection."
+}

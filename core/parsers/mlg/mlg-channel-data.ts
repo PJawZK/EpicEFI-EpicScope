@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../../log-model/time-query-index';
 import type {
   NumericChannelBatchResult,
   NumericChannelDataSource,
@@ -93,6 +94,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     this.source = source;
     this.fields = fields;
     this.recordIndex = recordIndex;
+    getTimeQueryIndex(recordIndex.timeMs);
     this.sampleCount = recordIndex.offsets.length;
     this.requiresExplicitBatchSelection = source.size > 128 * 1024 * 1024;
     this.preferredBatchWindowMs = 0;
@@ -342,34 +344,7 @@ export class MlgNumericChannelDataSource implements NumericChannelDataSource {
     startMs: number,
     endMs: number,
   ): { readonly startSampleIndex: number; readonly sampleCount: number } {
-    const times = this.recordIndex.timeMs;
-    if (times.length === 0) return { startSampleIndex: 0, sampleCount: 0 };
-
-    const lowTarget = Math.min(startMs, endMs);
-    const highTarget = Math.max(startMs, endMs);
-
-    let low = 0;
-    let high = times.length;
-    while (low < high) {
-      const mid = (low + high) >>> 1;
-      if ((times[mid] ?? Number.POSITIVE_INFINITY) < lowTarget) low = mid + 1;
-      else high = mid;
-    }
-    const startSampleIndex = Math.max(0, low - 1);
-
-    low = startSampleIndex;
-    high = times.length;
-    while (low < high) {
-      const mid = (low + high) >>> 1;
-      if ((times[mid] ?? Number.NEGATIVE_INFINITY) <= highTarget) low = mid + 1;
-      else high = mid;
-    }
-    const endSampleIndex = Math.min(times.length, low + 1);
-
-    return {
-      startSampleIndex,
-      sampleCount: Math.max(0, endSampleIndex - startSampleIndex),
-    };
+    return getTimeQueryIndex(this.recordIndex.timeMs).cover(startMs, endMs, true);
   }
 
   public hasCachedChannelRange(

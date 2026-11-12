@@ -1,0 +1,232 @@
+{
+  "name": "nov01",
+  "records": 93759,
+  "originIndex": 0,
+  "originSeconds": 0,
+  "descriptor": {
+    "kind": "scalar",
+    "index": 0,
+    "offset": 24,
+    "type": 7,
+    "name": "Time",
+    "units": "s",
+    "displayStyle": 0,
+    "widthBytes": 4,
+    "category": "",
+    "scale": 1,
+    "transform": 0,
+    "digits": 3
+  },
+  "recordedAll": {
+    "regressions": 0,
+    "equalPairs": 15837,
+    "positivePairs": 77921,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 1449581.0546875,
+    "minStep": 0,
+    "maxStep": 124.0234375,
+    "maxPlateauRecords": 3
+  },
+  "recordedTrusted": {
+    "regressions": 0,
+    "equalPairs": 15597,
+    "positivePairs": 77918,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 1449581.0546875,
+    "minStep": 0,
+    "maxStep": 124.0234375,
+    "maxPlateauRecords": 2
+  },
+  "headerAll": {
+    "regressions": 0,
+    "equalPairs": 248,
+    "positivePairs": 93510,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 1449624.35,
+    "minStep": 0,
+    "maxStep": 103.73000000009779,
+    "maxPlateauRecords": 2
+  },
+  "headerTrusted": {
+    "regressions": 0,
+    "equalPairs": 8,
+    "positivePairs": 93507,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 1449624.35,
+    "minStep": 0,
+    "maxStep": 103.73000000009779,
+    "maxPlateauRecords": 2
+  },
+  "crcExcludedTime": {
+    "finite": 243,
+    "nonfinite": 0
+  },
+  "negativeStored": 0,
+  "maxAbsClockOffsetMs": 131.2351171874907,
+  "adjacentDeltaDifferenceOver50ms": 57,
+  "rawFalling": 2211,
+  "rawEqual": 248,
+  "regressionCases": [],
+  "windows": [
+    {
+      "startMs": 0,
+      "endMs": 10000,
+      "headerCount": 708,
+      "recordedCount": 709,
+      "commonCount": 708,
+      "symmetricDifference": 1,
+      "headerRpmMean": 569.8276836158192,
+      "recordedRpmMean": 570.4287729196051
+    },
+    {
+      "startMs": 14000,
+      "endMs": 15000,
+      "headerCount": 64,
+      "recordedCount": 63,
+      "commonCount": 62,
+      "symmetricDifference": 3,
+      "headerRpmMean": 1048.96875,
+      "recordedRpmMean": 1052.095238095238
+    },
+    {
+      "startMs": 500000,
+      "endMs": 510000,
+      "headerCount": 645,
+      "recordedCount": 645,
+      "commonCount": 643,
+      "symmetricDifference": 4,
+      "headerRpmMean": 2292.5116279069766,
+      "recordedRpmMean": 2292.5147286821707
+    },
+    {
+      "startMs": 1439624.35,
+      "endMs": 1449624.35,
+      "headerCount": 664,
+      "recordedCount": 661,
+      "commonCount": 661,
+      "symmetricDifference": 3,
+      "headerRpmMean": 458.03765060240966,
+      "recordedRpmMean": 455.9591527987897
+    }
+  ],
+  "retryOriginalIdentity": {
+    "recovered": 240,
+    "unrecovered": 3,
+    "retryLike": 8
+  },
+  "retryNaivelyUsingRecordedTime": {
+    "recovered": 240,
+    "unrecovered": 3,
+    "retryLike": 4
+  },
+  "headerMetrics": {
+    "fullLogRpm": {
+      "validCount": 93516,
+      "invalidCount": 243,
+      "min": 0,
+      "max": 4883,
+      "mean": 2165.2694191368237,
+      "standardDeviation": 470.8759146592584
+    },
+    "idleDiscovery": {
+      "count": 3,
+      "regions": [
+        {
+          "startMs": 2900.37,
+          "endMs": 16562.420000000002,
+          "startSampleIndex": 215,
+          "endSampleIndex": 1150,
+          "validSampleCount": 932
+        },
+        {
+          "startMs": 21760.72,
+          "endMs": 57854,
+          "startSampleIndex": 1492,
+          "endSampleIndex": 3791,
+          "validSampleCount": 2291
+        },
+        {
+          "startMs": 1425303.54,
+          "endMs": 1445158.09,
+          "startSampleIndex": 92197,
+          "endSampleIndex": 93469,
+          "validSampleCount": 1269
+        }
+      ]
+    },
+    "generic100msRpmLookup": {
+      "valid": 93063,
+      "missing": 453
+    },
+    "strictPositiveSegments": {
+      "segments": 249,
+      "maxSamples": 1989,
+      "maxDurationMs": 30287.609999999986
+    }
+  },
+  "recordedMetrics": {
+    "fullLogRpm": {
+      "validCount": 93516,
+      "invalidCount": 243,
+      "min": 0,
+      "max": 4883,
+      "mean": 2165.2694191368237,
+      "standardDeviation": 470.8759146592584
+    },
+    "idleDiscovery": {
+      "count": 3,
+      "regions": [
+        {
+          "startMs": 2848.0000495910645,
+          "endMs": 16545.000076293945,
+          "startSampleIndex": 215,
+          "endSampleIndex": 1150,
+          "validSampleCount": 932
+        },
+        {
+          "startMs": 21728.00064086914,
+          "endMs": 57833.00018310547,
+          "startSampleIndex": 1492,
+          "endSampleIndex": 3791,
+          "validSampleCount": 2291
+        },
+        {
+          "startMs": 1425255.0048828125,
+          "endMs": 1445119.0185546875,
+          "startSampleIndex": 92197,
+          "endSampleIndex": 93469,
+          "validSampleCount": 1269
+        }
+      ]
+    },
+    "generic100msRpmLookup": {
+      "valid": 93099,
+      "missing": 417
+    },
+    "strictPositiveSegments": {
+      "segments": 15838,
+      "maxSamples": 76,
+      "maxDurationMs": 1032.04345703125
+    }
+  },
+  "exploratoryTimeAnchoredHeader": {
+    "stats": {
+      "regressions": 0,
+      "equalPairs": 8,
+      "positivePairs": 93507,
+      "nonfinite": 0,
+      "min": 0,
+      "max": 1449624.3499999996,
+      "minStep": 0,
+      "maxStep": 103.72999999998137,
+      "maxPlateauRecords": 2
+    },
+    "unsafeSteps": [],
+    "scope": "Nearest wrap using recorded-Time delta and trusted raw-header pairs. Diagnostic experiment, not proposed automatic repair."
+  },
+  "extraTimeArrayBytes": 750072
+}

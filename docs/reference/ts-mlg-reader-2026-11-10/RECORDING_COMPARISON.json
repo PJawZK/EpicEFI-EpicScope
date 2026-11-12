@@ -1,0 +1,125 @@
+[
+  {
+    "name": "chdl",
+    "records": 69566,
+    "canonicalLastMs": 769102.13,
+    "rawClockFallingCount": 1191,
+    "rawClockEqualCount": 12,
+    "nonIncreasingHeaderModelLastMs": 788762.9300000048,
+    "scope": "Header arithmetic over indexed logger records only; not execution of vendor reader/resync/marker/UI paths.",
+    "recordedTime": {
+      "channel": {
+        "id": "mlg:0",
+        "sourceName": "Time",
+        "displayName": "Time",
+        "valueType": "number",
+        "unit": "s",
+        "precision": 3
+      },
+      "field": {
+        "kind": "scalar",
+        "index": 0,
+        "offset": 24,
+        "type": 7,
+        "name": "Time",
+        "units": "s",
+        "displayStyle": 0,
+        "widthBytes": 4,
+        "category": "",
+        "scale": 1,
+        "transform": 0,
+        "digits": 3
+      },
+      "firstIndex": 0,
+      "lastIndex": 69565,
+      "firstSeconds": 0.6819999814033508,
+      "lastSeconds": 781.5689697265625,
+      "deltaMs": 780886.9697451591,
+      "backwardSteps": 0,
+      "equalSteps": 13078,
+      "validSamples": 69556
+    }
+  },
+  {
+    "name": "oct25",
+    "records": 159022,
+    "canonicalLastMs": 2272475.84,
+    "rawClockFallingCount": 3470,
+    "rawClockEqualCount": 797,
+    "nonIncreasingHeaderModelLastMs": 2796763.840000001,
+    "scope": "Header arithmetic over indexed logger records only; not execution of vendor reader/resync/marker/UI paths.",
+    "recordedTime": {
+      "channel": {
+        "id": "mlg:0",
+        "sourceName": "Time",
+        "displayName": "Time",
+        "valueType": "number",
+        "unit": "s",
+        "precision": 3
+      },
+      "field": {
+        "kind": "scalar",
+        "index": 0,
+        "offset": 24,
+        "type": 7,
+        "name": "Time",
+        "units": "s",
+        "displayStyle": 0,
+        "widthBytes": 4,
+        "category": "",
+        "scale": 1,
+        "transform": 0,
+        "digits": 3
+      },
+      "firstIndex": 0,
+      "lastIndex": 159021,
+      "firstSeconds": 0,
+      "lastSeconds": 2274.39306640625,
+      "deltaMs": 2274393.06640625,
+      "backwardSteps": 0,
+      "equalSteps": 28887,
+      "validSamples": 158293
+    }
+  },
+  {
+    "name": "nov01",
+    "records": 93759,
+    "canonicalLastMs": 1449624.35,
+    "rawClockFallingCount": 2211,
+    "rawClockEqualCount": 248,
+    "nonIncreasingHeaderModelLastMs": 1612153.6300000083,
+    "scope": "Header arithmetic over indexed logger records only; not execution of vendor reader/resync/marker/UI paths.",
+    "recordedTime": {
+      "channel": {
+        "id": "mlg:0",
+        "sourceName": "Time",
+        "displayName": "Time",
+        "valueType": "number",
+        "unit": "s",
+        "precision": 3
+      },
+      "field": {
+        "kind": "scalar",
+        "index": 0,
+        "offset": 24,
+        "type": 7,
+        "name": "Time",
+        "units": "s",
+        "displayStyle": 0,
+        "widthBytes": 4,
+        "category": "",
+        "scale": 1,
+        "transform": 0,
+        "digits": 3
+      },
+      "firstIndex": 0,
+      "lastIndex": 93758,
+      "firstSeconds": 0,
+      "lastSeconds": 1449.5810546875,
+      "deltaMs": 1449581.0546875,
+      "backwardSteps": 0,
+      "equalSteps": 15597,
+      "validSamples": 93516
+    }
+  }
+]

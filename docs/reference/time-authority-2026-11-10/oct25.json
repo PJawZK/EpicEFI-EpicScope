@@ -1,0 +1,686 @@
+{
+  "name": "oct25",
+  "records": 159022,
+  "originIndex": 0,
+  "originSeconds": 0,
+  "descriptor": {
+    "kind": "scalar",
+    "index": 0,
+    "offset": 24,
+    "type": 7,
+    "name": "Time",
+    "units": "s",
+    "displayStyle": 0,
+    "widthBytes": 4,
+    "category": "",
+    "scale": 1,
+    "transform": 0,
+    "digits": 3
+  },
+  "recordedAll": {
+    "regressions": 0,
+    "equalPairs": 29594,
+    "positivePairs": 129427,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 2274393.06640625,
+    "minStep": 0,
+    "maxStep": 585.99853515625,
+    "maxPlateauRecords": 4
+  },
+  "recordedTrusted": {
+    "regressions": 0,
+    "equalPairs": 28887,
+    "positivePairs": 129405,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 2274393.06640625,
+    "minStep": 0,
+    "maxStep": 585.99853515625,
+    "maxPlateauRecords": 3
+  },
+  "headerAll": {
+    "regressions": 3,
+    "equalPairs": 797,
+    "positivePairs": 158221,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 2272475.84,
+    "minStep": -290.14000000001397,
+    "maxStep": 372.80000000004657,
+    "maxPlateauRecords": 3
+  },
+  "headerTrusted": {
+    "regressions": 3,
+    "equalPairs": 95,
+    "positivePairs": 158194,
+    "nonfinite": 0,
+    "min": 0,
+    "max": 2272475.84,
+    "minStep": -290.14000000001397,
+    "maxStep": 372.80000000004657,
+    "maxPlateauRecords": 2
+  },
+  "crcExcludedTime": {
+    "finite": 729,
+    "nonfinite": 0
+  },
+  "negativeStored": 0,
+  "maxAbsClockOffsetMs": 1942.5007812499534,
+  "adjacentDeltaDifferenceOver50ms": 191,
+  "rawFalling": 3470,
+  "rawEqual": 797,
+  "regressionCases": [
+    {
+      "from": 40912,
+      "to": 40913,
+      "offset": 284477734,
+      "headerFromMs": 526688.65,
+      "headerToMs": 526623.03,
+      "storedFromSeconds": 526.3159790039062,
+      "storedToSeconds": 526.68798828125,
+      "recordedStepMs": 372.00927734375,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 41684,
+      "to": 41685,
+      "offset": 289826922,
+      "headerFromMs": 539163.64,
+      "headerToMs": 538873.5,
+      "storedFromSeconds": 539.7860107421875,
+      "storedToSeconds": 539.8189697265625,
+      "recordedStepMs": 32.958984375,
+      "crcBefore": 1,
+      "crcAfter": 1
+    },
+    {
+      "from": 91923,
+      "to": 91924,
+      "offset": 637932953,
+      "headerFromMs": 1274516.17,
+      "headerToMs": 1274428.44,
+      "storedFromSeconds": 1275.7679443359375,
+      "storedToSeconds": 1275.822021484375,
+      "recordedStepMs": 54.0771484375,
+      "crcBefore": 1,
+      "crcAfter": 1
+    }
+  ],
+  "windows": [
+    {
+      "startMs": 0,
+      "endMs": 10000,
+      "headerCount": 743,
+      "recordedCount": 745,
+      "commonCount": 743,
+      "symmetricDifference": 2,
+      "headerRpmMean": 898.5612382234186,
+      "recordedRpmMean": 898.5973154362416
+    },
+    {
+      "startMs": 14000,
+      "endMs": 15000,
+      "headerCount": 67,
+      "recordedCount": 67,
+      "commonCount": 66,
+      "symmetricDifference": 2,
+      "headerRpmMean": 878.5671641791045,
+      "recordedRpmMean": 878.5074626865671
+    },
+    {
+      "startMs": 500000,
+      "endMs": 510000,
+      "headerCount": 787,
+      "recordedCount": 788,
+      "commonCount": 786,
+      "symmetricDifference": 3,
+      "headerRpmMean": 1200.9682337992376,
+      "recordedRpmMean": 1200.215736040609
+    },
+    {
+      "startMs": 2262475.84,
+      "endMs": 2272475.84,
+      "headerCount": 676,
+      "recordedCount": 674,
+      "commonCount": 519,
+      "symmetricDifference": 312,
+      "headerRpmMean": 934.2825443786983,
+      "recordedRpmMean": 941.1083086053412
+    }
+  ],
+  "retryOriginalIdentity": {
+    "recovered": 701,
+    "unrecovered": 28,
+    "retryLike": 93
+  },
+  "retryNaivelyUsingRecordedTime": {
+    "recovered": 701,
+    "unrecovered": 28,
+    "retryLike": 74
+  },
+  "headerMetrics": {
+    "fullLogRpm": {
+      "validCount": 158293,
+      "invalidCount": 729,
+      "min": 562,
+      "max": 3528,
+      "mean": 1123.1744865534008,
+      "standardDeviation": 344.7848614228329
+    },
+    "idleDiscovery": {
+      "count": 32,
+      "regions": [
+        {
+          "startMs": 0,
+          "endMs": 53719.54,
+          "startSampleIndex": 0,
+          "endSampleIndex": 4278,
+          "validSampleCount": 4266
+        },
+        {
+          "startMs": 57300.66,
+          "endMs": 74945.06,
+          "startSampleIndex": 4571,
+          "endSampleIndex": 5924,
+          "validSampleCount": 1343
+        },
+        {
+          "startMs": 261636.59,
+          "endMs": 275227.1,
+          "startSampleIndex": 20124,
+          "endSampleIndex": 21188,
+          "validSampleCount": 1064
+        },
+        {
+          "startMs": 327307.51,
+          "endMs": 338008.58,
+          "startSampleIndex": 25253,
+          "endSampleIndex": 26106,
+          "validSampleCount": 853
+        },
+        {
+          "startMs": 511889.07,
+          "endMs": 526315.85,
+          "startSampleIndex": 39788,
+          "endSampleIndex": 40911,
+          "validSampleCount": 1117
+        },
+        {
+          "startMs": 538873.5,
+          "endMs": 589678.37,
+          "startSampleIndex": 41685,
+          "endSampleIndex": 45163,
+          "validSampleCount": 3462
+        },
+        {
+          "startMs": 603814.51,
+          "endMs": 727909.73,
+          "startSampleIndex": 46139,
+          "endSampleIndex": 54861,
+          "validSampleCount": 8668
+        },
+        {
+          "startMs": 728409.43,
+          "endMs": 813504.85,
+          "startSampleIndex": 54887,
+          "endSampleIndex": 60829,
+          "validSampleCount": 5923
+        },
+        {
+          "startMs": 813545.48,
+          "endMs": 854216.54,
+          "startSampleIndex": 60832,
+          "endSampleIndex": 63695,
+          "validSampleCount": 2844
+        },
+        {
+          "startMs": 862341.31,
+          "endMs": 908811.71,
+          "startSampleIndex": 64296,
+          "endSampleIndex": 67472,
+          "validSampleCount": 3165
+        },
+        {
+          "startMs": 908861.04,
+          "endMs": 979911.25,
+          "startSampleIndex": 67475,
+          "endSampleIndex": 72245,
+          "validSampleCount": 4742
+        },
+        {
+          "startMs": 980774.17,
+          "endMs": 1015115.28,
+          "startSampleIndex": 72312,
+          "endSampleIndex": 74544,
+          "validSampleCount": 2224
+        },
+        {
+          "startMs": 1015152.66,
+          "endMs": 1046357.61,
+          "startSampleIndex": 74546,
+          "endSampleIndex": 76582,
+          "validSampleCount": 2029
+        },
+        {
+          "startMs": 1046409.91,
+          "endMs": 1107468.08,
+          "startSampleIndex": 76585,
+          "endSampleIndex": 80695,
+          "validSampleCount": 4094
+        },
+        {
+          "startMs": 1107777.6300000001,
+          "endMs": 1203999.04,
+          "startSampleIndex": 80719,
+          "endSampleIndex": 87368,
+          "validSampleCount": 6617
+        },
+        {
+          "startMs": 1204055.44,
+          "endMs": 1244566.8900000001,
+          "startSampleIndex": 87371,
+          "endSampleIndex": 90137,
+          "validSampleCount": 2759
+        },
+        {
+          "startMs": 1252026.91,
+          "endMs": 1274516.17,
+          "startSampleIndex": 90672,
+          "endSampleIndex": 91923,
+          "validSampleCount": 1246
+        },
+        {
+          "startMs": 1274428.44,
+          "endMs": 1621743.31,
+          "startSampleIndex": 91924,
+          "endSampleIndex": 115448,
+          "validSampleCount": 23412
+        },
+        {
+          "startMs": 1622064.59,
+          "endMs": 1643710.1500000001,
+          "startSampleIndex": 115468,
+          "endSampleIndex": 116916,
+          "validSampleCount": 1446
+        },
+        {
+          "startMs": 1644026.76,
+          "endMs": 1656126.83,
+          "startSampleIndex": 116932,
+          "endSampleIndex": 117759,
+          "validSampleCount": 823
+        },
+        {
+          "startMs": 1656534,
+          "endMs": 1675273.83,
+          "startSampleIndex": 117784,
+          "endSampleIndex": 118991,
+          "validSampleCount": 1203
+        },
+        {
+          "startMs": 1675854.19,
+          "endMs": 1685413.82,
+          "startSampleIndex": 119038,
+          "endSampleIndex": 119664,
+          "validSampleCount": 624
+        },
+        {
+          "startMs": 1685458.37,
+          "endMs": 1698121.56,
+          "startSampleIndex": 119667,
+          "endSampleIndex": 120544,
+          "validSampleCount": 875
+        },
+        {
+          "startMs": 1698733.73,
+          "endMs": 1748857.23,
+          "startSampleIndex": 120590,
+          "endSampleIndex": 123997,
+          "validSampleCount": 3394
+        },
+        {
+          "startMs": 1767373.72,
+          "endMs": 1776989.58,
+          "startSampleIndex": 125210,
+          "endSampleIndex": 125861,
+          "validSampleCount": 650
+        },
+        {
+          "startMs": 1777670.22,
+          "endMs": 1790524.02,
+          "startSampleIndex": 125916,
+          "endSampleIndex": 126786,
+          "validSampleCount": 867
+        },
+        {
+          "startMs": 1791127.1400000001,
+          "endMs": 1799889.69,
+          "startSampleIndex": 126819,
+          "endSampleIndex": 127435,
+          "validSampleCount": 611
+        },
+        {
+          "startMs": 1809588.26,
+          "endMs": 2031429.33,
+          "startSampleIndex": 128108,
+          "endSampleIndex": 142807,
+          "validSampleCount": 14640
+        },
+        {
+          "startMs": 2033584.1400000001,
+          "endMs": 2057296,
+          "startSampleIndex": 142929,
+          "endSampleIndex": 144449,
+          "validSampleCount": 1515
+        },
+        {
+          "startMs": 2064497.34,
+          "endMs": 2101995.14,
+          "startSampleIndex": 144911,
+          "endSampleIndex": 147390,
+          "validSampleCount": 2473
+        },
+        {
+          "startMs": 2102110.18,
+          "endMs": 2144457.02,
+          "startSampleIndex": 147398,
+          "endSampleIndex": 150237,
+          "validSampleCount": 2830
+        },
+        {
+          "startMs": 2151916.59,
+          "endMs": 2272475.84,
+          "startSampleIndex": 150745,
+          "endSampleIndex": 159021,
+          "validSampleCount": 8244
+        }
+      ]
+    },
+    "generic100msRpmLookup": {
+      "valid": 156902,
+      "missing": 1391
+    },
+    "strictPositiveSegments": {
+      "segments": 802,
+      "maxSamples": 1387,
+      "maxDurationMs": 21578.73999999999
+    }
+  },
+  "recordedMetrics": {
+    "fullLogRpm": {
+      "validCount": 158293,
+      "invalidCount": 729,
+      "min": 562,
+      "max": 3528,
+      "mean": 1123.1744865534008,
+      "standardDeviation": 344.7848614228329
+    },
+    "idleDiscovery": {
+      "count": 30,
+      "regions": [
+        {
+          "startMs": 0,
+          "endMs": 53699.00131225586,
+          "startSampleIndex": 0,
+          "endSampleIndex": 4278,
+          "validSampleCount": 4266
+        },
+        {
+          "startMs": 57280.99822998047,
+          "endMs": 74922.9965209961,
+          "startSampleIndex": 4571,
+          "endSampleIndex": 5924,
+          "validSampleCount": 1343
+        },
+        {
+          "startMs": 261617.00439453125,
+          "endMs": 275216.00341796875,
+          "startSampleIndex": 20124,
+          "endSampleIndex": 21188,
+          "validSampleCount": 1064
+        },
+        {
+          "startMs": 327296.9970703125,
+          "endMs": 337986.99951171875,
+          "startSampleIndex": 25253,
+          "endSampleIndex": 26106,
+          "validSampleCount": 853
+        },
+        {
+          "startMs": 511863.0065917969,
+          "endMs": 526315.9790039062,
+          "startSampleIndex": 39788,
+          "endSampleIndex": 40912,
+          "validSampleCount": 1118
+        },
+        {
+          "startMs": 527273.9868164062,
+          "endMs": 539818.9697265625,
+          "startSampleIndex": 40915,
+          "endSampleIndex": 41685,
+          "validSampleCount": 766
+        },
+        {
+          "startMs": 540181.0302734375,
+          "endMs": 590963.9892578125,
+          "startSampleIndex": 41686,
+          "endSampleIndex": 45163,
+          "validSampleCount": 3461
+        },
+        {
+          "startMs": 605093.994140625,
+          "endMs": 729184.0209960938,
+          "startSampleIndex": 46139,
+          "endSampleIndex": 54861,
+          "validSampleCount": 8668
+        },
+        {
+          "startMs": 729702.0263671875,
+          "endMs": 814796.0205078125,
+          "startSampleIndex": 54887,
+          "endSampleIndex": 60829,
+          "validSampleCount": 5923
+        },
+        {
+          "startMs": 814838.9892578125,
+          "endMs": 855494.0185546875,
+          "startSampleIndex": 60832,
+          "endSampleIndex": 63695,
+          "validSampleCount": 2844
+        },
+        {
+          "startMs": 863617.9809570312,
+          "endMs": 910101.9897460938,
+          "startSampleIndex": 64296,
+          "endSampleIndex": 67472,
+          "validSampleCount": 3165
+        },
+        {
+          "startMs": 910138.9770507812,
+          "endMs": 981189.0258789062,
+          "startSampleIndex": 67475,
+          "endSampleIndex": 72245,
+          "validSampleCount": 4742
+        },
+        {
+          "startMs": 982049.0112304688,
+          "endMs": 1108745.9716796875,
+          "startSampleIndex": 72312,
+          "endSampleIndex": 80695,
+          "validSampleCount": 8347
+        },
+        {
+          "startMs": 1109051.025390625,
+          "endMs": 1205265.9912109375,
+          "startSampleIndex": 80719,
+          "endSampleIndex": 87368,
+          "validSampleCount": 6617
+        },
+        {
+          "startMs": 1205328.0029296875,
+          "endMs": 1245853.02734375,
+          "startSampleIndex": 87371,
+          "endSampleIndex": 90137,
+          "validSampleCount": 2759
+        },
+        {
+          "startMs": 1253286.0107421875,
+          "endMs": 1275822.021484375,
+          "startSampleIndex": 90672,
+          "endSampleIndex": 91925,
+          "validSampleCount": 1248
+        },
+        {
+          "startMs": 1276389.0380859375,
+          "endMs": 1623677.001953125,
+          "startSampleIndex": 91926,
+          "endSampleIndex": 115448,
+          "validSampleCount": 23410
+        },
+        {
+          "startMs": 1623985.9619140625,
+          "endMs": 1645629.0283203125,
+          "startSampleIndex": 115468,
+          "endSampleIndex": 116916,
+          "validSampleCount": 1446
+        },
+        {
+          "startMs": 1645948.974609375,
+          "endMs": 1658026.0009765625,
+          "startSampleIndex": 116932,
+          "endSampleIndex": 117759,
+          "validSampleCount": 823
+        },
+        {
+          "startMs": 1658449.951171875,
+          "endMs": 1677193.9697265625,
+          "startSampleIndex": 117784,
+          "endSampleIndex": 118991,
+          "validSampleCount": 1203
+        },
+        {
+          "startMs": 1677772.94921875,
+          "endMs": 1687336.0595703125,
+          "startSampleIndex": 119038,
+          "endSampleIndex": 119664,
+          "validSampleCount": 624
+        },
+        {
+          "startMs": 1687392.9443359375,
+          "endMs": 1750781.005859375,
+          "startSampleIndex": 119667,
+          "endSampleIndex": 123997,
+          "validSampleCount": 4312
+        },
+        {
+          "startMs": 1769303.955078125,
+          "endMs": 1778911.9873046875,
+          "startSampleIndex": 125210,
+          "endSampleIndex": 125861,
+          "validSampleCount": 650
+        },
+        {
+          "startMs": 1779603.02734375,
+          "endMs": 1792456.0546875,
+          "startSampleIndex": 125916,
+          "endSampleIndex": 126786,
+          "validSampleCount": 867
+        },
+        {
+          "startMs": 1793047.9736328125,
+          "endMs": 1801807.0068359375,
+          "startSampleIndex": 126819,
+          "endSampleIndex": 127435,
+          "validSampleCount": 611
+        },
+        {
+          "startMs": 1811462.0361328125,
+          "endMs": 2033349.9755859375,
+          "startSampleIndex": 128108,
+          "endSampleIndex": 142807,
+          "validSampleCount": 14640
+        },
+        {
+          "startMs": 2035508.056640625,
+          "endMs": 2059214.111328125,
+          "startSampleIndex": 142929,
+          "endSampleIndex": 144449,
+          "validSampleCount": 1515
+        },
+        {
+          "startMs": 2066406.982421875,
+          "endMs": 2103912.109375,
+          "startSampleIndex": 144911,
+          "endSampleIndex": 147390,
+          "validSampleCount": 2473
+        },
+        {
+          "startMs": 2104025.87890625,
+          "endMs": 2146375,
+          "startSampleIndex": 147398,
+          "endSampleIndex": 150237,
+          "validSampleCount": 2830
+        },
+        {
+          "startMs": 2153793.9453125,
+          "endMs": 2274393.06640625,
+          "startSampleIndex": 150745,
+          "endSampleIndex": 159021,
+          "validSampleCount": 8244
+        }
+      ]
+    },
+    "generic100msRpmLookup": {
+      "valid": 156917,
+      "missing": 1376
+    },
+    "strictPositiveSegments": {
+      "segments": 29590,
+      "maxSamples": 65,
+      "maxDurationMs": 1196.044921875
+    }
+  },
+  "exploratoryTimeAnchoredHeader": {
+    "stats": {
+      "regressions": 3,
+      "equalPairs": 95,
+      "positivePairs": 158194,
+      "nonfinite": 0,
+      "min": 0,
+      "max": 2274441.9199999766,
+      "minStep": -290.14000000001397,
+      "maxStep": 693.5400000000373,
+      "maxPlateauRecords": 2
+    },
+    "unsafeSteps": [
+      {
+        "from": 40911,
+        "to": 40912,
+        "rawStep": 372.8,
+        "recordedStep": 21.97265625,
+        "wraps": -1,
+        "step": -282.56
+      },
+      {
+        "from": 41684,
+        "to": 41685,
+        "rawStep": -290.14,
+        "recordedStep": 32.958984375,
+        "wraps": 0,
+        "step": -290.14
+      },
+      {
+        "from": 91923,
+        "to": 91924,
+        "rawStep": -87.73,
+        "recordedStep": 54.0771484375,
+        "wraps": 0,
+        "step": -87.73
+      }
+    ],
+    "scope": "Nearest wrap using recorded-Time delta and trusted raw-header pairs. Diagnostic experiment, not proposed automatic repair."
+  },
+  "extraTimeArrayBytes": 1272176
+}

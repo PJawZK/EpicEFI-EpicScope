@@ -24,11 +24,36 @@ export type SourceIntegrityKind =
   | 'recovered-retry'
   | 'corrupt-record'
   | 'timestamp-gap'
-  | 'delivery-loss';
+  | 'cadence-observation'
+  | 'delivery-loss'
+  | 'channel-unavailable';
+
+export interface SourceContinuityEvidence {
+  readonly classification: 'clock-regression' | 'cadence-outlier' | 'channel-unavailable' | 'crc-exclusion';
+  readonly fromRecordIndex: number;
+  readonly toRecordIndex: number;
+  readonly fromTimeMs: number;
+  readonly toTimeMs: number;
+  readonly durationMs: number;
+  readonly deltaMs: number;
+  readonly fromOffset?: number;
+  readonly toOffset?: number;
+  readonly cadenceBeforeMs?: number;
+  readonly cadenceSampleCount: number;
+  readonly relatedCrcRecords: readonly number[];
+  readonly interiorRecords?: number;
+  readonly channelId?: string;
+  readonly channelName?: string;
+  readonly sampleCount?: number;
+  /** Display-only line-interruption bounds; not a measured unavailable duration. */
+  readonly traceStartMs?: number;
+  readonly traceEndMs?: number;
+}
 
 export interface SourceIntegrityDiagnosticMetadata {
   readonly kind: SourceIntegrityKind;
   readonly breaksContinuity: boolean;
+  readonly evidence?: SourceContinuityEvidence;
 }
 
 export interface ParserDiagnostic {
@@ -94,6 +119,7 @@ export interface NumericChannelEnvelopeBlocks {
 
 export interface NumericChannelRange {
   readonly startSampleIndex: number;
+  /** Immutable after publication; replace the array for a new timestamp generation. */
   readonly timeMs: Float64Array;
   readonly values: Float64Array;
   /** Compatibility projection: 1 = usable valid sample, 0 = non-valid sample. */
@@ -133,6 +159,9 @@ export interface NumericChannelDataSource {
   readonly preferredBatchWindowMs?: number;
   readonly requiresExplicitBatchSelection?: boolean;
   readonly managesPersistentColumns?: boolean;
+  /** Contiguous original-index fetch cover, optionally including neighboring
+   * context. Nonmonotonic covers can contain records outside the requested time
+   * window: consumers must apply exact time membership without renumbering. */
   sampleRangeForTime?(
     startMs: number,
     endMs: number,

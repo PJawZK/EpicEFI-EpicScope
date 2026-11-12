@@ -1,3 +1,4 @@
+import type {SourceContinuityEvidence} from '../../../../core/log-model/log-types';
 import type { PerformanceProjection } from './producers/performance';
 import type { ParserDiagnostic } from '../../../../core/log-model/log-types';
 import type { ObservabilityRecord } from './record';
@@ -33,6 +34,7 @@ export function createDiagnosticsCapture(input: Omit<DiagnosticsCapture, 'schema
         sourceIntegrity: Object.freeze({
           kind: d.sourceIntegrity.kind,
           breaksContinuity: d.sourceIntegrity.breaksContinuity,
+          ...(d.sourceIntegrity.evidence===undefined?{}:{evidence:captureContinuityEvidence(d.sourceIntegrity.evidence)}),
         }),
       }),
     }))),
@@ -80,4 +82,9 @@ export function operationRows(records: readonly ObservabilityRecord[]): readonly
   for (const root of roots) walk(root, false);
   for (const id of nodes.keys()) if (!visited.has(id)) walk(id, true);
   return rows;
+}
+
+function captureContinuityEvidence(e:SourceContinuityEvidence):SourceContinuityEvidence {
+ return Object.freeze({classification:e.classification,...(e.traceStartMs===undefined?{}:{traceStartMs:e.traceStartMs}),...(e.traceEndMs===undefined?{}:{traceEndMs:e.traceEndMs}),fromRecordIndex:e.fromRecordIndex,toRecordIndex:e.toRecordIndex,fromTimeMs:e.fromTimeMs,toTimeMs:e.toTimeMs,durationMs:e.durationMs,deltaMs:e.deltaMs,cadenceSampleCount:e.cadenceSampleCount,relatedCrcRecords:Object.freeze([...e.relatedCrcRecords]),
+ ...(e.fromOffset===undefined?{}:{fromOffset:e.fromOffset}),...(e.toOffset===undefined?{}:{toOffset:e.toOffset}),...(e.cadenceBeforeMs===undefined?{}:{cadenceBeforeMs:e.cadenceBeforeMs}),...(e.interiorRecords===undefined?{}:{interiorRecords:e.interiorRecords}),...(e.channelId===undefined?{}:{channelId:e.channelId}),...(e.channelName===undefined?{}:{channelName:e.channelName}),...(e.sampleCount===undefined?{}:{sampleCount:e.sampleCount})});
 }

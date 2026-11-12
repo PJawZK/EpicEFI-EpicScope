@@ -1,3 +1,5 @@
+import {markerExplanation} from './source-integrity-canvas-overlay';
+import {sourceIntegrityDisplayClusters,sourceIntegrityMarkerColor,type SourceIntegrityMarker} from '../app/source-integrity-markers';
 import type { LogMarker, LogTimeRange, NumericChannelRange } from '../../../../core/log-model/log-types';
 import type { TimelineViewport, TimelineViewportEdge } from '../../../../core/timeline/viewport-state';
 import { buildViewportEnvelope, buildViewportEnvelopeFromBlocks } from '../../../../core/timeline/viewport-series';
@@ -6,7 +8,7 @@ import type { TimelineWorkspaceState } from '../state/workspace-state';
 export type TimelineViewportIntent =
   | { readonly type: 'fit' }
   | { readonly type: 'zoom'; readonly factor: number; readonly anchorMs: number; readonly centerCursor?: boolean }
-  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean }
+  | { readonly type: 'pan'; readonly deltaMs: number; readonly centerCursor?: boolean; readonly carryCursor?:boolean }
   | { readonly type: 'resize'; readonly edge: TimelineViewportEdge; readonly edgeTimeMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'range'; readonly startMs: number; readonly endMs: number; readonly centerCursor?: boolean }
   | { readonly type: 'history-back' }
@@ -34,9 +36,12 @@ export interface TimelineShellController {
   setTimeRange(timeRange: LogTimeRange | undefined, recordCount: number): void;
   extendTimeRange(timeRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void;
   setOverviewContent(traces: readonly TimelineOverviewTrace[], markers: readonly LogMarker[]): void;
+  setSourceIntegrity(markers:readonly SourceIntegrityMarker[]):void;
   refreshOverview(): void;
   refreshValidity(): void;
   setViewport(viewport: TimelineViewport | undefined): void;
+  /** User seek through the existing cursor owner; follows current transport policy. */
+  seekTime(timeMs:number):void;
   setCursorTime(timeMs: number): void;
   getCursorTime(): number;
   togglePlayback(): void;
@@ -235,6 +240,7 @@ export function createTimelineShell(): TimelineShellController {
     deleteRangeButton.disabled = true;
   };
 
+  let integrityMarkers:readonly SourceIntegrityMarker[]=[];
   const renderOverview = (): void => {
     const rect = overview.getBoundingClientRect();
     // The existing resize owner redraws on reveal; hidden annotations must not
@@ -306,7 +312,12 @@ export function createTimelineShell(): TimelineShellController {
     context.restore();
 
     const envelopeWidth = Math.max(1, width);
-    if (!overviewTracesVisible) return;
+    if (!overviewTracesVisible) {
+    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
+      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=sourceIntegrityMarkerColor(marker);context.fillRect(x,0,2,Math.min(8,height));
+    }
+      return;
+    }
     for (const trace of overviewTraces) {
       const envelope = precomputedEnvelopeBlocksEnabled && trace.range.fullEnvelopeBlocks
         ? buildViewportEnvelopeFromBlocks(
@@ -368,6 +379,9 @@ export function createTimelineShell(): TimelineShellController {
         context.fillRect(column.x - 0.5, yFor(column.first) - 0.5, 1.5, 1.5);
       }
       context.restore();
+    }
+    for(const marker of sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,width)){
+      const x=(marker.timeMs-fullStartMs)/duration*width;context.fillStyle=sourceIntegrityMarkerColor(marker);context.fillRect(x,0,2,Math.min(8,height));
     }
   };
 
@@ -481,6 +495,7 @@ export function createTimelineShell(): TimelineShellController {
     precomputedEnvelopeBlocksEnabled = true;
     fullStartMs = nextRange?.startMs ?? 0;
     fullEndMs = nextRange?.endMs ?? 0;
+    timeline.style.setProperty('--timeline-duration-width', `${Math.max(9, formatDuration(fullEndMs - fullStartMs).length)}ch`);
     overviewTraces = [];
     sourceMarkers = [];
     userMarkers = [];
@@ -525,6 +540,10 @@ export function createTimelineShell(): TimelineShellController {
   const extendTimeRange = (nextRange: LogTimeRange | undefined, recordCount: number, markers: readonly LogMarker[]): void => {
     fullStartMs = nextRange?.startMs ?? fullStartMs;
     fullEndMs = nextRange?.endMs ?? fullEndMs;
+    const durationWidth = `${Math.max(9, formatDuration(fullEndMs - fullStartMs).length)}ch`;
+    if (timeline.style.getPropertyValue('--timeline-duration-width') !== durationWidth) {
+      timeline.style.setProperty('--timeline-duration-width', durationWidth);
+    }
     sourceMarkers = markers;
     cursorTimeMs = Math.min(fullEndMs, Math.max(fullStartMs, cursorTimeMs));
     overviewText.textContent = nextRange
@@ -668,6 +687,20 @@ export function createTimelineShell(): TimelineShellController {
   };
 
   progress.addEventListener('pointerdown', (event) => beginCursorDrag(event, progress, progress));
+  const continuityNotice=document.createElement('div');
+  continuityNotice.className='timeline-integrity-detail';continuityNotice.hidden=true;
+  continuityNotice.setAttribute('role','status');
+  const continuityText=document.createElement('span'),continuityClose=document.createElement('button');
+  continuityClose.type='button';continuityClose.textContent='Close source evidence';
+  continuityClose.addEventListener('click',()=>{continuityNotice.hidden=true;});
+  continuityNotice.append(continuityText,continuityClose);timeline.append(continuityNotice);
+  overview.addEventListener('click',event=>{
+    const rect=overview.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+    if(y>12 || fullEndMs<=fullStartMs)return;
+    const markers=sourceIntegrityDisplayClusters(integrityMarkers,fullStartMs,fullEndMs,rect.width);
+    const hit=markers.find(m=>Math.abs((m.timeMs-fullStartMs)/(fullEndMs-fullStartMs)*rect.width-x)<=6);
+    if(hit){continuityText.textContent=markerExplanation(hit);continuityNotice.hidden=false;}
+  });
   overview.addEventListener('pointerdown', (event) => beginCursorDrag(event, overview, overview));
   overviewCursor.addEventListener('pointerdown', (event) => beginCursorDrag(event, overviewCursor, overview));
   focusWindow.addEventListener('pointerdown', beginViewportDrag);
@@ -931,12 +964,14 @@ export function createTimelineShell(): TimelineShellController {
     setTimeRange,
     extendTimeRange,
     setOverviewContent,
+    setSourceIntegrity:(next)=>{if(integrityMarkers===next)return;integrityMarkers=next;continuityNotice.hidden=true;renderOverview();},
     refreshOverview: renderOverview,
     refreshValidity: () => {
       precomputedEnvelopeBlocksEnabled = false;
       renderOverview();
     },
     setViewport,
+    seekTime: (timeMs)=>updateCursor(timeMs),
     setCursorTime: (timeMs) => updateCursor(timeMs, false),
     getCursorTime: () => cursorTimeMs,
     togglePlayback,

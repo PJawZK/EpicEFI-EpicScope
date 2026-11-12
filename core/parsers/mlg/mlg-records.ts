@@ -16,6 +16,10 @@ const SCAN_CHUNK_SIZE = 8 * 1024 * 1024;
 export interface MlgRecordIndex {
   readonly offsets: Float64Array;
   readonly timeMs: Float64Array;
+  /** Original reconstructed header clock; never rebound to selected observation time. */
+  readonly headerTimeMs?: Float64Array;
+  /** Exact unsigned wire clock, independent of any elapsed-time policy. */
+  readonly rawTimestampTicks?: Uint16Array;
   readonly counters: Uint8Array;
   readonly crcValid: Uint8Array;
 }
@@ -72,6 +76,10 @@ export function classifyMlgRetryDiagnostics(
   recordLength: number,
 ): MlgDiagnosticClassification {
   const blockLength = BLOCK_HEADER_LENGTH + recordLength + 1;
+  const wireTime = recordIndex.headerTimeMs ?? recordIndex.timeMs;
+  const sameWireClock = (a:number,b:number):boolean => recordIndex.rawTimestampTicks
+    ? recordIndex.rawTimestampTicks[a] === recordIndex.rawTimestampTicks[b]
+    : wireTime[a] === wireTime[b];
   const recoveredInvalidIndices = new Set<number>();
   const retryCounterOffsets = new Set<number>();
   const recoveredCrcOffsets = new Set<number>();
@@ -90,7 +98,7 @@ export function classifyMlgRetryDiagnostics(
   let runStart = 0;
   while (runStart < recordIndex.counters.length) {
     const counter = recordIndex.counters[runStart];
-    const timeMs = recordIndex.timeMs[runStart];
+    const timeMs = wireTime[runStart];
     if (counter === undefined || timeMs === undefined) {
       runStart += 1;
       continue;
@@ -100,7 +108,7 @@ export function classifyMlgRetryDiagnostics(
     while (
       runEnd < recordIndex.counters.length
       && recordIndex.counters[runEnd] === counter
-      && recordIndex.timeMs[runEnd] === timeMs
+      && sameWireClock(runEnd, runStart)
     ) {
       runEnd += 1;
     }
@@ -109,20 +117,23 @@ export function classifyMlgRetryDiagnostics(
     if (runLength > 1) {
       const invalidIndices: number[] = [];
       let allValid = true;
+      let lastValidIndex = -1;
       for (let index = runStart; index < runEnd; index += 1) {
         if (crcValid[index] !== 1) {
           allValid = false;
           invalidIndices.push(index);
-        }
+        } else lastValidIndex=index;
       }
 
-      const finalValid = crcValid[runEnd - 1] === 1;
-      if (invalidIndices.length > 0 && finalValid) {
+      // Recovery belongs to each attempt: a trailing corrupt attempt must not erase
+      // an earlier valid replacement, nor be incorrectly recovered by that earlier record.
+      if (invalidIndices.some(index=>index<lastValidIndex)) {
         for (let index = runStart; index < runEnd; index += 1) {
           const offset = recordIndex.offsets[index];
           if (offset !== undefined) retryCounterOffsets.add(offset + 1);
         }
         for (const index of invalidIndices) {
+          if(index>=lastValidIndex)continue;
           const offset = recordIndex.offsets[index];
           if (offset === undefined) continue;
           recoveredInvalidIndices.add(index);
@@ -257,6 +268,25 @@ class GrowingUint8Buffer {
   }
 }
 
+class GrowingUint16Buffer {
+  private values = new Uint16Array(4096);
+  private lengthValue = 0;
+
+  public push(value: number): void {
+    if (this.lengthValue === this.values.length) {
+      const next = new Uint16Array(this.values.length * 2);
+      next.set(this.values);
+      this.values = next;
+    }
+    this.values[this.lengthValue] = value;
+    this.lengthValue += 1;
+  }
+
+  public finish(): Uint16Array {
+    return this.values.slice(0, this.lengthValue);
+  }
+}
+
 function decodeMarker(bytes: Uint8Array): string {
   const message = bytes.subarray(BLOCK_HEADER_LENGTH, BLOCK_HEADER_LENGTH + MARKER_MESSAGE_LENGTH);
   const zeroIndex = message.indexOf(0);
@@ -383,6 +413,7 @@ async function tryScanFixedRecords(
   const recordCount = dataLength / blockLength;
   const offsets = new Float64Array(recordCount);
   const times = new Float64Array(recordCount);
+  const rawTimestampTicks = new Uint16Array(recordCount);
   const counters = new Uint8Array(recordCount);
   const crcValid = new Uint8Array(recordCount);
   const diagnostics: ParserDiagnostic[] = [];
@@ -487,6 +518,7 @@ async function tryScanFixedRecords(
 
       offsets[recordIndex] = absoluteOffset;
       times[recordIndex] = (unwrappedTimestamp - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS;
+      rawTimestampTicks[recordIndex] = rawTimestamp;
       counters[recordIndex] = counter;
       crcValid[recordIndex] = isCrcValid ? 1 : 0;
     }
@@ -502,7 +534,7 @@ async function tryScanFixedRecords(
   );
 
   return {
-    records: { offsets, timeMs: times, counters, crcValid },
+    records: { offsets, timeMs: times, headerTimeMs: times, rawTimestampTicks, counters, crcValid },
     markers: [],
     diagnostics,
     performance: {
@@ -525,6 +557,7 @@ async function scanMlgRecordsGeneral(
 ): Promise<MlgRecordScanResult> {
   const offsets = new GrowingFloat64Buffer();
   const times = new GrowingFloat64Buffer();
+  const rawTimestampTicks = new GrowingUint16Buffer();
   const counters = new GrowingUint8Buffer();
   const crcValid = new GrowingUint8Buffer();
   const markers: LogMarker[] = [];
@@ -691,6 +724,7 @@ async function scanMlgRecordsGeneral(
 
         offsets.push(absoluteOffset);
         times.push((unwrappedTimestamp - firstUnwrappedTimestamp) * TIMESTAMP_TICK_MS);
+        rawTimestampTicks.push(rawTimestamp);
         counters.push(counter);
         crcValid.push(isCrcValid ? 1 : 0);
         standardRecordIndex += 1;
@@ -748,10 +782,13 @@ async function scanMlgRecordsGeneral(
     : 0;
   const indexCpuMs = Math.max(0, scanCpuElapsedMs - checksumCpuMs - diagnosticCpuMs);
 
+  const headerTimeMs = times.finish();
   return {
     records: {
       offsets: offsets.finish(),
-      timeMs: times.finish(),
+      timeMs: headerTimeMs,
+      headerTimeMs,
+      rawTimestampTicks: rawTimestampTicks.finish(),
       counters: counters.finish(),
       crcValid: crcValid.finish(),
     },

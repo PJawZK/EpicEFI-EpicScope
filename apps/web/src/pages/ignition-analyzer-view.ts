@@ -598,7 +598,7 @@ export function createIgnitionAnalyzerView(observability?: ObservabilityRecorder
     evidence.hidden = false;
     const displayLimit = evidenceEventLimit(series.length);
     const representative = representativeEvents(events, displayLimit);
-    const evidenceEvents = representative.map(({ event }) => ({ startTimeMs: event.startTimeMs, endTimeMs: event.endTimeMs }));
+    const evidenceEvents = representative.map(({ event }) => ({ startSampleIndex: event.startSampleIndex, startTimeMs: event.startTimeMs, endTimeMs: event.endTimeMs }));
     const renderAll = (): void => {
       evidenceNote.textContent = representative.length < events.length
         ? `Representative ${representative.length.toLocaleString()} of ${events.length.toLocaleString()} events across the full scope · median + 10–90% envelope · t=0 onset`
@@ -613,7 +613,7 @@ export function createIgnitionAnalyzerView(observability?: ObservabilityRecorder
     const duration = event.event.endTimeMs - event.event.startTimeMs;
     evidence.hidden = false;
     evidenceNote.textContent = `Event ${index + 1} · ${event.kind} · t=0 onset`;
-    renderAlignedAnalyzerEvidence(evidenceCanvas, series, [{ startTimeMs: event.event.startTimeMs, endTimeMs: event.event.endTimeMs }], 200, Math.max(400, duration + 250));
+    renderAlignedAnalyzerEvidence(evidenceCanvas, series, [{ startSampleIndex: event.event.startSampleIndex, startTimeMs: event.event.startTimeMs, endTimeMs: event.event.endTimeMs }], 200, Math.max(400, duration + 250));
   };
 
   let currentEvents: readonly CombinedEvent[] = [];

@@ -1,3 +1,4 @@
+import { getTimeQueryIndex } from '../log-model/time-query-index';
 import type { NumericChannelRange } from '../log-model/log-types';
 
 export type AfrDelayResponsePolarity = 'inverse' | 'same' | 'either';
@@ -157,6 +158,7 @@ export function analyzeAfrDelay(
   if (!Number.isFinite(searchWindowMs) || searchWindowMs <= 0) throw new RangeError('AFR delay search window must be finite and > 0 ms.');
   if (!Number.isFinite(minimumEventSpacingMs) || minimumEventSpacingMs < 0) throw new RangeError('AFR delay minimum event spacing must be finite and >= 0 ms.');
 
+  const commandTimes = getTimeQueryIndex(inputs.fuelCommand.timeMs), afrTimes = getTimeQueryIndex(inputs.actualAfr.timeMs);
   const indices = selectedIndices(inputs.fuelCommand, sampleIndices);
   const events: AfrDelayEvent[] = [];
   let candidateEventCount = 0;
@@ -168,6 +170,10 @@ export function analyzeAfrDelay(
   for (let position = 1; position < indices.length; position += 1) {
     const previousIndex = indices[position - 1]!;
     const commandIndex = indices[position]!;
+    if (commandTimes.runAt(commandIndex - inputs.fuelCommand.startSampleIndex) !== commandTimes.runAt(previousIndex - inputs.fuelCommand.startSampleIndex)) {
+      lastCandidateTimeMs = Number.NEGATIVE_INFINITY;
+      continue;
+    }
     if (commandIndex !== previousIndex + 1) continue;
     const previousCommand = sample(inputs.fuelCommand, previousIndex);
     const currentCommand = sample(inputs.fuelCommand, commandIndex);
@@ -193,6 +199,11 @@ export function analyzeAfrDelay(
 
     for (let scan = position; scan < indices.length; scan += 1) {
       const scanIndex = indices[scan]!;
+      if (commandTimes.runAt(scanIndex - inputs.fuelCommand.startSampleIndex) !== commandTimes.runAt(commandIndex - inputs.fuelCommand.startSampleIndex)
+        || afrTimes.runAt(scanIndex - inputs.actualAfr.startSampleIndex) !== afrTimes.runAt(commandIndex - inputs.actualAfr.startSampleIndex)) {
+        if (!response) gapBeforeResponse = true;
+        break;
+      }
       if (scan > position && scanIndex !== indices[scan - 1]! + 1) {
         if (!response) gapBeforeResponse = true;
         break;
