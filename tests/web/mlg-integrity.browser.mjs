@@ -31,12 +31,16 @@ export async function runMlgIntegrityChecks() {
   records.forEach(([counter, timestamp, value, valid], i) => bytes.set([0, counter, timestamp >> 8, timestamp & 255, value, valid ? value : value + 1], header.length + i * 6));
   const file = new File([bytes], 'integrity-parity.mlg', { lastModified: 123 });
   const fallback = await importMlgFile(file);
+  assert(fallback.recordIndex.headerTimeMs === fallback.recordIndex.timeMs && JSON.stringify([...fallback.recordIndex.rawTimestampTicks]) === JSON.stringify(records.map(r=>r[1])), 'Fallback lost immutable wire-clock provenance');
+  checks.push('fallback retains exact wire ticks and the original header-clock vector');
   const crc = fallback.summary.diagnostics.filter(d => d.code === 'mlg-crc-retry-recovered' || d.code === 'mlg-crc-mismatch');
   assert(crc.length === 2 && crc[0].sourceIntegrity.kind === 'recovered-retry' && !crc[0].sourceIntegrity.breaksContinuity && crc[1].sourceIntegrity.kind === 'corrupt-record' && crc[1].sourceIntegrity.breaksContinuity, 'Actual fallback parsing lost recovered/unrecovered semantics');
   assert(crc[0].timeMs === fallback.recordIndex.timeMs[1] && crc[1].timeMs === fallback.recordIndex.timeMs[3], 'Actual annotation has incorrect source times');
   if (typeof Worker !== 'undefined') {
     const handle = importMlgFileStaged(file);
     const indexed = await handle.indexed;
+    assert(indexed.recordIndex.headerTimeMs === indexed.recordIndex.timeMs && JSON.stringify([...indexed.recordIndex.rawTimestampTicks]) === JSON.stringify(records.map(r=>r[1])), 'Worker clone lost wire-clock identity');
+    checks.push('worker publication preserves exact wire ticks and header-vector alias');
     handle.startValidation();
     const validated = await handle.validated;
     assert(JSON.stringify(validated.diagnostics) === JSON.stringify(fallback.summary.diagnostics), 'Staged/fallback diagnostic metadata differs');
